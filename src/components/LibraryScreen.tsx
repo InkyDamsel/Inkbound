@@ -1,19 +1,23 @@
-import React, { useMemo, useState } from 'react';
-import { UserBookRecord } from '../types';
+import React, { useState, useMemo } from 'react';
+import { UserBookRecord, ReadingStatus, OwnershipStatus, Format } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { BookCover } from './BookCover';
 import {
-  BookOpen,
-  CheckSquare,
   LayoutGrid,
   List,
-  Lock,
-  Plus,
-  Search,
-  Sparkles,
+  Filter,
+  ArrowUpDown,
+  CheckSquare,
   Square,
+  Search,
   Star,
+  BookOpen,
+  Headphones,
+  Tablet,
   X,
+  Plus,
+  Sparkles,
+  Lock
 } from 'lucide-react';
 
 interface LibraryScreenProps {
@@ -27,20 +31,6 @@ interface LibraryScreenProps {
   onOpenAddBook: () => void;
 }
 
-type ViewMode = 'grid' | 'list';
-type SortMode = 'recent' | 'title' | 'author' | 'rating' | 'progress';
-
-const statusTabs = [
-  { id: 'all', label: 'All Books' },
-  { id: 'currently-reading', label: 'Reading' },
-  { id: 'finished', label: 'Finished' },
-  { id: 'paused', label: 'Paused' },
-  { id: 'dnf', label: 'DNF' },
-  { id: 'owned', label: 'Owned' },
-  { id: 'borrowed', label: 'Borrowed' },
-  { id: 'wishlist', label: 'Wishlist' },
-];
-
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   books,
   selectedBookIds,
@@ -51,47 +41,66 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   onOpenBatchEdit,
   onOpenAddBook,
 }) => {
-  const { userPlan, freeBookLimit, canUseBatchEdit, openUpgradeModal } = useUserPlan();
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [activeTab, setActiveTab] = useState('all');
-  const [searchFilter, setSearchFilter] = useState('');
-  const [formatFilter, setFormatFilter] = useState('all');
-  const [genreFilter, setGenreFilter] = useState('all');
-  const [ownershipFilter, setOwnershipFilter] = useState('all');
-  const [ratingFilter, setRatingFilter] = useState('all');
-  const [sortBy, setSortBy] = useState<SortMode>('recent');
+  const { userPlan, freeBookLimit, canAddBook, canUseBatchEdit, openUpgradeModal } = useUserPlan();
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [activeTab, setActiveTab] = useState<string>('all');
 
+  
+  // Filter States
+  const [searchFilter, setSearchFilter] = useState('');
+  const [formatFilter, setFormatFilter] = useState<string>('all');
+  const [genreFilter, setGenreFilter] = useState<string>('all');
+  const [ownershipFilter, setOwnershipFilter] = useState<string>('all');
+  const [ratingFilter, setRatingFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'recent' | 'title' | 'author' | 'rating' | 'progress'>('recent');
+
+  // Extract unique genres for dropdown
   const allGenres = useMemo(() => {
-    const genres = new Set<string>();
-    books.forEach((book) => book.work.genres.forEach((genre) => genres.add(genre)));
-    return Array.from(genres).sort();
+    const set = new Set<string>();
+    books.forEach((b) => b.work.genres.forEach((g) => set.add(g)));
+    return Array.from(set).sort();
   }, [books]);
 
+  // Filtered & Sorted books
   const filteredBooks = useMemo(() => {
     return books
-      .filter((book) => {
-        if (activeTab === 'currently-reading' && book.status !== 'currently-reading') return false;
-        if (activeTab === 'finished' && book.status !== 'finished') return false;
-        if (activeTab === 'paused' && book.status !== 'paused') return false;
-        if (activeTab === 'dnf' && book.status !== 'dnf') return false;
-        if (activeTab === 'owned' && book.ownership !== 'owned') return false;
-        if (activeTab === 'borrowed' && !['borrowed-library', 'borrowed-person'].includes(book.ownership)) return false;
-        if (activeTab === 'wishlist' && book.ownership !== 'wishlist' && book.status !== 'wishlist') return false;
+      .filter((b) => {
+        // Tab Status Filter
+        if (activeTab === 'currently-reading' && b.status !== 'currently-reading') return false;
+        if (activeTab === 'finished' && b.status !== 'finished') return false;
+        if (activeTab === 'paused' && b.status !== 'paused') return false;
+        if (activeTab === 'dnf' && b.status !== 'dnf') return false;
+        if (activeTab === 'owned' && b.ownership !== 'owned') return false;
+        if (activeTab === 'borrowed' && !['borrowed-library', 'borrowed-person'].includes(b.ownership)) return false;
+        if (activeTab === 'wishlist' && b.ownership !== 'wishlist' && b.status !== 'wishlist') return false;
 
+        // Search text
         if (searchFilter.trim()) {
-          const query = searchFilter.toLowerCase();
-          const matches =
-            book.work.title.toLowerCase().includes(query) ||
-            book.work.author.toLowerCase().includes(query) ||
-            book.work.seriesName?.toLowerCase().includes(query) ||
-            book.privateTags.some((tag) => tag.toLowerCase().includes(query));
-          if (!matches) return false;
+          const q = searchFilter.toLowerCase();
+          const matchesTitle = b.work.title.toLowerCase().includes(q);
+          const matchesAuthor = b.work.author.toLowerCase().includes(q);
+          const matchesSeries = b.work.seriesName?.toLowerCase().includes(q);
+          const matchesTags = b.privateTags.some((t) => t.toLowerCase().includes(q));
+          if (!matchesTitle && !matchesAuthor && !matchesSeries && !matchesTags) return false;
         }
 
-        if (formatFilter !== 'all' && !book.editions.some((edition) => edition.format === formatFilter)) return false;
-        if (genreFilter !== 'all' && !book.work.genres.includes(genreFilter)) return false;
-        if (ownershipFilter !== 'all' && book.ownership !== ownershipFilter) return false;
-        if (ratingFilter !== 'all' && (book.rating || 0) < Number(ratingFilter)) return false;
+        // Format Filter
+        if (formatFilter !== 'all') {
+          const hasFormat = b.editions.some((e) => e.format === formatFilter);
+          if (!hasFormat) return false;
+        }
+
+        // Genre Filter
+        if (genreFilter !== 'all' && !b.work.genres.includes(genreFilter)) return false;
+
+        // Ownership Filter
+        if (ownershipFilter !== 'all' && b.ownership !== ownershipFilter) return false;
+
+        // Rating Filter
+        if (ratingFilter !== 'all') {
+          const r = parseFloat(ratingFilter);
+          if ((b.rating || 0) < r) return false;
+        }
 
         return true;
       })
@@ -100,258 +109,328 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         if (sortBy === 'author') return a.work.author.localeCompare(b.work.author);
         if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
         if (sortBy === 'progress') return b.progressPercentage - a.progressPercentage;
+        // Default recent
         return new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime();
       });
   }, [books, activeTab, searchFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
-  const allFilteredSelected = filteredBooks.length > 0 && filteredBooks.every((book) => selectedBookIds.includes(book.id));
-  const isAtFreeLimit = userPlan === 'free' && books.length >= freeBookLimit;
-
-  const handleAddBook = () => {
-    if (isAtFreeLimit) {
-      openUpgradeModal(`You have reached the Free limit of ${freeBookLimit} books. Upgrade to Premium to add unlimited books.`);
-      return;
-    }
-    onOpenAddBook();
-  };
-
-  const handleSelectAll = () => {
-    if (!canUseBatchEdit) {
-      openUpgradeModal('Batch selection and multi-book editing require Inkbound Premium.');
-      return;
-    }
-    allFilteredSelected ? onClearSelection() : onSelectAll(filteredBooks.map((book) => book.id));
-  };
+  const allFilteredSelected = filteredBooks.length > 0 && filteredBooks.every((b) => selectedBookIds.includes(b.id));
 
   return (
-    <div className="space-y-6 pb-24">
-      <section className="inkbound-panel overflow-hidden p-6 sm:p-8">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-2xl">
-            <span className="inkbound-kicker">Your personal collection</span>
-            <h1 className="inkbound-page-title mt-2">My Library</h1>
-            <p className="inkbound-page-copy mt-2">
-              Browse every book you own, borrow, love, pause, or plan to return to.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-full border border-[#c5a059]/25 bg-[#c5a059]/8 px-4 py-2 text-xs text-[#d9ced9]">
-              <span className="font-bold text-[#f4efe6]">{filteredBooks.length}</span> shown
-              <span className="mx-2 text-[#807482]">of</span>
-              <span className="font-bold text-[#f4efe6]">{books.length}</span> books
-            </div>
-
+    <div className="space-y-6 pb-20">
+      {/* Header & Title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-serif font-bold text-[#f4efe6]">
+              My Library
+            </h1>
             {userPlan === 'free' ? (
-              <div className="rounded-full border border-[#c5a059]/25 bg-[#17101b] px-4 py-2 text-xs text-[#c5a059]">
-                {books.length} of {freeBookLimit} used
-              </div>
+              <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
+                books.length >= freeBookLimit
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                  : 'bg-[#c5a059]/15 text-[#e5c158] border-[#c5a059]/30'
+              }`}>
+                {books.length} of {freeBookLimit} books used
+              </span>
             ) : (
-              <div className="flex items-center gap-1.5 rounded-full border border-[#c5a059]/35 bg-[#c5a059]/10 px-4 py-2 text-xs font-bold text-[#e2bd66]">
-                <Sparkles className="h-3.5 w-3.5" /> Unlimited Library
-              </div>
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#c5a059]/20 text-[#e5c158] border border-[#c5a059]/40 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-[#e5c158]" /> Premium (Unlimited)
+              </span>
             )}
-
-            <button type="button" onClick={handleAddBook} className="quiet-shelf-primary-action">
-              {isAtFreeLimit ? <Lock className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              <span>Add Book</span>
-            </button>
           </div>
+          <p className="text-sm text-stone-400 mt-1">
+            {filteredBooks.length} of {books.length} books showing in current view
+          </p>
         </div>
-      </section>
 
-      <section className="inkbound-panel p-4 sm:p-5">
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {statusTabs.map((tab) => (
+        <div className="flex items-center gap-2">
+          {/* Add Book */}
+          <button
+            onClick={() => {
+              if (userPlan === 'free' && books.length >= freeBookLimit) {
+                openUpgradeModal(`You have reached the Free limit of ${freeBookLimit} books. Upgrade to Premium to add unlimited books.`);
+              } else {
+                onOpenAddBook();
+              }
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold shadow-md transition ${
+              userPlan === 'free' && books.length >= freeBookLimit
+                ? 'bg-amber-500 text-stone-900 hover:bg-amber-400'
+                : 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] hover:opacity-95'
+            }`}
+          >
+            {userPlan === 'free' && books.length >= freeBookLimit ? (
+              <Lock className="w-4 h-4" />
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
+            <span>Add Book</span>
+          </button>
+
+          {/* Grid / List view toggle */}
+          <div className="flex items-center bg-[#1c0f24] p-1 rounded-xl border border-[#c5a059]/25">
             <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                activeTab === tab.id
-                  ? 'border-[#d8ae54] bg-[#c5a059] text-[#171015]'
-                  : 'border-transparent bg-[#1d1422] text-[#cfc2cf] hover:border-[#c5a059]/25 hover:text-[#f4efe6]'
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-lg text-xs transition ${
+                viewMode === 'grid'
+                  ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] shadow-sm font-bold'
+                  : 'text-stone-400 hover:text-[#f4efe6]'
               }`}
             >
-              {tab.label}
+              <LayoutGrid className="w-4 h-4" />
             </button>
-          ))}
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-lg text-xs transition ${
+                viewMode === 'list'
+                  ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] shadow-sm font-bold'
+                  : 'text-stone-400 hover:text-[#f4efe6]'
+              }`}
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+      </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
-          <label className="relative xl:col-span-2">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#807482]" />
+      {/* Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-[#36213d]">
+        {[
+          { id: 'all', label: 'All Books' },
+          { id: 'currently-reading', label: 'Currently Reading' },
+          { id: 'finished', label: 'Finished' },
+          { id: 'paused', label: 'Paused' },
+          { id: 'dnf', label: 'Did Not Finish' },
+          { id: 'owned', label: 'Owned Copies' },
+          { id: 'borrowed', label: 'Borrowed' },
+          { id: 'wishlist', label: 'Wishlist' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition ${
+              activeTab === tab.id
+                ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] font-bold shadow-md'
+                : 'text-stone-300 hover:bg-[#25132f] border border-transparent hover:border-[#c5a059]/20'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Controls Bar: Search, Filters, Sort, Select All */}
+      <div className="bg-[#1c0f24] border border-[#c5a059]/25 p-4 rounded-xl shadow-xl space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          
+          {/* Search */}
+          <div className="relative lg:col-span-2">
+            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
             <input
-              type="search"
-              placeholder="Search title, author, series, or tag"
+              type="text"
+              placeholder="Search library..."
               value={searchFilter}
-              onChange={(event) => setSearchFilter(event.target.value)}
-              className="h-11 w-full rounded-xl border border-[#c5a059]/18 bg-[#0d0910] pl-10 pr-4 text-sm text-[#f4efe6] outline-none transition placeholder:text-[#6f6570] focus:border-[#c5a059]/55"
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg text-xs bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
             />
-          </label>
+          </div>
 
-          <select value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} className="inkbound-select">
-            <option value="all">All formats</option>
+          {/* Format */}
+          <select
+            value={formatFilter}
+            onChange={(e) => setFormatFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-lg text-xs bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
+          >
+            <option value="all">All Formats</option>
             <option value="hardcover">Hardcover</option>
             <option value="paperback">Paperback</option>
             <option value="ebook">Ebook</option>
             <option value="audiobook">Audiobook</option>
           </select>
 
-          <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)} className="inkbound-select">
-            <option value="all">All genres</option>
-            {allGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
+          {/* Genre */}
+          <select
+            value={genreFilter}
+            onChange={(e) => setGenreFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-lg text-xs bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
+          >
+            <option value="all">All Genres</option>
+            {allGenres.map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
           </select>
 
-          <select value={ownershipFilter} onChange={(event) => setOwnershipFilter(event.target.value)} className="inkbound-select">
-            <option value="all">Any ownership</option>
-            <option value="owned">Owned</option>
-            <option value="borrowed-library">Library loan</option>
-            <option value="borrowed-person">Borrowed</option>
-            <option value="wishlist">Wishlist</option>
+          {/* Sort */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="px-3 py-1.5 rounded-lg text-xs bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
+          >
+            <option value="recent">Sort: Recently Added</option>
+            <option value="title">Sort: Title</option>
+            <option value="author">Sort: Author</option>
+            <option value="rating">Sort: Rating</option>
+            <option value="progress">Sort: Progress</option>
           </select>
 
-          <select value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)} className="inkbound-select">
-            <option value="all">Any rating</option>
-            <option value="5">5 stars</option>
-            <option value="4">4+ stars</option>
-            <option value="3">3+ stars</option>
-          </select>
-
-          <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select">
-            <option value="recent">Recently added</option>
-            <option value="title">Title</option>
-            <option value="author">Author</option>
-            <option value="rating">Rating</option>
-            <option value="progress">Progress</option>
-          </select>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-4">
-          <button type="button" onClick={handleSelectAll} className="quiet-shelf-secondary-action">
+          {/* Select All Toggle */}
+          <button
+            onClick={() => {
+              if (!canUseBatchEdit) {
+                openUpgradeModal('Batch selection and multi-book editing require Reading App Premium.');
+                return;
+              }
+              if (allFilteredSelected) {
+                onClearSelection();
+              } else {
+                onSelectAll(filteredBooks.map((b) => b.id));
+              }
+            }}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#25132f] border border-[#c5a059]/30 text-[#f4efe6] hover:bg-[#32193f] transition"
+          >
             {canUseBatchEdit ? (
-              allFilteredSelected ? <CheckSquare className="h-4 w-4 text-[#e2bd66]" /> : <Square className="h-4 w-4" />
+              allFilteredSelected ? <CheckSquare className="w-4 h-4 text-[#c5a059]" /> : <Square className="w-4 h-4 text-stone-400" />
             ) : (
-              <Lock className="h-4 w-4 text-[#c5a059]" />
+              <Lock className="w-3.5 h-3.5 text-[#c5a059]" />
             )}
-            <span>{canUseBatchEdit ? (allFilteredSelected ? 'Deselect all' : 'Select all') : 'Batch edit'}</span>
+            <span>{canUseBatchEdit ? (allFilteredSelected ? 'Deselect All' : 'Select All') : 'Batch Selection (Premium)'}</span>
           </button>
 
-          <div className="flex items-center rounded-full border border-[#c5a059]/20 bg-[#0d0910] p-1">
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={`rounded-full p-2 transition ${viewMode === 'grid' ? 'bg-[#c5a059] text-[#171015]' : 'text-[#9e919f] hover:text-[#f4efe6]'}`}
-              aria-label="Grid view"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={`rounded-full p-2 transition ${viewMode === 'list' ? 'bg-[#c5a059] text-[#171015]' : 'text-[#9e919f] hover:text-[#f4efe6]'}`}
-              aria-label="List view"
-            >
-              <List className="h-4 w-4" />
-            </button>
-          </div>
         </div>
-      </section>
+      </div>
 
-      {filteredBooks.length === 0 ? (
-        <section className="inkbound-panel border-dashed p-12 text-center">
-          <BookOpen className="mx-auto h-12 w-12 text-[#c5a059]/55" />
-          <h2 className="mt-4 font-serif text-2xl font-bold text-[#f4efe6]">No books found</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-[#ad9fac]">Adjust the current filters or add a new title to your library.</p>
-        </section>
-      ) : viewMode === 'grid' ? (
-        <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
-          {filteredBooks.map((book) => {
-            const isSelected = selectedBookIds.includes(book.id);
-            const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) || book.editions[0];
-            return (
-              <article
-                key={book.id}
-                onClick={() => onSelectBook(book)}
-                className={`group cursor-pointer rounded-2xl border p-3 transition duration-200 ${
-                  isSelected
-                    ? 'border-[#c5a059] bg-[#c5a059]/12 shadow-[0_16px_34px_rgba(0,0,0,.4)]'
-                    : 'border-white/5 bg-[#17101b] hover:-translate-y-1 hover:border-[#c5a059]/35 hover:bg-[#1d1422]'
-                }`}
-              >
-                <div className="flex justify-center">
-                  <BookCover
-                    work={book.work}
-                    edition={activeEdition}
-                    size="md"
-                    progressPercentage={book.progressPercentage}
-                    rating={book.rating}
-                    isSelected={isSelected}
-                    onSelectToggle={() => onToggleSelectBook(book.id)}
-                  />
-                </div>
-                <div className="mt-4 min-w-0">
-                  <h3 className="line-clamp-2 font-serif text-base font-bold leading-tight text-[#f4efe6] transition group-hover:text-[#e2bd66]">{book.work.title}</h3>
-                  <p className="mt-1 truncate text-xs text-[#ad9fac]">{book.work.author}</p>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
-                    <span className="rounded-full bg-[#24172a] px-2.5 py-1 capitalize text-[#cfc2cf]">{book.status.replaceAll('-', ' ')}</span>
-                    {book.rating ? (
-                      <span className="flex items-center gap-1 font-bold text-[#e2bd66]"><Star className="h-3 w-3 fill-current" />{book.rating.toFixed(1)}</span>
-                    ) : null}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-      ) : (
-        <section className="inkbound-panel overflow-hidden p-0">
-          <div className="divide-y divide-white/5">
-            {filteredBooks.map((book) => {
-              const isSelected = selectedBookIds.includes(book.id);
-              const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) || book.editions[0];
-              return (
-                <article
-                  key={book.id}
-                  onClick={() => onSelectBook(book)}
-                  className={`flex cursor-pointer items-center gap-4 p-4 transition hover:bg-[#1d1422] ${isSelected ? 'bg-[#c5a059]/10' : ''}`}
-                >
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onToggleSelectBook(book.id);
-                    }}
-                    className="text-[#c5a059]"
-                    aria-label={isSelected ? 'Deselect book' : 'Select book'}
-                  >
-                    {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5 text-[#6f6570]" />}
-                  </button>
-                  <BookCover work={book.work} edition={activeEdition} size="sm" showFormatBadge={false} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em]">
-                      <span className="rounded-full border border-[#c5a059]/20 bg-[#c5a059]/8 px-2.5 py-1 text-[#e2bd66]">{activeEdition?.format || 'book'}</span>
-                      <span className="rounded-full bg-[#24172a] px-2.5 py-1 text-[#b9acba]">{book.status.replaceAll('-', ' ')}</span>
-                    </div>
-                    <h3 className="mt-2 truncate font-serif text-lg font-bold text-[#f4efe6]">{book.work.title}</h3>
-                    <p className="truncate text-xs text-[#ad9fac]">{book.work.author}</p>
-                  </div>
-                  <div className="hidden text-right sm:block">
-                    {book.rating ? <p className="flex items-center justify-end gap-1 text-sm font-bold text-[#e2bd66]"><Star className="h-3.5 w-3.5 fill-current" />{book.rating.toFixed(1)}</p> : <p className="text-xs text-[#807482]">Unrated</p>}
-                    <p className="mt-1 text-xs text-[#ad9fac]">{book.progressPercentage}% complete</p>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+      {/* Batch Action Persistent Bar Trigger if selected */}
+      {selectedBookIds.length > 0 && (
+        <div className="fixed bottom-16 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#361539] text-[#f8f4ed] px-5 py-3 rounded-full shadow-2xl border border-[#c5a059] flex items-center gap-4 animate-bounce-short">
+          <span className="text-xs font-bold text-[#c5a059]">
+            {selectedBookIds.length} book{selectedBookIds.length > 1 ? 's' : ''} selected
+          </span>
+          <button
+            onClick={onOpenBatchEdit}
+            className="px-3.5 py-1.5 rounded-full bg-[#c5a059] text-[#1c121e] text-xs font-bold hover:bg-[#b58e45] transition"
+          >
+            Batch Actions
+          </button>
+          <button
+            onClick={onClearSelection}
+            className="p-1 rounded-full text-stone-300 hover:text-white"
+            title="Clear selection"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
 
-      {selectedBookIds.length > 0 && (
-        <div className="fixed bottom-20 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-full border border-[#c5a059]/55 bg-[#17101b]/95 px-4 py-3 shadow-2xl backdrop-blur md:bottom-6 md:ml-[116px]">
-          <span className="whitespace-nowrap text-xs font-bold text-[#e2bd66]">{selectedBookIds.length} selected</span>
-          <button type="button" onClick={onOpenBatchEdit} className="rounded-full bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#171015]">Batch Actions</button>
-          <button type="button" onClick={onClearSelection} className="rounded-full p-2 text-[#ad9fac] hover:text-white" aria-label="Clear selection"><X className="h-4 w-4" /></button>
+      {/* Main Books Grid or List */}
+      {filteredBooks.length === 0 ? (
+        <div className="bg-[#1c0f24] border border-dashed border-[#3d2448] rounded-2xl p-12 text-center space-y-3 shadow-xl">
+          <BookOpen className="w-12 h-12 text-[#c5a059]/60 mx-auto" />
+          <h3 className="font-serif font-bold text-xl text-[#f4efe6]">
+            No Books Found
+          </h3>
+          <p className="text-xs text-stone-400 max-w-md mx-auto">
+            Try adjusting your search criteria or add new books to your catalog.
+          </p>
+        </div>
+      ) : viewMode === 'grid' ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
+          {filteredBooks.map((book) => {
+            const isSelected = selectedBookIds.includes(book.id);
+            const activeEdition = book.editions.find((e) => e.id === book.activeEditionId) || book.editions[0];
+
+            return (
+              <div
+                key={book.id}
+                onClick={() => onSelectBook(book)}
+                className={`group flex flex-col items-center p-2.5 rounded-xl transition cursor-pointer ${
+                  isSelected
+                    ? 'bg-[#c5a059]/20 border border-[#c5a059] shadow-lg shadow-[#c5a059]/10'
+                    : 'hover:bg-[#25132f] border border-transparent hover:border-[#c5a059]/20'
+                }`}
+              >
+                <BookCover
+                  work={book.work}
+                  edition={activeEdition}
+                  size="md"
+                  progressPercentage={book.progressPercentage}
+                  rating={book.rating}
+                  isSelected={isSelected}
+                  onSelectToggle={() => onToggleSelectBook(book.id)}
+                />
+
+                <div className="mt-2 text-center w-full px-1">
+                  <h4 className="font-serif font-bold text-xs text-[#f4efe6] line-clamp-1 group-hover:text-[#c5a059] transition">
+                    {book.work.title}
+                  </h4>
+                  <p className="text-[11px] text-stone-400 truncate">{book.work.author}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Detailed List View */
+        <div className="bg-[#1c0f24] border border-[#c5a059]/20 rounded-xl overflow-hidden shadow-2xl divide-y divide-[#3d2448]">
+          {filteredBooks.map((book) => {
+            const isSelected = selectedBookIds.includes(book.id);
+            const activeEdition = book.editions.find((e) => e.id === book.activeEditionId) || book.editions[0];
+
+            return (
+              <div
+                key={book.id}
+                onClick={() => onSelectBook(book)}
+                className={`p-4 flex items-center gap-4 hover:bg-[#25132f] cursor-pointer transition ${
+                  isSelected ? 'bg-[#c5a059]/15' : ''
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    onToggleSelectBook(book.id);
+                  }}
+                  className="w-4 h-4 rounded border-[#3d2448] text-[#c5a059] focus:ring-[#c5a059]"
+                />
+
+                <BookCover work={book.work} edition={activeEdition} size="sm" showFormatBadge={false} />
+
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold text-[#e5c158] bg-[#c5a059]/15 px-2 py-0.5 rounded border border-[#c5a059]/25">
+                      {activeEdition?.format || 'hardcover'}
+                    </span>
+                    <span className="text-[10px] uppercase font-bold text-stone-300 bg-[#2d1838] px-2 py-0.5 rounded border border-[#3d2448]">
+                      {book.status}
+                    </span>
+                    {book.work.seriesName && (
+                      <span className="text-[10px] text-[#e5c158] font-medium">
+                        {book.work.seriesName} #{book.work.seriesOrder}
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="font-serif font-bold text-base text-[#f4efe6]">
+                    {book.work.title}
+                  </h3>
+                  <p className="text-xs text-stone-400">{book.work.author}</p>
+                </div>
+
+                <div className="text-right shrink-0 space-y-1">
+                  {book.rating ? (
+                    <div className="flex items-center justify-end gap-1 text-[#e5c158] text-xs font-bold">
+                      <Star className="w-3.5 h-3.5 fill-current" />
+                      <span>{book.rating.toFixed(1)}</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-stone-500">Unrated</span>
+                  )}
+                  <p className="text-xs text-stone-400 font-medium">{book.progressPercentage}% complete</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -1,19 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import {
-  Format,
-  ImportRecordItem,
-  OwnershipStatus,
-  Priority,
-  ReadingSession,
-  ReadingStatus,
-  UserBookRecord,
-} from './types';
+import React, { useState, useEffect } from 'react';
+import { UserBookRecord, ReadingSession, ReadingStatus, OwnershipStatus, Format, Priority, ImportRecordItem } from './types';
 import { SAMPLE_BOOKS, INITIAL_READING_SESSIONS } from './data/sampleBooks';
 import { Navbar, NavTab } from './components/Navbar';
 import { HomeDashboard } from './components/HomeDashboard';
 import { LibraryScreen } from './components/LibraryScreen';
 import { TBRScreen } from './components/TBRScreen';
-import { ReadingSessionsScreen } from './components/ReadingSessionsScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
 import { BatchEditModal } from './components/BatchEditModal';
 import { ReadingSessionModal } from './components/ReadingSessionModal';
@@ -23,95 +14,113 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { AddBookModal } from './components/AddBookModal';
 import { Check, RotateCcw } from 'lucide-react';
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
-const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
-const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
-const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
-
-function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
-  try {
-    const stored = localStorage.getItem(primaryKey) ?? localStorage.getItem(legacyKey);
-    return stored ? (JSON.parse(stored) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const [books, setBooks] = useState<UserBookRecord[]>(() =>
-    readStoredCollection(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, SAMPLE_BOOKS),
-  );
-  const [sessions, setSessions] = useState<ReadingSession[]>(() =>
-    readStoredCollection(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, INITIAL_READING_SESSIONS),
-  );
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+
+  // Core Data Collections
+  const [books, setBooks] = useState<UserBookRecord[]>(() => {
+    const saved = localStorage.getItem('bookhaven_books');
+    return saved ? JSON.parse(saved) : SAMPLE_BOOKS;
+  });
+
+  const [sessions, setSessions] = useState<ReadingSession[]>(() => {
+    const saved = localStorage.getItem('bookhaven_sessions');
+    return saved ? JSON.parse(saved) : INITIAL_READING_SESSIONS;
+  });
+
+  // Undo Backup State for Batch Editing / Import
   const [previousBooksState, setPreviousBooksState] = useState<UserBookRecord[] | null>(null);
+
+  // Modals & Selection States
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
   const [isBatchEditOpen, setIsBatchEditOpen] = useState(false);
+  
   const [isTimerOpen, setIsTimerOpen] = useState(false);
-  const [timerInitialBookId, setTimerInitialBookId] = useState<string>();
+  const [timerInitialBookId, setTimerInitialBookId] = useState<string | undefined>(undefined);
+  
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
+
+  // Toast Notification State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Sync dark mode HTML class
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDarkMode);
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [isDarkMode]);
 
+  // Persist local state
   useEffect(() => {
-    localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(books));
-    localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
+    localStorage.setItem('bookhaven_books', JSON.stringify(books));
   }, [books]);
 
   useEffect(() => {
-    localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
-    localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
+    localStorage.setItem('bookhaven_sessions', JSON.stringify(sessions));
   }, [sessions]);
 
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    window.setTimeout(() => setToastMessage(null), 4000);
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const openTimer = (bookId?: string) => {
-    setTimerInitialBookId(bookId);
-    setIsTimerOpen(true);
-  };
-
+  // Selection toggle
   const handleToggleSelectBook = (id: string) => {
-    setSelectedBookIds((current) =>
-      current.includes(id) ? current.filter((bookId) => bookId !== id) : [...current, id],
+    setSelectedBookIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
+  const handleSelectAll = (ids: string[]) => {
+    setSelectedBookIds(ids);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedBookIds([]);
+  };
+
+  // Update single book
   const handleUpdateBook = (updatedBook: UserBookRecord) => {
-    setBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book)));
-    setSelectedBookForDetails((current) => (current?.id === updatedBook.id ? updatedBook : current));
+    setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
+    if (selectedBookForDetails?.id === updatedBook.id) {
+      setSelectedBookForDetails(updatedBook);
+    }
   };
 
+  // Update status single
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => {
-    setBooks((current) =>
-      current.map((book) => {
-        if (book.id !== bookId) return book;
-        return {
-          ...book,
-          status,
-          progressPercentage: status === 'finished' ? 100 : book.progressPercentage,
-          dateFinished:
-            status === 'finished'
-              ? book.dateFinished ?? new Date().toISOString().split('T')[0]
-              : book.dateFinished,
-        };
-      }),
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id === bookId) {
+          let dateFinished = b.dateFinished;
+          if (status === 'finished' && !dateFinished) {
+            dateFinished = new Date().toISOString().split('T')[0];
+          }
+          return {
+            ...b,
+            status,
+            progressPercentage: status === 'finished' ? 100 : b.progressPercentage,
+            dateFinished,
+          };
+        }
+        return b;
+      })
     );
-    showToast(`Updated reading status to ${status}.`);
+    showToast(`Updated reading status to ${status}`);
   };
 
+  // Update priority single
   const handleUpdatePriority = (bookId: string, priority: Priority) => {
-    setBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
+    setBooks((prev) =>
+      prev.map((b) => (b.id === bookId ? { ...b, priority } : b))
+    );
   };
 
+  // Apply Batch Changes
   const handleApplyBatchChanges = (changes: {
     status?: ReadingStatus;
     ownership?: OwnershipStatus;
@@ -121,109 +130,122 @@ export default function App() {
     addCollection?: string;
   }) => {
     setPreviousBooksState(books);
-    setBooks((current) =>
-      current.map((book) => {
-        if (!selectedBookIds.includes(book.id)) return book;
 
-        const updatedBook = { ...book };
-        if (changes.status) {
-          updatedBook.status = changes.status;
-          if (changes.status === 'finished') {
-            updatedBook.progressPercentage = 100;
-            updatedBook.dateFinished = new Date().toISOString().split('T')[0];
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (selectedBookIds.includes(b.id)) {
+          let updated = { ...b };
+          if (changes.status) {
+            updated.status = changes.status;
+            if (changes.status === 'finished') {
+              updated.progressPercentage = 100;
+              updated.dateFinished = new Date().toISOString().split('T')[0];
+            }
           }
+          if (changes.ownership) updated.ownership = changes.ownership;
+          if (changes.priority) updated.priority = changes.priority;
+          if (changes.format) {
+            updated.editions = updated.editions.map((e) =>
+              e.id === updated.activeEditionId ? { ...e, format: changes.format! } : e
+            );
+          }
+          if (changes.addTag && !updated.privateTags.includes(changes.addTag)) {
+            updated.privateTags = [...updated.privateTags, changes.addTag];
+          }
+          if (changes.addCollection && !updated.collections.includes(changes.addCollection)) {
+            updated.collections = [...updated.collections, changes.addCollection];
+          }
+          return updated;
         }
-        if (changes.ownership) updatedBook.ownership = changes.ownership;
-        if (changes.priority) updatedBook.priority = changes.priority;
-        if (changes.format) {
-          updatedBook.editions = updatedBook.editions.map((edition) =>
-            edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition,
-          );
-        }
-        if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) {
-          updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
-        }
-        if (changes.addCollection && !updatedBook.collections.includes(changes.addCollection)) {
-          updatedBook.collections = [...updatedBook.collections, changes.addCollection];
-        }
-        return updatedBook;
-      }),
+        return b;
+      })
     );
 
     const count = selectedBookIds.length;
     setSelectedBookIds([]);
-    setIsBatchEditOpen(false);
     showToast(`Applied batch changes to ${count} books.`);
   };
 
+  // Batch Delete
   const handleDeleteSelected = () => {
     setPreviousBooksState(books);
     const count = selectedBookIds.length;
-    setBooks((current) => current.filter((book) => !selectedBookIds.includes(book.id)));
+    setBooks((prev) => prev.filter((b) => !selectedBookIds.includes(b.id)));
     setSelectedBookIds([]);
-    setIsBatchEditOpen(false);
     showToast(`Deleted ${count} books.`);
   };
 
+  // Undo Last Batch
   const handleUndoLastBatch = () => {
-    if (!previousBooksState) return;
-    setBooks(previousBooksState);
-    setPreviousBooksState(null);
-    showToast('Undid the most recent library change.');
+    if (previousBooksState) {
+      setBooks(previousBooksState);
+      setPreviousBooksState(null);
+      showToast('Undone recent batch action!');
+    }
   };
 
+  // Save Session
   const handleSaveSession = (
     newSession: ReadingSession,
     updatedPages: number,
-    updatedMinutes: number,
+    updatedMins: number
   ) => {
-    setSessions((current) => [newSession, ...current]);
-    setBooks((current) =>
-      current.map((book) => {
-        if (book.id !== newSession.bookId) return book;
+    setSessions((prev) => [newSession, ...prev]);
 
-        const activeEdition =
-          book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
-        const isAudiobook = activeEdition?.format === 'audiobook';
-        const total = isAudiobook
-          ? activeEdition?.audiobookDurationMins ?? 600
-          : activeEdition?.pageCount ?? 350;
-        const completed = isAudiobook ? updatedMinutes : updatedPages;
-        const progressPercentage = Math.min(100, Math.round((completed / total) * 100));
+    // Update book progress
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id === newSession.bookId) {
+          const activeEd = b.editions.find((e) => e.id === b.activeEditionId) || b.editions[0];
+          const totalPages = activeEd?.pageCount || 350;
+          const totalMins = activeEd?.audiobookDurationMins || 600;
 
-        return {
-          ...book,
-          progressPages: isAudiobook ? book.progressPages : updatedPages,
-          progressMinutes: isAudiobook ? updatedMinutes : book.progressMinutes,
-          progressPercentage,
-          status: progressPercentage === 100 ? 'finished' : 'currently-reading',
-          dateFinished:
-            progressPercentage === 100 ? new Date().toISOString().split('T')[0] : book.dateFinished,
-          lastSessionDate: newSession.date,
-        };
-      }),
+          const isAudio = activeEd?.format === 'audiobook';
+          const newPages = !isAudio ? updatedPages : b.progressPages;
+          const newMins = isAudio ? updatedMins : b.progressMinutes;
+
+          const pct = Math.min(
+            100,
+            Math.round(isAudio ? (newMins / totalMins) * 100 : (newPages / totalPages) * 100)
+          );
+
+          return {
+            ...b,
+            progressPages: newPages,
+            progressMinutes: newMins,
+            progressPercentage: pct,
+            status: pct === 100 ? 'finished' : 'currently-reading',
+            dateFinished: pct === 100 ? new Date().toISOString().split('T')[0] : b.dateFinished,
+            lastSessionDate: newSession.date,
+          };
+        }
+        return b;
+      })
     );
-    showToast(`Saved a ${newSession.durationMinutes}-minute reading session.`);
+
+    showToast(`Saved session: ${newSession.durationMinutes} minutes logged!`);
   };
 
+  // Execute Import
   const handleExecuteImport = (importedItems: ImportRecordItem[]) => {
     setPreviousBooksState(books);
-    const importedBooks: UserBookRecord[] = importedItems.map((item) => {
-      const editionId = `edition-import-${item.id}`;
+
+    const newRecords: UserBookRecord[] = importedItems.map((item) => {
+      const edId = 'ed-imp-' + item.id;
       return {
-        id: `book-import-${item.id}`,
+        id: 'book-imp-' + item.id,
         work: {
-          id: `work-import-${item.id}`,
+          id: 'work-imp-' + item.id,
           title: item.title,
           author: item.author,
           summary: 'Imported book summary record.',
           genres: ['Imported Shelf'],
           publicationYear: 2024,
         },
-        activeEditionId: editionId,
+        activeEditionId: edId,
         editions: [
           {
-            id: editionId,
+            id: edId,
             format: item.format,
             isbn: item.isbn,
             coverGradient: item.coverGradient,
@@ -247,100 +269,158 @@ export default function App() {
       };
     });
 
-    setBooks((current) => [...current, ...importedBooks]);
-    showToast(`Imported ${importedBooks.length} books into Inkbound.`);
+    setBooks((prev) => [...prev, ...newRecords]);
+    showToast(`Imported ${newRecords.length} books into library.`);
   };
 
+  // Add Book
+  const handleAddBook = (newBook: UserBookRecord) => {
+    setBooks((prev) => [newBook, ...prev]);
+    showToast(`Added "${newBook.work.title}" to library!`);
+  };
+
+  // Reset Sample Data
   const handleResetData = () => {
     setBooks(SAMPLE_BOOKS);
     setSessions(INITIAL_READING_SESSIONS);
-    localStorage.removeItem(BOOKS_STORAGE_KEY);
-    localStorage.removeItem(SESSIONS_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
-    showToast('Reset Inkbound to the sample library.');
+    localStorage.removeItem('bookhaven_books');
+    localStorage.removeItem('bookhaven_sessions');
+    showToast('Reset library to initial sample books.');
   };
 
   return (
-    <div className="inkbound-app-shell">
+    <div className="min-h-screen bg-[#faf8f5] dark:bg-[#161118] text-[#242125] dark:text-[#f0eaf2] transition-colors">
+      
+      {/* Top Header & Navigation */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         books={books}
         onSelectBook={setSelectedBookForDetails}
         onOpenAddBook={() => setIsAddBookOpen(true)}
-        onOpenTimer={() => openTimer()}
+        onOpenTimer={() => {
+          setTimerInitialBookId(undefined);
+          setIsTimerOpen(true);
+        }}
         isDarkMode={isDarkMode}
         setIsDarkMode={setIsDarkMode}
       />
 
-      <main className="inkbound-main-content">
-        <div className="inkbound-page-canvas">
-          {activeTab === 'home' && (
-            <HomeDashboard
-              books={books}
-              sessions={sessions}
-              onSelectBook={setSelectedBookForDetails}
-              onStartSessionForBook={(book) => openTimer(book.id)}
-              onUpdateStatus={handleUpdateStatus}
-              onNavigateToTab={setActiveTab}
-              onOpenAddBook={() => setIsAddBookOpen(true)}
-            />
-          )}
+      {/* Main Container */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        
+        {activeTab === 'home' && (
+          <HomeDashboard
+            books={books}
+            sessions={sessions}
+            onSelectBook={setSelectedBookForDetails}
+            onStartSessionForBook={(book) => {
+              setTimerInitialBookId(book.id);
+              setIsTimerOpen(true);
+            }}
+            onUpdateStatus={handleUpdateStatus}
+            onNavigateToTab={setActiveTab}
+            onOpenAddBook={() => setIsAddBookOpen(true)}
+          />
+        )}
 
-          {activeTab === 'library' && (
-            <LibraryScreen
-              books={books}
-              selectedBookIds={selectedBookIds}
-              onToggleSelectBook={handleToggleSelectBook}
-              onSelectAll={setSelectedBookIds}
-              onClearSelection={() => setSelectedBookIds([])}
-              onSelectBook={setSelectedBookForDetails}
-              onOpenBatchEdit={() => setIsBatchEditOpen(true)}
-              onOpenAddBook={() => setIsAddBookOpen(true)}
-            />
-          )}
+        {activeTab === 'library' && (
+          <LibraryScreen
+            books={books}
+            selectedBookIds={selectedBookIds}
+            onToggleSelectBook={handleToggleSelectBook}
+            onSelectAll={handleSelectAll}
+            onClearSelection={handleClearSelection}
+            onSelectBook={setSelectedBookForDetails}
+            onOpenBatchEdit={() => setIsBatchEditOpen(true)}
+            onOpenAddBook={() => setIsAddBookOpen(true)}
+          />
+        )}
 
-          {activeTab === 'tbr' && (
-            <TBRScreen
-              books={books}
-              onSelectBook={setSelectedBookForDetails}
-              onUpdateStatus={handleUpdateStatus}
-              onUpdatePriority={handleUpdatePriority}
-            />
-          )}
+        {activeTab === 'tbr' && (
+          <TBRScreen
+            books={books}
+            onSelectBook={setSelectedBookForDetails}
+            onUpdateStatus={handleUpdateStatus}
+            onUpdatePriority={handleUpdatePriority}
+          />
+        )}
 
-          {activeTab === 'sessions' && (
-            <ReadingSessionsScreen
-              books={books}
-              sessions={sessions}
-              onOpenTimer={openTimer}
-              onSelectBook={setSelectedBookForDetails}
-            />
-          )}
+        {activeTab === 'sessions' && (
+          <div className="space-y-6 pb-20">
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-[#c5a059] bg-[#c5a059]/10 px-2.5 py-1 rounded">
+                  Reading Companion
+                </span>
+                <h1 className="text-3xl font-serif font-bold text-[#2e102d] dark:text-[#f3ede2] mt-1">
+                  Reading Sessions History
+                </h1>
+              </div>
+              <button
+                onClick={() => {
+                  setTimerInitialBookId(undefined);
+                  setIsTimerOpen(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-[#c5a059] text-[#1c121e] text-xs font-bold shadow hover:bg-[#b58e45]"
+              >
+                + Launch Timer
+              </button>
+            </div>
 
-          {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
+            <div className="bg-[#f8f4ed] dark:bg-[#201723] border border-[#e8dfd1] dark:border-[#342436] rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="space-y-3">
+                {sessions.map((sess) => {
+                  const b = books.find((x) => x.id === sess.bookId);
+                  return (
+                    <div key={sess.id} className="p-4 bg-[#f3ede2] dark:bg-[#181119] rounded-xl border border-stone-200 dark:border-stone-800 flex items-center justify-between">
+                      <div>
+                        <h4 className="font-serif font-bold text-base text-[#2e102d] dark:text-[#f3ede2]">
+                          {b?.work.title || 'Reading Session'}
+                        </h4>
+                        <p className="text-xs text-stone-500">
+                          {sess.durationMinutes} minutes • {sess.date} ({sess.startTime} - {sess.endTime})
+                        </p>
+                        {sess.notes && (
+                          <p className="text-xs text-[#849383] italic mt-1 font-serif">&quot;{sess.notes}&quot;</p>
+                        )}
+                      </div>
+                      <span className="text-xs font-bold text-[#c5a059] bg-[#c5a059]/10 px-2.5 py-1 rounded">
+                        {sess.location || 'Cozy Spot'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
-          {activeTab === 'import' && (
-            <ImportCenterScreen
-              currentBookCount={books.length}
-              onExecuteImport={handleExecuteImport}
-              onUndoLastImport={handleUndoLastBatch}
-            />
-          )}
+        {activeTab === 'stats' && (
+          <StatisticsScreen books={books} sessions={sessions} />
+        )}
 
-          {activeTab === 'settings' && (
-            <SettingsScreen
-              books={books}
-              sessions={sessions}
-              isDarkMode={isDarkMode}
-              setIsDarkMode={setIsDarkMode}
-              onResetData={handleResetData}
-            />
-          )}
-        </div>
+        {activeTab === 'import' && (
+          <ImportCenterScreen
+            currentBookCount={books.length}
+            onExecuteImport={handleExecuteImport}
+            onUndoLastImport={handleUndoLastBatch}
+          />
+        )}
+
+        {activeTab === 'settings' && (
+          <SettingsScreen
+            books={books}
+            sessions={sessions}
+            isDarkMode={isDarkMode}
+            setIsDarkMode={setIsDarkMode}
+            onResetData={handleResetData}
+          />
+        )}
+
       </main>
 
+      {/* MODALS */}
       {selectedBookForDetails && (
         <BookDetailsModal
           book={selectedBookForDetails}
@@ -348,7 +428,8 @@ export default function App() {
           onUpdateBook={handleUpdateBook}
           onStartSession={(book) => {
             setSelectedBookForDetails(null);
-            openTimer(book.id);
+            setTimerInitialBookId(book.id);
+            setIsTimerOpen(true);
           }}
         />
       )}
@@ -377,29 +458,31 @@ export default function App() {
         <AddBookModal
           currentBookCount={books.length}
           onClose={() => setIsAddBookOpen(false)}
-          onAddBook={(newBook) => {
-            setBooks((current) => [newBook, ...current]);
-            showToast(`Added “${newBook.work.title}” to Inkbound.`);
-          }}
+          onAddBook={handleAddBook}
           onAddMultipleBooks={(newBooks) => {
-            setBooks((current) => [...newBooks, ...current]);
-            showToast(`Added ${newBooks.length} books to Inkbound.`);
+            setBooks((prev) => [...newBooks, ...prev]);
+            showToast(`Added ${newBooks.length} books to library!`);
           }}
         />
       )}
 
+      {/* TOAST NOTIFICATION */}
       {toastMessage && (
-        <div className="inkbound-toast" role="status">
-          <Check className="h-4 w-4 text-[var(--ink-gold)]" />
+        <div className="fixed bottom-6 right-6 z-50 bg-[#361539] text-[#f8f4ed] px-4 py-3 rounded-xl shadow-2xl border border-[#c5a059] text-xs font-bold flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5">
+          <Check className="w-4 h-4 text-[#c5a059]" />
           <span>{toastMessage}</span>
           {previousBooksState && (
-            <button type="button" onClick={handleUndoLastBatch}>
-              <RotateCcw className="h-3 w-3" />
+            <button
+              onClick={handleUndoLastBatch}
+              className="ml-2 underline text-[#c5a059] hover:text-white flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
               Undo
             </button>
           )}
         </div>
       )}
+
     </div>
   );
 }
