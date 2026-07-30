@@ -2,19 +2,16 @@ import React from 'react';
 import { UserBookRecord, ReadingSession } from '../types';
 import { BookCover } from './BookCover';
 import {
-  Play,
-  Clock,
-  Award,
+  ArrowRight,
+  BarChart3,
   BookOpen,
-  Headphones,
+  Bookmark,
+  Clock,
   Flame,
-  ArrowUp,
-  ArrowDown,
-  ChevronRight,
+  Headphones,
+  Play,
   Plus,
   Sparkles,
-  CheckCircle2,
-  Bookmark
 } from 'lucide-react';
 
 interface HomeDashboardProps {
@@ -27,6 +24,8 @@ interface HomeDashboardProps {
   onOpenAddBook: () => void;
 }
 
+const priorityOrder = { top: 1, high: 2, medium: 3, low: 4 } as const;
+
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   books,
   sessions,
@@ -36,369 +35,309 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onNavigateToTab,
   onOpenAddBook,
 }) => {
-  // Currently Reading Books
-  const currentlyReading = books.filter((b) => b.status === 'currently-reading');
+  const currentlyReading = books.filter((book) => book.status === 'currently-reading').slice(0, 3);
+  const tbrBooks = books.filter((book) => book.status === 'tbr');
+  const upNext = [...tbrBooks]
+    .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
+    .slice(0, 5);
 
-  // Up Next (TBR books prioritized)
-  const upNext = books
-    .filter((b) => b.status === 'tbr')
-    .sort((a, b) => {
-      const priorityOrder = { top: 1, high: 2, medium: 3, low: 4 };
-      return priorityOrder[a.priority] - priorityOrder[b.priority];
-    })
-    .slice(0, 4);
-
-  // Stats summary for 2026
-  const finishedBooksCount = books.filter((b) => b.status === 'finished').length;
-  const annualGoal = 25;
+  const finishedBooksCount = books.filter((book) => book.status === 'finished').length;
+  const annualGoal = 50;
   const goalPercent = Math.min(100, Math.round((finishedBooksCount / annualGoal) * 100));
 
-  const totalPagesRead = books.reduce((acc, b) => {
-    const pageCount = b.editions[0]?.pageCount || 300;
-    if (b.status === 'finished') return acc + pageCount;
-    if (b.status === 'currently-reading') return acc + b.progressPages;
-    return acc;
+  const totalPagesRead = books.reduce((total, book) => {
+    const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) || book.editions[0];
+    if (activeEdition?.format === 'audiobook') return total;
+    if (book.status === 'finished') return total + (activeEdition?.pageCount || 300);
+    if (book.status === 'currently-reading') return total + book.progressPages;
+    return total;
   }, 0);
 
-  const totalListeningMins = books.reduce((acc, b) => {
-    if (b.status === 'finished' && b.editions[0]?.format === 'audiobook') {
-      return acc + (b.editions[0].audiobookDurationMins || 600);
-    }
-    if (b.status === 'currently-reading' && b.editions[0]?.format === 'audiobook') {
-      return acc + b.progressMinutes;
-    }
-    return acc;
+  const listeningMinutes = books.reduce((total, book) => {
+    const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) || book.editions[0];
+    if (activeEdition?.format !== 'audiobook') return total;
+    if (book.status === 'finished') return total + (activeEdition.audiobookDurationMins || 0);
+    if (book.status === 'currently-reading') return total + book.progressMinutes;
+    return total;
   }, 0);
 
-  const listeningHours = (totalListeningMins / 60).toFixed(1);
+  const listeningHours = (listeningMinutes / 60).toFixed(1);
+  const recentSessions = sessions.slice(0, 5);
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Welcome Banner / Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-[#281333] via-[#1d0e26] to-[#140a1a] text-[#f4efe6] p-6 sm:p-8 rounded-2xl shadow-2xl border border-[#c5a059]/30 relative overflow-hidden">
-        <div className="space-y-2 z-10 max-w-xl">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#c5a059]/15 text-[#e5c158] text-xs font-semibold uppercase tracking-wider border border-[#c5a059]/30">
-            <Sparkles className="w-3.5 h-3.5 text-[#e5c158]" />
-            <span>Sanctuary of Stories</span>
-          </div>
-          <h1 className="text-2xl sm:text-4xl font-serif font-bold tracking-tight text-[#f4efe6]">
-            Welcome Back to Your Reading Journal
-          </h1>
-          <p className="text-sm text-stone-300 font-sans leading-relaxed">
-            You are currently immersed in <span className="font-bold text-[#e5c158]">{currentlyReading.length} books</span>. Your annual journey is {goalPercent}% complete.
-          </p>
+    <div className="space-y-7 pb-24 md:pb-12">
+      <section className="relative overflow-hidden rounded-[24px] border border-[#c5a059]/20 bg-[linear-gradient(105deg,#1c1022_0%,#151019_60%,#0f0d12_100%)] px-6 py-7 shadow-[0_20px_55px_rgba(0,0,0,0.28)] sm:px-8">
+        <div className="absolute inset-y-0 right-0 hidden w-[38%] lg:block">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(197,160,89,0.18),transparent_52%)]" />
+          <BookOpen className="absolute bottom-[-28px] right-6 h-52 w-52 text-[#c5a059]/10" />
         </div>
 
-        {/* Quick Session Start Button */}
-        {currentlyReading.length > 0 && (
-          <div className="z-10 shrink-0">
+        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#c5a059]/20 bg-[#c5a059]/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#d8b56a]">
+              <Sparkles className="h-3.5 w-3.5" />
+              Inkbound
+            </div>
+            <h2 className="font-serif text-3xl leading-tight text-[#f4efe6] sm:text-4xl">
+              Welcome back to your reading life.
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[#b7a9b8]">
+              You are currently reading <span className="font-semibold text-[#e7c36e]">{currentlyReading.length} books</span> and you are <span className="font-semibold text-[#e7c36e]">{goalPercent}%</span> toward your annual goal.
+            </p>
+          </div>
+
+          {currentlyReading[0] ? (
             <button
+              type="button"
               onClick={() => onStartSessionForBook(currentlyReading[0])}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] hover:from-[#d4af37] hover:to-[#e5c158] text-[#120817] font-bold text-sm shadow-xl shadow-[#c5a059]/15 transition transform hover:scale-[1.02]"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#d0aa55,#e4c26f)] px-5 text-sm font-bold text-[#130f15] shadow-[0_10px_28px_rgba(197,160,89,0.22)] transition hover:-translate-y-0.5 hover:brightness-105"
             >
-              <Play className="w-4 h-4 fill-current" />
-              <span>Resume &quot;{currentlyReading[0].work.title}&quot;</span>
+              <Play className="h-4 w-4 fill-current" />
+              Resume “{currentlyReading[0].work.title}”
             </button>
-          </div>
-        )}
-
-        {/* Decorative background embellishment */}
-        <div className="absolute right-[-20px] bottom-[-30px] opacity-10 pointer-events-none text-[#c5a059]">
-          <BookOpen className="w-64 h-64" />
-        </div>
-      </div>
-
-      {/* Grid Section: Currently Reading & Reading Goal */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Currently Reading (2 Columns on Large Screens) */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-[#c5a059]" />
-              <h2 className="text-xl font-serif font-bold text-[#f4efe6]">
-                Currently Reading
-              </h2>
-              <span className="text-xs bg-[#c5a059]/20 text-[#e5c158] border border-[#c5a059]/30 px-2.5 py-0.5 rounded-full font-bold">
-                {currentlyReading.length}
-              </span>
-            </div>
-            {currentlyReading.length > 0 && (
-              <button
-                onClick={() => onNavigateToTab('library')}
-                className="text-xs font-semibold text-[#c5a059] hover:text-[#e5c158] hover:underline flex items-center gap-1"
-              >
-                View Library <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {currentlyReading.length === 0 ? (
-            <div className="bg-[#1c0f24] border border-dashed border-[#3d2647] rounded-2xl p-8 text-center space-y-3 shadow-xl">
-              <BookOpen className="w-10 h-10 text-[#c5a059]/60 mx-auto" />
-              <h3 className="font-serif font-bold text-lg text-[#f4efe6]">
-                No Active Reading Sessions
-              </h3>
-              <p className="text-xs text-stone-400 max-w-sm mx-auto">
-                Pick a book from your TBR list or add a new title to start tracking your reading journey.
-              </p>
-              <button
-                onClick={() => onNavigateToTab('tbr')}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] text-xs font-bold shadow-md hover:opacity-90 transition"
-              >
-                Explore TBR Queue
-              </button>
-            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {currentlyReading.map((book) => {
-                const activeEdition = book.editions.find((e) => e.id === book.activeEditionId) || book.editions[0];
-                const isAudio = activeEdition?.format === 'audiobook';
-
-                return (
-                  <div
-                    key={book.id}
-                    className="book-card-glow bg-[#1c0f24] rounded-xl p-4 flex flex-col justify-between"
-                  >
-                    <div className="flex gap-4">
-                      {/* Book Cover */}
-                      <div onClick={() => onSelectBook(book)} className="cursor-pointer">
-                        <BookCover
-                          work={book.work}
-                          edition={activeEdition}
-                          size="md"
-                          progressPercentage={book.progressPercentage}
-                        />
-                      </div>
-
-                      {/* Info & Progress details */}
-                      <div className="flex-1 space-y-2 min-w-0">
-                        <div onClick={() => onSelectBook(book)} className="cursor-pointer">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#e5c158] bg-[#c5a059]/15 px-2 py-0.5 rounded border border-[#c5a059]/30">
-                            {activeEdition?.format || 'hardcover'}
-                          </span>
-                          <h3 className="font-serif font-bold text-base text-[#f4efe6] truncate mt-1 hover:text-[#c5a059] transition">
-                            {book.work.title}
-                          </h3>
-                          <p className="text-xs text-stone-400 truncate">{book.work.author}</p>
-                        </div>
-
-                        {/* Progress readout */}
-                        <div className="space-y-1 pt-1">
-                          <div className="flex items-center justify-between text-xs text-stone-300">
-                            <span>
-                              {isAudio
-                                ? `${Math.floor(book.progressMinutes / 60)}h ${book.progressMinutes % 60}m`
-                                : `Page ${book.progressPages} of ${activeEdition?.pageCount || 300}`}
-                            </span>
-                            <span className="font-bold text-[#e5c158]">
-                              {book.progressPercentage}%
-                            </span>
-                          </div>
-                          <div className="w-full bg-[#2d1838] rounded-full h-2 overflow-hidden border border-[#3d2448]">
-                            <div
-                              className="bg-gradient-to-r from-[#c5a059] to-[#e5c158] h-full transition-all"
-                              style={{ width: `${book.progressPercentage}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        {book.lastSessionDate && (
-                          <p className="text-[10px] text-stone-400">
-                            Last read: {book.lastSessionDate}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Card Actions */}
-                    <div className="mt-4 pt-3 border-t border-[#3d2448] flex items-center gap-2">
-                      <button
-                        onClick={() => onStartSessionForBook(book)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] text-xs font-bold shadow-md hover:opacity-95 transition"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Start Session</span>
-                      </button>
-
-                      <button
-                        onClick={() => onSelectBook(book)}
-                        className="py-2 px-3 rounded-lg border border-[#c5a059]/30 bg-[#271533] text-xs font-medium text-[#f4efe6] hover:bg-[#321c40] transition"
-                      >
-                        Details
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <button
+              type="button"
+              onClick={onOpenAddBook}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#d0aa55,#e4c26f)] px-5 text-sm font-bold text-[#130f15]"
+            >
+              <Plus className="h-4 w-4" />
+              Add your first book
+            </button>
           )}
         </div>
+      </section>
 
-        {/* Reading Goal & Annual Summary Widget */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Award className="w-5 h-5 text-[#e5c158]" />
-              <h2 className="text-xl font-serif font-bold text-[#f4efe6]">
-                2026 Reading Goal
-              </h2>
-            </div>
-          </div>
-
-          <div className="bg-[#1c0f24] border border-[#c5a059]/25 rounded-2xl p-5 shadow-2xl space-y-6 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#c5a059]/5 rounded-full blur-2xl pointer-events-none" />
-            
-            {/* Goal Progress Ring / Bar */}
-            <div className="space-y-2">
-              <div className="flex items-end justify-between">
-                <div>
-                  <span className="text-3xl font-serif font-bold text-[#e5c158]">
-                    {finishedBooksCount}
-                  </span>
-                  <span className="text-sm font-medium text-stone-400"> / {annualGoal} books</span>
-                </div>
-                <span className="text-xs font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                  {goalPercent}% Complete
+      <div className="grid grid-cols-1 gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-8">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <BookOpen className="h-5 w-5 text-[#c5a059]" />
+                <h2 className="font-serif text-2xl text-[#f4efe6]">Currently Reading</h2>
+                <span className="rounded-full border border-[#c5a059]/20 bg-[#c5a059]/10 px-2.5 py-0.5 text-xs font-semibold text-[#d8b56a]">
+                  {currentlyReading.length}
                 </span>
               </div>
-
-              <div className="w-full bg-[#2d1838] rounded-full h-3 overflow-hidden border border-[#3d2448]">
-                <div
-                  className="bg-gradient-to-r from-[#c5a059] via-[#e5c158] to-[#d4af37] h-full transition-all duration-500"
-                  style={{ width: `${goalPercent}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Micro Stats Grid */}
-            <div className="grid grid-cols-3 gap-2 pt-2 text-center border-t border-[#3d2448]">
-              <div className="p-2.5 bg-[#25132f] border border-[#c5a059]/15 rounded-xl">
-                <BookOpen className="w-4 h-4 text-[#c5a059] mx-auto mb-1" />
-                <p className="text-xs font-bold text-[#f4efe6]">{totalPagesRead.toLocaleString()}</p>
-                <p className="text-[10px] text-stone-400">Pages Read</p>
-              </div>
-
-              <div className="p-2.5 bg-[#25132f] border border-[#c5a059]/15 rounded-xl">
-                <Headphones className="w-4 h-4 text-[#e5c158] mx-auto mb-1" />
-                <p className="text-xs font-bold text-[#f4efe6]">{listeningHours}h</p>
-                <p className="text-[10px] text-stone-400">Listened</p>
-              </div>
-
-              <div className="p-2.5 bg-[#25132f] border border-[#c5a059]/15 rounded-xl">
-                <Flame className="w-4 h-4 text-amber-400 mx-auto mb-1" />
-                <p className="text-xs font-bold text-[#f4efe6]">14 Days</p>
-                <p className="text-[10px] text-stone-400">Streak 🔥</p>
-              </div>
-            </div>
-
-            {/* Quick Inspiration Quote */}
-            <div className="p-3 bg-gradient-to-br from-[#25142e] to-[#170a1d] rounded-xl border border-[#c5a059]/20 text-xs text-stone-300 italic font-serif">
-              &quot;A reader lives a thousand lives before he dies... The man who never reads lives only one.&quot;
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Up Next (TBR Spotlight) */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bookmark className="w-5 h-5 text-[#c5a059]" />
-            <h2 className="text-xl font-serif font-bold text-[#f4efe6]">
-              Up Next on Your TBR
-            </h2>
-          </div>
-          <button
-            onClick={() => onNavigateToTab('tbr')}
-            className="text-xs font-semibold text-[#c5a059] hover:text-[#e5c158] hover:underline flex items-center gap-1"
-          >
-            Explore Full TBR Queue ({books.filter((b) => b.status === 'tbr').length}) <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {upNext.map((book) => {
-            const activeEdition = book.editions[0];
-            return (
-              <div
-                key={book.id}
-                className="book-card-glow bg-[#1c0f24] rounded-xl p-4 flex flex-col justify-between space-y-3"
+              <button
+                type="button"
+                onClick={() => onNavigateToTab('library')}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[#c9a864] transition hover:text-[#f0cf7a]"
               >
-                <div className="flex gap-3">
-                  <div onClick={() => onSelectBook(book)} className="cursor-pointer shrink-0">
-                    <BookCover work={book.work} edition={activeEdition} size="sm" />
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <span className="text-[9px] uppercase font-bold text-amber-300 bg-amber-950/80 border border-amber-500/30 px-1.5 py-0.5 rounded">
-                      {book.priority} Priority
-                    </span>
-                    <h3
-                      onClick={() => onSelectBook(book)}
-                      className="font-serif font-bold text-sm text-[#f4efe6] line-clamp-2 hover:text-[#c5a059] cursor-pointer"
+                View library <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {currentlyReading.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#c5a059]/20 bg-[#171219] p-10 text-center">
+                <BookOpen className="mx-auto h-9 w-9 text-[#c5a059]/50" />
+                <h3 className="mt-3 font-serif text-xl text-[#f4efe6]">Your shelf is waiting.</h3>
+                <p className="mx-auto mt-2 max-w-md text-sm text-[#9f929f]">Start a book from your TBR or add something new to begin tracking your reading.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                {currentlyReading.map((book) => {
+                  const edition = book.editions.find((item) => item.id === book.activeEditionId) || book.editions[0];
+                  const isAudio = edition?.format === 'audiobook';
+                  return (
+                    <article key={book.id} className="book-card-glow flex min-h-[288px] flex-col rounded-2xl bg-[#171219] p-4">
+                      <div className="flex gap-4">
+                        <button type="button" onClick={() => onSelectBook(book)} className="shrink-0 text-left">
+                          <BookCover work={book.work} edition={edition} size="md" progressPercentage={book.progressPercentage} />
+                        </button>
+
+                        <div className="min-w-0 flex-1">
+                          <span className="inline-flex rounded-full border border-[#c5a059]/20 bg-[#c5a059]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#d8b56a]">
+                            {edition?.format || 'book'}
+                          </span>
+                          <button type="button" onClick={() => onSelectBook(book)} className="mt-2 block w-full text-left">
+                            <h3 className="line-clamp-2 font-serif text-lg leading-5 text-[#f4efe6] transition hover:text-[#d8b56a]">{book.work.title}</h3>
+                            <p className="mt-1 truncate text-xs text-[#9f929f]">{book.work.author}</p>
+                          </button>
+
+                          <div className="mt-5 space-y-2">
+                            <div className="flex items-center justify-between gap-3 text-xs text-[#c7bbc6]">
+                              <span className="truncate">
+                                {isAudio
+                                  ? `${Math.floor(book.progressMinutes / 60)}h ${book.progressMinutes % 60}m listened`
+                                  : `Page ${book.progressPages} of ${edition?.pageCount || 300}`}
+                              </span>
+                              <strong className="text-[#dfbd69]">{book.progressPercentage}%</strong>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-[#302334]">
+                              <div className="h-full rounded-full bg-[linear-gradient(90deg,#a66a83,#d8b56a)]" style={{ width: `${book.progressPercentage}%` }} />
+                            </div>
+                            <p className="text-[11px] text-[#887b89]">Last read: {book.lastSessionDate || 'Not recorded'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto grid grid-cols-[1fr_auto] gap-2 border-t border-white/5 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => onStartSessionForBook(book)}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#69344f] px-3 py-2.5 text-xs font-semibold text-[#fff4f0] transition hover:bg-[#7a3e5d]"
+                        >
+                          <Play className="h-3.5 w-3.5 fill-current" />
+                          {isAudio ? 'Continue Listening' : 'Continue Reading'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onStartSessionForBook(book)}
+                          className="rounded-xl border border-[#c5a059]/20 px-3 py-2.5 text-xs font-semibold text-[#d8cdd6] transition hover:border-[#c5a059]/45 hover:text-[#f4efe6]"
+                        >
+                          Start Session
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex items-end justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Bookmark className="h-5 w-5 text-[#c5a059]" />
+                <h2 className="font-serif text-2xl text-[#f4efe6]">Up Next</h2>
+                <span className="text-sm text-[#8f808f]">From your TBR</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigateToTab('tbr')}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[#c9a864] hover:text-[#f0cf7a]"
+              >
+                View TBR <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
+              {upNext.map((book) => {
+                const edition = book.editions.find((item) => item.id === book.activeEditionId) || book.editions[0];
+                return (
+                  <article key={book.id} className="group min-w-0">
+                    <button type="button" onClick={() => onSelectBook(book)} className="block w-full text-left">
+                      <div className="transition duration-200 group-hover:-translate-y-1">
+                        <BookCover work={book.work} edition={edition} size="lg" />
+                      </div>
+                      <p className="mt-2 truncate text-xs text-[#c9bec8]">{book.work.author}</p>
+                      <span className="mt-1 inline-flex rounded-full bg-[#c5a059]/10 px-2 py-0.5 text-[10px] font-semibold capitalize text-[#cfad67]">
+                        {book.priority} priority
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onUpdateStatus(book.id, 'currently-reading')}
+                      className="mt-2 inline-flex w-full items-center justify-center rounded-lg border border-white/7 py-1.5 text-[11px] text-[#a99baa] transition hover:border-[#c5a059]/35 hover:text-[#f4efe6]"
                     >
-                      {book.work.title}
-                    </h3>
-                    <p className="text-xs text-stone-400 truncate">{book.work.author}</p>
-                    {book.work.seriesName && (
-                      <p className="text-[10px] text-[#e5c158] font-medium">
-                        {book.work.seriesName} #{book.work.seriesOrder}
-                      </p>
-                    )}
+                      Start reading
+                    </button>
+                  </article>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => onNavigateToTab('tbr')}
+                className="flex min-h-[210px] flex-col items-center justify-center rounded-xl border border-dashed border-[#a66a83]/55 bg-[#171219] px-4 text-center text-[#d59ab2] transition hover:border-[#d59ab2] hover:bg-[#1d151e]"
+              >
+                <Sparkles className="mb-3 h-5 w-5" />
+                <span className="font-serif text-lg leading-5">Choose My Next Read</span>
+              </button>
+            </div>
+          </section>
+
+          <section className="space-y-4 xl:hidden">
+            <div className="flex items-center gap-2.5">
+              <Clock className="h-5 w-5 text-[#c5a059]" />
+              <h2 className="font-serif text-2xl text-[#f4efe6]">Recent Activity</h2>
+            </div>
+            <ActivityList sessions={recentSessions} books={books} />
+          </section>
+        </div>
+
+        <aside className="space-y-5">
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <BarChart3 className="h-5 w-5 text-[#c5a059]" />
+                <h2 className="font-serif text-2xl text-[#f4efe6]">Reading Goals</h2>
+              </div>
+              <button type="button" className="text-xs font-semibold text-[#cf8da8] hover:text-[#f3b8cf]">Edit Goal</button>
+            </div>
+
+            <div className="rounded-2xl border border-[#c5a059]/16 bg-[#171219] p-5 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
+              <div className="flex items-center gap-5">
+                <div className="relative grid h-28 w-28 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(#d99ab1 ${goalPercent * 3.6}deg, #3a2835 0deg)` }}>
+                  <div className="grid h-[88px] w-[88px] place-items-center rounded-full bg-[#171219]">
+                    <span className="font-serif text-3xl text-[#f4efe6]">{goalPercent}%</span>
                   </div>
                 </div>
-
-                {/* Up Next Actions */}
-                <div className="pt-2 border-t border-[#3d2448] flex items-center justify-between text-xs">
-                  <button
-                    onClick={() => onUpdateStatus(book.id, 'currently-reading')}
-                    className="flex-1 py-1.5 px-2 rounded-lg bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] font-bold hover:opacity-95 text-center transition shadow-xs"
-                  >
-                    Start Reading
-                  </button>
+                <div>
+                  <p className="font-serif text-2xl text-[#f4efe6]">{finishedBooksCount} of {annualGoal}</p>
+                  <p className="mt-1 text-xs text-[#9f929f]">books completed</p>
+                  <p className="mt-4 text-xs font-medium text-[#d8b56a]">You’re building a beautiful reading year.</p>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* Recent Activity Timeline */}
-      <div className="bg-[#1c0f24] border border-[#c5a059]/20 rounded-2xl p-6 shadow-xl space-y-4">
-        <h2 className="text-xl font-serif font-bold text-[#f4efe6]">
-          Recent Journal Activity
-        </h2>
-
-        <div className="space-y-4">
-          {sessions.slice(0, 4).map((session) => {
-            const book = books.find((b) => b.id === session.bookId);
-            return (
-              <div key={session.id} className="flex items-start gap-3 pb-3 border-b border-[#3d2448] last:border-0 last:pb-0">
-                <div className="w-8 h-8 rounded-full bg-[#c5a059]/15 text-[#e5c158] border border-[#c5a059]/30 flex items-center justify-center shrink-0 mt-0.5">
-                  <Clock className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-[#f4efe6]">
-                    Completed a <span className="font-bold text-[#e5c158]">{session.durationMinutes} min</span> session for{' '}
-                    <span className="font-serif font-bold text-[#c5a059]">
-                      {book?.work.title || 'a book'}
-                    </span>
-                  </p>
-                  {session.notes && (
-                    <p className="text-xs text-stone-300 italic mt-0.5 font-serif">&quot;{session.notes}&quot;</p>
-                  )}
-                  <div className="flex items-center gap-3 text-[10px] text-stone-400 mt-1">
-                    <span>{session.date}</span>
-                    {session.location && <span>• Location: {session.location}</span>}
-                    {session.pagesRead && <span>• {session.pagesRead} pages</span>}
-                  </div>
-                </div>
+              <div className="mt-5 grid grid-cols-2 overflow-hidden rounded-xl border border-white/6">
+                <Metric label="Pages Read" value={totalPagesRead.toLocaleString()} />
+                <Metric label="Listening Time" value={`${listeningHours}h`} />
+                <Metric label="Current Streak" value="14 days" icon={<Flame className="h-4 w-4 text-[#d8b56a]" />} />
+                <Metric label="Books on TBR" value={String(tbrBooks.length)} />
               </div>
-            );
-          })}
-        </div>
+            </div>
+          </section>
+
+          <section className="hidden xl:block">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Clock className="h-5 w-5 text-[#c5a059]" />
+                <h2 className="font-serif text-2xl text-[#f4efe6]">Recent Activity</h2>
+              </div>
+              <button type="button" onClick={() => onNavigateToTab('sessions')} className="text-xs font-semibold text-[#cf8da8] hover:text-[#f3b8cf]">View all</button>
+            </div>
+            <ActivityList sessions={recentSessions} books={books} />
+          </section>
+        </aside>
       </div>
     </div>
   );
 };
+
+const Metric: React.FC<{ label: string; value: string; icon?: React.ReactNode }> = ({ label, value, icon }) => (
+  <div className="min-h-[92px] border-b border-r border-white/6 p-4 last:border-r-0">
+    <div className="flex items-center gap-2">
+      <p className="font-serif text-xl text-[#f4efe6]">{value}</p>
+      {icon}
+    </div>
+    <p className="mt-1 text-[11px] text-[#8f818f]">{label}</p>
+  </div>
+);
+
+const ActivityList: React.FC<{ sessions: ReadingSession[]; books: UserBookRecord[] }> = ({ sessions, books }) => (
+  <div className="overflow-hidden rounded-2xl border border-[#c5a059]/16 bg-[#171219]">
+    {sessions.length === 0 ? (
+      <div className="p-8 text-center text-sm text-[#8f818f]">Your reading activity will appear here.</div>
+    ) : (
+      sessions.map((session, index) => {
+        const book = books.find((item) => item.id === session.bookId);
+        return (
+          <div key={session.id} className={`flex gap-3 p-4 ${index !== sessions.length - 1 ? 'border-b border-white/6' : ''}`}>
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#a66a83]/25 bg-[#a66a83]/10 text-[#d99ab1]">
+              <Clock className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs leading-5 text-[#d7ccd5]">
+                Reading session completed for <span className="font-serif text-sm text-[#f4efe6]">{book?.work.title || 'a book'}</span>
+              </p>
+              <p className="mt-1 text-[11px] text-[#837684]">{session.date} · {session.durationMinutes} minutes</p>
+            </div>
+            <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-[#8f818f]" />
+          </div>
+        );
+      })
+    )}
+  </div>
+);

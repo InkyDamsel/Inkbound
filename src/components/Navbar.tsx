@@ -1,23 +1,24 @@
 import React, { useState } from 'react';
 import {
+  BarChart3,
+  BookMarked,
   BookOpen,
   Bookmark,
+  Clock,
+  DownloadCloud,
   Home,
   Library,
-  Clock,
-  BarChart3,
-  DownloadCloud,
-  Settings,
+  Moon,
   Plus,
   Search,
-  Moon,
+  Settings,
+  Sparkles,
   Sun,
   X,
-  Sparkles,
-  Filter
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
+import { inkboundBrand } from '../design/tokens';
 
 export type NavTab = 'home' | 'library' | 'tbr' | 'sessions' | 'stats' | 'import' | 'settings';
 
@@ -31,6 +32,16 @@ interface NavbarProps {
   isDarkMode: boolean;
   setIsDarkMode: React.Dispatch<React.SetStateAction<boolean>>;
 }
+
+const navItems = [
+  { id: 'home' as NavTab, label: 'Home', icon: Home },
+  { id: 'library' as NavTab, label: 'My Library', icon: Library },
+  { id: 'tbr' as NavTab, label: 'TBR', icon: Bookmark },
+  { id: 'sessions' as NavTab, label: 'Sessions', icon: Clock },
+  { id: 'stats' as NavTab, label: 'Statistics', icon: BarChart3 },
+  { id: 'import' as NavTab, label: 'Import', icon: DownloadCloud },
+  { id: 'settings' as NavTab, label: 'Settings', icon: Settings },
+];
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
@@ -46,219 +57,198 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
 
-
-  // Filtered search results across Title, Author, Series, Summary, Tags
-  const searchResults = searchQuery.trim()
-    ? books.filter((b) => {
-        const q = searchQuery.toLowerCase();
-        return (
-          b.work.title.toLowerCase().includes(q) ||
-          b.work.author.toLowerCase().includes(q) ||
-          (b.work.seriesName && b.work.seriesName.toLowerCase().includes(q)) ||
-          b.work.genres.some((g) => g.toLowerCase().includes(q)) ||
-          b.privateTags.some((t) => t.toLowerCase().includes(q)) ||
-          (b.editions[0]?.isbn && b.editions[0].isbn.includes(q))
-        );
-      }).slice(0, 6)
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const searchResults = normalizedQuery
+    ? books
+        .filter((book) =>
+          book.work.title.toLowerCase().includes(normalizedQuery) ||
+          book.work.author.toLowerCase().includes(normalizedQuery) ||
+          book.work.seriesName?.toLowerCase().includes(normalizedQuery) ||
+          book.work.genres.some((genre) => genre.toLowerCase().includes(normalizedQuery)) ||
+          book.privateTags.some((tag) => tag.toLowerCase().includes(normalizedQuery)) ||
+          book.editions.some((edition) => edition.isbn?.includes(normalizedQuery)),
+        )
+        .slice(0, 6)
     : [];
 
-  const navItems = [
-    { id: 'home' as NavTab, label: 'Home', icon: Home },
-    { id: 'library' as NavTab, label: 'My Library', icon: Library },
-    { id: 'tbr' as NavTab, label: 'TBR', icon: Bookmark },
-    { id: 'sessions' as NavTab, label: 'Sessions', icon: Clock },
-    { id: 'stats' as NavTab, label: 'Statistics', icon: BarChart3 },
-    { id: 'import' as NavTab, label: 'Import', icon: DownloadCloud },
-    { id: 'settings' as NavTab, label: 'Settings', icon: Settings },
-  ];
+  const navigate = (tab: NavTab) => {
+    setActiveTab(tab);
+    setIsSearchOpen(false);
+    setSearchQuery('');
+  };
 
   return (
     <>
-      {/* Main Top Header */}
-      <header className="sticky top-0 z-40 bg-[#140a1a]/95 backdrop-blur-md border-b border-[#36213d] dark:border-[#3a2242] shadow-xl transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            
-            {/* Logo Wordmark */}
-            <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setActiveTab('home')}>
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#2a1733] to-[#1c0e24] border border-[#c5a059]/40 flex items-center justify-center text-[#c5a059] shadow-inner group-hover:border-[#e5c158] transition">
-                <Bookmark className="w-5 h-5 fill-[#c5a059]/20 text-[#c5a059]" />
-              </div>
-              <div>
-                <span className="font-brand text-xl sm:text-2xl font-bold tracking-wider text-[#f4efe6] group-hover:text-[#e5c158] transition">
-                  Reading App
-                </span>
-                <span className="hidden sm:inline-block ml-2 text-[10px] font-sans tracking-widest text-[#c5a059]/70 uppercase">
-                  Personal Journal
-                </span>
-              </div>
-            </div>
+      <aside className="quiet-shelf-sidebar hidden md:flex">
+        <button type="button" className="quiet-shelf-brand" onClick={() => navigate('home')}>
+          <span className="quiet-shelf-mark" aria-hidden="true">
+            <BookMarked className="h-8 w-8" />
+          </span>
+          <span className="quiet-shelf-brand-copy">
+            <span className="quiet-shelf-brand-name">{inkboundBrand.name}</span>
+            <span className="quiet-shelf-tagline">{inkboundBrand.tagline}</span>
+          </span>
+        </button>
 
-            {/* Desktop Navigation Links */}
-            <nav className="hidden md:flex items-center space-x-1 lg:space-x-2">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs lg:text-sm font-medium transition-all ${
-                      isActive
-                        ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] font-bold shadow-md shadow-[#c5a059]/10'
-                        : 'text-[#d8c8dc] hover:text-[#f4efe6] hover:bg-[#281532]/70 border border-transparent hover:border-[#c5a059]/20'
-                    }`}
-                  >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#120817]' : 'text-[#c5a059]/80'}`} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
+        <nav className="quiet-shelf-sidebar-nav" aria-label="Primary navigation">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => navigate(item.id)}
+                className={`quiet-shelf-sidebar-link ${activeTab === item.id ? 'is-active' : ''}`}
+              >
+                <Icon className="h-5 w-5" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-            {/* Actions: Search, Timer, Add Book, Theme Toggle */}
-            <div className="flex items-center gap-2">
-              {/* Search Toggle / Bar */}
-              <div className="relative">
-                <button
-                  onClick={() => setIsSearchOpen(!isSearchOpen)}
-                  className="p-2 rounded-full text-[#5a4e5c] dark:text-[#c4b6c7] hover:bg-[#ebd9c5]/40 dark:hover:bg-[#2d1e30] transition"
-                  aria-label="Search Library"
-                >
-                  <Search className="w-5 h-5" />
-                </button>
+        <div className="quiet-shelf-profile">
+          <div className="quiet-shelf-avatar">JM</div>
+          <div className="min-w-0 flex-1 text-left">
+            <p className="truncate text-sm font-semibold text-[#f4efe6]">Jamie Lee</p>
+            <p className="text-xs text-[#b8aab8]">My Profile</p>
+          </div>
+        </div>
+      </aside>
 
-                {/* Search Dropdown / Overlay */}
-                {isSearchOpen && (
-                  <div className="absolute right-0 top-12 w-80 sm:w-96 bg-[#f8f4ed] dark:bg-[#221724] border border-[#d8cbb8] dark:border-[#422e45] rounded-xl shadow-2xl p-3 z-50">
-                    <div className="flex items-center gap-2 border-b border-[#e2d6c5] dark:border-[#38263b] pb-2">
-                      <Search className="w-4 h-4 text-[#849383]" />
-                      <input
-                        type="text"
-                        placeholder="Search title, author, series, tag, ISBN..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        autoFocus
-                        className="w-full bg-transparent text-sm focus:outline-none text-[#242125] dark:text-stone-100"
-                      />
-                      {searchQuery && (
-                        <button onClick={() => setSearchQuery('')} className="text-stone-400 hover:text-stone-600">
-                          <X className="w-4 h-4" />
+      <header className="quiet-shelf-topbar">
+        <div className="quiet-shelf-mobile-brand md:hidden">
+          <span className="quiet-shelf-mobile-mark"><BookOpen className="h-5 w-5" /></span>
+          <span>{inkboundBrand.name}</span>
+        </div>
+
+        <div className="hidden md:block">
+          <p className="text-xs uppercase tracking-[0.22em] text-[#9e8d9f]">Your reading life</p>
+          <h1 className="font-serif text-2xl text-[#f4efe6]">
+            {navItems.find((item) => item.id === activeTab)?.label ?? 'Home'}
+          </h1>
+        </div>
+
+        <div className="quiet-shelf-actions">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsSearchOpen((open) => !open)}
+              className="quiet-shelf-icon-button"
+              aria-label="Search library"
+              aria-expanded={isSearchOpen}
+            >
+              <Search className="h-5 w-5" />
+            </button>
+
+            {isSearchOpen && (
+              <div className="quiet-shelf-search-panel">
+                <div className="quiet-shelf-search-field">
+                  <Search className="h-4 w-4 text-[#c5a059]" />
+                  <input
+                    type="search"
+                    placeholder="Search title, author, series, tag, ISBN..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    autoFocus
+                  />
+                  {searchQuery && (
+                    <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search">
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {normalizedQuery && (
+                  <div className="quiet-shelf-search-results">
+                    {searchResults.length === 0 ? (
+                      <p className="px-3 py-5 text-center text-xs text-[#9e8d9f]">No matching books found.</p>
+                    ) : (
+                      searchResults.map((book) => (
+                        <button
+                          key={book.id}
+                          type="button"
+                          onClick={() => {
+                            onSelectBook(book);
+                            setIsSearchOpen(false);
+                            setSearchQuery('');
+                          }}
+                          className="quiet-shelf-search-result"
+                        >
+                          <span className={`quiet-shelf-search-cover bg-gradient-to-br ${book.editions[0]?.coverGradient || 'from-amber-900 to-stone-950'}`}>
+                            {book.work.title.charAt(0)}
+                          </span>
+                          <span className="min-w-0 flex-1 text-left">
+                            <span className="block truncate font-serif text-sm text-[#f4efe6]">{book.work.title}</span>
+                            <span className="block truncate text-xs text-[#9e8d9f]">{book.work.author}</span>
+                          </span>
                         </button>
-                      )}
-                    </div>
-
-                    {/* Search Results list */}
-                    {searchQuery.trim() !== '' && (
-                      <div className="mt-2 max-h-72 overflow-y-auto space-y-1">
-                        {searchResults.length === 0 ? (
-                          <p className="text-xs text-stone-500 py-3 text-center">No matching books found</p>
-                        ) : (
-                          searchResults.map((book) => (
-                            <div
-                              key={book.id}
-                              onClick={() => {
-                                onSelectBook(book);
-                                setIsSearchOpen(false);
-                                setSearchQuery('');
-                              }}
-                              className="flex items-center gap-3 p-2 rounded-lg hover:bg-[#eedfcb] dark:hover:bg-[#2e1d32] cursor-pointer transition"
-                            >
-                              <div className={`w-8 h-11 rounded bg-gradient-to-br ${book.editions[0]?.coverGradient || 'from-amber-900 to-stone-900'} shrink-0 flex items-center justify-center text-[10px] text-white font-bold`}>
-                                {book.work.title.substring(0, 1)}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-bold text-[#2e102d] dark:text-stone-100 truncate font-serif">
-                                  {book.work.title}
-                                </p>
-                                <p className="text-[11px] text-[#849383] truncate">{book.work.author}</p>
-                              </div>
-                              <span className="text-[10px] uppercase font-semibold text-[#c5a059] bg-[#c5a059]/10 px-1.5 py-0.5 rounded">
-                                {book.status}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                      ))
                     )}
                   </div>
                 )}
               </div>
-
-              {/* Plan & Usage Counter Indicator */}
-              {userPlan === 'free' ? (
-                <button
-                  onClick={() => openUpgradeModal('Upgrade to Premium for Unlimited Books')}
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#25132f] text-[#f4efe6] hover:bg-[#32193f] border border-[#c5a059]/30 transition"
-                  title={`Free Plan: Up to ${freeBookLimit} books allowed`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${books.length >= freeBookLimit ? 'bg-amber-400 animate-pulse' : 'bg-[#c5a059]'}`} />
-                  <span className="font-bold">{books.length} of {freeBookLimit} books used</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => openUpgradeModal('Manage Reading App Premium')}
-                  className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#c5a059]/15 text-[#e5c158] border border-[#c5a059]/40 hover:bg-[#c5a059]/25 transition"
-                  title="Premium Plan: Unlimited books"
-                >
-                  <Sparkles className="w-3 h-3 text-[#e5c158]" />
-                  <span>PREMIUM</span>
-                </button>
-              )}
-
-              {/* Start Timer Quick Action */}
-              <button
-                onClick={onOpenTimer}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#25132f] text-[#d8c8dc] hover:text-[#f4efe6] hover:bg-[#32193f] border border-[#c5a059]/20 transition"
-                title="Start Reading Session Timer"
-              >
-                <Clock className="w-4 h-4 text-[#c5a059]" />
-                <span>Timer</span>
-              </button>
-
-              {/* Add Book Quick Action */}
-              <button
-                onClick={onOpenAddBook}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-[#c5a059] to-[#d4af37] hover:from-[#d4af37] hover:to-[#e5c158] text-[#120817] shadow-md shadow-[#c5a059]/10 transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Add Book</span>
-              </button>
-
-              {/* Theme Toggle */}
-              <button
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2 rounded-full text-[#d8c8dc] hover:text-[#f4efe6] hover:bg-[#281532] transition"
-                aria-label="Toggle Theme"
-              >
-                {isDarkMode ? <Sun className="w-5 h-5 text-amber-300" /> : <Moon className="w-5 h-5" />}
-              </button>
-            </div>
+            )}
           </div>
+
+          {userPlan === 'free' ? (
+            <button
+              type="button"
+              onClick={() => openUpgradeModal('Upgrade to Inkbound Premium for unlimited books')}
+              className="quiet-shelf-usage"
+              title={`Free Plan: Up to ${freeBookLimit} books allowed`}
+            >
+              <span>{books.length}</span>
+              <small>of {freeBookLimit}</small>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openUpgradeModal('Manage Inkbound Premium')}
+              className="quiet-shelf-premium"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>Premium</span>
+            </button>
+          )}
+
+          <button type="button" onClick={onOpenTimer} className="quiet-shelf-secondary-action">
+            <Clock className="h-4 w-4" />
+            <span className="hidden sm:inline">Timer</span>
+          </button>
+
+          <button type="button" onClick={onOpenAddBook} className="quiet-shelf-primary-action">
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Add Book</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsDarkMode((darkMode) => !darkMode)}
+            className="quiet-shelf-icon-button"
+            aria-label="Toggle theme"
+          >
+            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
         </div>
       </header>
 
-      {/* Mobile Bottom Navigation Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#140a1a]/95 backdrop-blur-md border-t border-[#36213d] px-2 py-1 flex justify-around items-center">
-        {navItems.map((item) => {
+      <nav className="quiet-shelf-mobile-nav md:hidden" aria-label="Mobile navigation">
+        {navItems.slice(0, 5).map((item) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center py-1 px-2 rounded-lg text-[10px] font-medium transition ${
-                isActive
-                  ? 'text-[#e5c158] font-bold'
-                  : 'text-[#a895ad] hover:text-[#f4efe6]'
-              }`}
+              type="button"
+              onClick={() => navigate(item.id)}
+              className={activeTab === item.id ? 'is-active' : ''}
             >
-              <Icon className={`w-5 h-5 ${isActive ? 'scale-110 text-[#e5c158]' : ''}`} />
-              <span className="mt-0.5">{item.label}</span>
+              <Icon className="h-5 w-5" />
+              <span>{item.label}</span>
             </button>
           );
         })}
-      </div>
+      </nav>
     </>
   );
 };
