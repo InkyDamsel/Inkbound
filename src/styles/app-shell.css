@@ -1,0 +1,122 @@
+:root {
+  --ink-text-primary: var(--ink-ivory);
+  --ink-text-secondary: #d7ccd6;
+  --ink-text-muted: var(--ink-muted);
+  --ink-border-subtle: rgba(197, 160, 89, 0.14);
+}
+
+.inkbound-app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 86% 4%, rgba(93, 48, 92, 0.13), transparent 34rem),
+    var(--ink-bg);
+  color: var(--ink-text-primary);
+}
+
+.inkbound-main-content {
+  min-width: 0;
+  padding-bottom: 82px;
+}
+
+.inkbound-page-canvas {
+  width: 100%;
+  max-width: 1680px;
+  margin: 0 auto;
+  padding: 24px 18px 48px;
+}
+
+.inkbound-panel {
+  border: 1px solid var(--ink-border-subtle);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.018), transparent 52%),
+    var(--ink-surface);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+}
+
+.inkbound-eyebrow {
+  color: var(--ink-gold);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.inkbound-page-title {
+  margin-top: 4px;
+  color: var(--ink-text-primary);
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 3vw, 3rem);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.inkbound-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ink-border);
+  border-radius: 999px;
+  background: rgba(197, 160, 89, 0.075);
+  color: var(--ink-gold-bright);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.inkbound-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 100;
+  display: flex;
+  max-width: min(420px, calc(100vw - 32px));
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  border: 1px solid var(--ink-border-strong);
+  border-radius: 13px;
+  background: rgba(29, 20, 34, 0.98);
+  color: var(--ink-text-primary);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  font-size: 0.78rem;
+  font-weight: 700;
+  backdrop-filter: blur(18px);
+}
+
+.inkbound-toast button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  color: var(--ink-gold-bright);
+  text-decoration: underline;
+}
+
+@media (min-width: 768px) {
+  .inkbound-main-content {
+    min-height: calc(100vh - var(--ink-topbar-height));
+    margin-left: var(--ink-sidebar-width);
+    padding-bottom: 0;
+  }
+
+  .inkbound-page-canvas {
+    padding: 28px 30px 56px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .inkbound-page-canvas {
+    padding-right: 36px;
+    padding-left: 36px;
+  }
+}
+
+@media (max-width: 767px) {
+  .inkbound-toast {
+    right: 16px;
+    bottom: 82px;
+    left: 16px;
+  }
+}
