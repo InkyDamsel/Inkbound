@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
+import { inkboundBrand } from '../design/tokens';
 
 export type NavTab = 'home' | 'library' | 'tbr' | 'sessions' | 'stats' | 'import' | 'settings';
 
@@ -56,19 +57,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
 
-  const searchResults = searchQuery.trim()
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const searchResults = normalizedQuery
     ? books
-        .filter((book) => {
-          const query = searchQuery.toLowerCase();
-          return (
-            book.work.title.toLowerCase().includes(query) ||
-            book.work.author.toLowerCase().includes(query) ||
-            book.work.seriesName?.toLowerCase().includes(query) ||
-            book.work.genres.some((genre) => genre.toLowerCase().includes(query)) ||
-            book.privateTags.some((tag) => tag.toLowerCase().includes(query)) ||
-            book.editions.some((edition) => edition.isbn?.includes(query))
-          );
-        })
+        .filter((book) =>
+          book.work.title.toLowerCase().includes(normalizedQuery) ||
+          book.work.author.toLowerCase().includes(normalizedQuery) ||
+          book.work.seriesName?.toLowerCase().includes(normalizedQuery) ||
+          book.work.genres.some((genre) => genre.toLowerCase().includes(normalizedQuery)) ||
+          book.privateTags.some((tag) => tag.toLowerCase().includes(normalizedQuery)) ||
+          book.editions.some((edition) => edition.isbn?.includes(normalizedQuery)),
+        )
         .slice(0, 6)
     : [];
 
@@ -86,21 +85,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             <BookMarked className="h-8 w-8" />
           </span>
           <span className="quiet-shelf-brand-copy">
-            <span className="quiet-shelf-brand-name">The Quiet Shelf</span>
-            <span className="quiet-shelf-tagline">Where every book finds its place.</span>
+            <span className="quiet-shelf-brand-name">{inkboundBrand.name}</span>
+            <span className="quiet-shelf-tagline">{inkboundBrand.tagline}</span>
           </span>
         </button>
 
         <nav className="quiet-shelf-sidebar-nav" aria-label="Primary navigation">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeTab === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => navigate(item.id)}
-                className={`quiet-shelf-sidebar-link ${isActive ? 'is-active' : ''}`}
+                className={`quiet-shelf-sidebar-link ${activeTab === item.id ? 'is-active' : ''}`}
               >
                 <Icon className="h-5 w-5" />
                 <span>{item.label}</span>
@@ -121,11 +119,11 @@ export const Navbar: React.FC<NavbarProps> = ({
       <header className="quiet-shelf-topbar">
         <div className="quiet-shelf-mobile-brand md:hidden">
           <span className="quiet-shelf-mobile-mark"><BookOpen className="h-5 w-5" /></span>
-          <span>The Quiet Shelf</span>
+          <span>{inkboundBrand.name}</span>
         </div>
 
         <div className="hidden md:block">
-          <p className="text-xs uppercase tracking-[0.22em] text-[#9e8d9f]">Personal library</p>
+          <p className="text-xs uppercase tracking-[0.22em] text-[#9e8d9f]">Your reading life</p>
           <h1 className="font-serif text-2xl text-[#f4efe6]">
             {navItems.find((item) => item.id === activeTab)?.label ?? 'Home'}
           </h1>
@@ -161,7 +159,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   )}
                 </div>
 
-                {searchQuery.trim() !== '' && (
+                {normalizedQuery && (
                   <div className="quiet-shelf-search-results">
                     {searchResults.length === 0 ? (
                       <p className="px-3 py-5 text-center text-xs text-[#9e8d9f]">No matching books found.</p>
@@ -196,7 +194,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {userPlan === 'free' ? (
             <button
               type="button"
-              onClick={() => openUpgradeModal('Upgrade to Premium for Unlimited Books')}
+              onClick={() => openUpgradeModal('Upgrade to Inkbound Premium for unlimited books')}
               className="quiet-shelf-usage"
               title={`Free Plan: Up to ${freeBookLimit} books allowed`}
             >
@@ -206,7 +204,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           ) : (
             <button
               type="button"
-              onClick={() => openUpgradeModal('Manage The Quiet Shelf Premium')}
+              onClick={() => openUpgradeModal('Manage Inkbound Premium')}
               className="quiet-shelf-premium"
             >
               <Sparkles className="h-4 w-4" />
@@ -238,13 +236,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       <nav className="quiet-shelf-mobile-nav md:hidden" aria-label="Mobile navigation">
         {navItems.slice(0, 5).map((item) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
               type="button"
               onClick={() => navigate(item.id)}
-              className={isActive ? 'is-active' : ''}
+              className={activeTab === item.id ? 'is-active' : ''}
             >
               <Icon className="h-5 w-5" />
               <span>{item.label}</span>
