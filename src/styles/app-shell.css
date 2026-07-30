@@ -1,18 +1,21 @@
 :root {
-  --ink-text-primary: #f4efe6;
-  --ink-text-secondary: #d8cfd6;
-  --ink-text-muted: #938791;
-  --ink-border-subtle: rgba(219, 162, 174, 0.13);
+  --ink-text-primary: #e8ded3;
+  --ink-text-secondary: #c1b4ac;
+  --ink-text-muted: #8a7f79;
+  --ink-border-subtle: rgba(232, 222, 211, 0.075);
   --ink-sidebar-width: 248px;
   --ink-topbar-height: 86px;
-  --ink-bg: #0c0a0e;
-  --ink-surface: #131016;
-  --ink-surface-raised: #18131a;
-  --ink-surface-soft: #1d161e;
-  --ink-rose: #a95376;
-  --ink-rose-bright: #d286a0;
-  --ink-gold: #c99a5b;
-  --ink-gold-bright: #e0b878;
+  --ink-bg: #0d0b0f;
+  --ink-surface: #151217;
+  --ink-surface-raised: #1b171d;
+  --ink-surface-soft: #19151a;
+  --ink-cream: #e8ded3;
+  --ink-cream-soft: #cfc2b6;
+  --ink-mauve: #755364;
+  --ink-mauve-hover: #8a6375;
+  --ink-mauve-deep: #5b4654;
+  --ink-border: rgba(232, 222, 211, 0.09);
+  --ink-border-strong: rgba(152, 116, 135, 0.32);
 }
 
 * {
@@ -27,8 +30,8 @@ body {
 .inkbound-app-shell {
   min-height: 100vh;
   background:
-          radial-gradient(circle at 82% -10%, rgba(126, 64, 91, 0.11), transparent 34rem),
-          linear-gradient(180deg, #0b090d 0%, #0d0a0f 100%);
+    radial-gradient(circle at 82% -10%, rgba(126, 64, 91, 0.11), transparent 34rem),
+    linear-gradient(180deg, #0b090d 0%, #0d0a0f 100%);
   color: var(--ink-text-primary);
 }
 
@@ -41,8 +44,8 @@ body {
   flex-direction: column;
   border-right: 1px solid rgba(219, 162, 174, 0.12);
   background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent 28%),
-          #0e0c11;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent 28%),
+    #0e0c11;
   padding: 24px 16px 18px;
 }
 
@@ -61,7 +64,7 @@ body {
   height: 40px;
   flex: 0 0 40px;
   place-items: center;
-  color: var(--ink-gold);
+  color: var(--ink-mauve);
 }
 
 .quiet-shelf-mark svg {
@@ -76,7 +79,7 @@ body {
 
 .quiet-shelf-brand-name {
   display: block;
-  color: #efd7ad;
+  color: #d8cec2;
   font-family: var(--font-serif);
   font-size: 1.65rem;
   letter-spacing: 0.08em;
@@ -108,7 +111,7 @@ body {
   padding: 0 13px;
   border: 1px solid transparent;
   border-radius: 8px;
-  color: #d6cbd3;
+  color: #c1b4ac;
   font-size: 0.86rem;
   text-align: left;
   transition: 160ms ease;
@@ -117,31 +120,31 @@ body {
 .quiet-shelf-sidebar-link svg {
   width: 19px;
   height: 19px;
-  color: #cb9469;
+  color: #9a7889;
   stroke-width: 1.55;
 }
 
 .quiet-shelf-sidebar-link:hover {
   background: rgba(123, 59, 85, 0.13);
-  color: #fff7f0;
+  color: #e8ded3;
 }
 
 .quiet-shelf-sidebar-link.is-active {
   border-color: rgba(211, 132, 161, 0.12);
   background: linear-gradient(90deg, rgba(126, 57, 84, 0.55), rgba(95, 45, 68, 0.36));
-  color: #fff7f4;
+  color: #e8ded3;
 }
 
 .quiet-shelf-sidebar-link.is-active svg {
-  color: #e1a0b7;
+  color: #9a7889;
 }
 
 .quiet-shelf-premium-pill {
   margin-left: auto;
   padding: 4px 7px;
   border-radius: 5px;
-  background: rgba(196, 137, 71, 0.16);
-  color: #e7b978;
+  background: rgba(117, 83, 100, 0.20);
+  color: #cfc2b6;
   font-size: 0.57rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -160,13 +163,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #eee4e9;
+  color: #d8cec2;
   font-family: var(--font-serif);
   font-size: 1rem;
 }
 
 .quiet-shelf-plan-heading button {
-  color: #d78ca5;
+  color: #8a6375;
   font-family: var(--font-sans);
   font-size: 0.68rem;
   text-decoration: underline;
@@ -179,7 +182,7 @@ body {
 }
 
 .quiet-shelf-plan-count strong {
-  color: #f4ecef;
+  color: #e8ded3;
   font-family: var(--font-serif);
   font-size: 1.35rem;
   font-weight: 500;
@@ -196,7 +199,7 @@ body {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #b75f83, #de91a8);
+  background: linear-gradient(90deg, #5b4654, #8a6375);
 }
 
 .quiet-shelf-plan-remaining {
@@ -213,10 +216,10 @@ body {
   gap: 8px;
   width: 100%;
   margin-top: 18px;
-  border: 1px solid rgba(208, 157, 81, 0.62);
+  border: 1px solid rgba(138, 99, 117, 0.45);
   border-radius: 7px;
   background: rgba(37, 26, 28, 0.62);
-  color: #e4b86f;
+  color: #cfc2b6;
   font-size: 0.7rem;
   font-weight: 700;
 }
@@ -247,7 +250,7 @@ body {
   border: 1px solid rgba(212, 137, 162, 0.28);
   border-radius: 50%;
   background: linear-gradient(145deg, #6f4053, #29202a);
-  color: #fff5f7;
+  color: #e8ded3;
   font-size: 0.72rem;
   font-weight: 800;
 }
@@ -260,7 +263,7 @@ body {
 }
 
 .quiet-shelf-profile-copy strong {
-  color: #efe6eb;
+  color: #d8cec2;
   font-size: 0.78rem;
 }
 
@@ -308,7 +311,7 @@ body {
 .quiet-shelf-header-search > svg {
   width: 17px;
   height: 17px;
-  color: #c88970;
+  color: #9a7889;
 }
 
 .quiet-shelf-header-search input {
@@ -317,7 +320,7 @@ body {
   border: 0;
   outline: 0;
   background: transparent;
-  color: #eee6ea;
+  color: #e8ded3;
   font-size: 0.76rem;
 }
 
@@ -351,7 +354,7 @@ body {
   justify-content: space-between;
   padding: 11px 13px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  color: #d8cdd3;
+  color: #c1b4ac;
   font-size: 0.69rem;
   font-weight: 700;
 }
@@ -408,7 +411,7 @@ body {
 }
 
 .quiet-shelf-search-result strong {
-  color: #efe6ea;
+  color: #e8ded3;
   font-family: var(--font-serif);
   font-size: 0.82rem;
   font-weight: 500;
@@ -445,7 +448,7 @@ body {
   width: 40px;
   border: 1px solid rgba(219, 162, 174, 0.12);
   background: #131016;
-  color: #d4a26f;
+  color: #9a7889;
 }
 
 .quiet-shelf-secondary-action {
@@ -458,20 +461,20 @@ body {
 .quiet-shelf-primary-action {
   padding: 0 17px;
   border: 1px solid rgba(223, 139, 167, 0.25);
-  background: linear-gradient(135deg, #8f405f, #a95072);
-  color: #fff5f8;
+  background: linear-gradient(135deg, #654556, #755364);
+  color: #e8ded3;
   box-shadow: 0 8px 22px rgba(127, 54, 82, 0.25);
 }
 
 .quiet-shelf-icon-button:hover,
 .quiet-shelf-secondary-action:hover {
   border-color: rgba(219, 162, 174, 0.34);
-  color: #fff4f7;
+  color: #e8ded3;
 }
 
 .quiet-shelf-primary-action:hover {
   transform: translateY(-1px);
-  background: linear-gradient(135deg, #a44a6e, #bc5f84);
+  background: linear-gradient(135deg, #7b5869, #8a6375);
 }
 
 .quiet-shelf-icon-button svg,
@@ -499,16 +502,16 @@ body {
   border: 1px solid var(--ink-border-subtle);
   border-radius: 12px;
   background:
-          linear-gradient(145deg, rgba(255, 255, 255, 0.012), transparent 52%),
-          var(--ink-surface);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.012), transparent 52%),
+    var(--ink-surface);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.2);
 }
 
 .book-card-glow {
   border: 1px solid rgba(219, 162, 174, 0.12);
   background:
-          linear-gradient(145deg, rgba(255, 255, 255, 0.014), transparent 50%),
-          #151117 !important;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.014), transparent 50%),
+    #151117 !important;
   box-shadow: 0 13px 32px rgba(0, 0, 0, 0.19);
 }
 
@@ -519,7 +522,7 @@ body {
 
 .inkbound-eyebrow,
 .inkbound-kicker {
-  color: var(--ink-gold);
+  color: var(--ink-mauve);
   font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.18em;
@@ -550,7 +553,7 @@ body {
   border: 1px solid rgba(211, 132, 161, 0.18);
   border-radius: 999px;
   background: rgba(127, 59, 87, 0.11);
-  color: #d994ad;
+  color: #9a7889;
   font-size: 0.66rem;
   font-weight: 700;
 }
@@ -602,7 +605,7 @@ body {
   align-items: center;
   gap: 4px;
   margin-left: 6px;
-  color: var(--ink-rose-bright);
+  color: var(--ink-mauve-hover);
   text-decoration: underline;
 }
 
@@ -741,7 +744,7 @@ body {
 
   .quiet-shelf-mobile-nav button.is-active {
     background: rgba(137, 58, 91, 0.22);
-    color: #e0a0b7;
+    color: #9a7889;
   }
 
   .quiet-shelf-mobile-nav svg {
@@ -754,4 +757,18 @@ body {
     bottom: 86px;
     left: 16px;
   }
+}
+
+.book-card-glow {
+  border-radius: 12px !important;
+  box-shadow: 0 16px 38px rgba(0,0,0,.24), 0 1px 0 rgba(232,222,211,.025) inset;
+}
+.book-card-glow:hover {
+  transform: translateY(-2px);
+  border-color: rgba(138,99,117,.30);
+  box-shadow: 0 22px 48px rgba(0,0,0,.32), 0 1px 0 rgba(232,222,211,.035) inset;
+}
+::selection {
+  background: rgba(117,83,100,.42);
+  color: #e8ded3;
 }
