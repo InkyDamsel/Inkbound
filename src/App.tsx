@@ -13,6 +13,7 @@ import { Navbar, NavTab } from './components/Navbar';
 import { HomeDashboard } from './components/HomeDashboard';
 import { LibraryScreen } from './components/LibraryScreen';
 import { TBRScreen } from './components/TBRScreen';
+import { ReadingSessionsScreen } from './components/ReadingSessionsScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
 import { BatchEditModal } from './components/BatchEditModal';
 import { ReadingSessionModal } from './components/ReadingSessionModal';
@@ -20,7 +21,7 @@ import { ImportCenterScreen } from './components/ImportCenterScreen';
 import { StatisticsScreen } from './components/StatisticsScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { AddBookModal } from './components/AddBookModal';
-import { Check, Clock3, RotateCcw } from 'lucide-react';
+import { Check, RotateCcw } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
 const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
@@ -310,49 +311,12 @@ export default function App() {
           )}
 
           {activeTab === 'sessions' && (
-            <section className="space-y-6 pb-20">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="inkbound-eyebrow">Reading companion</p>
-                  <h2 className="inkbound-page-title">Reading Sessions</h2>
-                  <p className="mt-2 text-sm text-[var(--ink-text-muted)]">
-                    Review the time, pages, and places that make up your reading life.
-                  </p>
-                </div>
-                <button type="button" onClick={() => openTimer()} className="quiet-shelf-primary-action">
-                  <Clock3 className="h-4 w-4" />
-                  Start a Session
-                </button>
-              </div>
-
-              <div className="inkbound-panel divide-y divide-[var(--ink-border-subtle)] overflow-hidden">
-                {sessions.length === 0 ? (
-                  <p className="p-8 text-center text-sm text-[var(--ink-text-muted)]">No reading sessions yet.</p>
-                ) : (
-                  sessions.map((session) => {
-                    const book = books.find((candidate) => candidate.id === session.bookId);
-                    return (
-                      <article key={session.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <h3 className="font-serif text-lg text-[var(--ink-text-primary)]">
-                            {book?.work.title ?? 'Reading Session'}
-                          </h3>
-                          <p className="mt-1 text-xs text-[var(--ink-text-muted)]">
-                            {session.durationMinutes} minutes · {session.date} · {session.startTime}–{session.endTime}
-                          </p>
-                          {session.notes && (
-                            <p className="mt-2 font-serif text-sm italic text-[var(--ink-text-secondary)]">
-                              “{session.notes}”
-                            </p>
-                          )}
-                        </div>
-                        <span className="inkbound-badge">{session.location ?? 'Cozy Spot'}</span>
-                      </article>
-                    );
-                  })
-                )}
-              </div>
-            </section>
+            <ReadingSessionsScreen
+              books={books}
+              sessions={sessions}
+              onOpenTimer={openTimer}
+              onSelectBook={setSelectedBookForDetails}
+            />
           )}
 
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
