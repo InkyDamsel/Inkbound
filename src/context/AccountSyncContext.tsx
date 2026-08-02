@@ -74,6 +74,7 @@ const SYNC_KEYS = [
   'inkbound_reading_time_capsules',
   'inkbound_time_capsule_filter',
   'inkbound_photo_memory_filter',
+  'inkbound_bookshelf_through_time_preferences',
 ] as const;
 
 const collectSnapshot = () =>
