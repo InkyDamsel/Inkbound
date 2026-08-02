@@ -12,6 +12,7 @@ import {
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { ResponsiveGrid } from '../layout/responsive';
+import { AccountSyncCard } from './account/AccountSyncCard';
 
 interface ProfileScreenProps {
   books: UserBookRecord[];
@@ -76,12 +77,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     [sessions],
   );
 
-  const initials = displayName
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('') || 'JL';
+  const initials =
+    displayName
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join('') || 'JL';
 
   const handleSave = () => {
     const profile: StoredProfile = {
@@ -198,6 +200,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
           <p className="text-sm text-[var(--ink-muted)]">Time recorded</p>
         </div>
       </ResponsiveGrid>
+
+      <AccountSyncCard />
 
       <section className="inkbound-panel rounded-3xl p-5 sm:p-7">
         <div className="mb-6">
