@@ -6,6 +6,7 @@ import {
   BookMarked,
   BookOpen,
   Bookmark,
+  CalendarClock,
   CalendarDays,
   ChevronDown,
   Clock3,
@@ -40,6 +41,7 @@ export type NavTab =
   | 'collections'
   | 'timeline'
   | 'memories'
+  | 'time-capsules'
   | 'personality'
   | 'insights'
   | 'challenges'
@@ -71,6 +73,7 @@ const navItems = [
   { id: 'collections' as NavTab, label: 'Collections', icon: FolderHeart },
   { id: 'timeline' as NavTab, label: 'Reading Timeline', icon: History },
   { id: 'memories' as NavTab, label: 'Reading Memories', icon: BookHeart },
+  { id: 'time-capsules' as NavTab, label: 'Time Capsules', icon: CalendarClock },
   { id: 'personality' as NavTab, label: 'Reader Personality', icon: Sparkles },
   { id: 'insights' as NavTab, label: 'Reading Insights', icon: BarChart3 },
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
