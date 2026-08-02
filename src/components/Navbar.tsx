@@ -9,6 +9,7 @@ import {
   Home,
   Library,
   Moon,
+  MoreHorizontal,
   Plus,
   Search,
   Settings,
@@ -50,6 +51,9 @@ const navItems = [
   { id: 'settings' as NavTab, label: 'Settings', icon: Settings },
 ];
 
+const mobilePrimaryItems = navItems.slice(0, 4);
+const mobileMoreItems = navItems.slice(4);
+
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
@@ -62,6 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -81,11 +86,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navigate = (tab: NavTab) => {
     setActiveTab(tab);
     setIsSearchOpen(false);
+    setIsMobileMenuOpen(false);
     setSearchQuery('');
   };
 
   const activeLabel = navItems.find((item) => item.id === activeTab)?.label ?? 'Home';
   const usedPercent = Math.min(100, Math.round((books.length / freeBookLimit) * 100));
+  const isMoreSectionActive = mobileMoreItems.some((item) => item.id === activeTab);
 
   return (
     <>
@@ -261,8 +268,88 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </header>
 
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-[120] flex items-end bg-black/70 p-4 backdrop-blur-sm lg:hidden"
+          role="presentation"
+          onClick={() => setIsMobileMenuOpen(false)}
+        >
+          <section
+            className="inkbound-panel w-full rounded-3xl p-5"
+            role="dialog"
+            aria-modal="true"
+            aria-label="More navigation options"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[var(--ink-border-subtle)] pb-4">
+              <div>
+                <p className="inkbound-kicker">Inkbound</p>
+                <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">More</h2>
+              </div>
+              <button
+                type="button"
+                className="quiet-shelf-icon-button"
+                onClick={() => setIsMobileMenuOpen(false)}
+                aria-label="Close more menu"
+              >
+                <X />
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-2">
+              {mobileMoreItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => navigate(item.id)}
+                    className={`flex min-h-12 items-center gap-3 rounded-xl border px-4 text-left text-sm font-semibold transition ${
+                      activeTab === item.id
+                        ? 'border-[var(--ink-gold)] bg-[rgba(197,160,89,0.12)] text-[var(--ink-ivory)]'
+                        : 'border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] text-[var(--ink-muted)]'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5 text-[var(--ink-gold)]" />
+                    <span className="flex-1">{item.label}</span>
+                    {item.id === 'stats' && userPlan === 'free' && (
+                      <small className="quiet-shelf-premium-pill">Premium</small>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--ink-border-subtle)] pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  onOpenTimer();
+                }}
+                className="quiet-shelf-secondary-action justify-center"
+              >
+                <Clock3 />
+                Start Session
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  onOpenAddBook();
+                }}
+                className="quiet-shelf-primary-action justify-center"
+              >
+                <Plus />
+                Add Book
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       <nav className="quiet-shelf-mobile-nav" aria-label="Mobile navigation">
-        {navItems.slice(0, 5).map((item) => {
+        {mobilePrimaryItems.map((item) => {
           const Icon = item.icon;
           return (
             <button
@@ -276,6 +363,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           );
         })}
+
+        <button
+          type="button"
+          onClick={() => setIsMobileMenuOpen(true)}
+          className={isMoreSectionActive ? 'is-active' : ''}
+          aria-expanded={isMobileMenuOpen}
+        >
+          <MoreHorizontal />
+          <span>More</span>
+        </button>
       </nav>
     </>
   );
