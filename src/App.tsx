@@ -21,6 +21,7 @@ import { ReadingTimelineScreen } from './components/ReadingTimelineScreen';
 import { ReadingMemoriesScreen } from './components/ReadingMemoriesScreen';
 import { InkboundStudioScreen } from './components/InkboundStudioScreen';
 import { MonthlyWrappedScreen } from './components/MonthlyWrappedScreen';
+import { YearInBooksScreen } from './components/YearInBooksScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
 import { BatchEditModal } from './components/BatchEditModal';
 import { ReadingSessionModal } from './components/ReadingSessionModal';
@@ -361,6 +362,13 @@ export default function App() {
           )}
           {activeTab === 'studio' && <InkboundStudioScreen books={books} sessions={sessions} />}
           {activeTab === 'wrapped' && <MonthlyWrappedScreen books={books} sessions={sessions} />}
+          {activeTab === 'yearbook' && (
+            <YearInBooksScreen
+              books={books}
+              sessions={sessions}
+              onSelectBook={setSelectedBookForDetails}
+            />
+          )}
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
           {activeTab === 'import' && (
             <ImportCenterScreen
