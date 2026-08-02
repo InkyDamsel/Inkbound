@@ -41,7 +41,7 @@ export interface Edition {
   narrator?: string;
   publisher?: string;
   publicationDate?: string;
-  coverGradient: string; // Tailwind gradient fallback or style
+  coverGradient: string;
   coverIcon?: string;
   coverUrl?: string;
   language?: string;
@@ -65,7 +65,7 @@ export interface UserBookRecord {
   progressPages: number;
   progressMinutes: number;
   progressPercentage: number;
-  rating?: number; // 0 to 5 in 0.5 steps
+  rating?: number;
   review?: string;
   personalNotes?: string;
   favoriteQuotes?: FavoriteQuote[];
@@ -114,7 +114,7 @@ export interface ImportSourceInfo {
   name: string;
   description: string;
   badge: string;
-  method: 'CSV/JSON File' | 'Direct Sync' | 'Export File';
+  method: 'CSV File' | 'JSON File' | 'CSV / JSON' | 'CSV/JSON File' | 'Direct Sync' | 'Export File';
   supported: boolean;
 }
 
