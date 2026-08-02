@@ -24,6 +24,7 @@ import { ProfileScreen } from './components/ProfileScreen';
 import { AddBookModal } from './components/AddBookModal';
 import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
+import { usePersistentState } from './hooks/usePersistentState';
 import { Check, RotateCcw } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
@@ -42,7 +43,7 @@ function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [activeTab, setActiveTab] = usePersistentState<NavTab>('inkbound_active_tab', 'home');
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     return savedTheme ? savedTheme === 'dark' : true;
@@ -57,8 +58,11 @@ export default function App() {
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
   const [isBatchEditOpen, setIsBatchEditOpen] = useState(false);
-  const [isTimerOpen, setIsTimerOpen] = useState(false);
-  const [timerInitialBookId, setTimerInitialBookId] = useState<string>();
+  const [isTimerOpen, setIsTimerOpen] = usePersistentState('inkbound_timer_open', false);
+  const [timerInitialBookId, setTimerInitialBookId] = usePersistentState<string | undefined>(
+    'inkbound_timer_book_id',
+    undefined,
+  );
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -86,6 +90,10 @@ export default function App() {
   const openTimer = (bookId?: string) => {
     setTimerInitialBookId(bookId);
     setIsTimerOpen(true);
+  };
+
+  const closeTimer = () => {
+    setIsTimerOpen(false);
   };
 
   const handleToggleSelectBook = (id: string) => {
@@ -208,6 +216,8 @@ export default function App() {
         };
       }),
     );
+    setTimerInitialBookId(undefined);
+    setIsTimerOpen(false);
     showToast(`Saved a ${newSession.durationMinutes}-minute reading session.`);
   };
 
@@ -367,7 +377,7 @@ export default function App() {
         <ReadingSessionModal
           books={books}
           initialBookId={timerInitialBookId}
-          onClose={() => setIsTimerOpen(false)}
+          onClose={closeTimer}
           onSaveSession={handleSaveSession}
         />
       )}
