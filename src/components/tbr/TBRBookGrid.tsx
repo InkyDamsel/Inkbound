@@ -1,13 +1,13 @@
 import React from 'react';
 import { Play } from 'lucide-react';
-import { Priority, UserBookRecord } from '../../types';
+import { Priority, ReadingStatus, UserBookRecord } from '../../types';
 import { ResponsiveGrid } from '../../layout/responsive';
 import { BookCover } from '../BookCover';
 
 interface TBRBookGridProps {
   books: UserBookRecord[];
   onSelectBook: (book: UserBookRecord) => void;
-  onStartReading: (bookId: string) => void;
+  onUpdateStatus: (bookId: string, status: ReadingStatus) => void;
   onUpdatePriority: (bookId: string, priority: Priority) => void;
 }
 
@@ -21,7 +21,7 @@ const priorityLabels: Record<Priority, string> = {
 export function TBRBookGrid({
   books,
   onSelectBook,
-  onStartReading,
+  onUpdateStatus,
   onUpdatePriority,
 }: TBRBookGridProps) {
   return (
@@ -85,7 +85,7 @@ export function TBRBookGrid({
 
               <button
                 type="button"
-                onClick={() => onStartReading(book.id)}
+                onClick={() => onUpdateStatus(book.id, 'currently-reading')}
                 className="mt-auto flex min-h-9 items-center justify-center gap-2 pt-4 text-xs font-bold text-[var(--ink-gold-bright)]"
               >
                 <Play className="h-3.5 w-3.5 fill-current" />
