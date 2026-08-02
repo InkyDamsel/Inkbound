@@ -18,6 +18,7 @@ import { ReadingChallengesScreen } from './components/ReadingChallengesScreen';
 import { AchievementsScreen } from './components/AchievementsScreen';
 import { CollectionsScreen } from './components/CollectionsScreen';
 import { ReadingTimelineScreen } from './components/ReadingTimelineScreen';
+import { ReadingMemoriesScreen } from './components/ReadingMemoriesScreen';
 import { InkboundStudioScreen } from './components/InkboundStudioScreen';
 import { MonthlyWrappedScreen } from './components/MonthlyWrappedScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
@@ -346,6 +347,13 @@ export default function App() {
           )}
           {activeTab === 'timeline' && (
             <ReadingTimelineScreen
+              books={books}
+              sessions={sessions}
+              onSelectBook={setSelectedBookForDetails}
+            />
+          )}
+          {activeTab === 'memories' && (
+            <ReadingMemoriesScreen
               books={books}
               sessions={sessions}
               onSelectBook={setSelectedBookForDetails}
