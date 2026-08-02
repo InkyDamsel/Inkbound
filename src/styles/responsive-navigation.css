@@ -9,11 +9,46 @@
 @media (min-width: 768px) {
   .quiet-shelf-sidebar {
     display: flex;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .quiet-shelf-sidebar-nav {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+    scrollbar-gutter: stable;
+  }
+
+  .quiet-shelf-sidebar-nav::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .quiet-shelf-sidebar-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .quiet-shelf-sidebar-nav::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(167, 128, 151, 0.22);
+  }
+
+  .quiet-shelf-plan-card,
+  .quiet-shelf-profile,
+  .quiet-shelf-sidebar > .relative {
+    flex: 0 0 auto;
   }
 
   .quiet-shelf-mobile-nav {
     display: none;
   }
+}
+
+/* My Dragon already has a dedicated sidebar destination. */
+.quiet-shelf-profile + [role='menu'] button:last-child {
+  display: none;
 }
 
 @media (max-width: 767px) {
