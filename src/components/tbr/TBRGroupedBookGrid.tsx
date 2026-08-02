@@ -4,14 +4,14 @@ import { BookCover } from '../BookCover';
 import { ResponsiveGrid } from '../../layout/responsive';
 
 interface TBRGroupedBookGridProps {
-  groups: Array<[string, UserBookRecord[]]>;
+  groups: Record<string, UserBookRecord[]>;
   onSelectBook: (book: UserBookRecord) => void;
 }
 
 export function TBRGroupedBookGrid({ groups, onSelectBook }: TBRGroupedBookGridProps) {
   return (
     <div className="space-y-5">
-      {groups.map(([groupName, books]) => (
+      {Object.entries(groups).map(([groupName, books]) => (
         <section key={groupName} className="inkbound-panel p-5">
           <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">{groupName}</h2>
           <p className="mt-1 text-xs text-[var(--ink-muted)]">{books.length} waiting</p>
