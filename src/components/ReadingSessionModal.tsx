@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { ReadingSession, UserBookRecord } from '../types';
+import { usePersistentState } from '../hooks/usePersistentState';
 import { CheckCircle2, Clock, Pause, Play, Square, X } from 'lucide-react';
 
 interface ReadingSessionModalProps {
@@ -13,6 +14,23 @@ interface ReadingSessionModalProps {
   ) => void;
 }
 
+interface SessionDraft {
+  selectedBookId: string;
+  timerSeconds: number;
+  isActive: boolean;
+  isFinished: boolean;
+  lastActiveAt?: number;
+  startPage: number;
+  endPage: number;
+  startMins: number;
+  endMins: number;
+  notes: string;
+  mood: string;
+  location: string;
+}
+
+const SESSION_DRAFT_KEY = 'inkbound_active_session_draft';
+
 export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
   books,
   initialBookId,
@@ -23,38 +41,70 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
     (book) => book.status === 'currently-reading' || book.status === 'tbr',
   );
   const selectableBooks = readingBooks.length > 0 ? readingBooks : books;
-  const [selectedBookId, setSelectedBookId] = useState<string>(
-    initialBookId || selectableBooks[0]?.id || '',
-  );
+  const initialBook =
+    books.find((book) => book.id === initialBookId) ?? selectableBooks[0] ?? books[0];
 
-  const selectedBook = books.find((book) => book.id === selectedBookId) || books[0];
+  const [draft, setDraft] = usePersistentState<SessionDraft>(SESSION_DRAFT_KEY, () => ({
+    selectedBookId: initialBook?.id ?? '',
+    timerSeconds: 0,
+    isActive: false,
+    isFinished: false,
+    startPage: initialBook?.progressPages ?? 0,
+    endPage: (initialBook?.progressPages ?? 0) + 20,
+    startMins: initialBook?.progressMinutes ?? 0,
+    endMins: (initialBook?.progressMinutes ?? 0) + 30,
+    notes: '',
+    mood: 'Atmospheric',
+    location: 'Cozy Armchair',
+  }));
+
+  const selectedBook = books.find((book) => book.id === draft.selectedBookId) || initialBook;
   const activeEdition =
     selectedBook?.editions.find((edition) => edition.id === selectedBook.activeEditionId) ||
     selectedBook?.editions[0];
   const isAudiobook = activeEdition?.format === 'audiobook';
-
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [isActive, setIsActive] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
-
-  const [startPage, setStartPage] = useState(selectedBook?.progressPages || 0);
-  const [endPage, setEndPage] = useState((selectedBook?.progressPages || 0) + 20);
-  const [startMins, setStartMins] = useState(selectedBook?.progressMinutes || 0);
-  const [endMins, setEndMins] = useState((selectedBook?.progressMinutes || 0) + 30);
-  const [listeningSpeed] = useState(1.2);
-  const [notes, setNotes] = useState('');
-  const [mood, setMood] = useState('Atmospheric');
-  const [location, setLocation] = useState('Cozy Armchair');
+  const listeningSpeed = 1.2;
 
   useEffect(() => {
-    if (!isActive) return undefined;
+    if (!initialBookId || draft.timerSeconds > 0 || draft.isFinished) return;
+    const book = books.find((item) => item.id === initialBookId);
+    if (!book || book.id === draft.selectedBookId) return;
+
+    setDraft((current) => ({
+      ...current,
+      selectedBookId: book.id,
+      startPage: book.progressPages,
+      endPage: book.progressPages + 20,
+      startMins: book.progressMinutes,
+      endMins: book.progressMinutes + 30,
+    }));
+  }, [books, draft.isFinished, draft.selectedBookId, draft.timerSeconds, initialBookId, setDraft]);
+
+  useEffect(() => {
+    if (!draft.isActive) return undefined;
+
+    const now = Date.now();
+    if (draft.lastActiveAt && now > draft.lastActiveAt) {
+      const recoveredSeconds = Math.floor((now - draft.lastActiveAt) / 1000);
+      if (recoveredSeconds > 0) {
+        setDraft((current) => ({
+          ...current,
+          timerSeconds: current.timerSeconds + recoveredSeconds,
+          lastActiveAt: now,
+        }));
+      }
+    }
 
     const interval = window.setInterval(() => {
-      setTimerSeconds((previous) => previous + 1);
+      setDraft((current) => ({
+        ...current,
+        timerSeconds: current.timerSeconds + 1,
+        lastActiveAt: Date.now(),
+      }));
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [isActive]);
+  }, [draft.isActive, setDraft]);
 
   const formatTime = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -71,27 +121,46 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
   };
 
   const handleBookChange = (bookId: string) => {
-    setSelectedBookId(bookId);
     const book = books.find((item) => item.id === bookId);
     if (!book) return;
 
-    setStartPage(book.progressPages);
-    setEndPage(book.progressPages + 20);
-    setStartMins(book.progressMinutes);
-    setEndMins(book.progressMinutes + 30);
+    setDraft((current) => ({
+      ...current,
+      selectedBookId: bookId,
+      startPage: book.progressPages,
+      endPage: book.progressPages + 20,
+      startMins: book.progressMinutes,
+      endMins: book.progressMinutes + 30,
+    }));
+  };
+
+  const startOrResume = () => {
+    setDraft((current) => ({ ...current, isActive: true, lastActiveAt: Date.now() }));
+  };
+
+  const pause = () => {
+    setDraft((current) => ({ ...current, isActive: false, lastActiveAt: undefined }));
   };
 
   const handleFinishSession = () => {
-    setIsActive(false);
-    setIsFinished(true);
+    setDraft((current) => ({
+      ...current,
+      isActive: false,
+      isFinished: true,
+      lastActiveAt: undefined,
+    }));
+  };
+
+  const clearDraft = () => {
+    window.localStorage.removeItem(SESSION_DRAFT_KEY);
   };
 
   const handleSaveAndClose = () => {
     if (!selectedBook) return;
 
-    const sessionDurationMins = Math.max(1, Math.round(timerSeconds / 60));
-    const pagesCompleted = Math.max(0, endPage - startPage);
-    const minsCompleted = Math.max(0, endMins - startMins);
+    const sessionDurationMins = Math.max(1, Math.round(draft.timerSeconds / 60));
+    const pagesCompleted = Math.max(0, draft.endPage - draft.startPage);
+    const minsCompleted = Math.max(0, draft.endMins - draft.startMins);
 
     const session: ReadingSession = {
       id: `sess-${Date.now()}`,
@@ -102,22 +171,23 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
         .substring(0, 5),
       endTime: new Date().toTimeString().substring(0, 5),
       durationMinutes: sessionDurationMins,
-      startPage: !isAudiobook ? startPage : undefined,
-      endPage: !isAudiobook ? endPage : undefined,
+      startPage: !isAudiobook ? draft.startPage : undefined,
+      endPage: !isAudiobook ? draft.endPage : undefined,
       pagesRead: !isAudiobook ? pagesCompleted : undefined,
-      startTimestampSec: isAudiobook ? startMins * 60 : undefined,
-      endTimestampSec: isAudiobook ? endMins * 60 : undefined,
+      startTimestampSec: isAudiobook ? draft.startMins * 60 : undefined,
+      endTimestampSec: isAudiobook ? draft.endMins * 60 : undefined,
       minutesListened: isAudiobook ? minsCompleted : undefined,
       listeningSpeed: isAudiobook ? listeningSpeed : undefined,
-      notes: notes.trim() || undefined,
-      mood,
-      location,
+      notes: draft.notes.trim() || undefined,
+      mood: draft.mood,
+      location: draft.location,
     };
 
+    clearDraft();
     onSaveSession(
       session,
-      !isAudiobook ? endPage : startPage,
-      isAudiobook ? endMins : startMins,
+      !isAudiobook ? draft.endPage : draft.startPage,
+      isAudiobook ? draft.endMins : draft.startMins,
     );
     onClose();
   };
@@ -136,7 +206,8 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
           type="button"
           onClick={onClose}
           className="absolute right-4 top-4 z-10 rounded-full bg-black/30 p-2 text-stone-400 transition hover:bg-black/50 hover:text-white"
-          aria-label="Close reading session"
+          aria-label="Close reading session without discarding it"
+          title="Close — your session will remain saved"
         >
           <X className="h-5 w-5" />
         </button>
@@ -148,16 +219,14 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
               <h3 id="reading-session-title" className="font-serif text-2xl font-bold text-[#f4efe6]">
                 Reading Session Companion
               </h3>
-              <p className="text-xs text-stone-300">
-                Track your reading focus and immersion metrics
-              </p>
+              <p className="text-xs text-stone-300">Your active session saves automatically.</p>
             </header>
 
-            {!isFinished && (
+            {!draft.isFinished && (
               <div>
                 <label className="mb-1 block text-xs font-bold text-[#f4efe6]">Select Book</label>
                 <select
-                  value={selectedBookId}
+                  value={draft.selectedBookId}
                   onChange={(event) => handleBookChange(event.target.value)}
                   className="w-full rounded-xl border border-[#3d2448] bg-[#120817] p-3 text-sm font-medium text-[#f4efe6] focus:border-[#c5a059] focus:outline-none"
                 >
@@ -170,44 +239,30 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
               </div>
             )}
 
-            {!isFinished ? (
+            {!draft.isFinished ? (
               <div className="space-y-4 rounded-2xl border border-[#c5a059]/30 bg-[#25132f] p-5 text-center text-[#f4efe6] shadow-inner sm:p-6">
                 <div className="font-mono font-serif text-4xl font-bold tracking-[0.12em] text-[#e5c158] sm:text-5xl">
-                  {formatTime(timerSeconds)}
+                  {formatTime(draft.timerSeconds)}
                 </div>
                 <p className="text-xs text-stone-300">
-                  {isActive ? 'Session in progress...' : timerSeconds > 0 ? 'Paused' : 'Ready to start'}
+                  {draft.isActive ? 'Session in progress...' : draft.timerSeconds > 0 ? 'Paused' : 'Ready to start'}
                 </p>
 
                 <div className="grid gap-3 pt-2 sm:flex sm:items-center sm:justify-center sm:gap-4">
-                  {!isActive ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsActive(true)}
-                      className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-6 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95"
-                    >
+                  {!draft.isActive ? (
+                    <button type="button" onClick={startOrResume} className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-6 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95">
                       <Play className="h-4 w-4 fill-current" />
-                      <span>{timerSeconds === 0 ? 'Start Timer' : 'Resume'}</span>
+                      <span>{draft.timerSeconds === 0 ? 'Start Timer' : 'Resume'}</span>
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsActive(false)}
-                      className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-amber-600 px-6 text-xs font-bold text-white shadow-md transition hover:bg-amber-700"
-                    >
-                      <Pause className="h-4 w-4 fill-current" />
-                      <span>Pause</span>
+                    <button type="button" onClick={pause} className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-amber-600 px-6 text-xs font-bold text-white shadow-md transition hover:bg-amber-700">
+                      <Pause className="h-4 w-4 fill-current" /><span>Pause</span>
                     </button>
                   )}
 
-                  {timerSeconds > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleFinishSession}
-                      className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-emerald-700 px-6 text-xs font-bold text-white shadow-md transition hover:bg-emerald-800"
-                    >
-                      <Square className="h-4 w-4 fill-current" />
-                      <span>Complete Session</span>
+                  {draft.timerSeconds > 0 && (
+                    <button type="button" onClick={handleFinishSession} className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-emerald-700 px-6 text-xs font-bold text-white shadow-md transition hover:bg-emerald-800">
+                      <Square className="h-4 w-4 fill-current" /><span>Complete Session</span>
                     </button>
                   )}
                 </div>
@@ -216,101 +271,22 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
               <div className="space-y-4">
                 <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-4 text-emerald-300">
                   <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" />
-                  <div>
-                    <p className="text-sm font-bold">Session Completed!</p>
-                    <p className="text-xs text-stone-300">
-                      Duration: {Math.max(1, Math.round(timerSeconds / 60))} minutes read.
-                    </p>
-                  </div>
+                  <div><p className="text-sm font-bold">Session Completed!</p><p className="text-xs text-stone-300">Duration: {Math.max(1, Math.round(draft.timerSeconds / 60))} minutes read.</p></div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-[#f4efe6]">
-                      {isAudiobook ? 'Start Mins Listened' : 'Starting Page'}
-                    </label>
-                    <input
-                      type="number"
-                      value={isAudiobook ? startMins : startPage}
-                      onChange={(event) =>
-                        isAudiobook
-                          ? setStartMins(Number.parseInt(event.target.value, 10) || 0)
-                          : setStartPage(Number.parseInt(event.target.value, 10) || 0)
-                      }
-                      className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-[#f4efe6]">
-                      {isAudiobook ? 'End Mins Listened' : 'Ending Page'}
-                    </label>
-                    <input
-                      type="number"
-                      value={isAudiobook ? endMins : endPage}
-                      onChange={(event) =>
-                        isAudiobook
-                          ? setEndMins(Number.parseInt(event.target.value, 10) || 0)
-                          : setEndPage(Number.parseInt(event.target.value, 10) || 0)
-                      }
-                      className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none"
-                    />
-                  </div>
+                  <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Start Mins Listened' : 'Starting Page'}</label><input type="number" value={isAudiobook ? draft.startMins : draft.startPage} onChange={(event) => setDraft((current) => ({ ...current, ...(isAudiobook ? { startMins: Number.parseInt(event.target.value, 10) || 0 } : { startPage: Number.parseInt(event.target.value, 10) || 0 }) }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /></div>
+                  <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'End Mins Listened' : 'Ending Page'}</label><input type="number" value={isAudiobook ? draft.endMins : draft.endPage} onChange={(event) => setDraft((current) => ({ ...current, ...(isAudiobook ? { endMins: Number.parseInt(event.target.value, 10) || 0 } : { endPage: Number.parseInt(event.target.value, 10) || 0 }) }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /></div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-[#f4efe6]">Reading Mood</label>
-                    <select
-                      value={mood}
-                      onChange={(event) => setMood(event.target.value)}
-                      className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]"
-                    >
-                      <option value="Atmospheric">Atmospheric</option>
-                      <option value="Cozy">Cozy</option>
-                      <option value="Fast-paced">Fast-paced</option>
-                      <option value="Mind-bending">Mind-bending</option>
-                      <option value="Relaxing">Relaxing</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-[#f4efe6]">Location</label>
-                    <select
-                      value={location}
-                      onChange={(event) => setLocation(event.target.value)}
-                      className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]"
-                    >
-                      <option value="Cozy Armchair">Cozy Armchair</option>
-                      <option value="Bed">Bed</option>
-                      <option value="Coffee Shop">Coffee Shop</option>
-                      <option value="Library">Library</option>
-                      <option value="Airport">Airport</option>
-                      <option value="Commute">Commute</option>
-                      <option value="Study">Study</option>
-                    </select>
-                  </div>
+                  <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Reading Mood</label><select value={draft.mood} onChange={(event) => setDraft((current) => ({ ...current, mood: event.target.value }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]"><option value="Atmospheric">Atmospheric</option><option value="Cozy">Cozy</option><option value="Fast-paced">Fast-paced</option><option value="Mind-bending">Mind-bending</option><option value="Relaxing">Relaxing</option></select></div>
+                  <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Location</label><select value={draft.location} onChange={(event) => setDraft((current) => ({ ...current, location: event.target.value }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]"><option value="Cozy Armchair">Cozy Armchair</option><option value="Bed">Bed</option><option value="Coffee Shop">Coffee Shop</option><option value="Library">Library</option><option value="Airport">Airport</option><option value="Commute">Commute</option><option value="Study">Study</option></select></div>
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-[#f4efe6]">
-                    Session Notes & Reflections
-                  </label>
-                  <textarea
-                    rows={3}
-                    placeholder="What happened in this session?"
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    className="w-full resize-y rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none"
-                  />
-                </div>
+                <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Session Notes & Reflections</label><textarea rows={3} placeholder="What happened in this session?" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} className="w-full resize-y rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /></div>
 
-                <button
-                  type="button"
-                  onClick={handleSaveAndClose}
-                  className="min-h-12 w-full rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] py-3 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95"
-                >
-                  Log & Save Session
-                </button>
+                <button type="button" onClick={handleSaveAndClose} className="min-h-12 w-full rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] py-3 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95">Log & Save Session</button>
               </div>
             )}
           </div>
