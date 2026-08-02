@@ -18,6 +18,7 @@ import {
   Sparkles,
   Sun,
   Target,
+  Trophy,
   UserRound,
   X,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ export type NavTab =
   | 'tbr'
   | 'sessions'
   | 'challenges'
+  | 'achievements'
   | 'stats'
   | 'import'
   | 'settings'
@@ -53,6 +55,7 @@ const navItems = [
   { id: 'tbr' as NavTab, label: 'TBR', icon: Bookmark },
   { id: 'sessions' as NavTab, label: 'Reading Sessions', icon: Clock3 },
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
+  { id: 'achievements' as NavTab, label: 'Achievements', icon: Trophy },
   { id: 'stats' as NavTab, label: 'Statistics', icon: BarChart3 },
   { id: 'import' as NavTab, label: 'Import', icon: DownloadCloud },
   { id: 'settings' as NavTab, label: 'Settings', icon: Settings },
