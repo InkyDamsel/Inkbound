@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { UserBookRecord, Priority } from '../types';
 import { BookCover } from './BookCover';
 import { TBRBookGrid } from './tbr/TBRBookGrid';
+import { TBRGroupedBookGrid } from './tbr/TBRGroupedBookGrid';
 import {
   ArrowRight,
   Bookmark,
@@ -233,39 +234,9 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
           })}
         </div>
       ) : tbrView === 'series' ? (
-        <div className="space-y-5">
-          {(Object.entries(seriesGroups) as Array<[string, UserBookRecord[]]>).map(([seriesName, group]) => (
-            <section key={seriesName} className="inkbound-panel p-5">
-              <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">{seriesName}</h2>
-              <p className="mt-1 text-xs text-[var(--ink-muted)]">{group.length} waiting</p>
-              <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
-                {group.map((book) => (
-                  <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="text-left">
-                    <BookCover work={book.work} edition={book.editions[0]} size="md" />
-                    <p className="mt-2 line-clamp-2 font-serif text-sm text-[var(--ink-ivory)]">{book.work.title}</p>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+        <TBRGroupedBookGrid groups={seriesGroups} onSelectBook={onSelectBook} />
       ) : (
-        <div className="space-y-5">
-          {(Object.entries(genreGroups) as Array<[string, UserBookRecord[]]>).map(([genre, group]) => (
-            <section key={genre} className="inkbound-panel p-5">
-              <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">{genre}</h2>
-              <p className="mt-1 text-xs text-[var(--ink-muted)]">{group.length} waiting</p>
-              <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
-                {group.map((book) => (
-                  <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="text-left">
-                    <BookCover work={book.work} edition={book.editions[0]} size="md" />
-                    <p className="mt-2 line-clamp-2 font-serif text-sm text-[var(--ink-ivory)]">{book.work.title}</p>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+        <TBRGroupedBookGrid groups={genreGroups} onSelectBook={onSelectBook} />
       )}
 
       {isPickerOpen && (
