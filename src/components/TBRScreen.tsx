@@ -3,6 +3,7 @@ import { UserBookRecord, Priority } from '../types';
 import { BookCover } from './BookCover';
 import { TBRBookGrid } from './tbr/TBRBookGrid';
 import { TBRGroupedBookGrid } from './tbr/TBRGroupedBookGrid';
+import { TBRSummaryGrid } from './tbr/TBRSummaryGrid';
 import {
   ArrowRight,
   Bookmark,
@@ -135,20 +136,11 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
           </button>
         </div>
 
-        <div className="mt-7 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-4">
-            <p className="text-2xl font-serif text-[var(--ink-ivory)]">{tbrBooks.length}</p>
-            <p className="mt-1 text-xs text-[var(--ink-muted)]">Books waiting</p>
-          </div>
-          <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-4">
-            <p className="text-2xl font-serif text-[var(--ink-ivory)]">{topPriorityCount}</p>
-            <p className="mt-1 text-xs text-[var(--ink-muted)]">Marked read next</p>
-          </div>
-          <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-4">
-            <p className="text-2xl font-serif text-[var(--ink-ivory)]">{withReasonsCount}</p>
-            <p className="mt-1 text-xs text-[var(--ink-muted)]">Saved with a reason</p>
-          </div>
-        </div>
+        <TBRSummaryGrid
+          booksWaiting={tbrBooks.length}
+          readNextCount={topPriorityCount}
+          savedWithReasonCount={withReasonsCount}
+        />
       </section>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
