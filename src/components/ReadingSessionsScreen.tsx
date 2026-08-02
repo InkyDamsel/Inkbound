@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
+import { ResponsiveGrid } from '../layout/responsive';
 
 interface ReadingSessionsScreenProps {
   books: UserBookRecord[];
@@ -87,7 +88,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
         <BookOpen className="pointer-events-none absolute -bottom-10 right-5 h-44 w-44 text-[var(--ink-gold)] opacity-[0.045]" />
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ResponsiveGrid minItemWidth={220} maxColumns={4} gap={12}>
         {[
           { label: 'Time Read', value: `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`, icon: Clock3 },
           { label: 'Pages Read', value: totalPages.toLocaleString(), icon: BookOpen },
@@ -104,7 +105,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
             </div>
           </div>
         ))}
-      </div>
+      </ResponsiveGrid>
 
       <div className="inkbound-panel grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_220px]">
         <label className="relative block">
