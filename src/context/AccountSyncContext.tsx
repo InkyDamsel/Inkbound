@@ -8,7 +8,7 @@ import {
   signInWithPopup,
   signOut,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 
 type SyncStatus = 'idle' | 'working' | 'success' | 'error';
@@ -26,8 +26,19 @@ interface AccountSyncContextValue {
   restoreSnapshot: () => Promise<void>;
 }
 
+interface StoredPhotoMemory {
+  id: string;
+  imageData: string;
+  caption: string;
+  date: string;
+  location: string;
+  bookId?: string;
+  createdAt: string;
+}
+
 const AccountSyncContext = createContext<AccountSyncContextValue | undefined>(undefined);
 const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
+const PHOTO_MEMORIES_STORAGE_KEY = 'inkbound_photo_memories';
 
 const SYNC_KEYS = [
   'inkbound_books',
@@ -62,12 +73,22 @@ const SYNC_KEYS = [
   'inkbound_reading_insights_dismissed',
   'inkbound_reading_time_capsules',
   'inkbound_time_capsule_filter',
+  'inkbound_photo_memory_filter',
 ] as const;
 
 const collectSnapshot = () =>
   Object.fromEntries(
     SYNC_KEYS.map((key) => [key, localStorage.getItem(key)]).filter(([, value]) => value !== null),
   );
+
+function readPhotoMemories(): StoredPhotoMemory[] {
+  try {
+    const stored = localStorage.getItem(PHOTO_MEMORIES_STORAGE_KEY);
+    return stored ? (JSON.parse(stored) as StoredPhotoMemory[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -125,17 +146,33 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     }
     try {
       setStatus('working');
-      setMessage('Uploading this device...');
+      setMessage('Uploading this device and photo memories...');
       const syncedAt = new Date().toISOString();
       await setDoc(
         doc(db, 'users', user.uid, 'sync', 'current'),
-        { data: collectSnapshot(), provider: 'google', updatedAt: serverTimestamp(), clientUpdatedAt: syncedAt, version: 1 },
+        { data: collectSnapshot(), provider: 'google', updatedAt: serverTimestamp(), clientUpdatedAt: syncedAt, version: 2 },
         { merge: true },
       );
+
+      const localPhotos = readPhotoMemories();
+      const photoCollection = collection(db, 'users', user.uid, 'photoMemories');
+      const cloudPhotos = await getDocs(photoCollection);
+      const localIds = new Set(localPhotos.map((photo) => photo.id));
+      await Promise.all(
+        cloudPhotos.docs
+          .filter((photoDocument) => !localIds.has(photoDocument.id))
+          .map((photoDocument) => deleteDoc(photoDocument.ref)),
+      );
+      await Promise.all(
+        localPhotos.map((photo) =>
+          setDoc(doc(photoCollection, photo.id), { ...photo, updatedAt: serverTimestamp() }, { merge: true }),
+        ),
+      );
+
       localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
       setLastSyncedAt(syncedAt);
       setStatus('success');
-      setMessage('This device is synced to your Google-connected Inkbound account.');
+      setMessage('This device and its photo memories are synced to your Google-connected Inkbound account.');
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : 'Upload failed.');
@@ -150,7 +187,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     }
     try {
       setStatus('working');
-      setMessage('Restoring your Inkbound data...');
+      setMessage('Restoring your Inkbound data and photo memories...');
       const snapshot = await getDoc(doc(db, 'users', user.uid, 'sync', 'current'));
       if (!snapshot.exists()) {
         setStatus('error');
@@ -161,6 +198,22 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       const data = snapshotData.data as Record<string, string> | undefined;
       if (!data) throw new Error('Cloud backup is empty.');
       Object.entries(data).forEach(([key, value]) => localStorage.setItem(key, value));
+
+      const photoSnapshot = await getDocs(collection(db, 'users', user.uid, 'photoMemories'));
+      const restoredPhotos = photoSnapshot.docs.map((photoDocument) => {
+        const photo = photoDocument.data() as StoredPhotoMemory;
+        return {
+          id: photoDocument.id,
+          imageData: photo.imageData,
+          caption: photo.caption ?? '',
+          date: photo.date,
+          location: photo.location ?? '',
+          bookId: photo.bookId,
+          createdAt: photo.createdAt,
+        } satisfies StoredPhotoMemory;
+      });
+      localStorage.setItem(PHOTO_MEMORIES_STORAGE_KEY, JSON.stringify(restoredPhotos));
+
       const restoredAt = typeof snapshotData.clientUpdatedAt === 'string' ? snapshotData.clientUpdatedAt : new Date().toISOString();
       localStorage.setItem(LAST_SYNC_STORAGE_KEY, restoredAt);
       setLastSyncedAt(restoredAt);
