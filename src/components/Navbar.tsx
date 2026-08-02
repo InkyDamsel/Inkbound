@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Clock3,
   DownloadCloud,
+  FolderHeart,
   Home,
   Library,
   Moon,
@@ -33,6 +34,7 @@ export type NavTab =
   | 'sessions'
   | 'challenges'
   | 'achievements'
+  | 'collections'
   | 'stats'
   | 'import'
   | 'settings'
@@ -54,6 +56,7 @@ const navItems = [
   { id: 'library' as NavTab, label: 'My Library', icon: Library },
   { id: 'tbr' as NavTab, label: 'TBR', icon: Bookmark },
   { id: 'sessions' as NavTab, label: 'Reading Sessions', icon: Clock3 },
+  { id: 'collections' as NavTab, label: 'Collections', icon: FolderHeart },
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
   { id: 'achievements' as NavTab, label: 'Achievements', icon: Trophy },
   { id: 'stats' as NavTab, label: 'Statistics', icon: BarChart3 },
@@ -332,24 +335,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
 
                 <div className="space-y-1 p-2">
-                  <button
-                    type="button"
-                    onClick={() => navigate('sessions')}
-                    className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]"
-                  >
+                  <button type="button" onClick={() => navigate('sessions')} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]">
                     <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
                     <span>
-                      <strong className="block text-sm text-[var(--ink-ivory)]">
-                        {currentlyReadingCount} books in progress
-                      </strong>
+                      <strong className="block text-sm text-[var(--ink-ivory)]">{currentlyReadingCount} books in progress</strong>
                       <small className="text-[var(--ink-muted)]">Start or continue a reading session.</small>
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate('tbr')}
-                    className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]"
-                  >
+                  <button type="button" onClick={() => navigate('tbr')} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]">
                     <Bookmark className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
                     <span>
                       <strong className="block text-sm text-[var(--ink-ivory)]">{tbrCount} books waiting</strong>
@@ -358,11 +351,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      userPlan === 'free'
-                        ? openUpgradeModal('Explore Inkbound Premium')
-                        : navigate('profile')
-                    }
+                    onClick={() => userPlan === 'free' ? openUpgradeModal('Explore Inkbound Premium') : navigate('profile')}
                     className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]"
                   >
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
@@ -424,12 +413,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <p className="inkbound-kicker">Inkbound</p>
                 <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">More</h2>
               </div>
-              <button
-                type="button"
-                className="quiet-shelf-icon-button"
-                onClick={() => setIsMobileMenuOpen(false)}
-                aria-label="Close more menu"
-              >
+              <button type="button" className="quiet-shelf-icon-button" onClick={() => setIsMobileMenuOpen(false)} aria-label="Close more menu">
                 <X />
               </button>
             </div>
@@ -450,9 +434,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <Icon className="h-5 w-5 text-[var(--ink-gold)]" />
                     <span className="flex-1">{item.label}</span>
-                    {item.id === 'stats' && userPlan === 'free' && (
-                      <small className="quiet-shelf-premium-pill">Premium</small>
-                    )}
+                    {item.id === 'stats' && userPlan === 'free' && <small className="quiet-shelf-premium-pill">Premium</small>}
                   </button>
                 );
               })}
@@ -479,8 +461,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
                 className="quiet-shelf-secondary-action justify-center"
               >
-                <Clock3 />
-                Start Session
+                <Clock3 /> Start Session
               </button>
               <button
                 type="button"
@@ -490,8 +471,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
                 className="quiet-shelf-primary-action justify-center"
               >
-                <Plus />
-                Add Book
+                <Plus /> Add Book
               </button>
             </div>
           </section>
@@ -502,12 +482,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {mobilePrimaryItems.map((item) => {
           const Icon = item.icon;
           return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => navigate(item.id)}
-              className={activeTab === item.id ? 'is-active' : ''}
-            >
+            <button key={item.id} type="button" onClick={() => navigate(item.id)} className={activeTab === item.id ? 'is-active' : ''}>
               <Icon />
               <span>{item.label}</span>
             </button>
