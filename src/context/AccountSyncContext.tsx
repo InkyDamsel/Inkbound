@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   GoogleAuthProvider,
-  OAuthProvider,
   User,
   onAuthStateChanged,
   signInWithPopup,
@@ -18,8 +17,6 @@ interface AccountSyncContextValue {
   status: SyncStatus;
   message: string;
   signInWithGoogle: () => Promise<void>;
-  signInWithApple: () => Promise<void>;
-  signInWithAmazon: () => void;
   signOutAccount: () => Promise<void>;
   uploadSnapshot: () => Promise<void>;
   restoreSnapshot: () => Promise<void>;
@@ -55,36 +52,49 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  const runSignIn = async (provider: GoogleAuthProvider | OAuthProvider) => {
+  const signInWithGoogle = async () => {
     if (!auth) {
       setStatus('error');
-      setMessage('Cloud sync is not configured yet.');
+      setMessage('Google sync is not configured yet.');
       return;
     }
+
     try {
       setStatus('working');
-      setMessage('Opening secure sign-in...');
+      setMessage('Opening Google sign-in...');
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
       setStatus('success');
-      setMessage('Account connected.');
+      setMessage('Google account connected. You can now sync or restore your Inkbound data.');
     } catch (error) {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : 'Sign-in failed.');
+      setMessage(error instanceof Error ? error.message : 'Google sign-in failed.');
     }
   };
 
   const uploadSnapshot = async () => {
-    if (!user || !db) return;
+    if (!user || !db) {
+      setStatus('error');
+      setMessage('Sign in with Google before syncing this device.');
+      return;
+    }
+
     try {
       setStatus('working');
       setMessage('Uploading this device...');
       await setDoc(
         doc(db, 'users', user.uid, 'sync', 'current'),
-        { data: collectSnapshot(), updatedAt: serverTimestamp(), version: 1 },
+        {
+          data: collectSnapshot(),
+          provider: 'google',
+          updatedAt: serverTimestamp(),
+          version: 1,
+        },
         { merge: true },
       );
       setStatus('success');
-      setMessage('This device is synced.');
+      setMessage('This device is synced to your Google-connected Inkbound account.');
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : 'Upload failed.');
@@ -92,18 +102,25 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
   };
 
   const restoreSnapshot = async () => {
-    if (!user || !db) return;
+    if (!user || !db) {
+      setStatus('error');
+      setMessage('Sign in with Google before restoring cloud data.');
+      return;
+    }
+
     try {
       setStatus('working');
-      setMessage('Restoring your library...');
+      setMessage('Restoring your Inkbound data...');
       const snapshot = await getDoc(doc(db, 'users', user.uid, 'sync', 'current'));
       if (!snapshot.exists()) {
         setStatus('error');
-        setMessage('No cloud backup exists for this account yet.');
+        setMessage('No cloud backup exists for this Google account yet.');
         return;
       }
+
       const data = snapshot.data().data as Record<string, string> | undefined;
       if (!data) throw new Error('Cloud backup is empty.');
+
       Object.entries(data).forEach(([key, value]) => localStorage.setItem(key, value));
       setStatus('success');
       setMessage('Restored. Reloading Inkbound...');
@@ -120,22 +137,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       isConfigured: isFirebaseConfigured,
       status,
       message,
-      signInWithGoogle: () => runSignIn(new GoogleAuthProvider()),
-      signInWithApple: () => {
-        const provider = new OAuthProvider('apple.com');
-        provider.addScope('email');
-        provider.addScope('name');
-        return runSignIn(provider);
-      },
-      signInWithAmazon: () => {
-        const url = import.meta.env.VITE_AMAZON_LOGIN_URL;
-        if (!url) {
-          setStatus('error');
-          setMessage('Amazon sign-in needs its secure server endpoint configured.');
-          return;
-        }
-        window.location.assign(url);
-      },
+      signInWithGoogle,
       signOutAccount: async () => {
         if (auth) await signOut(auth);
         setStatus('idle');
