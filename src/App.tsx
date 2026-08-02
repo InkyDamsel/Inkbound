@@ -21,6 +21,7 @@ import { ImportCenterScreen } from './components/ImportCenterScreen';
 import { StatisticsScreen } from './components/StatisticsScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { AddBookModal } from './components/AddBookModal';
+import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { Check, RotateCcw } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
@@ -262,18 +263,20 @@ export default function App() {
   };
 
   return (
-    <div className="inkbound-app-shell">
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        books={books}
-        onSelectBook={setSelectedBookForDetails}
-        onOpenAddBook={() => setIsAddBookOpen(true)}
-        onOpenTimer={() => openTimer()}
-        isDarkMode={isDarkMode}
-        setIsDarkMode={setIsDarkMode}
-      />
-
+    <ResponsiveShell
+      navigation={
+        <Navbar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          books={books}
+          onSelectBook={setSelectedBookForDetails}
+          onOpenAddBook={() => setIsAddBookOpen(true)}
+          onOpenTimer={() => openTimer()}
+          isDarkMode={isDarkMode}
+          setIsDarkMode={setIsDarkMode}
+        />
+      }
+    >
       <main className="inkbound-main-content">
         <div className="inkbound-page-canvas">
           {activeTab === 'home' && (
@@ -400,6 +403,6 @@ export default function App() {
           )}
         </div>
       )}
-    </div>
+    </ResponsiveShell>
   );
 }
