@@ -47,6 +47,7 @@ const SYNC_KEYS = [
   'inkbound_collection_definitions',
   'inkbound_collection_view',
   'inkbound_share_preferences',
+  'inkbound_monthly_wrapped_preferences',
 ] as const;
 
 const collectSnapshot = () =>
