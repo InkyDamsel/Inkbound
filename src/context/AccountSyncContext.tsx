@@ -48,6 +48,7 @@ const SYNC_KEYS = [
   'inkbound_collection_view',
   'inkbound_share_preferences',
   'inkbound_monthly_wrapped_preferences',
+  'inkbound_year_in_books_preferences',
   'inkbound_timeline_filter',
   'inkbound_timeline_search',
   'inkbound_timeline_collapsed_months',
