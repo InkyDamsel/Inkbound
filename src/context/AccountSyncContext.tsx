@@ -45,6 +45,8 @@ const SYNC_KEYS = [
   'inkbound_achievement_unlocks',
   'inkbound_achievement_seen',
   'inkbound_achievement_filter',
+  'inkbound_collection_definitions',
+  'inkbound_collection_view',
 ] as const;
 
 const collectSnapshot = () =>
