@@ -2,7 +2,7 @@ import React from 'react';
 import { UserBookRecord, ReadingSession } from '../types';
 import { BookCover } from './BookCover';
 import { DashboardSidebar } from './dashboard/DashboardSidebar';
-import { ResponsiveDashboardLayout } from '../layout/responsive';
+import { ResponsiveDashboardLayout, ResponsiveGrid } from '../layout/responsive';
 import {
   ArrowRight,
   BookOpen,
@@ -80,7 +80,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            <ResponsiveGrid minItemWidth={280} maxColumns={3} gap={16}>
               {currentlyReading.map((book) => {
                 const edition =
                   book.editions.find((item) => item.id === book.activeEditionId) || book.editions[0];
@@ -162,7 +162,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                   </article>
                 );
               })}
-            </div>
+            </ResponsiveGrid>
           )}
         </section>
 
@@ -239,7 +239,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
+          <ResponsiveGrid minItemWidth={220} maxColumns={4} gap={12}>
             {recentSessions.slice(0, 4).map((session) => {
               const book = books.find((item) => item.id === session.bookId);
               const edition =
@@ -277,7 +277,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 </article>
               );
             })}
-          </div>
+          </ResponsiveGrid>
         </section>
       </ResponsiveDashboardLayout>
     </div>
