@@ -14,6 +14,7 @@ import {
   FolderHeart,
   History,
   Home,
+  Images,
   Library,
   Moon,
   MoreHorizontal,
@@ -42,6 +43,7 @@ export type NavTab =
   | 'timeline'
   | 'memories'
   | 'time-capsules'
+  | 'photo-memories'
   | 'personality'
   | 'insights'
   | 'challenges'
@@ -74,6 +76,7 @@ const navItems = [
   { id: 'timeline' as NavTab, label: 'Reading Timeline', icon: History },
   { id: 'memories' as NavTab, label: 'Reading Memories', icon: BookHeart },
   { id: 'time-capsules' as NavTab, label: 'Time Capsules', icon: CalendarClock },
+  { id: 'photo-memories' as NavTab, label: 'Photo Memories', icon: Images },
   { id: 'personality' as NavTab, label: 'Reader Personality', icon: Sparkles },
   { id: 'insights' as NavTab, label: 'Reading Insights', icon: BarChart3 },
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
