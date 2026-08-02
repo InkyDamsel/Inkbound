@@ -10,6 +10,7 @@ import './styles/app-shell.css';
 import './styles/responsive-navigation.css';
 import './styles/theme-modes.css';
 import './styles/core-pages.css';
+import './styles/release-polish.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
