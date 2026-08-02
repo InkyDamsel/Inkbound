@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { UpgradeModal } from './components/UpgradeModal.tsx';
+import { AccountSyncProvider } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import './index.css';
@@ -13,8 +14,10 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BreakpointProvider>
       <UserPlanProvider>
-        <App />
-        <UpgradeModal />
+        <AccountSyncProvider>
+          <App />
+          <UpgradeModal />
+        </AccountSyncProvider>
       </UserPlanProvider>
     </BreakpointProvider>
   </StrictMode>,
