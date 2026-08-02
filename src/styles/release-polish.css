@@ -215,6 +215,19 @@ main [class*='fixed'][class*='inset-0'] > * {
   color: #d9b0ad;
 }
 
+/* Replace the temporary emoji with the approved Lumis artwork asset. */
+main [aria-label='A sleeping purple library dragon'] {
+  display: block;
+  width: min(100%, 26rem);
+  aspect-ratio: 414 / 214;
+  margin-inline: auto;
+  background: url('/assets/lumis/lumis-companion.svg') center / cover no-repeat;
+  color: transparent;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.28));
+}
+
 @media (min-width: 1280px) {
   main {
     padding-bottom: 3rem;
