@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { BookCover } from './BookCover';
+import { LibraryBookGrid } from './library/LibraryBookGrid';
 import {
   BookOpen,
   CheckSquare,
@@ -104,12 +105,15 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       });
   }, [books, activeTab, searchFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
-  const allFilteredSelected = filteredBooks.length > 0 && filteredBooks.every((book) => selectedBookIds.includes(book.id));
+  const allFilteredSelected =
+    filteredBooks.length > 0 && filteredBooks.every((book) => selectedBookIds.includes(book.id));
   const isAtFreeLimit = userPlan === 'free' && books.length >= freeBookLimit;
 
   const handleAddBook = () => {
     if (isAtFreeLimit) {
-      openUpgradeModal(`You have reached the Free limit of ${freeBookLimit} books. Upgrade to Premium to add unlimited books.`);
+      openUpgradeModal(
+        `You have reached the Free limit of ${freeBookLimit} books. Upgrade to Premium to add unlimited books.`,
+      );
       return;
     }
     onOpenAddBook();
@@ -190,7 +194,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             />
           </label>
 
-          <select value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} className="inkbound-select">
+          <select
+            value={formatFilter}
+            onChange={(event) => setFormatFilter(event.target.value)}
+            className="inkbound-select"
+          >
             <option value="all">All formats</option>
             <option value="hardcover">Hardcover</option>
             <option value="paperback">Paperback</option>
@@ -198,12 +206,24 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <option value="audiobook">Audiobook</option>
           </select>
 
-          <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)} className="inkbound-select">
+          <select
+            value={genreFilter}
+            onChange={(event) => setGenreFilter(event.target.value)}
+            className="inkbound-select"
+          >
             <option value="all">All genres</option>
-            {allGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
+            {allGenres.map((genre) => (
+              <option key={genre} value={genre}>
+                {genre}
+              </option>
+            ))}
           </select>
 
-          <select value={ownershipFilter} onChange={(event) => setOwnershipFilter(event.target.value)} className="inkbound-select">
+          <select
+            value={ownershipFilter}
+            onChange={(event) => setOwnershipFilter(event.target.value)}
+            className="inkbound-select"
+          >
             <option value="all">Any ownership</option>
             <option value="owned">Owned</option>
             <option value="borrowed-library">Library loan</option>
@@ -211,14 +231,22 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <option value="wishlist">Wishlist</option>
           </select>
 
-          <select value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)} className="inkbound-select">
+          <select
+            value={ratingFilter}
+            onChange={(event) => setRatingFilter(event.target.value)}
+            className="inkbound-select"
+          >
             <option value="all">Any rating</option>
             <option value="5">5 stars</option>
             <option value="4">4+ stars</option>
             <option value="3">3+ stars</option>
           </select>
 
-          <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select">
+          <select
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value as SortMode)}
+            className="inkbound-select"
+          >
             <option value="recent">Recently added</option>
             <option value="title">Title</option>
             <option value="author">Author</option>
@@ -230,18 +258,28 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-4">
           <button type="button" onClick={handleSelectAll} className="quiet-shelf-secondary-action">
             {canUseBatchEdit ? (
-              allFilteredSelected ? <CheckSquare className="h-4 w-4 text-[#e2bd66]" /> : <Square className="h-4 w-4" />
+              allFilteredSelected ? (
+                <CheckSquare className="h-4 w-4 text-[#e2bd66]" />
+              ) : (
+                <Square className="h-4 w-4" />
+              )
             ) : (
               <Lock className="h-4 w-4 text-[#c5a059]" />
             )}
-            <span>{canUseBatchEdit ? (allFilteredSelected ? 'Deselect all' : 'Select all') : 'Batch edit'}</span>
+            <span>
+              {canUseBatchEdit ? (allFilteredSelected ? 'Deselect all' : 'Select all') : 'Batch edit'}
+            </span>
           </button>
 
           <div className="flex items-center rounded-full border border-[#c5a059]/20 bg-[#0d0910] p-1">
             <button
               type="button"
               onClick={() => setViewMode('grid')}
-              className={`rounded-full p-2 transition ${viewMode === 'grid' ? 'bg-[#c5a059] text-[#171015]' : 'text-[#9e919f] hover:text-[#f4efe6]'}`}
+              className={`rounded-full p-2 transition ${
+                viewMode === 'grid'
+                  ? 'bg-[#c5a059] text-[#171015]'
+                  : 'text-[#9e919f] hover:text-[#f4efe6]'
+              }`}
               aria-label="Grid view"
             >
               <LayoutGrid className="h-4 w-4" />
@@ -249,7 +287,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <button
               type="button"
               onClick={() => setViewMode('list')}
-              className={`rounded-full p-2 transition ${viewMode === 'list' ? 'bg-[#c5a059] text-[#171015]' : 'text-[#9e919f] hover:text-[#f4efe6]'}`}
+              className={`rounded-full p-2 transition ${
+                viewMode === 'list'
+                  ? 'bg-[#c5a059] text-[#171015]'
+                  : 'text-[#9e919f] hover:text-[#f4efe6]'
+              }`}
               aria-label="List view"
             >
               <List className="h-4 w-4" />
@@ -262,59 +304,33 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <section className="inkbound-panel border-dashed p-12 text-center">
           <BookOpen className="mx-auto h-12 w-12 text-[#c5a059]/55" />
           <h2 className="mt-4 font-serif text-2xl font-bold text-[#f4efe6]">No books found</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-[#ad9fac]">Adjust the current filters or add a new title to your library.</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-[#ad9fac]">
+            Adjust the current filters or add a new title to your library.
+          </p>
         </section>
       ) : viewMode === 'grid' ? (
-        <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
-          {filteredBooks.map((book) => {
-            const isSelected = selectedBookIds.includes(book.id);
-            const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) || book.editions[0];
-            return (
-              <article
-                key={book.id}
-                onClick={() => onSelectBook(book)}
-                className={`group cursor-pointer rounded-2xl border p-3 transition duration-200 ${
-                  isSelected
-                    ? 'border-[#c5a059] bg-[#c5a059]/12 shadow-[0_16px_34px_rgba(0,0,0,.4)]'
-                    : 'border-white/5 bg-[#17101b] hover:-translate-y-1 hover:border-[#c5a059]/35 hover:bg-[#1d1422]'
-                }`}
-              >
-                <div className="flex justify-center">
-                  <BookCover
-                    work={book.work}
-                    edition={activeEdition}
-                    size="md"
-                    progressPercentage={book.progressPercentage}
-                    rating={book.rating}
-                    isSelected={isSelected}
-                    onSelectToggle={() => onToggleSelectBook(book.id)}
-                  />
-                </div>
-                <div className="mt-4 min-w-0">
-                  <h3 className="line-clamp-2 font-serif text-base font-bold leading-tight text-[#f4efe6] transition group-hover:text-[#e2bd66]">{book.work.title}</h3>
-                  <p className="mt-1 truncate text-xs text-[#ad9fac]">{book.work.author}</p>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
-                    <span className="rounded-full bg-[#24172a] px-2.5 py-1 capitalize text-[#cfc2cf]">{book.status.replaceAll('-', ' ')}</span>
-                    {book.rating ? (
-                      <span className="flex items-center gap-1 font-bold text-[#e2bd66]"><Star className="h-3 w-3 fill-current" />{book.rating.toFixed(1)}</span>
-                    ) : null}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </section>
+        <LibraryBookGrid
+          books={filteredBooks}
+          selectedBookIds={selectedBookIds}
+          onSelectBook={onSelectBook}
+          onToggleSelectBook={onToggleSelectBook}
+        />
       ) : (
         <section className="inkbound-panel overflow-hidden p-0">
           <div className="divide-y divide-white/5">
             {filteredBooks.map((book) => {
               const isSelected = selectedBookIds.includes(book.id);
-              const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) || book.editions[0];
+              const activeEdition =
+                book.editions.find((edition) => edition.id === book.activeEditionId) ||
+                book.editions[0];
+
               return (
                 <article
                   key={book.id}
                   onClick={() => onSelectBook(book)}
-                  className={`flex cursor-pointer items-center gap-4 p-4 transition hover:bg-[#1d1422] ${isSelected ? 'bg-[#c5a059]/10' : ''}`}
+                  className={`flex cursor-pointer items-center gap-4 p-4 transition hover:bg-[#1d1422] ${
+                    isSelected ? 'bg-[#c5a059]/10' : ''
+                  }`}
                 >
                   <button
                     type="button"
@@ -325,20 +341,44 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     className="text-[#c5a059]"
                     aria-label={isSelected ? 'Deselect book' : 'Select book'}
                   >
-                    {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5 text-[#6f6570]" />}
+                    {isSelected ? (
+                      <CheckSquare className="h-5 w-5" />
+                    ) : (
+                      <Square className="h-5 w-5 text-[#6f6570]" />
+                    )}
                   </button>
-                  <BookCover work={book.work} edition={activeEdition} size="sm" showFormatBadge={false} />
+                  <BookCover
+                    work={book.work}
+                    edition={activeEdition}
+                    size="sm"
+                    showFormatBadge={false}
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em]">
-                      <span className="rounded-full border border-[#c5a059]/20 bg-[#c5a059]/8 px-2.5 py-1 text-[#e2bd66]">{activeEdition?.format || 'book'}</span>
-                      <span className="rounded-full bg-[#24172a] px-2.5 py-1 text-[#b9acba]">{book.status.replaceAll('-', ' ')}</span>
+                      <span className="rounded-full border border-[#c5a059]/20 bg-[#c5a059]/8 px-2.5 py-1 text-[#e2bd66]">
+                        {activeEdition?.format || 'book'}
+                      </span>
+                      <span className="rounded-full bg-[#24172a] px-2.5 py-1 text-[#b9acba]">
+                        {book.status.replaceAll('-', ' ')}
+                      </span>
                     </div>
-                    <h3 className="mt-2 truncate font-serif text-lg font-bold text-[#f4efe6]">{book.work.title}</h3>
+                    <h3 className="mt-2 truncate font-serif text-lg font-bold text-[#f4efe6]">
+                      {book.work.title}
+                    </h3>
                     <p className="truncate text-xs text-[#ad9fac]">{book.work.author}</p>
                   </div>
                   <div className="hidden text-right sm:block">
-                    {book.rating ? <p className="flex items-center justify-end gap-1 text-sm font-bold text-[#e2bd66]"><Star className="h-3.5 w-3.5 fill-current" />{book.rating.toFixed(1)}</p> : <p className="text-xs text-[#807482]">Unrated</p>}
-                    <p className="mt-1 text-xs text-[#ad9fac]">{book.progressPercentage}% complete</p>
+                    {book.rating ? (
+                      <p className="flex items-center justify-end gap-1 text-sm font-bold text-[#e2bd66]">
+                        <Star className="h-3.5 w-3.5 fill-current" />
+                        {book.rating.toFixed(1)}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-[#807482]">Unrated</p>
+                    )}
+                    <p className="mt-1 text-xs text-[#ad9fac]">
+                      {book.progressPercentage}% complete
+                    </p>
                   </div>
                 </article>
               );
@@ -349,9 +389,24 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
       {selectedBookIds.length > 0 && (
         <div className="fixed bottom-20 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-full border border-[#c5a059]/55 bg-[#17101b]/95 px-4 py-3 shadow-2xl backdrop-blur md:bottom-6 md:ml-[116px]">
-          <span className="whitespace-nowrap text-xs font-bold text-[#e2bd66]">{selectedBookIds.length} selected</span>
-          <button type="button" onClick={onOpenBatchEdit} className="rounded-full bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#171015]">Batch Actions</button>
-          <button type="button" onClick={onClearSelection} className="rounded-full p-2 text-[#ad9fac] hover:text-white" aria-label="Clear selection"><X className="h-4 w-4" /></button>
+          <span className="whitespace-nowrap text-xs font-bold text-[#e2bd66]">
+            {selectedBookIds.length} selected
+          </span>
+          <button
+            type="button"
+            onClick={onOpenBatchEdit}
+            className="rounded-full bg-[#c5a059] px-4 py-2 text-xs font-bold text-[#171015]"
+          >
+            Batch Actions
+          </button>
+          <button
+            type="button"
+            onClick={onClearSelection}
+            className="rounded-full p-2 text-[#ad9fac] hover:text-white"
+            aria-label="Clear selection"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
     </div>
