@@ -20,6 +20,7 @@ import { CollectionsScreen } from './components/CollectionsScreen';
 import { ReadingTimelineScreen } from './components/ReadingTimelineScreen';
 import { ReadingMemoriesScreen } from './components/ReadingMemoriesScreen';
 import { ReadingTimeCapsulesScreen } from './components/ReadingTimeCapsulesScreen';
+import { PhotoMemoriesScreen } from './components/PhotoMemoriesScreen';
 import { ReaderPersonalityScreen } from './components/ReaderPersonalityScreen';
 import { ReadingInsightsScreen } from './components/ReadingInsightsScreen';
 import { InkboundStudioScreen } from './components/InkboundStudioScreen';
@@ -353,6 +354,9 @@ export default function App() {
           )}
           {activeTab === 'time-capsules' && (
             <ReadingTimeCapsulesScreen books={books} onSelectBook={setSelectedBookForDetails} />
+          )}
+          {activeTab === 'photo-memories' && (
+            <PhotoMemoriesScreen books={books} onSelectBook={setSelectedBookForDetails} />
           )}
           {activeTab === 'personality' && <ReaderPersonalityScreen books={books} sessions={sessions} />}
           {activeTab === 'insights' && <ReadingInsightsScreen books={books} sessions={sessions} />}
