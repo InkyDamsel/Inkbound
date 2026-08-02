@@ -19,6 +19,7 @@ import { AchievementsScreen } from './components/AchievementsScreen';
 import { CollectionsScreen } from './components/CollectionsScreen';
 import { ReadingTimelineScreen } from './components/ReadingTimelineScreen';
 import { ReadingMemoriesScreen } from './components/ReadingMemoriesScreen';
+import { ReaderPersonalityScreen } from './components/ReaderPersonalityScreen';
 import { InkboundStudioScreen } from './components/InkboundStudioScreen';
 import { MonthlyWrappedScreen } from './components/MonthlyWrappedScreen';
 import { YearInBooksScreen } from './components/YearInBooksScreen';
@@ -340,34 +341,19 @@ export default function App() {
           {activeTab === 'challenges' && <ReadingChallengesScreen books={books} sessions={sessions} />}
           {activeTab === 'achievements' && <AchievementsScreen books={books} sessions={sessions} />}
           {activeTab === 'collections' && (
-            <CollectionsScreen
-              books={books}
-              onUpdateBook={handleUpdateBook}
-              onSelectBook={setSelectedBookForDetails}
-            />
+            <CollectionsScreen books={books} onUpdateBook={handleUpdateBook} onSelectBook={setSelectedBookForDetails} />
           )}
           {activeTab === 'timeline' && (
-            <ReadingTimelineScreen
-              books={books}
-              sessions={sessions}
-              onSelectBook={setSelectedBookForDetails}
-            />
+            <ReadingTimelineScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />
           )}
           {activeTab === 'memories' && (
-            <ReadingMemoriesScreen
-              books={books}
-              sessions={sessions}
-              onSelectBook={setSelectedBookForDetails}
-            />
+            <ReadingMemoriesScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />
           )}
+          {activeTab === 'personality' && <ReaderPersonalityScreen books={books} sessions={sessions} />}
           {activeTab === 'studio' && <InkboundStudioScreen books={books} sessions={sessions} />}
           {activeTab === 'wrapped' && <MonthlyWrappedScreen books={books} sessions={sessions} />}
           {activeTab === 'yearbook' && (
-            <YearInBooksScreen
-              books={books}
-              sessions={sessions}
-              onSelectBook={setSelectedBookForDetails}
-            />
+            <YearInBooksScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />
           )}
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
           {activeTab === 'import' && (
