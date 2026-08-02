@@ -1,28 +1,27 @@
 import React, { useState } from 'react';
+import { ChevronDown, ChevronUp, Sliders, Sparkles } from 'lucide-react';
 import { useUserPlan } from '../context/UserPlanContext';
-import { Shield, Sparkles, Sliders, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface DevPlanSwitcherProps {
   currentBookCount: number;
   onSetTestBooksCount?: (count: number) => void;
 }
 
-export const DevPlanSwitcher: React.FC<DevPlanSwitcherProps> = ({ currentBookCount, onSetTestBooksCount }) => {
+export const DevPlanSwitcher: React.FC<DevPlanSwitcherProps> = ({
+  currentBookCount,
+  onSetTestBooksCount,
+}) => {
   const { userPlan, setUserPlan, openUpgradeModal } = useUserPlan();
   const [isOpen, setIsOpen] = useState(false);
 
   const handleSelectFreeUnder = () => {
     setUserPlan('free');
-    if (onSetTestBooksCount) {
-      onSetTestBooksCount(38); // set 38 books (fewer than 50)
-    }
+    onSetTestBooksCount?.(38);
   };
 
   const handleSelectFreeLimit = () => {
     setUserPlan('free');
-    if (onSetTestBooksCount) {
-      onSetTestBooksCount(50); // set exactly 50 books
-    }
+    onSetTestBooksCount?.(50);
   };
 
   const handleSelectPremium = () => {
@@ -30,85 +29,101 @@ export const DevPlanSwitcher: React.FC<DevPlanSwitcherProps> = ({ currentBookCou
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-40">
+    <div className="w-full">
       {isOpen ? (
-        <div className="bg-[#1c0f24] text-[#f4efe6] border border-[#c5a059]/40 rounded-2xl p-3 shadow-2xl max-w-xs space-y-2.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <div className="flex items-center justify-between border-b border-[#3d2448] pb-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-[#e5c158]">
-              <Sliders className="w-3.5 h-3.5" />
+        <section className="w-full space-y-3 rounded-2xl border border-[#c5a059]/40 bg-[#120817] p-3 text-[#f4efe6] shadow-inner sm:p-4">
+          <div className="flex items-center justify-between border-b border-[#3d2448] pb-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#e5c158]">
+              <Sliders className="h-4 w-4" />
               <span>Prototype Test Controls</span>
             </div>
             <button
+              type="button"
               onClick={() => setIsOpen(false)}
-              className="text-stone-400 hover:text-white text-xs p-1"
+              className="grid min-h-11 min-w-11 place-items-center rounded-full text-stone-400 transition hover:bg-[#25132f] hover:text-white"
+              aria-label="Collapse prototype controls"
             >
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="h-4 w-4" />
             </button>
           </div>
 
-          <p className="text-[11px] text-stone-300">
-            Switch account tier to test limits, upgrade prompts, and features:
+          <p className="text-[11px] leading-relaxed text-stone-300">
+            Switch account tiers to test limits, upgrade prompts, and Premium-only features.
           </p>
 
-          <div className="space-y-1.5 text-xs">
+          <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-3">
             <button
+              type="button"
               onClick={handleSelectFreeUnder}
-              className={`w-full text-left px-3 py-1.5 rounded-lg border transition flex items-center justify-between ${
+              aria-pressed={userPlan === 'free' && currentBookCount < 50}
+              className={`flex min-h-12 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition ${
                 userPlan === 'free' && currentBookCount < 50
-                  ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 font-bold'
-                  : 'bg-[#25132f] border-[#3d2448] text-stone-300 hover:bg-[#321a3e]'
+                  ? 'border-emerald-500/50 bg-emerald-950/60 font-bold text-emerald-300'
+                  : 'border-[#3d2448] bg-[#25132f] text-stone-300 hover:bg-[#321a3e]'
               }`}
             >
-              <span>1. Free (&lt; 50 Books)</span>
-              <span className="text-[10px] opacity-75">38 books</span>
+              <span>Free under limit</span>
+              <span className="shrink-0 text-[10px] opacity-75">38 books</span>
             </button>
 
             <button
+              type="button"
               onClick={handleSelectFreeLimit}
-              className={`w-full text-left px-3 py-1.5 rounded-lg border transition flex items-center justify-between ${
+              aria-pressed={userPlan === 'free' && currentBookCount >= 50}
+              className={`flex min-h-12 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition ${
                 userPlan === 'free' && currentBookCount >= 50
-                  ? 'bg-amber-950/60 border-amber-500/50 text-amber-300 font-bold'
-                  : 'bg-[#25132f] border-[#3d2448] text-stone-300 hover:bg-[#321a3e]'
+                  ? 'border-amber-500/50 bg-amber-950/60 font-bold text-amber-300'
+                  : 'border-[#3d2448] bg-[#25132f] text-stone-300 hover:bg-[#321a3e]'
               }`}
             >
-              <span>2. Free (At 50-Book Limit)</span>
-              <span className="text-[10px] opacity-75">50 / 50</span>
+              <span>Free at limit</span>
+              <span className="shrink-0 text-[10px] opacity-75">50 / 50</span>
             </button>
 
             <button
+              type="button"
               onClick={handleSelectPremium}
-              className={`w-full text-left px-3 py-1.5 rounded-lg border transition flex items-center justify-between ${
+              aria-pressed={userPlan === 'premium'}
+              className={`flex min-h-12 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition ${
                 userPlan === 'premium'
-                  ? 'bg-[#c5a059]/20 border-[#c5a059] text-[#e5c158] font-bold'
-                  : 'bg-[#25132f] border-[#3d2448] text-stone-300 hover:bg-[#321a3e]'
+                  ? 'border-[#c5a059] bg-[#c5a059]/20 font-bold text-[#e5c158]'
+                  : 'border-[#3d2448] bg-[#25132f] text-stone-300 hover:bg-[#321a3e]'
               }`}
             >
-              <span>3. Premium (Unlimited)</span>
-              <Sparkles className="w-3 h-3 text-[#e5c158]" />
+              <span>Premium unlimited</span>
+              <Sparkles className="h-4 w-4 shrink-0 text-[#e5c158]" />
             </button>
           </div>
 
-          <div className="pt-1 flex items-center justify-between text-[11px] border-t border-[#3d2448]">
+          <div className="border-t border-[#3d2448] pt-3">
             <button
-              onClick={() => openUpgradeModal('Previewing Upgrade Screen')}
-              className="text-[#e5c158] hover:underline font-semibold flex items-center gap-1"
+              type="button"
+              onClick={() => openUpgradeModal('Previewing the Inkbound Premium upgrade screen')}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#c5a059]/30 bg-[#25132f] px-4 text-xs font-bold text-[#e5c158] transition hover:bg-[#321a3e] sm:w-auto"
             >
-              <Sparkles className="w-3 h-3" /> Open Upgrade Screen
+              <Sparkles className="h-4 w-4" />
+              Preview Upgrade Screen
             </button>
           </div>
-        </div>
+        </section>
       ) : (
         <button
+          type="button"
           onClick={() => setIsOpen(true)}
-          className="bg-[#1c0f24] hover:bg-[#25132f] text-[#f4efe6] border border-[#c5a059]/40 shadow-xl px-3 py-2 rounded-full flex items-center gap-2 text-xs font-semibold transition group"
+          className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border border-[#c5a059]/40 bg-[#120817] px-4 text-xs font-semibold text-[#f4efe6] shadow-inner transition hover:bg-[#25132f]"
+          aria-expanded={isOpen}
         >
-          <Sliders className="w-3.5 h-3.5 text-[#e5c158]" />
-          <span>Tier:</span>
-          <span className="font-bold uppercase text-[#e5c158]">{userPlan}</span>
-          <span className="text-[10px] text-stone-300 bg-[#120817] px-1.5 py-0.5 rounded-full border border-[#3d2448]">
-            {userPlan === 'premium' ? 'Unlimited' : `${currentBookCount}/50`}
+          <span className="flex min-w-0 items-center gap-2">
+            <Sliders className="h-4 w-4 shrink-0 text-[#e5c158]" />
+            <span>Test account tier</span>
           </span>
-          <ChevronUp className="w-3.5 h-3.5 text-stone-400 group-hover:text-white" />
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="font-bold uppercase text-[#e5c158]">{userPlan}</span>
+            <span className="rounded-full border border-[#3d2448] bg-[#1c0f24] px-2 py-0.5 text-[10px] text-stone-300">
+              {userPlan === 'premium' ? 'Unlimited' : `${currentBookCount}/50`}
+            </span>
+            <ChevronUp className="h-4 w-4 text-stone-400" />
+          </span>
         </button>
       )}
     </div>
