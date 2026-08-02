@@ -52,6 +52,8 @@ const SYNC_KEYS = [
   'inkbound_timeline_search',
   'inkbound_timeline_collapsed_months',
   'inkbound_timeline_memories',
+  'inkbound_book_memories',
+  'inkbound_memory_selected_book',
 ] as const;
 
 const collectSnapshot = () =>
