@@ -31,7 +31,6 @@ main > section {
   width: 100%;
 }
 
-/* Consistent page rhythm. */
 main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
   margin-top: var(--ink-page-gap);
 }
@@ -40,7 +39,6 @@ main .space-y-7 > :not([hidden]) ~ :not([hidden]) {
   margin-top: var(--ink-section-gap);
 }
 
-/* Typography refinement. */
 .inkbound-page-title,
 main h1,
 main h2,
@@ -60,7 +58,6 @@ main h3 {
   letter-spacing: -0.012em;
 }
 
-/* Panels and cards feel related without looking identical. */
 .inkbound-panel {
   overflow: clip;
 }
@@ -82,7 +79,6 @@ main article:hover {
     0 16px 34px rgba(0, 0, 0, 0.16);
 }
 
-/* Clear, consistent controls. */
 main button,
 main [role='button'] {
   -webkit-tap-highlight-color: transparent;
@@ -125,13 +121,11 @@ main select {
   cursor: pointer;
 }
 
-/* Unified focus treatment across keyboard navigation. */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--ink-focus) !important;
   outline-offset: 3px !important;
 }
 
-/* Calm empty and loading states. */
 .inkbound-empty-state {
   display: grid;
   min-height: 15rem;
@@ -185,7 +179,6 @@ main select {
   }
 }
 
-/* Better horizontal shelves and filter bars. */
 main [class*='overflow-x-auto'] {
   overscroll-behavior-inline: contain;
   scroll-snap-type: x proximity;
@@ -195,7 +188,6 @@ main [class*='overflow-x-auto'] > * {
   scroll-snap-align: start;
 }
 
-/* Dialogs and overlays remain readable and contained. */
 main [class*='fixed'][class*='inset-0'] {
   padding: clamp(0.75rem, 2vw, 1.5rem);
 }
@@ -205,7 +197,6 @@ main [class*='fixed'][class*='inset-0'] > * {
   overflow-y: auto;
 }
 
-/* Toasts and status colors use the restrained Inkbound palette. */
 .inkbound-status-success {
   border-color: color-mix(in srgb, var(--ink-success) 45%, transparent);
   background: color-mix(in srgb, var(--ink-success) 12%, transparent);
@@ -224,7 +215,6 @@ main [class*='fixed'][class*='inset-0'] > * {
   color: #d9b0ad;
 }
 
-/* Desktop density remains elegant rather than sparse. */
 @media (min-width: 1280px) {
   main {
     padding-bottom: 3rem;
@@ -235,7 +225,6 @@ main [class*='fixed'][class*='inset-0'] > * {
   }
 }
 
-/* Tablet and phone refinements. */
 @media (max-width: 1023px) {
   main {
     --ink-page-gap: 1.25rem;
@@ -270,7 +259,6 @@ main [class*='fixed'][class*='inset-0'] > * {
   }
 }
 
-/* Accessibility preferences restored from onboarding. */
 html[data-text-size='large'] {
   font-size: 112.5%;
 }
@@ -294,8 +282,7 @@ html.dyslexia-friendly select {
 
 html.reduce-motion *,
 html.reduce-motion *::before,
-html.reduce-motion *::after,
-@media (prefers-reduced-motion: reduce) {
+html.reduce-motion *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   scroll-behavior: auto !important;
@@ -303,6 +290,15 @@ html.reduce-motion *::after,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
   .inkbound-skeleton::after {
     display: none;
   }
