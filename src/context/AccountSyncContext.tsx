@@ -41,6 +41,7 @@ const SYNC_KEYS = [
   'inkbound_daily_goal_minutes',
   'inkbound_notifications_read',
   'inkbound_reading_session_draft',
+  'inkbound_joined_challenges',
 ] as const;
 
 const collectSnapshot = () =>
