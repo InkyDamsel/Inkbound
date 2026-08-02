@@ -4,6 +4,8 @@ import {
   Bell,
   BookMarked,
   Bookmark,
+  Check,
+  ChevronDown,
   Clock3,
   DownloadCloud,
   Home,
@@ -15,6 +17,7 @@ import {
   Settings,
   Sparkles,
   Sun,
+  UserRound,
   X,
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
@@ -67,26 +70,36 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [notificationsRead, setNotificationsRead] = useState(false);
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchResults = normalizedQuery
     ? books
-        .filter((book) =>
-          book.work.title.toLowerCase().includes(normalizedQuery) ||
-          book.work.author.toLowerCase().includes(normalizedQuery) ||
-          book.work.seriesName?.toLowerCase().includes(normalizedQuery) ||
-          book.work.genres.some((genre) => genre.toLowerCase().includes(normalizedQuery)) ||
-          book.privateTags.some((tag) => tag.toLowerCase().includes(normalizedQuery)) ||
-          book.editions.some((edition) => edition.isbn?.includes(normalizedQuery)),
+        .filter(
+          (book) =>
+            book.work.title.toLowerCase().includes(normalizedQuery) ||
+            book.work.author.toLowerCase().includes(normalizedQuery) ||
+            book.work.seriesName?.toLowerCase().includes(normalizedQuery) ||
+            book.work.genres.some((genre) => genre.toLowerCase().includes(normalizedQuery)) ||
+            book.privateTags.some((tag) => tag.toLowerCase().includes(normalizedQuery)) ||
+            book.editions.some((edition) => edition.isbn?.includes(normalizedQuery)),
         )
         .slice(0, 7)
     : [];
+
+  const currentlyReadingCount = books.filter((book) => book.status === 'currently-reading').length;
+  const tbrCount = books.filter((book) => book.status === 'tbr').length;
+  const remainingSlots = Math.max(0, freeBookLimit - books.length);
 
   const navigate = (tab: NavTab) => {
     setActiveTab(tab);
     setIsSearchOpen(false);
     setIsMobileMenuOpen(false);
+    setIsNotificationsOpen(false);
+    setIsProfileOpen(false);
     setSearchQuery('');
   };
 
@@ -131,10 +144,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <section className="quiet-shelf-plan-card">
             <div className="quiet-shelf-plan-heading">
               <span>Free Plan</span>
-              <button
-                type="button"
-                onClick={() => openUpgradeModal('Explore Inkbound Premium')}
-              >
+              <button type="button" onClick={() => openUpgradeModal('Explore Inkbound Premium')}>
                 See Plans
               </button>
             </div>
@@ -144,9 +154,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="quiet-shelf-plan-track">
               <span style={{ width: `${usedPercent}%` }} />
             </div>
-            <p className="quiet-shelf-plan-remaining">
-              {Math.max(0, freeBookLimit - books.length)} books remaining
-            </p>
+            <p className="quiet-shelf-plan-remaining">{remainingSlots} books remaining</p>
             <button
               type="button"
               className="quiet-shelf-upgrade-button"
@@ -170,14 +178,60 @@ export const Navbar: React.FC<NavbarProps> = ({
           </section>
         )}
 
-        <button type="button" className="quiet-shelf-profile">
-          <span className="quiet-shelf-avatar">JL</span>
-          <span className="quiet-shelf-profile-copy">
-            <strong>Jamie Lee</strong>
-            <small>View Profile</small>
-          </span>
-          <span aria-hidden="true">⌄</span>
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            className="quiet-shelf-profile w-full"
+            onClick={() => {
+              setIsProfileOpen((current) => !current);
+              setIsNotificationsOpen(false);
+            }}
+            aria-expanded={isProfileOpen}
+            aria-haspopup="menu"
+          >
+            <span className="quiet-shelf-avatar">JL</span>
+            <span className="quiet-shelf-profile-copy">
+              <strong>Jamie Lee</strong>
+              <small>View Profile</small>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+
+          {isProfileOpen && (
+            <div
+              className="absolute bottom-full left-0 z-[90] mb-3 w-full overflow-hidden rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-2 shadow-2xl"
+              role="menu"
+            >
+              <div className="border-b border-[var(--ink-border)] px-3 py-3">
+                <p className="text-sm font-bold text-[var(--ink-ivory)]">Jamie Lee</p>
+                <p className="mt-0.5 text-xs text-[var(--ink-muted)]">
+                  {userPlan === 'premium' ? 'Inkbound Premium' : 'Free Plan'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => navigate('settings')}
+                className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"
+              >
+                <UserRound className="h-4 w-4 text-[var(--ink-gold)]" />
+                Profile & account
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => navigate('settings')}
+                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"
+              >
+                <Settings className="h-4 w-4 text-[var(--ink-gold)]" />
+                Settings
+              </button>
+            </div>
+          )}
+        </div>
       </aside>
 
       <header className="quiet-shelf-topbar">
@@ -242,16 +296,98 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        <div className="quiet-shelf-actions">
-          <button type="button" className="quiet-shelf-icon-button" aria-label="Notifications">
-            <Bell />
-          </button>
+        <div className="quiet-shelf-actions relative">
+          <div className="relative">
+            <button
+              type="button"
+              className="quiet-shelf-icon-button relative"
+              aria-label="Notifications"
+              aria-expanded={isNotificationsOpen}
+              onClick={() => {
+                setIsNotificationsOpen((current) => !current);
+                setIsProfileOpen(false);
+              }}
+            >
+              <Bell />
+              {!notificationsRead && (
+                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[var(--ink-gold-bright)]" />
+              )}
+            </button>
+
+            {isNotificationsOpen && (
+              <div className="absolute right-0 top-full z-[100] mt-3 w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] shadow-2xl">
+                <div className="flex items-center justify-between border-b border-[var(--ink-border)] px-4 py-3">
+                  <div>
+                    <p className="font-serif text-lg font-bold text-[var(--ink-ivory)]">Notifications</p>
+                    <p className="text-xs text-[var(--ink-muted)]">Your reading overview</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNotificationsRead(true)}
+                    className="text-xs font-semibold text-[var(--ink-gold-bright)] hover:underline"
+                  >
+                    Mark read
+                  </button>
+                </div>
+
+                <div className="space-y-1 p-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('sessions')}
+                    className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]"
+                  >
+                    <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
+                    <span>
+                      <strong className="block text-sm text-[var(--ink-ivory)]">
+                        {currentlyReadingCount} books in progress
+                      </strong>
+                      <small className="text-[var(--ink-muted)]">Start or continue a reading session.</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('tbr')}
+                    className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]"
+                  >
+                    <Bookmark className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
+                    <span>
+                      <strong className="block text-sm text-[var(--ink-ivory)]">{tbrCount} books waiting</strong>
+                      <small className="text-[var(--ink-muted)]">Visit your TBR to choose what comes next.</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      userPlan === 'free'
+                        ? openUpgradeModal('Explore Inkbound Premium')
+                        : navigate('settings')
+                    }
+                    className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]"
+                  >
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
+                    <span>
+                      <strong className="block text-sm text-[var(--ink-ivory)]">
+                        {userPlan === 'premium' ? 'Premium account active' : `${remainingSlots} free book slots remain`}
+                      </strong>
+                      <small className="text-[var(--ink-muted)]">
+                        {userPlan === 'premium' ? 'Unlimited books and advanced insights.' : 'Your existing books always remain accessible.'}
+                      </small>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <button
             type="button"
             className="quiet-shelf-icon-button"
-            onClick={() => setIsDarkMode((current) => !current)}
-            aria-label="Toggle theme"
+            onClick={() => {
+              setIsDarkMode((current) => !current);
+              setIsNotificationsOpen(false);
+            }}
+            aria-label={isDarkMode ? 'Switch to light theme' : 'Switch to dark theme'}
+            title={isDarkMode ? 'Switch to light theme' : 'Switch to dark theme'}
           >
             {isDarkMode ? <Moon /> : <Sun />}
           </button>
