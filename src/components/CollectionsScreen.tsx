@@ -1,8 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, FolderHeart, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import {
+  BookOpen,
+  FolderHeart,
+  Pencil,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
+import { useUserPlan } from '../context/UserPlanContext';
 import { BookCover } from './BookCover';
 
 interface CollectionDefinition {
@@ -22,6 +32,7 @@ interface CollectionsScreenProps {
 
 const COLLECTIONS_STORAGE_KEY = 'inkbound_collection_definitions';
 const COLLECTION_VIEW_STORAGE_KEY = 'inkbound_collection_view';
+const FREE_COLLECTION_LIMIT = 5;
 
 const starterCollections: CollectionDefinition[] = [
   {
@@ -50,6 +61,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({
   onUpdateBook,
   onSelectBook,
 }) => {
+  const { userPlan, openUpgradeModal } = useUserPlan();
   const [collections, setCollections] = usePersistentState<CollectionDefinition[]>(
     COLLECTIONS_STORAGE_KEY,
     starterCollections,
@@ -64,6 +76,10 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({
   const [description, setDescription] = useState('');
   const [emoji, setEmoji] = useState('📚');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const isPremium = userPlan === 'premium';
+  const hasReachedCollectionLimit = !isPremium && collections.length >= FREE_COLLECTION_LIMIT;
+  const remainingFreeCollections = Math.max(0, FREE_COLLECTION_LIMIT - collections.length);
 
   const selectedCollection = collections.find((collection) => collection.id === selectedCollectionId);
   const selectedBooks = selectedCollection
@@ -81,6 +97,11 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({
   }, [books, searchQuery]);
 
   const openNewCollection = () => {
+    if (hasReachedCollectionLimit) {
+      openUpgradeModal('Upgrade to Inkbound Premium for unlimited collections');
+      return;
+    }
+
     setEditingId(null);
     setName('');
     setDescription('');
@@ -119,6 +140,12 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({
         });
       }
     } else {
+      if (hasReachedCollectionLimit) {
+        setIsEditorOpen(false);
+        openUpgradeModal('Upgrade to Inkbound Premium for unlimited collections');
+        return;
+      }
+
       const newCollection: CollectionDefinition = {
         id: makeCollectionId(trimmedName),
         name: trimmedName,
@@ -167,11 +194,61 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({
           <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">
             Build private shelves around moods, seasons, favorites, or any reading life you want to remember.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 py-1 font-semibold text-[var(--ink-muted)]">
+              {isPremium
+                ? `${collections.length} collections · Unlimited`
+                : `${collections.length} of ${FREE_COLLECTION_LIMIT} free collections`}
+            </span>
+            {!isPremium && (
+              <span className="text-[var(--ink-faint)]">
+                {remainingFreeCollections > 0
+                  ? `${remainingFreeCollections} remaining`
+                  : 'Free collection limit reached'}
+              </span>
+            )}
+          </div>
         </div>
-        <button type="button" onClick={openNewCollection} className="quiet-shelf-primary-action px-5">
-          <Plus className="h-4 w-4" /> New Collection
+        <button
+          type="button"
+          onClick={openNewCollection}
+          className={
+            hasReachedCollectionLimit
+              ? 'quiet-shelf-secondary-action px-5'
+              : 'quiet-shelf-primary-action px-5'
+          }
+        >
+          {hasReachedCollectionLimit ? (
+            <>
+              <Sparkles className="h-4 w-4" /> Upgrade for Unlimited
+            </>
+          ) : (
+            <>
+              <Plus className="h-4 w-4" /> New Collection
+            </>
+          )}
         </button>
       </header>
+
+      {hasReachedCollectionLimit && (
+        <section className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+          <div>
+            <p className="font-serif text-lg font-bold text-[var(--ink-ivory)]">
+              You’ve used all 5 free collections
+            </p>
+            <p className="mt-1 text-sm text-[var(--ink-muted)]">
+              Your existing collections remain fully editable. Premium removes the collection limit.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openUpgradeModal('Upgrade to Inkbound Premium for unlimited collections')}
+            className="quiet-shelf-primary-action mt-4 shrink-0 justify-center sm:mt-0"
+          >
+            <Sparkles className="h-4 w-4" /> See Premium
+          </button>
+        </section>
+      )}
 
       <ResponsiveGrid minItemWidth={240} maxColumns={3} gap={16}>
         {collections.map((collection) => {
