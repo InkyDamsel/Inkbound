@@ -182,7 +182,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
+          <ResponsiveGrid minItemWidth={150} maxColumns={5} gap={16} alignItems="start">
             {upNext.map((book) => {
               const edition =
                 book.editions.find((item) => item.id === book.activeEditionId) || book.editions[0];
@@ -216,12 +216,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             <button
               type="button"
               onClick={() => onNavigateToTab('tbr')}
-              className="flex min-h-[210px] flex-col items-center justify-center rounded-xl border border-dashed border-[#6f4e5f]/55 bg-[#141116] px-4 text-center text-[#8c687b] transition hover:border-[#8c687b] hover:bg-[#1a151a]"
+              className="flex min-h-[210px] w-full flex-col items-center justify-center rounded-xl border border-dashed border-[#6f4e5f]/55 bg-[#141116] px-4 text-center text-[#8c687b] transition hover:border-[#8c687b] hover:bg-[#1a151a]"
             >
               <Sparkles className="mb-3 h-5 w-5" />
               <span className="font-serif text-lg leading-5">Choose My Next Read</span>
             </button>
-          </div>
+          </ResponsiveGrid>
         </section>
 
         <section className="space-y-4">
