@@ -57,6 +57,9 @@ const SYNC_KEYS = [
   'inkbound_memory_selected_book',
   'inkbound_reader_personality_view',
   'inkbound_reader_personality_hidden_traits',
+  'inkbound_reading_insights_range',
+  'inkbound_reading_insights_category',
+  'inkbound_reading_insights_dismissed',
 ] as const;
 
 const collectSnapshot = () =>
