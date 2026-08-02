@@ -22,6 +22,7 @@ import { ReadingMemoriesScreen } from './components/ReadingMemoriesScreen';
 import { ReadingTimeCapsulesScreen } from './components/ReadingTimeCapsulesScreen';
 import { PhotoMemoriesScreen } from './components/PhotoMemoriesScreen';
 import { BookshelfThroughTimeScreen } from './components/BookshelfThroughTimeScreen';
+import { MyDragonScreen } from './components/MyDragonScreen';
 import { ReaderPersonalityScreen } from './components/ReaderPersonalityScreen';
 import { ReadingInsightsScreen } from './components/ReadingInsightsScreen';
 import { InkboundStudioScreen } from './components/InkboundStudioScreen';
@@ -61,12 +62,8 @@ export default function App() {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     return savedTheme ? savedTheme === 'dark' : true;
   });
-  const [books, setBooks] = useState<UserBookRecord[]>(() =>
-    readStoredCollection(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, SAMPLE_BOOKS),
-  );
-  const [sessions, setSessions] = useState<ReadingSession[]>(() =>
-    readStoredCollection(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, INITIAL_READING_SESSIONS),
-  );
+  const [books, setBooks] = useState<UserBookRecord[]>(() => readStoredCollection(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, SAMPLE_BOOKS));
+  const [sessions, setSessions] = useState<ReadingSession[]>(() => readStoredCollection(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, INITIAL_READING_SESSIONS));
   const [previousBooksState, setPreviousBooksState] = useState<UserBookRecord[] | null>(null);
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
@@ -130,14 +127,7 @@ export default function App() {
     setBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
   };
 
-  const handleApplyBatchChanges = (changes: {
-    status?: ReadingStatus;
-    ownership?: OwnershipStatus;
-    format?: Format;
-    priority?: Priority;
-    addTag?: string;
-    addCollection?: string;
-  }) => {
+  const handleApplyBatchChanges = (changes: { status?: ReadingStatus; ownership?: OwnershipStatus; format?: Format; priority?: Priority; addTag?: string; addCollection?: string }) => {
     setPreviousBooksState(books);
     setBooks((current) => current.map((book) => {
       if (!selectedBookIds.includes(book.id)) return book;
@@ -151,9 +141,7 @@ export default function App() {
       }
       if (changes.ownership) updatedBook.ownership = changes.ownership;
       if (changes.priority) updatedBook.priority = changes.priority;
-      if (changes.format) {
-        updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
-      }
+      if (changes.format) updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
       if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
       if (changes.addCollection && !updatedBook.collections.includes(changes.addCollection)) updatedBook.collections = [...updatedBook.collections, changes.addCollection];
       return updatedBook;
@@ -260,6 +248,7 @@ export default function App() {
           {activeTab === 'time-capsules' && <ReadingTimeCapsulesScreen books={books} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'photo-memories' && <PhotoMemoriesScreen books={books} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'bookshelf-time' && <BookshelfThroughTimeScreen books={books} onSelectBook={setSelectedBookForDetails} />}
+          {activeTab === 'my-dragon' && <MyDragonScreen books={books} sessions={sessions} />}
           {activeTab === 'personality' && <ReaderPersonalityScreen books={books} sessions={sessions} />}
           {activeTab === 'insights' && <ReadingInsightsScreen books={books} sessions={sessions} />}
           {activeTab === 'studio' && <InkboundStudioScreen books={books} sessions={sessions} />}
