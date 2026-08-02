@@ -1,24 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { UserBookRecord, ReadingSession } from '../types';
-import { BookCover } from './BookCover';
-import {
-  X,
-  Play,
-  Pause,
-  Square,
-  Clock,
-  Sparkles,
-  MapPin,
-  Smile,
-  FileText,
-  CheckCircle2
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ReadingSession, UserBookRecord } from '../types';
+import { CheckCircle2, Clock, Pause, Play, Square, X } from 'lucide-react';
 
 interface ReadingSessionModalProps {
   books: UserBookRecord[];
   initialBookId?: string;
   onClose: () => void;
-  onSaveSession: (session: ReadingSession, updatedProgressPages: number, updatedProgressMins: number) => void;
+  onSaveSession: (
+    session: ReadingSession,
+    updatedProgressPages: number,
+    updatedProgressMins: number,
+  ) => void;
 }
 
 export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
@@ -27,54 +19,66 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
   onClose,
   onSaveSession,
 }) => {
-  const readingBooks = books.filter((b) => b.status === 'currently-reading' || b.status === 'tbr');
+  const readingBooks = books.filter(
+    (book) => book.status === 'currently-reading' || book.status === 'tbr',
+  );
+  const selectableBooks = readingBooks.length > 0 ? readingBooks : books;
   const [selectedBookId, setSelectedBookId] = useState<string>(
-    initialBookId || (readingBooks[0]?.id || books[0]?.id || '')
+    initialBookId || selectableBooks[0]?.id || '',
   );
 
-  const selectedBook = books.find((b) => b.id === selectedBookId) || books[0];
-  const activeEdition = selectedBook?.editions.find((e) => e.id === selectedBook.activeEditionId) || selectedBook?.editions[0];
+  const selectedBook = books.find((book) => book.id === selectedBookId) || books[0];
+  const activeEdition =
+    selectedBook?.editions.find((edition) => edition.id === selectedBook.activeEditionId) ||
+    selectedBook?.editions[0];
   const isAudiobook = activeEdition?.format === 'audiobook';
 
-  // Timer State
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
 
-  // Form Inputs
   const [startPage, setStartPage] = useState(selectedBook?.progressPages || 0);
   const [endPage, setEndPage] = useState((selectedBook?.progressPages || 0) + 20);
-
   const [startMins, setStartMins] = useState(selectedBook?.progressMinutes || 0);
   const [endMins, setEndMins] = useState((selectedBook?.progressMinutes || 0) + 30);
-  const [listeningSpeed, setListeningSpeed] = useState(1.2);
-
+  const [listeningSpeed] = useState(1.2);
   const [notes, setNotes] = useState('');
   const [mood, setMood] = useState('Atmospheric');
   const [location, setLocation] = useState('Cozy Armchair');
 
-  // Live Timer Interval
   useEffect(() => {
-    let interval: any = null;
-    if (isActive) {
-      interval = setInterval(() => {
-        setTimerSeconds((prev) => prev + 1);
-      }, 1000);
-    } else if (!isActive && timerSeconds !== 0) {
-      clearInterval(interval);
-    }
-    return () => clearInterval(interval);
-  }, [isActive, timerSeconds]);
+    if (!isActive) return undefined;
 
-  // Format MM:SS or HH:MM:SS
+    const interval = window.setInterval(() => {
+      setTimerSeconds((previous) => previous + 1);
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [isActive]);
+
   const formatTime = (totalSeconds: number) => {
-    const hrs = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    if (hrs > 0) {
-      return `${hrs}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds
+        .toString()
+        .padStart(2, '0')}`;
     }
-    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleBookChange = (bookId: string) => {
+    setSelectedBookId(bookId);
+    const book = books.find((item) => item.id === bookId);
+    if (!book) return;
+
+    setStartPage(book.progressPages);
+    setEndPage(book.progressPages + 20);
+    setStartMins(book.progressMinutes);
+    setEndMins(book.progressMinutes + 30);
   };
 
   const handleFinishSession = () => {
@@ -83,15 +87,19 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
   };
 
   const handleSaveAndClose = () => {
+    if (!selectedBook) return;
+
     const sessionDurationMins = Math.max(1, Math.round(timerSeconds / 60));
     const pagesCompleted = Math.max(0, endPage - startPage);
     const minsCompleted = Math.max(0, endMins - startMins);
 
     const session: ReadingSession = {
-      id: 'sess-' + Date.now(),
+      id: `sess-${Date.now()}`,
       bookId: selectedBook.id,
       date: new Date().toISOString().split('T')[0],
-      startTime: new Date(Date.now() - sessionDurationMins * 60000).toTimeString().substring(0, 5),
+      startTime: new Date(Date.now() - sessionDurationMins * 60000)
+        .toTimeString()
+        .substring(0, 5),
       endTime: new Date().toTimeString().substring(0, 5),
       durationMinutes: sessionDurationMins,
       startPage: !isAudiobook ? startPage : undefined,
@@ -106,223 +114,208 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
       location,
     };
 
-    onSaveSession(session, !isAudiobook ? endPage : startPage, isAudiobook ? endMins : startMins);
+    onSaveSession(
+      session,
+      !isAudiobook ? endPage : startPage,
+      isAudiobook ? endMins : startMins,
+    );
     onClose();
   };
 
+  if (!selectedBook) return null;
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#1c0f24] border border-[#c5a059]/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 relative">
-        
-        <button onClick={onClose} className="absolute top-4 right-4 text-stone-400 hover:text-white p-1 rounded-full bg-black/30 hover:bg-black/50 transition">
-          <X className="w-5 h-5" />
+    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      <section
+        className="relative flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reading-session-title"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 rounded-full bg-black/30 p-2 text-stone-400 transition hover:bg-black/50 hover:text-white"
+          aria-label="Close reading session"
+        >
+          <X className="h-5 w-5" />
         </button>
 
-        {/* Header Title */}
-        <div className="text-center space-y-1">
-          <Clock className="w-8 h-8 text-[#e5c158] mx-auto animate-pulse" />
-          <h3 className="font-serif font-bold text-2xl text-[#f4efe6]">
-            Reading Session Companion
-          </h3>
-          <p className="text-xs text-stone-300">
-            Track your reading focus and immersion metrics
-          </p>
-        </div>
+        <div className="overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-6 sm:p-6">
+          <div className="space-y-5">
+            <header className="space-y-1 pr-10 text-center">
+              <Clock className="mx-auto h-8 w-8 animate-pulse text-[#e5c158]" />
+              <h3 id="reading-session-title" className="font-serif text-2xl font-bold text-[#f4efe6]">
+                Reading Session Companion
+              </h3>
+              <p className="text-xs text-stone-300">
+                Track your reading focus and immersion metrics
+              </p>
+            </header>
 
-        {/* Book Selector */}
-        {!isFinished && (
-          <div>
-            <label className="text-xs font-bold text-[#f4efe6] block mb-1">
-              Select Book
-            </label>
-            <select
-              value={selectedBookId}
-              onChange={(e) => {
-                setSelectedBookId(e.target.value);
-                const b = books.find((x) => x.id === e.target.value);
-                if (b) {
-                  setStartPage(b.progressPages);
-                  setEndPage(b.progressPages + 20);
-                }
-              }}
-              className="w-full p-2.5 rounded-xl text-xs bg-[#120817] border border-[#3d2448] text-[#f4efe6] font-medium focus:outline-none focus:border-[#c5a059]"
-            >
-              {readingBooks.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.work.title} ({b.work.author})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* TIMER DISPLAY */}
-        {!isFinished ? (
-          <div className="bg-[#25132f] text-[#f4efe6] p-6 rounded-2xl text-center space-y-4 shadow-inner border border-[#c5a059]/30">
-            <div className="font-serif text-5xl font-bold tracking-widest text-[#e5c158] font-mono">
-              {formatTime(timerSeconds)}
-            </div>
-            <p className="text-xs text-stone-300">
-              {isActive ? 'Session in progress...' : timerSeconds > 0 ? 'Paused' : 'Ready to start'}
-            </p>
-
-            {/* Timer Controls */}
-            <div className="flex justify-center items-center gap-4 pt-2">
-              {!isActive ? (
-                <button
-                  onClick={() => setIsActive(true)}
-                  className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] font-bold text-xs shadow-md hover:opacity-95 flex items-center gap-2 transition"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  <span>{timerSeconds === 0 ? 'Start Timer' : 'Resume'}</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setIsActive(false)}
-                  className="px-6 py-2.5 rounded-full bg-amber-600 text-white font-bold text-xs shadow-md hover:bg-amber-700 flex items-center gap-2 transition"
-                >
-                  <Pause className="w-4 h-4 fill-current" />
-                  <span>Pause</span>
-                </button>
-              )}
-
-              {timerSeconds > 0 && (
-                <button
-                  onClick={handleFinishSession}
-                  className="px-6 py-2.5 rounded-full bg-emerald-700 text-white font-bold text-xs shadow-md hover:bg-emerald-800 flex items-center gap-2 transition"
-                >
-                  <Square className="w-4 h-4 fill-current" />
-                  <span>Complete Session</span>
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          /* POST-SESSION LOG & STATS SUMMARY */
-          <div className="space-y-4">
-            <div className="p-4 bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 rounded-xl flex items-center gap-3">
-              <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+            {!isFinished && (
               <div>
-                <p className="font-bold text-sm">Session Completed!</p>
-                <p className="text-xs text-stone-300">
-                  Duration: {Math.max(1, Math.round(timerSeconds / 60))} minutes read.
-                </p>
-              </div>
-            </div>
-
-            {/* Log inputs: Start / End Page */}
-            {!isAudiobook ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-[#f4efe6] block mb-1">
-                    Starting Page
-                  </label>
-                  <input
-                    type="number"
-                    value={startPage}
-                    onChange={(e) => setStartPage(parseInt(e.target.value) || 0)}
-                    className="w-full p-2 text-xs rounded-lg bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-[#f4efe6] block mb-1">
-                    Ending Page
-                  </label>
-                  <input
-                    type="number"
-                    value={endPage}
-                    onChange={(e) => setEndPage(parseInt(e.target.value) || 0)}
-                    className="w-full p-2 text-xs rounded-lg bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-[#f4efe6] block mb-1">
-                    Start Mins Listened
-                  </label>
-                  <input
-                    type="number"
-                    value={startMins}
-                    onChange={(e) => setStartMins(parseInt(e.target.value) || 0)}
-                    className="w-full p-2 text-xs rounded-lg bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-[#f4efe6] block mb-1">
-                    End Mins Listened
-                  </label>
-                  <input
-                    type="number"
-                    value={endMins}
-                    onChange={(e) => setEndMins(parseInt(e.target.value) || 0)}
-                    className="w-full p-2 text-xs rounded-lg bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
-                  />
-                </div>
+                <label className="mb-1 block text-xs font-bold text-[#f4efe6]">Select Book</label>
+                <select
+                  value={selectedBookId}
+                  onChange={(event) => handleBookChange(event.target.value)}
+                  className="w-full rounded-xl border border-[#3d2448] bg-[#120817] p-3 text-sm font-medium text-[#f4efe6] focus:border-[#c5a059] focus:outline-none"
+                >
+                  {selectableBooks.map((book) => (
+                    <option key={book.id} value={book.id}>
+                      {book.work.title} ({book.work.author})
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
-            {/* Session Environment & Notes */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-bold text-[#f4efe6] block mb-1">
-                  Reading Mood
-                </label>
-                <select
-                  value={mood}
-                  onChange={(e) => setMood(e.target.value)}
-                  className="w-full p-2 text-xs rounded-lg bg-[#120817] border border-[#3d2448] text-[#f4efe6]"
-                >
-                  <option value="Atmospheric">Atmospheric</option>
-                  <option value="Cozy">Cozy</option>
-                  <option value="Fast-paced">Fast-paced</option>
-                  <option value="Mind-bending">Mind-bending</option>
-                  <option value="Relaxing">Relaxing</option>
-                </select>
+            {!isFinished ? (
+              <div className="space-y-4 rounded-2xl border border-[#c5a059]/30 bg-[#25132f] p-5 text-center text-[#f4efe6] shadow-inner sm:p-6">
+                <div className="font-mono font-serif text-4xl font-bold tracking-[0.12em] text-[#e5c158] sm:text-5xl">
+                  {formatTime(timerSeconds)}
+                </div>
+                <p className="text-xs text-stone-300">
+                  {isActive ? 'Session in progress...' : timerSeconds > 0 ? 'Paused' : 'Ready to start'}
+                </p>
+
+                <div className="grid gap-3 pt-2 sm:flex sm:items-center sm:justify-center sm:gap-4">
+                  {!isActive ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsActive(true)}
+                      className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-6 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95"
+                    >
+                      <Play className="h-4 w-4 fill-current" />
+                      <span>{timerSeconds === 0 ? 'Start Timer' : 'Resume'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsActive(false)}
+                      className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-amber-600 px-6 text-xs font-bold text-white shadow-md transition hover:bg-amber-700"
+                    >
+                      <Pause className="h-4 w-4 fill-current" />
+                      <span>Pause</span>
+                    </button>
+                  )}
+
+                  {timerSeconds > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleFinishSession}
+                      className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-emerald-700 px-6 text-xs font-bold text-white shadow-md transition hover:bg-emerald-800"
+                    >
+                      <Square className="h-4 w-4 fill-current" />
+                      <span>Complete Session</span>
+                    </button>
+                  )}
+                </div>
               </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-4 text-emerald-300">
+                  <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" />
+                  <div>
+                    <p className="text-sm font-bold">Session Completed!</p>
+                    <p className="text-xs text-stone-300">
+                      Duration: {Math.max(1, Math.round(timerSeconds / 60))} minutes read.
+                    </p>
+                  </div>
+                </div>
 
-              <div>
-                <label className="text-xs font-bold text-[#f4efe6] block mb-1">
-                  Location
-                </label>
-                <select
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full p-2 text-xs rounded-lg bg-[#120817] border border-[#3d2448] text-[#f4efe6]"
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-[#f4efe6]">
+                      {isAudiobook ? 'Start Mins Listened' : 'Starting Page'}
+                    </label>
+                    <input
+                      type="number"
+                      value={isAudiobook ? startMins : startPage}
+                      onChange={(event) =>
+                        isAudiobook
+                          ? setStartMins(Number.parseInt(event.target.value, 10) || 0)
+                          : setStartPage(Number.parseInt(event.target.value, 10) || 0)
+                      }
+                      className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-[#f4efe6]">
+                      {isAudiobook ? 'End Mins Listened' : 'Ending Page'}
+                    </label>
+                    <input
+                      type="number"
+                      value={isAudiobook ? endMins : endPage}
+                      onChange={(event) =>
+                        isAudiobook
+                          ? setEndMins(Number.parseInt(event.target.value, 10) || 0)
+                          : setEndPage(Number.parseInt(event.target.value, 10) || 0)
+                      }
+                      className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-[#f4efe6]">Reading Mood</label>
+                    <select
+                      value={mood}
+                      onChange={(event) => setMood(event.target.value)}
+                      className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]"
+                    >
+                      <option value="Atmospheric">Atmospheric</option>
+                      <option value="Cozy">Cozy</option>
+                      <option value="Fast-paced">Fast-paced</option>
+                      <option value="Mind-bending">Mind-bending</option>
+                      <option value="Relaxing">Relaxing</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-[#f4efe6]">Location</label>
+                    <select
+                      value={location}
+                      onChange={(event) => setLocation(event.target.value)}
+                      className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]"
+                    >
+                      <option value="Cozy Armchair">Cozy Armchair</option>
+                      <option value="Bed">Bed</option>
+                      <option value="Coffee Shop">Coffee Shop</option>
+                      <option value="Library">Library</option>
+                      <option value="Airport">Airport</option>
+                      <option value="Commute">Commute</option>
+                      <option value="Study">Study</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-[#f4efe6]">
+                    Session Notes & Reflections
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="What happened in this session?"
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    className="w-full resize-y rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveAndClose}
+                  className="min-h-12 w-full rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] py-3 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95"
                 >
-                  <option value="Cozy Armchair">Cozy Armchair</option>
-                  <option value="Bed">Bed</option>
-                  <option value="Coffee Shop">Coffee Shop</option>
-                  <option value="Commute">Commute</option>
-                  <option value="Study">Study</option>
-                </select>
+                  Log & Save Session
+                </button>
               </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-[#f4efe6] block mb-1">
-                Session Notes & Reflections
-              </label>
-              <textarea
-                rows={2}
-                placeholder="What happened in this session?"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full p-2 text-xs rounded-lg bg-[#120817] border border-[#3d2448] text-[#f4efe6] focus:outline-none focus:border-[#c5a059]"
-              />
-            </div>
-
-            <button
-              onClick={handleSaveAndClose}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817] font-bold text-xs shadow-md hover:opacity-95 transition"
-            >
-              Log & Save Session
-            </button>
+            )}
           </div>
-        )}
-
-      </div>
+        </div>
+      </section>
     </div>
   );
 };
