@@ -60,6 +60,8 @@ const SYNC_KEYS = [
   'inkbound_reading_insights_range',
   'inkbound_reading_insights_category',
   'inkbound_reading_insights_dismissed',
+  'inkbound_reading_time_capsules',
+  'inkbound_time_capsule_filter',
 ] as const;
 
 const collectSnapshot = () =>
