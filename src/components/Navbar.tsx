@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   BarChart3,
   Bell,
+  BookHeart,
   BookMarked,
   Bookmark,
   CalendarDays,
@@ -37,6 +38,7 @@ export type NavTab =
   | 'sessions'
   | 'collections'
   | 'timeline'
+  | 'memories'
   | 'challenges'
   | 'achievements'
   | 'studio'
@@ -64,6 +66,7 @@ const navItems = [
   { id: 'sessions' as NavTab, label: 'Reading Sessions', icon: Clock3 },
   { id: 'collections' as NavTab, label: 'Collections', icon: FolderHeart },
   { id: 'timeline' as NavTab, label: 'Reading Timeline', icon: History },
+  { id: 'memories' as NavTab, label: 'Reading Memories', icon: BookHeart },
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
   { id: 'achievements' as NavTab, label: 'Achievements', icon: Trophy },
   { id: 'studio' as NavTab, label: 'Inkbound Studio', icon: Palette },
