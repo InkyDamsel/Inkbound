@@ -40,6 +40,7 @@ export type NavTab =
   | 'collections'
   | 'timeline'
   | 'memories'
+  | 'personality'
   | 'challenges'
   | 'achievements'
   | 'studio'
@@ -69,6 +70,7 @@ const navItems = [
   { id: 'collections' as NavTab, label: 'Collections', icon: FolderHeart },
   { id: 'timeline' as NavTab, label: 'Reading Timeline', icon: History },
   { id: 'memories' as NavTab, label: 'Reading Memories', icon: BookHeart },
+  { id: 'personality' as NavTab, label: 'Reader Personality', icon: Sparkles },
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
   { id: 'achievements' as NavTab, label: 'Achievements', icon: Trophy },
   { id: 'studio' as NavTab, label: 'Inkbound Studio', icon: Palette },
