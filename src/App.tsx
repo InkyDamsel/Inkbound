@@ -16,6 +16,7 @@ import { TBRScreen } from './components/TBRScreen';
 import { ReadingSessionsScreen } from './components/ReadingSessionsScreen';
 import { ReadingChallengesScreen } from './components/ReadingChallengesScreen';
 import { AchievementsScreen } from './components/AchievementsScreen';
+import { CollectionsScreen } from './components/CollectionsScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
 import { BatchEditModal } from './components/BatchEditModal';
 import { ReadingSessionModal } from './components/ReadingSessionModal';
@@ -94,9 +95,7 @@ export default function App() {
     setIsTimerOpen(true);
   };
 
-  const closeTimer = () => {
-    setIsTimerOpen(false);
-  };
+  const closeTimer = () => setIsTimerOpen(false);
 
   const handleToggleSelectBook = (id: string) => {
     setSelectedBookIds((current) =>
@@ -338,6 +337,13 @@ export default function App() {
           )}
           {activeTab === 'achievements' && (
             <AchievementsScreen books={books} sessions={sessions} />
+          )}
+          {activeTab === 'collections' && (
+            <CollectionsScreen
+              books={books}
+              onUpdateBook={handleUpdateBook}
+              onSelectBook={setSelectedBookForDetails}
+            />
           )}
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
           {activeTab === 'import' && (
