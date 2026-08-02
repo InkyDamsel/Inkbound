@@ -47,6 +47,7 @@ const SYNC_KEYS = [
   'inkbound_user_plan',
   'inkbound_reader_profile',
   'inkbound_active_tab',
+  'inkbound_navigation_collapsed_groups',
   'inkbound_annual_goal',
   'inkbound_daily_goal_minutes',
   'inkbound_notifications_read',
