@@ -55,6 +55,8 @@ const SYNC_KEYS = [
   'inkbound_timeline_memories',
   'inkbound_book_memories',
   'inkbound_memory_selected_book',
+  'inkbound_reader_personality_view',
+  'inkbound_reader_personality_hidden_traits',
 ] as const;
 
 const collectSnapshot = () =>
