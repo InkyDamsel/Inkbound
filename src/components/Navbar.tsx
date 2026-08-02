@@ -31,7 +31,8 @@ export type NavTab =
   | 'sessions'
   | 'stats'
   | 'import'
-  | 'settings';
+  | 'settings'
+  | 'profile';
 
 interface NavbarProps {
   activeTab: NavTab;
@@ -103,7 +104,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     setSearchQuery('');
   };
 
-  const activeLabel = navItems.find((item) => item.id === activeTab)?.label ?? 'Home';
+  const activeLabel =
+    activeTab === 'profile'
+      ? 'Profile'
+      : navItems.find((item) => item.id === activeTab)?.label ?? 'Home';
   const usedPercent = Math.min(100, Math.round((books.length / freeBookLimit) * 100));
   const isMoreSectionActive = mobileMoreItems.some((item) => item.id === activeTab);
 
@@ -214,20 +218,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 type="button"
                 role="menuitem"
-                onClick={() => navigate('settings')}
+                onClick={() => navigate('profile')}
                 className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"
               >
                 <UserRound className="h-4 w-4 text-[var(--ink-gold)]" />
                 Profile & account
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => navigate('settings')}
-                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"
-              >
-                <Settings className="h-4 w-4 text-[var(--ink-gold)]" />
-                Settings
               </button>
             </div>
           )}
@@ -360,7 +355,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     onClick={() =>
                       userPlan === 'free'
                         ? openUpgradeModal('Explore Inkbound Premium')
-                        : navigate('settings')
+                        : navigate('profile')
                     }
                     className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[var(--ink-surface-soft)]"
                   >
@@ -385,6 +380,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => {
               setIsDarkMode((current) => !current);
               setIsNotificationsOpen(false);
+              setIsProfileOpen(false);
             }}
             aria-label={isDarkMode ? 'Switch to light theme' : 'Switch to dark theme'}
             title={isDarkMode ? 'Switch to light theme' : 'Switch to dark theme'}
@@ -454,6 +450,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => navigate('profile')}
+                className={`flex min-h-12 items-center gap-3 rounded-xl border px-4 text-left text-sm font-semibold transition ${
+                  activeTab === 'profile'
+                    ? 'border-[var(--ink-gold)] bg-[rgba(197,160,89,0.12)] text-[var(--ink-ivory)]'
+                    : 'border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] text-[var(--ink-muted)]'
+                }`}
+              >
+                <UserRound className="h-5 w-5 text-[var(--ink-gold)]" />
+                <span className="flex-1">Profile & account</span>
+              </button>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--ink-border-subtle)] pt-4">
@@ -503,7 +511,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <button
           type="button"
           onClick={() => setIsMobileMenuOpen(true)}
-          className={isMoreSectionActive ? 'is-active' : ''}
+          className={isMoreSectionActive || activeTab === 'profile' ? 'is-active' : ''}
           aria-expanded={isMobileMenuOpen}
         >
           <MoreHorizontal />
