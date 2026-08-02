@@ -20,6 +20,7 @@ import { ReadingSessionModal } from './components/ReadingSessionModal';
 import { ImportCenterScreen } from './components/ImportCenterScreen';
 import { StatisticsScreen } from './components/StatisticsScreen';
 import { SettingsScreen } from './components/SettingsScreen';
+import { ProfileScreen } from './components/ProfileScreen';
 import { AddBookModal } from './components/AddBookModal';
 import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
@@ -27,6 +28,7 @@ import { Check, RotateCcw } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
 const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
+const THEME_STORAGE_KEY = 'inkbound_theme';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
 
@@ -41,7 +43,10 @@ function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    return savedTheme ? savedTheme === 'dark' : true;
+  });
   const [books, setBooks] = useState<UserBookRecord[]>(() =>
     readStoredCollection(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, SAMPLE_BOOKS),
   );
@@ -59,6 +64,8 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
+    document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
+    localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
   useEffect(() => {
@@ -126,7 +133,6 @@ export default function App() {
     setBooks((current) =>
       current.map((book) => {
         if (!selectedBookIds.includes(book.id)) return book;
-
         const updatedBook = { ...book };
         if (changes.status) {
           updatedBook.status = changes.status;
@@ -151,7 +157,6 @@ export default function App() {
         return updatedBook;
       }),
     );
-
     const count = selectedBookIds.length;
     setSelectedBookIds([]);
     setIsBatchEditOpen(false);
@@ -183,7 +188,6 @@ export default function App() {
     setBooks((current) =>
       current.map((book) => {
         if (book.id !== newSession.bookId) return book;
-
         const activeEdition =
           book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
         const isAudiobook = activeEdition?.format === 'audiobook';
@@ -192,7 +196,6 @@ export default function App() {
           : activeEdition?.pageCount ?? 350;
         const completed = isAudiobook ? updatedMinutes : updatedPages;
         const progressPercentage = Math.min(100, Math.round((completed / total) * 100));
-
         return {
           ...book,
           progressPages: isAudiobook ? book.progressPages : updatedPages,
@@ -248,7 +251,6 @@ export default function App() {
         dateFinished: item.dateRead,
       };
     });
-
     setBooks((current) => [...current, ...importedBooks]);
     showToast(`Imported ${importedBooks.length} books into Inkbound.`);
   };
@@ -291,7 +293,6 @@ export default function App() {
               onOpenAddBook={() => setIsAddBookOpen(true)}
             />
           )}
-
           {activeTab === 'library' && (
             <LibraryScreen
               books={books}
@@ -304,7 +305,6 @@ export default function App() {
               onOpenAddBook={() => setIsAddBookOpen(true)}
             />
           )}
-
           {activeTab === 'tbr' && (
             <TBRScreen
               books={books}
@@ -313,7 +313,6 @@ export default function App() {
               onUpdatePriority={handleUpdatePriority}
             />
           )}
-
           {activeTab === 'sessions' && (
             <ReadingSessionsScreen
               books={books}
@@ -322,9 +321,7 @@ export default function App() {
               onSelectBook={setSelectedBookForDetails}
             />
           )}
-
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
-
           {activeTab === 'import' && (
             <ImportCenterScreen
               currentBookCount={books.length}
@@ -332,7 +329,6 @@ export default function App() {
               onUndoLastImport={handleUndoLastBatch}
             />
           )}
-
           {activeTab === 'settings' && (
             <SettingsScreen
               books={books}
@@ -342,6 +338,7 @@ export default function App() {
               onResetData={handleResetData}
             />
           )}
+          {activeTab === 'profile' && <ProfileScreen books={books} sessions={sessions} />}
         </ResponsiveContainer>
       </main>
 
@@ -356,7 +353,6 @@ export default function App() {
           }}
         />
       )}
-
       {isBatchEditOpen && (
         <BatchEditModal
           selectedBookIds={selectedBookIds}
@@ -367,7 +363,6 @@ export default function App() {
           onUndoLastBatch={handleUndoLastBatch}
         />
       )}
-
       {isTimerOpen && (
         <ReadingSessionModal
           books={books}
@@ -376,7 +371,6 @@ export default function App() {
           onSaveSession={handleSaveSession}
         />
       )}
-
       {isAddBookOpen && (
         <AddBookModal
           currentBookCount={books.length}
@@ -391,7 +385,6 @@ export default function App() {
           }}
         />
       )}
-
       {toastMessage && (
         <div className="inkbound-toast" role="status">
           <Check className="h-4 w-4 text-[var(--ink-gold)]" />
