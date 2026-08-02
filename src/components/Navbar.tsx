@@ -41,6 +41,7 @@ export type NavTab =
   | 'timeline'
   | 'memories'
   | 'personality'
+  | 'insights'
   | 'challenges'
   | 'achievements'
   | 'studio'
@@ -71,6 +72,7 @@ const navItems = [
   { id: 'timeline' as NavTab, label: 'Reading Timeline', icon: History },
   { id: 'memories' as NavTab, label: 'Reading Memories', icon: BookHeart },
   { id: 'personality' as NavTab, label: 'Reader Personality', icon: Sparkles },
+  { id: 'insights' as NavTab, label: 'Reading Insights', icon: BarChart3 },
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
   { id: 'achievements' as NavTab, label: 'Achievements', icon: Trophy },
   { id: 'studio' as NavTab, label: 'Inkbound Studio', icon: Palette },
@@ -146,7 +148,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             return (
               <button key={item.id} type="button" onClick={() => navigate(item.id)} className={`quiet-shelf-sidebar-link ${activeTab === item.id ? 'is-active' : ''}`}>
                 <Icon /><span>{item.label}</span>
-                {item.id === 'stats' && userPlan === 'free' && <small className="quiet-shelf-premium-pill">Premium</small>}
+                {(item.id === 'stats' || item.id === 'insights') && userPlan === 'free' && <small className="quiet-shelf-premium-pill">Premium</small>}
               </button>
             );
           })}
@@ -221,7 +223,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <section className="inkbound-panel w-full rounded-3xl p-5" role="dialog" aria-modal="true" aria-label="More navigation options" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-[var(--ink-border-subtle)] pb-4"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">More</h2><button type="button" className="quiet-shelf-icon-button" onClick={() => setIsMobileMenuOpen(false)}><X /></button></div>
             <div className="mt-4 grid max-h-[55vh] gap-2 overflow-y-auto">
-              {mobileMoreItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => navigate(item.id)} className={`flex min-h-12 items-center gap-3 rounded-xl border px-4 text-left text-sm font-semibold ${activeTab === item.id ? 'border-[var(--ink-gold)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}><Icon className="h-5 w-5 text-[var(--ink-gold)]" /><span className="flex-1">{item.label}</span></button>; })}
+              {mobileMoreItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => navigate(item.id)} className={`flex min-h-12 items-center gap-3 rounded-xl border px-4 text-left text-sm font-semibold ${activeTab === item.id ? 'border-[var(--ink-gold)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}><Icon className="h-5 w-5 text-[var(--ink-gold)]" /><span className="flex-1">{item.label}</span>{(item.id === 'stats' || item.id === 'insights') && userPlan === 'free' && <small className="quiet-shelf-premium-pill">Premium</small>}</button>; })}
               <button type="button" onClick={() => navigate('profile')} className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] px-4 text-left text-sm font-semibold text-[var(--ink-muted)]"><UserRound className="h-5 w-5 text-[var(--ink-gold)]" />Profile & account</button>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--ink-border-subtle)] pt-4"><button type="button" onClick={() => { setIsMobileMenuOpen(false); onOpenTimer(); }} className="quiet-shelf-secondary-action justify-center"><Clock3 />Start Session</button><button type="button" onClick={() => { setIsMobileMenuOpen(false); onOpenAddBook(); }} className="quiet-shelf-primary-action justify-center"><Plus />Add Book</button></div>
