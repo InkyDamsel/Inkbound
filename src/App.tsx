@@ -17,6 +17,7 @@ import { ReadingSessionsScreen } from './components/ReadingSessionsScreen';
 import { ReadingChallengesScreen } from './components/ReadingChallengesScreen';
 import { AchievementsScreen } from './components/AchievementsScreen';
 import { CollectionsScreen } from './components/CollectionsScreen';
+import { ReadingTimelineScreen } from './components/ReadingTimelineScreen';
 import { InkboundStudioScreen } from './components/InkboundStudioScreen';
 import { MonthlyWrappedScreen } from './components/MonthlyWrappedScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
@@ -334,16 +335,19 @@ export default function App() {
               onSelectBook={setSelectedBookForDetails}
             />
           )}
-          {activeTab === 'challenges' && (
-            <ReadingChallengesScreen books={books} sessions={sessions} />
-          )}
-          {activeTab === 'achievements' && (
-            <AchievementsScreen books={books} sessions={sessions} />
-          )}
+          {activeTab === 'challenges' && <ReadingChallengesScreen books={books} sessions={sessions} />}
+          {activeTab === 'achievements' && <AchievementsScreen books={books} sessions={sessions} />}
           {activeTab === 'collections' && (
             <CollectionsScreen
               books={books}
               onUpdateBook={handleUpdateBook}
+              onSelectBook={setSelectedBookForDetails}
+            />
+          )}
+          {activeTab === 'timeline' && (
+            <ReadingTimelineScreen
+              books={books}
+              sessions={sessions}
               onSelectBook={setSelectedBookForDetails}
             />
           )}
@@ -419,8 +423,7 @@ export default function App() {
           <span>{toastMessage}</span>
           {previousBooksState && (
             <button type="button" onClick={handleUndoLastBatch}>
-              <RotateCcw className="h-3 w-3" />
-              Undo
+              <RotateCcw className="h-3 w-3" /> Undo
             </button>
           )}
         </div>
