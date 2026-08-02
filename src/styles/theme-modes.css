@@ -1,0 +1,94 @@
+html {
+  color-scheme: dark;
+}
+
+html:not(.dark) {
+  color-scheme: light;
+  --ink-bg: #f4efe8;
+  --ink-sidebar: #eee6dc;
+  --ink-surface: #fbf7f1;
+  --ink-surface-raised: #ffffff;
+  --ink-surface-soft: #eee5eb;
+  --ink-gold: #76566d;
+  --ink-gold-bright: #5f4058;
+  --ink-bronze: #8a675b;
+  --ink-ivory: #2f2430;
+  --ink-muted: #695d69;
+  --ink-faint: #8d818b;
+  --ink-border: rgba(90, 64, 84, 0.18);
+  --ink-border-strong: rgba(90, 64, 84, 0.35);
+}
+
+html:not(.dark),
+html:not(.dark) body {
+  background: #f4efe8;
+  color: #2f2430;
+}
+
+html:not(.dark) body {
+  background-image: radial-gradient(circle at 82% 8%, rgba(119, 82, 108, 0.1), transparent 28rem);
+}
+
+html:not(.dark) .quiet-shelf-sidebar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 24%), var(--ink-sidebar);
+  border-right-color: rgba(62, 45, 60, 0.1);
+  box-shadow: 18px 0 50px rgba(70, 48, 65, 0.08);
+}
+
+html:not(.dark) .quiet-shelf-topbar,
+html:not(.dark) .quiet-shelf-mobile-nav {
+  background: rgba(244, 239, 232, 0.94);
+  border-color: rgba(62, 45, 60, 0.12);
+}
+
+html:not(.dark) .quiet-shelf-sidebar-link,
+html:not(.dark) .quiet-shelf-icon-button {
+  color: #615563;
+}
+
+html:not(.dark) .quiet-shelf-sidebar-link.is-active {
+  background: linear-gradient(90deg, rgba(117, 74, 101, 0.18), rgba(117, 74, 101, 0.08));
+  color: #382936;
+}
+
+html:not(.dark) .inkbound-panel,
+html:not(.dark) [class*="bg-[#1c0f24]"],
+html:not(.dark) [class*="bg-[#17101b]"],
+html:not(.dark) [class*="bg-[#201723]"],
+html:not(.dark) [class*="bg-[#25132f]"],
+html:not(.dark) [class*="bg-[#120817]"] {
+  background-color: #fbf7f1 !important;
+  border-color: rgba(90, 64, 84, 0.18) !important;
+  color: #2f2430;
+}
+
+html:not(.dark) [class*="text-[#f4efe6]"],
+html:not(.dark) [class*="text-[#f3ede2]"],
+html:not(.dark) [class*="text-stone-200"],
+html:not(.dark) [class*="text-stone-300"] {
+  color: #342936 !important;
+}
+
+html:not(.dark) [class*="text-stone-400"],
+html:not(.dark) [class*="text-stone-500"] {
+  color: #756975 !important;
+}
+
+html:not(.dark) input,
+html:not(.dark) textarea,
+html:not(.dark) select {
+  color: #342936;
+}
+
+html:not(.dark) .book-card-glow {
+  border-color: rgba(90, 64, 84, 0.16);
+  box-shadow: 0 12px 28px rgba(70, 48, 65, 0.12);
+}
+
+html:not(.dark) ::-webkit-scrollbar-track {
+  background: #eee6dc;
+}
+
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: rgba(90, 64, 84, 0.3);
+}
