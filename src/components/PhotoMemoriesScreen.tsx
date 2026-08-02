@@ -1,0 +1,233 @@
+import React, { ChangeEvent, useMemo, useRef, useState } from 'react';
+import { Camera, CalendarDays, ImagePlus, MapPin, Search, Trash2, X } from 'lucide-react';
+import { UserBookRecord } from '../types';
+import { usePersistentState } from '../hooks/usePersistentState';
+
+export interface PhotoMemory {
+  id: string;
+  imageData: string;
+  caption: string;
+  date: string;
+  location: string;
+  bookId?: string;
+  createdAt: string;
+}
+
+interface PhotoMemoriesScreenProps {
+  books: UserBookRecord[];
+  onSelectBook: (book: UserBookRecord) => void;
+}
+
+const PHOTO_MEMORIES_KEY = 'inkbound_photo_memories';
+const PHOTO_FILTER_KEY = 'inkbound_photo_memory_filter';
+
+function resizeImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('The image could not be read.'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('The image could not be prepared.'));
+      image.onload = () => {
+        const maxDimension = 1400;
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('Image processing is unavailable in this browser.'));
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.76));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books, onSelectBook }) => {
+  const [memories, setMemories] = usePersistentState<PhotoMemory[]>(PHOTO_MEMORIES_KEY, []);
+  const [filter, setFilter] = usePersistentState<'all' | 'linked' | 'unlinked'>(PHOTO_FILTER_KEY, 'all');
+  const [search, setSearch] = useState('');
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [imageData, setImageData] = useState('');
+  const [caption, setCaption] = useState('');
+  const [location, setLocation] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [bookId, setBookId] = useState('');
+  const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const bookById = useMemo(() => new Map(books.map((book) => [book.id, book])), [books]);
+  const normalizedSearch = search.trim().toLowerCase();
+  const visibleMemories = memories
+    .filter((memory) => filter === 'all' || (filter === 'linked' ? Boolean(memory.bookId) : !memory.bookId))
+    .filter((memory) => {
+      if (!normalizedSearch) return true;
+      const book = memory.bookId ? bookById.get(memory.bookId) : undefined;
+      return [memory.caption, memory.location, book?.work.title, book?.work.author]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedSearch));
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const resetComposer = () => {
+    setImageData('');
+    setCaption('');
+    setLocation('');
+    setDate(new Date().toISOString().slice(0, 10));
+    setBookId('');
+    setError('');
+    setIsComposerOpen(false);
+  };
+
+  const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Choose a photo file.');
+      return;
+    }
+    try {
+      setError('');
+      setImageData(await resizeImage(file));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The photo could not be prepared.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const saveMemory = () => {
+    if (!imageData) {
+      setError('Add a photo before saving this memory.');
+      return;
+    }
+    const memory: PhotoMemory = {
+      id: crypto.randomUUID(),
+      imageData,
+      caption: caption.trim(),
+      date,
+      location: location.trim(),
+      bookId: bookId || undefined,
+      createdAt: new Date().toISOString(),
+    };
+    setMemories((current) => [memory, ...current]);
+    resetComposer();
+  };
+
+  const deleteMemory = (id: string) => {
+    setMemories((current) => current.filter((memory) => memory.id !== id));
+  };
+
+  return (
+    <section className="space-y-6 pb-12">
+      <header className="inkbound-panel overflow-hidden rounded-3xl p-6 sm:p-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <span className="inkbound-eyebrow">Private visual journal</span>
+            <h2 className="mt-2 font-serif text-3xl text-[var(--ink-ivory)] sm:text-4xl">Photo Memories</h2>
+            <p className="mt-3 text-sm leading-7 text-[var(--ink-muted)] sm:text-base">
+              Preserve reading nooks, annotated pages, bookstore visits, vacations, and the everyday moments surrounding a book.
+            </p>
+          </div>
+          <button type="button" className="quiet-shelf-primary-action justify-center" onClick={() => setIsComposerOpen(true)}>
+            <ImagePlus /> Add Photo Memory
+          </button>
+        </div>
+      </header>
+
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {(['all', 'linked', 'unlinked'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={`rounded-full border px-4 py-2 text-sm font-semibold capitalize ${
+                filter === value
+                  ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-raised)] text-[var(--ink-ivory)]'
+                  : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'
+              }`}
+            >
+              {value === 'linked' ? 'Linked to books' : value === 'unlinked' ? 'Life moments' : 'All memories'}
+            </button>
+          ))}
+        </div>
+        <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4">
+          <Search className="h-4 w-4 text-[var(--ink-muted)]" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search memories..."
+            className="w-full bg-transparent text-sm text-[var(--ink-ivory)] outline-none md:w-56"
+          />
+        </label>
+      </div>
+
+      {visibleMemories.length === 0 ? (
+        <div className="inkbound-panel rounded-3xl px-6 py-16 text-center">
+          <Camera className="mx-auto h-10 w-10 text-[var(--ink-gold)]" />
+          <h3 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">Your visual reading journal starts here</h3>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--ink-muted)]">
+            Add a photo of your reading nook, a favorite annotation, a bookstore trip, or any moment you want to remember.
+          </p>
+        </div>
+      ) : (
+        <div className="columns-1 gap-5 sm:columns-2 xl:columns-3">
+          {visibleMemories.map((memory) => {
+            const book = memory.bookId ? bookById.get(memory.bookId) : undefined;
+            return (
+              <article key={memory.id} className="inkbound-panel mb-5 break-inside-avoid overflow-hidden rounded-3xl">
+                <img src={memory.imageData} alt={memory.caption || 'Reading memory'} className="h-auto w-full object-cover" />
+                <div className="space-y-3 p-5">
+                  {memory.caption && <p className="font-serif text-xl leading-7 text-[var(--ink-ivory)]">{memory.caption}</p>}
+                  <div className="flex flex-wrap gap-3 text-xs text-[var(--ink-muted)]">
+                    <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{new Date(`${memory.date}T12:00:00`).toLocaleDateString()}</span>
+                    {memory.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{memory.location}</span>}
+                  </div>
+                  {book && (
+                    <button type="button" onClick={() => onSelectBook(book)} className="block text-left text-sm font-semibold text-[var(--ink-gold-bright)] hover:underline">
+                      {book.work.title} · {book.work.author}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => deleteMemory(memory.id)} className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)] hover:text-red-300">
+                    <Trash2 className="h-3.5 w-3.5" /> Delete memory
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {isComposerOpen && (
+        <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/75 p-3 backdrop-blur-sm sm:items-center" onClick={resetComposer}>
+          <section className="inkbound-panel max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl p-5 sm:p-7" role="dialog" aria-modal="true" aria-label="Add photo memory" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div><span className="inkbound-eyebrow">New scrapbook entry</span><h3 className="mt-1 font-serif text-2xl text-[var(--ink-ivory)]">Add a Photo Memory</h3></div>
+              <button type="button" className="quiet-shelf-icon-button" onClick={resetComposer}><X /></button>
+            </div>
+
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-5 flex min-h-56 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
+              {imageData ? <img src={imageData} alt="Photo preview" className="max-h-96 w-full object-contain" /> : <span className="flex flex-col items-center gap-3 text-sm font-semibold text-[var(--ink-muted)]"><ImagePlus className="h-9 w-9 text-[var(--ink-gold)]" />Choose a photo</span>}
+            </button>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="sm:col-span-2"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Caption</span><textarea value={caption} onChange={(event) => setCaption(event.target.value)} rows={3} placeholder="What do you want to remember?" className="w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
+              <label><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]" /></label>
+              <label><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Location</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Home, library, vacation..." className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
+              <label className="sm:col-span-2"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Related book (optional)</span><select value={bookId} onChange={(event) => setBookId(event.target.value)} className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="">Not linked to a book</option>{books.map((book) => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}</select></label>
+            </div>
+            {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={resetComposer} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={saveMemory} className="quiet-shelf-primary-action justify-center"><Camera />Save Memory</button></div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+};
