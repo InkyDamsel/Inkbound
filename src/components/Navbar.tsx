@@ -4,7 +4,7 @@ import {
   Bell,
   BookMarked,
   Bookmark,
-  Check,
+  CalendarDays,
   ChevronDown,
   Clock3,
   DownloadCloud,
@@ -38,6 +38,7 @@ export type NavTab =
   | 'challenges'
   | 'achievements'
   | 'studio'
+  | 'wrapped'
   | 'stats'
   | 'import'
   | 'settings'
@@ -63,6 +64,7 @@ const navItems = [
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
   { id: 'achievements' as NavTab, label: 'Achievements', icon: Trophy },
   { id: 'studio' as NavTab, label: 'Inkbound Studio', icon: Palette },
+  { id: 'wrapped' as NavTab, label: 'Monthly Wrapped', icon: CalendarDays },
   { id: 'stats' as NavTab, label: 'Statistics', icon: BarChart3 },
   { id: 'import' as NavTab, label: 'Import', icon: DownloadCloud },
   { id: 'settings' as NavTab, label: 'Settings', icon: Settings },
