@@ -4,6 +4,7 @@ import {
   Bell,
   BookHeart,
   BookMarked,
+  BookOpen,
   Bookmark,
   CalendarDays,
   ChevronDown,
@@ -43,6 +44,7 @@ export type NavTab =
   | 'achievements'
   | 'studio'
   | 'wrapped'
+  | 'yearbook'
   | 'stats'
   | 'import'
   | 'settings'
@@ -71,6 +73,7 @@ const navItems = [
   { id: 'achievements' as NavTab, label: 'Achievements', icon: Trophy },
   { id: 'studio' as NavTab, label: 'Inkbound Studio', icon: Palette },
   { id: 'wrapped' as NavTab, label: 'Monthly Wrapped', icon: CalendarDays },
+  { id: 'yearbook' as NavTab, label: 'Year in Books', icon: BookOpen },
   { id: 'stats' as NavTab, label: 'Statistics', icon: BarChart3 },
   { id: 'import' as NavTab, label: 'Import', icon: DownloadCloud },
   { id: 'settings' as NavTab, label: 'Settings', icon: Settings },
