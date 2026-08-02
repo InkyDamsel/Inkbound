@@ -2,6 +2,12 @@ import React from 'react';
 import { CloudDownload, CloudUpload, LogOut, ShieldCheck } from 'lucide-react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 
+const formatLastSync = (value: string | null) => {
+  if (!value) return 'Not synced yet';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Previously synced' : date.toLocaleString();
+};
+
 export const AccountSyncCard: React.FC = () => {
   const sync = useAccountSync();
   const isWorking = sync.status === 'working';
@@ -30,7 +36,11 @@ export const AccountSyncCard: React.FC = () => {
         </div>
       )}
 
-      {!sync.user ? (
+      {!sync.isAuthReady ? (
+        <div className="mt-6 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">
+          Restoring your saved Google session...
+        </div>
+      ) : !sync.user ? (
         <div className="mt-6">
           <button
             type="button"
@@ -45,8 +55,8 @@ export const AccountSyncCard: React.FC = () => {
           </button>
 
           <p className="mt-3 text-xs text-[var(--ink-faint)]">
-            Signing in does not automatically replace this device&apos;s data. You choose whether to
-            sync this device or restore an existing cloud backup.
+            Inkbound remembers the connected Google account on this browser until you sign out.
+            Signing in does not automatically replace this device&apos;s local data.
           </p>
         </div>
       ) : (
@@ -71,6 +81,9 @@ export const AccountSyncCard: React.FC = () => {
                 </p>
                 <p className="text-xs text-[var(--ink-muted)]">
                   {sync.user.email || 'Google account connected'}
+                </p>
+                <p className="mt-1 text-[11px] text-[var(--ink-faint)]">
+                  Signed in persistently · Last sync: {formatLastSync(sync.lastSyncedAt)}
                 </p>
               </div>
             </div>
@@ -107,7 +120,8 @@ export const AccountSyncCard: React.FC = () => {
 
           <p className="text-xs text-[var(--ink-faint)]">
             Sync uploads the current device. Restore replaces this device&apos;s saved Inkbound data
-            with the latest cloud backup for this Google account.
+            with the latest cloud backup for this Google account. Closing or refreshing Inkbound will
+            not sign you out.
           </p>
         </div>
       )}
