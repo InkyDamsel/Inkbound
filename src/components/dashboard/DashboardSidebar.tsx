@@ -43,7 +43,7 @@ export function DashboardSidebar({
   const recentSessions = sessions.slice(0, 5);
 
   return (
-    <aside className="space-y-5">
+    <div className="space-y-5">
       <section>
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -110,7 +110,7 @@ export function DashboardSidebar({
         </div>
         <ActivityList sessions={recentSessions} books={books} />
       </section>
-    </aside>
+    </div>
   );
 }
 
