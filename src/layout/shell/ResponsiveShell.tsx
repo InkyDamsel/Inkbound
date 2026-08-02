@@ -1,8 +1,9 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useBreakpoint } from '../responsive/BreakpointProvider';
 
-interface ResponsiveShellProps extends PropsWithChildren<Record<string, never>> {
+interface ResponsiveShellProps {
   navigation: ReactNode;
+  children?: ReactNode;
 }
 
 export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) {
