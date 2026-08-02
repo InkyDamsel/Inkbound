@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { UserBookRecord, ReadingSession, Format, OwnershipStatus } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
+import { StatisticsSummaryGrid } from './statistics/StatisticsSummaryGrid';
 import {
   BarChart3,
   BookOpen,
-  Headphones,
   Award,
   Flame,
   PieChart,
@@ -142,40 +142,12 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
           <BookOpen className="w-4 h-4 text-[#c5a059]" /> Basic Reading Overview
         </h2>
 
-        {/* Top 4 Stat Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="p-5 bg-[#1c0f24] border border-[#c5a059]/20 rounded-2xl shadow-xl space-y-1">
-            <BookOpen className="w-5 h-5 text-[#c5a059]" />
-            <p className="text-2xl font-serif font-bold text-[#f4efe6]">
-              {finishedBooks.length}
-            </p>
-            <p className="text-xs text-stone-400">Books Completed This Year</p>
-          </div>
-
-          <div className="p-5 bg-[#1c0f24] border border-[#c5a059]/20 rounded-2xl shadow-xl space-y-1">
-            <Clock className="w-5 h-5 text-emerald-400" />
-            <p className="text-2xl font-serif font-bold text-[#f4efe6]">
-              {totalPagesRead.toLocaleString()}
-            </p>
-            <p className="text-xs text-stone-400">Total Pages Read</p>
-          </div>
-
-          <div className="p-5 bg-[#1c0f24] border border-[#c5a059]/20 rounded-2xl shadow-xl space-y-1">
-            <Headphones className="w-5 h-5 text-[#e5c158]" />
-            <p className="text-2xl font-serif font-bold text-[#f4efe6]">
-              {(totalAudioMinutes / 60).toFixed(1)}h
-            </p>
-            <p className="text-xs text-stone-400">Audiobook Listening Time</p>
-          </div>
-
-          <div className="p-5 bg-[#1c0f24] border border-[#c5a059]/20 rounded-2xl shadow-xl space-y-1">
-            <Flame className="w-5 h-5 text-amber-400 fill-current" />
-            <p className="text-2xl font-serif font-bold text-[#f4efe6]">
-              {currentStreak} Days
-            </p>
-            <p className="text-xs text-stone-400">Current Reading Streak</p>
-          </div>
-        </div>
+        <StatisticsSummaryGrid
+          completedBooks={finishedBooks.length}
+          totalPagesRead={totalPagesRead}
+          totalAudioMinutes={totalAudioMinutes}
+          currentStreak={currentStreak}
+        />
 
         {/* Goal Progress & Simple Monthly Count */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
