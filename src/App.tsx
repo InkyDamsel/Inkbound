@@ -15,6 +15,7 @@ import { LibraryScreen } from './components/LibraryScreen';
 import { TBRScreen } from './components/TBRScreen';
 import { ReadingSessionsScreen } from './components/ReadingSessionsScreen';
 import { ReadingChallengesScreen } from './components/ReadingChallengesScreen';
+import { AchievementsScreen } from './components/AchievementsScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
 import { BatchEditModal } from './components/BatchEditModal';
 import { ReadingSessionModal } from './components/ReadingSessionModal';
@@ -334,6 +335,9 @@ export default function App() {
           )}
           {activeTab === 'challenges' && (
             <ReadingChallengesScreen books={books} sessions={sessions} />
+          )}
+          {activeTab === 'achievements' && (
+            <AchievementsScreen books={books} sessions={sessions} />
           )}
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
           {activeTab === 'import' && (
