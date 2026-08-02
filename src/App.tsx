@@ -17,6 +17,7 @@ import { ReadingSessionsScreen } from './components/ReadingSessionsScreen';
 import { ReadingChallengesScreen } from './components/ReadingChallengesScreen';
 import { AchievementsScreen } from './components/AchievementsScreen';
 import { CollectionsScreen } from './components/CollectionsScreen';
+import { InkboundStudioScreen } from './components/InkboundStudioScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
 import { BatchEditModal } from './components/BatchEditModal';
 import { ReadingSessionModal } from './components/ReadingSessionModal';
@@ -345,6 +346,7 @@ export default function App() {
               onSelectBook={setSelectedBookForDetails}
             />
           )}
+          {activeTab === 'studio' && <InkboundStudioScreen books={books} sessions={sessions} />}
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
           {activeTab === 'import' && (
             <ImportCenterScreen
