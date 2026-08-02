@@ -1,5 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { BookOpen, CalendarDays, Camera, Mail, MapPin, Save, UserRound } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import {
+  BookOpen,
+  CalendarDays,
+  Camera,
+  ImagePlus,
+  Mail,
+  Quote,
+  Save,
+  UserRound,
+} from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { ResponsiveGrid } from '../layout/responsive';
@@ -9,13 +18,54 @@ interface ProfileScreenProps {
   sessions: ReadingSession[];
 }
 
+const PROFILE_STORAGE_KEY = 'inkbound_reader_profile';
+
+interface StoredProfile {
+  displayName: string;
+  email: string;
+  favoriteQuote: string;
+  bio: string;
+  avatarImage?: string;
+  bannerImage?: string;
+}
+
+const readStoredProfile = (): StoredProfile => {
+  try {
+    const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (stored) return JSON.parse(stored) as StoredProfile;
+  } catch {
+    // Fall back to defaults when stored profile data is invalid.
+  }
+
+  return {
+    displayName: 'Jamie Lee',
+    email: 'jamie@example.com',
+    favoriteQuote: 'A reader lives a thousand lives before they die.',
+    bio: 'A lifelong reader building a quiet, personal record of every book.',
+  };
+};
+
+const readImageFile = (file: File, onLoad: (dataUrl: string) => void) => {
+  if (!file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result === 'string') onLoad(reader.result);
+  };
+  reader.readAsDataURL(file);
+};
+
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions }) => {
   const { userPlan } = useUserPlan();
-  const [displayName, setDisplayName] = useState('Jamie Lee');
-  const [email, setEmail] = useState('jamie@example.com');
-  const [location, setLocation] = useState('');
-  const [bio, setBio] = useState('A lifelong reader building a quiet, personal record of every book.');
+  const initialProfile = useMemo(readStoredProfile, []);
+  const [displayName, setDisplayName] = useState(initialProfile.displayName);
+  const [email, setEmail] = useState(initialProfile.email);
+  const [favoriteQuote, setFavoriteQuote] = useState(initialProfile.favoriteQuote);
+  const [bio, setBio] = useState(initialProfile.bio);
+  const [avatarImage, setAvatarImage] = useState<string | undefined>(initialProfile.avatarImage);
+  const [bannerImage, setBannerImage] = useState<string | undefined>(initialProfile.bannerImage);
   const [saved, setSaved] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const completedBooks = useMemo(
     () => books.filter((book) => book.status === 'finished').length,
@@ -26,7 +76,23 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     [sessions],
   );
 
+  const initials = displayName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('') || 'JL';
+
   const handleSave = () => {
+    const profile: StoredProfile = {
+      displayName,
+      email,
+      favoriteQuote,
+      bio,
+      avatarImage,
+      bannerImage,
+    };
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2500);
   };
@@ -34,15 +100,63 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   return (
     <div className="space-y-6 pb-20">
       <section className="inkbound-panel overflow-hidden rounded-3xl">
-        <div className="h-32 bg-gradient-to-r from-[#38243d] via-[#6d425f] to-[#34243a] sm:h-40" />
+        <div
+          className="relative h-40 bg-gradient-to-r from-[#38243d] via-[#6d425f] to-[#34243a] sm:h-52"
+          style={
+            bannerImage
+              ? {
+                  backgroundImage: `linear-gradient(rgba(20, 12, 22, 0.2), rgba(20, 12, 22, 0.35)), url(${bannerImage})`,
+                  backgroundPosition: 'center',
+                  backgroundSize: 'cover',
+                }
+              : undefined
+          }
+        >
+          <input
+            ref={bannerInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) readImageFile(file, setBannerImage);
+              event.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => bannerInputRef.current?.click()}
+            className="absolute right-4 top-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/20 bg-black/45 px-4 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-black/60"
+          >
+            <ImagePlus className="h-4 w-4" />
+            {bannerImage ? 'Change banner' : 'Add banner'}
+          </button>
+        </div>
+
         <div className="px-5 pb-6 sm:px-8">
           <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="relative grid h-24 w-24 place-items-center rounded-full border-4 border-[var(--ink-surface)] bg-gradient-to-br from-[#78566e] to-[#2b1c30] font-serif text-3xl font-bold text-[var(--ink-ivory)] shadow-xl sm:h-28 sm:w-28">
-                JL
+              <div className="relative grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-full border-4 border-[var(--ink-surface)] bg-gradient-to-br from-[#78566e] to-[#2b1c30] font-serif text-3xl font-bold text-[var(--ink-ivory)] shadow-xl sm:h-28 sm:w-28">
+                {avatarImage ? (
+                  <img src={avatarImage} alt={`${displayName} profile`} className="h-full w-full object-cover" />
+                ) : (
+                  initials
+                )}
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) readImageFile(file, setAvatarImage);
+                    event.target.value = '';
+                  }}
+                />
                 <button
                   type="button"
-                  className="absolute bottom-0 right-0 grid h-9 w-9 place-items-center rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] text-[var(--ink-gold)]"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="absolute bottom-0 right-0 grid h-9 w-9 place-items-center rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] text-[var(--ink-gold)] shadow-lg"
                   aria-label="Change profile photo"
                 >
                   <Camera className="h-4 w-4" />
@@ -121,13 +235,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
           </label>
 
           <label className="space-y-2 text-sm font-semibold text-[var(--ink-ivory)] md:col-span-2">
-            Location
+            Favorite quote
             <div className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4">
-              <MapPin className="h-4 w-4 text-[var(--ink-gold)]" />
+              <Quote className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
               <input
-                value={location}
-                onChange={(event) => setLocation(event.target.value)}
-                placeholder="Optional"
+                value={favoriteQuote}
+                onChange={(event) => setFavoriteQuote(event.target.value)}
+                placeholder="A line that stays with you"
                 className="min-w-0 flex-1 bg-transparent text-[var(--ink-ivory)] outline-none placeholder:text-[var(--ink-faint)]"
               />
             </div>
