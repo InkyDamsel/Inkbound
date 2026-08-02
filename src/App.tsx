@@ -22,6 +22,7 @@ import { StatisticsScreen } from './components/StatisticsScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { AddBookModal } from './components/AddBookModal';
 import { ResponsiveShell } from './layout/shell/ResponsiveShell';
+import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
 import { Check, RotateCcw } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
@@ -278,7 +279,7 @@ export default function App() {
       }
     >
       <main className="inkbound-main-content">
-        <div className="inkbound-page-canvas">
+        <ResponsiveContainer width="wide">
           {activeTab === 'home' && (
             <HomeDashboard
               books={books}
@@ -341,7 +342,7 @@ export default function App() {
               onResetData={handleResetData}
             />
           )}
-        </div>
+        </ResponsiveContainer>
       </main>
 
       {selectedBookForDetails && (
