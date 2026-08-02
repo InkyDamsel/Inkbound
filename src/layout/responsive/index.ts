@@ -1,5 +1,6 @@
 export { BreakpointProvider, useBreakpoint } from './BreakpointProvider';
 export { ResponsiveContainer } from './ResponsiveContainer';
+export { ResponsiveDashboardLayout } from './ResponsiveDashboardLayout';
 export { ResponsiveGrid } from './ResponsiveGrid';
 export { ResponsiveStack } from './ResponsiveStack';
 export {
