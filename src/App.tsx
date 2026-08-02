@@ -20,6 +20,7 @@ import { CollectionsScreen } from './components/CollectionsScreen';
 import { ReadingTimelineScreen } from './components/ReadingTimelineScreen';
 import { ReadingMemoriesScreen } from './components/ReadingMemoriesScreen';
 import { ReaderPersonalityScreen } from './components/ReaderPersonalityScreen';
+import { ReadingInsightsScreen } from './components/ReadingInsightsScreen';
 import { InkboundStudioScreen } from './components/InkboundStudioScreen';
 import { MonthlyWrappedScreen } from './components/MonthlyWrappedScreen';
 import { YearInBooksScreen } from './components/YearInBooksScreen';
@@ -350,6 +351,7 @@ export default function App() {
             <ReadingMemoriesScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />
           )}
           {activeTab === 'personality' && <ReaderPersonalityScreen books={books} sessions={sessions} />}
+          {activeTab === 'insights' && <ReadingInsightsScreen books={books} sessions={sessions} />}
           {activeTab === 'studio' && <InkboundStudioScreen books={books} sessions={sessions} />}
           {activeTab === 'wrapped' && <MonthlyWrappedScreen books={books} sessions={sessions} />}
           {activeTab === 'yearbook' && (
