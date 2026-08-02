@@ -9,6 +9,7 @@ import {
   Clock3,
   DownloadCloud,
   FolderHeart,
+  History,
   Home,
   Library,
   Moon,
@@ -35,6 +36,7 @@ export type NavTab =
   | 'tbr'
   | 'sessions'
   | 'collections'
+  | 'timeline'
   | 'challenges'
   | 'achievements'
   | 'studio'
@@ -61,6 +63,7 @@ const navItems = [
   { id: 'tbr' as NavTab, label: 'TBR', icon: Bookmark },
   { id: 'sessions' as NavTab, label: 'Reading Sessions', icon: Clock3 },
   { id: 'collections' as NavTab, label: 'Collections', icon: FolderHeart },
+  { id: 'timeline' as NavTab, label: 'Reading Timeline', icon: History },
   { id: 'challenges' as NavTab, label: 'Challenges', icon: Target },
   { id: 'achievements' as NavTab, label: 'Achievements', icon: Trophy },
   { id: 'studio' as NavTab, label: 'Inkbound Studio', icon: Palette },
@@ -88,24 +91,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [notificationsRead, setNotificationsRead] = usePersistentState(
-    'inkbound_notifications_read',
-    false,
-  );
+  const [notificationsRead, setNotificationsRead] = usePersistentState('inkbound_notifications_read', false);
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchResults = normalizedQuery
-    ? books
-        .filter(
-          (book) =>
-            book.work.title.toLowerCase().includes(normalizedQuery) ||
-            book.work.author.toLowerCase().includes(normalizedQuery) ||
-            book.work.seriesName?.toLowerCase().includes(normalizedQuery) ||
-            book.work.genres.some((genre) => genre.toLowerCase().includes(normalizedQuery)) ||
-            book.privateTags.some((tag) => tag.toLowerCase().includes(normalizedQuery)),
-        )
-        .slice(0, 7)
+    ? books.filter((book) =>
+        book.work.title.toLowerCase().includes(normalizedQuery) ||
+        book.work.author.toLowerCase().includes(normalizedQuery) ||
+        book.work.seriesName?.toLowerCase().includes(normalizedQuery) ||
+        book.work.genres.some((genre) => genre.toLowerCase().includes(normalizedQuery)) ||
+        book.privateTags.some((tag) => tag.toLowerCase().includes(normalizedQuery)),
+      ).slice(0, 7)
     : [];
 
   const currentlyReadingCount = books.filter((book) => book.status === 'currently-reading').length;
@@ -113,10 +110,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const remainingSlots = Math.max(0, freeBookLimit - books.length);
   const usedPercent = Math.min(100, Math.round((books.length / freeBookLimit) * 100));
   const isMoreSectionActive = mobileMoreItems.some((item) => item.id === activeTab);
-  const activeLabel =
-    activeTab === 'profile'
-      ? 'Profile'
-      : navItems.find((item) => item.id === activeTab)?.label ?? 'Home';
+  const activeLabel = activeTab === 'profile' ? 'Profile' : navItems.find((item) => item.id === activeTab)?.label ?? 'Home';
 
   const navigate = (tab: NavTab) => {
     setActiveTab(tab);
