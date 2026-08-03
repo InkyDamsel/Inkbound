@@ -27,26 +27,12 @@ interface HomeDashboardProps {
 const annualGoal = 50;
 const AWAKE_LUMIS_ASSET = '/assets/lumis/lumis-awake.svg';
 const SLEEPING_LUMIS_ASSET = '/assets/lumis/lumis-sleeping.svg';
-const PROUD_LUMIS_ASSET = '/assets/lumis/lumis-proud.svg';
 const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 const getSessionTimestamp = (session: ReadingSession): number => {
   const time = session.endTime || session.startTime || '12:00';
   const timestamp = new Date(`${session.date}T${time}`).getTime();
   return Number.isNaN(timestamp) ? new Date(session.date).getTime() : timestamp;
-};
-
-const isDateToday = (value?: string): boolean => {
-  if (!value) return false;
-  const date = new Date(value.includes('T') ? value : `${value}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return false;
-
-  const today = new Date();
-  return (
-    date.getFullYear() === today.getFullYear() &&
-    date.getMonth() === today.getMonth() &&
-    date.getDate() === today.getDate()
-  );
 };
 
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
@@ -136,30 +122,22 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     () => [...sessions].sort((a, b) => getSessionTimestamp(b) - getSessionTimestamp(a))[0],
     [sessions],
   );
-  const finishedBookToday = finishedBooks.some((book) => isDateToday(book.dateFinished));
   const isAwakePose = Boolean(
     recentSession && Date.now() - getSessionTimestamp(recentSession) <= RECENT_READING_WINDOW_MS,
   );
-  const lumisPortrait = finishedBookToday
+  const lumisPortrait = isAwakePose
     ? {
-        src: PROUD_LUMIS_ASSET,
-        alt: 'Lumis, a proud purple library dragon sitting on a stack of finished books',
-        title: 'Finished a book today',
-        detail: 'Lumis looks especially proud today. Another story has found its place.',
+        src: AWAKE_LUMIS_ASSET,
+        alt: 'Lumis, an alert purple library dragon resting on a book beside a candle and tea',
+        title: 'Lumis is curled up by your newest book',
+        detail: 'Eager for your next adventure.',
       }
-    : isAwakePose
-      ? {
-          src: AWAKE_LUMIS_ASSET,
-          alt: 'Lumis, an alert purple library dragon resting on a book beside a candle and tea',
-          title: 'Lumis is curled up by your newest book',
-          detail: 'Eager for your next adventure.',
-        }
-      : {
-          src: SLEEPING_LUMIS_ASSET,
-          alt: 'Lumis, a sleeping purple library dragon resting on a book beside a candle and tea',
-          title: 'Lumis is resting after a day of stories',
-          detail: "Dreaming of tomorrow's adventures.",
-        };
+    : {
+        src: SLEEPING_LUMIS_ASSET,
+        alt: 'Lumis, a sleeping purple library dragon resting on a book beside a candle and tea',
+        title: 'Lumis is resting after a day of stories',
+        detail: "Dreaming of tomorrow's adventures.",
+      };
 
   return (
     <div className="space-y-8 pb-24 md:pb-12">
