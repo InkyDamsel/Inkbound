@@ -1,13 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { BookHeart, Feather, Pencil, Sparkles } from 'lucide-react';
-import { ReadingSession, UserBookRecord } from '../types';
+import { Format, ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 
 interface DragonProfile {
   id: string;
   name: string;
-  hatchDay: string;
-  favoriteSleepingSpot: string;
 }
 
 interface MyDragonScreenProps {
@@ -24,8 +22,13 @@ const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_DRAGON: DragonProfile = {
   id: 'library-dragon',
   name: 'Lumis',
-  hatchDay: new Date().toISOString().slice(0, 10),
-  favoriteSleepingSpot: 'By the fireplace',
+};
+
+const FORMAT_LABELS: Record<Format, string> = {
+  hardcover: 'Hardcover',
+  paperback: 'Paperback',
+  ebook: 'eBook',
+  audiobook: 'Audiobook',
 };
 
 const getSessionTimestamp = (session: ReadingSession): number => {
@@ -47,6 +50,24 @@ const isDateToday = (value?: string): boolean => {
   );
 };
 
+const getReadingDaypart = (startTime: string): string => {
+  const hour = Number.parseInt(startTime.split(':')[0] ?? '', 10);
+  if (Number.isNaN(hour)) return 'Still discovering';
+  if (hour >= 5 && hour < 12) return 'Mornings';
+  if (hour >= 12 && hour < 17) return 'Afternoons';
+  if (hour >= 17 && hour < 21) return 'Evenings';
+  return 'Nights';
+};
+
+const formatSessionDuration = (minutes: number): string => {
+  if (minutes <= 0) return 'No sessions yet';
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours === 0) return `${remainingMinutes} min`;
+  if (remainingMinutes === 0) return `${hours} hr`;
+  return `${hours} hr ${remainingMinutes} min`;
+};
+
 export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions }) => {
   const [dragon, setDragon] = usePersistentState<DragonProfile>(DRAGON_KEY, DEFAULT_DRAGON);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -65,6 +86,32 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
       .forEach((genre) => counts.set(genre, (counts.get(genre) ?? 0) + 1));
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Still discovering';
   }, [finishedBooks]);
+
+  const favoriteFormat = useMemo(() => {
+    const counts = new Map<Format, number>();
+    finishedBooks.forEach((book) => {
+      const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+      if (!edition) return;
+      counts.set(edition.format, (counts.get(edition.format) ?? 0) + 1);
+    });
+    const format = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return format ? FORMAT_LABELS[format] : 'Still discovering';
+  }, [finishedBooks]);
+
+  const favoriteReadingTime = useMemo(() => {
+    const counts = new Map<string, number>();
+    sessions.forEach((session) => {
+      const daypart = getReadingDaypart(session.startTime);
+      if (daypart === 'Still discovering') return;
+      counts.set(daypart, (counts.get(daypart) ?? 0) + 1);
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Still discovering';
+  }, [sessions]);
+
+  const longestReadingSession = useMemo(
+    () => formatSessionDuration(Math.max(0, ...sessions.map((session) => session.durationMinutes))),
+    [sessions],
+  );
 
   const recentSession = useMemo(
     () => [...sessions].sort((a, b) => getSessionTimestamp(b) - getSessionTimestamp(a))[0],
@@ -196,28 +243,28 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
           <h3 className="font-serif text-2xl text-[var(--ink-ivory)]">About {dragon.name}</h3>
         </div>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ink-muted)]">
-          A few quiet details shaped by the reading life you share together.
+          {dragon.name} quietly reflects the reading habits you've built together.
         </p>
         <dl className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
-            <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">Personality</dt>
-            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">Curious & Gentle</dd>
-          </div>
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
             <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">Favorite genre</dt>
             <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">{favoriteGenre}</dd>
           </div>
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
-            <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">Companion since</dt>
-            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">
-              {new Date(`${dragon.hatchDay}T12:00:00`).toLocaleDateString()}
-            </dd>
+            <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">Favorite format</dt>
+            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">{favoriteFormat}</dd>
           </div>
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
-            <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">Favorite spot</dt>
-            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">
-              {dragon.favoriteSleepingSpot}
-            </dd>
+            <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">
+              Favorite reading time
+            </dt>
+            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">{favoriteReadingTime}</dd>
+          </div>
+          <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
+            <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">
+              Longest reading session
+            </dt>
+            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">{longestReadingSession}</dd>
           </div>
         </dl>
       </section>
