@@ -15,6 +15,7 @@ import './styles/responsive-navigation.css';
 import './styles/theme-modes.css';
 import './styles/core-pages.css';
 import './styles/release-polish.css';
+import './styles/light-theme-2.css';
 
 const rootElement = document.getElementById('root');
 
