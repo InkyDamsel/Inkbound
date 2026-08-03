@@ -1,15 +1,23 @@
-import React, { createContext, ReactNode, useContext, useState } from 'react';
+import React, { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { Timestamp, doc, onSnapshot } from 'firebase/firestore';
 import { UserPlan } from '../types';
+import { auth, db } from '../lib/firebase';
 
 export const FREE_BOOK_LIMIT = 50;
 
-const USER_PLAN_STORAGE_KEY = 'inkbound_user_plan';
-const LEGACY_USER_PLAN_STORAGE_KEY = 'bookhaven_user_plan';
+interface EntitlementRecord {
+  subscriptionStatus?: 'none' | 'active' | 'trialing' | 'past_due' | 'canceled';
+  paidPremiumUntil?: Timestamp | string;
+  vipEnabled?: boolean;
+  courtesyPremiumUntil?: Timestamp | string;
+}
 
 interface UserPlanContextType {
   userPlan: UserPlan;
   setUserPlan: (plan: UserPlan) => void;
   freeBookLimit: number;
+  entitlementLoading: boolean;
 
   canAddBook: (currentBookCount: number) => boolean;
   remainingBookSlots: (currentBookCount: number) => number;
@@ -26,23 +34,75 @@ interface UserPlanContextType {
 
 const UserPlanContext = createContext<UserPlanContextType | undefined>(undefined);
 
-function readStoredUserPlan(): UserPlan {
-  const storedPlan =
-    localStorage.getItem(USER_PLAN_STORAGE_KEY) ??
-    localStorage.getItem(LEGACY_USER_PLAN_STORAGE_KEY);
+function toMillis(value: Timestamp | string | undefined): number {
+  if (!value) return 0;
+  if (value instanceof Timestamp) return value.toMillis();
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
-  return storedPlan === 'premium' ? 'premium' : 'free';
+function resolvePlan(entitlement: EntitlementRecord | undefined): UserPlan {
+  if (!entitlement) return 'free';
+
+  const now = Date.now();
+  const paidIsActive =
+    entitlement.subscriptionStatus === 'active' ||
+    entitlement.subscriptionStatus === 'trialing' ||
+    toMillis(entitlement.paidPremiumUntil) > now;
+  const courtesyIsActive = toMillis(entitlement.courtesyPremiumUntil) > now;
+
+  return entitlement.vipEnabled || paidIsActive || courtesyIsActive ? 'premium' : 'free';
 }
 
 export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [userPlan, setUserPlanState] = useState<UserPlan>(readStoredUserPlan);
+  const [userPlan, setUserPlanState] = useState<UserPlan>('free');
+  const [entitlementLoading, setEntitlementLoading] = useState(Boolean(auth && db));
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<string | undefined>(undefined);
 
-  const setUserPlan = (plan: UserPlan) => {
-    setUserPlanState(plan);
-    localStorage.setItem(USER_PLAN_STORAGE_KEY, plan);
-    localStorage.removeItem(LEGACY_USER_PLAN_STORAGE_KEY);
+  useEffect(() => {
+    if (!auth || !db) {
+      setUserPlanState('free');
+      setEntitlementLoading(false);
+      return;
+    }
+
+    let unsubscribeEntitlement: (() => void) | undefined;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      unsubscribeEntitlement?.();
+      unsubscribeEntitlement = undefined;
+
+      if (!user) {
+        setUserPlanState('free');
+        setEntitlementLoading(false);
+        return;
+      }
+
+      setEntitlementLoading(true);
+      unsubscribeEntitlement = onSnapshot(
+        doc(db, 'entitlements', user.uid),
+        (snapshot) => {
+          setUserPlanState(resolvePlan(snapshot.data() as EntitlementRecord | undefined));
+          setEntitlementLoading(false);
+        },
+        () => {
+          setUserPlanState('free');
+          setEntitlementLoading(false);
+        },
+      );
+    });
+
+    return () => {
+      unsubscribeEntitlement?.();
+      unsubscribeAuth();
+    };
+  }, []);
+
+  // Kept only for compatibility with old prototype components. Client code is
+  // deliberately unable to modify server-authoritative account access.
+  const setUserPlan = (_plan: UserPlan) => {
+    console.warn('Inkbound account access can only be changed by the secure entitlement service.');
   };
 
   const openUpgradeModal = (reason?: string) => {
@@ -55,35 +115,29 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
     setUpgradeReason(undefined);
   };
 
-  const isPremium = userPlan === 'premium';
+  const value = useMemo<UserPlanContextType>(() => {
+    const isPremium = userPlan === 'premium';
 
-  const canAddBook = (currentBookCount: number) =>
-    isPremium || currentBookCount < FREE_BOOK_LIMIT;
+    return {
+      userPlan,
+      setUserPlan,
+      freeBookLimit: FREE_BOOK_LIMIT,
+      entitlementLoading,
+      canAddBook: (currentBookCount) => isPremium || currentBookCount < FREE_BOOK_LIMIT,
+      remainingBookSlots: (currentBookCount) =>
+        isPremium ? Infinity : Math.max(0, FREE_BOOK_LIMIT - currentBookCount),
+      canAddMultipleBooks: isPremium,
+      canUseBatchEdit: isPremium,
+      canRunUnlimitedImport: isPremium,
+      canViewDetailedReports: isPremium,
+      isUpgradeModalOpen,
+      upgradeReason,
+      openUpgradeModal,
+      closeUpgradeModal,
+    };
+  }, [entitlementLoading, isUpgradeModalOpen, upgradeReason, userPlan]);
 
-  const remainingBookSlots = (currentBookCount: number) =>
-    isPremium ? Infinity : Math.max(0, FREE_BOOK_LIMIT - currentBookCount);
-
-  return (
-    <UserPlanContext.Provider
-      value={{
-        userPlan,
-        setUserPlan,
-        freeBookLimit: FREE_BOOK_LIMIT,
-        canAddBook,
-        remainingBookSlots,
-        canAddMultipleBooks: isPremium,
-        canUseBatchEdit: isPremium,
-        canRunUnlimitedImport: isPremium,
-        canViewDetailedReports: isPremium,
-        isUpgradeModalOpen,
-        upgradeReason,
-        openUpgradeModal,
-        closeUpgradeModal,
-      }}
-    >
-      {children}
-    </UserPlanContext.Provider>
-  );
+  return <UserPlanContext.Provider value={value}>{children}</UserPlanContext.Provider>;
 };
 
 export const useUserPlan = () => {
