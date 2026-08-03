@@ -1,10 +1,5 @@
-import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
-
-if (getApps().length === 0) initializeApp();
-
-const db = getFirestore();
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
 
@@ -21,6 +16,7 @@ function timestampToIso(value: unknown): string | null {
 async function requireAdmin(request: CallableRequest<unknown>) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
 
+  const db = getFirestore();
   const snapshot = await db.doc(`admins/${request.auth.uid}`).get();
   const record = snapshot.data() as AdminRecord | undefined;
   if (!record?.enabled) throw new HttpsError('permission-denied', 'Administrator access is required.');
@@ -30,6 +26,7 @@ async function requireAdmin(request: CallableRequest<unknown>) {
 
 export const getAdminDashboard = onCall(async (request) => {
   const { admin } = await requireAdmin(request);
+  const db = getFirestore();
   const input = request.data as { query?: unknown } | undefined;
   const query = typeof input?.query === 'string' ? input.query.trim().toLowerCase() : '';
 
