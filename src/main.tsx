@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
+import { AppErrorBoundary } from './components/AppErrorBoundary.tsx';
 import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
@@ -13,16 +14,24 @@ import './styles/theme-modes.css';
 import './styles/core-pages.css';
 import './styles/release-polish.css';
 
-createRoot(document.getElementById('root')!).render(
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  throw new Error('Inkbound could not find its application root.');
+}
+
+createRoot(rootElement).render(
   <StrictMode>
-    <BreakpointProvider>
-      <UserPlanProvider>
-        <AccountSyncProvider>
-          <SecurityBootstrap />
-          <App />
-          <UpgradeModal />
-        </AccountSyncProvider>
-      </UserPlanProvider>
-    </BreakpointProvider>
+    <AppErrorBoundary>
+      <BreakpointProvider>
+        <UserPlanProvider>
+          <AccountSyncProvider>
+            <SecurityBootstrap />
+            <App />
+            <UpgradeModal />
+          </AccountSyncProvider>
+        </UserPlanProvider>
+      </BreakpointProvider>
+    </AppErrorBoundary>
   </StrictMode>,
 );
