@@ -1,11 +1,11 @@
 import React from 'react';
-import { CloudDownload, CloudUpload, LogOut, ShieldCheck } from 'lucide-react';
+import { Cloud, LogOut, ShieldCheck } from 'lucide-react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 
 const formatLastSync = (value: string | null) => {
-  if (!value) return 'Not synced yet';
+  if (!value) return 'Automatic sync will begin after sign-in';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Previously synced' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? 'Previously synchronized' : date.toLocaleString();
 };
 
 export const AccountSyncCard: React.FC = () => {
@@ -16,14 +16,14 @@ export const AccountSyncCard: React.FC = () => {
     <section className="inkbound-panel rounded-3xl p-5 sm:p-7">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="inkbound-kicker">Optional Cloud Sync</p>
+          <p className="inkbound-kicker">Cross-device persistence</p>
           <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">
             Take Inkbound with you
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">
-            Connect your Google account to back up this device and restore your library, sessions,
-            profile, goals, and preferences on another device. Inkbound still works locally without
-            an account.
+            Sign in with Google to synchronize books, sessions, profile details, and profile images
+            across your devices. Changes are stored as individual records so one device cannot replace
+            an entire library with an older copy.
           </p>
         </div>
         <ShieldCheck className="h-7 w-7 shrink-0 text-[var(--ink-gold)]" />
@@ -32,7 +32,7 @@ export const AccountSyncCard: React.FC = () => {
       {!sync.isConfigured && (
         <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-[var(--ink-muted)]">
           Firebase credentials are missing from this deployment. Add the Inkbound Firebase values to
-          the local environment file before using Google sign-in.
+          the environment before using Google synchronization.
         </div>
       )}
 
@@ -55,8 +55,8 @@ export const AccountSyncCard: React.FC = () => {
           </button>
 
           <p className="mt-3 text-xs text-[var(--ink-faint)]">
-            Inkbound remembers the connected Google account on this browser until you sign out.
-            Signing in does not automatically replace this device&apos;s local data.
+            Your local library remains available while signed out. After sign-in, Inkbound safely
+            merges this device with the Google-connected library.
           </p>
         </div>
       ) : (
@@ -83,7 +83,7 @@ export const AccountSyncCard: React.FC = () => {
                   {sync.user.email || 'Google account connected'}
                 </p>
                 <p className="mt-1 text-[11px] text-[var(--ink-faint)]">
-                  Signed in persistently · Last sync: {formatLastSync(sync.lastSyncedAt)}
+                  Signed in persistently · {formatLastSync(sync.lastSyncedAt)}
                 </p>
               </div>
             </div>
@@ -98,30 +98,21 @@ export const AccountSyncCard: React.FC = () => {
             </button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => void sync.uploadSnapshot()}
-              disabled={isWorking}
-              className="quiet-shelf-primary-action min-h-12 justify-center disabled:cursor-wait disabled:opacity-60"
-            >
-              <CloudUpload className="h-4 w-4" />
-              {isWorking ? 'Working...' : 'Sync this device'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void sync.restoreSnapshot()}
-              disabled={isWorking}
-              className="quiet-shelf-secondary-action min-h-12 justify-center disabled:cursor-wait disabled:opacity-60"
-            >
-              <CloudDownload className="h-4 w-4" /> Restore from cloud
-            </button>
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-950/15 p-4">
+            <Cloud className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+            <div>
+              <p className="text-sm font-bold text-[var(--ink-ivory)]">Automatic synchronization is active</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                Books and sessions synchronize as separate cloud records. Profile images are stored in
+                protected Firebase Storage. Offline changes remain on this device and synchronize after
+                the connection returns.
+              </p>
+            </div>
           </div>
 
           <p className="text-xs text-[var(--ink-faint)]">
-            Sync uploads the current device. Restore replaces this device&apos;s saved Inkbound data
-            with the latest cloud backup for this Google account. Closing or refreshing Inkbound will
-            not sign you out.
+            There is no device-wide overwrite button. Signing into another device merges the cloud
+            library before that device is allowed to send deletions.
           </p>
         </div>
       )}
