@@ -13,6 +13,7 @@ import { HomeDashboard } from './components/HomeDashboard';
 import { LibraryScreen } from './components/LibraryScreen';
 import { TBRScreen } from './components/TBRScreen';
 import { ReadingSessionsScreen } from './components/ReadingSessionsScreen';
+import { ReadingActivityOverview } from './components/ReadingActivityOverview';
 import { ReadingChallengesScreen } from './components/ReadingChallengesScreen';
 import { AchievementsScreen } from './components/AchievementsScreen';
 import { CollectionsScreen } from './components/CollectionsScreen';
@@ -246,7 +247,12 @@ export default function App() {
           {activeTab === 'home' && <HomeDashboard books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} onStartSessionForBook={(book) => openTimer(book.id)} onUpdateStatus={handleUpdateStatus} onNavigateToTab={setActiveTab} onOpenAddBook={() => setIsAddBookOpen(true)} />}
           {activeTab === 'library' && <LibraryScreen books={books} selectedBookIds={selectedBookIds} onToggleSelectBook={handleToggleSelectBook} onSelectAll={setSelectedBookIds} onClearSelection={() => setSelectedBookIds([])} onSelectBook={setSelectedBookForDetails} onOpenBatchEdit={() => setIsBatchEditOpen(true)} onOpenAddBook={() => setIsAddBookOpen(true)} />}
           {activeTab === 'tbr' && <TBRScreen books={books} onSelectBook={setSelectedBookForDetails} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} />}
-          {activeTab === 'sessions' && <ReadingSessionsScreen books={books} sessions={sessions} onOpenTimer={openTimer} onSelectBook={setSelectedBookForDetails} />}
+          {activeTab === 'sessions' && (
+            <div className="space-y-8">
+              <ReadingActivityOverview books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />
+              <ReadingSessionsScreen books={books} sessions={sessions} onOpenTimer={openTimer} onSelectBook={setSelectedBookForDetails} />
+            </div>
+          )}
           {activeTab === 'challenges' && <ReadingChallengesScreen books={books} sessions={sessions} />}
           {activeTab === 'achievements' && <AchievementsScreen books={books} sessions={sessions} />}
           {activeTab === 'collections' && <CollectionsScreen books={books} onUpdateBook={handleUpdateBook} onSelectBook={setSelectedBookForDetails} />}
