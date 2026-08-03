@@ -1,7 +1,14 @@
 /// <reference types="vite/client" />
-VITE_FIREBASE_API_KEY=AIzaSyAMxE8HfTJHK-mgUPwI4a9pSaeKv8gwqRw
-VITE_FIREBASE_AUTH_DOMAIN=inkbound-app.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=inkbound-app
-VITE_FIREBASE_STORAGE_BUCKET=inkbound-app.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=905818083152
-VITE_FIREBASE_APP_ID=1:905818083152:web:3e59fd65cd34ce17ef2655
+
+interface ImportMetaEnv {
+  readonly VITE_FIREBASE_API_KEY?: string;
+  readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
+  readonly VITE_FIREBASE_PROJECT_ID?: string;
+  readonly VITE_FIREBASE_STORAGE_BUCKET?: string;
+  readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
+  readonly VITE_FIREBASE_APP_ID?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
