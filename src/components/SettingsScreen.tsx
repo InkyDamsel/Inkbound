@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { UserBookRecord, ReadingSession } from '../types';
+import {
+  BookOpen,
+  Check,
+  Crown,
+  Download,
+  FileSpreadsheet,
+  Moon,
+  RotateCcw,
+  Sparkles,
+  Sun,
+  X,
+} from 'lucide-react';
 import { useUserPlan } from '../context/UserPlanContext';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
-import {
-  Sun,
-  Download,
-  RotateCcw,
-  BookOpen,
-  Check,
-  FileSpreadsheet,
-  Sparkles,
-  Crown,
-} from 'lucide-react';
+import type { ReadingSession, UserBookRecord } from '../types';
 
 interface SettingsScreenProps {
   books: UserBookRecord[];
@@ -21,6 +23,20 @@ interface SettingsScreenProps {
   setIsDarkMode: React.Dispatch<React.SetStateAction<boolean>>;
   onResetData: () => void;
 }
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+};
+
+const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   books,
@@ -33,114 +49,273 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [annualGoal, setAnnualGoal] = usePersistentState('inkbound_annual_goal', '25');
   const [dailyGoalMins, setDailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
   const [exported, setExported] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetConfirmation, setResetConfirmation] = useState('');
 
-  const handleExportJSON = () => {
-    const data = {
-      app: 'Inkbound',
-      exportDate: new Date().toISOString(),
-      preferences: { annualGoal, dailyGoalMins, theme: isDarkMode ? 'dark' : 'light' },
-      books,
-      sessions,
-    };
-    const jsonStr = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `inkbound_library_backup_${new Date().toISOString().split('T')[0]}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  const markExported = () => {
     setExported(true);
     window.setTimeout(() => setExported(false), 3000);
   };
 
-  const handleExportCSV = () => {
-    const headers = ['Title', 'Author', 'Status', 'Rating', 'Format', 'PagesRead', 'DateAdded'];
-    const rows = books.map((book) => [
-      `"${book.work.title.replace(/"/g, '""')}"`,
-      `"${book.work.author.replace(/"/g, '""')}"`,
-      book.status,
-      book.rating || '',
-      book.editions[0]?.format || 'hardcover',
-      book.progressPages,
-      book.dateAdded,
-    ]);
+  const handleExportJSON = () => {
+    const data = {
+      schemaVersion: 1,
+      app: 'Inkbound',
+      exportDate: new Date().toISOString(),
+      preferences: {
+        annualGoal,
+        dailyGoalMins,
+        theme: isDarkMode ? 'dark' : 'light',
+      },
+      books,
+      sessions,
+    };
 
-    const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `inkbound_library_${new Date().toISOString().split('T')[0]}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setExported(true);
-    window.setTimeout(() => setExported(false), 3000);
+    downloadBlob(
+      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }),
+      `inkbound-library-backup-${new Date().toISOString().split('T')[0]}.json`,
+    );
+    markExported();
+  };
+
+  const handleExportCSV = () => {
+    const headers = [
+      'Title',
+      'Subtitle',
+      'Author',
+      'Series',
+      'Series Number',
+      'Status',
+      'Ownership',
+      'Rating',
+      'Format',
+      'ISBN',
+      'Page Count',
+      'Pages Read',
+      'Date Added',
+      'Date Started',
+      'Date Finished',
+      'Tags',
+      'Collections',
+    ];
+
+    const rows = books.map((book) => {
+      const activeEdition =
+        book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+
+      return [
+        book.work.title,
+        book.work.subtitle,
+        book.work.author,
+        book.work.seriesName,
+        book.work.seriesOrder,
+        book.status,
+        book.ownership,
+        book.rating,
+        activeEdition?.format,
+        activeEdition?.isbn13 ?? activeEdition?.isbn10 ?? activeEdition?.isbn,
+        activeEdition?.pageCount,
+        book.progressPages,
+        book.dateAdded,
+        book.dateStarted,
+        book.dateFinished,
+        book.privateTags.join(' | '),
+        book.collections.join(' | '),
+      ].map(csvCell);
+    });
+
+    const csvContent = `\uFEFF${[headers.map(csvCell).join(','), ...rows.map((row) => row.join(','))].join('\n')}`;
+    downloadBlob(
+      new Blob([csvContent], { type: 'text/csv;charset=utf-8' }),
+      `inkbound-library-${new Date().toISOString().split('T')[0]}.csv`,
+    );
+    markExported();
+  };
+
+  const confirmReset = () => {
+    if (resetConfirmation.trim().toUpperCase() !== 'CLEAR') return;
+    onResetData();
+    setResetConfirmation('');
+    setResetDialogOpen(false);
   };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 pb-20">
-      <div>
-        <span className="rounded border border-[#c5a059]/30 bg-[#c5a059]/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#e5c158]">
-          Preferences & Controls
-        </span>
-        <h1 className="mt-1 font-serif text-3xl font-bold text-[#f4efe6]">Settings & Data Backup</h1>
-        <p className="text-sm text-stone-400">Customize your Inkbound reading journal and export your complete library records.</p>
-      </div>
+      <header>
+        <p className="inkbound-kicker">Preferences & data</p>
+        <h1 className="mt-2 font-serif text-4xl text-[var(--ink-ivory)]">Settings</h1>
+        <p className="mt-2 text-sm text-[var(--ink-muted)]">
+          Shape your reading experience, protect your records, and keep a portable copy of your library.
+        </p>
+      </header>
 
-      <section className="space-y-4 rounded-2xl border border-[#c5a059]/40 bg-[#1c0f24] p-6 shadow-xl">
-        <div className="flex flex-col justify-between gap-3 border-b border-[#3d2448] pb-4 sm:flex-row sm:items-center">
+      <section className="inkbound-panel space-y-5 rounded-3xl p-6">
+        <div className="flex flex-col justify-between gap-4 border-b border-[var(--ink-border-subtle)] pb-5 sm:flex-row sm:items-center">
           <div>
-            <span className="rounded border border-[#c5a059]/30 bg-[#c5a059]/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#e5c158]">Account Subscription Tier</span>
-            <h2 className="mt-1 flex items-center gap-2 font-serif text-xl font-bold text-[#f4efe6]">
-              {userPlan === 'premium' ? <><Crown className="h-5 w-5 text-[#e5c158]" /><span>Premium Tier — Unlimited Library</span></> : <><BookOpen className="h-5 w-5 text-stone-400" /><span>Free Tier</span></>}
+            <p className="inkbound-eyebrow">Account access</p>
+            <h2 className="mt-2 flex items-center gap-2 font-serif text-2xl text-[var(--ink-ivory)]">
+              {userPlan === 'premium' ? (
+                <><Crown className="h-5 w-5 text-[var(--ink-gold)]" /> Inkbound Premium</>
+              ) : (
+                <><BookOpen className="h-5 w-5 text-[var(--ink-muted)]" /> Inkbound Free</>
+              )}
             </h2>
           </div>
           {userPlan === 'free' ? (
-            <button type="button" onClick={() => openUpgradeModal('Upgrade to Premium for unlimited library books, batch editing, and detailed reading analytics.')} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-5 py-2.5 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95"><Sparkles className="h-4 w-4" /> Upgrade to Premium</button>
+            <button
+              type="button"
+              onClick={() => openUpgradeModal('Upgrade to Premium for unlimited books, imports, batch editing, and detailed insights.')}
+              className="quiet-shelf-primary-action justify-center"
+            >
+              <Sparkles className="h-4 w-4" /> View Premium
+            </button>
           ) : (
-            <span className="flex items-center gap-1.5 rounded-xl border border-[#c5a059]/40 bg-[#c5a059]/20 px-3 py-1.5 text-xs font-bold text-[#e5c158]"><Check className="h-4 w-4" /> Active Subscription</span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/10 px-4 py-2 text-xs font-bold text-[var(--ink-gold)]">
+              <Check className="h-4 w-4" /> Active access
+            </span>
           )}
         </div>
 
         <ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16}>
-          <div className="space-y-1 rounded-xl border border-[#3d2448] bg-[#25132f] p-3 text-xs"><span className="block font-bold text-stone-400">Library Book Count Limit</span><p className="font-semibold text-[#f4efe6]">{userPlan === 'free' ? <span>{books.length} of {freeBookLimit} books used ({Math.max(0, freeBookLimit - books.length)} slots left)</span> : <span className="font-bold text-emerald-400">Unlimited Books Allowed</span>}</p></div>
-          <div className="space-y-1 rounded-xl border border-[#3d2448] bg-[#25132f] p-3 text-xs"><span className="block font-bold text-stone-400">Feature Access Level</span><p className="font-semibold text-[#f4efe6]">{userPlan === 'free' ? 'Standard Library + Basic Analytics' : 'Batch Edits + Unlimited Import + Deep Habit Reports'}</p></div>
+          <article className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Library capacity</span>
+            <p className="mt-2 font-semibold text-[var(--ink-ivory)]">
+              {userPlan === 'premium'
+                ? 'Unlimited books and imports'
+                : `${books.length} of ${freeBookLimit} books used`}
+            </p>
+            {userPlan === 'free' && (
+              <p className="mt-1 text-xs text-[var(--ink-muted)]">
+                {Math.max(0, freeBookLimit - books.length)} spaces remaining
+              </p>
+            )}
+          </article>
+          <article className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Data ownership</span>
+            <p className="mt-2 font-semibold text-[var(--ink-ivory)]">Export at any time</p>
+            <p className="mt-1 text-xs text-[var(--ink-muted)]">Your books, notes, sessions, and memories remain yours.</p>
+          </article>
         </ResponsiveGrid>
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-[#c5a059]/20 bg-[#1c0f24] p-6 shadow-xl">
-        <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Appearance & Themes</h2>
-        <div className="flex flex-col justify-between gap-4 pt-2 sm:flex-row sm:items-center">
-          <div><p className="text-xs font-bold text-[#f4efe6]">Color Palette Theme</p><p className="text-[11px] text-stone-400">Your theme choice is saved automatically.</p></div>
-          <button type="button" onClick={() => setIsDarkMode(!isDarkMode)} className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-4 py-2 text-xs font-bold text-[#120817] shadow-sm transition"><Sun className="h-4 w-4" /><span>{isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span></button>
+      <section className="inkbound-panel rounded-3xl p-6">
+        <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Appearance</h2>
+        <div className="mt-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="font-semibold text-[var(--ink-ivory)]">Color theme</p>
+            <p className="mt-1 text-sm text-[var(--ink-muted)]">Your choice is saved automatically on this device.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsDarkMode((current) => !current)}
+            className="quiet-shelf-secondary-action justify-center"
+          >
+            {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {isDarkMode ? 'Use light mode' : 'Use dark mode'}
+          </button>
         </div>
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-[#c5a059]/20 bg-[#1c0f24] p-6 shadow-xl">
-        <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Reading Targets & Goals</h2>
-        <p className="text-xs text-stone-400">Changes save automatically and remain after refresh.</p>
-        <ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16}>
-          <label className="text-xs font-bold text-[#f4efe6]">Annual Reading Goal (Books)<input type="number" min="1" value={annualGoal} onChange={(event) => setAnnualGoal(event.target.value)} className="mt-1 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-2.5 text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /></label>
-          <label className="text-xs font-bold text-[#f4efe6]">Daily Focus Target (Minutes)<input type="number" min="1" value={dailyGoalMins} onChange={(event) => setDailyGoalMins(event.target.value)} className="mt-1 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-2.5 text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /></label>
+      <section className="inkbound-panel rounded-3xl p-6">
+        <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Reading goals</h2>
+        <p className="mt-1 text-sm text-[var(--ink-muted)]">Changes save automatically.</p>
+        <ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16} className="mt-5">
+          <label className="text-sm font-semibold text-[var(--ink-ivory)]">
+            Annual book goal
+            <input
+              type="number"
+              min="1"
+              max="10000"
+              value={annualGoal}
+              onChange={(event) => setAnnualGoal(event.target.value)}
+              className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none"
+            />
+          </label>
+          <label className="text-sm font-semibold text-[var(--ink-ivory)]">
+            Daily reading target in minutes
+            <input
+              type="number"
+              min="1"
+              max="1440"
+              value={dailyGoalMins}
+              onChange={(event) => setDailyGoalMins(event.target.value)}
+              className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none"
+            />
+          </label>
         </ResponsiveGrid>
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-[#c5a059]/20 bg-[#1c0f24] p-6 shadow-xl">
-        <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Full Data Export & Ownership</h2>
-        <p className="text-xs text-stone-400">Your reading catalog belongs to you. Export your library, ratings, notes, quotes, session logs, and saved preferences at any time.</p>
-        <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <button type="button" onClick={handleExportJSON} className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-5 py-2.5 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95"><Download className="h-4 w-4" /><span>Export Complete JSON Backup</span></button>
-          <button type="button" onClick={handleExportCSV} className="flex items-center justify-center gap-2 rounded-xl border border-[#c5a059]/30 bg-[#25132f] px-5 py-2.5 text-xs font-bold text-[#f4efe6] shadow-md transition hover:bg-[#321a3e]"><FileSpreadsheet className="h-4 w-4 text-[#e5c158]" /><span>Export Library CSV Spreadsheet</span></button>
-          {exported && <span className="flex items-center gap-1 text-xs font-bold text-emerald-400"><Check className="h-4 w-4" /> Exported successfully!</span>}
+      <section className="inkbound-panel rounded-3xl p-6">
+        <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Export your data</h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
+          JSON preserves the complete Inkbound record. CSV creates a spreadsheet-friendly library using each book’s active edition.
+        </p>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <button type="button" onClick={handleExportJSON} className="quiet-shelf-primary-action justify-center">
+            <Download className="h-4 w-4" /> Complete JSON backup
+          </button>
+          <button type="button" onClick={handleExportCSV} className="quiet-shelf-secondary-action justify-center">
+            <FileSpreadsheet className="h-4 w-4" /> Library CSV
+          </button>
+          {exported && (
+            <span className="inline-flex items-center gap-2 px-2 text-sm font-semibold text-emerald-400">
+              <Check className="h-4 w-4" /> Export ready
+            </span>
+          )}
         </div>
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-rose-900/40 bg-[#1c0f24] p-6 shadow-xl">
-        <h2 className="font-serif text-xl font-bold text-rose-300">Clear Inkbound Data</h2>
-        <p className="text-xs text-stone-400">Remove all books and reading sessions saved on this device. This cannot be undone unless you have a backup.</p>
-        <button type="button" onClick={onResetData} className="flex items-center justify-center gap-2 rounded-xl border border-rose-700/50 bg-rose-900/80 px-4 py-2 text-xs font-bold text-rose-100 transition hover:bg-rose-900 sm:w-fit"><RotateCcw className="h-4 w-4" /><span>Clear Books & Sessions</span></button>
+      <section className="rounded-3xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-6">
+        <h2 className="font-serif text-2xl text-[#e9b2b2]">Clear local library data</h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
+          This removes books and reading sessions stored on this device. Cloud records are not changed unless you later sync the empty device library.
+        </p>
+        <button
+          type="button"
+          onClick={() => setResetDialogOpen(true)}
+          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/40 px-4 text-sm font-bold text-[#e9b2b2] hover:bg-[#c97b7b]/10"
+        >
+          <RotateCcw className="h-4 w-4" /> Clear local data
+        </button>
       </section>
+
+      {resetDialogOpen && (
+        <div className="fixed inset-0 z-[250] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setResetDialogOpen(false)}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="clear-data-title"
+            className="relative w-full max-w-lg rounded-3xl border border-[#c97b7b]/35 bg-[#17101b] p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button type="button" onClick={() => setResetDialogOpen(false)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)]" aria-label="Close confirmation">
+              <X className="h-5 w-5" />
+            </button>
+            <h3 id="clear-data-title" className="pr-12 font-serif text-3xl text-[var(--ink-ivory)]">Clear this device?</h3>
+            <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
+              Export a backup first. To confirm permanent removal from this device, type <strong className="text-[var(--ink-ivory)]">CLEAR</strong> below.
+            </p>
+            <input
+              value={resetConfirmation}
+              onChange={(event) => setResetConfirmation(event.target.value)}
+              autoFocus
+              placeholder="Type CLEAR"
+              className="mt-5 min-h-12 w-full rounded-xl border border-[#c97b7b]/35 bg-[#0d0910] px-4 text-[var(--ink-ivory)] outline-none"
+            />
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setResetDialogOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button>
+              <button
+                type="button"
+                onClick={confirmReset}
+                disabled={resetConfirmation.trim().toUpperCase() !== 'CLEAR'}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Clear this device
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };
