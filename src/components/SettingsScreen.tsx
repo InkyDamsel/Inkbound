@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { UserBookRecord, ReadingSession } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { DevPlanSwitcher } from './DevPlanSwitcher';
 import { ResponsiveGrid } from '../layout/responsive';
 import {
   Sun,
@@ -108,8 +107,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <div className="space-y-1 rounded-xl border border-[#3d2448] bg-[#25132f] p-3 text-xs"><span className="block font-bold text-stone-400">Library Book Count Limit</span><p className="font-semibold text-[#f4efe6]">{userPlan === 'free' ? <span>{books.length} of {freeBookLimit} books used ({Math.max(0, freeBookLimit - books.length)} slots left)</span> : <span className="font-bold text-emerald-400">Unlimited Books Allowed</span>}</p></div>
           <div className="space-y-1 rounded-xl border border-[#3d2448] bg-[#25132f] p-3 text-xs"><span className="block font-bold text-stone-400">Feature Access Level</span><p className="font-semibold text-[#f4efe6]">{userPlan === 'free' ? 'Standard Library + Basic Analytics' : 'Batch Edits + Unlimited Import + Deep Habit Reports'}</p></div>
         </ResponsiveGrid>
-
-        <div className="border-t border-[#3d2448] pt-2"><p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#e5c158]">Prototype Testing Bar: Toggle Account Tiers & Simulate Limits</p><DevPlanSwitcher currentBookCount={books.length} /></div>
       </section>
 
       <section className="space-y-4 rounded-2xl border border-[#c5a059]/20 bg-[#1c0f24] p-6 shadow-xl">
@@ -140,9 +137,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </section>
 
       <section className="space-y-4 rounded-2xl border border-rose-900/40 bg-[#1c0f24] p-6 shadow-xl">
-        <h2 className="font-serif text-xl font-bold text-rose-300">Reset Prototype Sample Data</h2>
-        <p className="text-xs text-stone-400">Revert catalog changes and restore the original sample books and reading sessions.</p>
-        <button type="button" onClick={onResetData} className="flex items-center justify-center gap-2 rounded-xl border border-rose-700/50 bg-rose-900/80 px-4 py-2 text-xs font-bold text-rose-100 transition hover:bg-rose-900 sm:w-fit"><RotateCcw className="h-4 w-4" /><span>Reset Sample Books & Sessions</span></button>
+        <h2 className="font-serif text-xl font-bold text-rose-300">Clear Inkbound Data</h2>
+        <p className="text-xs text-stone-400">Remove all books and reading sessions saved on this device. This cannot be undone unless you have a backup.</p>
+        <button type="button" onClick={onResetData} className="flex items-center justify-center gap-2 rounded-xl border border-rose-700/50 bg-rose-900/80 px-4 py-2 text-xs font-bold text-rose-100 transition hover:bg-rose-900 sm:w-fit"><RotateCcw className="h-4 w-4" /><span>Clear Books & Sessions</span></button>
       </section>
     </div>
   );
