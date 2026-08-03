@@ -34,6 +34,7 @@ import { ImportCenterScreen } from './components/ImportCenterScreen';
 import { StatisticsScreen } from './components/StatisticsScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { ProfileScreen } from './components/ProfileScreen';
+import { AdminScreen } from './components/AdminScreen';
 import { AddBookModal } from './components/AddBookModal';
 import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
@@ -264,6 +265,7 @@ export default function App() {
           {activeTab === 'import' && <ImportCenterScreen currentBookCount={books.length} onExecuteImport={handleExecuteImport} onUndoLastImport={handleUndoLastBatch} />}
           {activeTab === 'settings' && <SettingsScreen books={books} sessions={sessions} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} onResetData={handleResetData} />}
           {activeTab === 'profile' && <ProfileScreen books={books} sessions={sessions} />}
+          {activeTab === 'admin' && <AdminScreen />}
         </ResponsiveContainer>
       </main>
 
