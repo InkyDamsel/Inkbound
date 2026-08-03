@@ -24,6 +24,7 @@ interface MyDragonScreenProps {
 const DRAGON_KEY = 'inkbound_dragon';
 const AWAKE_LUMIS_ASSET = '/assets/lumis/lumis-awake.svg';
 const SLEEPING_LUMIS_ASSET = '/assets/lumis/lumis-sleeping.svg';
+const PROUD_LUMIS_ASSET = '/assets/lumis/lumis-proud.svg';
 const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 const DEFAULT_DRAGON: DragonProfile = {
@@ -48,6 +49,19 @@ const getSessionTimestamp = (session: ReadingSession): number => {
   const time = session.endTime || session.startTime || '12:00';
   const timestamp = new Date(`${session.date}T${time}`).getTime();
   return Number.isNaN(timestamp) ? new Date(session.date).getTime() : timestamp;
+};
+
+const isDateToday = (value?: string): boolean => {
+  if (!value) return false;
+  const date = new Date(value.includes('T') ? value : `${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
 };
 
 export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions }) => {
@@ -75,23 +89,31 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
     [sessions],
   );
 
+  const finishedBookToday = finishedBooks.some((book) => isDateToday(book.dateFinished));
   const isAwakePose = Boolean(
     recentSession && Date.now() - getSessionTimestamp(recentSession) <= RECENT_READING_WINDOW_MS,
   );
 
-  const lumisPortrait = isAwakePose
+  const lumisPortrait = finishedBookToday
     ? {
-        src: AWAKE_LUMIS_ASSET,
-        alt: `${dragon.name}, an alert purple library dragon resting on a book beside a candle and tea`,
-        title: `${dragon.name} is curled up by your newest book`,
-        detail: 'Eager for your next adventure.',
+        src: PROUD_LUMIS_ASSET,
+        alt: `${dragon.name}, a proud purple library dragon sitting on a stack of finished books`,
+        title: 'Finished a book today',
+        detail: `${dragon.name} looks especially proud today. Another story has found its place.`,
       }
-    : {
-        src: SLEEPING_LUMIS_ASSET,
-        alt: `${dragon.name}, a sleeping purple library dragon resting on a book beside a candle and tea`,
-        title: `${dragon.name} is resting after a day of stories`,
-        detail: "Dreaming of tomorrow's adventures.",
-      };
+    : isAwakePose
+      ? {
+          src: AWAKE_LUMIS_ASSET,
+          alt: `${dragon.name}, an alert purple library dragon resting on a book beside a candle and tea`,
+          title: `${dragon.name} is curled up by your newest book`,
+          detail: 'Eager for your next adventure.',
+        }
+      : {
+          src: SLEEPING_LUMIS_ASSET,
+          alt: `${dragon.name}, a sleeping purple library dragon resting on a book beside a candle and tea`,
+          title: `${dragon.name} is resting after a day of stories`,
+          detail: "Dreaming of tomorrow's adventures.",
+        };
 
   const progress = stage.next
     ? Math.min(
@@ -154,10 +176,10 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
                 <span className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">
-                  Growth stage
+                  Reading Together
                 </span>
                 <strong className="mt-2 block font-serif text-xl text-[var(--ink-ivory)]">
-                  {stage.name}
+                  {finishedBooks.length} books
                 </strong>
               </div>
               <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
@@ -170,7 +192,7 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
               </div>
               <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
                 <span className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">
-                  Pages guarded
+                  Pages Read Together
                 </span>
                 <strong className="mt-2 block font-serif text-xl text-[var(--ink-ivory)]">
                   {totalPages.toLocaleString()}
