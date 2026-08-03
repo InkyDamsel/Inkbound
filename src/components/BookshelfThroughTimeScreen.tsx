@@ -123,17 +123,28 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                     {shelfSlice.map((book, index) => {
                       const isNewThisMonth = monthKey(String(book.dateFinished)) === selectedMonth;
                       const height = 82 + ((book.work.title.length + index * 11) % 38);
+                      const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+                      const coverUrl = edition?.coverUrl;
                       return (
                         <button
                           key={book.id}
                           type="button"
                           onClick={() => onSelectBook(book)}
                           title={`${book.work.title} by ${book.work.author}`}
-                          className={`group relative flex w-9 shrink-0 items-center justify-center rounded-t-sm border border-white/10 px-1 pb-2 text-center shadow-lg transition-transform hover:-translate-y-2 sm:w-11 ${book.editions[0]?.coverGradient ? `bg-gradient-to-b ${book.editions[0].coverGradient}` : 'bg-gradient-to-b from-[#76586d] to-[#30242d]'}`}
-                          style={{ height }}
+                          className={`group relative flex w-9 shrink-0 items-center justify-center overflow-hidden rounded-t-sm border border-white/15 px-1 pb-2 text-center shadow-lg transition-transform hover:-translate-y-2 sm:w-11 ${!coverUrl && edition?.coverGradient ? `bg-gradient-to-b ${edition.coverGradient}` : !coverUrl ? 'bg-gradient-to-b from-[#76586d] to-[#30242d]' : ''}`}
+                          style={{
+                            height,
+                            backgroundImage: coverUrl ? `linear-gradient(rgba(0,0,0,.18), rgba(0,0,0,.42)), url("${coverUrl}")` : undefined,
+                            backgroundSize: coverUrl ? 'cover' : undefined,
+                            backgroundPosition: coverUrl ? 'center' : undefined,
+                          }}
                         >
-                          <span className="line-clamp-3 -rotate-90 whitespace-nowrap text-[8px] font-semibold tracking-wide text-white/90 sm:text-[9px]">{book.work.title}</span>
-                          {isNewThisMonth && <span className="absolute -top-2 right-0 h-3 w-3 rounded-full border-2 border-white/70 bg-[var(--ink-gold-bright)]" />}
+                          <span className="absolute inset-y-0 left-0 w-1 bg-black/25" aria-hidden="true" />
+                          <span className="relative z-10 line-clamp-3 -rotate-90 whitespace-nowrap text-[8px] font-semibold tracking-wide text-white drop-shadow-[0_1px_3px_rgba(0,0,0,.9)] sm:text-[9px]">{book.work.title}</span>
+                          {preferences.showRatings && book.rating && (
+                            <span className="absolute bottom-1 right-1 z-10 text-[8px] font-bold text-amber-200 drop-shadow">★ {book.rating}</span>
+                          )}
+                          {isNewThisMonth && <span className="absolute -top-2 right-0 z-20 h-3 w-3 rounded-full border-2 border-white/70 bg-[var(--ink-gold-bright)]" />}
                         </button>
                       );
                     })}
@@ -175,7 +186,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
 
           <section className="inkbound-panel rounded-3xl p-5">
             <span className="inkbound-eyebrow">Display</span>
-            <label className="mt-4 flex items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex items-center gap-2"><Eye className="h-4 w-4" />Show ratings later</span><input type="checkbox" checked={preferences.showRatings} onChange={(event) => updatePreference('showRatings', event.target.checked)} /></label>
+            <label className="mt-4 flex items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex items-center gap-2"><Eye className="h-4 w-4" />Show ratings on spines</span><input type="checkbox" checked={preferences.showRatings} onChange={(event) => updatePreference('showRatings', event.target.checked)} /></label>
             <label className="mt-4 flex items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex items-center gap-2"><BookOpen className="h-4 w-4" />Show shelf statistics</span><input type="checkbox" checked={preferences.showStats} onChange={(event) => updatePreference('showStats', event.target.checked)} /></label>
           </section>
 
