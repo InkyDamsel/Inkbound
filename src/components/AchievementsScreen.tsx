@@ -40,42 +40,91 @@ const FILTER_STORAGE_KEY = 'inkbound_achievement_filter';
 const readRecord = (key: string): Record<string, string> => {
   try {
     const value = localStorage.getItem(key);
-    return value ? (JSON.parse(value) as Record<string, string>) : {};
+    if (!value) return {};
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, string>)
+      : {};
   } catch {
     return {};
+  }
+};
+
+const readStringArray = (key: string): string[] => {
+  try {
+    const value = localStorage.getItem(key);
+    if (!value) return [];
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+
+const readFilter = (): AchievementFilter => {
+  try {
+    const value = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!value) return 'all';
+    const parsed: unknown = JSON.parse(value);
+    return parsed === 'unlocked' || parsed === 'locked' ? parsed : 'all';
+  } catch {
+    return 'all';
   }
 };
 
 const getActiveEdition = (book: UserBookRecord) =>
   book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 
+const safeNumber = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
 export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, sessions }) => {
   const [unlockDates, setUnlockDates] = usePersistentState<Record<string, string>>(
     UNLOCKED_STORAGE_KEY,
-    readRecord(UNLOCKED_STORAGE_KEY),
+    () => readRecord(UNLOCKED_STORAGE_KEY),
   );
   const [seenAchievementIds, setSeenAchievementIds] = usePersistentState<string[]>(
     SEEN_STORAGE_KEY,
-    [],
+    () => readStringArray(SEEN_STORAGE_KEY),
   );
-  const [filter, setFilter] = usePersistentState<AchievementFilter>(FILTER_STORAGE_KEY, 'all');
+  const [filter, setFilter] = usePersistentState<AchievementFilter>(FILTER_STORAGE_KEY, readFilter);
+
+  const safeUnlockDates =
+    unlockDates && typeof unlockDates === 'object' && !Array.isArray(unlockDates) ? unlockDates : {};
+  const safeSeenAchievementIds = Array.isArray(seenAchievementIds) ? seenAchievementIds : [];
+  const safeFilter: AchievementFilter =
+    filter === 'unlocked' || filter === 'locked' ? filter : 'all';
 
   const definitions = useMemo<AchievementDefinition[]>(() => {
     const finishedBooks = books.filter((book) => book.status === 'finished');
-    const totalPages = sessions.reduce((sum, session) => sum + (session.pagesRead ?? 0), 0);
-    const totalMinutes = sessions.reduce((sum, session) => sum + session.durationMinutes, 0);
-    const audiobookBooks = books.filter((book) => getActiveEdition(book)?.format === 'audiobook');
-    const audiobookSessions = sessions.filter((session) =>
-      audiobookBooks.some((book) => book.id === session.bookId),
+    const totalPages = sessions.reduce(
+      (sum, session) => sum + safeNumber(session.pagesRead),
+      0,
     );
+    const totalMinutes = sessions.reduce(
+      (sum, session) => sum + safeNumber(session.durationMinutes),
+      0,
+    );
+    const audiobookBookIds = new Set(
+      books
+        .filter((book) => getActiveEdition(book)?.format === 'audiobook')
+        .map((book) => book.id),
+    );
+    const audiobookSessions = sessions.filter((session) => audiobookBookIds.has(session.bookId));
     const nightSessions = sessions.filter((session) => {
-      const hour = Number.parseInt(session.startTime?.split(':')[0] ?? '0', 10);
-      return hour >= 21 || hour < 5;
+      const hour = Number.parseInt(session.startTime?.split(':')[0] ?? '', 10);
+      return Number.isFinite(hour) && (hour >= 21 || hour < 5);
     });
-    const uniqueReadingDays = new Set(sessions.map((session) => session.date)).size;
+    const uniqueReadingDays = new Set(
+      sessions.map((session) => session.date).filter(Boolean),
+    ).size;
     const reviewedBooks = books.filter((book) => Boolean(book.review?.trim())).length;
-    const quotedBooks = books.filter((book) => book.favoriteQuotes.length > 0).length;
-    const largeBooksFinished = finishedBooks.filter((book) => (getActiveEdition(book)?.pageCount ?? 0) >= 500).length;
+    const quotedBooks = books.filter(
+      (book) => Array.isArray(book.favoriteQuotes) && book.favoriteQuotes.length > 0,
+    ).length;
+    const largeBooksFinished = finishedBooks.filter(
+      (book) => safeNumber(getActiveEdition(book)?.pageCount) >= 500,
+    ).length;
 
     return [
       {
@@ -191,35 +240,47 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     ];
   }, [books, sessions]);
 
-  useEffect(() => {
-    const newlyUnlocked = definitions.filter(
-      (achievement) => achievement.progress >= achievement.target && !unlockDates[achievement.id],
-    );
-    if (newlyUnlocked.length === 0) return;
-
-    const timestamp = new Date().toISOString();
-    setUnlockDates((current) => ({
-      ...current,
-      ...Object.fromEntries(newlyUnlocked.map((achievement) => [achievement.id, timestamp])),
-    }));
-  }, [definitions, setUnlockDates, unlockDates]);
-
-  const unlockedCount = definitions.filter((item) => item.progress >= item.target).length;
-  const unseenUnlocked = definitions.filter(
-    (item) => item.progress >= item.target && !seenAchievementIds.includes(item.id),
+  const newlyUnlocked = useMemo(
+    () =>
+      definitions.filter(
+        (achievement) =>
+          achievement.progress >= achievement.target && !safeUnlockDates[achievement.id],
+      ),
+    [definitions, safeUnlockDates],
   );
 
   useEffect(() => {
-    if (unseenUnlocked.length === 0) return;
-    setSeenAchievementIds((current) => [
-      ...new Set([...current, ...unseenUnlocked.map((item) => item.id)]),
-    ]);
-  }, [setSeenAchievementIds, unseenUnlocked]);
+    if (newlyUnlocked.length === 0) return;
+    const timestamp = new Date().toISOString();
+    setUnlockDates((current) => ({
+      ...(current && typeof current === 'object' && !Array.isArray(current) ? current : {}),
+      ...Object.fromEntries(newlyUnlocked.map((achievement) => [achievement.id, timestamp])),
+    }));
+  }, [newlyUnlocked, setUnlockDates]);
 
+  const unseenUnlockedIds = useMemo(
+    () =>
+      definitions
+        .filter(
+          (item) =>
+            item.progress >= item.target && !safeSeenAchievementIds.includes(item.id),
+        )
+        .map((item) => item.id),
+    [definitions, safeSeenAchievementIds],
+  );
+
+  useEffect(() => {
+    if (unseenUnlockedIds.length === 0) return;
+    setSeenAchievementIds((current) => [
+      ...new Set([...(Array.isArray(current) ? current : []), ...unseenUnlockedIds]),
+    ]);
+  }, [setSeenAchievementIds, unseenUnlockedIds]);
+
+  const unlockedCount = definitions.filter((item) => item.progress >= item.target).length;
   const visibleAchievements = definitions.filter((achievement) => {
     const unlocked = achievement.progress >= achievement.target;
-    if (filter === 'unlocked') return unlocked;
-    if (filter === 'locked') return !unlocked;
+    if (safeFilter === 'unlocked') return unlocked;
+    if (safeFilter === 'locked') return !unlocked;
     return true;
   });
 
@@ -246,7 +307,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
         <div className="mt-6 h-2 overflow-hidden rounded-full bg-[var(--ink-surface-soft)]">
           <div
             className="h-full rounded-full bg-[linear-gradient(90deg,var(--ink-gold),var(--ink-gold-bright))]"
-            style={{ width: `${Math.round((unlockedCount / definitions.length) * 100)}%` }}
+            style={{ width: `${definitions.length ? Math.round((unlockedCount / definitions.length) * 100) : 0}%` }}
           />
         </div>
       </section>
@@ -258,7 +319,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
             type="button"
             onClick={() => setFilter(option)}
             className={`min-h-10 rounded-xl border px-4 text-sm font-semibold capitalize transition ${
-              filter === option
+              safeFilter === option
                 ? 'border-[var(--ink-gold)] bg-[rgba(197,160,89,0.14)] text-[var(--ink-ivory)]'
                 : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-muted)]'
             }`}
@@ -272,8 +333,16 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
         {visibleAchievements.map((achievement) => {
           const Icon = achievement.icon;
           const unlocked = achievement.progress >= achievement.target;
-          const percent = Math.min(100, Math.round((achievement.progress / achievement.target) * 100));
-          const unlockDate = unlockDates[achievement.id];
+          const percent = Math.min(
+            100,
+            Math.max(0, Math.round((achievement.progress / achievement.target) * 100)),
+          );
+          const unlockDate = safeUnlockDates[achievement.id];
+          const parsedUnlockDate = unlockDate ? new Date(unlockDate) : null;
+          const formattedUnlockDate =
+            parsedUnlockDate && !Number.isNaN(parsedUnlockDate.getTime())
+              ? parsedUnlockDate.toLocaleDateString()
+              : null;
 
           return (
             <article
@@ -320,7 +389,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
                 {unlocked ? (
                   <p className="mt-4 flex items-center gap-2 text-xs font-semibold text-[var(--ink-gold-bright)]">
                     <Check className="h-4 w-4" />
-                    Unlocked{unlockDate ? ` ${new Date(unlockDate).toLocaleDateString()}` : ''}
+                    Unlocked{formattedUnlockDate ? ` ${formattedUnlockDate}` : ''}
                   </p>
                 ) : (
                   <p className="mt-4 text-xs text-[var(--ink-faint)]">Keep reading to unlock</p>
