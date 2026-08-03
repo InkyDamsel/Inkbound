@@ -16,7 +16,6 @@ interface MyDragonScreenProps {
 const DRAGON_KEY = 'inkbound_dragon';
 const AWAKE_LUMIS_ASSET = '/assets/lumis/lumis-awake.svg';
 const SLEEPING_LUMIS_ASSET = '/assets/lumis/lumis-sleeping.svg';
-const PROUD_LUMIS_ASSET = '/assets/lumis/lumis-proud.svg';
 const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 const DEFAULT_DRAGON: DragonProfile = {
@@ -35,19 +34,6 @@ const getSessionTimestamp = (session: ReadingSession): number => {
   const time = session.endTime || session.startTime || '12:00';
   const timestamp = new Date(`${session.date}T${time}`).getTime();
   return Number.isNaN(timestamp) ? new Date(session.date).getTime() : timestamp;
-};
-
-const isDateToday = (value?: string): boolean => {
-  if (!value) return false;
-  const date = new Date(value.includes('T') ? value : `${value}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return false;
-
-  const today = new Date();
-  return (
-    date.getFullYear() === today.getFullYear() &&
-    date.getMonth() === today.getMonth() &&
-    date.getDate() === today.getDate()
-  );
 };
 
 const getReadingDaypart = (startTime: string): string => {
@@ -118,31 +104,23 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
     [sessions],
   );
 
-  const finishedBookToday = finishedBooks.some((book) => isDateToday(book.dateFinished));
   const isAwakePose = Boolean(
     recentSession && Date.now() - getSessionTimestamp(recentSession) <= RECENT_READING_WINDOW_MS,
   );
 
-  const lumisPortrait = finishedBookToday
+  const lumisPortrait = isAwakePose
     ? {
-        src: PROUD_LUMIS_ASSET,
-        alt: `${dragon.name}, a proud purple library dragon sitting on a stack of finished books`,
-        title: 'Finished a book today',
-        detail: `${dragon.name} looks especially proud today. Another story has found its place.`,
+        src: AWAKE_LUMIS_ASSET,
+        alt: `${dragon.name}, an alert purple library dragon resting on a book beside a candle and tea`,
+        title: `${dragon.name} is curled up by your newest book`,
+        detail: 'Eager for your next adventure.',
       }
-    : isAwakePose
-      ? {
-          src: AWAKE_LUMIS_ASSET,
-          alt: `${dragon.name}, an alert purple library dragon resting on a book beside a candle and tea`,
-          title: `${dragon.name} is curled up by your newest book`,
-          detail: 'Eager for your next adventure.',
-        }
-      : {
-          src: SLEEPING_LUMIS_ASSET,
-          alt: `${dragon.name}, a sleeping purple library dragon resting on a book beside a candle and tea`,
-          title: `${dragon.name} is resting after a day of stories`,
-          detail: "Dreaming of tomorrow's adventures.",
-        };
+    : {
+        src: SLEEPING_LUMIS_ASSET,
+        alt: `${dragon.name}, a sleeping purple library dragon resting on a book beside a candle and tea`,
+        title: `${dragon.name} is resting after a day of stories`,
+        detail: "Dreaming of tomorrow's adventures.",
+      };
 
   const saveName = () => {
     const name = draftName.trim();
