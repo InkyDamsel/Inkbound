@@ -5,6 +5,7 @@ import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
+import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
 import './index.css';
 import './styles/app-shell.css';
 import './styles/responsive-navigation.css';
@@ -17,6 +18,7 @@ createRoot(document.getElementById('root')!).render(
     <BreakpointProvider>
       <UserPlanProvider>
         <AccountSyncProvider>
+          <SecurityBootstrap />
           <App />
           <UpgradeModal />
         </AccountSyncProvider>
