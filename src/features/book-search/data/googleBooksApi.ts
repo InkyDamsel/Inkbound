@@ -54,6 +54,8 @@ const SEARCH_STOP_WORDS = new Set([
   'editions',
   'volume',
   'volumes',
+  'series',
+  'complete',
 ]);
 
 const normalizeText = (value?: string): string =>
@@ -157,10 +159,17 @@ const searchTokens = (query: string): string[] => {
 
 const compactIsbn = (value: string): string => value.replace(/[^0-9X]/gi, '').toUpperCase();
 
+const minimumRequiredMatches = (tokenCount: number): number => {
+  if (tokenCount <= 1) return tokenCount;
+  if (tokenCount <= 3) return 2;
+  return Math.max(3, Math.ceil(tokenCount * 0.5));
+};
+
 const rankGroups = (groups: BookSearchWorkGroup[], query: string): BookSearchWorkGroup[] => {
   const isbnQuery = compactIsbn(query);
   const isExactIsbnSearch = /^(?:97[89])?\d{9}[\dX]$/i.test(isbnQuery);
   const tokens = searchTokens(query);
+  const requiredMatches = minimumRequiredMatches(tokens.length);
 
   const scored = groups.map((group) => {
     const title = normalizeText(group.title);
@@ -169,6 +178,8 @@ const rankGroups = (groups: BookSearchWorkGroup[], query: string): BookSearchWor
     const searchable = `${title} ${subtitle} ${authors}`;
 
     const matchingTokens = tokens.filter((token) => searchable.includes(token));
+    const titleMatches = tokens.filter((token) => title.includes(token));
+    const authorMatches = tokens.filter((token) => authors.includes(token));
     const exactIsbnMatch = group.editions.some((edition) =>
       [edition.isbn10, edition.isbn13]
         .filter(Boolean)
@@ -185,19 +196,34 @@ const rankGroups = (groups: BookSearchWorkGroup[], query: string): BookSearchWor
     });
 
     if (tokens.length > 0 && matchingTokens.length === tokens.length) score += 80;
+    if (titleMatches.length >= 2) score += 45;
+    if (titleMatches.length > 0 && authorMatches.length > 0) score += 55;
     if (group.editions.some((edition) => edition.coverUrl)) score += 30;
     if (group.editions.some((edition) => edition.isbn13 || edition.isbn10)) score += 12;
     if (group.editions.some((edition) => edition.publisher)) score += 6;
     if (authors.includes('unknown author')) score -= 35;
 
-    return { group, score, matchingTokens: matchingTokens.length, exactIsbnMatch };
+    return {
+      group,
+      score,
+      matchingTokens: matchingTokens.length,
+      titleMatches: titleMatches.length,
+      authorMatches: authorMatches.length,
+      exactIsbnMatch,
+    };
   });
 
   return scored
     .filter((item) => {
       if (isExactIsbnSearch) return item.exactIsbnMatch;
       if (tokens.length === 0) return true;
-      return item.matchingTokens > 0;
+      if (item.matchingTokens < requiredMatches) return false;
+
+      // Multi-word title + author searches must match the title meaningfully.
+      // This prevents a shared first name or common word from assigning one
+      // unrelated cover to many imported books.
+      if (tokens.length >= 3 && item.titleMatches === 0) return false;
+      return true;
     })
     .sort((a, b) => b.score - a.score)
     .slice(0, 30)
