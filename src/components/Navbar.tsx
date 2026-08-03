@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
+import { useAccountSync } from '../context/AccountSyncContext';
 import { inkboundBrand } from '../design/tokens';
 import { usePersistentState } from '../hooks/usePersistentState';
 
@@ -60,6 +61,12 @@ const mobilePrimaryIds = new Set(mobilePrimaryItems.map((item) => item.id));
 const mobileNavigationGroups = navigationGroups.map((group) => ({ ...group, items: group.items.filter((item) => !mobilePrimaryIds.has(item.id)) })).filter((group) => group.items.length > 0);
 const defaultCollapsedGroups: Record<NavigationGroupId, boolean> = { reading: false, journal: false, insights: false, studio: false, account: false };
 
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'R';
+  return parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('');
+}
+
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, onSelectBook, onOpenAddBook, onOpenTimer, isDarkMode, setIsDarkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -69,6 +76,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
   const [notificationsRead, setNotificationsRead] = usePersistentState('inkbound_notifications_read', false);
   const [collapsedGroups, setCollapsedGroups] = usePersistentState<Record<NavigationGroupId, boolean>>('inkbound_navigation_collapsed_groups', defaultCollapsedGroups);
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
+  const { user } = useAccountSync();
+
+  const readerName = user?.displayName?.trim() || 'Reader';
+  const readerInitials = initialsFor(readerName);
+  const readerPhotoUrl = user?.photoURL?.trim() || '';
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchResults = normalizedQuery ? books.filter((book) =>
@@ -112,7 +124,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
         })}
       </nav>
       {userPlan === 'free' ? <section className="quiet-shelf-plan-card"><div className="quiet-shelf-plan-heading"><span>Free Plan</span><button type="button" onClick={() => openUpgradeModal('Explore Inkbound Premium')}>See Plans</button></div><p className="quiet-shelf-plan-count"><strong>{books.length}</strong> of {freeBookLimit} books used</p><div className="quiet-shelf-plan-track"><span style={{ width: `${usedPercent}%` }} /></div><p className="quiet-shelf-plan-remaining">{remainingSlots} books remaining</p><button type="button" className="quiet-shelf-upgrade-button" onClick={() => openUpgradeModal('Upgrade for unlimited books, collections, Studio themes, and detailed reports')}><Sparkles />Upgrade to Premium</button></section> : <section className="quiet-shelf-plan-card is-premium"><Sparkles /><div><strong>Inkbound Premium</strong><p>Unlimited books and advanced insights</p></div></section>}
-      <div className="relative"><button type="button" className="quiet-shelf-profile w-full" onClick={() => { setIsProfileOpen((current) => !current); setIsNotificationsOpen(false); }} aria-expanded={isProfileOpen} aria-haspopup="menu"><span className="quiet-shelf-avatar">JL</span><span className="quiet-shelf-profile-copy"><strong>Jamie Lee</strong><small>View Profile</small></span><ChevronDown className={`h-4 w-4 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} /></button>{isProfileOpen && <div className="absolute bottom-full left-0 z-[90] mb-3 w-full rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-2 shadow-2xl" role="menu"><button type="button" role="menuitem" onClick={() => navigate('profile')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><UserRound className="h-4 w-4 text-[var(--ink-mauve)]" />Profile & account</button><button type="button" role="menuitem" onClick={() => navigate('my-dragon')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><Sparkles className="h-4 w-4 text-[var(--ink-mauve)]" />My Dragon</button></div>}</div>
+      <div className="relative"><button type="button" className="quiet-shelf-profile w-full" onClick={() => { setIsProfileOpen((current) => !current); setIsNotificationsOpen(false); }} aria-expanded={isProfileOpen} aria-haspopup="menu">{readerPhotoUrl ? <img src={readerPhotoUrl} alt="" className="quiet-shelf-avatar object-cover" referrerPolicy="no-referrer" /> : <span className="quiet-shelf-avatar">{readerInitials}</span>}<span className="quiet-shelf-profile-copy"><strong>{readerName}</strong><small>{user ? 'View Profile' : 'Connect account'}</small></span><ChevronDown className={`h-4 w-4 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} /></button>{isProfileOpen && <div className="absolute bottom-full left-0 z-[90] mb-3 w-full rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-2 shadow-2xl" role="menu"><button type="button" role="menuitem" onClick={() => navigate('profile')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><UserRound className="h-4 w-4 text-[var(--ink-mauve)]" />Profile & account</button><button type="button" role="menuitem" onClick={() => navigate('my-dragon')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><Sparkles className="h-4 w-4 text-[var(--ink-mauve)]" />My Dragon</button></div>}</div>
     </aside>
 
     <header className="quiet-shelf-topbar"><div className="quiet-shelf-page-heading"><h1>{activeLabel}</h1></div><div className="quiet-shelf-header-search"><Search /><input value={searchQuery} onFocus={() => setIsSearchOpen(true)} onChange={(event) => { setSearchQuery(event.target.value); setIsSearchOpen(true); }} placeholder="Search books, authors, series, notes..." aria-label="Search library" /><kbd>⌘ K</kbd>{isSearchOpen && <div className="quiet-shelf-search-panel"><div className="quiet-shelf-search-panel-heading"><span>Search your library</span><button type="button" onClick={() => setIsSearchOpen(false)} aria-label="Close search"><X /></button></div>{!normalizedQuery ? <p className="quiet-shelf-search-empty">Start typing to search your books.</p> : searchResults.length === 0 ? <p className="quiet-shelf-search-empty">No matching books found.</p> : searchResults.map((book) => <button key={book.id} type="button" className="quiet-shelf-search-result" onClick={() => { onSelectBook(book); setSearchQuery(''); setIsSearchOpen(false); }}><span className={`quiet-shelf-search-cover bg-gradient-to-br ${book.editions[0]?.coverGradient || 'from-purple-950 to-stone-950'}`}>{book.work.title.charAt(0)}</span><span><strong>{book.work.title}</strong><small>{book.work.author}</small></span></button>)}</div>}</div>
