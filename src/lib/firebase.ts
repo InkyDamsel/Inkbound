@@ -1,6 +1,6 @@
 import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
 import { Auth, getAuth } from 'firebase/auth';
-import { Firestore, getFirestore } from 'firebase/firestore';
+import { Firestore, initializeFirestore } from 'firebase/firestore';
 import { Functions, getFunctions } from 'firebase/functions';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
 
@@ -37,7 +37,7 @@ let storage: FirebaseStorage | null = null;
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
-  db = getFirestore(app);
+  db = initializeFirestore(app, { ignoreUndefinedProperties: true });
   functions = getFunctions(app);
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
 }
