@@ -13,12 +13,15 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, storage } from '../../lib/firebase';
+import { notifyCloudDataUpdated } from './cloudSyncEvents';
 
 const BOOKS_KEY = 'inkbound_books';
 const SESSIONS_KEY = 'inkbound_sessions';
 const PROFILE_KEY = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
-const BRIDGE_VERSION = '1';
+const BRIDGE_VERSION = '2';
+const LOCAL_CHANGE_POLL_MS = 2000;
+const INITIAL_UPLOAD_BATCH_SIZE = 100;
 
 interface CloudRecord<T> {
   data: T;
@@ -45,6 +48,9 @@ const safeParse = <T,>(key: string, fallback: T): T => {
 
 const stable = (value: unknown) => JSON.stringify(value);
 
+const toFingerprintMap = <T extends { id: string }>(items: T[]) =>
+  new Map(items.map((item) => [item.id, stable(item)]));
+
 const mergeById = <T extends { id: string }>(local: T[], cloud: T[]): T[] => {
   const merged = new Map(local.map((item) => [item.id, item]));
   cloud.forEach((item) => merged.set(item.id, item));
@@ -53,16 +59,56 @@ const mergeById = <T extends { id: string }>(local: T[], cloud: T[]): T[] => {
 
 const isDataImage = (value?: string) => Boolean(value?.startsWith('data:image/'));
 
+const hashText = (value: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+async function optimizeProfileImage(
+  value: string,
+  kind: 'avatar' | 'banner',
+): Promise<Blob> {
+  const source = await fetch(value).then((response) => response.blob());
+  const bitmap = await createImageBitmap(source);
+  const maximumWidth = kind === 'avatar' ? 512 : 1600;
+  const maximumHeight = kind === 'avatar' ? 512 : 700;
+  const scale = Math.min(1, maximumWidth / bitmap.width, maximumHeight / bitmap.height);
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return source;
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+
+  return new Promise<Blob>((resolve) => {
+    canvas.toBlob(
+      (blob) => resolve(blob ?? source),
+      'image/webp',
+      kind === 'avatar' ? 0.84 : 0.8,
+    );
+  });
+}
+
 async function uploadProfileImage(
   uid: string,
   kind: 'avatar' | 'banner',
   value?: string,
 ): Promise<string | undefined> {
   if (!value || !isDataImage(value) || !storage) return value;
-  const blob = await fetch(value).then((response) => response.blob());
-  const extension = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'webp';
-  const imageRef = ref(storage, `users/${uid}/profile/${kind}.${extension}`);
-  await uploadBytes(imageRef, blob, { contentType: blob.type });
+  const contentHash = hashText(value);
+  const blob = await optimizeProfileImage(value, kind);
+  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${contentHash}.webp`);
+  await uploadBytes(imageRef, blob, {
+    contentType: 'image/webp',
+    cacheControl: 'public,max-age=31536000,immutable',
+  });
   return getDownloadURL(imageRef);
 }
 
@@ -74,32 +120,62 @@ async function prepareCloudProfile(uid: string, profile: ReaderProfile): Promise
   return { ...profile, avatarImage, bannerImage };
 }
 
+async function runInBatches(tasks: Array<() => Promise<unknown>>) {
+  for (let index = 0; index < tasks.length; index += INITIAL_UPLOAD_BATCH_SIZE) {
+    await Promise.all(tasks.slice(index, index + INITIAL_UPLOAD_BATCH_SIZE).map((task) => task()));
+  }
+}
+
 export const CloudPersistenceBridge: React.FC = () => {
   const sync = useAccountSync();
   const hydrated = useRef(false);
-  const applyingCloud = useRef(false);
-  const booksFingerprint = useRef('');
-  const sessionsFingerprint = useRef('');
+  const bookFingerprints = useRef(new Map<string, string>());
+  const sessionFingerprints = useRef(new Map<string, string>());
   const profileFingerprint = useRef('');
-  const reloadQueued = useRef(false);
+  const pollRunning = useRef(false);
 
   useEffect(() => {
     hydrated.current = false;
-    applyingCloud.current = false;
-    booksFingerprint.current = '';
-    sessionsFingerprint.current = '';
+    bookFingerprints.current.clear();
+    sessionFingerprints.current.clear();
     profileFingerprint.current = '';
-    reloadQueued.current = false;
+    pollRunning.current = false;
 
     if (!sync.user || !db) return undefined;
     const uid = sync.user.uid;
     let disposed = false;
     const unsubscribers: Array<() => void> = [];
 
-    const queueReload = () => {
-      if (reloadQueued.current) return;
-      reloadQueued.current = true;
-      window.setTimeout(() => window.location.reload(), 250);
+    const writeCollectionChanges = async <T extends { id: string }>(
+      name: 'books' | 'sessions',
+      items: T[],
+      fingerprints: React.MutableRefObject<Map<string, string>>,
+    ) => {
+      const nextFingerprints = toFingerprintMap(items);
+      const changed = items.filter(
+        (item) => fingerprints.current.get(item.id) !== nextFingerprints.get(item.id),
+      );
+      const deletedIds = Array.from(fingerprints.current.keys()).filter(
+        (id) => !nextFingerprints.has(id),
+      );
+
+      if (changed.length === 0 && deletedIds.length === 0) return;
+
+      await Promise.all([
+        ...changed.map((item) =>
+          setDoc(
+            doc(db!, 'users', uid, name, item.id),
+            {
+              data: item,
+              updatedAt: serverTimestamp(),
+              clientUpdatedAt: new Date().toISOString(),
+            },
+            { merge: true },
+          ),
+        ),
+        ...deletedIds.map((id) => deleteDoc(doc(db!, 'users', uid, name, id))),
+      ]);
+      fingerprints.current = nextFingerprints;
     };
 
     const initialize = async () => {
@@ -119,53 +195,57 @@ export const CloudPersistenceBridge: React.FC = () => {
       const cloudSessions = sessionSnapshot.docs
         .map((item) => (item.data() as CloudRecord<ReadingSession>).data)
         .filter(Boolean);
-
       const mergedBooks = mergeById(localBooks, cloudBooks);
       const mergedSessions = mergeById(localSessions, cloudSessions);
-      const booksChanged = stable(mergedBooks) !== stable(localBooks);
-      const sessionsChanged = stable(mergedSessions) !== stable(localSessions);
 
-      applyingCloud.current = true;
       localStorage.setItem(BOOKS_KEY, stable(mergedBooks));
       localStorage.setItem(SESSIONS_KEY, stable(mergedSessions));
-      localStorage.setItem(`${BOOKS_KEY}_cloud_previous`, stable(mergedBooks));
-      localStorage.setItem(`${SESSIONS_KEY}_cloud_previous`, stable(mergedSessions));
-      booksFingerprint.current = stable(mergedBooks);
-      sessionsFingerprint.current = stable(mergedSessions);
+      bookFingerprints.current = toFingerprintMap(mergedBooks);
+      sessionFingerprints.current = toFingerprintMap(mergedSessions);
 
       const cloudBookIds = new Set(cloudBooks.map((book) => book.id));
       const cloudSessionIds = new Set(cloudSessions.map((session) => session.id));
-      await Promise.all([
+      const migrationTasks: Array<() => Promise<unknown>> = [
         ...localBooks
           .filter((book) => !cloudBookIds.has(book.id))
-          .map((book) => setDoc(
-            doc(db!, 'users', uid, 'books', book.id),
-            { data: book, updatedAt: serverTimestamp(), clientUpdatedAt: new Date().toISOString() },
-            { merge: true },
-          )),
+          .map((book) => () =>
+            setDoc(
+              doc(db!, 'users', uid, 'books', book.id),
+              {
+                data: book,
+                updatedAt: serverTimestamp(),
+                clientUpdatedAt: new Date().toISOString(),
+              },
+              { merge: true },
+            ),
+          ),
         ...localSessions
           .filter((session) => !cloudSessionIds.has(session.id))
-          .map((session) => setDoc(
-            doc(db!, 'users', uid, 'sessions', session.id),
-            { data: session, updatedAt: serverTimestamp(), clientUpdatedAt: new Date().toISOString() },
-            { merge: true },
-          )),
-      ]);
+          .map((session) => () =>
+            setDoc(
+              doc(db!, 'users', uid, 'sessions', session.id),
+              {
+                data: session,
+                updatedAt: serverTimestamp(),
+                clientUpdatedAt: new Date().toISOString(),
+              },
+              { merge: true },
+            ),
+          ),
+      ];
+      await runInBatches(migrationTasks);
 
       const profileRef = doc(db!, 'users', uid, 'profile', 'current');
-      let profileChanged = false;
       const cloudProfileSnapshot = await getDoc(profileRef);
       if (cloudProfileSnapshot.exists()) {
         const cloudProfile = (cloudProfileSnapshot.data() as CloudRecord<ReaderProfile>).data;
         if (cloudProfile) {
           profileFingerprint.current = stable(cloudProfile);
-          profileChanged = stable(localProfile) !== profileFingerprint.current;
-          if (profileChanged) localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
+          localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
         }
       } else if (Object.keys(localProfile).length > 0) {
         const prepared = await prepareCloudProfile(uid, localProfile);
         profileFingerprint.current = stable(prepared);
-        profileChanged = profileFingerprint.current !== stable(localProfile);
         localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
         await setDoc(profileRef, {
           data: prepared,
@@ -176,123 +256,97 @@ export const CloudPersistenceBridge: React.FC = () => {
         profileFingerprint.current = stable(localProfile);
       }
 
-      const unsubscribeProfile = onSnapshot(profileRef, (snapshot) => {
-        if (!hydrated.current || !snapshot.exists()) return;
-        const cloudProfile = (snapshot.data() as CloudRecord<ReaderProfile>).data;
-        if (!cloudProfile) return;
-        const fingerprint = stable(cloudProfile);
-        if (fingerprint === profileFingerprint.current) return;
-        applyingCloud.current = true;
-        profileFingerprint.current = fingerprint;
-        localStorage.setItem(PROFILE_KEY, fingerprint);
-        queueReload();
-      });
-      unsubscribers.push(unsubscribeProfile);
-
       const subscribeCollection = <T extends { id: string }>(
         name: 'books' | 'sessions',
-        storageKey: string,
-        fingerprintRef: React.MutableRefObject<string>,
+        storageKey: 'inkbound_books' | 'inkbound_sessions',
+        fingerprints: React.MutableRefObject<Map<string, string>>,
       ) => onSnapshot(collection(db!, 'users', uid, name), (snapshot) => {
         if (!hydrated.current) return;
         let current = safeParse<T[]>(storageKey, []);
         let changed = false;
+
         snapshot.docChanges().forEach((change) => {
           const record = (change.doc.data() as CloudRecord<T>).data;
           if (change.type === 'removed') {
             const next = current.filter((item) => item.id !== change.doc.id);
             changed = changed || next.length !== current.length;
             current = next;
-          } else if (record) {
-            const index = current.findIndex((item) => item.id === record.id);
-            if (index >= 0) current[index] = record;
-            else current.push(record);
-            changed = true;
+            fingerprints.current.delete(change.doc.id);
+            return;
           }
+          if (!record) return;
+          const serialized = stable(record);
+          if (fingerprints.current.get(record.id) === serialized) return;
+          const index = current.findIndex((item) => item.id === record.id);
+          if (index >= 0) current[index] = record;
+          else current.push(record);
+          fingerprints.current.set(record.id, serialized);
+          changed = true;
         });
+
         if (!changed) return;
-        const fingerprint = stable(current);
-        if (fingerprint === fingerprintRef.current) return;
-        applyingCloud.current = true;
-        fingerprintRef.current = fingerprint;
-        localStorage.setItem(storageKey, fingerprint);
-        localStorage.setItem(`${storageKey}_cloud_previous`, fingerprint);
-        queueReload();
+        localStorage.setItem(storageKey, stable(current));
+        notifyCloudDataUpdated([storageKey]);
+      });
+
+      const unsubscribeProfile = onSnapshot(profileRef, (snapshot) => {
+        if (!hydrated.current || !snapshot.exists()) return;
+        const cloudProfile = (snapshot.data() as CloudRecord<ReaderProfile>).data;
+        if (!cloudProfile) return;
+        const fingerprint = stable(cloudProfile);
+        if (fingerprint === profileFingerprint.current) return;
+        profileFingerprint.current = fingerprint;
+        localStorage.setItem(PROFILE_KEY, fingerprint);
+        notifyCloudDataUpdated([PROFILE_KEY]);
       });
 
       unsubscribers.push(
-        subscribeCollection<UserBookRecord>('books', BOOKS_KEY, booksFingerprint),
-        subscribeCollection<ReadingSession>('sessions', SESSIONS_KEY, sessionsFingerprint),
+        subscribeCollection<UserBookRecord>('books', BOOKS_KEY, bookFingerprints),
+        subscribeCollection<ReadingSession>('sessions', SESSIONS_KEY, sessionFingerprints),
+        unsubscribeProfile,
       );
 
       hydrated.current = true;
-      applyingCloud.current = false;
       localStorage.setItem(BRIDGE_VERSION_KEY, BRIDGE_VERSION);
-      if (booksChanged || sessionsChanged || profileChanged) queueReload();
+      notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
     };
 
     void initialize();
 
     const poll = window.setInterval(async () => {
-      if (!hydrated.current || applyingCloud.current || disposed) {
-        applyingCloud.current = false;
-        return;
-      }
+      if (!hydrated.current || disposed || pollRunning.current) return;
+      pollRunning.current = true;
+      try {
+        const localBooks = safeParse<UserBookRecord[]>(BOOKS_KEY, []);
+        const localSessions = safeParse<ReadingSession[]>(SESSIONS_KEY, []);
+        const localProfile = safeParse<ReaderProfile>(PROFILE_KEY, {});
 
-      const localBooks = safeParse<UserBookRecord[]>(BOOKS_KEY, []);
-      const localSessions = safeParse<ReadingSession[]>(SESSIONS_KEY, []);
-      const localProfile = safeParse<ReaderProfile>(PROFILE_KEY, {});
-      const nextBooksFingerprint = stable(localBooks);
-      const nextSessionsFingerprint = stable(localSessions);
-      const nextProfileFingerprint = stable(localProfile);
+        await writeCollectionChanges('books', localBooks, bookFingerprints);
+        await writeCollectionChanges('sessions', localSessions, sessionFingerprints);
 
-      if (nextBooksFingerprint !== booksFingerprint.current) {
-        const previous = safeParse<UserBookRecord[]>(`${BOOKS_KEY}_cloud_previous`, []);
-        const previousIds = new Set(previous.map((book) => book.id));
-        const nextIds = new Set(localBooks.map((book) => book.id));
-        await Promise.all([
-          ...localBooks.map((book) => setDoc(
-            doc(db!, 'users', uid, 'books', book.id),
-            { data: book, updatedAt: serverTimestamp(), clientUpdatedAt: new Date().toISOString() },
+        const nextProfileFingerprint = stable(localProfile);
+        if (
+          Object.keys(localProfile).length > 0 &&
+          nextProfileFingerprint !== profileFingerprint.current
+        ) {
+          const prepared = await prepareCloudProfile(uid, localProfile);
+          profileFingerprint.current = stable(prepared);
+          localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
+          await setDoc(
+            doc(db!, 'users', uid, 'profile', 'current'),
+            {
+              data: prepared,
+              updatedAt: serverTimestamp(),
+              clientUpdatedAt: new Date().toISOString(),
+            },
             { merge: true },
-          )),
-          ...Array.from(previousIds)
-            .filter((id) => !nextIds.has(id))
-            .map((id) => deleteDoc(doc(db!, 'users', uid, 'books', id))),
-        ]);
-        booksFingerprint.current = nextBooksFingerprint;
-        localStorage.setItem(`${BOOKS_KEY}_cloud_previous`, nextBooksFingerprint);
+          );
+          notifyCloudDataUpdated([PROFILE_KEY]);
+        }
+      } finally {
+        pollRunning.current = false;
       }
-
-      if (nextSessionsFingerprint !== sessionsFingerprint.current) {
-        const previous = safeParse<ReadingSession[]>(`${SESSIONS_KEY}_cloud_previous`, []);
-        const previousIds = new Set(previous.map((session) => session.id));
-        const nextIds = new Set(localSessions.map((session) => session.id));
-        await Promise.all([
-          ...localSessions.map((session) => setDoc(
-            doc(db!, 'users', uid, 'sessions', session.id),
-            { data: session, updatedAt: serverTimestamp(), clientUpdatedAt: new Date().toISOString() },
-            { merge: true },
-          )),
-          ...Array.from(previousIds)
-            .filter((id) => !nextIds.has(id))
-            .map((id) => deleteDoc(doc(db!, 'users', uid, 'sessions', id))),
-        ]);
-        sessionsFingerprint.current = nextSessionsFingerprint;
-        localStorage.setItem(`${SESSIONS_KEY}_cloud_previous`, nextSessionsFingerprint);
-      }
-
-      if (nextProfileFingerprint !== profileFingerprint.current && Object.keys(localProfile).length > 0) {
-        const prepared = await prepareCloudProfile(uid, localProfile);
-        profileFingerprint.current = stable(prepared);
-        localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
-        await setDoc(doc(db!, 'users', uid, 'profile', 'current'), {
-          data: prepared,
-          updatedAt: serverTimestamp(),
-          clientUpdatedAt: new Date().toISOString(),
-        }, { merge: true });
-      }
-    }, 1200);
+    }, LOCAL_CHANGE_POLL_MS);
 
     return () => {
       disposed = true;
