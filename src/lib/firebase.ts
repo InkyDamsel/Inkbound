@@ -2,6 +2,7 @@ import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
 import { Auth, getAuth } from 'firebase/auth';
 import { Firestore, getFirestore } from 'firebase/firestore';
 import { Functions, getFunctions } from 'firebase/functions';
+import { FirebaseStorage, getStorage } from 'firebase/storage';
 
 const readEnv = (value: string | undefined): string => value?.trim() ?? '';
 
@@ -31,12 +32,14 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let functions: Functions | null = null;
+let storage: FirebaseStorage | null = null;
 
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
   functions = getFunctions(app);
+  storage = firebaseConfig.storageBucket ? getStorage(app) : null;
 }
 
-export { app, auth, db, functions };
+export { app, auth, db, functions, storage };
