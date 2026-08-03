@@ -15,6 +15,8 @@ export type SubscriptionService = 'kindle-unlimited' | 'audible-plus' | 'everand
 
 export type Priority = 'top' | 'high' | 'medium' | 'low';
 
+export type EditionSource = 'google-books' | 'open-library' | 'manual' | 'import';
+
 export interface BookWork {
   id: string;
   title: string;
@@ -30,12 +32,15 @@ export interface BookWork {
   contentWarnings?: string[];
   publicationYear: number;
   originalLanguage?: string;
+  externalWorkId?: string;
 }
 
 export interface Edition {
   id: string;
   format: Format;
   isbn?: string;
+  isbn10?: string;
+  isbn13?: string;
   pageCount?: number;
   audiobookDurationMins?: number;
   narrator?: string;
@@ -45,6 +50,11 @@ export interface Edition {
   coverIcon?: string;
   coverUrl?: string;
   language?: string;
+  editionName?: string;
+  binding?: string;
+  specialFeatures?: string[];
+  externalSource?: EditionSource;
+  externalEditionId?: string;
 }
 
 export interface FavoriteQuote {
