@@ -235,6 +235,11 @@ main img[src*='/assets/lumis/lumis-'] {
   background: #17101b;
 }
 
+/* Administration already lives under Account; keep the profile popup personal. */
+.quiet-shelf-sidebar div[role='menu']:has(> button:nth-child(3)) > button:nth-child(2) {
+  display: none;
+}
+
 @media (min-width: 1280px) {
   main {
     padding-bottom: 3rem;
