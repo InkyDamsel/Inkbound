@@ -5,6 +5,7 @@ import { AppErrorBoundary } from './components/AppErrorBoundary.tsx';
 import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
+import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
@@ -29,7 +30,9 @@ createRoot(rootElement).render(
           <AccountSyncProvider>
             <SecurityBootstrap />
             <CloudPersistenceBridge />
-            <App />
+            <CloudDataRefreshBoundary>
+              <App />
+            </CloudDataRefreshBoundary>
             <UpgradeModal />
           </AccountSyncProvider>
         </UserPlanProvider>
