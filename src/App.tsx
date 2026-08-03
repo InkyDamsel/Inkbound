@@ -8,7 +8,6 @@ import {
   ReadingStatus,
   UserBookRecord,
 } from './types';
-import { SAMPLE_BOOKS, INITIAL_READING_SESSIONS } from './data/sampleBooks';
 import { Navbar, NavTab } from './components/Navbar';
 import { HomeDashboard } from './components/HomeDashboard';
 import { LibraryScreen } from './components/LibraryScreen';
@@ -62,8 +61,12 @@ export default function App() {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     return savedTheme ? savedTheme === 'dark' : true;
   });
-  const [books, setBooks] = useState<UserBookRecord[]>(() => readStoredCollection(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, SAMPLE_BOOKS));
-  const [sessions, setSessions] = useState<ReadingSession[]>(() => readStoredCollection(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, INITIAL_READING_SESSIONS));
+  const [books, setBooks] = useState<UserBookRecord[]>(() =>
+    readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []),
+  );
+  const [sessions, setSessions] = useState<ReadingSession[]>(() =>
+    readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []),
+  );
   const [previousBooksState, setPreviousBooksState] = useState<UserBookRecord[] | null>(null);
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
@@ -223,13 +226,16 @@ export default function App() {
   };
 
   const handleResetData = () => {
-    setBooks(SAMPLE_BOOKS);
-    setSessions(INITIAL_READING_SESSIONS);
+    setBooks([]);
+    setSessions([]);
+    setPreviousBooksState(null);
+    setSelectedBookForDetails(null);
+    setSelectedBookIds([]);
     localStorage.removeItem(BOOKS_STORAGE_KEY);
     localStorage.removeItem(SESSIONS_STORAGE_KEY);
     localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
     localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
-    showToast('Reset Inkbound to the sample library.');
+    showToast('Cleared all Inkbound books and reading sessions.');
   };
 
   return (
