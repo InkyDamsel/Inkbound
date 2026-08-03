@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
+import { useAccountSync } from '../context/AccountSyncContext';
 import { ResponsiveGrid } from '../layout/responsive';
 import { AccountSyncCard } from './account/AccountSyncCard';
 
@@ -30,20 +31,26 @@ interface StoredProfile {
   bannerImage?: string;
 }
 
+const DEFAULT_PROFILE: StoredProfile = {
+  displayName: 'Jamie Lee',
+  email: 'jamie@example.com',
+  favoriteQuote: 'A reader lives a thousand lives before they die.',
+  bio: 'A lifelong reader building a quiet, personal record of every book.',
+};
+
 const readStoredProfile = (): StoredProfile => {
   try {
     const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (stored) return JSON.parse(stored) as StoredProfile;
+    if (stored) return { ...DEFAULT_PROFILE, ...(JSON.parse(stored) as Partial<StoredProfile>) };
   } catch {
     // Fall back to defaults when stored profile data is invalid.
   }
 
-  return {
-    displayName: 'Jamie Lee',
-    email: 'jamie@example.com',
-    favoriteQuote: 'A reader lives a thousand lives before they die.',
-    bio: 'A lifelong reader building a quiet, personal record of every book.',
-  };
+  return DEFAULT_PROFILE;
+};
+
+const saveStoredProfile = (profile: StoredProfile) => {
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
 };
 
 const readImageFile = (file: File, onLoad: (dataUrl: string) => void) => {
@@ -57,6 +64,7 @@ const readImageFile = (file: File, onLoad: (dataUrl: string) => void) => {
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions }) => {
   const { userPlan } = useUserPlan();
+  const sync = useAccountSync();
   const initialProfile = useMemo(readStoredProfile, []);
   const [displayName, setDisplayName] = useState(initialProfile.displayName);
   const [email, setEmail] = useState(initialProfile.email);
@@ -67,6 +75,27 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   const [saved, setSaved] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!sync.user) return;
+
+    const nextDisplayName = sync.user.displayName?.trim() || displayName;
+    const nextEmail = sync.user.email?.trim() || email;
+    const nextAvatarImage = sync.user.photoURL || avatarImage;
+
+    setDisplayName(nextDisplayName);
+    setEmail(nextEmail);
+    setAvatarImage(nextAvatarImage);
+
+    saveStoredProfile({
+      displayName: nextDisplayName,
+      email: nextEmail,
+      favoriteQuote,
+      bio,
+      avatarImage: nextAvatarImage,
+      bannerImage,
+    });
+  }, [sync.user?.uid]);
 
   const completedBooks = useMemo(
     () => books.filter((book) => book.status === 'finished').length,
@@ -86,15 +115,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       .join('') || 'JL';
 
   const handleSave = () => {
-    const profile: StoredProfile = {
+    saveStoredProfile({
       displayName,
       email,
       favoriteQuote,
       bio,
       avatarImage,
       bannerImage,
-    };
-    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    });
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2500);
   };
@@ -140,7 +168,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
               <div className="relative grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-full border-4 border-[var(--ink-surface)] bg-gradient-to-br from-[#78566e] to-[#2b1c30] font-serif text-3xl font-bold text-[var(--ink-ivory)] shadow-xl sm:h-28 sm:w-28">
                 {avatarImage ? (
-                  <img src={avatarImage} alt={`${displayName} profile`} className="h-full w-full object-cover" />
+                  <img
+                    src={avatarImage}
+                    alt={`${displayName} profile`}
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
                 ) : (
                   initials
                 )}
