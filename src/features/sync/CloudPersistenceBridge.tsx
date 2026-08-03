@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   serverTimestamp,
@@ -127,6 +128,8 @@ export const CloudPersistenceBridge: React.FC = () => {
       applyingCloud.current = true;
       localStorage.setItem(BOOKS_KEY, stable(mergedBooks));
       localStorage.setItem(SESSIONS_KEY, stable(mergedSessions));
+      localStorage.setItem(`${BOOKS_KEY}_cloud_previous`, stable(mergedBooks));
+      localStorage.setItem(`${SESSIONS_KEY}_cloud_previous`, stable(mergedSessions));
       booksFingerprint.current = stable(mergedBooks);
       sessionsFingerprint.current = stable(mergedSessions);
 
@@ -150,9 +153,31 @@ export const CloudPersistenceBridge: React.FC = () => {
       ]);
 
       const profileRef = doc(db!, 'users', uid, 'profile', 'current');
-      const unsubscribeProfile = onSnapshot(profileRef, async (snapshot) => {
-        if (!hydrated.current) return;
-        if (!snapshot.exists()) return;
+      let profileChanged = false;
+      const cloudProfileSnapshot = await getDoc(profileRef);
+      if (cloudProfileSnapshot.exists()) {
+        const cloudProfile = (cloudProfileSnapshot.data() as CloudRecord<ReaderProfile>).data;
+        if (cloudProfile) {
+          profileFingerprint.current = stable(cloudProfile);
+          profileChanged = stable(localProfile) !== profileFingerprint.current;
+          if (profileChanged) localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
+        }
+      } else if (Object.keys(localProfile).length > 0) {
+        const prepared = await prepareCloudProfile(uid, localProfile);
+        profileFingerprint.current = stable(prepared);
+        profileChanged = profileFingerprint.current !== stable(localProfile);
+        localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
+        await setDoc(profileRef, {
+          data: prepared,
+          updatedAt: serverTimestamp(),
+          clientUpdatedAt: new Date().toISOString(),
+        });
+      } else {
+        profileFingerprint.current = stable(localProfile);
+      }
+
+      const unsubscribeProfile = onSnapshot(profileRef, (snapshot) => {
+        if (!hydrated.current || !snapshot.exists()) return;
         const cloudProfile = (snapshot.data() as CloudRecord<ReaderProfile>).data;
         if (!cloudProfile) return;
         const fingerprint = stable(cloudProfile);
@@ -163,26 +188,6 @@ export const CloudPersistenceBridge: React.FC = () => {
         queueReload();
       });
       unsubscribers.push(unsubscribeProfile);
-
-      const cloudProfileSnapshot = await import('firebase/firestore').then(({ getDoc }) => getDoc(profileRef));
-      if (cloudProfileSnapshot.exists()) {
-        const cloudProfile = (cloudProfileSnapshot.data() as CloudRecord<ReaderProfile>).data;
-        if (cloudProfile) {
-          profileFingerprint.current = stable(cloudProfile);
-          if (stable(localProfile) !== profileFingerprint.current) {
-            localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
-          }
-        }
-      } else if (Object.keys(localProfile).length > 0) {
-        const prepared = await prepareCloudProfile(uid, localProfile);
-        profileFingerprint.current = stable(prepared);
-        localStorage.setItem(PROFILE_KEY, profileFingerprint.current);
-        await setDoc(profileRef, {
-          data: prepared,
-          updatedAt: serverTimestamp(),
-          clientUpdatedAt: new Date().toISOString(),
-        });
-      }
 
       const subscribeCollection = <T extends { id: string }>(
         name: 'books' | 'sessions',
@@ -211,6 +216,7 @@ export const CloudPersistenceBridge: React.FC = () => {
         applyingCloud.current = true;
         fingerprintRef.current = fingerprint;
         localStorage.setItem(storageKey, fingerprint);
+        localStorage.setItem(`${storageKey}_cloud_previous`, fingerprint);
         queueReload();
       });
 
@@ -222,7 +228,7 @@ export const CloudPersistenceBridge: React.FC = () => {
       hydrated.current = true;
       applyingCloud.current = false;
       localStorage.setItem(BRIDGE_VERSION_KEY, BRIDGE_VERSION);
-      if (booksChanged || sessionsChanged || stable(localProfile) !== profileFingerprint.current) queueReload();
+      if (booksChanged || sessionsChanged || profileChanged) queueReload();
     };
 
     void initialize();
