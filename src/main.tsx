@@ -7,6 +7,7 @@ import { AccountSyncProvider } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
+import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
 import './index.css';
@@ -31,6 +32,7 @@ createRoot(rootElement).render(
           <AccountSyncProvider>
             <SecurityBootstrap />
             <CloudPersistenceBridge />
+            <ThemePersistenceBridge />
             <CloudDataRefreshBoundary>
               <App />
             </CloudDataRefreshBoundary>
