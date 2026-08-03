@@ -33,15 +33,11 @@ const formatOptions: Record<WrappedFormat, { label: string; width: number; heigh
 };
 
 const monthKeyFor = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-
 const monthChoices = Array.from({ length: 18 }, (_, index) => {
   const date = new Date();
   date.setDate(1);
   date.setMonth(date.getMonth() - index);
-  return {
-    key: monthKeyFor(date),
-    label: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
-  };
+  return { key: monthKeyFor(date), label: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) };
 });
 
 const escapeXml = (value: string) =>
@@ -68,65 +64,47 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     const readingDays = new Set(monthSessions.map((session) => session.date)).size;
     const averageSession = monthSessions.length ? Math.round(totalMinutes / monthSessions.length) : 0;
     const genreCounts = new Map<string, number>();
-    activeBooks.forEach((book) =>
-      book.work.genres.forEach((genre) => genreCounts.set(genre, (genreCounts.get(genre) ?? 0) + 1)),
-    );
+    activeBooks.forEach((book) => book.work.genres.forEach((genre) => genreCounts.set(genre, (genreCounts.get(genre) ?? 0) + 1)));
     const favoriteGenre = [...genreCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Your next favorite genre';
-    const highestRated = [...finishedBooks]
-      .filter((book) => book.rating)
-      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))[0];
+    const highestRated = [...finishedBooks].filter((book) => book.rating).sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))[0];
     const favoriteQuote = finishedBooks.flatMap((book) => book.favoriteQuotes ?? [])[0]?.quote;
     return { totalMinutes, pagesRead, readingDays, averageSession, favoriteGenre, highestRated, favoriteQuote };
   }, [activeBooks, finishedBooks, monthSessions]);
 
   const cards = [
-    {
-      eyebrow: `${selectedMonth.label} Reading Wrapped`,
-      title: `${finishedBooks.length} ${finishedBooks.length === 1 ? 'book' : 'books'} finished`,
-      body: `${stats.pagesRead.toLocaleString()} pages · ${Math.floor(stats.totalMinutes / 60)}h ${stats.totalMinutes % 60}m`,
-      footer: `${monthSessions.length} sessions across ${stats.readingDays} reading days`,
-    },
-    {
-      eyebrow: 'Your Reading Rhythm',
-      title: `${stats.averageSession} minute average session`,
-      body: stats.readingDays > 0 ? `You made time to read on ${stats.readingDays} days this month.` : 'Your next reading month is waiting.',
-      footer: `${monthSessions.length} sessions recorded with Inkbound`,
-    },
-    {
-      eyebrow: 'Your Month in Stories',
-      title: stats.favoriteGenre,
-      body: stats.highestRated
-        ? `${stats.highestRated.work.title} was your highest-rated finish${stats.highestRated.rating ? ` at ${stats.highestRated.rating} stars` : ''}.`
-        : 'Keep rating your finished books to reveal a monthly favorite.',
-      footer: `${activeBooks.length} books appeared in your reading life`,
-    },
-    {
-      eyebrow: 'A Memory to Keep',
-      title: stats.favoriteQuote ? `“${stats.favoriteQuote.slice(0, 90)}${stats.favoriteQuote.length > 90 ? '…' : ''}”` : 'A quiet month of reading, remembered.',
-      body: stats.favoriteQuote ? 'Your saved quote of the month' : 'Save quotes while reading and Inkbound will feature one here.',
-      footer: 'Created with Inkbound',
-    },
+    { eyebrow: `${selectedMonth.label} Reading Wrapped`, title: `${finishedBooks.length} ${finishedBooks.length === 1 ? 'book' : 'books'} finished`, body: `${stats.pagesRead.toLocaleString()} pages · ${Math.floor(stats.totalMinutes / 60)}h ${stats.totalMinutes % 60}m`, footer: `${monthSessions.length} sessions across ${stats.readingDays} reading days` },
+    { eyebrow: 'Your Reading Rhythm', title: `${stats.averageSession} minute average session`, body: stats.readingDays > 0 ? `You made time to read on ${stats.readingDays} days this month.` : 'Your next reading month is waiting.', footer: `${monthSessions.length} sessions recorded with Inkbound` },
+    { eyebrow: 'Your Month in Stories', title: stats.favoriteGenre, body: stats.highestRated ? `${stats.highestRated.work.title} was your highest-rated finish${stats.highestRated.rating ? ` at ${stats.highestRated.rating} stars` : ''}.` : 'Keep rating your finished books to reveal a monthly favorite.', footer: `${activeBooks.length} books appeared in your reading life` },
+    { eyebrow: 'A Memory to Keep', title: stats.favoriteQuote ? `“${stats.favoriteQuote.slice(0, 90)}${stats.favoriteQuote.length > 90 ? '…' : ''}”` : 'A quiet month of reading, remembered.', body: stats.favoriteQuote ? 'Your saved quote of the month' : 'Save quotes while reading and Inkbound will feature one here.', footer: 'Created with Inkbound' },
   ];
 
   const cardIndex = Math.min(preferences.currentCard, cards.length - 1);
   const currentCard = cards[cardIndex];
-  const theme = themeOptions[preferences.theme];
-  const format = formatOptions[preferences.format];
+  const theme = themeOptions[preferences.theme] ?? themeOptions['quiet-library'];
+  const format = formatOptions[preferences.format] ?? formatOptions.portrait;
+  const isSquare = preferences.format === 'square';
+  const isStory = preferences.format === 'story';
 
-  const changeCard = (next: number) =>
-    setPreferences((current) => ({ ...current, currentCard: (next + cards.length) % cards.length }));
+  const changeCard = (next: number) => setPreferences((current) => ({ ...current, currentCard: (next + cards.length) % cards.length }));
 
-  const buildSvg = () => `<svg xmlns="http://www.w3.org/2000/svg" width="${format.width}" height="${format.height}" viewBox="0 0 ${format.width} ${format.height}">
-    <defs><radialGradient id="glow" cx="85%" cy="8%"><stop offset="0" stop-color="${theme.accent}" stop-opacity=".55"/><stop offset="1" stop-color="${theme.background}" stop-opacity="0"/></radialGradient></defs>
-    <rect width="100%" height="100%" fill="${theme.background}"/><rect width="100%" height="100%" fill="url(#glow)"/>
-    <rect x="8%" y="7%" width="84%" height="86%" rx="42" fill="none" stroke="${theme.accent}" stroke-opacity=".42" stroke-width="3"/>
-    <text x="50%" y="14%" text-anchor="middle" fill="${theme.accent}" font-family="Georgia,serif" font-size="28" letter-spacing="8">INKBOUND</text>
-    <text x="50%" y="24%" text-anchor="middle" fill="${theme.accent}" font-family="Arial,sans-serif" font-size="24" letter-spacing="4">${escapeXml(currentCard.eyebrow.toUpperCase())}</text>
-    <text x="50%" y="45%" text-anchor="middle" fill="${theme.text}" font-family="Georgia,serif" font-size="58" font-weight="700">${escapeXml(currentCard.title.slice(0, 42))}</text>
-    <text x="50%" y="57%" text-anchor="middle" fill="${theme.text}" opacity=".82" font-family="Arial,sans-serif" font-size="30">${escapeXml(currentCard.body.slice(0, 80))}</text>
-    <text x="50%" y="72%" text-anchor="middle" fill="${theme.text}" opacity=".68" font-family="Arial,sans-serif" font-size="25">${escapeXml(currentCard.footer.slice(0, 82))}</text>
-    <text x="50%" y="88%" text-anchor="middle" fill="${theme.accent}" font-family="Arial,sans-serif" font-size="22">${cardIndex + 1} / ${cards.length} · Created with Inkbound</text>
-  </svg>`;
+  const buildSvg = () => {
+    const titleY = isSquare ? 330 : isStory ? 690 : 500;
+    const bodyY = isSquare ? 520 : isStory ? 980 : 720;
+    const footerY = isSquare ? 735 : isStory ? 1370 : 990;
+    const titleSize = isSquare ? 54 : isStory ? 68 : 60;
+    const bodySize = isSquare ? 28 : 32;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${format.width}" height="${format.height}" viewBox="0 0 ${format.width} ${format.height}">
+      <defs><radialGradient id="glow" cx="85%" cy="8%"><stop offset="0" stop-color="${theme.accent}" stop-opacity=".55"/><stop offset="1" stop-color="${theme.background}" stop-opacity="0"/></radialGradient></defs>
+      <rect width="100%" height="100%" fill="${theme.background}"/><rect width="100%" height="100%" fill="url(#glow)"/>
+      <rect x="8%" y="7%" width="84%" height="86%" rx="42" fill="none" stroke="${theme.accent}" stroke-opacity=".42" stroke-width="3"/>
+      <text x="50%" y="14%" text-anchor="middle" fill="${theme.accent}" font-family="Georgia,serif" font-size="28" letter-spacing="8">INKBOUND</text>
+      <foreignObject x="12%" y="18%" width="76%" height="9%"><div xmlns="http://www.w3.org/1999/xhtml" style="color:${theme.accent};font:700 24px Arial,sans-serif;text-align:center;letter-spacing:4px;text-transform:uppercase">${escapeXml(currentCard.eyebrow)}</div></foreignObject>
+      <foreignObject x="12%" y="${titleY}" width="76%" height="${isSquare ? 220 : isStory ? 300 : 250}"><div xmlns="http://www.w3.org/1999/xhtml" style="color:${theme.text};font:700 ${titleSize}px Georgia,serif;text-align:center;line-height:1.12">${escapeXml(currentCard.title)}</div></foreignObject>
+      <foreignObject x="14%" y="${bodyY}" width="72%" height="${isSquare ? 145 : 190}"><div xmlns="http://www.w3.org/1999/xhtml" style="color:${theme.text};opacity:.82;font:${bodySize}px Arial,sans-serif;text-align:center;line-height:1.45">${escapeXml(currentCard.body)}</div></foreignObject>
+      <foreignObject x="14%" y="${footerY}" width="72%" height="120"><div xmlns="http://www.w3.org/1999/xhtml" style="color:${theme.text};opacity:.68;font:25px Arial,sans-serif;text-align:center;line-height:1.4">${escapeXml(currentCard.footer)}</div></foreignObject>
+      <text x="50%" y="90%" text-anchor="middle" fill="${theme.accent}" font-family="Arial,sans-serif" font-size="22">${cardIndex + 1} / ${cards.length} · Created with Inkbound</text>
+    </svg>`;
+  };
 
   const createPngFile = async () => {
     const blob = new Blob([buildSvg()], { type: 'image/svg+xml;charset=utf-8' });
@@ -139,13 +117,9 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
       canvas.width = format.width;
       canvas.height = format.height;
       canvas.getContext('2d')?.drawImage(image, 0, 0);
-      const pngBlob = await new Promise<Blob>((resolve, reject) =>
-        canvas.toBlob((result) => (result ? resolve(result) : reject(new Error('Could not create image.'))), 'image/png', 1),
-      );
+      const pngBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create image.')), 'image/png', 1));
       return new File([pngBlob], `inkbound-${preferences.monthKey}-wrapped-${cardIndex + 1}.png`, { type: 'image/png' });
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    } finally { URL.revokeObjectURL(url); }
   };
 
   const downloadCurrent = async () => {
@@ -158,9 +132,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setMessage('Wrapped card downloaded.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Download failed.');
-    }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Download failed.'); }
   };
 
   const shareCurrent = async () => {
@@ -173,9 +145,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
         await downloadCurrent();
         setMessage('Direct sharing is unavailable here, so the card was downloaded.');
       }
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.');
-    }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); }
   };
 
   return (
@@ -183,9 +153,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
       <header>
         <p className="inkbound-kicker">Your Reading Month</p>
         <h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Monthly Reading Wrapped</h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">
-          A shareable recap derived from your library and reading sessions—no duplicate journal records required.
-        </p>
+        <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">A shareable recap derived from your library and reading sessions—no duplicate journal records required.</p>
       </header>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,390px)_minmax(0,1fr)]">
@@ -195,25 +163,18 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
               {monthChoices.map((month) => <option key={month.key} value={month.key}>{month.label}</option>)}
             </select>
           </label>
-
           <div>
             <p className="text-sm font-semibold text-[var(--ink-ivory)]">Export size</p>
             <div className="mt-2 grid grid-cols-3 gap-2">
-              {(Object.entries(formatOptions) as [WrappedFormat, (typeof formatOptions)[WrappedFormat]][]).map(([id, option]) => (
-                <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, format: id }))} className={`min-h-11 rounded-xl border px-2 text-xs font-semibold ${preferences.format === id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}>{option.label}</button>
-              ))}
+              {(Object.entries(formatOptions) as [WrappedFormat, (typeof formatOptions)[WrappedFormat]][]).map(([id, option]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, format: id }))} className={`min-h-11 rounded-xl border px-2 text-xs font-semibold ${preferences.format === id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}>{option.label}</button>)}
             </div>
           </div>
-
           <div>
             <p className="text-sm font-semibold text-[var(--ink-ivory)]">Theme</p>
             <div className="mt-2 grid gap-2">
-              {(Object.entries(themeOptions) as [WrappedTheme, (typeof themeOptions)[WrappedTheme]][]).map(([id, option]) => (
-                <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, theme: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.theme === id ? 'border-[var(--ink-gold)] text-white' : 'border-[var(--ink-border)] text-white/70'}`} style={{ background: option.background }}>{option.label}</button>
-              ))}
+              {(Object.entries(themeOptions) as [WrappedTheme, (typeof themeOptions)[WrappedTheme]][]).map(([id, option]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, theme: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.theme === id ? 'border-[var(--ink-gold)] text-white' : 'border-[var(--ink-border)] text-white/70'}`} style={{ background: option.background }}>{option.label}</button>)}
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <button type="button" onClick={() => void shareCurrent()} className="quiet-shelf-primary-action min-h-12 justify-center"><Share2 className="h-4 w-4" /> Share</button>
             <button type="button" onClick={() => void downloadCurrent()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Download</button>
@@ -227,20 +188,19 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
             <span className="text-xs font-semibold text-[var(--ink-muted)]">Card {cardIndex + 1} of {cards.length}</span>
             <button type="button" onClick={() => changeCard(cardIndex + 1)} className="quiet-shelf-icon-button" aria-label="Next Wrapped card"><ChevronRight /></button>
           </div>
-
-          <div className="relative flex w-full max-w-[560px] flex-col items-center justify-between overflow-hidden rounded-[32px] border border-white/15 p-[9%] text-center shadow-2xl" style={{ aspectRatio: `${format.width} / ${format.height}`, background: `radial-gradient(circle at top right, ${theme.accent}66, transparent 42%), ${theme.background}`, color: theme.text }}>
+          <div className={`relative flex w-full max-w-[560px] flex-col items-center justify-between overflow-hidden rounded-[32px] border border-white/15 text-center shadow-2xl ${isSquare ? 'p-[7%]' : isStory ? 'p-[10%]' : 'p-[9%]'}`} style={{ aspectRatio: `${format.width} / ${format.height}`, background: `radial-gradient(circle at top right, ${theme.accent}66, transparent 42%), ${theme.background}`, color: theme.text }}>
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p>
-              <p className="mt-8 text-xs font-bold uppercase tracking-[0.25em] opacity-75">{currentCard.eyebrow}</p>
+              <p className={`${isSquare ? 'mt-4' : 'mt-8'} text-xs font-bold uppercase tracking-[0.25em] opacity-75`}>{currentCard.eyebrow}</p>
             </div>
-            <div className="my-12">
-              <Sparkles className="mx-auto mb-7 h-9 w-9" style={{ color: theme.accent }} />
-              <h2 className="font-serif text-4xl font-bold leading-tight sm:text-5xl">{currentCard.title}</h2>
-              <p className="mx-auto mt-6 max-w-md text-base leading-7 opacity-80">{currentCard.body}</p>
+            <div className={isSquare ? 'my-5' : isStory ? 'my-16' : 'my-10'}>
+              <Sparkles className={`mx-auto ${isSquare ? 'mb-4 h-7 w-7' : 'mb-7 h-9 w-9'}`} style={{ color: theme.accent }} />
+              <h2 className={`font-serif font-bold leading-tight ${isSquare ? 'text-3xl sm:text-4xl' : 'text-4xl sm:text-5xl'}`}>{currentCard.title}</h2>
+              <p className={`mx-auto max-w-md leading-7 opacity-80 ${isSquare ? 'mt-4 text-sm' : 'mt-6 text-base'}`}>{currentCard.body}</p>
             </div>
             <div>
-              <p className="text-sm opacity-65">{currentCard.footer}</p>
-              <p className="mt-5 text-xs font-bold uppercase tracking-[0.25em]" style={{ color: theme.accent }}>{cardIndex + 1} / {cards.length} · Created with Inkbound</p>
+              <p className={`${isSquare ? 'text-xs' : 'text-sm'} opacity-65`}>{currentCard.footer}</p>
+              <p className={`${isSquare ? 'mt-3' : 'mt-5'} text-xs font-bold uppercase tracking-[0.25em]`} style={{ color: theme.accent }}>{cardIndex + 1} / {cards.length} · Created with Inkbound</p>
             </div>
           </div>
         </section>
