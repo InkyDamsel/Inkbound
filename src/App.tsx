@@ -49,7 +49,8 @@ const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
 const THEME_STORAGE_KEY = 'inkbound_theme';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
-const IMPORT_ENRICHMENT_CONCURRENCY = 4;
+const IMPORT_ENRICHMENT_CONCURRENCY = 8;
+const importSearchCache = new Map<string, Promise<BookSearchWorkGroup[]>>();
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
   try {
@@ -61,6 +62,21 @@ function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback
 }
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
+
+async function searchImportedBookMetadata(query: string): Promise<BookSearchWorkGroup[]> {
+  const normalizedQuery = query.trim().toLowerCase();
+  const cached = importSearchCache.get(normalizedQuery);
+  if (cached) return cached;
+
+  const request = searchGoogleBooks(query)
+    .then((response) => response.groups)
+    .catch((error) => {
+      importSearchCache.delete(normalizedQuery);
+      throw error;
+    });
+  importSearchCache.set(normalizedQuery, request);
+  return request;
+}
 
 function chooseImportedEdition(
   item: ImportRecordItem,
@@ -125,8 +141,8 @@ function createFallbackImportedBook(item: ImportRecordItem): UserBookRecord {
 async function enrichImportedBook(item: ImportRecordItem): Promise<UserBookRecord> {
   try {
     const query = item.isbn?.trim() || `${item.title} ${item.author}`;
-    const response = await searchGoogleBooks(query);
-    const { work, edition } = chooseImportedEdition(item, response.groups);
+    const groups = await searchImportedBookMetadata(query);
+    const { work, edition } = chooseImportedEdition(item, groups);
     if (!work || !edition) return createFallbackImportedBook(item);
 
     const editionId = `edition-import-${item.id}`;
@@ -202,6 +218,32 @@ async function enrichImportedBooks(items: ImportRecordItem[]): Promise<UserBookR
     Array.from({ length: Math.min(IMPORT_ENRICHMENT_CONCURRENCY, items.length) }, () => worker()),
   );
   return results;
+}
+
+function mergeEnrichedImportedBook(current: UserBookRecord, enriched: UserBookRecord): UserBookRecord {
+  return {
+    ...enriched,
+    status: current.status,
+    ownership: current.ownership,
+    subscriptionService: current.subscriptionService,
+    progressPages: current.progressPages,
+    progressMinutes: current.progressMinutes,
+    progressPercentage: current.progressPercentage,
+    rating: current.rating,
+    review: current.review,
+    personalNotes: current.personalNotes,
+    favoriteQuotes: current.favoriteQuotes,
+    privateTags: current.privateTags,
+    priority: current.priority,
+    moods: current.moods,
+    collections: current.collections,
+    whyIAddedThis: current.whyIAddedThis,
+    dateAdded: current.dateAdded,
+    dateStarted: current.dateStarted,
+    dateFinished: current.dateFinished,
+    lastSessionDate: current.lastSessionDate,
+    rereadCount: current.rereadCount,
+  };
 }
 
 export default function App() {
@@ -346,11 +388,25 @@ export default function App() {
 
   const handleExecuteImport = async (importedItems: ImportRecordItem[]) => {
     setPreviousBooksState(books);
-    showToast(`Finding covers and metadata for ${importedItems.length} books…`);
-    const importedBooks = await enrichImportedBooks(importedItems);
-    setBooks((current) => [...current, ...importedBooks]);
-    const enrichedCount = importedBooks.filter((book) => book.editions.some((edition) => Boolean(edition.coverUrl))).length;
-    showToast(`Imported ${importedBooks.length} books. Found covers for ${enrichedCount}.`);
+    const immediateBooks = importedItems.map(createFallbackImportedBook);
+    setBooks((current) => [...current, ...immediateBooks]);
+    showToast(`Added ${immediateBooks.length} books. Covers and details are updating in the background.`);
+
+    void enrichImportedBooks(importedItems)
+      .then((enrichedBooks) => {
+        const enrichedById = new Map(enrichedBooks.map((book) => [book.id, book]));
+        setBooks((current) => current.map((book) => {
+          const enriched = enrichedById.get(book.id);
+          return enriched ? mergeEnrichedImportedBook(book, enriched) : book;
+        }));
+        const coverCount = enrichedBooks.filter((book) =>
+          book.editions.some((edition) => Boolean(edition.coverUrl)),
+        ).length;
+        showToast(`Finished updating ${enrichedBooks.length} imported books. Found ${coverCount} covers.`);
+      })
+      .catch(() => {
+        showToast('Your books were imported, but some online metadata could not be updated.');
+      });
   };
 
   const handleResetData = () => {
