@@ -4,10 +4,16 @@ on:
   push:
     branches:
       - design/quiet-shelf-dashboard
+      - main
   pull_request:
 
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
+  verify-web:
+    name: Web application
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,5 +31,28 @@ jobs:
       - name: Type check
         run: npm run lint
 
-      - name: Build
+      - name: Production build
+        run: npm run build
+
+  verify-functions:
+    name: Cloud Functions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install function dependencies
+        run: npm ci
+
+      - name: Build functions
         run: npm run build
