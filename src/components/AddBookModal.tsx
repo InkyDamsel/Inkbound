@@ -375,7 +375,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   );
 };
 
-const Field: React.FC<{ label: string; children: React.ReactElement }> = ({ label, children }) => (
+type FieldChildProps = {
+  className?: string;
+};
+
+const Field: React.FC<{ label: string; children: React.ReactElement<FieldChildProps> }> = ({ label, children }) => (
   <label className="block text-xs font-bold text-[#d7ccd6]">
     {label}
     {React.cloneElement(children, {
