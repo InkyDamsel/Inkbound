@@ -4,6 +4,7 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 
 const THEME_STORAGE_KEY = 'inkbound_theme';
+const THEME_RELOAD_TARGET_KEY = 'inkbound_theme_reload_target';
 const THEME_POLL_MS = 1500;
 
 type InkboundTheme = 'dark' | 'light';
@@ -21,6 +22,17 @@ const applyTheme = (theme: InkboundTheme) => {
   document.documentElement.classList.toggle('dark', theme === 'dark');
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
+};
+
+const refreshForTheme = (theme: InkboundTheme) => {
+  const previousTarget = sessionStorage.getItem(THEME_RELOAD_TARGET_KEY);
+  applyTheme(theme);
+  if (previousTarget === theme) {
+    sessionStorage.removeItem(THEME_RELOAD_TARGET_KEY);
+    return;
+  }
+  sessionStorage.setItem(THEME_RELOAD_TARGET_KEY, theme);
+  window.location.reload();
 };
 
 export const ThemePersistenceBridge: React.FC = () => {
@@ -45,9 +57,14 @@ export const ThemePersistenceBridge: React.FC = () => {
       if (snapshot.exists()) {
         const cloudTheme = (snapshot.data() as CloudThemeRecord).theme;
         if (cloudTheme === 'dark' || cloudTheme === 'light') {
+          if (cloudTheme !== readLocalTheme()) {
+            lastTheme.current = cloudTheme;
+            refreshForTheme(cloudTheme);
+            return;
+          }
           lastTheme.current = cloudTheme;
           applyTheme(cloudTheme);
-          window.dispatchEvent(new CustomEvent('inkbound-theme-updated', { detail: cloudTheme }));
+          sessionStorage.removeItem(THEME_RELOAD_TARGET_KEY);
         }
       } else {
         const localTheme = readLocalTheme();
@@ -69,8 +86,7 @@ export const ThemePersistenceBridge: React.FC = () => {
       const cloudTheme = (snapshot.data() as CloudThemeRecord).theme;
       if ((cloudTheme !== 'dark' && cloudTheme !== 'light') || cloudTheme === lastTheme.current) return;
       lastTheme.current = cloudTheme;
-      applyTheme(cloudTheme);
-      window.dispatchEvent(new CustomEvent('inkbound-theme-updated', { detail: cloudTheme }));
+      refreshForTheme(cloudTheme);
     });
 
     const poll = window.setInterval(() => {
@@ -78,6 +94,7 @@ export const ThemePersistenceBridge: React.FC = () => {
       const localTheme = readLocalTheme();
       if (localTheme === lastTheme.current) return;
       lastTheme.current = localTheme;
+      sessionStorage.removeItem(THEME_RELOAD_TARGET_KEY);
       void setDoc(
         preferenceRef,
         {
