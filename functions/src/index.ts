@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
 initializeApp();
 
@@ -12,7 +12,6 @@ const OWNER_EMAILS = new Set([
 ]);
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
-
 type EntitlementSource = 'free' | 'subscription' | 'vip' | 'courtesy';
 
 interface AdminRecord {
@@ -21,7 +20,7 @@ interface AdminRecord {
   email: string;
 }
 
-function requireAuthenticated(request: Parameters<Parameters<typeof onCall>[0]>[0]) {
+function requireAuthenticated(request: CallableRequest<unknown>) {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
   }
@@ -81,8 +80,7 @@ export const bootstrapOwner = onCall(async (request) => {
     throw new HttpsError('permission-denied', 'This account is not approved for owner access.');
   }
 
-  const adminRef = db.doc(`admins/${auth.uid}`);
-  await adminRef.set(
+  await db.doc(`admins/${auth.uid}`).set(
     {
       enabled: true,
       role: 'owner',
@@ -132,11 +130,11 @@ export const syncUserDirectory = onCall(async (request) => {
 export const grantVip = onCall(async (request) => {
   const auth = requireAuthenticated(request);
   const admin = await requireAdmin(auth.uid, ['owner']);
-  const targetUserId = requireString(request.data?.targetUserId, 'targetUserId', 128);
-  const reason = requireString(request.data?.reason, 'reason');
-  const targetEmail = normalizeEmail(request.data?.targetEmail);
+  const data = request.data as Record<string, unknown> | undefined;
+  const targetUserId = requireString(data?.targetUserId, 'targetUserId', 128);
+  const reason = requireString(data?.reason, 'reason');
+  const targetEmail = normalizeEmail(data?.targetEmail);
   const entitlementRef = db.doc(`entitlements/${targetUserId}`);
-
   const previous = (await entitlementRef.get()).data() ?? null;
 
   await entitlementRef.set(
@@ -170,9 +168,10 @@ export const grantVip = onCall(async (request) => {
 export const revokeVip = onCall(async (request) => {
   const auth = requireAuthenticated(request);
   const admin = await requireAdmin(auth.uid, ['owner']);
-  const targetUserId = requireString(request.data?.targetUserId, 'targetUserId', 128);
-  const reason = requireString(request.data?.reason, 'reason');
-  const targetEmail = normalizeEmail(request.data?.targetEmail);
+  const data = request.data as Record<string, unknown> | undefined;
+  const targetUserId = requireString(data?.targetUserId, 'targetUserId', 128);
+  const reason = requireString(data?.reason, 'reason');
+  const targetEmail = normalizeEmail(data?.targetEmail);
   const entitlementRef = db.doc(`entitlements/${targetUserId}`);
   const previous = (await entitlementRef.get()).data() ?? null;
 
@@ -205,18 +204,19 @@ export const revokeVip = onCall(async (request) => {
 export const addCourtesyTime = onCall(async (request) => {
   const auth = requireAuthenticated(request);
   const admin = await requireAdmin(auth.uid, ['owner', 'support', 'billing']);
-  const targetUserId = requireString(request.data?.targetUserId, 'targetUserId', 128);
-  const reason = requireString(request.data?.reason, 'reason');
-  const targetEmail = normalizeEmail(request.data?.targetEmail);
-  const days = Number(request.data?.days);
+  const data = request.data as Record<string, unknown> | undefined;
+  const targetUserId = requireString(data?.targetUserId, 'targetUserId', 128);
+  const reason = requireString(data?.reason, 'reason');
+  const targetEmail = normalizeEmail(data?.targetEmail);
+  const days = Number(data?.days);
 
   if (!Number.isInteger(days) || days < 1 || days > 730) {
     throw new HttpsError('invalid-argument', 'Courtesy days must be between 1 and 730.');
   }
 
   const entitlementRef = db.doc(`entitlements/${targetUserId}`);
-  let previous: FirebaseFirestore.DocumentData | null = null;
-  let courtesyPremiumUntil: Timestamp;
+  let previous: unknown = null;
+  let courtesyPremiumUntil: Timestamp | null = null;
 
   await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(entitlementRef);
@@ -245,6 +245,12 @@ export const addCourtesyTime = onCall(async (request) => {
     );
   });
 
+  if (!courtesyPremiumUntil) {
+    throw new HttpsError('internal', 'Courtesy time could not be calculated.');
+  }
+
+  const courtesyIso = courtesyPremiumUntil.toDate().toISOString();
+
   await writeAudit({
     action: 'add_courtesy_time',
     targetUserId,
@@ -253,11 +259,8 @@ export const addCourtesyTime = onCall(async (request) => {
     performedByEmail: admin.email,
     reason,
     previousValue: previous,
-    newValue: { days, courtesyPremiumUntil: courtesyPremiumUntil!.toDate().toISOString() },
+    newValue: { days, courtesyPremiumUntil: courtesyIso },
   });
 
-  return {
-    success: true,
-    courtesyPremiumUntil: courtesyPremiumUntil!.toDate().toISOString(),
-  };
+  return { success: true, courtesyPremiumUntil: courtesyIso };
 });
