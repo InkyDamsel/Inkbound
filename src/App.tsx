@@ -49,8 +49,11 @@ const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
 const THEME_STORAGE_KEY = 'inkbound_theme';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
+const IMPORT_ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v1';
 const IMPORT_ENRICHMENT_CONCURRENCY = 8;
+const IMPORT_ENRICHMENT_BATCH_SIZE = 25;
 const importSearchCache = new Map<string, Promise<BookSearchWorkGroup[]>>();
+let isImportQueueProcessing = false;
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
   try {
@@ -59,6 +62,23 @@ function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback
   } catch {
     return fallback;
   }
+}
+
+function readImportEnrichmentQueue(): ImportRecordItem[] {
+  try {
+    const stored = localStorage.getItem(IMPORT_ENRICHMENT_QUEUE_KEY);
+    return stored ? (JSON.parse(stored) as ImportRecordItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeImportEnrichmentQueue(items: ImportRecordItem[]) {
+  if (items.length === 0) {
+    localStorage.removeItem(IMPORT_ENRICHMENT_QUEUE_KEY);
+    return;
+  }
+  localStorage.setItem(IMPORT_ENRICHMENT_QUEUE_KEY, JSON.stringify(items));
 }
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
@@ -288,6 +308,56 @@ export default function App() {
     window.setTimeout(() => setToastMessage(null), 4000);
   };
 
+  const processImportEnrichmentQueue = async () => {
+    if (isImportQueueProcessing || !navigator.onLine) return;
+    let queue = readImportEnrichmentQueue();
+    if (queue.length === 0) return;
+
+    isImportQueueProcessing = true;
+    let updatedCount = 0;
+    let coverCount = 0;
+
+    try {
+      while (queue.length > 0 && navigator.onLine) {
+        const batch = queue.slice(0, IMPORT_ENRICHMENT_BATCH_SIZE);
+        const enrichedBooks = await enrichImportedBooks(batch);
+        const enrichedById = new Map(enrichedBooks.map((book) => [book.id, book]));
+
+        setBooks((current) => {
+          const next = current.map((book) => {
+            const enriched = enrichedById.get(book.id);
+            return enriched ? mergeEnrichedImportedBook(book, enriched) : book;
+          });
+          localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(next));
+          return next;
+        });
+
+        updatedCount += enrichedBooks.length;
+        coverCount += enrichedBooks.filter((book) =>
+          book.editions.some((edition) => Boolean(edition.coverUrl)),
+        ).length;
+        queue = queue.slice(batch.length);
+        writeImportEnrichmentQueue(queue);
+      }
+
+      if (updatedCount > 0) {
+        showToast(`Updated ${updatedCount} imported books and found ${coverCount} covers.`);
+      }
+    } catch {
+      writeImportEnrichmentQueue(queue);
+      showToast('Book details are queued and will resume when Inkbound is online again.');
+    } finally {
+      isImportQueueProcessing = false;
+    }
+  };
+
+  useEffect(() => {
+    void processImportEnrichmentQueue();
+    const resumeWhenOnline = () => void processImportEnrichmentQueue();
+    window.addEventListener('online', resumeWhenOnline);
+    return () => window.removeEventListener('online', resumeWhenOnline);
+  }, []);
+
   const openTimer = (bookId?: string) => {
     setTimerInitialBookId(bookId);
     setIsTimerOpen(true);
@@ -389,24 +459,23 @@ export default function App() {
   const handleExecuteImport = async (importedItems: ImportRecordItem[]) => {
     setPreviousBooksState(books);
     const immediateBooks = importedItems.map(createFallbackImportedBook);
-    setBooks((current) => [...current, ...immediateBooks]);
-    showToast(`Added ${immediateBooks.length} books. Covers and details are updating in the background.`);
+    setBooks((current) => {
+      const next = [...current, ...immediateBooks];
+      localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
 
-    void enrichImportedBooks(importedItems)
-      .then((enrichedBooks) => {
-        const enrichedById = new Map(enrichedBooks.map((book) => [book.id, book]));
-        setBooks((current) => current.map((book) => {
-          const enriched = enrichedById.get(book.id);
-          return enriched ? mergeEnrichedImportedBook(book, enriched) : book;
-        }));
-        const coverCount = enrichedBooks.filter((book) =>
-          book.editions.some((edition) => Boolean(edition.coverUrl)),
-        ).length;
-        showToast(`Finished updating ${enrichedBooks.length} imported books. Found ${coverCount} covers.`);
-      })
-      .catch(() => {
-        showToast('Your books were imported, but some online metadata could not be updated.');
-      });
+    const existingQueue = readImportEnrichmentQueue();
+    const queuedById = new Map(existingQueue.map((item) => [item.id, item]));
+    importedItems.forEach((item) => queuedById.set(item.id, item));
+    writeImportEnrichmentQueue(Array.from(queuedById.values()));
+
+    showToast(
+      navigator.onLine
+        ? `Added ${immediateBooks.length} books. Covers and details will continue updating automatically.`
+        : `Added ${immediateBooks.length} books offline. Covers and details will update when Inkbound is online.`,
+    );
+    void processImportEnrichmentQueue();
   };
 
   const handleResetData = () => {
@@ -419,6 +488,7 @@ export default function App() {
     localStorage.removeItem(SESSIONS_STORAGE_KEY);
     localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
     localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
+    localStorage.removeItem(IMPORT_ENRICHMENT_QUEUE_KEY);
     showToast('Cleared all Inkbound books and reading sessions.');
   };
 
