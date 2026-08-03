@@ -216,9 +216,8 @@ export const addCourtesyTime = onCall(async (request) => {
 
   const entitlementRef = db.doc(`entitlements/${targetUserId}`);
   let previous: unknown = null;
-  let courtesyPremiumUntil: Timestamp | null = null;
 
-  await db.runTransaction(async (transaction) => {
+  const courtesyPremiumUntil = await db.runTransaction<Timestamp>(async (transaction) => {
     const snapshot = await transaction.get(entitlementRef);
     previous = snapshot.data() ?? null;
     const currentUntil = snapshot.get('courtesyPremiumUntil') as Timestamp | undefined;
@@ -226,14 +225,15 @@ export const addCourtesyTime = onCall(async (request) => {
     const startingMillis = currentUntil && currentUntil.toMillis() > now.toMillis()
       ? currentUntil.toMillis()
       : now.toMillis();
-
-    courtesyPremiumUntil = Timestamp.fromMillis(startingMillis + days * 24 * 60 * 60 * 1000);
+    const calculatedUntil = Timestamp.fromMillis(
+      startingMillis + days * 24 * 60 * 60 * 1000,
+    );
 
     transaction.set(
       entitlementRef,
       {
         basePlan: 'premium',
-        courtesyPremiumUntil,
+        courtesyPremiumUntil: calculatedUntil,
         courtesyGrantedAt: FieldValue.serverTimestamp(),
         courtesyGrantedBy: auth.uid,
         courtesyReason: reason,
@@ -243,11 +243,9 @@ export const addCourtesyTime = onCall(async (request) => {
       },
       { merge: true },
     );
-  });
 
-  if (!courtesyPremiumUntil) {
-    throw new HttpsError('internal', 'Courtesy time could not be calculated.');
-  }
+    return calculatedUntil;
+  });
 
   const courtesyIso = courtesyPremiumUntil.toDate().toISOString();
 
