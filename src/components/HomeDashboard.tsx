@@ -5,7 +5,6 @@ import {
   BookOpen,
   CalendarDays,
   Clock3,
-  Egg,
   Library,
   Play,
   Quote,
@@ -26,6 +25,29 @@ interface HomeDashboardProps {
 }
 
 const annualGoal = 50;
+const AWAKE_LUMIS_ASSET = '/assets/lumis/lumis-awake.svg';
+const SLEEPING_LUMIS_ASSET = '/assets/lumis/lumis-sleeping.svg';
+const PROUD_LUMIS_ASSET = '/assets/lumis/lumis-proud.svg';
+const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+const getSessionTimestamp = (session: ReadingSession): number => {
+  const time = session.endTime || session.startTime || '12:00';
+  const timestamp = new Date(`${session.date}T${time}`).getTime();
+  return Number.isNaN(timestamp) ? new Date(session.date).getTime() : timestamp;
+};
+
+const isDateToday = (value?: string): boolean => {
+  if (!value) return false;
+  const date = new Date(value.includes('T') ? value : `${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+};
 
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   books,
@@ -110,11 +132,34 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       .slice(0, 4);
   }, [books]);
 
-  const lumisMessage = getLumisMessage({
-    currentBook,
-    recentlyFinished: recentlyFinished[0] ?? null,
-    monthMinutes,
-  });
+  const recentSession = useMemo(
+    () => [...sessions].sort((a, b) => getSessionTimestamp(b) - getSessionTimestamp(a))[0],
+    [sessions],
+  );
+  const finishedBookToday = finishedBooks.some((book) => isDateToday(book.dateFinished));
+  const isAwakePose = Boolean(
+    recentSession && Date.now() - getSessionTimestamp(recentSession) <= RECENT_READING_WINDOW_MS,
+  );
+  const lumisPortrait = finishedBookToday
+    ? {
+        src: PROUD_LUMIS_ASSET,
+        alt: 'Lumis, a proud purple library dragon sitting on a stack of finished books',
+        title: 'Finished a book today',
+        detail: 'Lumis looks especially proud today. Another story has found its place.',
+      }
+    : isAwakePose
+      ? {
+          src: AWAKE_LUMIS_ASSET,
+          alt: 'Lumis, an alert purple library dragon resting on a book beside a candle and tea',
+          title: 'Lumis is curled up by your newest book',
+          detail: 'Eager for your next adventure.',
+        }
+      : {
+          src: SLEEPING_LUMIS_ASSET,
+          alt: 'Lumis, a sleeping purple library dragon resting on a book beside a candle and tea',
+          title: 'Lumis is resting after a day of stories',
+          detail: "Dreaming of tomorrow's adventures.",
+        };
 
   return (
     <div className="space-y-8 pb-24 md:pb-12">
@@ -132,7 +177,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </button>
       </header>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(290px,0.55fr)]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
         <ContinueReadingCard
           book={currentBook}
           onSelectBook={onSelectBook}
@@ -140,28 +185,36 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           onNavigateToLibrary={() => onNavigateToTab('library')}
         />
 
-        <section className="inkbound-panel rounded-3xl p-5 sm:p-6">
-          <div className="flex items-center gap-3">
-            <Egg className="h-5 w-5 text-[var(--ink-mauve)]" />
-            <div>
-              <p className="inkbound-kicker">Your companion</p>
-              <h2 className="mt-1 font-serif text-2xl text-[var(--ink-ivory)]">Lumis</h2>
-            </div>
-          </div>
-          <div className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[radial-gradient(circle_at_top_right,rgba(145,103,135,0.16),transparent_48%),var(--ink-surface-soft)] p-5">
-            <div className="flex items-center gap-4">
-              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-[var(--ink-border-strong)] bg-[var(--ink-surface-raised)]">
-                <Egg className="h-7 w-7 text-[var(--ink-mauve)]" />
+        <button
+          type="button"
+          onClick={() => onNavigateToTab('my-dragon')}
+          className="inkbound-panel group overflow-hidden rounded-3xl text-left transition hover:border-[var(--ink-border-strong)]"
+          aria-label="Open My Dragon"
+        >
+          <div className="p-5 pb-4 sm:p-6 sm:pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="inkbound-kicker">Your companion</p>
+                <h2 className="mt-1 font-serif text-2xl text-[var(--ink-ivory)]">Lumis</h2>
               </div>
-              <p className="font-serif text-base leading-7 text-[var(--ink-text-secondary)]">
-                {lumisMessage}
-              </p>
+              <Sparkles className="h-5 w-5 text-[var(--ink-mauve)] transition group-hover:scale-110" />
             </div>
           </div>
-          <p className="mt-4 text-xs leading-6 text-[var(--ink-muted)]">
+          <div className="mx-5 overflow-hidden rounded-2xl border border-[var(--ink-border-subtle)] bg-[#171117] sm:mx-6">
+            <img
+              src={lumisPortrait.src}
+              alt={lumisPortrait.alt}
+              className="aspect-[16/9] w-full object-cover"
+            />
+            <div className="border-t border-white/10 bg-[#171117] px-5 py-4 text-center">
+              <p className="font-serif text-lg leading-6 text-[#f2e9df]">{lumisPortrait.title}</p>
+              <p className="mt-1 text-xs leading-5 text-[#b9a9b5]">{lumisPortrait.detail}</p>
+            </div>
+          </div>
+          <p className="px-5 py-4 text-xs leading-6 text-[var(--ink-muted)] sm:px-6">
             Lumis stays quiet, notices your reading life, and never interrupts it.
           </p>
-        </section>
+        </button>
       </div>
 
       <section>
@@ -513,21 +566,4 @@ function formatHours(minutes: number): string {
   if (minutes === 0) return '0';
   const hours = minutes / 60;
   return hours >= 10 ? Math.round(hours).toString() : hours.toFixed(1);
-}
-
-function getLumisMessage(input: {
-  currentBook: UserBookRecord | null;
-  recentlyFinished: UserBookRecord | null;
-  monthMinutes: number;
-}): string {
-  if (input.recentlyFinished) {
-    return `Lumis has settled beside ${input.recentlyFinished.work.title}, keeping your newest finished story close.`;
-  }
-  if (input.currentBook) {
-    return `Lumis is resting quietly near ${input.currentBook.work.title}, waiting for your next reading moment.`;
-  }
-  if (input.monthMinutes > 0) {
-    return 'Lumis has noticed the quiet time you have spent reading this month.';
-  }
-  return 'Lumis is curled up with the library quiet around them.';
 }
