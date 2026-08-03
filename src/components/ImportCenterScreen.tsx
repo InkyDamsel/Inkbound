@@ -93,6 +93,7 @@ function parseCsv(text: string): Record<string, string>[] {
       value += char;
     }
   }
+
   row.push(value);
   if (row.some((cell) => cell.trim())) rows.push(row);
   if (rows.length < 2) return [];
@@ -174,7 +175,9 @@ async function readImportFile(file: File): Promise<ImportRecordItem[]> {
       : parsed && typeof parsed === 'object'
         ? Object.values(parsed as Record<string, unknown>).find(Array.isArray) ?? []
         : [];
-    rawRecords = (array as unknown[]).filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
+    rawRecords = (array as unknown[]).filter(
+      (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
+    );
   } else {
     rawRecords = parseCsv(text);
   }
@@ -201,9 +204,13 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   const [hasUndone, setHasUndone] = useState(false);
 
   const selectedRecords = useMemo(
-    () => isPremium ? importRecords : importRecords.filter((record) => selectedIds.includes(record.id)),
-    [importRecords, isPremium, selectedIds],
+    () => importRecords.filter((record) => selectedIds.includes(record.id)),
+    [importRecords, selectedIds],
   );
+
+  const maximumSelection = isPremium ? importRecords.length : remainingFreeSlots;
+  const allEligibleSelected =
+    importRecords.length > 0 && selectedIds.length === Math.min(importRecords.length, maximumSelection);
 
   const goNext = () => setCurrentStep((step) => Math.min(5, step + 1));
   const goBack = () => setCurrentStep((step) => Math.max(1, step - 1));
@@ -223,9 +230,11 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
       if (records.length === 0) throw new Error('No recognizable book records were found in this file.');
       setImportRecords(records);
       setSelectedFileName(file.name);
-      setSelectedIds(records.slice(0, remainingFreeSlots).map((record) => record.id));
+      const initialLimit = isPremium ? records.length : remainingFreeSlots;
+      setSelectedIds(records.slice(0, initialLimit).map((record) => record.id));
     } catch (error) {
       setImportRecords([]);
+      setSelectedIds([]);
       setSelectedFileName('');
       setFileError(error instanceof Error ? error.message : 'Inkbound could not read this export file.');
     } finally {
@@ -244,15 +253,29 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   };
 
   const toggleSelection = (recordId: string) => {
-    if (isPremium) return;
     setSelectedIds((current) => {
       if (current.includes(recordId)) return current.filter((id) => id !== recordId);
-      if (current.length >= remainingFreeSlots) {
+      if (!isPremium && current.length >= remainingFreeSlots) {
         openUpgradeModal('Upgrade to Inkbound Premium to import every book in this file.');
         return current;
       }
       return [...current, recordId];
     });
+  };
+
+  const selectAllEligible = () => {
+    const limit = isPremium ? importRecords.length : remainingFreeSlots;
+    setSelectedIds(importRecords.slice(0, limit).map((record) => record.id));
+  };
+
+  const clearSelection = () => setSelectedIds([]);
+
+  const selectByStatus = (status: ReadingStatus) => {
+    const matchingIds = importRecords
+      .filter((record) => record.status === status)
+      .slice(0, isPremium ? importRecords.length : remainingFreeSlots)
+      .map((record) => record.id);
+    setSelectedIds(matchingIds);
   };
 
   const executeImport = () => {
@@ -268,16 +291,22 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   return (
     <div className="space-y-6 pb-20">
       <div>
-        <span className="rounded border border-[#c5a059]/30 bg-[#c5a059]/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#e5c158]">Library Migration</span>
+        <span className="rounded border border-[#c5a059]/30 bg-[#c5a059]/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#e5c158]">
+          Library Migration
+        </span>
         <h1 className="mt-2 font-serif text-3xl font-bold text-[#f4efe6]">Import Center</h1>
-        <p className="mt-1 text-sm text-stone-400">Bring your reading history into Inkbound from a supported export file.</p>
+        <p className="mt-1 text-sm text-stone-400">
+          Bring your reading history into Inkbound from a supported export file.
+        </p>
       </div>
 
       <div className="flex items-start gap-3 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4 text-xs text-stone-300">
         <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-[#c5a059]" />
         <div>
           <p className="font-bold text-[#f4efe6]">Your library data stays yours</p>
-          <p className="mt-1 text-stone-400">Inkbound reads the file you choose and adds only the books you approve.</p>
+          <p className="mt-1 text-stone-400">
+            Inkbound reads the file you choose and adds only the books you approve.
+          </p>
         </div>
       </div>
 
@@ -287,53 +316,295 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
             const step = index + 1;
             const active = step === currentStep;
             const complete = step < currentStep;
-            return <div key={label} className={`flex items-center gap-2 text-xs font-semibold ${active ? 'text-[#e5c158]' : complete ? 'text-emerald-400' : 'text-stone-500'}`}><span className={`grid h-7 w-7 place-items-center rounded-full ${active ? 'bg-[#c5a059] text-[#120817]' : complete ? 'bg-emerald-950 text-emerald-300' : 'bg-[#25132f] text-stone-500'}`}>{complete ? '✓' : step}</span><span>{label}</span></div>;
+            return (
+              <div
+                key={label}
+                className={`flex items-center gap-2 text-xs font-semibold ${
+                  active ? 'text-[#e5c158]' : complete ? 'text-emerald-400' : 'text-stone-500'
+                }`}
+              >
+                <span
+                  className={`grid h-7 w-7 place-items-center rounded-full ${
+                    active
+                      ? 'bg-[#c5a059] text-[#120817]'
+                      : complete
+                        ? 'bg-emerald-950 text-emerald-300'
+                        : 'bg-[#25132f] text-stone-500'
+                  }`}
+                >
+                  {complete ? '✓' : step}
+                </span>
+                <span>{label}</span>
+              </div>
+            );
           })}
         </div>
       </div>
 
-      {currentStep === 1 && <section className="space-y-4">
-        <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose an import source</h2>
-        <ImportSourceGrid sources={IMPORT_SOURCES} selectedSourceId={selectedSource.id} onSelectSource={setSelectedSource} />
-        <div className="flex justify-end"><button type="button" onClick={goNext} className="quiet-shelf-primary-action min-h-11">Continue with {selectedSource.name}<ArrowRight className="h-4 w-4" /></button></div>
-      </section>}
-
-      {currentStep === 2 && <section className="space-y-5">
-        <div>
-          <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Upload {selectedSource.name} export</h2>
-          <p className="mt-1 text-sm text-stone-400">Choose the file you downloaded from {selectedSource.name}.</p>
-        </div>
-
-        <section className="rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-5">
-          <div className="flex items-start gap-3"><HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" /><div><h3 className="font-bold text-[#f4efe6]">How to find your export file</h3><ol className="mt-3 space-y-2 text-sm text-stone-400">{sourceInstructions[selectedSource.id].map((instruction, index) => <li key={instruction} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15 text-xs font-bold text-[#e5c158]">{index + 1}</span><span>{instruction}</span></li>)}</ol></div></div>
+      {currentStep === 1 && (
+        <section className="space-y-4">
+          <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose an import source</h2>
+          <ImportSourceGrid
+            sources={IMPORT_SOURCES}
+            selectedSourceId={selectedSource.id}
+            onSelectSource={setSelectedSource}
+          />
+          <div className="flex justify-end">
+            <button type="button" onClick={goNext} className="quiet-shelf-primary-action min-h-11">
+              Continue with {selectedSource.name}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
         </section>
+      )}
 
-        <div onDragOver={(event) => event.preventDefault()} onDrop={onDrop} className="rounded-2xl border border-dashed border-[#c5a059] bg-[#1c0f24] p-8 text-center sm:p-12">
-          <Upload className="mx-auto h-12 w-12 text-[#c5a059]" />
-          <p className="mt-3 font-serif text-lg font-bold text-[#f4efe6]">Drag and drop your CSV or JSON file</p>
-          <p className="mt-1 text-xs text-stone-400">or choose it from your device</p>
-          <label className="quiet-shelf-primary-action mt-5 inline-flex min-h-11 cursor-pointer"><FileSpreadsheet className="h-4 w-4" />{isReadingFile ? 'Reading file…' : 'Choose Export File'}<input type="file" accept=".csv,.json,text/csv,application/json" onChange={onFileInput} className="sr-only" disabled={isReadingFile} /></label>
-          {selectedFileName && <p className="mt-4 text-sm font-semibold text-emerald-300">Ready: {selectedFileName}</p>}
-          {fileError && <p className="mx-auto mt-4 max-w-xl rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-300">{fileError}</p>}
-        </div>
+      {currentStep === 2 && (
+        <section className="space-y-5">
+          <div>
+            <h2 className="font-serif text-xl font-bold text-[#f4efe6]">
+              Upload {selectedSource.name} export
+            </h2>
+            <p className="mt-1 text-sm text-stone-400">
+              Choose the file you downloaded from {selectedSource.name}.
+            </p>
+          </div>
 
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11"><ArrowLeft className="h-4 w-4" />Back</button><button type="button" onClick={goNext} disabled={importRecords.length === 0} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">Analyze {importRecords.length > 0 ? `${importRecords.length} Books` : 'File'}<ArrowRight className="h-4 w-4" /></button></div>
-      </section>}
+          <section className="rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-5">
+            <div className="flex items-start gap-3">
+              <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" />
+              <div>
+                <h3 className="font-bold text-[#f4efe6]">How to find your export file</h3>
+                <ol className="mt-3 space-y-2 text-sm text-stone-400">
+                  {sourceInstructions[selectedSource.id].map((instruction, index) => (
+                    <li key={instruction} className="flex gap-3">
+                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15 text-xs font-bold text-[#e5c158]">
+                        {index + 1}
+                      </span>
+                      <span>{instruction}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          </section>
 
-      {currentStep === 3 && <section className="space-y-4">
-        <h2 className="font-serif text-xl font-bold text-[#f4efe6]">File analysis and access</h2>
-        <ImportAnalysisSummaryGrid importRecordCount={importRecords.length} currentBookCount={currentBookCount} freeBookLimit={freeBookLimit} remainingFreeSlots={remainingFreeSlots} isPremium={isPremium} />
-        {isPremium ? <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-emerald-200"><CheckCircle2 className="h-5 w-5 shrink-0" /><div><p className="font-bold">Premium unlimited import</p><p className="mt-1 text-emerald-100/70">All {importRecords.length} books in this file are eligible to import.</p></div></div> : importRecords.length > remainingFreeSlots && <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-stone-300"><AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" /><div><p className="font-bold text-amber-300">Choose up to {remainingFreeSlots} books</p><p className="mt-1">Upgrade to Premium to import the entire file without a book limit.</p></div></div>}
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11"><ArrowLeft className="h-4 w-4" />Back</button><button type="button" onClick={goNext} className="quiet-shelf-primary-action min-h-11">Choose Books<ArrowRight className="h-4 w-4" /></button></div>
-      </section>}
+          <div
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={onDrop}
+            className="rounded-2xl border border-dashed border-[#c5a059] bg-[#1c0f24] p-8 text-center sm:p-12"
+          >
+            <Upload className="mx-auto h-12 w-12 text-[#c5a059]" />
+            <p className="mt-3 font-serif text-lg font-bold text-[#f4efe6]">
+              Drag and drop your CSV or JSON file
+            </p>
+            <p className="mt-1 text-xs text-stone-400">or choose it from your device</p>
+            <label className="quiet-shelf-primary-action mt-5 inline-flex min-h-11 cursor-pointer">
+              <FileSpreadsheet className="h-4 w-4" />
+              {isReadingFile ? 'Reading file…' : 'Choose Export File'}
+              <input
+                type="file"
+                accept=".csv,.json,text/csv,application/json"
+                onChange={onFileInput}
+                className="sr-only"
+                disabled={isReadingFile}
+              />
+            </label>
+            {selectedFileName && (
+              <p className="mt-4 text-sm font-semibold text-emerald-300">Ready: {selectedFileName}</p>
+            )}
+            {fileError && (
+              <p className="mx-auto mt-4 max-w-xl rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-300">
+                {fileError}
+              </p>
+            )}
+          </div>
 
-      {currentStep === 4 && <section className="space-y-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose books to import</h2><p className="text-xs text-stone-400">{isPremium ? `All ${importRecords.length} books will be imported.` : `${selectedIds.length} of ${remainingFreeSlots} available slots selected.`}</p></div>{!isPremium && <button type="button" onClick={() => openUpgradeModal('Import every book with Inkbound Premium.')} className="text-xs font-bold text-[#e5c158] hover:underline">Upgrade for unlimited imports</button>}</div>
-        <div className="space-y-2">{importRecords.map((record) => { const selected = isPremium || selectedIds.includes(record.id); return <button key={record.id} type="button" disabled={isPremium} onClick={() => toggleSelection(record.id)} className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition ${selected ? 'border-[#c5a059] bg-[#c5a059]/10' : 'border-[#3d2448] bg-[#1c0f24] opacity-70'}`}><span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${selected ? 'border-[#c5a059] bg-[#c5a059] text-[#120817]' : 'border-stone-600'}`}>{selected && <Check className="h-3.5 w-3.5" />}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#f4efe6]">{record.title}</strong><small className="text-stone-400">{record.author}</small></span><span className="text-[10px] font-bold uppercase text-[#e5c158]">{record.format}</span></button>; })}</div>
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11">Back</button><button type="button" onClick={executeImport} disabled={selectedRecords.length === 0} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">Import {selectedRecords.length} Books</button></div>
-      </section>}
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11">
+              <ArrowLeft className="h-4 w-4" /> Back
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              disabled={importRecords.length === 0}
+              className="quiet-shelf-primary-action min-h-11 disabled:opacity-50"
+            >
+              Analyze {importRecords.length > 0 ? `${importRecords.length} Books` : 'File'}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </section>
+      )}
 
-      {currentStep === 5 && <section className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center sm:p-10"><CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" /><h2 className="mt-4 font-serif text-3xl font-bold text-[#f4efe6]">Import complete</h2><p className="mx-auto mt-2 max-w-md text-sm text-stone-400">{selectedRecords.length} books were added to your Inkbound library.</p>{!hasUndone ? <button type="button" onClick={undoImport} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-500/30 px-4 text-xs font-bold text-rose-300"><RotateCcw className="h-4 w-4" />Undo This Import</button> : <p className="mt-5 text-xs font-bold text-rose-300">The import was undone.</p>}</section>}
+      {currentStep === 3 && (
+        <section className="space-y-4">
+          <h2 className="font-serif text-xl font-bold text-[#f4efe6]">File analysis and access</h2>
+          <ImportAnalysisSummaryGrid
+            importRecordCount={importRecords.length}
+            currentBookCount={currentBookCount}
+            freeBookLimit={freeBookLimit}
+            remainingFreeSlots={remainingFreeSlots}
+            isPremium={isPremium}
+          />
+          {isPremium ? (
+            <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-emerald-200">
+              <CheckCircle2 className="h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-bold">Premium unlimited import</p>
+                <p className="mt-1 text-emerald-100/70">
+                  All {importRecords.length} books in this file are eligible to import.
+                </p>
+              </div>
+            </div>
+          ) : (
+            importRecords.length > remainingFreeSlots && (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-stone-300">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
+                <div>
+                  <p className="font-bold text-amber-300">Choose up to {remainingFreeSlots} books</p>
+                  <p className="mt-1">Upgrade to Premium to import the entire file without a book limit.</p>
+                </div>
+              </div>
+            )
+          )}
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11">
+              <ArrowLeft className="h-4 w-4" /> Back
+            </button>
+            <button type="button" onClick={goNext} className="quiet-shelf-primary-action min-h-11">
+              Choose Books <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {currentStep === 4 && (
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose books to import</h2>
+              <p className="mt-1 text-sm text-stone-400" aria-live="polite">
+                <strong className="text-[#f4efe6]">{selectedIds.length.toLocaleString()}</strong> of{' '}
+                {importRecords.length.toLocaleString()} books selected
+                {!isPremium && ` · ${remainingFreeSlots.toLocaleString()} slots available`}.
+              </p>
+            </div>
+            {!isPremium && (
+              <button
+                type="button"
+                onClick={() => openUpgradeModal('Import every book with Inkbound Premium.')}
+                className="text-xs font-bold text-[#e5c158] hover:underline"
+              >
+                Upgrade for unlimited imports
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-3">
+            <button
+              type="button"
+              onClick={selectAllEligible}
+              disabled={allEligibleSelected || maximumSelection === 0}
+              className="quiet-shelf-secondary-action min-h-10 px-4 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isPremium ? 'Select All' : `Select Up to ${remainingFreeSlots}`}
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              disabled={selectedIds.length === 0}
+              className="quiet-shelf-secondary-action min-h-10 px-4 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear All
+            </button>
+            <button type="button" onClick={() => selectByStatus('tbr')} className="quiet-shelf-secondary-action min-h-10 px-4">
+              Select TBR
+            </button>
+            <button type="button" onClick={() => selectByStatus('currently-reading')} className="quiet-shelf-secondary-action min-h-10 px-4">
+              Select Reading
+            </button>
+            <button type="button" onClick={() => selectByStatus('finished')} className="quiet-shelf-secondary-action min-h-10 px-4">
+              Select Finished
+            </button>
+          </div>
+
+          {maximumSelection === 0 && !isPremium && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-sm text-amber-200">
+              Your free library is full. Existing books remain available, but Premium is required to import more.
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {importRecords.map((record) => {
+              const selected = selectedIds.includes(record.id);
+              return (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => toggleSelection(record.id)}
+                  aria-pressed={selected}
+                  className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition hover:border-[#c5a059]/70 hover:bg-[#c5a059]/5 ${
+                    selected
+                      ? 'border-[#c5a059] bg-[#c5a059]/10'
+                      : 'border-[#3d2448] bg-[#1c0f24]'
+                  }`}
+                >
+                  <span
+                    className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${
+                      selected
+                        ? 'border-[#c5a059] bg-[#c5a059] text-[#120817]'
+                        : 'border-stone-600 bg-[#120817]'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {selected && <Check className="h-3.5 w-3.5" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-sm text-[#f4efe6]">{record.title}</strong>
+                    <small className="block truncate text-stone-400">{record.author}</small>
+                  </span>
+                  <span className="text-[10px] font-bold uppercase text-[#e5c158]">{record.format}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-[#3d2448] bg-[#0d0910]/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+            <button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11">
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={executeImport}
+              disabled={selectedRecords.length === 0}
+              className="quiet-shelf-primary-action min-h-11 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Import {selectedRecords.length.toLocaleString()} Books
+            </button>
+          </div>
+        </section>
+      )}
+
+      {currentStep === 5 && (
+        <section className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center sm:p-10">
+          <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />
+          <h2 className="mt-4 font-serif text-3xl font-bold text-[#f4efe6]">Import complete</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-stone-400">
+            {selectedRecords.length.toLocaleString()} books were added to your Inkbound library.
+          </p>
+          {!hasUndone ? (
+            <button
+              type="button"
+              onClick={undoImport}
+              className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-500/30 px-4 text-xs font-bold text-rose-300"
+            >
+              <RotateCcw className="h-4 w-4" /> Undo This Import
+            </button>
+          ) : (
+            <p className="mt-5 text-xs font-bold text-rose-300">The import was undone.</p>
+          )}
+        </section>
+      )}
     </div>
   );
 };
