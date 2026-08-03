@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { ChangeEvent, DragEvent, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -6,14 +6,13 @@ import {
   Check,
   CheckCircle2,
   FileSpreadsheet,
+  HelpCircle,
   RotateCcw,
   Sparkles,
   Upload,
 } from 'lucide-react';
-import { ImportRecordItem, ImportSourceInfo } from '../types';
-import { MOCK_IMPORT_RECORDS } from '../data/sampleBooks';
+import { Format, ImportRecordItem, ImportSourceInfo, ReadingStatus } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
-import { ResponsiveGrid } from '../layout/responsive';
 import { ImportAnalysisSummaryGrid } from './import/ImportAnalysisSummaryGrid';
 import { ImportSourceGrid } from './import/ImportSourceGrid';
 
@@ -29,17 +28,159 @@ export const IMPORT_SOURCES: ImportSourceInfo[] = [
   { id: 'fable', name: 'Fable', description: 'Import an exported Fable bookshelf file.', badge: 'JSON Export', method: 'JSON File', supported: true },
   { id: 'hardcover', name: 'Hardcover', description: 'Import your Hardcover library export.', badge: 'CSV Export', method: 'CSV File', supported: true },
   { id: 'bookly', name: 'Bookly', description: 'Import books and reading-session history.', badge: 'CSV / JSON', method: 'Export File', supported: true },
-  { id: 'generic_csv', name: 'Custom File', description: 'Map a custom CSV or JSON export manually.', badge: 'Any Export', method: 'CSV / JSON', supported: true },
+  { id: 'generic_csv', name: 'Custom File', description: 'Import a CSV or JSON file from another reading service.', badge: 'Any Export', method: 'CSV / JSON', supported: true },
 ];
 
-const steps = [
-  'Select Source',
-  'Upload File',
-  'Analyze',
-  'Map Fields',
-  'Select Books',
-  'Complete',
-];
+const steps = ['Select Source', 'Upload File', 'Analyze', 'Select Books', 'Complete'];
+
+const sourceInstructions: Record<string, string[]> = {
+  goodreads: [
+    'Open Goodreads on the web and go to My Books.',
+    'Choose Import and Export from the left side of the page.',
+    'Select Export Library and download the CSV file.',
+  ],
+  storygraph: [
+    'Open StoryGraph and go to Manage Account.',
+    'Find the data export section.',
+    'Request or download your reading history CSV.',
+  ],
+  fable: [
+    'Open Fable and go to your account or data settings.',
+    'Choose the available library or data export option.',
+    'Download the JSON export file.',
+  ],
+  hardcover: [
+    'Open Hardcover and go to Account Settings.',
+    'Find Export Data or Library Export.',
+    'Download the CSV file to your device.',
+  ],
+  bookly: [
+    'Open Bookly and go to Settings.',
+    'Choose Backup, Export, or Data Export.',
+    'Save the CSV or JSON file to your device.',
+  ],
+  generic_csv: [
+    'Export your library from the original reading app.',
+    'Choose CSV or JSON when the service offers a format choice.',
+    'Save the export file somewhere easy to find, such as Downloads.',
+  ],
+};
+
+function parseCsv(text: string): Record<string, string>[] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let value = '';
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      value += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      row.push(value);
+      value = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && next === '\n') index += 1;
+      row.push(value);
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      value = '';
+    } else {
+      value += char;
+    }
+  }
+  row.push(value);
+  if (row.some((cell) => cell.trim())) rows.push(row);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map((header) => header.trim());
+  return rows.slice(1).map((cells) =>
+    headers.reduce<Record<string, string>>((record, header, index) => {
+      record[header] = cells[index]?.trim() ?? '';
+      return record;
+    }, {}),
+  );
+}
+
+function firstValue(record: Record<string, unknown>, keys: string[]): string {
+  const entries = Object.entries(record);
+  for (const key of keys) {
+    const match = entries.find(([entryKey]) => entryKey.toLowerCase() === key.toLowerCase());
+    if (match && match[1] !== undefined && match[1] !== null) return String(match[1]).trim();
+  }
+  return '';
+}
+
+function normalizeFormat(value: string): Format {
+  const normalized = value.toLowerCase();
+  if (normalized.includes('audio')) return 'audiobook';
+  if (normalized.includes('ebook') || normalized.includes('kindle') || normalized.includes('digital')) return 'ebook';
+  if (normalized.includes('paper')) return 'paperback';
+  return 'hardcover';
+}
+
+function normalizeStatus(value: string): ReadingStatus {
+  const normalized = value.toLowerCase();
+  if (normalized.includes('currently') || normalized.includes('reading')) return 'currently-reading';
+  if (normalized.includes('read') || normalized.includes('finish')) return 'finished';
+  if (normalized.includes('dnf') || normalized.includes('did not')) return 'dnf';
+  if (normalized.includes('pause')) return 'paused';
+  if (normalized.includes('wish')) return 'wishlist';
+  return 'tbr';
+}
+
+function mapRecord(record: Record<string, unknown>, index: number): ImportRecordItem | null {
+  const title = firstValue(record, ['Title', 'Book Title', 'title', 'name']);
+  if (!title) return null;
+  const author = firstValue(record, ['Author', 'Author Name', 'author', 'authors']) || 'Unknown Author';
+  const isbn = firstValue(record, ['ISBN13', 'ISBN', 'isbn13', 'isbn']);
+  const format = normalizeFormat(firstValue(record, ['Binding', 'Format', 'format', 'media_type']));
+  const status = normalizeStatus(firstValue(record, ['Exclusive Shelf', 'Status', 'status', 'shelf']));
+  const ratingValue = Number(firstValue(record, ['My Rating', 'Rating', 'rating']));
+  const dateRead = firstValue(record, ['Date Read', 'dateRead', 'date_finished']);
+  const dateAdded = firstValue(record, ['Date Added', 'dateAdded', 'created_at']) || new Date().toISOString().split('T')[0];
+  const review = firstValue(record, ['My Review', 'Review', 'review']);
+
+  return {
+    id: `import-${Date.now()}-${index}`,
+    title,
+    author,
+    isbn: isbn || undefined,
+    format,
+    status,
+    rating: Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue : undefined,
+    dateRead: dateRead || undefined,
+    dateAdded,
+    review: review || undefined,
+    confidence: 100,
+    duplicateAction: 'skip',
+    coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
+  };
+}
+
+async function readImportFile(file: File): Promise<ImportRecordItem[]> {
+  const text = await file.text();
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  let rawRecords: Record<string, unknown>[];
+
+  if (extension === 'json' || file.type.includes('json')) {
+    const parsed: unknown = JSON.parse(text);
+    const array = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === 'object'
+        ? Object.values(parsed as Record<string, unknown>).find(Array.isArray) ?? []
+        : [];
+    rawRecords = (array as unknown[]).filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
+  } else {
+    rawRecords = parseCsv(text);
+  }
+
+  return rawRecords.map(mapRecord).filter((item): item is ImportRecordItem => Boolean(item));
+}
 
 export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   currentBookCount,
@@ -52,38 +193,60 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
 
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedSource, setSelectedSource] = useState<ImportSourceInfo>(IMPORT_SOURCES[0]);
-  const [importRecords] = useState<ImportRecordItem[]>(MOCK_IMPORT_RECORDS);
-  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
-    MOCK_IMPORT_RECORDS.slice(0, remainingFreeSlots).map((record) => record.id),
-  );
+  const [importRecords, setImportRecords] = useState<ImportRecordItem[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedFileName, setSelectedFileName] = useState('');
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isReadingFile, setIsReadingFile] = useState(false);
   const [hasUndone, setHasUndone] = useState(false);
-  const [fieldMapping, setFieldMapping] = useState({
-    title: 'Book Title',
-    author: 'Author Name',
-    isbn: 'ISBN13',
-    status: 'Exclusive Shelf',
-  });
-
-  const eligibleCount = isPremium
-    ? importRecords.length
-    : Math.min(remainingFreeSlots, importRecords.length);
 
   const selectedRecords = useMemo(
-    () =>
-      isPremium
-        ? importRecords
-        : importRecords.filter((record) => selectedIds.includes(record.id)),
+    () => isPremium ? importRecords : importRecords.filter((record) => selectedIds.includes(record.id)),
     [importRecords, isPremium, selectedIds],
   );
 
-  const goNext = () => setCurrentStep((step) => Math.min(6, step + 1));
+  const goNext = () => setCurrentStep((step) => Math.min(5, step + 1));
   const goBack = () => setCurrentStep((step) => Math.max(1, step - 1));
 
+  const processFile = async (file?: File) => {
+    if (!file) return;
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!['csv', 'json'].includes(extension ?? '')) {
+      setFileError('Choose a CSV or JSON export file.');
+      return;
+    }
+
+    setIsReadingFile(true);
+    setFileError(null);
+    try {
+      const records = await readImportFile(file);
+      if (records.length === 0) throw new Error('No recognizable book records were found in this file.');
+      setImportRecords(records);
+      setSelectedFileName(file.name);
+      setSelectedIds(records.slice(0, remainingFreeSlots).map((record) => record.id));
+    } catch (error) {
+      setImportRecords([]);
+      setSelectedFileName('');
+      setFileError(error instanceof Error ? error.message : 'Inkbound could not read this export file.');
+    } finally {
+      setIsReadingFile(false);
+    }
+  };
+
+  const onFileInput = (event: ChangeEvent<HTMLInputElement>) => {
+    void processFile(event.target.files?.[0]);
+    event.target.value = '';
+  };
+
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    void processFile(event.dataTransfer.files?.[0]);
+  };
+
   const toggleSelection = (recordId: string) => {
+    if (isPremium) return;
     setSelectedIds((current) => {
-      if (current.includes(recordId)) {
-        return current.filter((id) => id !== recordId);
-      }
+      if (current.includes(recordId)) return current.filter((id) => id !== recordId);
       if (current.length >= remainingFreeSlots) {
         openUpgradeModal('Upgrade to Inkbound Premium to import every book in this file.');
         return current;
@@ -94,7 +257,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
 
   const executeImport = () => {
     onExecuteImport(selectedRecords);
-    setCurrentStep(6);
+    setCurrentStep(5);
   };
 
   const undoImport = () => {
@@ -105,231 +268,72 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   return (
     <div className="space-y-6 pb-20">
       <div>
-        <span className="rounded border border-[#c5a059]/30 bg-[#c5a059]/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#e5c158]">
-          Data Migration Suite
-        </span>
-        <h1 className="mt-1 font-serif text-3xl font-bold text-[#f4efe6]">Import Center</h1>
-        <p className="text-sm text-stone-400">
-          Bring your reading history into Inkbound from supported export files.
-        </p>
+        <span className="rounded border border-[#c5a059]/30 bg-[#c5a059]/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#e5c158]">Library Migration</span>
+        <h1 className="mt-2 font-serif text-3xl font-bold text-[#f4efe6]">Import Center</h1>
+        <p className="mt-1 text-sm text-stone-400">Bring your reading history into Inkbound from a supported export file.</p>
       </div>
 
       <div className="flex items-start gap-3 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4 text-xs text-stone-300">
         <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-[#c5a059]" />
         <div>
           <p className="font-bold text-[#f4efe6]">Your library data stays yours</p>
-          <p className="mt-1 text-stone-400">
-            Import exported files now and export your complete Inkbound library whenever needed.
-          </p>
+          <p className="mt-1 text-stone-400">Inkbound reads the file you choose and adds only the books you approve.</p>
         </div>
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-3">
-        <div className="flex min-w-[650px] items-center justify-between gap-2">
+        <div className="flex min-w-[560px] items-center justify-between gap-2">
           {steps.map((label, index) => {
             const step = index + 1;
             const active = step === currentStep;
             const complete = step < currentStep;
-            return (
-              <div
-                key={label}
-                className={`flex items-center gap-2 text-xs font-semibold ${
-                  active ? 'text-[#e5c158]' : complete ? 'text-emerald-400' : 'text-stone-500'
-                }`}
-              >
-                <span
-                  className={`grid h-7 w-7 place-items-center rounded-full ${
-                    active
-                      ? 'bg-[#c5a059] text-[#120817]'
-                      : complete
-                        ? 'bg-emerald-950 text-emerald-300'
-                        : 'bg-[#25132f] text-stone-500'
-                  }`}
-                >
-                  {complete ? '✓' : step}
-                </span>
-                <span>{label}</span>
-              </div>
-            );
+            return <div key={label} className={`flex items-center gap-2 text-xs font-semibold ${active ? 'text-[#e5c158]' : complete ? 'text-emerald-400' : 'text-stone-500'}`}><span className={`grid h-7 w-7 place-items-center rounded-full ${active ? 'bg-[#c5a059] text-[#120817]' : complete ? 'bg-emerald-950 text-emerald-300' : 'bg-[#25132f] text-stone-500'}`}>{complete ? '✓' : step}</span><span>{label}</span></div>;
           })}
         </div>
       </div>
 
-      {currentStep === 1 && (
-        <section className="space-y-4">
-          <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose an import source</h2>
-          <ImportSourceGrid
-            sources={IMPORT_SOURCES}
-            selectedSourceId={selectedSource.id}
-            onSelectSource={setSelectedSource}
-          />
-          <div className="flex justify-end">
-            <button type="button" onClick={goNext} className="flex min-h-11 items-center gap-2 rounded-xl bg-[#c5a059] px-5 text-xs font-bold text-[#120817]">
-              Continue with {selectedSource.name}
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-        </section>
-      )}
+      {currentStep === 1 && <section className="space-y-4">
+        <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose an import source</h2>
+        <ImportSourceGrid sources={IMPORT_SOURCES} selectedSourceId={selectedSource.id} onSelectSource={setSelectedSource} />
+        <div className="flex justify-end"><button type="button" onClick={goNext} className="quiet-shelf-primary-action min-h-11">Continue with {selectedSource.name}<ArrowRight className="h-4 w-4" /></button></div>
+      </section>}
 
-      {currentStep === 2 && (
-        <section className="space-y-4">
+      {currentStep === 2 && <section className="space-y-5">
+        <div>
           <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Upload {selectedSource.name} export</h2>
-          <div className="rounded-2xl border border-dashed border-[#c5a059] bg-[#1c0f24] p-8 text-center sm:p-12">
-            <Upload className="mx-auto h-12 w-12 text-[#c5a059]" />
-            <p className="mt-3 font-serif text-lg font-bold text-[#f4efe6]">
-              Drag and drop your CSV or JSON file
-            </p>
-            <p className="mt-1 text-xs text-stone-400">This prototype uses sample export data.</p>
-            <button type="button" onClick={goNext} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#c5a059] px-5 text-xs font-bold text-[#120817]">
-              <FileSpreadsheet className="h-4 w-4" />
-              Use Sample Export ({importRecords.length} records)
-            </button>
-          </div>
-          <StepActions onBack={goBack} onNext={goNext} nextLabel="Analyze File" />
+          <p className="mt-1 text-sm text-stone-400">Choose the file you downloaded from {selectedSource.name}.</p>
+        </div>
+
+        <section className="rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-5">
+          <div className="flex items-start gap-3"><HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" /><div><h3 className="font-bold text-[#f4efe6]">How to find your export file</h3><ol className="mt-3 space-y-2 text-sm text-stone-400">{sourceInstructions[selectedSource.id].map((instruction, index) => <li key={instruction} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15 text-xs font-bold text-[#e5c158]">{index + 1}</span><span>{instruction}</span></li>)}</ol></div></div>
         </section>
-      )}
 
-      {currentStep === 3 && (
-        <section className="space-y-4">
-          <h2 className="font-serif text-xl font-bold text-[#f4efe6]">File analysis and capacity</h2>
-          <ImportAnalysisSummaryGrid
-            importRecordCount={importRecords.length}
-            currentBookCount={currentBookCount}
-            freeBookLimit={freeBookLimit}
-            remainingFreeSlots={remainingFreeSlots}
-            isPremium={isPremium}
-          />
-          {!isPremium && importRecords.length > remainingFreeSlots && (
-            <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-stone-300">
-              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
-              <div>
-                <p className="font-bold text-amber-300">Only {eligibleCount} books can be imported</p>
-                <p className="mt-1">Choose which books fill your remaining free slots, or upgrade for unlimited imports.</p>
-              </div>
-            </div>
-          )}
-          <StepActions onBack={goBack} onNext={goNext} nextLabel="Map Fields" />
-        </section>
-      )}
+        <div onDragOver={(event) => event.preventDefault()} onDrop={onDrop} className="rounded-2xl border border-dashed border-[#c5a059] bg-[#1c0f24] p-8 text-center sm:p-12">
+          <Upload className="mx-auto h-12 w-12 text-[#c5a059]" />
+          <p className="mt-3 font-serif text-lg font-bold text-[#f4efe6]">Drag and drop your CSV or JSON file</p>
+          <p className="mt-1 text-xs text-stone-400">or choose it from your device</p>
+          <label className="quiet-shelf-primary-action mt-5 inline-flex min-h-11 cursor-pointer"><FileSpreadsheet className="h-4 w-4" />{isReadingFile ? 'Reading file…' : 'Choose Export File'}<input type="file" accept=".csv,.json,text/csv,application/json" onChange={onFileInput} className="sr-only" disabled={isReadingFile} /></label>
+          {selectedFileName && <p className="mt-4 text-sm font-semibold text-emerald-300">Ready: {selectedFileName}</p>}
+          {fileError && <p className="mx-auto mt-4 max-w-xl rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-300">{fileError}</p>}
+        </div>
 
-      {currentStep === 4 && (
-        <section className="space-y-4">
-          <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Map export fields</h2>
-          <ResponsiveGrid minItemWidth={220} maxColumns={2} gap={16}>
-            {Object.entries(fieldMapping).map(([key, value]) => (
-              <label key={key} className="text-xs font-bold text-[#f4efe6]">
-                <span className="mb-1 block capitalize">{key} field</span>
-                <input
-                  value={value}
-                  onChange={(event) =>
-                    setFieldMapping((current) => ({ ...current, [key]: event.target.value }))
-                  }
-                  className="min-h-11 w-full rounded-xl border border-[#3d2448] bg-[#120817] px-3 text-stone-200 outline-none focus:border-[#c5a059]"
-                />
-              </label>
-            ))}
-          </ResponsiveGrid>
-          <StepActions onBack={goBack} onNext={goNext} nextLabel="Select Books" />
-        </section>
-      )}
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11"><ArrowLeft className="h-4 w-4" />Back</button><button type="button" onClick={goNext} disabled={importRecords.length === 0} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">Analyze {importRecords.length > 0 ? `${importRecords.length} Books` : 'File'}<ArrowRight className="h-4 w-4" /></button></div>
+      </section>}
 
-      {currentStep === 5 && (
-        <section className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose books to import</h2>
-              <p className="text-xs text-stone-400">
-                {isPremium
-                  ? `All ${importRecords.length} records are eligible.`
-                  : `${selectedIds.length} of ${remainingFreeSlots} available slots selected.`}
-              </p>
-            </div>
-            {!isPremium && (
-              <button type="button" onClick={() => openUpgradeModal('Import every book with Inkbound Premium.')} className="text-xs font-bold text-[#e5c158] hover:underline">
-                Upgrade to import all
-              </button>
-            )}
-          </div>
+      {currentStep === 3 && <section className="space-y-4">
+        <h2 className="font-serif text-xl font-bold text-[#f4efe6]">File analysis and access</h2>
+        <ImportAnalysisSummaryGrid importRecordCount={importRecords.length} currentBookCount={currentBookCount} freeBookLimit={freeBookLimit} remainingFreeSlots={remainingFreeSlots} isPremium={isPremium} />
+        {isPremium ? <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-emerald-200"><CheckCircle2 className="h-5 w-5 shrink-0" /><div><p className="font-bold">Premium unlimited import</p><p className="mt-1 text-emerald-100/70">All {importRecords.length} books in this file are eligible to import.</p></div></div> : importRecords.length > remainingFreeSlots && <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-stone-300"><AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" /><div><p className="font-bold text-amber-300">Choose up to {remainingFreeSlots} books</p><p className="mt-1">Upgrade to Premium to import the entire file without a book limit.</p></div></div>}
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11"><ArrowLeft className="h-4 w-4" />Back</button><button type="button" onClick={goNext} className="quiet-shelf-primary-action min-h-11">Choose Books<ArrowRight className="h-4 w-4" /></button></div>
+      </section>}
 
-          <div className="space-y-2">
-            {importRecords.map((record) => {
-              const selected = isPremium || selectedIds.includes(record.id);
-              return (
-                <button
-                  key={record.id}
-                  type="button"
-                  disabled={isPremium}
-                  onClick={() => toggleSelection(record.id)}
-                  className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-                    selected
-                      ? 'border-[#c5a059] bg-[#c5a059]/10'
-                      : 'border-[#3d2448] bg-[#1c0f24] opacity-70'
-                  }`}
-                >
-                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${selected ? 'border-[#c5a059] bg-[#c5a059] text-[#120817]' : 'border-stone-600'}`}>
-                    {selected && <Check className="h-3.5 w-3.5" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <strong className="block truncate text-sm text-[#f4efe6]">{record.title}</strong>
-                    <small className="text-stone-400">{record.author}</small>
-                  </span>
-                  <span className="text-[10px] font-bold uppercase text-[#e5c158]">{record.format}</span>
-                </button>
-              );
-            })}
-          </div>
+      {currentStep === 4 && <section className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose books to import</h2><p className="text-xs text-stone-400">{isPremium ? `All ${importRecords.length} books will be imported.` : `${selectedIds.length} of ${remainingFreeSlots} available slots selected.`}</p></div>{!isPremium && <button type="button" onClick={() => openUpgradeModal('Import every book with Inkbound Premium.')} className="text-xs font-bold text-[#e5c158] hover:underline">Upgrade for unlimited imports</button>}</div>
+        <div className="space-y-2">{importRecords.map((record) => { const selected = isPremium || selectedIds.includes(record.id); return <button key={record.id} type="button" disabled={isPremium} onClick={() => toggleSelection(record.id)} className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition ${selected ? 'border-[#c5a059] bg-[#c5a059]/10' : 'border-[#3d2448] bg-[#1c0f24] opacity-70'}`}><span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${selected ? 'border-[#c5a059] bg-[#c5a059] text-[#120817]' : 'border-stone-600'}`}>{selected && <Check className="h-3.5 w-3.5" />}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#f4efe6]">{record.title}</strong><small className="text-stone-400">{record.author}</small></span><span className="text-[10px] font-bold uppercase text-[#e5c158]">{record.format}</span></button>; })}</div>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11">Back</button><button type="button" onClick={executeImport} disabled={selectedRecords.length === 0} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">Import {selectedRecords.length} Books</button></div>
+      </section>}
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button type="button" onClick={goBack} className="min-h-11 rounded-xl border border-[#3d2448] px-4 text-xs font-bold text-stone-300">
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={executeImport}
-              disabled={selectedRecords.length === 0}
-              className="min-h-11 rounded-xl bg-[#c5a059] px-6 text-xs font-bold text-[#120817] disabled:opacity-50"
-            >
-              Import {selectedRecords.length} Books
-            </button>
-          </div>
-        </section>
-      )}
-
-      {currentStep === 6 && (
-        <section className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center sm:p-10">
-          <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />
-          <h2 className="mt-4 font-serif text-3xl font-bold text-[#f4efe6]">Import complete</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-stone-400">
-            {selectedRecords.length} books were added to your Inkbound library.
-          </p>
-          {!hasUndone ? (
-            <button type="button" onClick={undoImport} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-500/30 px-4 text-xs font-bold text-rose-300">
-              <RotateCcw className="h-4 w-4" /> Undo This Import
-            </button>
-          ) : (
-            <p className="mt-5 text-xs font-bold text-rose-300">The import was undone.</p>
-          )}
-        </section>
-      )}
+      {currentStep === 5 && <section className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center sm:p-10"><CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" /><h2 className="mt-4 font-serif text-3xl font-bold text-[#f4efe6]">Import complete</h2><p className="mx-auto mt-2 max-w-md text-sm text-stone-400">{selectedRecords.length} books were added to your Inkbound library.</p>{!hasUndone ? <button type="button" onClick={undoImport} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-500/30 px-4 text-xs font-bold text-rose-300"><RotateCcw className="h-4 w-4" />Undo This Import</button> : <p className="mt-5 text-xs font-bold text-rose-300">The import was undone.</p>}</section>}
     </div>
   );
 };
-
-interface StepActionsProps {
-  onBack: () => void;
-  onNext: () => void;
-  nextLabel: string;
-}
-
-const StepActions: React.FC<StepActionsProps> = ({ onBack, onNext, nextLabel }) => (
-  <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-    <button type="button" onClick={onBack} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#3d2448] px-4 text-xs font-bold text-stone-300">
-      <ArrowLeft className="h-4 w-4" /> Back
-    </button>
-    <button type="button" onClick={onNext} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#c5a059] px-5 text-xs font-bold text-[#120817]">
-      {nextLabel}
-      <ArrowRight className="h-4 w-4" />
-    </button>
-  </div>
-);
