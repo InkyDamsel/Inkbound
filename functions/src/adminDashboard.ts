@@ -1,4 +1,4 @@
-import { Timestamp, getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
@@ -13,13 +13,15 @@ function timestampToIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
-async function requireAdmin(request: CallableRequest<unknown>) {
+async function requireAdmin(request: CallableRequest<unknown>, allowedRoles?: AdminRole[]) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
 
   const db = getFirestore();
   const snapshot = await db.doc(`admins/${request.auth.uid}`).get();
   const record = snapshot.data() as AdminRecord | undefined;
-  if (!record?.enabled) throw new HttpsError('permission-denied', 'Administrator access is required.');
+  if (!record?.enabled || (allowedRoles && !allowedRoles.includes(record.role))) {
+    throw new HttpsError('permission-denied', 'Administrator access is required.');
+  }
 
   return { auth: request.auth, admin: record };
 }
@@ -30,10 +32,11 @@ export const getAdminDashboard = onCall(async (request) => {
   const input = request.data as { query?: unknown } | undefined;
   const query = typeof input?.query === 'string' ? input.query.trim().toLowerCase() : '';
 
-  const [directorySnapshot, entitlementsSnapshot, auditSnapshot] = await Promise.all([
+  const [directorySnapshot, entitlementsSnapshot, auditSnapshot, adminsSnapshot] = await Promise.all([
     db.collection('userDirectory').orderBy('lastSeenAt', 'desc').limit(100).get(),
     db.collection('entitlements').limit(250).get(),
     db.collection('adminAudit').orderBy('createdAt', 'desc').limit(50).get(),
+    db.collection('admins').orderBy('email').get(),
   ]);
 
   const entitlements = new Map(entitlementsSnapshot.docs.map((document) => [document.id, document.data()]));
@@ -89,5 +92,61 @@ export const getAdminDashboard = onCall(async (request) => {
     };
   });
 
-  return { role: admin.role, totals, users, audit };
+  const admins = adminsSnapshot.docs.map((document) => {
+    const data = document.data();
+    return {
+      uid: document.id,
+      email: typeof data.email === 'string' ? data.email : '',
+      role: (typeof data.role === 'string' ? data.role : 'viewer') as AdminRole,
+      enabled: data.enabled === true,
+      updatedAt: timestampToIso(data.updatedAt),
+    };
+  });
+
+  return { role: admin.role, totals, users, audit, admins };
+});
+
+export const setAdminAccess = onCall(async (request) => {
+  const { auth, admin } = await requireAdmin(request, ['owner']);
+  const data = request.data as Record<string, unknown> | undefined;
+  const targetUserId = typeof data?.targetUserId === 'string' ? data.targetUserId.trim() : '';
+  const email = typeof data?.email === 'string' ? data.email.trim().toLowerCase() : '';
+  const role = data?.role as AdminRole | undefined;
+  const enabled = data?.enabled === true;
+  const reason = typeof data?.reason === 'string' ? data.reason.trim() : '';
+  const validRoles: AdminRole[] = ['owner', 'support', 'billing', 'viewer'];
+
+  if (!targetUserId || !email || !role || !validRoles.includes(role) || !reason) {
+    throw new HttpsError('invalid-argument', 'User, email, role, and reason are required.');
+  }
+  if (targetUserId === auth.uid && !enabled) {
+    throw new HttpsError('failed-precondition', 'You cannot disable your own administrator access.');
+  }
+
+  const db = getFirestore();
+  const adminRef = db.doc(`admins/${targetUserId}`);
+  const previous = (await adminRef.get()).data() ?? null;
+
+  await adminRef.set({
+    email,
+    role,
+    enabled,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: auth.uid,
+    ...(previous ? {} : { createdAt: FieldValue.serverTimestamp(), createdBy: auth.uid }),
+  }, { merge: true });
+
+  await db.collection('adminAudit').add({
+    action: enabled ? 'set_admin_access' : 'disable_admin_access',
+    targetUserId,
+    targetEmail: email,
+    performedBy: auth.uid,
+    performedByEmail: admin.email,
+    reason,
+    previousValue: previous,
+    newValue: { role, enabled },
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  return { success: true };
 });
