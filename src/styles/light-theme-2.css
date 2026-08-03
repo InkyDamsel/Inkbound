@@ -1,0 +1,233 @@
+/* Inkbound Light Theme 2.0
+   A warm parchment reading-room theme. Never pure white, pure black, or gold. */
+
+html:not(.dark) {
+  color-scheme: light;
+
+  --ink-bg: #f2ece6;
+  --ink-sidebar: #ebe2dc;
+  --ink-surface: #f7f1ec;
+  --ink-surface-raised: #fbf7f3;
+  --ink-surface-soft: #eee5e9;
+
+  /* Legacy token names retained for compatibility; their visual values are plum/mauve. */
+  --ink-gold: #75586f;
+  --ink-gold-bright: #60465b;
+  --ink-bronze: #806575;
+
+  --ink-ivory: #342936;
+  --ink-muted: #706570;
+  --ink-faint: #91858f;
+  --ink-text-primary: #342936;
+  --ink-text-secondary: #655a66;
+  --ink-text-muted: #877b85;
+  --ink-cream: #342936;
+  --ink-cream-soft: #655a66;
+  --ink-mauve: #75586f;
+  --ink-mauve-hover: #684c62;
+  --ink-mauve-deep: #584052;
+
+  --ink-border: rgba(86, 63, 82, 0.17);
+  --ink-border-subtle: rgba(86, 63, 82, 0.11);
+  --ink-border-strong: rgba(86, 63, 82, 0.3);
+  --ink-focus: #86677f;
+}
+
+html:not(.dark),
+html:not(.dark) body,
+html:not(.dark) #root,
+html:not(.dark) .inkbound-app-shell,
+html:not(.dark) .inkbound-main-content,
+html:not(.dark) .inkbound-page-canvas {
+  background-color: #f2ece6 !important;
+  color: #342936;
+}
+
+html:not(.dark) body {
+  background-image:
+    radial-gradient(circle at 88% 4%, rgba(129, 92, 119, 0.09), transparent 31rem),
+    linear-gradient(180deg, #f4eee8 0%, #f0e9e3 100%) !important;
+}
+
+html:not(.dark) .inkbound-app-shell {
+  background:
+    radial-gradient(circle at 86% -8%, rgba(128, 86, 116, 0.08), transparent 38rem),
+    linear-gradient(180deg, #f5efe9 0%, #f0e9e3 100%) !important;
+}
+
+html:not(.dark) .quiet-shelf-sidebar {
+  background:
+    linear-gradient(180deg, rgba(247, 241, 236, 0.78), transparent 30%),
+    #ebe2dc !important;
+  border-right-color: rgba(86, 63, 82, 0.13) !important;
+  box-shadow: 18px 0 46px rgba(66, 45, 61, 0.065);
+}
+
+html:not(.dark) .quiet-shelf-topbar,
+html:not(.dark) .quiet-shelf-mobile-nav {
+  background: rgba(247, 241, 236, 0.94) !important;
+  border-color: rgba(86, 63, 82, 0.13) !important;
+  backdrop-filter: blur(18px);
+}
+
+/* Parchment surfaces: no pure white. */
+html:not(.dark) .inkbound-panel,
+html:not(.dark) .book-card-glow,
+html:not(.dark) .quiet-shelf-plan-card,
+html:not(.dark) .quiet-shelf-search-panel,
+html:not(.dark) main article,
+html:not(.dark) main [class*='rounded-2xl'][class*='border'],
+html:not(.dark) main [class*='rounded-3xl'][class*='border'] {
+  background-color: #f9f4ef !important;
+  border-color: rgba(86, 63, 82, 0.16) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 248, 0.58),
+    0 14px 32px rgba(66, 45, 61, 0.075) !important;
+}
+
+html:not(.dark) .inkbound-panel:hover,
+html:not(.dark) main article:hover {
+  border-color: rgba(117, 88, 111, 0.27) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 248, 0.62),
+    0 17px 38px rgba(66, 45, 61, 0.09) !important;
+}
+
+/* Inputs and selectors blend into parchment instead of appearing white or charcoal. */
+html:not(.dark) input:not([type='checkbox']):not([type='radio']),
+html:not(.dark) textarea,
+html:not(.dark) select,
+html:not(.dark) .quiet-shelf-header-search,
+html:not(.dark) .quiet-shelf-icon-button,
+html:not(.dark) .quiet-shelf-secondary-action {
+  background-color: #f6f0eb !important;
+  border-color: rgba(86, 63, 82, 0.18) !important;
+  color: #3b303d !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) input:not([type='checkbox']):not([type='radio']):hover,
+html:not(.dark) textarea:hover,
+html:not(.dark) select:hover,
+html:not(.dark) .quiet-shelf-secondary-action:hover {
+  background-color: #f1e8ec !important;
+  border-color: rgba(117, 88, 111, 0.3) !important;
+}
+
+html:not(.dark) input::placeholder,
+html:not(.dark) textarea::placeholder {
+  color: #928790 !important;
+}
+
+/* Primary actions use dusty plum with cream—not gold, white, or black. */
+html:not(.dark) .quiet-shelf-primary-action,
+html:not(.dark) .bg-\[\#624657\] {
+  background: linear-gradient(135deg, #75586f 0%, #62495e 100%) !important;
+  border-color: rgba(88, 64, 82, 0.28) !important;
+  color: #f6efe9 !important;
+  box-shadow: 0 9px 22px rgba(81, 55, 75, 0.17) !important;
+}
+
+html:not(.dark) .quiet-shelf-primary-action:hover {
+  background: linear-gradient(135deg, #684c62 0%, #584052 100%) !important;
+}
+
+/* Translate dark-mode pills and compact tabs into linen labels. */
+html:not(.dark) main button[class*='bg-[#1'],
+html:not(.dark) main button[class*='bg-[#2'],
+html:not(.dark) main [role='tab'][class*='bg-[#1'],
+html:not(.dark) main [role='tab'][class*='bg-[#2'] {
+  background: #eee5e9 !important;
+  border-color: rgba(86, 63, 82, 0.13) !important;
+  color: #5f5360 !important;
+}
+
+html:not(.dark) main button[class*='border-[var(--ink-gold)]'],
+html:not(.dark) main [aria-selected='true'],
+html:not(.dark) main [data-state='active'] {
+  background: #e4d8e2 !important;
+  border-color: rgba(117, 88, 111, 0.38) !important;
+  color: #49384a !important;
+}
+
+/* Common Tailwind dark surfaces that leaked into light mode. */
+html:not(.dark) main [class*='bg-[#0'],
+html:not(.dark) main [class*='bg-[#1'],
+html:not(.dark) main [class*='bg-[#2'] {
+  background-color: #f6f0eb !important;
+  color: #3b303d !important;
+}
+
+/* Preserve true artwork/theme swatches while making their labels readable. */
+html:not(.dark) main button[style*='background: rgb'],
+html:not(.dark) main button[style*='background:#'],
+html:not(.dark) main button[style*='background: #'] {
+  color: #f5ede7 !important;
+  text-shadow: 0 1px 2px rgba(22, 14, 21, 0.5);
+}
+
+/* Checkbox treatment avoids browser-blue and uses muted plum. */
+html:not(.dark) input[type='checkbox'],
+html:not(.dark) input[type='radio'] {
+  accent-color: #75586f;
+}
+
+/* Empty states read as linen stationery rather than empty white boxes. */
+html:not(.dark) .inkbound-empty-state {
+  background:
+    radial-gradient(circle at 50% 12%, rgba(124, 91, 116, 0.08), transparent 18rem),
+    #f7f1ec !important;
+  border-color: rgba(117, 88, 111, 0.22) !important;
+}
+
+html:not(.dark) .inkbound-empty-state svg {
+  color: #806276 !important;
+}
+
+/* Adaptive profile-banner controls remain legible over any image. */
+html:not(.dark) main button.absolute.right-4.top-4 {
+  background: rgba(246, 240, 235, 0.9) !important;
+  border-color: rgba(246, 240, 235, 0.66) !important;
+  color: #49384a !important;
+  text-shadow: none !important;
+  box-shadow: 0 9px 24px rgba(31, 20, 29, 0.2) !important;
+  backdrop-filter: blur(18px);
+}
+
+/* Profile header footer remains parchment instead of stark white. */
+html:not(.dark) main section.overflow-hidden > div:last-child {
+  background-color: #f9f4ef;
+}
+
+/* Status colors stay muted and readable on parchment. */
+html:not(.dark) .inkbound-status-success {
+  color: #526b55;
+}
+
+html:not(.dark) .inkbound-status-warning {
+  color: #765f45;
+}
+
+html:not(.dark) .inkbound-status-error {
+  color: #85504d;
+}
+
+html:not(.dark) ::selection {
+  background: #d9c8d5;
+  color: #342936;
+}
+
+html:not(.dark) ::-webkit-scrollbar-track {
+  background: #e9e0da;
+}
+
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: rgba(103, 75, 96, 0.32);
+}
+
+@media (max-width: 767px) {
+  html:not(.dark) .inkbound-panel,
+  html:not(.dark) main article {
+    box-shadow: 0 9px 22px rgba(66, 45, 61, 0.065) !important;
+  }
+}
