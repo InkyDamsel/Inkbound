@@ -151,17 +151,7 @@ export const grantVip = onCall(async (request) => {
     { merge: true },
   );
 
-  await writeAudit({
-    action: 'grant_vip',
-    targetUserId,
-    targetEmail,
-    performedBy: auth.uid,
-    performedByEmail: admin.email,
-    reason,
-    previousValue: previous,
-    newValue: { vipEnabled: true },
-  });
-
+  await writeAudit({ action: 'grant_vip', targetUserId, targetEmail, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { vipEnabled: true } });
   return { success: true };
 });
 
@@ -175,29 +165,8 @@ export const revokeVip = onCall(async (request) => {
   const entitlementRef = db.doc(`entitlements/${targetUserId}`);
   const previous = (await entitlementRef.get()).data() ?? null;
 
-  await entitlementRef.set(
-    {
-      vipEnabled: false,
-      vipRevokedAt: FieldValue.serverTimestamp(),
-      vipRevokedBy: auth.uid,
-      vipRevokeReason: reason,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: auth.uid,
-    },
-    { merge: true },
-  );
-
-  await writeAudit({
-    action: 'revoke_vip',
-    targetUserId,
-    targetEmail,
-    performedBy: auth.uid,
-    performedByEmail: admin.email,
-    reason,
-    previousValue: previous,
-    newValue: { vipEnabled: false },
-  });
-
+  await entitlementRef.set({ vipEnabled: false, vipRevokedAt: FieldValue.serverTimestamp(), vipRevokedBy: auth.uid, vipRevokeReason: reason, updatedAt: FieldValue.serverTimestamp(), updatedBy: auth.uid }, { merge: true });
+  await writeAudit({ action: 'revoke_vip', targetUserId, targetEmail, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { vipEnabled: false } });
   return { success: true };
 });
 
@@ -216,49 +185,20 @@ export const addCourtesyTime = onCall(async (request) => {
 
   const entitlementRef = db.doc(`entitlements/${targetUserId}`);
   let previous: unknown = null;
-
   const courtesyPremiumUntil = await db.runTransaction<Timestamp>(async (transaction) => {
     const snapshot = await transaction.get(entitlementRef);
     previous = snapshot.data() ?? null;
     const currentUntil = snapshot.get('courtesyPremiumUntil') as Timestamp | undefined;
     const now = Timestamp.now();
-    const startingMillis = currentUntil && currentUntil.toMillis() > now.toMillis()
-      ? currentUntil.toMillis()
-      : now.toMillis();
+    const startingMillis = currentUntil && currentUntil.toMillis() > now.toMillis() ? currentUntil.toMillis() : now.toMillis();
     const calculatedUntil = Timestamp.fromMillis(startingMillis + days * 24 * 60 * 60 * 1000);
-
-    transaction.set(
-      entitlementRef,
-      {
-        basePlan: 'premium',
-        courtesyPremiumUntil: calculatedUntil,
-        courtesyGrantedAt: FieldValue.serverTimestamp(),
-        courtesyGrantedBy: auth.uid,
-        courtesyReason: reason,
-        effectiveSource: 'courtesy' satisfies EntitlementSource,
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: auth.uid,
-      },
-      { merge: true },
-    );
-
+    transaction.set(entitlementRef, { basePlan: 'premium', courtesyPremiumUntil: calculatedUntil, courtesyGrantedAt: FieldValue.serverTimestamp(), courtesyGrantedBy: auth.uid, courtesyReason: reason, effectiveSource: 'courtesy' satisfies EntitlementSource, updatedAt: FieldValue.serverTimestamp(), updatedBy: auth.uid }, { merge: true });
     return calculatedUntil;
   });
 
   const courtesyIso = courtesyPremiumUntil.toDate().toISOString();
-
-  await writeAudit({
-    action: 'add_courtesy_time',
-    targetUserId,
-    targetEmail,
-    performedBy: auth.uid,
-    performedByEmail: admin.email,
-    reason,
-    previousValue: previous,
-    newValue: { days, courtesyPremiumUntil: courtesyIso },
-  });
-
+  await writeAudit({ action: 'add_courtesy_time', targetUserId, targetEmail, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { days, courtesyPremiumUntil: courtesyIso } });
   return { success: true, courtesyPremiumUntil: courtesyIso };
 });
 
-export { getAdminDashboard } from './adminDashboard.js';
+export { getAdminDashboard, setAdminAccess } from './adminDashboard.js';
