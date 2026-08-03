@@ -225,9 +225,7 @@ export const addCourtesyTime = onCall(async (request) => {
     const startingMillis = currentUntil && currentUntil.toMillis() > now.toMillis()
       ? currentUntil.toMillis()
       : now.toMillis();
-    const calculatedUntil = Timestamp.fromMillis(
-      startingMillis + days * 24 * 60 * 60 * 1000,
-    );
+    const calculatedUntil = Timestamp.fromMillis(startingMillis + days * 24 * 60 * 60 * 1000);
 
     transaction.set(
       entitlementRef,
@@ -262,3 +260,5 @@ export const addCourtesyTime = onCall(async (request) => {
 
   return { success: true, courtesyPremiumUntil: courtesyIso };
 });
+
+export { getAdminDashboard } from './adminDashboard';
