@@ -43,6 +43,18 @@ interface GoogleVolumesResponse {
 
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
+const SEARCH_STOP_WORDS = new Set([
+  'the',
+  'and',
+  'for',
+  'with',
+  'book',
+  'books',
+  'edition',
+  'editions',
+  'volume',
+  'volumes',
+]);
 
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -131,6 +143,67 @@ const groupEditions = (editions: BookSearchEdition[]): BookSearchWorkGroup[] => 
   }));
 };
 
+const searchTokens = (query: string): string[] => {
+  const cleaned = query
+    .replace(/\b(?:intitle|inauthor|isbn|subject):/gi, ' ')
+    .replace(/["']/g, ' ');
+
+  return [...new Set(
+    normalizeText(cleaned)
+      .split(' ')
+      .filter((token) => token.length >= 3 && !SEARCH_STOP_WORDS.has(token)),
+  )];
+};
+
+const compactIsbn = (value: string): string => value.replace(/[^0-9X]/gi, '').toUpperCase();
+
+const rankGroups = (groups: BookSearchWorkGroup[], query: string): BookSearchWorkGroup[] => {
+  const isbnQuery = compactIsbn(query);
+  const isExactIsbnSearch = /^(?:97[89])?\d{9}[\dX]$/i.test(isbnQuery);
+  const tokens = searchTokens(query);
+
+  const scored = groups.map((group) => {
+    const title = normalizeText(group.title);
+    const subtitle = normalizeText(group.subtitle);
+    const authors = normalizeText(group.authors.join(' '));
+    const searchable = `${title} ${subtitle} ${authors}`;
+
+    const matchingTokens = tokens.filter((token) => searchable.includes(token));
+    const exactIsbnMatch = group.editions.some((edition) =>
+      [edition.isbn10, edition.isbn13]
+        .filter(Boolean)
+        .some((identifier) => compactIsbn(identifier ?? '') === isbnQuery),
+    );
+
+    let score = 0;
+    if (exactIsbnMatch) score += 500;
+
+    tokens.forEach((token) => {
+      if (title.includes(token)) score += 28;
+      if (authors.includes(token)) score += 24;
+      if (subtitle.includes(token)) score += 10;
+    });
+
+    if (tokens.length > 0 && matchingTokens.length === tokens.length) score += 80;
+    if (group.editions.some((edition) => edition.coverUrl)) score += 30;
+    if (group.editions.some((edition) => edition.isbn13 || edition.isbn10)) score += 12;
+    if (group.editions.some((edition) => edition.publisher)) score += 6;
+    if (authors.includes('unknown author')) score -= 35;
+
+    return { group, score, matchingTokens: matchingTokens.length, exactIsbnMatch };
+  });
+
+  return scored
+    .filter((item) => {
+      if (isExactIsbnSearch) return item.exactIsbnMatch;
+      if (tokens.length === 0) return true;
+      return item.matchingTokens > 0;
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 30)
+    .map((item) => item.group);
+};
+
 export const buildGoogleBooksQuery = (value: string): string => {
   const trimmed = value.trim();
   const compact = trimmed.replace(/[-\s]/g, '');
@@ -146,6 +219,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     q: normalizedQuery,
     printType: 'books',
     projection: 'full',
+    orderBy: 'relevance',
     maxResults: '40',
   });
   if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
@@ -155,9 +229,10 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
 
   const payload = (await response.json()) as GoogleVolumesResponse;
   const editions = (payload.items ?? []).map(mapVolume).filter((item): item is BookSearchEdition => Boolean(item));
+  const groups = rankGroups(groupEditions(editions), query);
 
   return {
-    groups: groupEditions(editions),
-    totalItems: payload.totalItems ?? editions.length,
+    groups,
+    totalItems: groups.length,
   };
 }
