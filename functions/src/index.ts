@@ -261,4 +261,4 @@ export const addCourtesyTime = onCall(async (request) => {
   return { success: true, courtesyPremiumUntil: courtesyIso };
 });
 
-export { getAdminDashboard } from './adminDashboard';
+export { getAdminDashboard } from './adminDashboard.js';
