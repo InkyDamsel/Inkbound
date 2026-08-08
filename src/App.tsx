@@ -374,6 +374,14 @@ export default function App() {
     setSelectedBookForDetails((current) => (current?.id === updatedBook.id ? updatedBook : current));
   };
 
+  const handleDeleteBook = (bookToDelete: UserBookRecord) => {
+    setBooks((current) => current.filter((book) => book.id !== bookToDelete.id));
+    setSessions((current) => current.filter((session) => session.bookId !== bookToDelete.id));
+    setSelectedBookIds((current) => current.filter((id) => id !== bookToDelete.id));
+    setSelectedBookForDetails(null);
+    showToast(`Deleted “${bookToDelete.work.title}” and its reading sessions.`);
+  };
+
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => {
     setBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
@@ -527,7 +535,7 @@ export default function App() {
         </ResponsiveContainer>
       </main>
 
-      {selectedBookForDetails && <BookDetailsModal book={selectedBookForDetails} onClose={() => setSelectedBookForDetails(null)} onUpdateBook={handleUpdateBook} onStartSession={(book) => { setSelectedBookForDetails(null); openTimer(book.id); }} />}
+      {selectedBookForDetails && <BookDetailsModal book={selectedBookForDetails} onClose={() => setSelectedBookForDetails(null)} onUpdateBook={handleUpdateBook} onDeleteBook={handleDeleteBook} onStartSession={(book) => { setSelectedBookForDetails(null); openTimer(book.id); }} />}
       {isBatchEditOpen && <BatchEditModal selectedBookIds={selectedBookIds} books={books} onClose={() => setIsBatchEditOpen(false)} onApplyBatchChanges={handleApplyBatchChanges} onDeleteSelected={handleDeleteSelected} onUndoLastBatch={handleUndoLastBatch} />}
       {isTimerOpen && <ReadingSessionModal books={books} initialBookId={timerInitialBookId} onClose={closeTimer} onSaveSession={handleSaveSession} />}
       {isAddBookOpen && <AddBookModal currentBookCount={books.length} onClose={() => setIsAddBookOpen(false)} onAddBook={(newBook) => { setBooks((current) => [newBook, ...current]); showToast(`Added “${newBook.work.title}” to Inkbound.`); }} onAddMultipleBooks={(newBooks) => { setBooks((current) => [...newBooks, ...current]); showToast(`Added ${newBooks.length} books to Inkbound.`); }} />}
