@@ -9,11 +9,14 @@ import {
   Save,
   UserRound,
 } from 'lucide-react';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { ResponsiveGrid } from '../layout/responsive';
 import { notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
+import { db, storage } from '../lib/firebase';
 import { AccountSyncCard } from './account/AccountSyncCard';
 
 interface ProfileScreenProps {
@@ -64,6 +67,38 @@ const readImageFile = (file: File, onLoad: (dataUrl: string) => void) => {
   reader.readAsDataURL(file);
 };
 
+const isDataImage = (value?: string) => Boolean(value?.startsWith('data:image/'));
+
+const hashText = (value: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+async function uploadProfileImage(
+  uid: string,
+  kind: 'avatar' | 'banner',
+  value?: string,
+): Promise<string | undefined> {
+  if (!value || !isDataImage(value) || !storage) return value;
+
+  const response = await fetch(value);
+  const blob = await response.blob();
+  const contentHash = hashText(value);
+  const extension = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${contentHash}.${extension}`);
+
+  await uploadBytes(imageRef, blob, {
+    contentType: blob.type || 'image/jpeg',
+    cacheControl: 'public,max-age=31536000,immutable',
+  });
+
+  return getDownloadURL(imageRef);
+}
+
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions }) => {
   const { userPlan } = useUserPlan();
   const sync = useAccountSync();
@@ -74,16 +109,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   const [bio, setBio] = useState(initialProfile.bio);
   const [avatarImage, setAvatarImage] = useState<string | undefined>(initialProfile.avatarImage);
   const [bannerImage, setBannerImage] = useState<string | undefined>(initialProfile.bannerImage);
-  const [saved, setSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!sync.user) return;
 
-    // CloudPersistenceBridge hydrates the saved reader profile before notifying
-    // the refresh boundary. Preserve those restored fields while applying the
-    // authoritative Google identity fields for this signed-in account.
     const restoredProfile = readStoredProfile();
     const nextDisplayName = sync.user.displayName?.trim() || restoredProfile.displayName;
     const nextEmail = sync.user.email?.trim() || restoredProfile.email;
@@ -121,22 +153,64 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       .map((part) => part.charAt(0).toUpperCase())
       .join('') || 'JL';
 
+  const currentProfile = (overrides: Partial<StoredProfile> = {}): StoredProfile => ({
+    displayName,
+    email,
+    favoriteQuote,
+    bio,
+    avatarImage,
+    bannerImage,
+    ...overrides,
+  });
+
   const persistProfile = (overrides: Partial<StoredProfile> = {}) => {
-    saveStoredProfile({
-      displayName,
-      email,
-      favoriteQuote,
-      bio,
-      avatarImage,
-      bannerImage,
-      ...overrides,
-    });
+    saveStoredProfile(currentProfile(overrides));
+    setSaveStatus('idle');
   };
 
-  const handleSave = () => {
-    persistProfile();
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2500);
+  const handleSave = async () => {
+    const localProfile = currentProfile();
+    saveStoredProfile(localProfile);
+
+    if (!sync.user || !db) {
+      setSaveStatus('saved');
+      window.setTimeout(() => setSaveStatus('idle'), 2500);
+      return;
+    }
+
+    setSaveStatus('saving');
+
+    try {
+      const [savedAvatarImage, savedBannerImage] = await Promise.all([
+        uploadProfileImage(sync.user.uid, 'avatar', localProfile.avatarImage),
+        uploadProfileImage(sync.user.uid, 'banner', localProfile.bannerImage),
+      ]);
+
+      const cloudProfile: StoredProfile = {
+        ...localProfile,
+        avatarImage: savedAvatarImage,
+        bannerImage: savedBannerImage,
+      };
+
+      await setDoc(
+        doc(db, 'users', sync.user.uid, 'profile', 'current'),
+        {
+          data: cloudProfile,
+          updatedAt: serverTimestamp(),
+          clientUpdatedAt: new Date().toISOString(),
+        },
+        { merge: true },
+      );
+
+      setAvatarImage(savedAvatarImage);
+      setBannerImage(savedBannerImage);
+      saveStoredProfile(cloudProfile);
+      setSaveStatus('saved');
+      window.setTimeout(() => setSaveStatus('idle'), 2500);
+    } catch (error) {
+      console.error('Inkbound could not save the reader profile.', error);
+      setSaveStatus('error');
+    }
   };
 
   return (
@@ -228,10 +302,20 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
               </div>
             </div>
 
-            <button type="button" onClick={handleSave} className="quiet-shelf-primary-action px-5">
-              <Save className="h-4 w-4" />
-              {saved ? 'Saved' : 'Save Profile'}
-            </button>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={saveStatus === 'saving'}
+                className="quiet-shelf-primary-action px-5 disabled:cursor-wait disabled:opacity-70"
+              >
+                <Save className="h-4 w-4" />
+                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : 'Save Profile'}
+              </button>
+              {saveStatus === 'error' ? (
+                <p className="text-xs text-rose-400">Profile could not be saved. Please try again.</p>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>
