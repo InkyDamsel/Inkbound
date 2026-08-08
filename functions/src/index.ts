@@ -1,10 +1,14 @@
+import { getAuth } from 'firebase-admin/auth';
 import { initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
-initializeApp();
+const adminApp = initializeApp();
 
 const db = getFirestore();
+const adminAuth = getAuth(adminApp);
+const storageBucket = getStorage(adminApp).bucket();
 
 const OWNER_EMAILS = new Set([
   'blackdame494@gmail.com',
@@ -125,6 +129,65 @@ export const syncUserDirectory = onCall(async (request) => {
   }
 
   return { synced: true };
+});
+
+export const deleteMyAccount = onCall(async (request) => {
+  const auth = requireAuthenticated(request);
+  const authTime = Number(auth.token.auth_time ?? 0) * 1000;
+  const recentAuthWindowMs = 10 * 60 * 1000;
+
+  if (!authTime || Date.now() - authTime > recentAuthWindowMs) {
+    throw new HttpsError(
+      'failed-precondition',
+      'For your security, sign in with Google again before deleting your account.',
+    );
+  }
+
+  const entitlementRef = db.doc(`entitlements/${auth.uid}`);
+  const entitlementSnapshot = await entitlementRef.get();
+  const entitlement = entitlementSnapshot.data() as
+    | { subscriptionStatus?: string; paidPremiumUntil?: Timestamp }
+    | undefined;
+  const paidUntil = entitlement?.paidPremiumUntil instanceof Timestamp
+    ? entitlement.paidPremiumUntil.toMillis()
+    : 0;
+  const paidSubscriptionStillActive =
+    entitlement?.subscriptionStatus === 'active' ||
+    entitlement?.subscriptionStatus === 'trialing' ||
+    paidUntil > Date.now();
+
+  if (paidSubscriptionStillActive) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Cancel your paid Inkbound subscription before deleting your account so billing cannot continue after your login is removed.',
+    );
+  }
+
+  const uid = auth.uid;
+
+  await Promise.all([
+    db.recursiveDelete(db.doc(`users/${uid}`)),
+    db.doc(`userDirectory/${uid}`).delete(),
+    entitlementRef.delete(),
+    db.doc(`admins/${uid}`).delete(),
+  ]);
+
+  const auditSnapshots = await Promise.all([
+    db.collection('adminAudit').where('targetUserId', '==', uid).get(),
+    db.collection('adminAudit').where('performedBy', '==', uid).get(),
+  ]);
+  const auditRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+  auditSnapshots.forEach((snapshot) => {
+    snapshot.docs.forEach((item) => auditRefs.set(item.ref.path, item.ref));
+  });
+  await Promise.all(Array.from(auditRefs.values()).map((item) => item.delete()));
+
+  await storageBucket.deleteFiles({ prefix: `users/${uid}/` }).catch((error: unknown) => {
+    console.warn(`Could not remove every Storage object for deleted user ${uid}.`, error);
+  });
+
+  await adminAuth.deleteUser(uid);
+  return { success: true };
 });
 
 export const grantVip = onCall(async (request) => {
