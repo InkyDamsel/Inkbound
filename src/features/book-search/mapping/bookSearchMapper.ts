@@ -22,6 +22,12 @@ interface CreateBookFromEditionOptions {
 const uniqueId = (prefix: string): string =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const providerLabel = (source: BookSearchEdition['source']): string => {
+  if (source === 'open-library') return 'Open Library';
+  if (source === 'hardcover') return 'Hardcover';
+  return 'Google Books';
+};
+
 export function createBookFromSearchEdition({
   work,
   edition,
@@ -83,7 +89,7 @@ export function createBookFromSearchEdition({
     priority,
     moods: [],
     collections: [],
-    sourceOfImport: 'Google Books',
+    sourceOfImport: providerLabel(edition.source),
     dateAdded: new Date().toISOString().split('T')[0],
     dateFinished: status === 'finished' ? new Date().toISOString().split('T')[0] : undefined,
   };
