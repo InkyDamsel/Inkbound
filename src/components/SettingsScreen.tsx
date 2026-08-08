@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
+import { GoogleAuthProvider, reauthenticateWithPopup } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
 import {
+  AlertTriangle,
   BookOpen,
   Check,
   CreditCard,
@@ -12,11 +15,13 @@ import {
   RotateCcw,
   Sparkles,
   Sun,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { auth, functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
 import type { ReadingSession, UserBookRecord } from '../types';
 
@@ -43,6 +48,12 @@ const downloadBlob = (blob: Blob, filename: string) => {
 const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
 const billingPortalUrl = import.meta.env.VITE_BILLING_PORTAL_URL?.trim() ?? '';
 
+const clearInkboundLocalData = () => {
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith('inkbound_'))
+    .forEach((key) => localStorage.removeItem(key));
+};
+
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   books,
   sessions,
@@ -58,6 +69,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState('');
   const [isClearing, setIsClearing] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState('');
 
   const markExported = () => {
     setExported(true);
@@ -152,6 +167,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       setResetDialogOpen(false);
     } finally {
       setIsClearing(false);
+    }
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (
+      deleteConfirmation.trim().toUpperCase() !== 'DELETE' ||
+      isDeletingAccount ||
+      !user ||
+      !auth ||
+      !functions
+    ) return;
+
+    if (accessSource === 'subscription') {
+      setDeleteAccountError('Cancel your paid subscription before deleting your Inkbound account.');
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    setDeleteAccountError('');
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await reauthenticateWithPopup(user, provider);
+
+      const deleteAccount = httpsCallable(functions, 'deleteMyAccount');
+      await deleteAccount();
+
+      onResetData();
+      clearInkboundLocalData();
+      window.location.assign('/');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Inkbound could not delete this account.';
+      setDeleteAccountError(message.replace(/^Firebase:\s*/i, ''));
+      setIsDeletingAccount(false);
     }
   };
 
@@ -331,17 +380,32 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </section>
 
       <section className="rounded-3xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-6">
-        <h2 className="font-serif text-2xl text-[#e9b2b2]">Clear this device</h2>
+        <h2 className="font-serif text-2xl text-[#e9b2b2]">Device & account data</h2>
         <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-          This removes the local books and reading sessions cached on this device only. If you are signed in, Inkbound signs out first so this action can never be interpreted as deleting your cloud library.
+          Clearing this device keeps your cloud account. Deleting your account permanently removes the account and Inkbound data associated with it.
         </p>
-        <button
-          type="button"
-          onClick={() => setResetDialogOpen(true)}
-          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/40 px-4 text-sm font-bold text-[#e9b2b2] hover:bg-[#c97b7b]/10"
-        >
-          <RotateCcw className="h-4 w-4" /> {user ? 'Clear device & sign out' : 'Clear local data'}
-        </button>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <button
+            type="button"
+            onClick={() => setResetDialogOpen(true)}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/40 px-4 text-sm font-bold text-[#e9b2b2] hover:bg-[#c97b7b]/10"
+          >
+            <RotateCcw className="h-4 w-4" /> {user ? 'Clear device & sign out' : 'Clear local data'}
+          </button>
+          <button
+            type="button"
+            disabled={!user}
+            onClick={() => {
+              setDeleteAccountError('');
+              setDeleteConfirmation('');
+              setDeleteDialogOpen(true);
+            }}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 className="h-4 w-4" /> Delete account & data
+          </button>
+        </div>
+        {!user && <p className="mt-3 text-xs text-[var(--ink-muted)]">Sign in before requesting permanent account deletion.</p>}
       </section>
 
       {resetDialogOpen && (
@@ -376,6 +440,86 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isClearing ? 'Clearing…' : user ? 'Clear & sign out' : 'Clear this device'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {deleteDialogOpen && (
+        <div className="fixed inset-0 z-[260] grid place-items-center bg-black/85 p-4 backdrop-blur-sm" onClick={() => !isDeletingAccount && setDeleteDialogOpen(false)}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+            className="relative w-full max-w-xl rounded-3xl border border-[#c97b7b]/45 bg-[#17101b] p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              disabled={isDeletingAccount}
+              onClick={() => setDeleteDialogOpen(false)}
+              className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)] disabled:opacity-40"
+              aria-label="Close confirmation"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="flex items-start gap-3 pr-12">
+              <AlertTriangle className="mt-1 h-6 w-6 shrink-0 text-[#e9b2b2]" />
+              <div>
+                <h3 id="delete-account-title" className="font-serif text-3xl text-[var(--ink-ivory)]">Permanently delete your account?</h3>
+                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
+                  This permanently removes your Inkbound login, cloud library, reading sessions, profile, preferences, uploaded profile images, complimentary access, and local Inkbound data on this device. This cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {accessSource === 'subscription' && (
+              <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <p className="text-sm font-bold text-amber-300">Cancel Premium first</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                  Inkbound will not delete a login while a paid subscription may still bill. Cancel your subscription, wait for the entitlement to update, then return here.
+                </p>
+                {billingPortalUrl && (
+                  <button type="button" onClick={() => window.location.assign(billingPortalUrl)} className="quiet-shelf-secondary-action mt-3 justify-center">
+                    <ExternalLink className="h-4 w-4" /> Manage subscription
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-xs leading-5 text-[var(--ink-muted)]">
+              We recommend downloading a Complete JSON backup before continuing. Inkbound will ask you to verify your Google account again before deletion begins.
+            </div>
+
+            <label className="mt-5 block text-sm font-semibold text-[var(--ink-ivory)]">
+              Type DELETE to confirm
+              <input
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                disabled={isDeletingAccount || accessSource === 'subscription'}
+                placeholder="DELETE"
+                className="mt-2 min-h-12 w-full rounded-xl border border-[#c97b7b]/40 bg-[#0d0910] px-4 text-[var(--ink-ivory)] outline-none disabled:opacity-45"
+              />
+            </label>
+
+            {deleteAccountError && (
+              <p className="mt-4 rounded-xl border border-[#c97b7b]/30 bg-[#c97b7b]/10 p-3 text-sm text-[#e9b2b2]" role="alert">
+                {deleteAccountError}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button type="button" disabled={isDeletingAccount} onClick={() => setDeleteDialogOpen(false)} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">
+                Keep my account
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteAccount()}
+                disabled={deleteConfirmation.trim().toUpperCase() !== 'DELETE' || isDeletingAccount || accessSource === 'subscription'}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-4 w-4" /> {isDeletingAccount ? 'Deleting account…' : 'Permanently delete account'}
               </button>
             </div>
           </section>
