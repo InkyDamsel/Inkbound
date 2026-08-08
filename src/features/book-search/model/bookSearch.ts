@@ -1,7 +1,9 @@
 import { Format } from '../../../types';
 
+export type BookSearchSource = 'google-books' | 'open-library' | 'hardcover';
+
 export interface BookSearchEdition {
-  source: 'google-books';
+  source: BookSearchSource;
   externalEditionId: string;
   title: string;
   subtitle?: string;
