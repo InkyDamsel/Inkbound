@@ -4,7 +4,9 @@ import { Timestamp, doc, onSnapshot } from 'firebase/firestore';
 import { UserPlan } from '../types';
 import { auth, db } from '../lib/firebase';
 
-export const FREE_BOOK_LIMIT = 50;
+// The core library is intentionally unlimited for every reader. Premium is
+// reserved for deeper reflection, analytics, creative exports, and power tools.
+export const FREE_BOOK_LIMIT = Infinity;
 
 export type AccessSource = 'free' | 'subscription' | 'vip' | 'courtesy';
 
@@ -136,12 +138,11 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       setUserPlan,
       freeBookLimit: FREE_BOOK_LIMIT,
       entitlementLoading,
-      canAddBook: (currentBookCount) => isPremium || currentBookCount < FREE_BOOK_LIMIT,
-      remainingBookSlots: (currentBookCount) =>
-        isPremium ? Infinity : Math.max(0, FREE_BOOK_LIMIT - currentBookCount),
-      canAddMultipleBooks: isPremium,
+      canAddBook: () => true,
+      remainingBookSlots: () => Infinity,
+      canAddMultipleBooks: true,
       canUseBatchEdit: isPremium,
-      canRunUnlimitedImport: isPremium,
+      canRunUnlimitedImport: true,
       canViewDetailedReports: isPremium,
       isUpgradeModalOpen,
       upgradeReason,
