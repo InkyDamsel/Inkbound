@@ -40,7 +40,33 @@ type CoverMode = 'choices' | 'search' | 'upload';
 
 const MAX_COVER_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
+const MATCH_STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'book', 'books', 'series', 'complete', 'edition']);
+
+const normalizeMatchText = (value?: string) =>
+  value?.toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+
+const meaningfulTokens = (value?: string) =>
+  [...new Set(normalizeMatchText(value).split(' ').filter((token) => token.length >= 3 && !MATCH_STOP_WORDS.has(token)))];
+
+const candidateMatchesBookIdentity = (book: UserBookRecord, work: BookSearchWorkGroup) => {
+  const expectedTitle = meaningfulTokens(book.work.title);
+  const candidateTitle = normalizeMatchText(work.title);
+  const titleMatches = expectedTitle.filter((token) => candidateTitle.includes(token)).length;
+  const requiredTitleMatches = expectedTitle.length <= 2
+    ? expectedTitle.length
+    : Math.max(2, Math.ceil(expectedTitle.length * 0.67));
+
+  if (expectedTitle.length > 0 && titleMatches < requiredTitleMatches) return false;
+
+  const expectedAuthor = meaningfulTokens(book.work.author);
+  if (expectedAuthor.length === 0) return true;
+  const candidateAuthor = normalizeMatchText(work.authors.join(' '));
+  const authorMatches = expectedAuthor.filter((token) => candidateAuthor.includes(token)).length;
+  const expectedLastName = expectedAuthor.at(-1);
+
+  return authorMatches >= Math.max(1, Math.ceil(expectedAuthor.length * 0.5))
+    || Boolean(expectedLastName && candidateAuthor.includes(expectedLastName));
+};
 
 export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
   book,
@@ -169,25 +195,21 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
     setIsSyncingBook(true);
     setSyncMessage(null);
     try {
-      const existingIsbn = activeEdition.isbn13 ?? activeEdition.isbn10 ?? activeEdition.isbn;
-      const query = existingIsbn?.trim() || `${book.work.title} ${book.work.author}`;
-      const response = await searchGoogleBooks(query);
-      const candidates = response.groups.flatMap((work) =>
+      // Title + author are the identity source of truth. Existing ISBN/catalog
+      // values may have been poisoned by an older bad match, so never use an
+      // ISBN alone to decide what work this record represents.
+      const response = await searchGoogleBooks(`${book.work.title} ${book.work.author}`);
+      const identitySafeGroups = response.groups.filter((work) => candidateMatchesBookIdentity(book, work));
+      const candidates = identitySafeGroups.flatMap((work) =>
         work.editions.map((edition) => ({ work, edition })),
       );
-      const requestedIsbn = compactIsbn(existingIsbn);
-      const exactIsbnMatch = requestedIsbn
-        ? candidates.find(({ edition }) =>
-          compactIsbn(edition.isbn13) === requestedIsbn || compactIsbn(edition.isbn10) === requestedIsbn,
-        )
-        : undefined;
-      const match = exactIsbnMatch
-        ?? candidates.find(({ edition }) => edition.format === activeEdition.format && Boolean(edition.coverUrl))
+      const match = candidates.find(({ edition }) => edition.format === activeEdition.format && Boolean(edition.coverUrl))
         ?? candidates.find(({ edition }) => Boolean(edition.coverUrl))
+        ?? candidates.find(({ edition }) => edition.format === activeEdition.format)
         ?? candidates[0];
 
       if (!match) {
-        setSyncMessage('No confident catalog match was found. Your existing book details were left unchanged.');
+        setSyncMessage('No title-and-author match was found. Inkbound left this book unchanged rather than risk applying the wrong metadata.');
         return;
       }
 
@@ -213,15 +235,14 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
         externalEditionId: matchedEdition.externalEditionId,
       };
 
-      const currentSummaryIsFallback = book.work.summary.startsWith('No publisher description was available');
       const nextBook: UserBookRecord = {
         ...book,
         work: {
           ...book.work,
-          subtitle: book.work.subtitle ?? matchedWork.subtitle,
+          subtitle: matchedWork.subtitle ?? book.work.subtitle,
           publisherSummary: publisherSummary?.trim() || book.work.publisherSummary,
           summary:
-            !book.work.personalSummary && currentSummaryIsFallback && publisherSummary?.trim()
+            !book.work.personalSummary && publisherSummary?.trim()
               ? publisherSummary.trim()
               : book.work.summary,
           genres: matchedWork.genres.length > 0 ? matchedWork.genres : book.work.genres,
@@ -238,8 +259,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
       setSummary(nextBook.work.personalSummary ?? nextBook.work.summary);
       setSyncMessage(
         matchedEdition.coverUrl
-          ? `Synced from ${matchedEdition.source.replaceAll('-', ' ')} and found a cover.`
-          : `Synced from ${matchedEdition.source.replaceAll('-', ' ')}. No new cover was available.`,
+          ? `Synced from ${matchedEdition.source.replaceAll('-', ' ')} and found a matching cover.`
+          : `Synced from ${matchedEdition.source.replaceAll('-', ' ')}. No matching cover was available.`,
       );
     } catch (error) {
       setSyncMessage(error instanceof Error ? error.message : 'Inkbound could not sync this book. Please try again.');
