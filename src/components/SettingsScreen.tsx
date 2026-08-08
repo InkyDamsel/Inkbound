@@ -11,6 +11,7 @@ import {
   Sun,
   X,
 } from 'lucide-react';
+import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
@@ -46,11 +47,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onResetData,
 }) => {
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
+  const { user, signOutAccount } = useAccountSync();
   const [annualGoal, setAnnualGoal] = usePersistentState('inkbound_annual_goal', '25');
   const [dailyGoalMins, setDailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
   const [exported, setExported] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState('');
+  const [isClearing, setIsClearing] = useState(false);
 
   const markExported = () => {
     setExported(true);
@@ -132,11 +135,20 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     markExported();
   };
 
-  const confirmReset = () => {
-    if (resetConfirmation.trim().toUpperCase() !== 'CLEAR') return;
-    onResetData();
-    setResetConfirmation('');
-    setResetDialogOpen(false);
+  const confirmReset = async () => {
+    if (resetConfirmation.trim().toUpperCase() !== 'CLEAR' || isClearing) return;
+    setIsClearing(true);
+    try {
+      if (user) {
+        localStorage.setItem(`inkbound_local_clear_intent_${user.uid}`, '1');
+        await signOutAccount();
+      }
+      onResetData();
+      setResetConfirmation('');
+      setResetDialogOpen(false);
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   return (
@@ -203,7 +215,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <div className="mt-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <p className="font-semibold text-[var(--ink-ivory)]">Color theme</p>
-            <p className="mt-1 text-sm text-[var(--ink-muted)]">Your choice is saved automatically on this device.</p>
+            <p className="mt-1 text-sm text-[var(--ink-muted)]">Your choice is saved automatically and follows your account when you are signed in.</p>
           </div>
           <button
             type="button"
@@ -266,16 +278,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </section>
 
       <section className="rounded-3xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-6">
-        <h2 className="font-serif text-2xl text-[#e9b2b2]">Clear local library data</h2>
+        <h2 className="font-serif text-2xl text-[#e9b2b2]">Clear this device</h2>
         <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-          This removes books and reading sessions stored on this device. Cloud records are not changed unless you later sync the empty device library.
+          This removes the local books and reading sessions cached on this device only. If you are signed in, Inkbound signs out first so this action can never be interpreted as deleting your cloud library.
         </p>
         <button
           type="button"
           onClick={() => setResetDialogOpen(true)}
           className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/40 px-4 text-sm font-bold text-[#e9b2b2] hover:bg-[#c97b7b]/10"
         >
-          <RotateCcw className="h-4 w-4" /> Clear local data
+          <RotateCcw className="h-4 w-4" /> {user ? 'Clear device & sign out' : 'Clear local data'}
         </button>
       </section>
 
@@ -293,7 +305,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </button>
             <h3 id="clear-data-title" className="pr-12 font-serif text-3xl text-[var(--ink-ivory)]">Clear this device?</h3>
             <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
-              Export a backup first. To confirm permanent removal from this device, type <strong className="text-[var(--ink-ivory)]">CLEAR</strong> below.
+              Your cloud library will stay intact. {user ? 'You will be signed out before the local cache is cleared. ' : ''}Export a backup first if you want an extra portable copy. Type <strong className="text-[var(--ink-ivory)]">CLEAR</strong> below to continue.
             </p>
             <input
               value={resetConfirmation}
@@ -306,11 +318,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <button type="button" onClick={() => setResetDialogOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button>
               <button
                 type="button"
-                onClick={confirmReset}
-                disabled={resetConfirmation.trim().toUpperCase() !== 'CLEAR'}
+                onClick={() => void confirmReset()}
+                disabled={resetConfirmation.trim().toUpperCase() !== 'CLEAR' || isClearing}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Clear this device
+                {isClearing ? 'Clearing…' : user ? 'Clear & sign out' : 'Clear this device'}
               </button>
             </div>
           </section>
