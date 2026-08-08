@@ -75,8 +75,8 @@ async function optimizeProfileBlob(source: Blob, kind: 'avatar' | 'banner'): Pro
 
   try {
     const bitmap = await createImageBitmap(source);
-    const maximumWidth = kind === 'avatar' ? 512 : 1600;
-    const maximumHeight = kind === 'avatar' ? 512 : 700;
+    const maximumWidth = kind === 'avatar' ? 448 : 1400;
+    const maximumHeight = kind === 'avatar' ? 448 : 560;
     const scale = Math.min(1, maximumWidth / bitmap.width, maximumHeight / bitmap.height);
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
@@ -97,7 +97,7 @@ async function optimizeProfileBlob(source: Blob, kind: 'avatar' | 'banner'): Pro
       canvas.toBlob(
         (blob) => resolve(blob ?? source),
         'image/webp',
-        kind === 'avatar' ? 0.84 : 0.78,
+        kind === 'avatar' ? 0.8 : 0.72,
       );
     });
   } catch {
@@ -166,6 +166,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const pendingAvatarFileRef = useRef<File | null>(null);
   const pendingBannerFileRef = useRef<File | null>(null);
+  const pendingAvatarUploadRef = useRef<Promise<string | undefined> | null>(null);
+  const pendingBannerUploadRef = useRef<Promise<string | undefined> | null>(null);
   const avatarPreviewUrlRef = useRef<string | null>(null);
   const bannerPreviewUrlRef = useRef<string | null>(null);
 
@@ -233,6 +235,15 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     ...overrides,
   });
 
+  const beginBackgroundUpload = (file: File, kind: 'avatar' | 'banner') => {
+    if (!sync.user || !storage) return null;
+
+    return uploadProfileFile(sync.user.uid, kind, file).catch((error) => {
+      console.warn(`Inkbound could not pre-upload the ${kind}. Save Profile will retry.`, error);
+      return undefined;
+    });
+  };
+
   const selectProfileImage = (file: File, kind: 'avatar' | 'banner') => {
     if (!file.type.startsWith('image/')) return;
 
@@ -241,16 +252,32 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       const previewUrl = URL.createObjectURL(file);
       avatarPreviewUrlRef.current = previewUrl;
       pendingAvatarFileRef.current = file;
+      pendingAvatarUploadRef.current = beginBackgroundUpload(file, 'avatar');
       setAvatarImage(previewUrl);
     } else {
       releasePreviewUrl(bannerPreviewUrlRef);
       const previewUrl = URL.createObjectURL(file);
       bannerPreviewUrlRef.current = previewUrl;
       pendingBannerFileRef.current = file;
+      pendingBannerUploadRef.current = beginBackgroundUpload(file, 'banner');
       setBannerImage(previewUrl);
     }
 
+    // Upload starts immediately after selection. By the time the reader clicks
+    // Save Profile, the image is usually already in Firebase Storage and the
+    // button only has to commit the small profile document.
     setSaveStatus('idle');
+  };
+
+  const resolvePendingUpload = async (
+    kind: 'avatar' | 'banner',
+    file: File | null,
+    backgroundUpload: Promise<string | undefined> | null,
+  ) => {
+    const preUploadedUrl = backgroundUpload ? await backgroundUpload : undefined;
+    if (preUploadedUrl) return preUploadedUrl;
+    if (!file || !sync.user) return undefined;
+    return uploadProfileFile(sync.user.uid, kind, file);
   };
 
   const handleSave = async () => {
@@ -272,13 +299,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       }
 
       const avatarUpload = pendingAvatarFileRef.current
-        ? uploadProfileFile(sync.user.uid, 'avatar', pendingAvatarFileRef.current)
+        ? resolvePendingUpload('avatar', pendingAvatarFileRef.current, pendingAvatarUploadRef.current)
         : avatarImage?.startsWith('data:image/')
           ? uploadLegacyDataImage(sync.user.uid, 'avatar', avatarImage)
           : Promise.resolve(isTemporaryImageUrl(avatarImage) ? persistedProfile.avatarImage : avatarImage);
 
       const bannerUpload = pendingBannerFileRef.current
-        ? uploadProfileFile(sync.user.uid, 'banner', pendingBannerFileRef.current)
+        ? resolvePendingUpload('banner', pendingBannerFileRef.current, pendingBannerUploadRef.current)
         : bannerImage?.startsWith('data:image/')
           ? uploadLegacyDataImage(sync.user.uid, 'banner', bannerImage)
           : Promise.resolve(isTemporaryImageUrl(bannerImage) ? persistedProfile.bannerImage : bannerImage);
@@ -306,6 +333,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
 
       pendingAvatarFileRef.current = null;
       pendingBannerFileRef.current = null;
+      pendingAvatarUploadRef.current = null;
+      pendingBannerUploadRef.current = null;
       releasePreviewUrl(avatarPreviewUrlRef);
       releasePreviewUrl(bannerPreviewUrlRef);
       setAvatarImage(savedAvatarImage);
