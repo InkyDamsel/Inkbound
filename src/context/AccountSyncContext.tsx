@@ -9,6 +9,7 @@ import {
   signOut,
 } from 'firebase/auth';
 import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 
 type SyncStatus = 'idle' | 'working' | 'success' | 'error';
@@ -214,7 +215,17 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     signOutAccount: async () => {
       if (!auth) return;
       const signingOutUid = user?.uid ?? auth.currentUser?.uid;
-      if (signingOutUid) clearSignedInDataFromDevice(signingOutUid);
+      if (signingOutUid) {
+        setStatus('working');
+        setMessage('Saving your latest changes before signing out...');
+        try {
+          await flushCloudDataBeforeSignOut(signingOutUid);
+        } catch {
+          // The bridge keeps pending mutations durable. Sign-out cleanup must
+          // still run even if a transient network/storage request fails.
+        }
+        clearSignedInDataFromDevice(signingOutUid);
+      }
       await signOut(auth);
       setLastSyncedAt(null);
       setStatus('idle');
