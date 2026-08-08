@@ -8,7 +8,7 @@ import {
   signInWithPopup,
   signOut,
 } from 'firebase/auth';
-import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 
 type SyncStatus = 'idle' | 'working' | 'success' | 'error';
@@ -39,49 +39,6 @@ interface StoredPhotoMemory {
 const AccountSyncContext = createContext<AccountSyncContextValue | undefined>(undefined);
 const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
 const PHOTO_MEMORIES_STORAGE_KEY = 'inkbound_photo_memories';
-
-const SYNC_KEYS = [
-  'inkbound_books',
-  'inkbound_sessions',
-  'inkbound_theme',
-  'inkbound_user_plan',
-  'inkbound_reader_profile',
-  'inkbound_active_tab',
-  'inkbound_navigation_collapsed_groups',
-  'inkbound_dragon',
-  'inkbound_annual_goal',
-  'inkbound_daily_goal_minutes',
-  'inkbound_notifications_read',
-  'inkbound_reading_session_draft',
-  'inkbound_joined_challenges',
-  'inkbound_achievement_unlocks',
-  'inkbound_achievement_seen',
-  'inkbound_achievement_filter',
-  'inkbound_collection_definitions',
-  'inkbound_collection_view',
-  'inkbound_share_preferences',
-  'inkbound_monthly_wrapped_preferences',
-  'inkbound_year_in_books_preferences',
-  'inkbound_timeline_filter',
-  'inkbound_timeline_search',
-  'inkbound_timeline_collapsed_months',
-  'inkbound_timeline_memories',
-  'inkbound_book_memories',
-  'inkbound_memory_selected_book',
-  'inkbound_reader_personality_view',
-  'inkbound_reader_personality_hidden_traits',
-  'inkbound_reading_insights_range',
-  'inkbound_reading_insights_category',
-  'inkbound_reading_insights_dismissed',
-  'inkbound_reading_time_capsules',
-  'inkbound_time_capsule_filter',
-  'inkbound_photo_memory_filter',
-  'inkbound_bookshelf_through_time_preferences',
-] as const;
-
-const collectSnapshot = () => Object.fromEntries(
-  SYNC_KEYS.map((key) => [key, localStorage.getItem(key)]).filter(([, value]) => value !== null),
-);
 
 function readPhotoMemories(): StoredPhotoMemory[] {
   try {
@@ -138,59 +95,60 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     }
   };
 
+  // Kept under the legacy method name for compatibility with older UI code.
+  // Books and sessions are intentionally excluded: CloudPersistenceBridge is
+  // now their only synchronization path, preventing whole-device overwrites.
   const uploadSnapshot = async () => {
     if (!user || !db) {
       setStatus('error');
-      setMessage('Sign in with Google before syncing this device.');
+      setMessage('Sign in with Google before syncing account extras.');
       return;
     }
     try {
       setStatus('working');
-      setMessage('Uploading this device and photo memories...');
+      setMessage('Backing up photo memories...');
       const syncedAt = new Date().toISOString();
-      await setDoc(
-        doc(db, 'users', user.uid, 'sync', 'current'),
-        { data: collectSnapshot(), provider: 'google', updatedAt: serverTimestamp(), clientUpdatedAt: syncedAt, version: 2 },
-        { merge: true },
-      );
-
       const localPhotos = readPhotoMemories();
       const photoCollection = collection(db, 'users', user.uid, 'photoMemories');
       const cloudPhotos = await getDocs(photoCollection);
       const localIds = new Set(localPhotos.map((photo) => photo.id));
-      await Promise.all(cloudPhotos.docs.filter((photoDocument) => !localIds.has(photoDocument.id)).map((photoDocument) => deleteDoc(photoDocument.ref)));
-      await Promise.all(localPhotos.map((photo) => setDoc(doc(photoCollection, photo.id), { ...photo, updatedAt: serverTimestamp() }, { merge: true })));
+
+      await Promise.all(
+        cloudPhotos.docs
+          .filter((photoDocument) => !localIds.has(photoDocument.id))
+          .map((photoDocument) => deleteDoc(photoDocument.ref)),
+      );
+      await Promise.all(
+        localPhotos.map((photo) =>
+          setDoc(
+            doc(photoCollection, photo.id),
+            { ...photo, updatedAt: serverTimestamp() },
+            { merge: true },
+          ),
+        ),
+      );
 
       localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
       setLastSyncedAt(syncedAt);
       setStatus('success');
-      setMessage('This device and its photo memories are synced to your Google-connected Inkbound account.');
+      setMessage('Photo memories backed up. Books and reading sessions sync automatically record by record.');
     } catch (error) {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : 'Upload failed.');
+      setMessage(error instanceof Error ? error.message : 'Photo-memory backup failed.');
     }
   };
 
+  // Legacy compatibility method. It restores photo memories only and never
+  // replaces local books, sessions, preferences, or the active library.
   const restoreSnapshot = async () => {
     if (!user || !db) {
       setStatus('error');
-      setMessage('Sign in with Google before restoring cloud data.');
+      setMessage('Sign in with Google before restoring account extras.');
       return;
     }
     try {
       setStatus('working');
-      setMessage('Restoring your Inkbound data and photo memories...');
-      const snapshot = await getDoc(doc(db, 'users', user.uid, 'sync', 'current'));
-      if (!snapshot.exists()) {
-        setStatus('error');
-        setMessage('No cloud backup exists for this Google account yet.');
-        return;
-      }
-      const snapshotData = snapshot.data();
-      const data = snapshotData.data as Record<string, string> | undefined;
-      if (!data) throw new Error('Cloud backup is empty.');
-      Object.entries(data).forEach(([key, value]) => localStorage.setItem(key, value));
-
+      setMessage('Restoring photo memories...');
       const photoSnapshot = await getDocs(collection(db, 'users', user.uid, 'photoMemories'));
       const restoredPhotos = photoSnapshot.docs.map((photoDocument) => {
         const photo = photoDocument.data() as StoredPhotoMemory;
@@ -206,15 +164,14 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       });
       localStorage.setItem(PHOTO_MEMORIES_STORAGE_KEY, JSON.stringify(restoredPhotos));
 
-      const restoredAt = typeof snapshotData.clientUpdatedAt === 'string' ? snapshotData.clientUpdatedAt : new Date().toISOString();
+      const restoredAt = new Date().toISOString();
       localStorage.setItem(LAST_SYNC_STORAGE_KEY, restoredAt);
       setLastSyncedAt(restoredAt);
       setStatus('success');
-      setMessage('Restored. Reloading Inkbound...');
-      window.setTimeout(() => window.location.reload(), 700);
+      setMessage('Photo memories restored. Books and reading sessions already sync automatically.');
     } catch (error) {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : 'Restore failed.');
+      setMessage(error instanceof Error ? error.message : 'Photo-memory restore failed.');
     }
   };
 
