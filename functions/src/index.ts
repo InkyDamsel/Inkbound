@@ -1,6 +1,6 @@
 import { getAuth } from 'firebase-admin/auth';
 import { initializeApp } from 'firebase-admin/app';
-import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
+import { DocumentReference, FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
@@ -57,6 +57,15 @@ function requireString(value: unknown, fieldName: string, maxLength = 500): stri
   }
 
   return normalized;
+}
+
+function timestampLikeToMillis(value: unknown): number {
+  if (value instanceof Timestamp) return value.toMillis();
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
 }
 
 async function writeAudit(input: {
@@ -146,11 +155,9 @@ export const deleteMyAccount = onCall(async (request) => {
   const entitlementRef = db.doc(`entitlements/${auth.uid}`);
   const entitlementSnapshot = await entitlementRef.get();
   const entitlement = entitlementSnapshot.data() as
-    | { subscriptionStatus?: string; paidPremiumUntil?: Timestamp }
+    | { subscriptionStatus?: string; paidPremiumUntil?: Timestamp | string }
     | undefined;
-  const paidUntil = entitlement?.paidPremiumUntil instanceof Timestamp
-    ? entitlement.paidPremiumUntil.toMillis()
-    : 0;
+  const paidUntil = timestampLikeToMillis(entitlement?.paidPremiumUntil);
   const paidSubscriptionStillActive =
     entitlement?.subscriptionStatus === 'active' ||
     entitlement?.subscriptionStatus === 'trialing' ||
@@ -176,7 +183,7 @@ export const deleteMyAccount = onCall(async (request) => {
     db.collection('adminAudit').where('targetUserId', '==', uid).get(),
     db.collection('adminAudit').where('performedBy', '==', uid).get(),
   ]);
-  const auditRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+  const auditRefs = new Map<string, DocumentReference>();
   auditSnapshots.forEach((snapshot) => {
     snapshot.docs.forEach((item) => auditRefs.set(item.ref.path, item.ref));
   });
