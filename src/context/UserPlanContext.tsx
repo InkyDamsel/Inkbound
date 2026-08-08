@@ -6,6 +6,8 @@ import { auth, db } from '../lib/firebase';
 
 export const FREE_BOOK_LIMIT = 50;
 
+export type AccessSource = 'free' | 'subscription' | 'vip' | 'courtesy';
+
 interface EntitlementRecord {
   subscriptionStatus?: 'none' | 'active' | 'trialing' | 'past_due' | 'canceled';
   paidPremiumUntil?: Timestamp | string;
@@ -15,6 +17,7 @@ interface EntitlementRecord {
 
 interface UserPlanContextType {
   userPlan: UserPlan;
+  accessSource: AccessSource;
   setUserPlan: (plan: UserPlan) => void;
   freeBookLimit: number;
   entitlementLoading: boolean;
@@ -41,8 +44,8 @@ function toMillis(value: Timestamp | string | undefined): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function resolvePlan(entitlement: EntitlementRecord | undefined): UserPlan {
-  if (!entitlement) return 'free';
+function resolveAccess(entitlement: EntitlementRecord | undefined): { userPlan: UserPlan; accessSource: AccessSource } {
+  if (!entitlement) return { userPlan: 'free', accessSource: 'free' };
 
   const now = Date.now();
   const paidIsActive =
@@ -51,11 +54,15 @@ function resolvePlan(entitlement: EntitlementRecord | undefined): UserPlan {
     toMillis(entitlement.paidPremiumUntil) > now;
   const courtesyIsActive = toMillis(entitlement.courtesyPremiumUntil) > now;
 
-  return entitlement.vipEnabled || paidIsActive || courtesyIsActive ? 'premium' : 'free';
+  if (entitlement.vipEnabled) return { userPlan: 'premium', accessSource: 'vip' };
+  if (paidIsActive) return { userPlan: 'premium', accessSource: 'subscription' };
+  if (courtesyIsActive) return { userPlan: 'premium', accessSource: 'courtesy' };
+  return { userPlan: 'free', accessSource: 'free' };
 }
 
 export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [userPlan, setUserPlanState] = useState<UserPlan>('free');
+  const [accessSource, setAccessSource] = useState<AccessSource>('free');
   const [entitlementLoading, setEntitlementLoading] = useState(Boolean(auth && db));
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<string | undefined>(undefined);
@@ -63,6 +70,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
   useEffect(() => {
     if (!auth || !db) {
       setUserPlanState('free');
+      setAccessSource('free');
       setEntitlementLoading(false);
       return;
     }
@@ -75,6 +83,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       if (!user) {
         setUserPlanState('free');
+        setAccessSource('free');
         setEntitlementLoading(false);
         return;
       }
@@ -83,11 +92,14 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       unsubscribeEntitlement = onSnapshot(
         doc(db, 'entitlements', user.uid),
         (snapshot) => {
-          setUserPlanState(resolvePlan(snapshot.data() as EntitlementRecord | undefined));
+          const access = resolveAccess(snapshot.data() as EntitlementRecord | undefined);
+          setUserPlanState(access.userPlan);
+          setAccessSource(access.accessSource);
           setEntitlementLoading(false);
         },
         () => {
           setUserPlanState('free');
+          setAccessSource('free');
           setEntitlementLoading(false);
         },
       );
@@ -120,6 +132,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     return {
       userPlan,
+      accessSource,
       setUserPlan,
       freeBookLimit: FREE_BOOK_LIMIT,
       entitlementLoading,
@@ -135,7 +148,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       openUpgradeModal,
       closeUpgradeModal,
     };
-  }, [entitlementLoading, isUpgradeModalOpen, upgradeReason, userPlan]);
+  }, [accessSource, entitlementLoading, isUpgradeModalOpen, upgradeReason, userPlan]);
 
   return <UserPlanContext.Provider value={value}>{children}</UserPlanContext.Provider>;
 };
