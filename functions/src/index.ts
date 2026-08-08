@@ -202,3 +202,4 @@ export const addCourtesyTime = onCall(async (request) => {
 });
 
 export { getAdminDashboard, setAdminAccess } from './adminDashboard.js';
+export { searchHardcoverBooks } from './bookSearch.js';
