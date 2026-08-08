@@ -50,28 +50,46 @@ function readPhotoMemories(): StoredPhotoMemory[] {
 }
 
 export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(!auth);
+  // Firebase may already have a restored user when this provider remounts (for
+  // example during development HMR). Reuse it instead of briefly rendering a
+  // signed-out account state.
+  const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null);
+  const [isAuthReady, setIsAuthReady] = useState(() => !auth || Boolean(auth.currentUser));
   const [status, setStatus] = useState<SyncStatus>('idle');
   const [message, setMessage] = useState('');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => localStorage.getItem(LAST_SYNC_STORAGE_KEY));
 
   useEffect(() => {
     if (!auth) return undefined;
-    let unsubscribe: (() => void) | undefined;
-    void setPersistence(auth, browserLocalPersistence)
-      .then(() => {
-        unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-          setUser(nextUser);
-          setIsAuthReady(true);
-        });
-      })
-      .catch((error) => {
-        setStatus('error');
-        setMessage(error instanceof Error ? error.message : 'Inkbound could not restore the saved Google session.');
+
+    // Subscribe immediately. Waiting for setPersistence() before attaching the
+    // observer can make the UI interpret Firebase's startup window as a real
+    // logout. onAuthStateChanged is the authority for when auth is resolved.
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (nextUser) => {
+        setUser(nextUser);
         setIsAuthReady(true);
-      });
-    return () => unsubscribe?.();
+      },
+      (error) => {
+        setStatus('error');
+        setMessage(error.message || 'Inkbound could not restore the saved Google session.');
+        setIsAuthReady(true);
+      },
+    );
+
+    // Keep browser-local persistence explicit, but never let persistence setup
+    // temporarily clear the authenticated user or mark the account signed out.
+    void setPersistence(auth, browserLocalPersistence).catch((error) => {
+      setStatus('error');
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Inkbound could not enable persistent Google sign-in on this browser.',
+      );
+    });
+
+    return unsubscribe;
   }, []);
 
   const signInWithGoogle = async () => {
