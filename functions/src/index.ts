@@ -68,6 +68,41 @@ function timestampLikeToMillis(value: unknown): number {
   return 0;
 }
 
+function paidSubscriptionIsActive(entitlement: Record<string, unknown> | undefined): boolean {
+  if (!entitlement) return false;
+  const status = entitlement.subscriptionStatus;
+  const paidUntil = timestampLikeToMillis(entitlement.paidPremiumUntil);
+  return status === 'active' || status === 'trialing' || paidUntil > Date.now();
+}
+
+async function eraseInkboundUser(uid: string) {
+  await Promise.all([
+    db.recursiveDelete(db.doc(`users/${uid}`)),
+    db.doc(`userDirectory/${uid}`).delete(),
+    db.doc(`entitlements/${uid}`).delete(),
+    db.doc(`admins/${uid}`).delete(),
+  ]);
+
+  const auditSnapshots = await Promise.all([
+    db.collection('adminAudit').where('targetUserId', '==', uid).get(),
+    db.collection('adminAudit').where('performedBy', '==', uid).get(),
+  ]);
+  const auditRefs = new Map<string, DocumentReference>();
+  auditSnapshots.forEach((snapshot) => {
+    snapshot.docs.forEach((item) => auditRefs.set(item.ref.path, item.ref));
+  });
+  await Promise.all(Array.from(auditRefs.values()).map((item) => item.delete()));
+
+  await storageBucket.deleteFiles({ prefix: `users/${uid}/` }).catch((error: unknown) => {
+    console.warn(`Could not remove every Storage object for deleted user ${uid}.`, error);
+  });
+
+  await adminAuth.deleteUser(uid).catch((error: unknown) => {
+    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+    if (code !== 'auth/user-not-found') throw error;
+  });
+}
+
 async function writeAudit(input: {
   action: string;
   targetUserId: string;
@@ -162,48 +197,67 @@ export const deleteMyAccount = onCall(async (request) => {
     );
   }
 
-  const entitlementRef = db.doc(`entitlements/${auth.uid}`);
-  const entitlementSnapshot = await entitlementRef.get();
-  const entitlement = entitlementSnapshot.data() as
-    | { subscriptionStatus?: string; paidPremiumUntil?: Timestamp | string }
-    | undefined;
-  const paidUntil = timestampLikeToMillis(entitlement?.paidPremiumUntil);
-  const paidSubscriptionStillActive =
-    entitlement?.subscriptionStatus === 'active' ||
-    entitlement?.subscriptionStatus === 'trialing' ||
-    paidUntil > Date.now();
-
-  if (paidSubscriptionStillActive) {
+  const entitlementSnapshot = await db.doc(`entitlements/${auth.uid}`).get();
+  if (paidSubscriptionIsActive(entitlementSnapshot.data())) {
     throw new HttpsError(
       'failed-precondition',
       'Cancel your paid Inkbound subscription before deleting your account so billing cannot continue after your login is removed.',
     );
   }
 
-  const uid = auth.uid;
+  await eraseInkboundUser(auth.uid);
+  return { success: true };
+});
 
-  await Promise.all([
-    db.recursiveDelete(db.doc(`users/${uid}`)),
-    db.doc(`userDirectory/${uid}`).delete(),
-    entitlementRef.delete(),
-    db.doc(`admins/${uid}`).delete(),
-  ]);
+export const eraseUserAccountByAdmin = onCall(async (request) => {
+  const auth = requireAuthenticated(request);
+  const admin = await requireAdmin(auth.uid, ['owner']);
+  const data = request.data as Record<string, unknown> | undefined;
+  const targetUserId = requireString(data?.targetUserId, 'targetUserId', 128);
+  const targetEmail = normalizeEmail(data?.targetEmail);
+  const reason = requireString(data?.reason, 'reason', 1000);
+  const confirmation = requireString(data?.confirmation, 'confirmation', 320).toLowerCase();
 
-  const auditSnapshots = await Promise.all([
-    db.collection('adminAudit').where('targetUserId', '==', uid).get(),
-    db.collection('adminAudit').where('performedBy', '==', uid).get(),
-  ]);
-  const auditRefs = new Map<string, DocumentReference>();
-  auditSnapshots.forEach((snapshot) => {
-    snapshot.docs.forEach((item) => auditRefs.set(item.ref.path, item.ref));
+  if (!targetEmail) {
+    throw new HttpsError('invalid-argument', 'The target email is required.');
+  }
+  if (targetUserId === auth.uid) {
+    throw new HttpsError('failed-precondition', 'Use the personal account-deletion flow to delete your own account.');
+  }
+  if (OWNER_EMAILS.has(targetEmail)) {
+    throw new HttpsError('failed-precondition', 'Protected owner accounts cannot be erased from the admin dashboard.');
+  }
+  if (confirmation !== `erase ${targetEmail}`) {
+    throw new HttpsError('failed-precondition', `Type ERASE ${targetEmail} exactly to confirm.`);
+  }
+
+  const directorySnapshot = await db.doc(`userDirectory/${targetUserId}`).get();
+  const directoryEmail = normalizeEmail(directorySnapshot.get('email'));
+  if (!directorySnapshot.exists || directoryEmail !== targetEmail) {
+    throw new HttpsError('failed-precondition', 'The selected reader no longer matches this account. Refresh and try again.');
+  }
+
+  const entitlementSnapshot = await db.doc(`entitlements/${targetUserId}`).get();
+  if (paidSubscriptionIsActive(entitlementSnapshot.data())) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Cancel the reader\'s paid subscription before erasing the account so billing cannot continue after login removal.',
+    );
+  }
+
+  await eraseInkboundUser(targetUserId);
+
+  await writeAudit({
+    action: 'admin_erased_user_account',
+    targetUserId: 'deleted',
+    targetEmail: '[deleted]',
+    performedBy: auth.uid,
+    performedByEmail: admin.email,
+    reason,
+    previousValue: null,
+    newValue: { erased: true },
   });
-  await Promise.all(Array.from(auditRefs.values()).map((item) => item.delete()));
 
-  await storageBucket.deleteFiles({ prefix: `users/${uid}/` }).catch((error: unknown) => {
-    console.warn(`Could not remove every Storage object for deleted user ${uid}.`, error);
-  });
-
-  await adminAuth.deleteUser(uid);
   return { success: true };
 });
 
