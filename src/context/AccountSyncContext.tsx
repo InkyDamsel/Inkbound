@@ -39,6 +39,29 @@ interface StoredPhotoMemory {
 const AccountSyncContext = createContext<AccountSyncContextValue | undefined>(undefined);
 const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
 const PHOTO_MEMORIES_STORAGE_KEY = 'inkbound_photo_memories';
+const SIGNED_IN_DATA_KEYS = [
+  'inkbound_books',
+  'inkbound_sessions',
+  'inkbound_reader_profile',
+  'inkbound_photo_memories',
+  'inkbound_import_enrichment_queue_v1',
+  'bookhaven_books',
+  'bookhaven_sessions',
+] as const;
+
+function clearSignedInDataFromDevice(uid: string) {
+  // Tell the sync bridge this is a device/session clear, not a request to delete
+  // the user's cloud library. The flag is deliberately retained for next login.
+  localStorage.setItem(`inkbound_local_clear_intent_${uid}`, '1');
+  SIGNED_IN_DATA_KEYS.forEach((key) => localStorage.removeItem(key));
+  localStorage.removeItem('inkbound_local_data_owner_uid');
+  localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
+
+  // Pending/baseline data is only a local sync implementation detail and should
+  // not remain readable on a shared device after the account signs out.
+  localStorage.removeItem(`inkbound_pending_sync_${uid}_v1`);
+  localStorage.removeItem(`inkbound_sync_baseline_${uid}_v1`);
+}
 
 function readPhotoMemories(): StoredPhotoMemory[] {
   try {
@@ -50,9 +73,6 @@ function readPhotoMemories(): StoredPhotoMemory[] {
 }
 
 export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  // Firebase may already have a restored user when this provider remounts (for
-  // example during development HMR). Reuse it instead of briefly rendering a
-  // signed-out account state.
   const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null);
   const [isAuthReady, setIsAuthReady] = useState(() => !auth || Boolean(auth.currentUser));
   const [status, setStatus] = useState<SyncStatus>('idle');
@@ -62,9 +82,6 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
   useEffect(() => {
     if (!auth) return undefined;
 
-    // Subscribe immediately. Waiting for setPersistence() before attaching the
-    // observer can make the UI interpret Firebase's startup window as a real
-    // logout. onAuthStateChanged is the authority for when auth is resolved.
     const unsubscribe = onAuthStateChanged(
       auth,
       (nextUser) => {
@@ -78,8 +95,6 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       },
     );
 
-    // Keep browser-local persistence explicit, but never let persistence setup
-    // temporarily clear the authenticated user or mark the account signed out.
     void setPersistence(auth, browserLocalPersistence).catch((error) => {
       setStatus('error');
       setMessage(
@@ -113,9 +128,6 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     }
   };
 
-  // Kept under the legacy method name for compatibility with older UI code.
-  // Books and sessions are intentionally excluded: CloudPersistenceBridge is
-  // now their only synchronization path, preventing whole-device overwrites.
   const uploadSnapshot = async () => {
     if (!user || !db) {
       setStatus('error');
@@ -156,8 +168,6 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     }
   };
 
-  // Legacy compatibility method. It restores photo memories only and never
-  // replaces local books, sessions, preferences, or the active library.
   const restoreSnapshot = async () => {
     if (!user || !db) {
       setStatus('error');
@@ -202,9 +212,13 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     lastSyncedAt,
     signInWithGoogle,
     signOutAccount: async () => {
-      if (auth) await signOut(auth);
+      if (!auth) return;
+      const signingOutUid = user?.uid ?? auth.currentUser?.uid;
+      if (signingOutUid) clearSignedInDataFromDevice(signingOutUid);
+      await signOut(auth);
+      setLastSyncedAt(null);
       setStatus('idle');
-      setMessage('Signed out. Your local Inkbound data remains on this device.');
+      setMessage('Signed out. Account data was removed from this device.');
     },
     uploadSnapshot,
     restoreSnapshot,
