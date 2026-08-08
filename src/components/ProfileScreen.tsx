@@ -25,6 +25,8 @@ interface ProfileScreenProps {
 }
 
 const PROFILE_STORAGE_KEY = 'inkbound_reader_profile';
+const IMAGE_UPLOAD_TIMEOUT_MS = 15000;
+const PROFILE_WRITE_TIMEOUT_MS = 8000;
 
 interface StoredProfile {
   displayName: string;
@@ -70,13 +72,29 @@ const saveStoredProfile = (profile: StoredProfile) => {
   }
 };
 
+async function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), milliseconds);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function optimizeProfileBlob(source: Blob, kind: 'avatar' | 'banner'): Promise<Blob> {
   if (typeof createImageBitmap !== 'function') return source;
 
   try {
     const bitmap = await createImageBitmap(source);
-    const maximumWidth = kind === 'avatar' ? 448 : 1400;
-    const maximumHeight = kind === 'avatar' ? 448 : 560;
+    const maximumWidth = kind === 'avatar' ? 384 : 1200;
+    const maximumHeight = kind === 'avatar' ? 384 : 480;
     const scale = Math.min(1, maximumWidth / bitmap.width, maximumHeight / bitmap.height);
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
@@ -97,7 +115,7 @@ async function optimizeProfileBlob(source: Blob, kind: 'avatar' | 'banner'): Pro
       canvas.toBlob(
         (blob) => resolve(blob ?? source),
         'image/webp',
-        kind === 'avatar' ? 0.8 : 0.72,
+        kind === 'avatar' ? 0.78 : 0.68,
       );
     });
   } catch {
@@ -105,50 +123,32 @@ async function optimizeProfileBlob(source: Blob, kind: 'avatar' | 'banner'): Pro
   }
 }
 
-async function uploadProfileBlob(
-  uid: string,
-  kind: 'avatar' | 'banner',
-  source: Blob,
-  fingerprint: string,
-): Promise<string> {
-  if (!storage) throw new Error('Profile image storage is unavailable.');
-
-  const optimized = await optimizeProfileBlob(source, kind);
-  const usesWebp = optimized.type === 'image/webp';
-  const extension = usesWebp
-    ? 'webp'
-    : optimized.type === 'image/png'
-      ? 'png'
-      : optimized.type === 'image/gif'
-        ? 'gif'
-        : 'jpg';
-  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${fingerprint}.${extension}`);
-
-  await uploadBytes(imageRef, optimized, {
-    contentType: optimized.type || 'image/jpeg',
-    cacheControl: 'public,max-age=31536000,immutable',
-  });
-
-  return getDownloadURL(imageRef);
-}
-
 async function uploadProfileFile(
   uid: string,
   kind: 'avatar' | 'banner',
   file: File,
 ): Promise<string> {
-  const fingerprint = `${file.size}-${file.lastModified}-${Date.now()}`;
-  return uploadProfileBlob(uid, kind, file, fingerprint);
-}
+  if (!storage) throw new Error('Profile image storage is unavailable.');
 
-async function uploadLegacyDataImage(
-  uid: string,
-  kind: 'avatar' | 'banner',
-  value: string,
-): Promise<string> {
-  const response = await fetch(value);
-  const blob = await response.blob();
-  return uploadProfileBlob(uid, kind, blob, `legacy-${Date.now()}`);
+  const optimized = await optimizeProfileBlob(file, kind);
+  const extension = optimized.type === 'image/webp' ? 'webp' : 'jpg';
+  const fingerprint = `${file.size}-${file.lastModified}-${Date.now()}`;
+  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${fingerprint}.${extension}`);
+
+  await withTimeout(
+    uploadBytes(imageRef, optimized, {
+      contentType: optimized.type || 'image/jpeg',
+      cacheControl: 'public,max-age=31536000,immutable',
+    }),
+    IMAGE_UPLOAD_TIMEOUT_MS,
+    `${kind} upload timed out.`,
+  );
+
+  return withTimeout(
+    getDownloadURL(imageRef),
+    IMAGE_UPLOAD_TIMEOUT_MS,
+    `${kind} download URL timed out.`,
+  );
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions }) => {
@@ -161,15 +161,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   const [bio, setBio] = useState(initialProfile.bio);
   const [avatarImage, setAvatarImage] = useState<string | undefined>(initialProfile.avatarImage);
   const [bannerImage, setBannerImage] = useState<string | undefined>(initialProfile.bannerImage);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [imageSyncStatus, setImageSyncStatus] = useState<'idle' | 'uploading' | 'error'>('idle');
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
-  const pendingAvatarFileRef = useRef<File | null>(null);
-  const pendingBannerFileRef = useRef<File | null>(null);
-  const pendingAvatarUploadRef = useRef<Promise<string | undefined> | null>(null);
-  const pendingBannerUploadRef = useRef<Promise<string | undefined> | null>(null);
   const avatarPreviewUrlRef = useRef<string | null>(null);
   const bannerPreviewUrlRef = useRef<string | null>(null);
+  const imageRequestRef = useRef(0);
 
   const releasePreviewUrl = (previewRef: React.MutableRefObject<string | null>) => {
     if (!previewRef.current) return;
@@ -225,127 +223,109 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       .map((part) => part.charAt(0).toUpperCase())
       .join('') || 'JL';
 
-  const currentProfile = (overrides: Partial<StoredProfile> = {}): StoredProfile => ({
-    displayName,
-    email,
-    favoriteQuote,
-    bio,
-    avatarImage,
-    bannerImage,
-    ...overrides,
-  });
+  const durableProfileFromState = (): StoredProfile => {
+    const persisted = readStoredProfile();
+    return {
+      displayName,
+      email,
+      favoriteQuote,
+      bio,
+      avatarImage: isTemporaryImageUrl(avatarImage) ? persisted.avatarImage : avatarImage,
+      bannerImage: isTemporaryImageUrl(bannerImage) ? persisted.bannerImage : bannerImage,
+    };
+  };
 
-  const beginBackgroundUpload = (file: File, kind: 'avatar' | 'banner') => {
-    if (!sync.user || !storage) return null;
-
-    return uploadProfileFile(sync.user.uid, kind, file).catch((error) => {
-      console.warn(`Inkbound could not pre-upload the ${kind}. Save Profile will retry.`, error);
-      return undefined;
-    });
+  const writeCloudProfile = async (profile: StoredProfile) => {
+    if (!sync.user || !db) return;
+    await withTimeout(
+      setDoc(
+        doc(db, 'users', sync.user.uid, 'profile', 'current'),
+        {
+          data: profile,
+          updatedAt: serverTimestamp(),
+          clientUpdatedAt: new Date().toISOString(),
+        },
+        { merge: true },
+      ),
+      PROFILE_WRITE_TIMEOUT_MS,
+      'Profile cloud write timed out.',
+    );
   };
 
   const selectProfileImage = (file: File, kind: 'avatar' | 'banner') => {
     if (!file.type.startsWith('image/')) return;
 
+    const requestId = imageRequestRef.current + 1;
+    imageRequestRef.current = requestId;
+    setImageSyncStatus('uploading');
+    setSaveStatus('idle');
+
     if (kind === 'avatar') {
       releasePreviewUrl(avatarPreviewUrlRef);
       const previewUrl = URL.createObjectURL(file);
       avatarPreviewUrlRef.current = previewUrl;
-      pendingAvatarFileRef.current = file;
-      pendingAvatarUploadRef.current = beginBackgroundUpload(file, 'avatar');
       setAvatarImage(previewUrl);
     } else {
       releasePreviewUrl(bannerPreviewUrlRef);
       const previewUrl = URL.createObjectURL(file);
       bannerPreviewUrlRef.current = previewUrl;
-      pendingBannerFileRef.current = file;
-      pendingBannerUploadRef.current = beginBackgroundUpload(file, 'banner');
       setBannerImage(previewUrl);
     }
 
-    // Upload starts immediately after selection. By the time the reader clicks
-    // Save Profile, the image is usually already in Firebase Storage and the
-    // button only has to commit the small profile document.
-    setSaveStatus('idle');
-  };
-
-  const resolvePendingUpload = async (
-    kind: 'avatar' | 'banner',
-    file: File | null,
-    backgroundUpload: Promise<string | undefined> | null,
-  ) => {
-    const preUploadedUrl = backgroundUpload ? await backgroundUpload : undefined;
-    if (preUploadedUrl) return preUploadedUrl;
-    if (!file || !sync.user) return undefined;
-    return uploadProfileFile(sync.user.uid, kind, file);
-  };
-
-  const handleSave = async () => {
-    setSaveStatus('saving');
-
-    try {
-      const persistedProfile = readStoredProfile();
-
-      if (!sync.user || !db) {
-        saveStoredProfile(
-          currentProfile({
-            avatarImage: isTemporaryImageUrl(avatarImage) ? persistedProfile.avatarImage : avatarImage,
-            bannerImage: isTemporaryImageUrl(bannerImage) ? persistedProfile.bannerImage : bannerImage,
-          }),
-        );
-        setSaveStatus('saved');
-        window.setTimeout(() => setSaveStatus('idle'), 2500);
-        return;
-      }
-
-      const avatarUpload = pendingAvatarFileRef.current
-        ? resolvePendingUpload('avatar', pendingAvatarFileRef.current, pendingAvatarUploadRef.current)
-        : avatarImage?.startsWith('data:image/')
-          ? uploadLegacyDataImage(sync.user.uid, 'avatar', avatarImage)
-          : Promise.resolve(isTemporaryImageUrl(avatarImage) ? persistedProfile.avatarImage : avatarImage);
-
-      const bannerUpload = pendingBannerFileRef.current
-        ? resolvePendingUpload('banner', pendingBannerFileRef.current, pendingBannerUploadRef.current)
-        : bannerImage?.startsWith('data:image/')
-          ? uploadLegacyDataImage(sync.user.uid, 'banner', bannerImage)
-          : Promise.resolve(isTemporaryImageUrl(bannerImage) ? persistedProfile.bannerImage : bannerImage);
-
-      const [savedAvatarImage, savedBannerImage] = await Promise.all([avatarUpload, bannerUpload]);
-
-      const cloudProfile: StoredProfile = {
-        displayName,
-        email,
-        favoriteQuote,
-        bio,
-        avatarImage: savedAvatarImage,
-        bannerImage: savedBannerImage,
-      };
-
-      await setDoc(
-        doc(db, 'users', sync.user.uid, 'profile', 'current'),
-        {
-          data: cloudProfile,
-          updatedAt: serverTimestamp(),
-          clientUpdatedAt: new Date().toISOString(),
-        },
-        { merge: true },
-      );
-
-      pendingAvatarFileRef.current = null;
-      pendingBannerFileRef.current = null;
-      pendingAvatarUploadRef.current = null;
-      pendingBannerUploadRef.current = null;
-      releasePreviewUrl(avatarPreviewUrlRef);
-      releasePreviewUrl(bannerPreviewUrlRef);
-      setAvatarImage(savedAvatarImage);
-      setBannerImage(savedBannerImage);
-      saveStoredProfile(cloudProfile);
-      setSaveStatus('saved');
-      window.setTimeout(() => setSaveStatus('idle'), 2500);
-    } catch (error) {
-      console.error('Inkbound could not save the reader profile.', error);
-      setSaveStatus('error');
+    if (!sync.user || !db || !storage) {
+      setImageSyncStatus('error');
+      return;
     }
+
+    // Image persistence is independent from Save Profile. The upload starts as
+    // soon as the reader chooses a file, then writes the durable URL to the profile.
+    void uploadProfileFile(sync.user.uid, kind, file)
+      .then(async (url) => {
+        if (imageRequestRef.current !== requestId) return;
+
+        const profile = readStoredProfile();
+        const nextProfile: StoredProfile = {
+          ...profile,
+          displayName,
+          email,
+          favoriteQuote,
+          bio,
+          ...(kind === 'avatar' ? { avatarImage: url } : { bannerImage: url }),
+        };
+
+        saveStoredProfile(nextProfile);
+        await writeCloudProfile(nextProfile);
+
+        if (imageRequestRef.current !== requestId) return;
+        if (kind === 'avatar') {
+          releasePreviewUrl(avatarPreviewUrlRef);
+          setAvatarImage(url);
+        } else {
+          releasePreviewUrl(bannerPreviewUrlRef);
+          setBannerImage(url);
+        }
+        setImageSyncStatus('idle');
+      })
+      .catch((error) => {
+        console.error(`Inkbound could not save the ${kind}.`, error);
+        if (imageRequestRef.current === requestId) setImageSyncStatus('error');
+      });
+  };
+
+  const handleSave = () => {
+    const profile = durableProfileFromState();
+
+    // Save locally immediately. Cloud work is intentionally background-only so
+    // the button never waits on a network round trip or image upload.
+    saveStoredProfile(profile);
+    setSaveStatus('saved');
+    window.setTimeout(() => setSaveStatus('idle'), 1800);
+
+    if (!sync.user || !db) return;
+    void writeCloudProfile(profile).catch((error) => {
+      console.error('Inkbound could not sync the reader profile.', error);
+      setSaveStatus('error');
+    });
   };
 
   return (
@@ -428,17 +408,18 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
             </div>
 
             <div className="flex flex-col items-stretch gap-2 sm:items-end">
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saveStatus === 'saving'}
-                className="quiet-shelf-primary-action px-5 disabled:cursor-wait disabled:opacity-70"
-              >
+              <button type="button" onClick={handleSave} className="quiet-shelf-primary-action px-5">
                 <Save className="h-4 w-4" />
-                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : 'Save Profile'}
+                {saveStatus === 'saved' ? 'Saved' : 'Save Profile'}
               </button>
+              {imageSyncStatus === 'uploading' ? (
+                <p className="text-xs text-[var(--ink-muted)]">Finishing image sync in the background…</p>
+              ) : null}
+              {imageSyncStatus === 'error' ? (
+                <p className="text-xs text-rose-400">Image could not sync. Choose it again to retry.</p>
+              ) : null}
               {saveStatus === 'error' ? (
-                <p className="text-xs text-rose-400">Profile could not be saved. Please try again.</p>
+                <p className="text-xs text-rose-400">Saved on this device. Cloud sync will retry.</p>
               ) : null}
             </div>
           </div>
