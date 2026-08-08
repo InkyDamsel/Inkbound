@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import {
   BookOpen,
   Check,
+  CreditCard,
   Crown,
   Download,
+  ExternalLink,
   FileSpreadsheet,
+  Gift,
   Moon,
   RotateCcw,
   Sparkles,
@@ -38,6 +41,7 @@ const downloadBlob = (blob: Blob, filename: string) => {
 };
 
 const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+const billingPortalUrl = import.meta.env.VITE_BILLING_PORTAL_URL?.trim() ?? '';
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   books,
@@ -46,7 +50,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   setIsDarkMode,
   onResetData,
 }) => {
-  const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
+  const { userPlan, accessSource, freeBookLimit, openUpgradeModal } = useUserPlan();
   const { user, signOutAccount } = useAccountSync();
   const [annualGoal, setAnnualGoal] = usePersistentState('inkbound_annual_goal', '25');
   const [dailyGoalMins, setDailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
@@ -151,6 +155,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   };
 
+  const accessLabel = accessSource === 'subscription'
+    ? 'Paid subscription'
+    : accessSource === 'vip'
+      ? 'VIP access'
+      : accessSource === 'courtesy'
+        ? 'Courtesy Premium'
+        : 'Free plan';
+
   return (
     <div className="mx-auto max-w-4xl space-y-6 pb-20">
       <header>
@@ -172,6 +184,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <><BookOpen className="h-5 w-5 text-[var(--ink-muted)]" /> Inkbound Free</>
               )}
             </h2>
+            <p className="mt-1 text-xs text-[var(--ink-muted)]">{accessLabel}</p>
           </div>
           {userPlan === 'free' ? (
             <button
@@ -208,6 +221,46 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <p className="mt-1 text-xs text-[var(--ink-muted)]">Your books, notes, sessions, and memories remain yours.</p>
           </article>
         </ResponsiveGrid>
+
+        {userPlan === 'premium' && accessSource === 'subscription' && (
+          <div className="flex flex-col gap-4 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 font-semibold text-[var(--ink-ivory)]">
+                <CreditCard className="h-4 w-4 text-[var(--ink-mauve)]" /> Subscription & billing
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                Change your plan, update payment details, view invoices, or cancel Premium from the secure billing portal.
+              </p>
+              {!billingPortalUrl && (
+                <p className="mt-2 text-xs text-amber-400">
+                  The billing portal has not been connected to this deployment yet.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={!billingPortalUrl}
+              onClick={() => {
+                if (billingPortalUrl) window.location.assign(billingPortalUrl);
+              }}
+              className="quiet-shelf-secondary-action shrink-0 justify-center disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <ExternalLink className="h-4 w-4" /> Manage subscription
+            </button>
+          </div>
+        )}
+
+        {userPlan === 'premium' && (accessSource === 'vip' || accessSource === 'courtesy') && (
+          <div className="flex items-start gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+            <Gift className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
+            <div>
+              <p className="font-semibold text-[var(--ink-ivory)]">No paid subscription to cancel</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                Your Premium access is {accessSource === 'vip' ? 'VIP access granted by Inkbound' : 'courtesy access granted by Inkbound'}, so you are not being billed through a subscription.
+              </p>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="inkbound-panel rounded-3xl p-6">
