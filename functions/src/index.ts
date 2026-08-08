@@ -142,6 +142,16 @@ export const syncUserDirectory = onCall(async (request) => {
 
 export const deleteMyAccount = onCall(async (request) => {
   const auth = requireAuthenticated(request);
+  const data = request.data as Record<string, unknown> | undefined;
+  const confirmation = requireString(data?.confirmation, 'confirmation', 64).toUpperCase();
+
+  if (confirmation !== 'DELETE MY ACCOUNT') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Account deletion requires the exact confirmation phrase.',
+    );
+  }
+
   const authTime = Number(auth.token.auth_time ?? 0) * 1000;
   const recentAuthWindowMs = 10 * 60 * 1000;
 
