@@ -7,6 +7,7 @@ import {
   Play,
   Plus,
   Quote,
+  RefreshCw,
   Save,
   Search,
   Star,
@@ -30,6 +31,7 @@ interface BookDetailsModalProps {
   book: UserBookRecord | null;
   onClose: () => void;
   onUpdateBook: (updatedBook: UserBookRecord) => void;
+  onDeleteBook: (book: UserBookRecord) => void;
   onStartSession: (book: UserBookRecord) => void;
 }
 
@@ -38,11 +40,13 @@ type CoverMode = 'choices' | 'search' | 'upload';
 
 const MAX_COVER_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
 export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
   book,
   onClose,
   onUpdateBook,
+  onDeleteBook,
   onStartSession,
 }) => {
   const [activeTab, setActiveTab] = useState<DetailsTab>('summary');
@@ -59,6 +63,9 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
   const [coverResults, setCoverResults] = useState<BookSearchWorkGroup[]>([]);
   const [coverSearching, setCoverSearching] = useState(false);
   const [coverError, setCoverError] = useState<string | null>(null);
+  const [isSyncingBook, setIsSyncingBook] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     setActiveTab('summary');
@@ -73,6 +80,9 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
     setCoverQuery(book ? `${book.work.title} ${book.work.author}` : '');
     setCoverResults([]);
     setCoverError(null);
+    setIsSyncingBook(false);
+    setSyncMessage(null);
+    setDeleteConfirmOpen(false);
   }, [book?.id]);
 
   const activeEdition = useMemo(
@@ -149,6 +159,95 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
     onUpdateBook({ ...book, activeEditionId: edition.id, editions: [...book.editions, edition] });
   };
 
+  const syncBookMetadata = async () => {
+    if (isSyncingBook) return;
+    if (!navigator.onLine) {
+      setSyncMessage('Inkbound needs an internet connection to look for covers and book details.');
+      return;
+    }
+
+    setIsSyncingBook(true);
+    setSyncMessage(null);
+    try {
+      const existingIsbn = activeEdition.isbn13 ?? activeEdition.isbn10 ?? activeEdition.isbn;
+      const query = existingIsbn?.trim() || `${book.work.title} ${book.work.author}`;
+      const response = await searchGoogleBooks(query);
+      const candidates = response.groups.flatMap((work) =>
+        work.editions.map((edition) => ({ work, edition })),
+      );
+      const requestedIsbn = compactIsbn(existingIsbn);
+      const exactIsbnMatch = requestedIsbn
+        ? candidates.find(({ edition }) =>
+          compactIsbn(edition.isbn13) === requestedIsbn || compactIsbn(edition.isbn10) === requestedIsbn,
+        )
+        : undefined;
+      const match = exactIsbnMatch
+        ?? candidates.find(({ edition }) => edition.format === activeEdition.format && Boolean(edition.coverUrl))
+        ?? candidates.find(({ edition }) => Boolean(edition.coverUrl))
+        ?? candidates[0];
+
+      if (!match) {
+        setSyncMessage('No confident catalog match was found. Your existing book details were left unchanged.');
+        return;
+      }
+
+      const { work: matchedWork, edition: matchedEdition } = match;
+      const publisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
+      const syncedEdition: Edition = {
+        ...activeEdition,
+        isbn: matchedEdition.isbn13 ?? matchedEdition.isbn10 ?? activeEdition.isbn,
+        isbn10: matchedEdition.isbn10 ?? activeEdition.isbn10,
+        isbn13: matchedEdition.isbn13 ?? activeEdition.isbn13,
+        pageCount: matchedEdition.pageCount ?? activeEdition.pageCount,
+        publisher: matchedEdition.publisher ?? activeEdition.publisher,
+        publicationDate: matchedEdition.publicationDate ?? activeEdition.publicationDate,
+        coverUrl: matchedEdition.coverUrl ?? activeEdition.coverUrl,
+        language: matchedEdition.language ?? activeEdition.language,
+        editionName: matchedEdition.editionName ?? activeEdition.editionName,
+        binding: matchedEdition.binding ?? activeEdition.binding,
+        specialFeatures:
+          matchedEdition.specialFeatures.length > 0
+            ? matchedEdition.specialFeatures
+            : activeEdition.specialFeatures,
+        externalSource: matchedEdition.source,
+        externalEditionId: matchedEdition.externalEditionId,
+      };
+
+      const currentSummaryIsFallback = book.work.summary.startsWith('No publisher description was available');
+      const nextBook: UserBookRecord = {
+        ...book,
+        work: {
+          ...book.work,
+          subtitle: book.work.subtitle ?? matchedWork.subtitle,
+          publisherSummary: publisherSummary?.trim() || book.work.publisherSummary,
+          summary:
+            !book.work.personalSummary && currentSummaryIsFallback && publisherSummary?.trim()
+              ? publisherSummary.trim()
+              : book.work.summary,
+          genres: matchedWork.genres.length > 0 ? matchedWork.genres : book.work.genres,
+          publicationYear: matchedEdition.publicationYear || book.work.publicationYear,
+          originalLanguage: matchedEdition.language ?? book.work.originalLanguage,
+          externalWorkId: matchedWork.key,
+        },
+        editions: book.editions.map((edition) =>
+          edition.id === activeEdition.id ? syncedEdition : edition,
+        ),
+      };
+
+      onUpdateBook(nextBook);
+      setSummary(nextBook.work.personalSummary ?? nextBook.work.summary);
+      setSyncMessage(
+        matchedEdition.coverUrl
+          ? `Synced from ${matchedEdition.source.replaceAll('-', ' ')} and found a cover.`
+          : `Synced from ${matchedEdition.source.replaceAll('-', ' ')}. No new cover was available.`,
+      );
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : 'Inkbound could not sync this book. Please try again.');
+    } finally {
+      setIsSyncingBook(false);
+    }
+  };
+
   const searchCovers = async (event: FormEvent) => {
     event.preventDefault();
     if (!coverQuery.trim() || coverSearching) return;
@@ -167,7 +266,11 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
 
   const chooseOnlineCover = (edition: BookSearchEdition) => {
     if (!edition.coverUrl) return;
-    updateActiveEdition({ coverUrl: edition.coverUrl });
+    updateActiveEdition({
+      coverUrl: edition.coverUrl,
+      externalSource: edition.source,
+      externalEditionId: edition.externalEditionId,
+    });
     setCoverManagerOpen(false);
   };
 
@@ -222,7 +325,12 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
               <span className="inline-flex rounded bg-[#c5a059] px-2 py-1 text-[10px] font-bold uppercase text-[#120817]">{activeEdition.format}</span>
               <h2 className="mt-3 line-clamp-2 font-serif text-2xl font-bold leading-tight text-[#f4efe6] sm:text-4xl">{book.work.title}</h2>
               <p className="mt-1 truncate font-serif text-sm italic text-stone-400">by {book.work.author}</p>
-              <button type="button" onClick={() => setCoverManagerOpen(true)} className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-full border border-[#c5a059]/30 bg-[#25132f] px-4 text-xs font-bold text-[#e5c158] hover:border-[#c5a059]/60"><ImagePlus className="h-4 w-4" /> Manage Cover</button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setCoverManagerOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#c5a059]/30 bg-[#25132f] px-4 text-xs font-bold text-[#e5c158] hover:border-[#c5a059]/60"><ImagePlus className="h-4 w-4" /> Manage Cover</button>
+                <button type="button" onClick={() => void syncBookMetadata()} disabled={isSyncingBook} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#7b657d]/45 bg-[#25132f] px-4 text-xs font-bold text-[#d8c7d7] hover:border-[#9a7e96] disabled:cursor-wait disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${isSyncingBook ? 'animate-spin' : ''}`} /> {isSyncingBook ? 'Syncing…' : 'Sync Book'}</button>
+                <button type="button" onClick={() => setDeleteConfirmOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#c97b7b]/35 bg-[#25132f] px-4 text-xs font-bold text-[#e5aaaa] hover:border-[#c97b7b]/70"><Trash2 className="h-4 w-4" /> Delete Book</button>
+              </div>
+              {syncMessage && <p className="mt-2 max-w-2xl text-xs text-[#b9aaba]">{syncMessage}</p>}
 
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <select value={book.status} onChange={(event) => updateStatus(event.target.value as ReadingStatus)} className="min-h-11 rounded-xl border border-[#c5a059]/30 bg-[#120817] px-4 text-sm text-[#e5c158]">
@@ -271,15 +379,22 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
           <div className="flex items-start justify-between gap-4"><div><p className="inkbound-kicker">Edition cover</p><h2 className="mt-2 font-serif text-3xl text-[#f4efe6]">Manage Cover</h2><p className="mt-2 text-sm text-[#ad9fac]">Changes apply to this {activeEdition.format} edition everywhere in Inkbound.</p></div><button type="button" onClick={() => setCoverManagerOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-black/30 text-stone-300"><X className="h-5 w-5" /></button></div>
 
           {coverMode === 'choices' && <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <button type="button" onClick={() => setCoverMode('search')} className="rounded-2xl border border-[#c5a059]/25 bg-[#25132f] p-5 text-left hover:border-[#c5a059]/60"><Search className="h-6 w-6 text-[#e5c158]" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Search Online</h3><p className="mt-2 text-sm text-[#ad9fac]">Find covers and editions through Google Books.</p></button>
+            <button type="button" onClick={() => setCoverMode('search')} className="rounded-2xl border border-[#c5a059]/25 bg-[#25132f] p-5 text-left hover:border-[#c5a059]/60"><Search className="h-6 w-6 text-[#e5c158]" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Search Online</h3><p className="mt-2 text-sm text-[#ad9fac]">Find covers and editions across Inkbound’s connected book catalogs.</p></button>
             <label className="cursor-pointer rounded-2xl border border-[#c5a059]/25 bg-[#25132f] p-5 hover:border-[#c5a059]/60"><Upload className="h-6 w-6 text-[#e5c158]" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Upload Your Own</h3><p className="mt-2 text-sm text-[#ad9fac]">Use a JPG, PNG, or WEBP image up to 5 MB.</p><input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover} className="sr-only" /></label>
             <button type="button" onClick={removeCover} disabled={!activeEdition.coverUrl} className="rounded-2xl border border-[#c97b7b]/25 bg-[#25132f] p-5 text-left hover:border-[#c97b7b]/60 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-6 w-6 text-[#d99191]" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Remove Cover</h3><p className="mt-2 text-sm text-[#ad9fac]">Return this edition to Inkbound’s generated cover.</p></button>
           </div>}
 
-          {coverMode === 'search' && <div className="mt-6 space-y-5"><button type="button" onClick={() => setCoverMode('choices')} className="text-xs font-bold text-[#e5c158]">← Back to cover options</button><form onSubmit={searchCovers} className="flex flex-col gap-3 sm:flex-row"><input value={coverQuery} onChange={(event) => setCoverQuery(event.target.value)} className="min-h-12 min-w-0 flex-1 rounded-xl border border-[#c5a059]/25 bg-[#0d0910] px-4 text-sm text-[#f4efe6]" placeholder="Title, author, or ISBN" /><button type="submit" disabled={!coverQuery.trim() || coverSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{coverSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{coverSearching ? 'Searching…' : 'Search Covers'}</button></form>{coverError && <p className="rounded-xl border border-[#c97b7b]/35 bg-[#c97b7b]/10 p-3 text-sm text-[#efb6b6]">{coverError}</p>}<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">{coverResults.flatMap((group) => group.editions.filter((edition) => edition.coverUrl).map((edition) => ({ group, edition }))).map(({ group, edition }) => <button key={`${group.key}-${edition.externalEditionId}`} type="button" onClick={() => chooseOnlineCover(edition)} className="group rounded-xl border border-[#3d2448] bg-[#25132f] p-3 text-left hover:border-[#c5a059]/60"><img src={edition.coverUrl} alt={`Cover for ${group.title}`} className="mx-auto aspect-[2/3] w-full rounded-lg object-cover shadow-lg" /><p className="mt-3 line-clamp-2 font-serif text-sm text-[#f4efe6]">{group.title}</p><p className="mt-1 text-[11px] capitalize text-[#ad9fac]">{edition.format} · {edition.publicationYear}</p></button>)}</div>{!coverSearching && coverResults.length === 0 && !coverError && <p className="rounded-xl border border-dashed border-[#c5a059]/25 p-8 text-center text-sm text-[#ad9fac]">Search for the title, author, or ISBN to find matching covers.</p>}</div>}
+          {coverMode === 'search' && <div className="mt-6 space-y-5"><button type="button" onClick={() => setCoverMode('choices')} className="text-xs font-bold text-[#e5c158]">← Back to cover options</button><form onSubmit={searchCovers} className="flex flex-col gap-3 sm:flex-row"><input value={coverQuery} onChange={(event) => setCoverQuery(event.target.value)} className="min-h-12 min-w-0 flex-1 rounded-xl border border-[#c5a059]/25 bg-[#0d0910] px-4 text-sm text-[#f4efe6]" placeholder="Title, author, or ISBN" /><button type="submit" disabled={!coverQuery.trim() || coverSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{coverSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{coverSearching ? 'Searching…' : 'Search Covers'}</button></form>{coverError && <p className="rounded-xl border border-[#c97b7b]/35 bg-[#c97b7b]/10 p-3 text-sm text-[#efb6b6]">{coverError}</p>}<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">{coverResults.flatMap((group) => group.editions.filter((edition) => edition.coverUrl).map((edition) => ({ group, edition }))).map(({ group, edition }) => <button key={`${group.key}-${edition.externalEditionId}`} type="button" onClick={() => chooseOnlineCover(edition)} className="group rounded-xl border border-[#3d2448] bg-[#25132f] p-3 text-left hover:border-[#c5a059]/60"><img src={edition.coverUrl} alt={`Cover for ${group.title}`} className="mx-auto aspect-[2/3] w-full rounded-lg object-cover shadow-lg" /><p className="mt-3 line-clamp-2 font-serif text-sm text-[#f4efe6]">{group.title}</p><p className="mt-1 text-[11px] capitalize text-[#ad9fac]">{edition.format} · {edition.publicationYear} · {edition.source.replaceAll('-', ' ')}</p></button>)}</div>{!coverSearching && coverResults.length === 0 && !coverError && <p className="rounded-xl border border-dashed border-[#c5a059]/25 p-8 text-center text-sm text-[#ad9fac]">Search for the title, author, or ISBN to find matching covers.</p>}</div>}
 
           {coverMode === 'upload' && null}
           {coverError && coverMode === 'choices' && <p className="mt-5 rounded-xl border border-[#c97b7b]/35 bg-[#c97b7b]/10 p-3 text-sm text-[#efb6b6]">{coverError}</p>}
+        </section>
+      </div>}
+
+      {deleteConfirmOpen && <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setDeleteConfirmOpen(false)}>
+        <section className="w-full max-w-md rounded-3xl border border-[#c97b7b]/35 bg-[#17101b] p-6 shadow-2xl" onClick={(event) => event.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="delete-book-title">
+          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#c97b7b]/12 text-[#e5aaaa]"><Trash2 className="h-5 w-5" /></span><div><h2 id="delete-book-title" className="font-serif text-2xl text-[#f4efe6]">Delete this book?</h2><p className="mt-2 text-sm leading-6 text-[#b9aaba]">“{book.work.title}” will be removed from your library along with its reading sessions. This deletion will sync to your other devices.</p></div></div>
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setDeleteConfirmOpen(false)} className="quiet-shelf-secondary-action min-h-11">Cancel</button><button type="button" onClick={() => onDeleteBook(book)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/55 bg-[#6d343e] px-5 text-sm font-bold text-[#f8e9e9] transition hover:bg-[#7b3b46]"><Trash2 className="h-4 w-4" /> Delete Book</button></div>
         </section>
       </div>}
     </div>
