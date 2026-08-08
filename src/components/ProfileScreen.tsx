@@ -13,6 +13,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { ResponsiveGrid } from '../layout/responsive';
+import { notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
 import { AccountSyncCard } from './account/AccountSyncCard';
 
 interface ProfileScreenProps {
@@ -51,6 +52,7 @@ const readStoredProfile = (): StoredProfile => {
 
 const saveStoredProfile = (profile: StoredProfile) => {
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  notifyLocalDataChanged([PROFILE_STORAGE_KEY]);
 };
 
 const readImageFile = (file: File, onLoad: (dataUrl: string) => void) => {
@@ -79,21 +81,26 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   useEffect(() => {
     if (!sync.user) return;
 
-    const nextDisplayName = sync.user.displayName?.trim() || displayName;
-    const nextEmail = sync.user.email?.trim() || email;
-    const nextAvatarImage = sync.user.photoURL || avatarImage;
+    // CloudPersistenceBridge hydrates the saved reader profile before notifying
+    // the refresh boundary. Preserve those restored fields while applying the
+    // authoritative Google identity fields for this signed-in account.
+    const restoredProfile = readStoredProfile();
+    const nextDisplayName = sync.user.displayName?.trim() || restoredProfile.displayName;
+    const nextEmail = sync.user.email?.trim() || restoredProfile.email;
+    const nextAvatarImage = restoredProfile.avatarImage || sync.user.photoURL || undefined;
 
     setDisplayName(nextDisplayName);
     setEmail(nextEmail);
+    setFavoriteQuote(restoredProfile.favoriteQuote);
+    setBio(restoredProfile.bio);
     setAvatarImage(nextAvatarImage);
+    setBannerImage(restoredProfile.bannerImage);
 
     saveStoredProfile({
+      ...restoredProfile,
       displayName: nextDisplayName,
       email: nextEmail,
-      favoriteQuote,
-      bio,
       avatarImage: nextAvatarImage,
-      bannerImage,
     });
   }, [sync.user?.uid]);
 
@@ -114,7 +121,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       .map((part) => part.charAt(0).toUpperCase())
       .join('') || 'JL';
 
-  const handleSave = () => {
+  const persistProfile = (overrides: Partial<StoredProfile> = {}) => {
     saveStoredProfile({
       displayName,
       email,
@@ -122,7 +129,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       bio,
       avatarImage,
       bannerImage,
+      ...overrides,
     });
+  };
+
+  const handleSave = () => {
+    persistProfile();
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2500);
   };
@@ -149,7 +161,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) readImageFile(file, setBannerImage);
+              if (file) {
+                readImageFile(file, (dataUrl) => {
+                  setBannerImage(dataUrl);
+                  persistProfile({ bannerImage: dataUrl });
+                });
+              }
               event.target.value = '';
             }}
           />
@@ -184,7 +201,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
                   className="hidden"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
-                    if (file) readImageFile(file, setAvatarImage);
+                    if (file) {
+                      readImageFile(file, (dataUrl) => {
+                        setAvatarImage(dataUrl);
+                        persistProfile({ avatarImage: dataUrl });
+                      });
+                    }
                     event.target.value = '';
                   }}
                 />
@@ -259,11 +281,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
           </label>
 
           <label className="space-y-2 text-sm font-semibold text-[var(--ink-ivory)]">
-            Email address
+            Email
             <div className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4">
               <Mail className="h-4 w-4 text-[var(--ink-gold)]" />
               <input
-                type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[var(--ink-ivory)] outline-none"
@@ -274,23 +295,22 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
           <label className="space-y-2 text-sm font-semibold text-[var(--ink-ivory)] md:col-span-2">
             Favorite quote
             <div className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4">
-              <Quote className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
+              <Quote className="h-4 w-4 text-[var(--ink-gold)]" />
               <input
                 value={favoriteQuote}
                 onChange={(event) => setFavoriteQuote(event.target.value)}
-                placeholder="A line that stays with you"
-                className="min-w-0 flex-1 bg-transparent text-[var(--ink-ivory)] outline-none placeholder:text-[var(--ink-faint)]"
+                className="min-w-0 flex-1 bg-transparent text-[var(--ink-ivory)] outline-none"
               />
             </div>
           </label>
 
           <label className="space-y-2 text-sm font-semibold text-[var(--ink-ivory)] md:col-span-2">
-            Reader bio
+            Bio
             <textarea
-              rows={4}
               value={bio}
               onChange={(event) => setBio(event.target.value)}
-              className="w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 text-[var(--ink-ivory)] outline-none"
+              rows={4}
+              className="w-full resize-none rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 py-3 text-[var(--ink-ivory)] outline-none"
             />
           </label>
         </div>
