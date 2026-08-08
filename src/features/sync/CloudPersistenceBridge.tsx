@@ -4,7 +4,9 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromCache,
   getDocs,
+  getDocsFromCache,
   onSnapshot,
   serverTimestamp,
   setDoc,
@@ -13,16 +15,22 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, storage } from '../../lib/firebase';
-import { notifyCloudDataUpdated } from './cloudSyncEvents';
+import {
+  INKBOUND_BEFORE_SIGN_OUT_EVENT,
+  INKBOUND_LOCAL_DATA_CHANGED_EVENT,
+  notifyCloudDataUpdated,
+  type BeforeSignOutDetail,
+} from './cloudSyncEvents';
 
 const BOOKS_KEY = 'inkbound_books';
 const SESSIONS_KEY = 'inkbound_sessions';
 const PROFILE_KEY = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
-const BRIDGE_VERSION = '3';
+const BRIDGE_VERSION = '4';
 const LOCAL_CHANGE_POLL_MS = 1500;
 const INITIAL_UPLOAD_BATCH_SIZE = 100;
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+const INITIAL_SERVER_WAIT_MS = 8000;
 
 interface CloudRecord<T> {
   data: T;
@@ -116,6 +124,37 @@ const hashText = (value: string) => {
   }
   return (hash >>> 0).toString(36);
 };
+
+async function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(
+      () => reject(new Error('Initial cloud hydration timed out.')),
+      milliseconds,
+    );
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function preferServerThenCache<T>(serverRead: () => Promise<T>, cacheRead: () => Promise<T>) {
+  try {
+    return await withTimeout(serverRead(), INITIAL_SERVER_WAIT_MS);
+  } catch {
+    try {
+      return await cacheRead();
+    } catch {
+      return undefined;
+    }
+  }
+}
 
 async function optimizeProfileImage(value: string, kind: 'avatar' | 'banner'): Promise<Blob> {
   const source = await fetch(value).then((response) => response.blob());
@@ -396,18 +435,27 @@ export const CloudPersistenceBridge: React.FC = () => {
         }
       }
 
-      const [bookSnapshot, sessionSnapshot] = await Promise.all([
-        getDocs(collection(db!, 'users', uid, 'books')),
-        getDocs(collection(db!, 'users', uid, 'sessions')),
+      const booksRef = collection(db!, 'users', uid, 'books');
+      const sessionsRef = collection(db!, 'users', uid, 'sessions');
+      const profileRef = doc(db!, 'users', uid, 'profile', 'current');
+
+      const [bookSnapshot, sessionSnapshot, cloudProfileSnapshot] = await Promise.all([
+        preferServerThenCache(() => getDocs(booksRef), () => getDocsFromCache(booksRef)),
+        preferServerThenCache(() => getDocs(sessionsRef), () => getDocsFromCache(sessionsRef)),
+        preferServerThenCache(() => getDoc(profileRef), () => getDocFromCache(profileRef)),
       ]);
       if (disposed) return;
 
-      const cloudBooks = bookSnapshot.docs
-        .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
-        .filter(Boolean);
-      const cloudSessions = sessionSnapshot.docs
-        .map((item) => (item.data() as CloudRecord<ReadingSession>).data)
-        .filter(Boolean);
+      const cloudBooks = bookSnapshot
+        ? bookSnapshot.docs
+            .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
+            .filter(Boolean)
+        : localBooks;
+      const cloudSessions = sessionSnapshot
+        ? sessionSnapshot.docs
+            .map((item) => (item.data() as CloudRecord<ReadingSession>).data)
+            .filter(Boolean)
+        : localSessions;
 
       const nextBaseline: SyncBaseline = {
         books: Object.fromEntries(cloudBooks.map((book) => [book.id, stable(book)])),
@@ -415,7 +463,7 @@ export const CloudPersistenceBridge: React.FC = () => {
         profile: baseline.profile,
       };
 
-      if (sameAccountLocalData && !intentionalLocalClear) {
+      if (sameAccountLocalData && !intentionalLocalClear && bookSnapshot && sessionSnapshot) {
         const cloudBookIds = new Set(cloudBooks.map((book) => book.id));
         const cloudSessionIds = new Set(cloudSessions.map((session) => session.id));
         const now = new Date().toISOString();
@@ -440,9 +488,7 @@ export const CloudPersistenceBridge: React.FC = () => {
       bookFingerprints.current = toFingerprintMap(localBooks);
       sessionFingerprints.current = toFingerprintMap(localSessions);
 
-      const profileRef = doc(db!, 'users', uid, 'profile', 'current');
-      const cloudProfileSnapshot = await getDoc(profileRef);
-      const cloudProfile = cloudProfileSnapshot.exists()
+      const cloudProfile = cloudProfileSnapshot?.exists()
         ? (cloudProfileSnapshot.data() as CloudRecord<ReaderProfile>).data
         : undefined;
 
@@ -457,7 +503,7 @@ export const CloudPersistenceBridge: React.FC = () => {
           data: localProfile,
           clientUpdatedAt: new Date().toISOString(),
         };
-      } else {
+      } else if (!sameAccountLocalData || intentionalLocalClear) {
         localProfile = {};
       }
 
@@ -474,75 +520,88 @@ export const CloudPersistenceBridge: React.FC = () => {
         fingerprints: React.MutableRefObject<Map<string, string>>,
         getPendingCollection: (state: PendingSyncState) => Record<string, RecordMutation<T>>,
         getBaselineCollection: (state: SyncBaseline) => Record<string, string>,
-      ) => onSnapshot(collection(db!, 'users', uid, name), (snapshot) => {
-        if (!hydrated.current) return;
-        const currentPending = readPending(uid);
-        const collectionPending = getPendingCollection(currentPending);
-        const currentBaseline = readBaseline(uid);
-        const baselineCollection = getBaselineCollection(currentBaseline);
-        let current = safeParse<T[]>(storageKey, []);
-        let changed = false;
-        let baselineChanged = false;
+      ) => onSnapshot(
+        collection(db!, 'users', uid, name),
+        (snapshot) => {
+          if (!hydrated.current) return;
+          const currentPending = readPending(uid);
+          const collectionPending = getPendingCollection(currentPending);
+          const currentBaseline = readBaseline(uid);
+          const baselineCollection = getBaselineCollection(currentBaseline);
+          let current = safeParse<T[]>(storageKey, []);
+          let changed = false;
+          let baselineChanged = false;
 
-        snapshot.docChanges().forEach((change) => {
-          const id = change.doc.id;
-          if (collectionPending[id]) return;
+          snapshot.docChanges().forEach((change) => {
+            const id = change.doc.id;
+            if (collectionPending[id]) return;
 
-          if (change.type === 'removed') {
-            const next = current.filter((item) => item.id !== id);
-            changed = changed || next.length !== current.length;
-            current = next;
-            fingerprints.current.delete(id);
-            if (baselineCollection[id] !== undefined) {
-              delete baselineCollection[id];
-              baselineChanged = true;
+            if (change.type === 'removed') {
+              const next = current.filter((item) => item.id !== id);
+              changed = changed || next.length !== current.length;
+              current = next;
+              fingerprints.current.delete(id);
+              if (baselineCollection[id] !== undefined) {
+                delete baselineCollection[id];
+                baselineChanged = true;
+              }
+              return;
             }
-            return;
-          }
 
-          const record = (change.doc.data() as CloudRecord<T>).data;
-          if (!record) return;
-          const serialized = stable(record);
-          const index = current.findIndex((item) => item.id === record.id);
-          if (index >= 0) {
-            if (stable(current[index]) !== serialized) {
-              current[index] = record;
+            const record = (change.doc.data() as CloudRecord<T>).data;
+            if (!record) return;
+            const serialized = stable(record);
+            const index = current.findIndex((item) => item.id === record.id);
+            if (index >= 0) {
+              if (stable(current[index]) !== serialized) {
+                current[index] = record;
+                changed = true;
+              }
+            } else {
+              current.push(record);
               changed = true;
             }
-          } else {
-            current.push(record);
-            changed = true;
-          }
-          fingerprints.current.set(record.id, serialized);
-          if (baselineCollection[record.id] !== serialized) {
-            baselineCollection[record.id] = serialized;
-            baselineChanged = true;
-          }
-        });
+            fingerprints.current.set(record.id, serialized);
+            if (baselineCollection[record.id] !== serialized) {
+              baselineCollection[record.id] = serialized;
+              baselineChanged = true;
+            }
+          });
 
-        if (baselineChanged) writeBaseline(uid, currentBaseline);
-        if (!changed) return;
-        localStorage.setItem(storageKey, stable(current));
-        notifyCloudDataUpdated([storageKey]);
-      });
+          if (baselineChanged) writeBaseline(uid, currentBaseline);
+          if (!changed) return;
+          localStorage.setItem(storageKey, stable(current));
+          notifyCloudDataUpdated([storageKey]);
+        },
+        () => {
+          // Initial hydration already unlocked the local/cache copy. Listener
+          // failures should never put the library back behind a loading screen.
+        },
+      );
 
-      const unsubscribeProfile = onSnapshot(profileRef, (snapshot) => {
-        if (!hydrated.current || !snapshot.exists()) return;
-        const currentPending = readPending(uid);
-        if (currentPending.profile) return;
-        const cloudValue = (snapshot.data() as CloudRecord<ReaderProfile>).data;
-        if (!cloudValue) return;
-        const fingerprint = stable(cloudValue);
-        const currentBaseline = readBaseline(uid);
-        if (currentBaseline.profile !== fingerprint) {
-          currentBaseline.profile = fingerprint;
-          writeBaseline(uid, currentBaseline);
-        }
-        if (fingerprint === profileFingerprint.current) return;
-        profileFingerprint.current = fingerprint;
-        localStorage.setItem(PROFILE_KEY, fingerprint);
-        notifyCloudDataUpdated([PROFILE_KEY]);
-      });
+      const unsubscribeProfile = onSnapshot(
+        profileRef,
+        (snapshot) => {
+          if (!hydrated.current || !snapshot.exists()) return;
+          const currentPending = readPending(uid);
+          if (currentPending.profile) return;
+          const cloudValue = (snapshot.data() as CloudRecord<ReaderProfile>).data;
+          if (!cloudValue) return;
+          const fingerprint = stable(cloudValue);
+          const currentBaseline = readBaseline(uid);
+          if (currentBaseline.profile !== fingerprint) {
+            currentBaseline.profile = fingerprint;
+            writeBaseline(uid, currentBaseline);
+          }
+          if (fingerprint === profileFingerprint.current) return;
+          profileFingerprint.current = fingerprint;
+          localStorage.setItem(PROFILE_KEY, fingerprint);
+          notifyCloudDataUpdated([PROFILE_KEY]);
+        },
+        () => {
+          // Keep the last verified profile visible if the listener disconnects.
+        },
+      );
 
       unsubscribers.push(
         subscribeCollection<UserBookRecord>(
@@ -573,7 +632,18 @@ export const CloudPersistenceBridge: React.FC = () => {
       }
     };
 
-    void initialize();
+    void initialize().catch(() => {
+      if (disposed) return;
+      // A failed initial network read must never leave the application waiting
+      // forever. Only expose data already associated with this authenticated UID.
+      const ownerUid = localStorage.getItem(OWNER_UID_KEY);
+      if (!ownerUid || ownerUid === uid) {
+        localStorage.setItem(OWNER_UID_KEY, uid);
+        localStorage.removeItem(clearIntentKey(uid));
+      }
+      hydrated.current = true;
+      notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
+    });
 
     const poll = window.setInterval(async () => {
       if (!hydrated.current || disposed || pollRunning.current) return;
@@ -589,8 +659,24 @@ export const CloudPersistenceBridge: React.FC = () => {
     }, LOCAL_CHANGE_POLL_MS);
 
     const preservePendingBeforeBackgrounding = () => captureCurrentChanges();
+    const syncLocalChangeImmediately = () => {
+      if (!hydrated.current || disposed) return;
+      captureCurrentChanges();
+      void flushPending().catch(() => {
+        // The durable pending queue will retry during the next poll.
+      });
+    };
+    const flushBeforeSignOut = (event: Event) => {
+      const detail = (event as CustomEvent<BeforeSignOutDetail>).detail;
+      if (detail?.uid !== uid) return;
+      captureCurrentChanges();
+      detail.waitUntil(flushPending());
+    };
+
     window.addEventListener('pagehide', preservePendingBeforeBackgrounding);
     document.addEventListener('visibilitychange', preservePendingBeforeBackgrounding);
+    window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncLocalChangeImmediately);
+    window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
 
     return () => {
       preservePendingBeforeBackgrounding();
@@ -598,6 +684,8 @@ export const CloudPersistenceBridge: React.FC = () => {
       window.clearInterval(poll);
       window.removeEventListener('pagehide', preservePendingBeforeBackgrounding);
       document.removeEventListener('visibilitychange', preservePendingBeforeBackgrounding);
+      window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncLocalChangeImmediately);
+      window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [sync.user?.uid]);
