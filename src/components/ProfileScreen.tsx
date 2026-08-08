@@ -52,14 +52,10 @@ const readStoredProfile = (): StoredProfile => {
   } catch {
     // Fall back to defaults when stored profile data is invalid.
   }
-
   return DEFAULT_PROFILE;
 };
 
 const saveStoredProfile = (profile: StoredProfile) => {
-  // Never put image bytes or temporary blob URLs in localStorage. A large banner
-  // can exceed the browser storage quota and prevent the rest of the profile from
-  // saving. Persist only durable URLs returned by Firebase Storage.
   const storedProfile: StoredProfile = {
     ...profile,
     avatarImage: isTemporaryImageUrl(profile.avatarImage) ? undefined : profile.avatarImage,
@@ -74,30 +70,75 @@ const saveStoredProfile = (profile: StoredProfile) => {
   }
 };
 
-const imageExtension = (type: string) => {
-  if (type === 'image/png') return 'png';
-  if (type === 'image/webp') return 'webp';
-  if (type === 'image/gif') return 'gif';
-  return 'jpg';
-};
+async function optimizeProfileBlob(source: Blob, kind: 'avatar' | 'banner'): Promise<Blob> {
+  if (typeof createImageBitmap !== 'function') return source;
+
+  try {
+    const bitmap = await createImageBitmap(source);
+    const maximumWidth = kind === 'avatar' ? 512 : 1600;
+    const maximumHeight = kind === 'avatar' ? 512 : 700;
+    const scale = Math.min(1, maximumWidth / bitmap.width, maximumHeight / bitmap.height);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      bitmap.close();
+      return source;
+    }
+
+    context.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    return await new Promise<Blob>((resolve) => {
+      canvas.toBlob(
+        (blob) => resolve(blob ?? source),
+        'image/webp',
+        kind === 'avatar' ? 0.84 : 0.78,
+      );
+    });
+  } catch {
+    return source;
+  }
+}
+
+async function uploadProfileBlob(
+  uid: string,
+  kind: 'avatar' | 'banner',
+  source: Blob,
+  fingerprint: string,
+): Promise<string> {
+  if (!storage) throw new Error('Profile image storage is unavailable.');
+
+  const optimized = await optimizeProfileBlob(source, kind);
+  const usesWebp = optimized.type === 'image/webp';
+  const extension = usesWebp
+    ? 'webp'
+    : optimized.type === 'image/png'
+      ? 'png'
+      : optimized.type === 'image/gif'
+        ? 'gif'
+        : 'jpg';
+  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${fingerprint}.${extension}`);
+
+  await uploadBytes(imageRef, optimized, {
+    contentType: optimized.type || 'image/jpeg',
+    cacheControl: 'public,max-age=31536000,immutable',
+  });
+
+  return getDownloadURL(imageRef);
+}
 
 async function uploadProfileFile(
   uid: string,
   kind: 'avatar' | 'banner',
   file: File,
 ): Promise<string> {
-  if (!storage) throw new Error('Profile image storage is unavailable.');
-
-  const extension = imageExtension(file.type);
-  const safeFingerprint = `${file.size}-${file.lastModified}-${Date.now()}`;
-  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${safeFingerprint}.${extension}`);
-
-  await uploadBytes(imageRef, file, {
-    contentType: file.type || 'image/jpeg',
-    cacheControl: 'public,max-age=31536000,immutable',
-  });
-
-  return getDownloadURL(imageRef);
+  const fingerprint = `${file.size}-${file.lastModified}-${Date.now()}`;
+  return uploadProfileBlob(uid, kind, file, fingerprint);
 }
 
 async function uploadLegacyDataImage(
@@ -105,18 +146,9 @@ async function uploadLegacyDataImage(
   kind: 'avatar' | 'banner',
   value: string,
 ): Promise<string> {
-  if (!storage) throw new Error('Profile image storage is unavailable.');
   const response = await fetch(value);
   const blob = await response.blob();
-  const imageRef = ref(
-    storage,
-    `users/${uid}/profile/${kind}-legacy-${Date.now()}.${imageExtension(blob.type)}`,
-  );
-  await uploadBytes(imageRef, blob, {
-    contentType: blob.type || 'image/jpeg',
-    cacheControl: 'public,max-age=31536000,immutable',
-  });
-  return getDownloadURL(imageRef);
+  return uploadProfileBlob(uid, kind, blob, `legacy-${Date.now()}`);
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions }) => {
@@ -166,10 +198,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     });
   }, [sync.user?.uid]);
 
-  useEffect(() => () => {
-    releasePreviewUrl(avatarPreviewUrlRef);
-    releasePreviewUrl(bannerPreviewUrlRef);
-  }, []);
+  useEffect(
+    () => () => {
+      releasePreviewUrl(avatarPreviewUrlRef);
+      releasePreviewUrl(bannerPreviewUrlRef);
+    },
+    [],
+  );
 
   const completedBooks = useMemo(
     () => books.filter((book) => book.status === 'finished').length,
@@ -215,8 +250,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       setBannerImage(previewUrl);
     }
 
-    // The file itself stays in memory until Save Profile. This avoids placing a
-    // multi-megabyte data URL in localStorage while still giving an instant preview.
     setSaveStatus('idle');
   };
 
@@ -227,42 +260,30 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       const persistedProfile = readStoredProfile();
 
       if (!sync.user || !db) {
-        const localProfile = currentProfile({
-          avatarImage: isTemporaryImageUrl(avatarImage) ? persistedProfile.avatarImage : avatarImage,
-          bannerImage: isTemporaryImageUrl(bannerImage) ? persistedProfile.bannerImage : bannerImage,
-        });
-        saveStoredProfile(localProfile);
+        saveStoredProfile(
+          currentProfile({
+            avatarImage: isTemporaryImageUrl(avatarImage) ? persistedProfile.avatarImage : avatarImage,
+            bannerImage: isTemporaryImageUrl(bannerImage) ? persistedProfile.bannerImage : bannerImage,
+          }),
+        );
         setSaveStatus('saved');
         window.setTimeout(() => setSaveStatus('idle'), 2500);
         return;
       }
 
-      let savedAvatarImage = isTemporaryImageUrl(avatarImage)
-        ? persistedProfile.avatarImage
-        : avatarImage;
-      let savedBannerImage = isTemporaryImageUrl(bannerImage)
-        ? persistedProfile.bannerImage
-        : bannerImage;
+      const avatarUpload = pendingAvatarFileRef.current
+        ? uploadProfileFile(sync.user.uid, 'avatar', pendingAvatarFileRef.current)
+        : avatarImage?.startsWith('data:image/')
+          ? uploadLegacyDataImage(sync.user.uid, 'avatar', avatarImage)
+          : Promise.resolve(isTemporaryImageUrl(avatarImage) ? persistedProfile.avatarImage : avatarImage);
 
-      if (pendingAvatarFileRef.current) {
-        savedAvatarImage = await uploadProfileFile(
-          sync.user.uid,
-          'avatar',
-          pendingAvatarFileRef.current,
-        );
-      } else if (avatarImage?.startsWith('data:image/')) {
-        savedAvatarImage = await uploadLegacyDataImage(sync.user.uid, 'avatar', avatarImage);
-      }
+      const bannerUpload = pendingBannerFileRef.current
+        ? uploadProfileFile(sync.user.uid, 'banner', pendingBannerFileRef.current)
+        : bannerImage?.startsWith('data:image/')
+          ? uploadLegacyDataImage(sync.user.uid, 'banner', bannerImage)
+          : Promise.resolve(isTemporaryImageUrl(bannerImage) ? persistedProfile.bannerImage : bannerImage);
 
-      if (pendingBannerFileRef.current) {
-        savedBannerImage = await uploadProfileFile(
-          sync.user.uid,
-          'banner',
-          pendingBannerFileRef.current,
-        );
-      } else if (bannerImage?.startsWith('data:image/')) {
-        savedBannerImage = await uploadLegacyDataImage(sync.user.uid, 'banner', bannerImage);
-      }
+      const [savedAvatarImage, savedBannerImage] = await Promise.all([avatarUpload, bannerUpload]);
 
       const cloudProfile: StoredProfile = {
         displayName,
