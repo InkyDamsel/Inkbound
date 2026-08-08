@@ -15,7 +15,7 @@ export type SubscriptionService = 'kindle-unlimited' | 'audible-plus' | 'everand
 
 export type Priority = 'top' | 'high' | 'medium' | 'low';
 
-export type EditionSource = 'google-books' | 'open-library' | 'manual' | 'import';
+export type EditionSource = 'google-books' | 'open-library' | 'hardcover' | 'manual' | 'import';
 
 export interface BookWork {
   id: string;
