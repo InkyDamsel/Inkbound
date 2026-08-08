@@ -33,6 +33,9 @@ interface SettingsScreenProps {
   onResetData: () => void;
 }
 
+const CLEAR_DEVICE_PHRASE = 'CLEAR THIS DEVICE';
+const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
+
 const downloadBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -71,6 +74,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [isClearing, setIsClearing] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteAcknowledged, setDeleteAcknowledged] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState('');
 
@@ -155,7 +159,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   const confirmReset = async () => {
-    if (resetConfirmation.trim().toUpperCase() !== 'CLEAR' || isClearing) return;
+    if (resetConfirmation.trim().toUpperCase() !== CLEAR_DEVICE_PHRASE || isClearing) return;
     setIsClearing(true);
     try {
       if (user) {
@@ -172,7 +176,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const confirmDeleteAccount = async () => {
     if (
-      deleteConfirmation.trim().toUpperCase() !== 'DELETE' ||
+      deleteConfirmation.trim().toUpperCase() !== DELETE_ACCOUNT_PHRASE ||
+      !deleteAcknowledged ||
       isDeletingAccount ||
       !user ||
       !auth ||
@@ -192,7 +197,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       await reauthenticateWithPopup(user, provider);
 
       const deleteAccount = httpsCallable(functions, 'deleteMyAccount');
-      await deleteAccount();
+      await deleteAccount({ confirmation: DELETE_ACCOUNT_PHRASE });
 
       onResetData();
       clearInkboundLocalData();
@@ -387,7 +392,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button
             type="button"
-            onClick={() => setResetDialogOpen(true)}
+            onClick={() => {
+              setResetConfirmation('');
+              setResetDialogOpen(true);
+            }}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/40 px-4 text-sm font-bold text-[#e9b2b2] hover:bg-[#c97b7b]/10"
           >
             <RotateCcw className="h-4 w-4" /> {user ? 'Clear device & sign out' : 'Clear local data'}
@@ -398,6 +406,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             onClick={() => {
               setDeleteAccountError('');
               setDeleteConfirmation('');
+              setDeleteAcknowledged(false);
               setDeleteDialogOpen(true);
             }}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -409,7 +418,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </section>
 
       {resetDialogOpen && (
-        <div className="fixed inset-0 z-[250] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setResetDialogOpen(false)}>
+        <div className="fixed inset-0 z-[250] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => !isClearing && setResetDialogOpen(false)}>
           <section
             role="dialog"
             aria-modal="true"
@@ -417,29 +426,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             className="relative w-full max-w-lg rounded-3xl border border-[#c97b7b]/35 bg-[#17101b] p-6 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <button type="button" onClick={() => setResetDialogOpen(false)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)]" aria-label="Close confirmation">
+            <button type="button" disabled={isClearing} onClick={() => setResetDialogOpen(false)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)] disabled:opacity-40" aria-label="Close confirmation">
               <X className="h-5 w-5" />
             </button>
             <h3 id="clear-data-title" className="pr-12 font-serif text-3xl text-[var(--ink-ivory)]">Clear this device?</h3>
             <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
-              Your cloud library will stay intact. {user ? 'You will be signed out before the local cache is cleared. ' : ''}Export a backup first if you want an extra portable copy. Type <strong className="text-[var(--ink-ivory)]">CLEAR</strong> below to continue.
+              This removes only this device's cached Inkbound books and reading sessions. Your cloud library stays intact. {user ? 'You will be signed out before the local cache is cleared. ' : ''}This action cannot be triggered until you type the exact phrase below.
             </p>
+            <div className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-muted)]">
+              Type <strong className="select-all text-[var(--ink-ivory)]">{CLEAR_DEVICE_PHRASE}</strong>
+            </div>
             <input
               value={resetConfirmation}
               onChange={(event) => setResetConfirmation(event.target.value)}
-              autoFocus
-              placeholder="Type CLEAR"
-              className="mt-5 min-h-12 w-full rounded-xl border border-[#c97b7b]/35 bg-[#0d0910] px-4 text-[var(--ink-ivory)] outline-none"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={CLEAR_DEVICE_PHRASE}
+              className="mt-4 min-h-12 w-full rounded-xl border border-[#c97b7b]/35 bg-[#0d0910] px-4 text-[var(--ink-ivory)] outline-none"
             />
             <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setResetDialogOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button>
+              <button type="button" disabled={isClearing} onClick={() => setResetDialogOpen(false)} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Cancel</button>
               <button
                 type="button"
                 onClick={() => void confirmReset()}
-                disabled={resetConfirmation.trim().toUpperCase() !== 'CLEAR' || isClearing}
+                disabled={resetConfirmation.trim().toUpperCase() !== CLEAR_DEVICE_PHRASE || isClearing}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {isClearing ? 'Clearing…' : user ? 'Clear & sign out' : 'Clear this device'}
+                {isClearing ? 'Clearing…' : user ? 'Clear this device & sign out' : 'Clear this device'}
               </button>
             </div>
           </section>
@@ -489,16 +502,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             )}
 
             <div className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-xs leading-5 text-[var(--ink-muted)]">
-              We recommend downloading a Complete JSON backup before continuing. Inkbound will ask you to verify your Google account again before deletion begins.
+              We recommend downloading a Complete JSON backup before continuing. After both confirmations below, Inkbound will ask you to verify your Google account again. Deletion begins only after that verification succeeds.
             </div>
 
+            <label className="mt-5 flex items-start gap-3 rounded-xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-4 text-sm leading-5 text-[var(--ink-muted)]">
+              <input
+                type="checkbox"
+                checked={deleteAcknowledged}
+                onChange={(event) => setDeleteAcknowledged(event.target.checked)}
+                disabled={isDeletingAccount || accessSource === 'subscription'}
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span>
+                I understand that deleting my account permanently removes my Inkbound account and cloud data and cannot be undone.
+              </span>
+            </label>
+
             <label className="mt-5 block text-sm font-semibold text-[var(--ink-ivory)]">
-              Type DELETE to confirm
+              Type <span className="select-all">{DELETE_ACCOUNT_PHRASE}</span> to confirm
               <input
                 value={deleteConfirmation}
                 onChange={(event) => setDeleteConfirmation(event.target.value)}
                 disabled={isDeletingAccount || accessSource === 'subscription'}
-                placeholder="DELETE"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={DELETE_ACCOUNT_PHRASE}
                 className="mt-2 min-h-12 w-full rounded-xl border border-[#c97b7b]/40 bg-[#0d0910] px-4 text-[var(--ink-ivory)] outline-none disabled:opacity-45"
               />
             </label>
@@ -516,10 +544,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <button
                 type="button"
                 onClick={() => void confirmDeleteAccount()}
-                disabled={deleteConfirmation.trim().toUpperCase() !== 'DELETE' || isDeletingAccount || accessSource === 'subscription'}
+                disabled={
+                  deleteConfirmation.trim().toUpperCase() !== DELETE_ACCOUNT_PHRASE ||
+                  !deleteAcknowledged ||
+                  isDeletingAccount ||
+                  accessSource === 'subscription'
+                }
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Trash2 className="h-4 w-4" /> {isDeletingAccount ? 'Deleting account…' : 'Permanently delete account'}
+                <Trash2 className="h-4 w-4" /> {isDeletingAccount ? 'Deleting account…' : 'Verify Google & delete account'}
               </button>
             </div>
           </section>
