@@ -117,10 +117,7 @@ const hashText = (value: string) => {
   return (hash >>> 0).toString(36);
 };
 
-async function optimizeProfileImage(
-  value: string,
-  kind: 'avatar' | 'banner',
-): Promise<Blob> {
+async function optimizeProfileImage(value: string, kind: 'avatar' | 'banner'): Promise<Blob> {
   const source = await fetch(value).then((response) => response.blob());
   const bitmap = await createImageBitmap(source);
   const maximumWidth = kind === 'avatar' ? 512 : 1600;
@@ -348,6 +345,7 @@ export const CloudPersistenceBridge: React.FC = () => {
         disposed ||
         localStorage.getItem(clearIntentKey(uid)) === '1'
       ) return;
+
       const pending = readPending(uid);
       const localBooks = safeParse<UserBookRecord[]>(BOOKS_KEY, []);
       const localSessions = safeParse<ReadingSession[]>(SESSIONS_KEY, []);
@@ -474,12 +472,14 @@ export const CloudPersistenceBridge: React.FC = () => {
         name: 'books' | 'sessions',
         storageKey: 'inkbound_books' | 'inkbound_sessions',
         fingerprints: React.MutableRefObject<Map<string, string>>,
+        getPendingCollection: (state: PendingSyncState) => Record<string, RecordMutation<T>>,
+        getBaselineCollection: (state: SyncBaseline) => Record<string, string>,
       ) => onSnapshot(collection(db!, 'users', uid, name), (snapshot) => {
         if (!hydrated.current) return;
         const currentPending = readPending(uid);
-        const collectionPending = currentPending[name] as Record<string, RecordMutation<T>>;
+        const collectionPending = getPendingCollection(currentPending);
         const currentBaseline = readBaseline(uid);
-        const baselineCollection = currentBaseline[name] as Record<string, string>;
+        const baselineCollection = getBaselineCollection(currentBaseline);
         let current = safeParse<T[]>(storageKey, []);
         let changed = false;
         let baselineChanged = false;
@@ -545,8 +545,20 @@ export const CloudPersistenceBridge: React.FC = () => {
       });
 
       unsubscribers.push(
-        subscribeCollection<UserBookRecord>('books', BOOKS_KEY, bookFingerprints),
-        subscribeCollection<ReadingSession>('sessions', SESSIONS_KEY, sessionFingerprints),
+        subscribeCollection<UserBookRecord>(
+          'books',
+          BOOKS_KEY,
+          bookFingerprints,
+          (state) => state.books,
+          (state) => state.books,
+        ),
+        subscribeCollection<ReadingSession>(
+          'sessions',
+          SESSIONS_KEY,
+          sessionFingerprints,
+          (state) => state.sessions,
+          (state) => state.sessions,
+        ),
         unsubscribeProfile,
       );
 
