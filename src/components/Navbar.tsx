@@ -35,7 +35,7 @@ const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameintera
 const homeItem: NavigationItem = { id: 'home', label: 'Home', icon: Home };
 const navigationGroups: NavigationGroup[] = [
   { id: 'reading', label: 'Reading', items: [
-    { id: 'library', label: 'My Library', icon: Library }, { id: 'tbr', label: 'TBR', icon: Bookmark },
+    { id: 'library', label: 'My Library', icon: Library },
     { id: 'sessions', label: 'Reading Sessions', icon: Clock3 }, { id: 'collections', label: 'Collections', icon: FolderHeart },
     { id: 'import', label: 'Import', icon: DownloadCloud },
   ]},
