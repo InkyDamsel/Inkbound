@@ -7,20 +7,18 @@ interface AppErrorBoundaryProps {
 
 interface AppErrorBoundaryState {
   hasError: boolean;
-  errorMessage?: string;
 }
 
 export class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
   state: AppErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
-    return {
-      hasError: true,
-      errorMessage: error.message,
-    };
+  static getDerivedStateFromError(): AppErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    // Keep diagnostic details available to developers without exposing
+    // implementation jargon to readers in the Inkbound interface.
     console.error('Inkbound encountered an unrecoverable interface error.', error, info);
   }
 
@@ -42,11 +40,6 @@ export class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, App
           <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#ad9fac]">
             Your saved library has not been removed. Reload Inkbound to restore the reading sanctuary.
           </p>
-          {import.meta.env.DEV && this.state.errorMessage && (
-            <pre className="mt-5 overflow-auto rounded-xl border border-white/5 bg-black/25 p-3 text-left text-xs text-[#c8bac6]">
-              {this.state.errorMessage}
-            </pre>
-          )}
           <button type="button" onClick={this.reload} className="quiet-shelf-primary-action mx-auto mt-6 min-h-11 justify-center px-6">
             <RefreshCw className="h-4 w-4" /> Reload Inkbound
           </button>
