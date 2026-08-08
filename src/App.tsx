@@ -40,8 +40,17 @@ import { AddBookModal } from './components/AddBookModal';
 import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
 import { usePersistentState } from './hooks/usePersistentState';
-import { searchGoogleBooks } from './features/book-search/data/googleBooksApi';
-import type { BookSearchEdition, BookSearchWorkGroup } from './features/book-search/model/bookSearch';
+import {
+  buildRepairQueueItems,
+  createFallbackImportedBook,
+  enrichImportedBooks,
+  IMPORT_ENRICHMENT_BATCH_SIZE,
+  mergeEnrichedImportedBook,
+  queueImportedItems,
+  readImportEnrichmentQueue,
+  writeImportEnrichmentQueue,
+  type ImportEnrichmentQueueItem,
+} from './features/import/libraryEnrichment';
 import { Check, RotateCcw } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
@@ -49,10 +58,6 @@ const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
 const THEME_STORAGE_KEY = 'inkbound_theme';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
-const IMPORT_ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v1';
-const IMPORT_ENRICHMENT_CONCURRENCY = 8;
-const IMPORT_ENRICHMENT_BATCH_SIZE = 25;
-const importSearchCache = new Map<string, Promise<BookSearchWorkGroup[]>>();
 let isImportQueueProcessing = false;
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
@@ -62,208 +67,6 @@ function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback
   } catch {
     return fallback;
   }
-}
-
-function readImportEnrichmentQueue(): ImportRecordItem[] {
-  try {
-    const stored = localStorage.getItem(IMPORT_ENRICHMENT_QUEUE_KEY);
-    return stored ? (JSON.parse(stored) as ImportRecordItem[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeImportEnrichmentQueue(items: ImportRecordItem[]) {
-  if (items.length === 0) {
-    localStorage.removeItem(IMPORT_ENRICHMENT_QUEUE_KEY);
-    return;
-  }
-  localStorage.setItem(IMPORT_ENRICHMENT_QUEUE_KEY, JSON.stringify(items));
-}
-
-const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
-
-async function searchImportedBookMetadata(query: string): Promise<BookSearchWorkGroup[]> {
-  const normalizedQuery = query.trim().toLowerCase();
-  const cached = importSearchCache.get(normalizedQuery);
-  if (cached) return cached;
-
-  const request = searchGoogleBooks(query)
-    .then((response) => response.groups)
-    .catch((error) => {
-      importSearchCache.delete(normalizedQuery);
-      throw error;
-    });
-  importSearchCache.set(normalizedQuery, request);
-  return request;
-}
-
-function chooseImportedEdition(
-  item: ImportRecordItem,
-  groups: BookSearchWorkGroup[],
-): { work?: BookSearchWorkGroup; edition?: BookSearchEdition } {
-  const candidates = groups.flatMap((work) => work.editions.map((edition) => ({ work, edition })));
-  const requestedIsbn = compactIsbn(item.isbn);
-  if (requestedIsbn) {
-    const exact = candidates.find(({ edition }) =>
-      compactIsbn(edition.isbn13) === requestedIsbn || compactIsbn(edition.isbn10) === requestedIsbn,
-    );
-    if (exact) return exact;
-  }
-
-  return candidates.find(({ edition }) => edition.format === item.format && Boolean(edition.coverUrl))
-    ?? candidates.find(({ edition }) => Boolean(edition.coverUrl))
-    ?? candidates[0]
-    ?? {};
-}
-
-function createFallbackImportedBook(item: ImportRecordItem): UserBookRecord {
-  const editionId = `edition-import-${item.id}`;
-  return {
-    id: `book-import-${item.id}`,
-    work: {
-      id: `work-import-${item.id}`,
-      title: item.title,
-      author: item.author,
-      summary: item.review?.trim() || 'No publisher description was available for this imported book.',
-      personalSummary: item.review?.trim() || undefined,
-      genres: [],
-      publicationYear: item.dateRead ? Number(item.dateRead.slice(0, 4)) || new Date().getFullYear() : new Date().getFullYear(),
-    },
-    activeEditionId: editionId,
-    editions: [{
-      id: editionId,
-      format: item.format,
-      isbn: item.isbn,
-      isbn13: compactIsbn(item.isbn).length === 13 ? compactIsbn(item.isbn) : undefined,
-      isbn10: compactIsbn(item.isbn).length === 10 ? compactIsbn(item.isbn) : undefined,
-      coverGradient: item.coverGradient,
-      externalSource: 'import',
-    }],
-    status: item.status,
-    ownership: 'owned',
-    progressPages: 0,
-    progressMinutes: 0,
-    progressPercentage: item.status === 'finished' ? 100 : 0,
-    rating: item.rating,
-    review: item.review,
-    favoriteQuotes: [],
-    privateTags: ['imported'],
-    priority: 'medium',
-    moods: [],
-    collections: [],
-    sourceOfImport: 'Library import',
-    dateAdded: item.dateAdded,
-    dateFinished: item.dateRead,
-  };
-}
-
-async function enrichImportedBook(item: ImportRecordItem): Promise<UserBookRecord> {
-  try {
-    const query = item.isbn?.trim() || `${item.title} ${item.author}`;
-    const groups = await searchImportedBookMetadata(query);
-    const { work, edition } = chooseImportedEdition(item, groups);
-    if (!work || !edition) return createFallbackImportedBook(item);
-
-    const editionId = `edition-import-${item.id}`;
-    const pageCount = edition.pageCount;
-    return {
-      id: `book-import-${item.id}`,
-      work: {
-        id: `work-import-${item.id}`,
-        title: work.title || item.title,
-        subtitle: work.subtitle,
-        author: work.authors.length > 0 ? work.authors.join(', ') : item.author,
-        summary: work.publisherSummary?.trim() || item.review?.trim() || 'No publisher description was available for this imported book.',
-        publisherSummary: work.publisherSummary?.trim() || undefined,
-        personalSummary: item.review?.trim() || undefined,
-        genres: work.genres,
-        publicationYear: edition.publicationYear || new Date().getFullYear(),
-        originalLanguage: edition.language,
-        externalWorkId: work.key,
-      },
-      activeEditionId: editionId,
-      editions: [{
-        id: editionId,
-        format: item.format,
-        isbn: edition.isbn13 ?? edition.isbn10 ?? item.isbn,
-        isbn10: edition.isbn10,
-        isbn13: edition.isbn13,
-        pageCount,
-        publisher: edition.publisher,
-        publicationDate: edition.publicationDate,
-        coverGradient: item.coverGradient,
-        coverUrl: edition.coverUrl,
-        language: edition.language,
-        editionName: edition.editionName,
-        binding: edition.binding,
-        specialFeatures: edition.specialFeatures,
-        externalSource: edition.source,
-        externalEditionId: edition.externalEditionId,
-      }],
-      status: item.status,
-      ownership: 'owned',
-      progressPages: item.status === 'finished' ? pageCount ?? 0 : 0,
-      progressMinutes: 0,
-      progressPercentage: item.status === 'finished' ? 100 : 0,
-      rating: item.rating,
-      review: item.review,
-      favoriteQuotes: [],
-      privateTags: ['imported'],
-      priority: 'medium',
-      moods: [],
-      collections: [],
-      sourceOfImport: 'Library import + Google Books metadata',
-      dateAdded: item.dateAdded,
-      dateFinished: item.dateRead,
-    };
-  } catch {
-    return createFallbackImportedBook(item);
-  }
-}
-
-async function enrichImportedBooks(items: ImportRecordItem[]): Promise<UserBookRecord[]> {
-  const results = new Array<UserBookRecord>(items.length);
-  let nextIndex = 0;
-
-  const worker = async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await enrichImportedBook(items[index]);
-    }
-  };
-
-  await Promise.all(
-    Array.from({ length: Math.min(IMPORT_ENRICHMENT_CONCURRENCY, items.length) }, () => worker()),
-  );
-  return results;
-}
-
-function mergeEnrichedImportedBook(current: UserBookRecord, enriched: UserBookRecord): UserBookRecord {
-  return {
-    ...enriched,
-    status: current.status,
-    ownership: current.ownership,
-    subscriptionService: current.subscriptionService,
-    progressPages: current.progressPages,
-    progressMinutes: current.progressMinutes,
-    progressPercentage: current.progressPercentage,
-    rating: current.rating,
-    review: current.review,
-    personalNotes: current.personalNotes,
-    favoriteQuotes: current.favoriteQuotes,
-    privateTags: current.privateTags,
-    priority: current.priority,
-    moods: current.moods,
-    collections: current.collections,
-    whyIAddedThis: current.whyIAddedThis,
-    dateAdded: current.dateAdded,
-    dateStarted: current.dateStarted,
-    dateFinished: current.dateFinished,
-    lastSessionDate: current.lastSessionDate,
-    rereadCount: current.rereadCount,
-  };
 }
 
 export default function App() {
@@ -310,49 +113,82 @@ export default function App() {
 
   const processImportEnrichmentQueue = async () => {
     if (isImportQueueProcessing || !navigator.onLine) return;
-    let queue = readImportEnrichmentQueue();
-    if (queue.length === 0) return;
+    const initialQueue = readImportEnrichmentQueue();
+    if (initialQueue.length === 0) return;
 
     isImportQueueProcessing = true;
+    let pending = [...initialQueue];
+    const retryItems: ImportEnrichmentQueueItem[] = [];
     let updatedCount = 0;
     let coverCount = 0;
+    let summaryCount = 0;
 
     try {
-      while (queue.length > 0 && navigator.onLine) {
-        const batch = queue.slice(0, IMPORT_ENRICHMENT_BATCH_SIZE);
-        const enrichedBooks = await enrichImportedBooks(batch);
-        const enrichedById = new Map(enrichedBooks.map((book) => [book.id, book]));
+      while (pending.length > 0 && navigator.onLine) {
+        const batch = pending.slice(0, IMPORT_ENRICHMENT_BATCH_SIZE);
+        pending = pending.slice(batch.length);
+        const results = await enrichImportedBooks(batch);
+        const successful = results.filter((result) => result.success && result.enriched);
+        const enrichedById = new Map(
+          successful.map((result) => [result.item.targetBookId, result.enriched!]),
+        );
 
-        setBooks((current) => {
-          const next = current.map((book) => {
-            const enriched = enrichedById.get(book.id);
-            return enriched ? mergeEnrichedImportedBook(book, enriched) : book;
+        if (enrichedById.size > 0) {
+          setBooks((current) => {
+            const next = current.map((book) => {
+              const enriched = enrichedById.get(book.id);
+              return enriched ? mergeEnrichedImportedBook(book, enriched) : book;
+            });
+            localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(next));
+            return next;
           });
-          localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(next));
-          return next;
+        }
+
+        results.forEach((result) => {
+          if (result.success) {
+            updatedCount += 1;
+            if (result.foundCover) coverCount += 1;
+            if (result.foundSummary) summaryCount += 1;
+            return;
+          }
+          retryItems.push({
+            ...result.item,
+            attempts: (result.item.attempts ?? 0) + 1,
+            lastAttemptAt: new Date().toISOString(),
+          });
         });
 
-        updatedCount += enrichedBooks.length;
-        coverCount += enrichedBooks.filter((book) =>
-          book.editions.some((edition) => Boolean(edition.coverUrl)),
-        ).length;
-        queue = queue.slice(batch.length);
-        writeImportEnrichmentQueue(queue);
+        // Keep the queue durable after every small batch. A 1,000+ book library
+        // can safely close Inkbound and resume later without restarting the work.
+        writeImportEnrichmentQueue([...retryItems, ...pending]);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
       }
 
+      writeImportEnrichmentQueue([...retryItems, ...pending]);
       if (updatedCount > 0) {
-        showToast(`Updated ${updatedCount} imported books and found ${coverCount} covers.`);
+        showToast(
+          `Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`,
+        );
+      } else if (initialQueue.length > 0) {
+        showToast('Inkbound kept the remaining books queued and will retry their details later.');
       }
     } catch {
-      writeImportEnrichmentQueue(queue);
-      showToast('Book details are queued and will resume when Inkbound is online again.');
+      writeImportEnrichmentQueue([...retryItems, ...pending]);
+      showToast('Book details are safely queued and will resume when Inkbound can reach its metadata sources.');
     } finally {
       isImportQueueProcessing = false;
     }
   };
 
   useEffect(() => {
+    // Repair older imports too. Readers do not need to re-import an existing
+    // library just because covers or publisher summaries were missing before.
+    const repairedQueue = buildRepairQueueItems(books, readImportEnrichmentQueue());
+    writeImportEnrichmentQueue(repairedQueue);
     void processImportEnrichmentQueue();
+  }, [books]);
+
+  useEffect(() => {
     const resumeWhenOnline = () => void processImportEnrichmentQueue();
     window.addEventListener('online', resumeWhenOnline);
     return () => window.removeEventListener('online', resumeWhenOnline);
@@ -474,14 +310,14 @@ export default function App() {
     });
 
     const existingQueue = readImportEnrichmentQueue();
-    const queuedById = new Map(existingQueue.map((item) => [item.id, item]));
-    importedItems.forEach((item) => queuedById.set(item.id, item));
-    writeImportEnrichmentQueue(Array.from(queuedById.values()));
+    const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item]));
+    queueImportedItems(importedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item));
+    writeImportEnrichmentQueue([...queuedByBookId.values()]);
 
     showToast(
       navigator.onLine
-        ? `Added ${immediateBooks.length} books. Covers and details will continue updating automatically.`
-        : `Added ${immediateBooks.length} books offline. Covers and details will update when Inkbound is online.`,
+        ? `Added ${immediateBooks.length} books. Covers and publisher summaries will continue updating automatically.`
+        : `Added ${immediateBooks.length} books offline. Covers and publisher summaries will update when Inkbound is online.`,
     );
     void processImportEnrichmentQueue();
   };
@@ -496,7 +332,7 @@ export default function App() {
     localStorage.removeItem(SESSIONS_STORAGE_KEY);
     localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
     localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
-    localStorage.removeItem(IMPORT_ENRICHMENT_QUEUE_KEY);
+    writeImportEnrichmentQueue([]);
     showToast('Cleared all Inkbound books and reading sessions.');
   };
 
