@@ -14,6 +14,13 @@ interface BookCoverProps {
   className?: string;
 }
 
+const normalizeCoverUrl = (value?: string) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('http://')) return `https://${trimmed.slice('http://'.length)}`;
+  return trimmed;
+};
+
 export const BookCover: React.FC<BookCoverProps> = ({
   work,
   edition,
@@ -27,7 +34,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
 }) => {
   const format = edition?.format || 'hardcover';
   const gradient = edition?.coverGradient || 'from-amber-950 via-stone-900 to-amber-900';
-  const coverUrl = edition?.coverUrl?.trim();
+  const coverUrl = normalizeCoverUrl(edition?.coverUrl);
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
