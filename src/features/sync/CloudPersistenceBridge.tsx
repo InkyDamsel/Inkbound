@@ -330,9 +330,10 @@ export const CloudPersistenceBridge: React.FC = () => {
         stable(latestPending.profile) === stable(profileMutation) &&
         preparedProfile
       ) {
-        baseline.profile = stable(preparedProfile);
-        profileFingerprint.current = baseline.profile;
-        localStorage.setItem(PROFILE_KEY, baseline.profile);
+        const preparedFingerprint = stable(preparedProfile);
+        baseline.profile = preparedFingerprint;
+        profileFingerprint.current = preparedFingerprint;
+        localStorage.setItem(PROFILE_KEY, preparedFingerprint);
         delete latestPending.profile;
         notifyCloudDataUpdated([PROFILE_KEY]);
       }
@@ -342,7 +343,11 @@ export const CloudPersistenceBridge: React.FC = () => {
     };
 
     const captureCurrentChanges = () => {
-      if (!hydrated.current || disposed) return;
+      if (
+        !hydrated.current ||
+        disposed ||
+        localStorage.getItem(clearIntentKey(uid)) === '1'
+      ) return;
       const pending = readPending(uid);
       const localBooks = safeParse<UserBookRecord[]>(BOOKS_KEY, []);
       const localSessions = safeParse<ReadingSession[]>(SESSIONS_KEY, []);
