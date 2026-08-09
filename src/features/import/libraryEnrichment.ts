@@ -33,6 +33,11 @@ export interface ImportVerificationSummary {
   duplicates: ImportRecordItem[];
 }
 
+export interface ImportDuplicateAnalysis {
+  unique: ImportRecordItem[];
+  duplicates: ImportRecordItem[];
+}
+
 export function readImportEnrichmentQueue(): ImportEnrichmentQueueItem[] {
   try {
     const stored = localStorage.getItem(IMPORT_ENRICHMENT_QUEUE_KEY);
@@ -99,7 +104,7 @@ function isSameBookIdentity(item: ImportRecordItem, book: UserBookRecord): boole
   return Boolean(incomingKey && existingKey && incomingKey === existingKey);
 }
 
-function dedupeImportBatch(items: ImportRecordItem[]): { unique: ImportRecordItem[]; duplicates: ImportRecordItem[] } {
+export function analyzeImportDuplicates(items: ImportRecordItem[]): ImportDuplicateAnalysis {
   const library = readCurrentLibrary();
   const unique: ImportRecordItem[] = [];
   const duplicates: ImportRecordItem[] = [];
@@ -228,7 +233,7 @@ export async function verifyImportRecords(
   items: ImportRecordItem[],
   onProgress?: (completed: number, total: number) => void,
 ): Promise<ImportVerificationSummary> {
-  const { unique, duplicates } = dedupeImportBatch(items);
+  const { unique, duplicates } = analyzeImportDuplicates(items);
   const verifiedFlags = new Array<boolean>(unique.length).fill(false);
   let nextIndex = 0;
   let completed = 0;
