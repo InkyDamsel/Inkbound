@@ -52,6 +52,12 @@ const SEARCH_STOP_WORDS = new Set([
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
+const stripSeriesNoise = (value: string): string => value
+  .replace(/\([^)]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+)[^)]*\)/gi, ' ')
+  .replace(/\[[^\]]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+)[^\]]*\]/gi, ' ')
+  .replace(/\s*[:\-–—]\s*[^:–—-]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+).*$/gi, ' ')
+  .trim();
+
 const normalizeCoverUrl = (links?: GoogleImageLinks): string | undefined => {
   const source = links?.extraLarge ?? links?.large ?? links?.medium ?? links?.small ?? links?.thumbnail ?? links?.smallThumbnail;
   return source?.replace(/^http:/, 'https:').replace('&edge=curl', '').replace('zoom=1', 'zoom=2');
@@ -123,7 +129,8 @@ const groupEditions = (editions: BookSearchEdition[]): BookSearchWorkGroup[] => 
 };
 
 const searchTokens = (query: string): string[] => {
-  const cleaned = query.replace(/\b(?:intitle|inauthor|isbn|subject):/gi, ' ').replace(/["']/g, ' ');
+  const withoutOperators = query.replace(/\b(?:intitle|inauthor|isbn|subject):/gi, ' ').replace(/["']/g, ' ');
+  const cleaned = stripSeriesNoise(withoutOperators);
   return [...new Set(normalizeText(cleaned).split(' ').filter((token) => token.length >= 3 && !SEARCH_STOP_WORDS.has(token)))];
 };
 
@@ -138,7 +145,7 @@ const minimumRequiredMatches = (tokenCount: number): number => {
 const rankGroups = (groups: BookSearchWorkGroup[], query: string): BookSearchWorkGroup[] => {
   const isbnQuery = compactIsbn(query);
   const isExactIsbnSearch = /^(?:97[89])?\d{9}[\dX]$/i.test(isbnQuery);
-  const normalizedQuery = normalizeText(query.replace(/\b(?:intitle|inauthor|isbn|subject):/gi, ' ').replace(/["']/g, ' '));
+  const normalizedQuery = normalizeText(stripSeriesNoise(query.replace(/\b(?:intitle|inauthor|isbn|subject):/gi, ' ').replace(/["']/g, ' ')));
   const tokens = searchTokens(query);
   const requiredMatches = minimumRequiredMatches(tokens.length);
 
@@ -225,7 +232,7 @@ const mergeProviderGroups = (providerGroups: BookSearchWorkGroup[][]): BookSearc
 
 export const buildGoogleBooksQuery = (value: string): string => {
   const trimmed = value.trim();
-  const compact = trimmed.replace(/[-\s]/g, '');
+  const compact = compactIsbn(trimmed);
   if (/^(?:97[89])?\d{9}[\dX]$/i.test(compact)) return `isbn:${compact}`;
   return trimmed;
 };
@@ -243,8 +250,8 @@ async function searchGoogleBooksProvider(query: string, signal?: AbortSignal): P
 }
 
 const buildGoogleSearchVariants = (query: string): string[] => {
-  const compact = query.replace(/[-\s]/g, '');
-  if (/^(?:97[89])?\d{9}[\dX]$/i.test(compact)) return [query];
+  const compact = compactIsbn(query);
+  if (/^(?:97[89])?\d{9}[\dX]$/i.test(compact)) return [compact];
 
   // Google Books' generic query heavily favors popular titles. Run focused title
   // and author passes too so mid-list and indie authors remain discoverable.
