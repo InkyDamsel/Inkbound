@@ -214,9 +214,6 @@ const rankGroups = (groups: BookSearchWorkGroup[], query: string): BookSearchWor
     return item.matchingTokens >= requiredMatches;
   });
 
-  // If providers returned plausible books but the strict token gate found none,
-  // return only candidates that still share meaningful query tokens. This keeps
-  // indie and mid-list authors discoverable without falling back to unrelated popular books.
   const usable = strict.length > 0
     ? strict
     : ranked.filter((item) => !isExactIsbnSearch && item.matchingTokens > 0 && item.score >= 30);
@@ -256,6 +253,25 @@ const mergeProviderGroups = (providerGroups: BookSearchWorkGroup[][]): BookSearc
     });
   });
   return [...merged.values()];
+};
+
+const groupIdentity = (group: BookSearchWorkGroup): string =>
+  `${normalizeText(group.title)}::${normalizeText(group.authors[0])}`;
+
+const preserveGoogleBaseline = (
+  rankedGroups: BookSearchWorkGroup[],
+  baselineGroups: BookSearchWorkGroup[],
+): BookSearchWorkGroup[] => {
+  const seen = new Set(rankedGroups.map(groupIdentity));
+  const preserved = [...rankedGroups];
+  baselineGroups.forEach((group) => {
+    const key = groupIdentity(group);
+    if (!seen.has(key)) {
+      preserved.push(group);
+      seen.add(key);
+    }
+  });
+  return preserved.slice(0, 50);
 };
 
 export const buildGoogleBooksQuery = (value: string): string => {
@@ -303,10 +319,13 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (!trimmed) return { groups: [], totalItems: 0 };
 
   const variants = buildSearchVariants(trimmed);
-  const googleVariants = variants.slice(0, 4);
+  const primaryGoogle = await searchGoogleBooksProvider(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 }));
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+
+  const secondaryGoogleVariants = variants.filter((variant) => variant !== trimmed).slice(0, 3);
   const openLibraryVariants = variants.slice(0, 3);
   const settled = await Promise.allSettled([
-    ...googleVariants.map((variant) => searchGoogleBooksProvider(variant, signal)),
+    ...secondaryGoogleVariants.map((variant) => searchGoogleBooksProvider(variant, signal)),
     ...openLibraryVariants.map((variant) => searchOpenLibrary(variant, signal)),
     searchHardcover(trimmed),
   ]);
@@ -315,8 +334,12 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const successful = settled
     .filter((result): result is PromiseFulfilledResult<BookSearchResponse> => result.status === 'fulfilled')
     .map((result) => result.value);
-  if (successful.length === 0) throw new Error('Book search is temporarily unavailable. Please try again.');
 
-  const groups = rankGroups(mergeProviderGroups(successful.map((response) => response.groups)), trimmed);
+  const providerResponses = [primaryGoogle, ...successful].filter((response) => response.groups.length > 0);
+  if (providerResponses.length === 0) throw new Error('Book search is temporarily unavailable. Please try again.');
+
+  const merged = mergeProviderGroups(providerResponses.map((response) => response.groups));
+  const ranked = rankGroups(merged, trimmed);
+  const groups = preserveGoogleBaseline(ranked, primaryGoogle.groups);
   return { groups, totalItems: groups.length };
 }
