@@ -9,6 +9,8 @@ export const IMPORT_ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v3'
 export const IMPORT_ENRICHMENT_CONCURRENCY = 3;
 export const IMPORT_ENRICHMENT_BATCH_SIZE = 12;
 
+const BOOKS_STORAGE_KEY = 'inkbound_books';
+const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const importSearchCache = new Map<string, Promise<BookSearchWorkGroup[]>>();
 
 export interface ImportEnrichmentQueueItem extends ImportRecordItem {
@@ -28,6 +30,7 @@ export interface ImportEnrichmentResult {
 export interface ImportVerificationSummary {
   verified: ImportRecordItem[];
   unmatched: ImportRecordItem[];
+  duplicates: ImportRecordItem[];
 }
 
 export function readImportEnrichmentQueue(): ImportEnrichmentQueueItem[] {
@@ -54,6 +57,73 @@ export function writeImportEnrichmentQueue(items: ImportEnrichmentQueueItem[]) {
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 const normalizeText = (value?: string) => value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const authorSurname = (value?: string) => normalizeText(value).split(' ').filter(Boolean).at(-1) ?? '';
+
+function readCurrentLibrary(): UserBookRecord[] {
+  try {
+    const stored = localStorage.getItem(BOOKS_STORAGE_KEY) ?? localStorage.getItem(LEGACY_BOOKS_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as unknown;
+    return Array.isArray(parsed) ? (parsed as UserBookRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordIdentifiers(item: ImportRecordItem): string[] {
+  const isbn = compactIsbn(item.isbn);
+  return isbn ? [isbn] : [];
+}
+
+function bookIdentifiers(book: UserBookRecord): string[] {
+  return [...new Set(book.editions.flatMap((edition) => [
+    compactIsbn(edition.isbn13),
+    compactIsbn(edition.isbn10),
+    compactIsbn(edition.isbn),
+  ]).filter(Boolean))];
+}
+
+function titleAuthorKey(title?: string, author?: string): string {
+  const normalizedTitle = normalizeText(title);
+  const normalizedAuthor = normalizeText(author);
+  if (!normalizedTitle || !normalizedAuthor || normalizedAuthor === 'unknown author') return '';
+  return `${normalizedTitle}::${normalizedAuthor}`;
+}
+
+function isSameBookIdentity(item: ImportRecordItem, book: UserBookRecord): boolean {
+  const incomingIsbns = recordIdentifiers(item);
+  const existingIsbns = bookIdentifiers(book);
+  if (incomingIsbns.length > 0 && incomingIsbns.some((isbn) => existingIsbns.includes(isbn))) return true;
+
+  const incomingKey = titleAuthorKey(item.title, item.author);
+  const existingKey = titleAuthorKey(book.work.title, book.work.author);
+  return Boolean(incomingKey && existingKey && incomingKey === existingKey);
+}
+
+function dedupeImportBatch(items: ImportRecordItem[]): { unique: ImportRecordItem[]; duplicates: ImportRecordItem[] } {
+  const library = readCurrentLibrary();
+  const unique: ImportRecordItem[] = [];
+  const duplicates: ImportRecordItem[] = [];
+  const seenIsbns = new Set<string>();
+  const seenTitleAuthors = new Set<string>();
+
+  for (const item of items) {
+    const isbn = compactIsbn(item.isbn);
+    const key = titleAuthorKey(item.title, item.author);
+    const matchesExistingLibrary = library.some((book) => isSameBookIdentity(item, book));
+    const matchesCurrentBatch = Boolean((isbn && seenIsbns.has(isbn)) || (key && seenTitleAuthors.has(key)));
+
+    if (matchesExistingLibrary || matchesCurrentBatch) {
+      duplicates.push({ ...item, duplicateAction: 'skip' });
+      continue;
+    }
+
+    unique.push(item);
+    if (isbn) seenIsbns.add(isbn);
+    if (key) seenTitleAuthors.add(key);
+  }
+
+  return { unique, duplicates };
+}
 
 async function searchImportedBookMetadata(query: string): Promise<BookSearchWorkGroup[]> {
   const normalizedQuery = query.trim().toLowerCase();
@@ -158,27 +228,34 @@ export async function verifyImportRecords(
   items: ImportRecordItem[],
   onProgress?: (completed: number, total: number) => void,
 ): Promise<ImportVerificationSummary> {
-  const verifiedFlags = new Array<boolean>(items.length).fill(false);
+  const { unique, duplicates } = dedupeImportBatch(items);
+  const verifiedFlags = new Array<boolean>(unique.length).fill(false);
   let nextIndex = 0;
   let completed = 0;
 
+  if (unique.length === 0) {
+    onProgress?.(items.length, items.length);
+    return { verified: [], unmatched: [], duplicates };
+  }
+
   const worker = async () => {
-    while (nextIndex < items.length) {
+    while (nextIndex < unique.length) {
       const index = nextIndex;
       nextIndex += 1;
-      verifiedFlags[index] = await canVerifyImportedBook(items[index]);
+      verifiedFlags[index] = await canVerifyImportedBook(unique[index]);
       completed += 1;
-      onProgress?.(completed, items.length);
+      onProgress?.(completed + duplicates.length, items.length);
     }
   };
 
   await Promise.all(
-    Array.from({ length: Math.min(IMPORT_ENRICHMENT_CONCURRENCY, items.length) }, () => worker()),
+    Array.from({ length: Math.min(IMPORT_ENRICHMENT_CONCURRENCY, unique.length) }, () => worker()),
   );
 
   return {
-    verified: items.filter((_, index) => verifiedFlags[index]),
-    unmatched: items.filter((_, index) => !verifiedFlags[index]),
+    verified: unique.filter((_, index) => verifiedFlags[index]),
+    unmatched: unique.filter((_, index) => !verifiedFlags[index]),
+    duplicates,
   };
 }
 
