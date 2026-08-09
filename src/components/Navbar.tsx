@@ -11,7 +11,7 @@ import { inkboundBrand } from '../design/tokens';
 import { usePersistentState } from '../hooks/usePersistentState';
 
 export type NavTab =
-  | 'home' | 'library' | 'duplicates' | 'tbr' | 'sessions' | 'collections' | 'timeline' | 'memories'
+  | 'home' | 'library' | 'duplicates' | 'tbr' | 'sessions' | 'collections' | 'import-history' | 'timeline' | 'memories'
   | 'time-capsules' | 'photo-memories' | 'bookshelf-time' | 'my-dragon' | 'personality'
   | 'insights' | 'challenges' | 'achievements' | 'studio' | 'wrapped' | 'yearbook'
   | 'stats' | 'import' | 'settings' | 'profile' | 'admin';
@@ -38,6 +38,7 @@ const navigationGroups: NavigationGroup[] = [
     { id: 'library', label: 'My Library', icon: Library },
     { id: 'sessions', label: 'Reading Sessions', icon: Clock3 }, { id: 'collections', label: 'Collections', icon: FolderHeart },
     { id: 'duplicates', label: 'Duplicate Management', icon: Copy },
+    { id: 'import-history', label: 'Import History', icon: History },
     { id: 'import', label: 'Import', icon: DownloadCloud },
   ]},
   { id: 'journal', label: 'Journal', items: [
