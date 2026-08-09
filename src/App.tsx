@@ -59,6 +59,10 @@ const THEME_STORAGE_KEY = 'inkbound_theme';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
 const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
+const DAYTIME_MAINTENANCE_KEY = 'inkbound_last_daytime_library_maintenance';
+const DAYTIME_MAINTENANCE_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const DAYTIME_MAINTENANCE_BATCH_SIZE = 3;
+const MAINTENANCE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 let isImportQueueProcessing = false;
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
@@ -85,6 +89,30 @@ function isReadingTimerOpen(): boolean {
     return localStorage.getItem(TIMER_OPEN_STORAGE_KEY) === 'true';
   } catch {
     return false;
+  }
+}
+
+function isPreferredMaintenanceWindow(): boolean {
+  // Date#getHours uses the browser/device timezone, so the quiet-hours window
+  // automatically follows the reader wherever they use Inkbound.
+  const hour = new Date().getHours();
+  return hour >= 23 || hour < 5;
+}
+
+function canRunDaytimeMaintenance(): boolean {
+  try {
+    const lastRun = Number(localStorage.getItem(DAYTIME_MAINTENANCE_KEY) ?? 0);
+    return !Number.isFinite(lastRun) || Date.now() - lastRun >= DAYTIME_MAINTENANCE_COOLDOWN_MS;
+  } catch {
+    return true;
+  }
+}
+
+function markDaytimeMaintenanceRun() {
+  try {
+    localStorage.setItem(DAYTIME_MAINTENANCE_KEY, String(Date.now()));
+  } catch {
+    // Maintenance scheduling is best-effort only.
   }
 }
 
@@ -147,21 +175,32 @@ export default function App() {
     const initialQueue = readImportEnrichmentQueue();
     if (initialQueue.length === 0) return;
 
+    const isQuietHours = isPreferredMaintenanceWindow();
+    if (!isQuietHours && !canRunDaytimeMaintenance()) return;
+
     isImportQueueProcessing = true;
     let pending = [...initialQueue];
     const retryItems: ImportEnrichmentQueueItem[] = [];
     let updatedCount = 0;
     let coverCount = 0;
     let summaryCount = 0;
+    let processedBatchCount = 0;
 
     try {
       while (pending.length > 0 && navigator.onLine) {
-        // Reading sessions take priority over metadata maintenance. Stop between
-        // batches and leave the remaining queue durable for later.
+        // Reading sessions always take priority. During the day Inkbound only
+        // performs one tiny maintenance batch; from 11 PM through 5 AM local
+        // time it may continue working through the queue while the app is open.
         if (isReadingTimerOpen()) break;
+        if (!isQuietHours && processedBatchCount >= 1) break;
 
-        const batch = pending.slice(0, IMPORT_ENRICHMENT_BATCH_SIZE);
+        const batchSize = isQuietHours
+          ? IMPORT_ENRICHMENT_BATCH_SIZE
+          : DAYTIME_MAINTENANCE_BATCH_SIZE;
+        const batch = pending.slice(0, batchSize);
         pending = pending.slice(batch.length);
+        processedBatchCount += 1;
+
         const results = await enrichImportedBooks(batch);
         const successful = results.filter((result) => result.success && result.enriched);
         const enrichedById = new Map(
@@ -190,17 +229,20 @@ export default function App() {
         });
 
         writeImportEnrichmentQueue([...retryItems, ...pending]);
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+        await new Promise<void>((resolve) => window.setTimeout(resolve, isQuietHours ? 300 : 750));
       }
 
       writeImportEnrichmentQueue([...retryItems, ...pending]);
+      if (!isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
+
       if (updatedCount > 0) {
         showToast(`Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`);
-      } else if (initialQueue.length > 0 && !isReadingTimerOpen()) {
+      } else if (isQuietHours && initialQueue.length > 0 && !isReadingTimerOpen()) {
         showToast('Inkbound kept the remaining books queued and will retry their details later.');
       }
     } catch {
       writeImportEnrichmentQueue([...retryItems, ...pending]);
+      if (!isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
       showToast('Book details are safely queued and will resume when Inkbound can reach its metadata sources.');
     } finally {
       isImportQueueProcessing = false;
@@ -218,9 +260,19 @@ export default function App() {
   }, [isTimerOpen]);
 
   useEffect(() => {
-    const resumeWhenOnline = () => void processImportEnrichmentQueue();
-    window.addEventListener('online', resumeWhenOnline);
-    return () => window.removeEventListener('online', resumeWhenOnline);
+    const resumeMaintenance = () => void processImportEnrichmentQueue();
+    window.addEventListener('online', resumeMaintenance);
+    window.addEventListener('focus', resumeMaintenance);
+
+    // The browser cannot wake a closed/sleeping device, but if Inkbound is left
+    // open this check notices when the user's local clock enters quiet hours.
+    const interval = window.setInterval(resumeMaintenance, MAINTENANCE_CHECK_INTERVAL_MS);
+
+    return () => {
+      window.removeEventListener('online', resumeMaintenance);
+      window.removeEventListener('focus', resumeMaintenance);
+      window.clearInterval(interval);
+    };
   }, []);
 
   const openTimer = (bookId?: string) => {
@@ -358,6 +410,7 @@ export default function App() {
       localStorage.removeItem(SESSIONS_STORAGE_KEY);
       localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
       localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
+      localStorage.removeItem(DAYTIME_MAINTENANCE_KEY);
     } catch {
       // Device cleanup is best-effort; state is already cleared above.
     }
