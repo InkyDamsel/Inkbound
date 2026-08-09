@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BarChart3, Bell, BookHeart, BookMarked, BookOpen, Bookmark, CalendarClock, CalendarDays,
   ChevronDown, Clock3, Copy, DownloadCloud, FolderHeart, History, Home, Images, Library, Moon,
@@ -32,13 +32,13 @@ interface NavbarProps {
 }
 
 const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
+const IMPORT_CENTER_VIEW_KEY = 'inkbound_import_center_view';
 const homeItem: NavigationItem = { id: 'home', label: 'Home', icon: Home };
 const navigationGroups: NavigationGroup[] = [
   { id: 'reading', label: 'Reading', items: [
     { id: 'library', label: 'My Library', icon: Library },
     { id: 'sessions', label: 'Reading Sessions', icon: Clock3 }, { id: 'collections', label: 'Collections', icon: FolderHeart },
     { id: 'duplicates', label: 'Duplicate Management', icon: Copy },
-    { id: 'import-history', label: 'Import History', icon: History },
     { id: 'import', label: 'Import', icon: DownloadCloud },
   ]},
   { id: 'journal', label: 'Journal', items: [
@@ -84,6 +84,12 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
     .map((group) => ({ ...group, items: group.items.filter((item) => !mobilePrimaryIds.has(item.id)) }))
     .filter((group) => group.items.length > 0);
 
+  useEffect(() => {
+    if (activeTab !== 'import-history') return;
+    try { localStorage.setItem(IMPORT_CENTER_VIEW_KEY, 'history'); } catch { /* no-op */ }
+    setActiveTab('import');
+  }, [activeTab, setActiveTab]);
+
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchResults = normalizedQuery ? books.filter((book) =>
     book.work.title.toLowerCase().includes(normalizedQuery) || book.work.author.toLowerCase().includes(normalizedQuery) ||
@@ -94,12 +100,15 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
   const remainingSlots = Math.max(0, freeBookLimit - books.length);
   const usedPercent = Math.min(100, Math.round((books.length / freeBookLimit) * 100));
   const isMoreSectionActive = !mobilePrimaryIds.has(activeTab) && activeTab !== 'home';
-  const activeLabel = activeTab === 'profile' ? 'Profile' : allNavigationItems.find((item) => item.id === activeTab)?.label ?? 'Home';
+  const activeLabel = activeTab === 'profile' ? 'Profile' : activeTab === 'import-history' ? 'Import' : allNavigationItems.find((item) => item.id === activeTab)?.label ?? 'Home';
   const displayName = user?.displayName?.trim() || 'Reader';
   const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('') || 'R';
 
   const navigate = (tab: NavTab) => {
     if (tab === 'admin' && !isAdmin) return;
+    if (tab === 'import') {
+      try { localStorage.setItem(IMPORT_CENTER_VIEW_KEY, 'import'); } catch { /* no-op */ }
+    }
     setActiveTab(tab); setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false); setSearchQuery('');
   };
   const toggleGroup = (groupId: NavigationGroupId) => setCollapsedGroups((current) => ({ ...current, [groupId]: !current[groupId] }));
