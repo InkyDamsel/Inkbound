@@ -7,6 +7,8 @@ import {
 
 export const IMPORT_HISTORY_STORAGE_KEY = 'inkbound_import_history_v1';
 export const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v1';
+export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = 'inkbound_import_enrichment_retry_request_v1';
+export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = 'inkbound_import_enrichment_retry_progress_v1';
 
 export interface ImportHistoryItem {
   recordId: string;
@@ -30,6 +32,22 @@ export interface ImportHistoryEntry {
   importedCount: number;
   duplicateCount: number;
   items: ImportHistoryItem[];
+}
+
+export interface ImportEnrichmentRetryProgress {
+  status: 'queued' | 'running' | 'complete' | 'error';
+  completed: number;
+  total: number;
+  matched: number;
+  covers: number;
+  summaries: number;
+  message?: string;
+  updatedAt: string;
+}
+
+interface ImportEnrichmentRetryRequest {
+  targetBookIds: string[];
+  requestedAt: string;
 }
 
 function makeTargetBookId(recordId: string) {
@@ -216,13 +234,86 @@ function historyItemToQueueItem(item: ImportHistoryItem): ImportEnrichmentQueueI
   };
 }
 
+export function readImportEnrichmentRetryProgress(): ImportEnrichmentRetryProgress | null {
+  try {
+    const stored = localStorage.getItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as Partial<ImportEnrichmentRetryProgress>;
+    if (!parsed || typeof parsed.status !== 'string' || typeof parsed.completed !== 'number' || typeof parsed.total !== 'number') return null;
+    return {
+      status: parsed.status as ImportEnrichmentRetryProgress['status'],
+      completed: parsed.completed,
+      total: parsed.total,
+      matched: parsed.matched ?? 0,
+      covers: parsed.covers ?? 0,
+      summaries: parsed.summaries ?? 0,
+      message: parsed.message,
+      updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRetryProgress | null) {
+  try {
+    if (!progress) {
+      localStorage.removeItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
+      return;
+    }
+    localStorage.setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(progress));
+  } catch {
+    // Foreground progress is convenience state only.
+  }
+}
+
+export function requestForegroundImportRetry(targetBookIds: string[]) {
+  const uniqueIds = [...new Set(targetBookIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return;
+  const requestedAt = new Date().toISOString();
+  const request: ImportEnrichmentRetryRequest = { targetBookIds: uniqueIds, requestedAt };
+  try {
+    localStorage.setItem(IMPORT_ENRICHMENT_RETRY_REQUEST_KEY, JSON.stringify(request));
+  } catch {
+    // The queue itself still retains the retry work.
+  }
+  writeImportEnrichmentRetryProgress({
+    status: 'queued',
+    completed: 0,
+    total: uniqueIds.length,
+    matched: 0,
+    covers: 0,
+    summaries: 0,
+    updatedAt: requestedAt,
+  });
+}
+
+export function consumeForegroundImportRetryRequest(): ImportEnrichmentRetryRequest | null {
+  try {
+    const stored = localStorage.getItem(IMPORT_ENRICHMENT_RETRY_REQUEST_KEY);
+    if (!stored) return null;
+    localStorage.removeItem(IMPORT_ENRICHMENT_RETRY_REQUEST_KEY);
+    const parsed = JSON.parse(stored) as Partial<ImportEnrichmentRetryRequest>;
+    if (!Array.isArray(parsed.targetBookIds) || parsed.targetBookIds.length === 0) return null;
+    return {
+      targetBookIds: parsed.targetBookIds.filter((id): id is string => typeof id === 'string' && id.length > 0),
+      requestedAt: typeof parsed.requestedAt === 'string' ? parsed.requestedAt : new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds?: string[]) {
   const allowed = targetBookIds ? new Set(targetBookIds) : null;
   const existing = readImportEnrichmentQueue();
   const byBookId = new Map(existing.map((item) => [item.targetBookId, item]));
+  const requestedIds: string[] = [];
   (Array.isArray(entry.items) ? entry.items : []).forEach((item) => {
     if (allowed && !allowed.has(item.targetBookId)) return;
     byBookId.set(item.targetBookId, historyItemToQueueItem(item));
+    requestedIds.push(item.targetBookId);
   });
   writeImportEnrichmentQueue([...byBookId.values()]);
+  requestForegroundImportRetry(requestedIds);
 }
