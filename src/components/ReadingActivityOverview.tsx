@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   BookOpen,
   CalendarDays,
   ChevronLeft,
@@ -7,6 +8,7 @@ import {
   Clock3,
   Flame,
   Sparkles,
+  Trash2,
   Trophy,
 } from 'lucide-react';
 import type { ReadingSession, UserBookRecord } from '../types';
@@ -15,6 +17,7 @@ interface ReadingActivityOverviewProps {
   books: UserBookRecord[];
   sessions: ReadingSession[];
   onSelectBook: (book: UserBookRecord) => void;
+  onUpdateBook: (book: UserBookRecord) => void;
 }
 
 interface DayActivity {
@@ -25,8 +28,6 @@ interface DayActivity {
   pages: number;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const toLocalDateKey = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -34,9 +35,28 @@ const toLocalDateKey = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+const normalizeDateKey = (value?: string): string | null => {
+  if (!value) return null;
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (
+    !Number.isFinite(parsed.getTime())
+    || parsed.getFullYear() !== year
+    || parsed.getMonth() !== month - 1
+    || parsed.getDate() !== day
+  ) return null;
+  return `${yearText}-${monthText}-${dayText}`;
+};
+
 const parseDateKey = (value: string): Date => {
-  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
-  return new Date(year, Math.max(0, month - 1), day || 1, 12, 0, 0, 0);
+  const normalized = normalizeDateKey(value) ?? toLocalDateKey(new Date());
+  const [year, month, day] = normalized.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
 };
 
 const addDays = (value: string, amount: number): string => {
@@ -50,6 +70,7 @@ const monthKey = (date: Date): string =>
 
 const monthLabel = (key: string): string => {
   const [year, month] = key.split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return 'This Month';
   return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
     month: 'long',
     year: 'numeric',
@@ -93,11 +114,18 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
   books,
   sessions,
   onSelectBook,
+  onUpdateBook,
 }) => {
+  const invalidFinishedBooks = useMemo(
+    () => books.filter((book) => Boolean(book.dateFinished) && !normalizeDateKey(book.dateFinished)),
+    [books],
+  );
+  const [repairDates, setRepairDates] = useState<Record<string, string>>({});
+
   const latestActivityDate = useMemo(() => {
     const values = [
-      ...sessions.map((session) => session.date?.slice(0, 10)).filter(Boolean),
-      ...books.map((book) => book.dateFinished?.slice(0, 10)).filter(Boolean),
+      ...sessions.map((session) => normalizeDateKey(session.date)).filter((value): value is string => Boolean(value)),
+      ...books.map((book) => normalizeDateKey(book.dateFinished)).filter((value): value is string => Boolean(value)),
     ].sort();
     return values.at(-1) ?? toLocalDateKey(new Date());
   }, [books, sessions]);
@@ -108,7 +136,8 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
   const activityByDate = useMemo(() => {
     const map = new Map<string, DayActivity>();
     const ensureDay = (date: string): DayActivity => {
-      const key = date.slice(0, 10);
+      const key = normalizeDateKey(date);
+      if (!key) throw new Error('Invalid activity date passed to ensureDay.');
       const existing = map.get(key);
       if (existing) return existing;
       const created: DayActivity = {
@@ -123,16 +152,18 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
     };
 
     sessions.forEach((session) => {
-      if (!session.date) return;
-      const day = ensureDay(session.date);
+      const date = normalizeDateKey(session.date);
+      if (!date) return;
+      const day = ensureDay(date);
       day.sessions.push(session);
       day.minutes += session.durationMinutes ?? 0;
       day.pages += session.pagesRead ?? Math.max(0, (session.endPage ?? 0) - (session.startPage ?? 0));
     });
 
     books.forEach((book) => {
-      if (!book.dateFinished) return;
-      ensureDay(book.dateFinished).finishedBooks.push(book);
+      const date = normalizeDateKey(book.dateFinished);
+      if (!date) return;
+      ensureDay(date).finishedBooks.push(book);
     });
 
     return map;
@@ -153,12 +184,14 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
 
   const calendarDays = useMemo(() => {
     const [year, month] = visibleMonth.split('-').map(Number);
-    const firstDay = new Date(year, month - 1, 1);
-    const daysInMonth = new Date(year, month, 0).getDate();
+    const safeYear = Number.isFinite(year) ? year : new Date().getFullYear();
+    const safeMonth = Number.isFinite(month) && month >= 1 && month <= 12 ? month : new Date().getMonth() + 1;
+    const firstDay = new Date(safeYear, safeMonth - 1, 1);
+    const daysInMonth = new Date(safeYear, safeMonth, 0).getDate();
     const leadingEmptyDays = firstDay.getDay();
     const cells: Array<string | null> = Array.from({ length: leadingEmptyDays }, () => null);
     for (let day = 1; day <= daysInMonth; day += 1) {
-      cells.push(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+      cells.push(`${safeYear}-${String(safeMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
     }
     while (cells.length % 7 !== 0) cells.push(null);
     return cells;
@@ -178,33 +211,92 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
     setSelectedDate(toLocalDateKey(next));
   };
 
+  const saveFinishedDate = (book: UserBookRecord) => {
+    const nextDate = normalizeDateKey(repairDates[book.id]);
+    if (!nextDate) return;
+    onUpdateBook({ ...book, dateFinished: nextDate });
+    setRepairDates((current) => {
+      const next = { ...current };
+      delete next[book.id];
+      return next;
+    });
+    setVisibleMonth(monthKey(parseDateKey(nextDate)));
+    setSelectedDate(nextDate);
+  };
+
+  const removeFinishedDate = (book: UserBookRecord) => {
+    onUpdateBook({ ...book, dateFinished: undefined });
+    setRepairDates((current) => {
+      const next = { ...current };
+      delete next[book.id];
+      return next;
+    });
+  };
+
   return (
     <section className="space-y-5" aria-labelledby="reading-activity-title">
       <header className="inkbound-panel rounded-3xl p-5 sm:p-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="inkbound-kicker">Your reading rhythm</p>
-            <h2 id="reading-activity-title" className="mt-2 font-serif text-3xl text-[var(--ink-ivory)]">
-              Streak & Calendar
-            </h2>
+            <h2 id="reading-activity-title" className="mt-2 font-serif text-3xl text-[var(--ink-ivory)]">Streak & Calendar</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">
               Every saved reading session adds a day to your reading history. Missing a day never erases the memories already recorded.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => moveMonth(-1)} className="quiet-shelf-icon-button" aria-label="Previous month">
-              <ChevronLeft />
-            </button>
+            <button type="button" onClick={() => moveMonth(-1)} className="quiet-shelf-icon-button" aria-label="Previous month"><ChevronLeft /></button>
             <div className="min-w-44 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-2 text-center">
               <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">Activity month</span>
               <strong className="font-serif text-lg text-[var(--ink-ivory)]">{monthLabel(visibleMonth)}</strong>
             </div>
-            <button type="button" onClick={() => moveMonth(1)} className="quiet-shelf-icon-button" aria-label="Next month">
-              <ChevronRight />
-            </button>
+            <button type="button" onClick={() => moveMonth(1)} className="quiet-shelf-icon-button" aria-label="Next month"><ChevronRight /></button>
           </div>
         </div>
       </header>
+
+      {invalidFinishedBooks.length > 0 && (
+        <section className="rounded-3xl border border-amber-500/35 bg-amber-950/15 p-5 sm:p-6" aria-label="Dates needing attention">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+            <div className="min-w-0 flex-1">
+              <h3 className="font-serif text-xl text-[var(--ink-ivory)]">{invalidFinishedBooks.length === 1 ? '1 completion date needs attention' : `${invalidFinishedBooks.length} completion dates need attention`}</h3>
+              <p className="mt-1 text-sm text-[var(--ink-muted)]">Inkbound will not place an invalid date on your calendar. Add or edit the correct date, or remove the bad date entirely.</p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3">
+            {invalidFinishedBooks.map((book) => {
+              const repairValue = repairDates[book.id] ?? '';
+              return (
+                <article key={book.id} className="rounded-2xl border border-amber-500/20 bg-[var(--ink-surface-soft)] p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <button type="button" onClick={() => onSelectBook(book)} className="min-w-0 text-left">
+                      <strong className="block truncate text-sm text-[var(--ink-ivory)]">{book.work.title}</strong>
+                      <span className="text-xs text-[var(--ink-muted)]">{book.work.author}</span>
+                      <span className="mt-1 block text-[11px] text-amber-300">Saved date could not be read.</span>
+                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        type="date"
+                        value={repairValue}
+                        onChange={(event) => setRepairDates((current) => ({ ...current, [book.id]: event.target.value }))}
+                        className="min-h-10 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-mauve)]"
+                        aria-label={`Completion date for ${book.work.title}`}
+                      />
+                      <button type="button" onClick={() => saveFinishedDate(book)} disabled={!normalizeDateKey(repairValue)} className="quiet-shelf-primary-action min-h-10 justify-center px-4 disabled:opacity-40">
+                        Save Date
+                      </button>
+                      <button type="button" onClick={() => removeFinishedDate(book)} className="quiet-shelf-secondary-action min-h-10 justify-center px-4 text-rose-300">
+                        <Trash2 className="h-4 w-4" /> Remove Date
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={Flame} label="Current streak" value={`${currentStreak} ${currentStreak === 1 ? 'day' : 'days'}`} detail={currentStreak > 0 ? 'Your reading rhythm is active.' : 'Save a session to begin.'} />
@@ -233,7 +325,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
                   type="button"
                   onClick={() => setSelectedDate(date)}
                   className={`relative aspect-square rounded-xl border p-1 text-left transition hover:-translate-y-0.5 hover:border-[var(--ink-mauve)] ${intensity} ${isSelected ? 'border-[var(--ink-gold)] ring-1 ring-[var(--ink-gold)]/40' : 'border-[var(--ink-border-subtle)]'}`}
-                  aria-label={`${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${activity?.sessions.length ?? 0} reading sessions`}
+                  aria-label={`${parseDateKey(date).toLocaleDateString()}: ${activity?.sessions.length ?? 0} reading sessions`}
                 >
                   <span className={`text-xs font-semibold ${isToday ? 'text-[var(--ink-gold)]' : 'text-[var(--ink-ivory)]'}`}>{Number(date.slice(-2))}</span>
                   {activity && (
@@ -259,7 +351,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
         <aside className="inkbound-panel rounded-3xl p-5">
           <p className="inkbound-kicker">Selected day</p>
           <h3 className="mt-2 font-serif text-2xl text-[var(--ink-ivory)]">
-            {new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            {parseDateKey(selectedDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
           </h3>
 
           {!selectedActivity ? (
