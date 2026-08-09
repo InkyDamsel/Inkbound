@@ -15,6 +15,7 @@ import { ReadingActivityOverview } from './components/ReadingActivityOverview';
 import { ReadingChallengesScreen } from './components/ReadingChallengesScreen';
 import { AchievementsScreen } from './components/AchievementsScreen';
 import { CollectionsScreen } from './components/CollectionsScreen';
+import { DuplicateManagerScreen, type DuplicateMergeRequest } from './components/DuplicateManagerScreen';
 import { ReadingTimelineScreen } from './components/ReadingTimelineScreen';
 import { ReadingMemoriesScreen } from './components/ReadingMemoriesScreen';
 import { ReadingTimeCapsulesScreen } from './components/ReadingTimeCapsulesScreen';
@@ -245,6 +246,17 @@ export default function App() {
     showToast(`Deleted “${bookToDelete.work.title}” and its reading sessions.`);
   };
 
+  const handleMergeDuplicateGroup = ({ keepBookId, removeBookIds, mergedBook }: DuplicateMergeRequest) => {
+    const removeIds = new Set(removeBookIds);
+    setPreviousBooksState(null);
+    setBooks((current) => current.filter((book) => !removeIds.has(book.id)).map((book) => book.id === keepBookId ? mergedBook : book));
+    setSessions((current) => current.map((session) => removeIds.has(session.bookId) ? { ...session, bookId: keepBookId } : session));
+    setSelectedBookIds((current) => current.filter((id) => !removeIds.has(id)));
+    setSelectedBookForDetails((current) => current && removeIds.has(current.id) ? mergedBook : current?.id === keepBookId ? mergedBook : current);
+    writeImportEnrichmentQueue(readImportEnrichmentQueue().filter((item) => !removeIds.has(item.targetBookId)));
+    showToast(`Merged ${removeBookIds.length + 1} copies of “${mergedBook.work.title}” into one library record.`);
+  };
+
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => {
     setBooks((current) => current.map((book) => book.id !== bookId ? book : {
       ...book,
@@ -282,18 +294,10 @@ export default function App() {
           edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition,
         );
       }
-      if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) {
-        updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
-      }
-      if (changes.removeTag) {
-        updatedBook.privateTags = updatedBook.privateTags.filter((tag) => tag.toLowerCase() !== changes.removeTag!.toLowerCase());
-      }
-      if (changes.addCollection && !updatedBook.collections.includes(changes.addCollection)) {
-        updatedBook.collections = [...updatedBook.collections, changes.addCollection];
-      }
-      if (changes.removeCollection) {
-        updatedBook.collections = updatedBook.collections.filter((collection) => collection.toLowerCase() !== changes.removeCollection!.toLowerCase());
-      }
+      if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
+      if (changes.removeTag) updatedBook.privateTags = updatedBook.privateTags.filter((tag) => tag.toLowerCase() !== changes.removeTag!.toLowerCase());
+      if (changes.addCollection && !updatedBook.collections.includes(changes.addCollection)) updatedBook.collections = [...updatedBook.collections, changes.addCollection];
+      if (changes.removeCollection) updatedBook.collections = updatedBook.collections.filter((collection) => collection.toLowerCase() !== changes.removeCollection!.toLowerCase());
       return updatedBook;
     }));
     const count = selectedBookIds.length;
@@ -393,6 +397,7 @@ export default function App() {
         <ResponsiveContainer width="wide">
           {activeTab === 'home' && <HomeDashboard books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} onStartSessionForBook={(book) => openTimer(book.id)} onUpdateStatus={handleUpdateStatus} onNavigateToTab={setActiveTab} onOpenAddBook={() => setIsAddBookOpen(true)} />}
           {activeTab === 'library' && <LibraryScreen books={books} selectedBookIds={selectedBookIds} onToggleSelectBook={handleToggleSelectBook} onSelectAll={setSelectedBookIds} onClearSelection={() => setSelectedBookIds([])} onSelectBook={setSelectedBookForDetails} onOpenBatchEdit={() => setIsBatchEditOpen(true)} onOpenAddBook={() => setIsAddBookOpen(true)} />}
+          {activeTab === 'duplicates' && <DuplicateManagerScreen books={books} onMergeGroup={handleMergeDuplicateGroup} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'tbr' && <TBRScreen books={books} onSelectBook={setSelectedBookForDetails} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} />}
           {activeTab === 'sessions' && <div className="space-y-8"><ReadingActivityOverview books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} /><ReadingSessionsScreen books={books} sessions={sessions} onOpenTimer={openTimer} onSelectBook={setSelectedBookForDetails} onSaveManualSession={handleSaveManualSession} onUpdateSession={handleUpdateSession} onDeleteSession={handleDeleteSession} /></div>}
           {activeTab === 'challenges' && <ReadingChallengesScreen books={books} sessions={sessions} />}
@@ -417,7 +422,7 @@ export default function App() {
         </ResponsiveContainer>
       </main>
 
-      {selectedBookForDetails && <BookDetailsModal book={selectedBookForDetails} onClose={() => setSelectedBookForDetails(null)} onUpdateBook={handleUpdateBook} onDeleteBook={handleDeleteBook} onStartSession={(book) => { setSelectedBookForDetails(null); openTimer(book.id); }} />}
+      {selectedBookForDetails && <BookDetailsModal book={selectedBookForDetails} sessions={sessions} onClose={() => setSelectedBookForDetails(null)} onUpdateBook={handleUpdateBook} onDeleteBook={handleDeleteBook} onStartSession={(book) => { setSelectedBookForDetails(null); openTimer(book.id); }} />}
       {isBatchEditOpen && <BatchEditModal selectedBookIds={selectedBookIds} books={books} onClose={() => setIsBatchEditOpen(false)} onApplyBatchChanges={handleApplyBatchChanges} onDeleteSelected={handleDeleteSelected} onUndoLastBatch={handleUndoLastBatch} />}
       {isTimerOpen && <ReadingSessionModal books={books} initialBookId={timerInitialBookId} onClose={closeTimer} onSaveSession={handleSaveSession} />}
       {isAddBookOpen && <AddBookModal currentBookCount={books.length} onClose={() => setIsAddBookOpen(false)} onAddBook={(newBook) => { setBooks((current) => [newBook, ...current]); showToast(`Added “${newBook.work.title}” to Inkbound.`); }} onAddMultipleBooks={(newBooks) => { setBooks((current) => [...newBooks, ...current]); showToast(`Added ${newBooks.length} books to Inkbound.`); }} />}
