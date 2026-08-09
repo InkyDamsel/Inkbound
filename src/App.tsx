@@ -58,6 +58,7 @@ const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
 const THEME_STORAGE_KEY = 'inkbound_theme';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
+const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
 let isImportQueueProcessing = false;
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
@@ -66,6 +67,24 @@ function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback
     return stored ? (JSON.parse(stored) as T) : fallback;
   } catch {
     return fallback;
+  }
+}
+
+function safeWriteLocalStorage(key: string, value: unknown): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.warn(`Inkbound could not update ${key} in the browser cache.`, error);
+    return false;
+  }
+}
+
+function isReadingTimerOpen(): boolean {
+  try {
+    return localStorage.getItem(TIMER_OPEN_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
   }
 }
 
@@ -85,7 +104,7 @@ export default function App() {
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
   const [isBatchEditOpen, setIsBatchEditOpen] = useState(false);
-  const [isTimerOpen, setIsTimerOpen] = usePersistentState('inkbound_timer_open', false);
+  const [isTimerOpen, setIsTimerOpen] = usePersistentState(TIMER_OPEN_STORAGE_KEY, false);
   const [timerInitialBookId, setTimerInitialBookId] = usePersistentState<string | undefined>('inkbound_timer_book_id', undefined);
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -93,17 +112,29 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
-    localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
+    } catch {
+      // Theme persistence should never interrupt the app.
+    }
   }, [isDarkMode]);
 
   useEffect(() => {
-    localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(books));
-    localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
+    safeWriteLocalStorage(BOOKS_STORAGE_KEY, books);
+    try {
+      localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
+    } catch {
+      // Legacy cleanup is best-effort only.
+    }
   }, [books]);
 
   useEffect(() => {
-    localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
-    localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
+    safeWriteLocalStorage(SESSIONS_STORAGE_KEY, sessions);
+    try {
+      localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
+    } catch {
+      // Legacy cleanup is best-effort only.
+    }
   }, [sessions]);
 
   const showToast = (message: string) => {
@@ -112,7 +143,7 @@ export default function App() {
   };
 
   const processImportEnrichmentQueue = async () => {
-    if (isImportQueueProcessing || !navigator.onLine) return;
+    if (isImportQueueProcessing || !navigator.onLine || isReadingTimerOpen()) return;
     const initialQueue = readImportEnrichmentQueue();
     if (initialQueue.length === 0) return;
 
@@ -125,6 +156,10 @@ export default function App() {
 
     try {
       while (pending.length > 0 && navigator.onLine) {
+        // Reading sessions take priority over metadata maintenance. Stop between
+        // batches and leave the remaining queue durable for later.
+        if (isReadingTimerOpen()) break;
+
         const batch = pending.slice(0, IMPORT_ENRICHMENT_BATCH_SIZE);
         pending = pending.slice(batch.length);
         const results = await enrichImportedBooks(batch);
@@ -134,14 +169,10 @@ export default function App() {
         );
 
         if (enrichedById.size > 0) {
-          setBooks((current) => {
-            const next = current.map((book) => {
-              const enriched = enrichedById.get(book.id);
-              return enriched ? mergeEnrichedImportedBook(book, enriched) : book;
-            });
-            localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(next));
-            return next;
-          });
+          setBooks((current) => current.map((book) => {
+            const enriched = enrichedById.get(book.id);
+            return enriched ? mergeEnrichedImportedBook(book, enriched) : book;
+          }));
         }
 
         results.forEach((result) => {
@@ -158,18 +189,14 @@ export default function App() {
           });
         });
 
-        // Keep the queue durable after every small batch. A 1,000+ book library
-        // can safely close Inkbound and resume later without restarting the work.
         writeImportEnrichmentQueue([...retryItems, ...pending]);
         await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
       }
 
       writeImportEnrichmentQueue([...retryItems, ...pending]);
       if (updatedCount > 0) {
-        showToast(
-          `Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`,
-        );
-      } else if (initialQueue.length > 0) {
+        showToast(`Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`);
+      } else if (initialQueue.length > 0 && !isReadingTimerOpen()) {
         showToast('Inkbound kept the remaining books queued and will retry their details later.');
       }
     } catch {
@@ -181,12 +208,14 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Repair older imports too. Readers do not need to re-import an existing
-    // library just because covers or publisher summaries were missing before.
     const repairedQueue = buildRepairQueueItems(books, readImportEnrichmentQueue());
     writeImportEnrichmentQueue(repairedQueue);
-    void processImportEnrichmentQueue();
-  }, [books]);
+    if (!isTimerOpen) void processImportEnrichmentQueue();
+  }, [books, isTimerOpen]);
+
+  useEffect(() => {
+    if (!isTimerOpen) void processImportEnrichmentQueue();
+  }, [isTimerOpen]);
 
   useEffect(() => {
     const resumeWhenOnline = () => void processImportEnrichmentQueue();
@@ -303,11 +332,7 @@ export default function App() {
   const handleExecuteImport = async (importedItems: ImportRecordItem[]) => {
     setPreviousBooksState(books);
     const immediateBooks = importedItems.map(createFallbackImportedBook);
-    setBooks((current) => {
-      const next = [...current, ...immediateBooks];
-      localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+    setBooks((current) => [...current, ...immediateBooks]);
 
     const existingQueue = readImportEnrichmentQueue();
     const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item]));
@@ -328,10 +353,14 @@ export default function App() {
     setPreviousBooksState(null);
     setSelectedBookForDetails(null);
     setSelectedBookIds([]);
-    localStorage.removeItem(BOOKS_STORAGE_KEY);
-    localStorage.removeItem(SESSIONS_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
+    try {
+      localStorage.removeItem(BOOKS_STORAGE_KEY);
+      localStorage.removeItem(SESSIONS_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
+    } catch {
+      // Device cleanup is best-effort; state is already cleared above.
+    }
     writeImportEnrichmentQueue([]);
     showToast('Cleared all Inkbound books and reading sessions.');
   };
