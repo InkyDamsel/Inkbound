@@ -63,6 +63,62 @@ const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperC
 const normalizeText = (value?: string) => value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const authorSurname = (value?: string) => normalizeText(value).split(' ').filter(Boolean).at(-1) ?? '';
 
+function normalizeTitleCore(value?: string): string {
+  if (!value) return '';
+  const withoutParentheticalSeries = value
+    .replace(/\([^)]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+)[^)]*\)/gi, ' ')
+    .replace(/\[[^\]]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+)[^\]]*\]/gi, ' ');
+  const withoutSeriesSuffix = withoutParentheticalSeries.replace(
+    /\s*[:\-–—]\s*[^:–—-]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+).*$/gi,
+    ' ',
+  );
+  return normalizeText(withoutSeriesSuffix);
+}
+
+function authorMatches(importAuthor?: string, candidateAuthor?: string): boolean {
+  const wanted = normalizeText(importAuthor);
+  const candidate = normalizeText(candidateAuthor);
+  if (!wanted || !candidate || wanted === 'unknown author' || candidate === 'unknown author') return false;
+  if (wanted === candidate) return true;
+
+  const wantedParts = wanted.split(' ').filter(Boolean);
+  const candidateParts = candidate.split(' ').filter(Boolean);
+  if (wantedParts.length === 0 || candidateParts.length === 0) return false;
+  if (wantedParts.at(-1) !== candidateParts.at(-1)) return false;
+
+  const wantedFirst = wantedParts[0];
+  const candidateFirst = candidateParts[0];
+  return Boolean(wantedFirst && candidateFirst && wantedFirst[0] === candidateFirst[0]);
+}
+
+function titleSimilarity(importTitle?: string, candidateTitle?: string): number {
+  const wanted = normalizeText(importTitle);
+  const candidate = normalizeText(candidateTitle);
+  if (!wanted || !candidate) return 0;
+  if (wanted === candidate) return 1;
+
+  const wantedCore = normalizeTitleCore(importTitle);
+  const candidateCore = normalizeTitleCore(candidateTitle);
+  if (wantedCore && wantedCore === candidateCore) return 0.98;
+
+  const wantedTokens = [...new Set((wantedCore || wanted).split(' ').filter(Boolean))];
+  const candidateTokens = [...new Set((candidateCore || candidate).split(' ').filter(Boolean))];
+  if (wantedTokens.length === 0 || candidateTokens.length === 0) return 0;
+
+  const candidateSet = new Set(candidateTokens);
+  const intersection = wantedTokens.filter((token) => candidateSet.has(token)).length;
+  const smaller = Math.min(wantedTokens.length, candidateTokens.length);
+  const larger = Math.max(wantedTokens.length, candidateTokens.length);
+  const containment = intersection / smaller;
+  const coverage = intersection / larger;
+
+  if (smaller === 1 && containment === 1 && coverage >= 0.5) return 0.9;
+  if (containment === 1 && coverage >= 0.66) return 0.94;
+  if (containment >= 0.85 && coverage >= 0.72) return 0.9;
+  if (containment >= 0.75 && coverage >= 0.7) return 0.84;
+  return Math.min(containment, coverage);
+}
+
 function readCurrentLibrary(): UserBookRecord[] {
   try {
     const stored = localStorage.getItem(BOOKS_STORAGE_KEY) ?? localStorage.getItem(LEGACY_BOOKS_STORAGE_KEY);
@@ -152,29 +208,29 @@ function groupHasExactIsbn(work: BookSearchWorkGroup, requestedIsbn: string): bo
   );
 }
 
-function isStrictTitleAuthorMatch(item: ImportRecordItem, work: BookSearchWorkGroup): boolean {
-  const wantedTitle = normalizeText(item.title);
-  const candidateTitle = normalizeText(work.title);
-  if (!wantedTitle || wantedTitle !== candidateTitle) return false;
-
-  const wantedAuthor = normalizeText(item.author);
-  if (!wantedAuthor || wantedAuthor === 'unknown author') return false;
-
-  const wantedSurname = authorSurname(item.author);
-  return work.authors.some((author) => authorSurname(author) === wantedSurname);
+function isHighConfidenceTitleAuthorMatch(item: ImportRecordItem, work: BookSearchWorkGroup): boolean {
+  if (!work.authors.some((author) => authorMatches(item.author, author))) return false;
+  return titleSimilarity(item.title, work.title) >= 0.84;
 }
 
 function isVerifiedWork(item: ImportRecordItem, work: BookSearchWorkGroup): boolean {
   const requestedIsbn = compactIsbn(item.isbn);
   if (requestedIsbn && groupHasExactIsbn(work, requestedIsbn)) return true;
-  return isStrictTitleAuthorMatch(item, work);
+  return isHighConfidenceTitleAuthorMatch(item, work);
 }
 
 function chooseImportedEdition(
   item: ImportRecordItem,
   groups: BookSearchWorkGroup[],
 ): { work?: BookSearchWorkGroup; edition?: BookSearchEdition; coverEdition?: BookSearchEdition } {
-  const verifiedGroups = groups.filter((work) => isVerifiedWork(item, work));
+  const verifiedGroups = groups
+    .filter((work) => isVerifiedWork(item, work))
+    .sort((a, b) => {
+      const aIsbn = compactIsbn(item.isbn) && groupHasExactIsbn(a, compactIsbn(item.isbn)) ? 1 : 0;
+      const bIsbn = compactIsbn(item.isbn) && groupHasExactIsbn(b, compactIsbn(item.isbn)) ? 1 : 0;
+      if (aIsbn !== bIsbn) return bIsbn - aIsbn;
+      return titleSimilarity(item.title, b.title) - titleSimilarity(item.title, a.title);
+    });
   const requestedIsbn = compactIsbn(item.isbn);
 
   const exactIsbnCandidates = requestedIsbn
@@ -216,8 +272,21 @@ async function findBestImportedMetadata(
   }
 
   if (!item.title.trim() || !item.author.trim() || normalizeText(item.author) === 'unknown author') return {};
-  const titleGroups = await searchImportedBookMetadata(`${item.title} ${item.author}`);
-  return chooseImportedEdition(item, titleGroups);
+
+  // Search the title first. The shared provider layer already fans this out to
+  // Google Books, Open Library, and Hardcover. If the title-only pass misses,
+  // use narrower fallbacks before giving up. This avoids requiring providers to
+  // format title + series text exactly like the import source.
+  const titleGroups = await searchImportedBookMetadata(item.title);
+  const titleMatch = chooseImportedEdition(item, titleGroups);
+  if (titleMatch.work && titleMatch.edition) return titleMatch;
+
+  const combinedGroups = await searchImportedBookMetadata(`${item.title} ${item.author}`);
+  const combinedMatch = chooseImportedEdition(item, combinedGroups);
+  if (combinedMatch.work && combinedMatch.edition) return combinedMatch;
+
+  const authorGroups = await searchImportedBookMetadata(item.author);
+  return chooseImportedEdition(item, authorGroups);
 }
 
 async function canVerifyImportedBook(item: ImportRecordItem): Promise<boolean> {
