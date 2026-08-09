@@ -36,12 +36,34 @@ function makeTargetBookId(recordId: string) {
   return `book-import-${recordId}`;
 }
 
+function safeIsoDate(value?: string): string | null {
+  if (!value?.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function safeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function isValidHistoryEntry(value: unknown): value is ImportHistoryEntry {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Partial<ImportHistoryEntry>;
+  return typeof entry.id === 'string'
+    && typeof entry.createdAt === 'string'
+    && typeof entry.sourceName === 'string'
+    && typeof entry.importedCount === 'number'
+    && typeof entry.duplicateCount === 'number'
+    && Array.isArray(entry.items);
+}
+
 export function readImportHistory(): ImportHistoryEntry[] {
   try {
     const stored = localStorage.getItem(IMPORT_HISTORY_STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored) as unknown;
-    return Array.isArray(parsed) ? (parsed as ImportHistoryEntry[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isValidHistoryEntry);
   } catch {
     return [];
   }
@@ -89,31 +111,34 @@ export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): 
   const existing = readImportHistory();
   if (existing.length > 0) return existing;
 
-  const importedBooks = books.filter((book) =>
-    book.sourceOfImport?.toLowerCase().includes('import') ||
-    book.privateTags.includes('imported') ||
-    book.id.startsWith('book-import-'),
-  );
+  const importedBooks = books.filter((book) => {
+    const source = typeof book.sourceOfImport === 'string' ? book.sourceOfImport.toLowerCase() : '';
+    const tags = safeStringArray(book.privateTags);
+    return source.includes('import') || tags.includes('imported') || book.id?.startsWith('book-import-');
+  });
   if (importedBooks.length === 0) return [];
 
-  const sortedDates = importedBooks.map((book) => book.dateAdded).filter(Boolean).sort();
-  const createdAt = sortedDates.at(-1)
-    ? new Date(`${sortedDates.at(-1)}T12:00:00`).toISOString()
-    : new Date().toISOString();
+  const validDates = importedBooks
+    .map((book) => safeIsoDate(book.dateAdded))
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  const createdAt = validDates.at(-1) ?? new Date().toISOString();
+
   const items: ImportHistoryItem[] = importedBooks.map((book) => {
-    const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-    const recordId = book.id.startsWith('book-import-') ? book.id.slice('book-import-'.length) : `legacy-${book.id}`;
+    const editions = Array.isArray(book.editions) ? book.editions : [];
+    const edition = editions.find((item) => item.id === book.activeEditionId) ?? editions[0];
+    const recordId = book.id?.startsWith('book-import-') ? book.id.slice('book-import-'.length) : `legacy-${book.id}`;
     return {
       recordId,
       targetBookId: book.id,
-      title: book.work.title,
-      author: book.work.author,
+      title: book.work?.title || 'Untitled',
+      author: book.work?.author || 'Unknown Author',
       isbn: edition?.isbn13 || edition?.isbn10 || edition?.isbn,
       format: edition?.format ?? 'hardcover',
-      status: book.status,
+      status: book.status ?? 'tbr',
       rating: book.rating,
       dateRead: book.dateFinished,
-      dateAdded: book.dateAdded,
+      dateAdded: book.dateAdded || new Date().toISOString().slice(0, 10),
       review: book.review,
       coverGradient: edition?.coverGradient ?? 'from-[#5c3d62] via-[#35243f] to-[#171117]',
     };
@@ -149,15 +174,17 @@ export function setImportEnrichmentPaused(paused: boolean) {
 }
 
 export function getImportHistoryProgress(entry: ImportHistoryEntry, books: UserBookRecord[]) {
-  const ids = new Set(entry.items.map((item) => item.targetBookId));
+  const items = Array.isArray(entry.items) ? entry.items : [];
+  const ids = new Set(items.map((item) => item.targetBookId));
   const entryBooks = books.filter((book) => ids.has(book.id));
   const queueIds = new Set(readImportEnrichmentQueue().filter((item) => ids.has(item.targetBookId)).map((item) => item.targetBookId));
   const matched = entryBooks.filter((book) => book.importMetadataVerified === true).length;
   const covers = entryBooks.filter((book) => {
-    const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+    const editions = Array.isArray(book.editions) ? book.editions : [];
+    const edition = editions.find((item) => item.id === book.activeEditionId) ?? editions[0];
     return Boolean(edition?.coverUrl);
   }).length;
-  const summaries = entryBooks.filter((book) => Boolean(book.work.publisherSummary?.trim())).length;
+  const summaries = entryBooks.filter((book) => Boolean(book.work?.publisherSummary?.trim())).length;
 
   return {
     present: entryBooks.length,
@@ -193,7 +220,7 @@ export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds
   const allowed = targetBookIds ? new Set(targetBookIds) : null;
   const existing = readImportEnrichmentQueue();
   const byBookId = new Map(existing.map((item) => [item.targetBookId, item]));
-  entry.items.forEach((item) => {
+  (Array.isArray(entry.items) ? entry.items : []).forEach((item) => {
     if (allowed && !allowed.has(item.targetBookId)) return;
     byBookId.set(item.targetBookId, historyItemToQueueItem(item));
   });
