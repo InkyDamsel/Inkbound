@@ -1,4 +1,4 @@
-import React, { ChangeEvent, DragEvent, useMemo, useState } from 'react';
+import React, { ChangeEvent, DragEvent, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -16,7 +16,13 @@ import {
 } from 'lucide-react';
 import { Format, ImportRecordItem, ImportSourceInfo, ReadingStatus } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
-import { analyzeImportDuplicates, verifyImportRecords } from '../features/import/libraryEnrichment';
+import { analyzeImportDuplicates } from '../features/import/libraryEnrichment';
+import {
+  getImportVerificationSnapshot,
+  resetImportVerificationJob,
+  startImportVerificationJob,
+  subscribeToImportVerification,
+} from '../features/import/importVerificationJob';
 import { ImportAnalysisSummaryGrid } from './import/ImportAnalysisSummaryGrid';
 import { ImportSourceGrid } from './import/ImportSourceGrid';
 
@@ -182,21 +188,41 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
   const isPremium = userPlan === 'premium';
   const remainingFreeSlots = Math.max(0, freeBookLimit - currentBookCount);
+  const initialJob = getImportVerificationSnapshot();
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(initialJob.status === 'running' ? 4 : initialJob.status === 'complete' ? 5 : 1);
   const [selectedSource, setSelectedSource] = useState<ImportSourceInfo>(IMPORT_SOURCES[0]);
   const [importRecords, setImportRecords] = useState<ImportRecordItem[]>([]);
-  const [duplicateRecords, setDuplicateRecords] = useState<ImportRecordItem[]>([]);
+  const [duplicateRecords, setDuplicateRecords] = useState<ImportRecordItem[]>(initialJob.duplicates);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [fileError, setFileError] = useState<string | null>(null);
   const [isReadingFile, setIsReadingFile] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [importedCount, setImportedCount] = useState(0);
-  const [unmatchedRecords, setUnmatchedRecords] = useState<ImportRecordItem[]>([]);
-  const [verificationProgress, setVerificationProgress] = useState({ completed: 0, total: 0 });
+  const [isImporting, setIsImporting] = useState(initialJob.status === 'running');
+  const [importError, setImportError] = useState<string | null>(initialJob.error ?? null);
+  const [importedCount, setImportedCount] = useState(initialJob.importedCount);
+  const [unmatchedRecords, setUnmatchedRecords] = useState<ImportRecordItem[]>(initialJob.unmatched);
+  const [verificationProgress, setVerificationProgress] = useState({ completed: initialJob.completed, total: initialJob.total });
   const [hasUndone, setHasUndone] = useState(false);
+
+  useEffect(() => subscribeToImportVerification((job) => {
+    setIsImporting(job.status === 'running');
+    setVerificationProgress({ completed: job.completed, total: job.total });
+    setImportedCount(job.importedCount);
+    setDuplicateRecords(job.duplicates);
+    setUnmatchedRecords(job.unmatched);
+
+    if (job.status === 'running') {
+      setCurrentStep(4);
+      setImportError(null);
+    } else if (job.status === 'complete') {
+      setCurrentStep(5);
+      setImportError(null);
+    } else if (job.status === 'error') {
+      setCurrentStep(4);
+      setImportError(job.error ?? 'The import could not be completed. Your library was not changed.');
+    }
+  }), []);
 
   const duplicateIds = useMemo(() => new Set(duplicateRecords.map((record) => record.id)), [duplicateRecords]);
   const newRecords = useMemo(() => importRecords.filter((record) => !duplicateIds.has(record.id)), [importRecords, duplicateIds]);
@@ -214,6 +240,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
 
   const processFile = async (file?: File) => {
     if (!file) return;
+    resetImportVerificationJob();
     const extension = file.name.split('.').pop()?.toLowerCase();
     if (!['csv', 'json'].includes(extension ?? '')) {
       setFileError('Choose a CSV or JSON export file.');
@@ -282,7 +309,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     );
   };
 
-  const executeImport = async () => {
+  const executeImport = () => {
     if (selectedRecords.length === 0 || isImporting) return;
     if (!navigator.onLine) {
       setImportError('Connect to the internet before importing. Inkbound verifies each book so it never substitutes an unrelated title.');
@@ -290,37 +317,10 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     }
 
     const recordsToCheck = [...selectedRecords];
-    setIsImporting(true);
     setImportError(null);
     setUnmatchedRecords([]);
     setVerificationProgress({ completed: 0, total: recordsToCheck.length });
-
-    try {
-      const verification = await verifyImportRecords(recordsToCheck, (completed, total) => {
-        setVerificationProgress({ completed, total });
-      });
-
-      if (verification.verified.length > 0) {
-        await onExecuteImport(verification.verified);
-      }
-
-      setImportedCount(verification.verified.length);
-      setDuplicateRecords((current) => {
-        const byId = new Map(current.map((record) => [record.id, record]));
-        verification.duplicates.forEach((record) => byId.set(record.id, record));
-        return [...byId.values()];
-      });
-      setUnmatchedRecords(verification.unmatched);
-      setCurrentStep(5);
-    } catch (error) {
-      setImportError(
-        error instanceof Error
-          ? error.message
-          : 'The import could not be completed. Your library was not changed.',
-      );
-    } finally {
-      setIsImporting(false);
-    }
+    void startImportVerificationJob(recordsToCheck, duplicateRecords, onExecuteImport);
   };
 
   const undoImport = () => {
@@ -488,6 +488,14 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
             <button type="button" onClick={() => selectByStatus('finished')} disabled={isImporting} className="quiet-shelf-secondary-action min-h-10 px-4">Select Read</button>
           </div>
 
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-950/20 p-4 text-sm text-stone-300">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+            <div>
+              <p className="font-bold text-amber-200">Keep Inkbound open while verification runs</p>
+              <p className="mt-1 text-xs leading-5 text-stone-400">You can move to other Inkbound pages and verification will continue in the background. Do not close or refresh the site/app until it finishes, or you will need to start the import again.</p>
+            </div>
+          </div>
+
           {importError && <div role="alert" className="rounded-xl border border-rose-500/35 bg-rose-950/25 p-4 text-sm text-rose-200">{importError}</div>}
           {isImporting && (
             <div className="rounded-xl border border-[#c5a059]/35 bg-[#c5a059]/10 p-4 text-sm text-[#f4efe6]" role="status">
@@ -495,7 +503,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
                 <Loader2 className="h-5 w-5 animate-spin text-[#e5c158]" />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">Verifying your books…</p>
-                  <p className="mt-1 text-xs text-stone-400">Inkbound is checking identity before accepting covers or summaries. It will not guess.</p>
+                  <p className="mt-1 text-xs text-stone-400">Inkbound is checking identity before accepting covers or summaries. You can use other Inkbound pages while this continues.</p>
                 </div>
                 <span className="text-xs font-bold text-[#e5c158]">{verificationProgress.completed.toLocaleString()} / {verificationProgress.total.toLocaleString()}</span>
               </div>
@@ -507,22 +515,24 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
             </div>
           )}
 
-          <div className="space-y-2">
-            {newRecords.map((record) => {
-              const selected = selectedIds.includes(record.id);
-              return (
-                <button key={record.id} type="button" onClick={() => toggleSelection(record.id)} disabled={isImporting} aria-pressed={selected} className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition disabled:cursor-wait ${selected ? 'border-[#c5a059] bg-[#c5a059]/10' : 'border-[#3d2448] bg-[#1c0f24]'}`}>
-                  <span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${selected ? 'border-[#c5a059] bg-[#c5a059] text-[#120817]' : 'border-stone-600 bg-[#120817]'}`}>{selected && <Check className="h-3.5 w-3.5" />}</span>
-                  <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#f4efe6]">{record.title}</strong><small className="block truncate text-stone-400">{record.author}</small></span>
-                  <span className="text-[10px] font-bold uppercase text-[#e5c158]">{record.format}</span>
-                </button>
-              );
-            })}
-          </div>
+          {newRecords.length > 0 && (
+            <div className="space-y-2">
+              {newRecords.map((record) => {
+                const selected = selectedIds.includes(record.id);
+                return (
+                  <button key={record.id} type="button" onClick={() => toggleSelection(record.id)} disabled={isImporting} aria-pressed={selected} className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition disabled:cursor-wait ${selected ? 'border-[#c5a059] bg-[#c5a059]/10' : 'border-[#3d2448] bg-[#1c0f24]'}`}>
+                    <span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${selected ? 'border-[#c5a059] bg-[#c5a059] text-[#120817]' : 'border-stone-600 bg-[#120817]'}`}>{selected && <Check className="h-3.5 w-3.5" />}</span>
+                    <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#f4efe6]">{record.title}</strong><small className="block truncate text-stone-400">{record.author}</small></span>
+                    <span className="text-[10px] font-bold uppercase text-[#e5c158]">{record.format}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-[#3d2448] bg-[#0d0910]/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
             <button type="button" onClick={goBack} disabled={isImporting} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">Back</button>
-            <button type="button" onClick={() => void executeImport()} disabled={selectedRecords.length === 0 || isImporting} className="quiet-shelf-primary-action min-h-11 disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="button" onClick={executeImport} disabled={selectedRecords.length === 0 || isImporting} className="quiet-shelf-primary-action min-h-11 disabled:cursor-not-allowed disabled:opacity-50">
               {isImporting ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</> : `Verify & Import ${selectedRecords.length.toLocaleString()} Books`}
             </button>
           </div>
