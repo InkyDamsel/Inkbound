@@ -18,6 +18,7 @@ type ImportExecutor = (items: ImportRecordItem[]) => Promise<void> | void;
 type Listener = (snapshot: ImportVerificationJobSnapshot) => void;
 
 const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v1';
+const METADATA_PENDING_STORAGE_KEY = 'inkbound_import_metadata_pending_v1';
 
 const emptySnapshot = (): ImportVerificationJobSnapshot => ({
   status: 'idle',
@@ -35,8 +36,6 @@ function readStoredSnapshot(): ImportVerificationJobSnapshot {
     if (!stored) return emptySnapshot();
     const parsed = JSON.parse(stored) as Partial<ImportVerificationJobSnapshot>;
 
-    // A browser refresh terminates in-memory verification. Keep completed results,
-    // but never pretend an interrupted job is still running after reload.
     if (parsed.status === 'running') {
       return {
         ...emptySnapshot(),
@@ -66,6 +65,18 @@ function persistSnapshot(next: ImportVerificationJobSnapshot) {
     localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(next));
   } catch {
     // Persistence is best-effort. The active in-memory job should continue.
+  }
+}
+
+function persistMetadataPending(items: ImportRecordItem[]) {
+  try {
+    if (items.length === 0) {
+      localStorage.removeItem(METADATA_PENDING_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(METADATA_PENDING_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // The normal enrichment queue remains the source of truth for retries.
   }
 }
 
@@ -133,15 +144,20 @@ export function startImportVerificationJob(
         });
       });
 
-      // The export file is the source of truth for the user's own library fields.
-      // Verification only decides whether external metadata is trusted. Books that
-      // cannot be matched still enter Inkbound with their imported title/author,
-      // shelf, rating, dates, review, ISBN, and placeholder metadata. The normal
-      // enrichment queue can retry covers/summaries later without blocking import.
+      // The exported library is authoritative for the reader's title, author,
+      // shelf/status, rating, dates, review, and ISBN. External verification is
+      // only a gate for trusting covers/summaries, never a gate for importing the
+      // reader's own library record.
       const recordsToImport = [...verification.verified, ...verification.unmatched];
       if (recordsToImport.length > 0) {
         await executeImport(recordsToImport);
       }
+
+      // Metadata misses should not force a reader to manually approve hundreds or
+      // thousands of books. Keep them as background metadata work instead. This
+      // list is persisted for future diagnostics/retry UI, while the normal import
+      // enrichment queue handles covers and summaries safely.
+      persistMetadataPending(verification.unmatched);
 
       const duplicateMap = new Map(preDetectedDuplicates.map((record) => [record.id, record]));
       verification.duplicates.forEach((record) => duplicateMap.set(record.id, record));
@@ -153,7 +169,7 @@ export function startImportVerificationJob(
         importedCount: recordsToImport.length,
         matchedCount: verification.verified.length,
         duplicates: [...duplicateMap.values()],
-        unmatched: verification.unmatched,
+        unmatched: [],
       });
     } catch (error) {
       emit({
