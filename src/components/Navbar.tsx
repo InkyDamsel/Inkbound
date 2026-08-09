@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   BarChart3, Bell, BookHeart, BookMarked, BookOpen, Bookmark, CalendarClock, CalendarDays,
-  ChevronDown, Clock3, DownloadCloud, FolderHeart, History, Home, Images, Library, Moon,
+  ChevronDown, Clock3, Copy, DownloadCloud, FolderHeart, History, Home, Images, Library, Moon,
   MoreHorizontal, Palette, Plus, Search, Settings, ShieldCheck, Sparkles, Sun, Target, Trophy, UserRound, X,
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
@@ -11,7 +11,7 @@ import { inkboundBrand } from '../design/tokens';
 import { usePersistentState } from '../hooks/usePersistentState';
 
 export type NavTab =
-  | 'home' | 'library' | 'tbr' | 'sessions' | 'collections' | 'timeline' | 'memories'
+  | 'home' | 'library' | 'duplicates' | 'tbr' | 'sessions' | 'collections' | 'timeline' | 'memories'
   | 'time-capsules' | 'photo-memories' | 'bookshelf-time' | 'my-dragon' | 'personality'
   | 'insights' | 'challenges' | 'achievements' | 'studio' | 'wrapped' | 'yearbook'
   | 'stats' | 'import' | 'settings' | 'profile' | 'admin';
@@ -37,6 +37,7 @@ const navigationGroups: NavigationGroup[] = [
   { id: 'reading', label: 'Reading', items: [
     { id: 'library', label: 'My Library', icon: Library },
     { id: 'sessions', label: 'Reading Sessions', icon: Clock3 }, { id: 'collections', label: 'Collections', icon: FolderHeart },
+    { id: 'duplicates', label: 'Duplicate Management', icon: Copy },
     { id: 'import', label: 'Import', icon: DownloadCloud },
   ]},
   { id: 'journal', label: 'Journal', items: [
