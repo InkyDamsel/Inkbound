@@ -53,7 +53,6 @@ export function writeImportEnrichmentQueue(items: ImportEnrichmentQueueItem[]) {
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 const normalizeText = (value?: string) => value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
-
 const authorSurname = (value?: string) => normalizeText(value).split(' ').filter(Boolean).at(-1) ?? '';
 
 async function searchImportedBookMetadata(query: string): Promise<BookSearchWorkGroup[]> {
@@ -219,6 +218,52 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
     moods: [],
     collections: [],
     sourceOfImport: 'Library import',
+    importMetadataVerified: false,
+    importMetadataReviewNeeded: false,
+    dateAdded: item.dateAdded,
+    dateFinished: item.dateRead,
+  };
+}
+
+function createUnmatchedCleanupRecord(item: ImportEnrichmentQueueItem): UserBookRecord {
+  const editionId = `edition-import-${item.id}`;
+  const normalizedIsbn = compactIsbn(item.isbn);
+  return {
+    id: item.targetBookId,
+    work: {
+      id: `work-import-${item.id}`,
+      title: item.title,
+      author: item.author,
+      summary: 'Summary unavailable.',
+      personalSummary: item.review?.trim() || undefined,
+      genres: [],
+      publicationYear: item.dateRead ? Number(item.dateRead.slice(0, 4)) || new Date().getFullYear() : new Date().getFullYear(),
+    },
+    activeEditionId: editionId,
+    editions: [{
+      id: editionId,
+      format: item.format,
+      isbn: item.isbn,
+      isbn10: normalizedIsbn.length === 10 ? normalizedIsbn : undefined,
+      isbn13: normalizedIsbn.length === 13 ? normalizedIsbn : undefined,
+      coverGradient: item.coverGradient,
+      externalSource: 'import',
+    }],
+    status: item.status,
+    ownership: 'owned',
+    progressPages: 0,
+    progressMinutes: 0,
+    progressPercentage: item.status === 'finished' ? 100 : 0,
+    rating: item.rating,
+    review: item.review,
+    favoriteQuotes: [],
+    privateTags: ['imported'],
+    priority: 'medium',
+    moods: [],
+    collections: [],
+    sourceOfImport: 'Library import - metadata needs review',
+    importMetadataVerified: false,
+    importMetadataReviewNeeded: true,
     dateAdded: item.dateAdded,
     dateFinished: item.dateRead,
   };
@@ -227,12 +272,18 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
 async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<ImportEnrichmentResult> {
   try {
     const { work, edition, coverEdition } = await findBestImportedMetadata(item);
-    const publisherSummary = work?.publisherSummary?.trim();
-    const coverUrl = coverEdition?.coverUrl;
     if (!work || !edition) {
-      return { item, foundCover: false, foundSummary: false, success: false };
+      return {
+        item,
+        enriched: createUnmatchedCleanupRecord(item),
+        foundCover: false,
+        foundSummary: false,
+        success: true,
+      };
     }
 
+    const publisherSummary = work.publisherSummary?.trim();
+    const coverUrl = coverEdition?.coverUrl;
     const editionId = `edition-enriched-${item.id}`;
     const pageCount = edition.pageCount;
     const enriched: UserBookRecord = {
@@ -282,6 +333,8 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       moods: [],
       collections: [],
       sourceOfImport: 'Library import + verified metadata',
+      importMetadataVerified: true,
+      importMetadataReviewNeeded: false,
       dateAdded: item.dateAdded,
       dateFinished: item.dateRead,
     };
@@ -317,8 +370,42 @@ export async function enrichImportedBooks(items: ImportEnrichmentQueueItem[]): P
 }
 
 export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: UserBookRecord): UserBookRecord {
-  const enrichedEdition = enriched.editions[0];
   const activeEdition = current.editions.find((edition) => edition.id === current.activeEditionId) ?? current.editions[0];
+
+  if (enriched.importMetadataReviewNeeded) {
+    const cleanedEdition = activeEdition
+      ? {
+          id: activeEdition.id,
+          format: activeEdition.format,
+          isbn: activeEdition.isbn,
+          isbn10: activeEdition.isbn10,
+          isbn13: activeEdition.isbn13,
+          coverGradient: activeEdition.coverGradient,
+          externalSource: 'import' as const,
+        }
+      : enriched.editions[0];
+
+    return {
+      ...current,
+      work: {
+        ...current.work,
+        subtitle: undefined,
+        summary: 'Summary unavailable.',
+        publisherSummary: undefined,
+        genres: [],
+        originalLanguage: undefined,
+        externalWorkId: undefined,
+      },
+      editions: current.editions.map((edition) =>
+        edition.id === current.activeEditionId && cleanedEdition ? cleanedEdition : edition,
+      ),
+      sourceOfImport: 'Library import - metadata needs review',
+      importMetadataVerified: false,
+      importMetadataReviewNeeded: true,
+    };
+  }
+
+  const enrichedEdition = enriched.editions[0];
   const mergedActiveEdition = activeEdition
     ? {
         ...activeEdition,
@@ -326,7 +413,7 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
         id: activeEdition.id,
         format: activeEdition.format,
         coverGradient: activeEdition.coverGradient,
-        coverUrl: enrichedEdition?.coverUrl || activeEdition.coverUrl,
+        coverUrl: enrichedEdition?.coverUrl,
         isbn: activeEdition.isbn || enrichedEdition?.isbn,
         isbn10: activeEdition.isbn10 || enrichedEdition?.isbn10,
         isbn13: activeEdition.isbn13 || enrichedEdition?.isbn13,
@@ -344,12 +431,14 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
       genres: current.work.genres.length > 0 ? current.work.genres : enriched.work.genres,
       publicationYear: current.work.publicationYear || enriched.work.publicationYear,
       originalLanguage: current.work.originalLanguage || enriched.work.originalLanguage,
-      externalWorkId: current.work.externalWorkId || enriched.work.externalWorkId,
+      externalWorkId: enriched.work.externalWorkId,
     },
     editions: current.editions.map((edition) =>
       edition.id === current.activeEditionId && mergedActiveEdition ? mergedActiveEdition : edition,
     ),
-    sourceOfImport: current.sourceOfImport || enriched.sourceOfImport,
+    sourceOfImport: 'Library import + verified metadata',
+    importMetadataVerified: true,
+    importMetadataReviewNeeded: false,
   };
 }
 
@@ -380,7 +469,17 @@ export function buildRepairQueueItems(
   const byBookId = new Map(existingQueue.map((item) => [item.targetBookId, item]));
 
   books.forEach((book) => {
-    if (!isImportedBook(book) || (!needsCover(book) && !needsPublisherSummary(book))) return;
+    if (!isImportedBook(book)) return;
+    if (book.importMetadataReviewNeeded) {
+      byBookId.delete(book.id);
+      return;
+    }
+
+    const mustVerifyLegacyMetadata = book.importMetadataVerified !== true;
+    if (!mustVerifyLegacyMetadata && !needsCover(book) && !needsPublisherSummary(book)) {
+      byBookId.delete(book.id);
+      return;
+    }
     if (byBookId.has(book.id)) return;
 
     const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
