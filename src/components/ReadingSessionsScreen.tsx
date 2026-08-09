@@ -114,10 +114,20 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
 
       <div className="inkbound-panel grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_220px]">
         <label className="relative block">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-text-muted)]" />
-          <input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search notes, books, moods, or places..." className="inkbound-select w-full pl-10" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[var(--ink-mauve)]" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search notes, books, moods, or places..."
+            className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] py-3 pl-11 pr-4 text-sm text-[var(--ink-text-primary)] outline-none placeholder:text-[var(--ink-text-muted)] focus:border-[var(--ink-mauve)] focus:ring-2 focus:ring-[var(--ink-mauve)]/25"
+          />
         </label>
-        <select value={bookFilter} onChange={(event) => setBookFilter(event.target.value)} className="inkbound-select">
+        <select
+          value={bookFilter}
+          onChange={(event) => setBookFilter(event.target.value)}
+          className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] px-4 text-sm text-[var(--ink-text-primary)] outline-none focus:border-[var(--ink-mauve)] focus:ring-2 focus:ring-[var(--ink-mauve)]/25"
+        >
           <option value="all">All Books</option>
           {sessionBooks.map((book) => <option key={book.id} value={book.id}>{book.work.title}</option>)}
         </select>
