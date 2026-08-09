@@ -53,8 +53,11 @@ import {
 } from './features/import/libraryEnrichment';
 import {
   appendImportHistory,
+  consumeForegroundImportRetryRequest,
   isImportEnrichmentPaused,
+  requestForegroundImportRetry,
   setImportEnrichmentPaused,
+  writeImportEnrichmentRetryProgress,
   writeImportHistory,
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
@@ -160,25 +163,76 @@ export default function App() {
   };
 
   const processImportEnrichmentQueue = async () => {
-    if (isImportQueueProcessing || !navigator.onLine || isReadingTimerOpen() || isImportEnrichmentPaused()) return;
+    const retryRequest = consumeForegroundImportRetryRequest();
+    const forceRetry = Boolean(retryRequest);
+
+    if (isImportQueueProcessing) {
+      if (retryRequest) requestForegroundImportRetry(retryRequest.targetBookIds);
+      return;
+    }
+    if (!navigator.onLine || isReadingTimerOpen()) {
+      if (retryRequest) {
+        requestForegroundImportRetry(retryRequest.targetBookIds);
+        writeImportEnrichmentRetryProgress({
+          status: 'error',
+          completed: 0,
+          total: retryRequest.targetBookIds.length,
+          matched: 0,
+          covers: 0,
+          summaries: 0,
+          message: !navigator.onLine ? 'Connect to the internet, then retry the missing details again.' : 'Finish or close the active reading timer, then retry the missing details again.',
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      return;
+    }
+    if (!forceRetry && isImportEnrichmentPaused()) return;
+
     const initialQueue = readImportEnrichmentQueue();
-    if (initialQueue.length === 0) return;
+    if (initialQueue.length === 0) {
+      if (retryRequest) {
+        writeImportEnrichmentRetryProgress({
+          status: 'complete', completed: 0, total: 0, matched: 0, covers: 0, summaries: 0,
+          message: 'There are no missing book details left in the retry queue.', updatedAt: new Date().toISOString(),
+        });
+      }
+      return;
+    }
+
+    const targetIds = retryRequest ? new Set(retryRequest.targetBookIds) : null;
+    const untouchedQueue = targetIds ? initialQueue.filter((item) => !targetIds.has(item.targetBookId)) : [];
+    let pending = targetIds ? initialQueue.filter((item) => targetIds.has(item.targetBookId)) : [...initialQueue];
+    if (forceRetry && pending.length === 0) {
+      writeImportEnrichmentRetryProgress({
+        status: 'complete', completed: 0, total: 0, matched: 0, covers: 0, summaries: 0,
+        message: 'Those books no longer need a retry.', updatedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
     const isQuietHours = isPreferredMaintenanceWindow();
-    if (!isQuietHours && !canRunDaytimeMaintenance()) return;
+    if (!forceRetry && !isQuietHours && !canRunDaytimeMaintenance()) return;
 
     isImportQueueProcessing = true;
-    let pending = [...initialQueue];
     const retryItems: ImportEnrichmentQueueItem[] = [];
     let updatedCount = 0;
     let coverCount = 0;
     let summaryCount = 0;
     let processedBatchCount = 0;
+    const retryTotal = forceRetry ? pending.length : 0;
+
+    if (forceRetry) {
+      writeImportEnrichmentRetryProgress({
+        status: 'running', completed: 0, total: retryTotal, matched: 0, covers: 0, summaries: 0,
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     try {
       while (pending.length > 0 && navigator.onLine) {
-        if (isReadingTimerOpen() || isImportEnrichmentPaused()) break;
-        if (!isQuietHours && processedBatchCount >= 1) break;
-        const batchSize = isQuietHours ? IMPORT_ENRICHMENT_BATCH_SIZE : DAYTIME_MAINTENANCE_BATCH_SIZE;
+        if (isReadingTimerOpen() || (!forceRetry && isImportEnrichmentPaused())) break;
+        if (!forceRetry && !isQuietHours && processedBatchCount >= 1) break;
+        const batchSize = forceRetry ? IMPORT_ENRICHMENT_BATCH_SIZE : isQuietHours ? IMPORT_ENRICHMENT_BATCH_SIZE : DAYTIME_MAINTENANCE_BATCH_SIZE;
         const batch = pending.slice(0, batchSize);
         pending = pending.slice(batch.length);
         processedBatchCount += 1;
@@ -200,16 +254,60 @@ export default function App() {
             retryItems.push({ ...result.item, attempts: (result.item.attempts ?? 0) + 1, lastAttemptAt: new Date().toISOString() });
           }
         });
-        writeImportEnrichmentQueue([...retryItems, ...pending]);
-        await new Promise<void>((resolve) => window.setTimeout(resolve, isQuietHours ? 300 : 750));
+        writeImportEnrichmentQueue([...retryItems, ...pending, ...untouchedQueue]);
+        if (forceRetry) {
+          writeImportEnrichmentRetryProgress({
+            status: 'running',
+            completed: retryTotal - pending.length,
+            total: retryTotal,
+            matched: updatedCount,
+            covers: coverCount,
+            summaries: summaryCount,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        await new Promise<void>((resolve) => window.setTimeout(resolve, forceRetry ? 250 : isQuietHours ? 300 : 750));
       }
-      writeImportEnrichmentQueue([...retryItems, ...pending]);
-      if (!isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
-      if (updatedCount > 0) showToast(`Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`);
-      else if (isQuietHours && initialQueue.length > 0 && !isReadingTimerOpen() && !isImportEnrichmentPaused()) showToast('Inkbound kept the remaining books queued and will retry their details later.');
+
+      writeImportEnrichmentQueue([...retryItems, ...pending, ...untouchedQueue]);
+      if (!forceRetry && !isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
+
+      if (forceRetry) {
+        const completed = retryTotal - pending.length;
+        const finished = pending.length === 0;
+        writeImportEnrichmentRetryProgress({
+          status: finished ? 'complete' : 'error',
+          completed,
+          total: retryTotal,
+          matched: updatedCount,
+          covers: coverCount,
+          summaries: summaryCount,
+          message: finished
+            ? `${completed.toLocaleString()} books were checked. Books that still could not be matched remain safely queued for later background attempts.`
+            : `The retry stopped after ${completed.toLocaleString()} of ${retryTotal.toLocaleString()} books. The remaining books are still queued.`,
+          updatedAt: new Date().toISOString(),
+        });
+        showToast(`Retry checked ${completed} books · ${coverCount} covers · ${summaryCount} summaries.`);
+      } else if (updatedCount > 0) {
+        showToast(`Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`);
+      } else if (isQuietHours && initialQueue.length > 0 && !isReadingTimerOpen() && !isImportEnrichmentPaused()) {
+        showToast('Inkbound kept the remaining books queued and will retry their details later.');
+      }
     } catch {
-      writeImportEnrichmentQueue([...retryItems, ...pending]);
-      if (!isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
+      writeImportEnrichmentQueue([...retryItems, ...pending, ...untouchedQueue]);
+      if (!forceRetry && !isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
+      if (forceRetry) {
+        writeImportEnrichmentRetryProgress({
+          status: 'error',
+          completed: retryTotal - pending.length,
+          total: retryTotal,
+          matched: updatedCount,
+          covers: coverCount,
+          summaries: summaryCount,
+          message: 'Inkbound could not finish this retry. The unprocessed books remain safely queued so you can try again.',
+          updatedAt: new Date().toISOString(),
+        });
+      }
       showToast('Book details are safely queued and will resume when Inkbound can reach its metadata sources.');
     } finally {
       isImportQueueProcessing = false;
@@ -398,6 +496,7 @@ export default function App() {
     } catch { /* no-op */ }
     writeImportEnrichmentQueue([]);
     writeImportHistory([]);
+    writeImportEnrichmentRetryProgress(null);
     setImportEnrichmentPaused(false);
     showToast('Cleared all Inkbound books and reading sessions.');
   };
