@@ -8,6 +8,7 @@ export interface ImportVerificationJobSnapshot {
   completed: number;
   total: number;
   importedCount: number;
+  matchedCount: number;
   duplicates: ImportRecordItem[];
   unmatched: ImportRecordItem[];
   error?: string;
@@ -16,20 +17,61 @@ export interface ImportVerificationJobSnapshot {
 type ImportExecutor = (items: ImportRecordItem[]) => Promise<void> | void;
 type Listener = (snapshot: ImportVerificationJobSnapshot) => void;
 
-let snapshot: ImportVerificationJobSnapshot = {
+const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v1';
+
+const emptySnapshot = (): ImportVerificationJobSnapshot => ({
   status: 'idle',
   completed: 0,
   total: 0,
   importedCount: 0,
+  matchedCount: 0,
   duplicates: [],
   unmatched: [],
-};
+});
 
+function readStoredSnapshot(): ImportVerificationJobSnapshot {
+  try {
+    const stored = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+    if (!stored) return emptySnapshot();
+    const parsed = JSON.parse(stored) as Partial<ImportVerificationJobSnapshot>;
+
+    // A browser refresh terminates in-memory verification. Keep completed results,
+    // but never pretend an interrupted job is still running after reload.
+    if (parsed.status === 'running') {
+      return {
+        ...emptySnapshot(),
+        status: 'error',
+        error: 'The previous verification was interrupted when Inkbound closed or refreshed. Upload the export again to restart it.',
+      };
+    }
+
+    return {
+      ...emptySnapshot(),
+      ...parsed,
+      matchedCount: parsed.matchedCount ?? parsed.importedCount ?? 0,
+      duplicates: Array.isArray(parsed.duplicates) ? parsed.duplicates : [],
+      unmatched: Array.isArray(parsed.unmatched) ? parsed.unmatched : [],
+    };
+  } catch {
+    return emptySnapshot();
+  }
+}
+
+let snapshot: ImportVerificationJobSnapshot = readStoredSnapshot();
 let activePromise: Promise<void> | null = null;
 const listeners = new Set<Listener>();
 
+function persistSnapshot(next: ImportVerificationJobSnapshot) {
+  try {
+    localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Persistence is best-effort. The active in-memory job should continue.
+  }
+}
+
 function emit(next: ImportVerificationJobSnapshot) {
   snapshot = next;
+  persistSnapshot(snapshot);
   listeners.forEach((listener) => listener(snapshot));
 }
 
@@ -52,14 +94,13 @@ export function subscribeToImportVerification(listener: Listener): () => void {
 
 export function resetImportVerificationJob() {
   if (snapshot.status === 'running') return;
-  emit({
-    status: 'idle',
-    completed: 0,
-    total: 0,
-    importedCount: 0,
-    duplicates: [],
-    unmatched: [],
-  });
+  snapshot = emptySnapshot();
+  try {
+    localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+  } catch {
+    // Best-effort cleanup only.
+  }
+  listeners.forEach((listener) => listener(snapshot));
 }
 
 export function startImportVerificationJob(
@@ -74,6 +115,7 @@ export function startImportVerificationJob(
     completed: 0,
     total: items.length,
     importedCount: 0,
+    matchedCount: 0,
     duplicates: preDetectedDuplicates,
     unmatched: [],
   });
@@ -91,8 +133,14 @@ export function startImportVerificationJob(
         });
       });
 
-      if (verification.verified.length > 0) {
-        await executeImport(verification.verified);
+      // The export file is the source of truth for the user's own library fields.
+      // Verification only decides whether external metadata is trusted. Books that
+      // cannot be matched still enter Inkbound with their imported title/author,
+      // shelf, rating, dates, review, ISBN, and placeholder metadata. The normal
+      // enrichment queue can retry covers/summaries later without blocking import.
+      const recordsToImport = [...verification.verified, ...verification.unmatched];
+      if (recordsToImport.length > 0) {
+        await executeImport(recordsToImport);
       }
 
       const duplicateMap = new Map(preDetectedDuplicates.map((record) => [record.id, record]));
@@ -102,7 +150,8 @@ export function startImportVerificationJob(
         status: 'complete',
         completed: items.length,
         total: items.length,
-        importedCount: verification.verified.length,
+        importedCount: recordsToImport.length,
+        matchedCount: verification.verified.length,
         duplicates: [...duplicateMap.values()],
         unmatched: verification.unmatched,
       });
