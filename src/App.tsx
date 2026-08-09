@@ -16,6 +16,7 @@ import { ReadingChallengesScreen } from './components/ReadingChallengesScreen';
 import { AchievementsScreen } from './components/AchievementsScreen';
 import { CollectionsScreen } from './components/CollectionsScreen';
 import { DuplicateManagerScreen, type DuplicateMergeRequest } from './components/DuplicateManagerScreen';
+import { ImportHistoryScreen } from './components/ImportHistoryScreen';
 import { ReadingTimelineScreen } from './components/ReadingTimelineScreen';
 import { ReadingMemoriesScreen } from './components/ReadingMemoriesScreen';
 import { ReadingTimeCapsulesScreen } from './components/ReadingTimeCapsulesScreen';
@@ -50,6 +51,13 @@ import {
   writeImportEnrichmentQueue,
   type ImportEnrichmentQueueItem,
 } from './features/import/libraryEnrichment';
+import {
+  appendImportHistory,
+  isImportEnrichmentPaused,
+  setImportEnrichmentPaused,
+  writeImportHistory,
+} from './features/import/importHistory';
+import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
 import { Check, RotateCcw } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
@@ -152,7 +160,7 @@ export default function App() {
   };
 
   const processImportEnrichmentQueue = async () => {
-    if (isImportQueueProcessing || !navigator.onLine || isReadingTimerOpen()) return;
+    if (isImportQueueProcessing || !navigator.onLine || isReadingTimerOpen() || isImportEnrichmentPaused()) return;
     const initialQueue = readImportEnrichmentQueue();
     if (initialQueue.length === 0) return;
     const isQuietHours = isPreferredMaintenanceWindow();
@@ -168,7 +176,7 @@ export default function App() {
 
     try {
       while (pending.length > 0 && navigator.onLine) {
-        if (isReadingTimerOpen()) break;
+        if (isReadingTimerOpen() || isImportEnrichmentPaused()) break;
         if (!isQuietHours && processedBatchCount >= 1) break;
         const batchSize = isQuietHours ? IMPORT_ENRICHMENT_BATCH_SIZE : DAYTIME_MAINTENANCE_BATCH_SIZE;
         const batch = pending.slice(0, batchSize);
@@ -198,7 +206,7 @@ export default function App() {
       writeImportEnrichmentQueue([...retryItems, ...pending]);
       if (!isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
       if (updatedCount > 0) showToast(`Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`);
-      else if (isQuietHours && initialQueue.length > 0 && !isReadingTimerOpen()) showToast('Inkbound kept the remaining books queued and will retry their details later.');
+      else if (isQuietHours && initialQueue.length > 0 && !isReadingTimerOpen() && !isImportEnrichmentPaused()) showToast('Inkbound kept the remaining books queued and will retry their details later.');
     } catch {
       writeImportEnrichmentQueue([...retryItems, ...pending]);
       if (!isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
@@ -378,6 +386,7 @@ export default function App() {
     const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item]));
     queueImportedItems(importedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item));
     writeImportEnrichmentQueue([...queuedByBookId.values()]);
+    appendImportHistory(importedItems, getImportVerificationSnapshot().duplicates.length);
     showToast(navigator.onLine ? `Added ${immediateBooks.length} books. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline. Covers and publisher summaries will update when Inkbound is online.`);
     void processImportEnrichmentQueue();
   };
@@ -388,6 +397,8 @@ export default function App() {
       localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY);
     } catch { /* no-op */ }
     writeImportEnrichmentQueue([]);
+    writeImportHistory([]);
+    setImportEnrichmentPaused(false);
     showToast('Cleared all Inkbound books and reading sessions.');
   };
 
@@ -403,6 +414,7 @@ export default function App() {
           {activeTab === 'challenges' && <ReadingChallengesScreen books={books} sessions={sessions} />}
           {activeTab === 'achievements' && <AchievementsScreen books={books} sessions={sessions} />}
           {activeTab === 'collections' && <CollectionsScreen books={books} onUpdateBook={handleUpdateBook} onSelectBook={setSelectedBookForDetails} />}
+          {activeTab === 'import-history' && <ImportHistoryScreen books={books} onResumeEnrichment={() => void processImportEnrichmentQueue()} />}
           {activeTab === 'timeline' && <ReadingTimelineScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'memories' && <ReadingMemoriesScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'time-capsules' && <ReadingTimeCapsulesScreen books={books} onSelectBook={setSelectedBookForDetails} />}
