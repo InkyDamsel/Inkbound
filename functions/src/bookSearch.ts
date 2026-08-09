@@ -3,8 +3,87 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
 const HARDCOVER_API_TOKEN = defineSecret('HARDCOVER_API_TOKEN');
 const HARDCOVER_ENDPOINT = 'https://api.hardcover.app/v1/graphql';
+const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
+const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000;
 
-interface SearchResult {
+type BookSource = 'google-books' | 'hardcover';
+type BookFormat = 'hardcover' | 'paperback' | 'ebook' | 'audiobook';
+
+interface NormalizedEdition {
+  source: BookSource;
+  externalEditionId: string;
+  title: string;
+  subtitle?: string;
+  authors: string[];
+  publisherSummary?: string;
+  genres: string[];
+  publisher?: string;
+  publicationDate?: string;
+  publicationYear: number;
+  language?: string;
+  format: BookFormat;
+  isbn10?: string;
+  isbn13?: string;
+  pageCount?: number;
+  coverUrl?: string;
+  editionName?: string;
+  binding?: string;
+  specialFeatures: string[];
+}
+
+interface NormalizedGroup {
+  key: string;
+  title: string;
+  subtitle?: string;
+  authors: string[];
+  publisherSummary?: string;
+  genres: string[];
+  editions: NormalizedEdition[];
+}
+
+interface SearchResponse {
+  groups: NormalizedGroup[];
+  totalItems: number;
+}
+
+interface GoogleIndustryIdentifier {
+  type?: string;
+  identifier?: string;
+}
+
+interface GoogleImageLinks {
+  smallThumbnail?: string;
+  thumbnail?: string;
+  small?: string;
+  medium?: string;
+  large?: string;
+  extraLarge?: string;
+}
+
+interface GoogleVolume {
+  id: string;
+  volumeInfo?: {
+    title?: string;
+    subtitle?: string;
+    authors?: string[];
+    publisher?: string;
+    publishedDate?: string;
+    description?: string;
+    industryIdentifiers?: GoogleIndustryIdentifier[];
+    pageCount?: number;
+    categories?: string[];
+    imageLinks?: GoogleImageLinks;
+    language?: string;
+  };
+  saleInfo?: { isEbook?: boolean };
+}
+
+interface GoogleVolumesResponse {
+  totalItems?: number;
+  items?: GoogleVolume[];
+}
+
+interface HardcoverSearchResult {
   id?: number | string;
   title?: string;
   subtitle?: string;
@@ -39,7 +118,27 @@ interface HardcoverEdition {
   };
 }
 
-const normalizeFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' => {
+const searchCache = new Map<string, { expiresAt: number; response: SearchResponse }>();
+
+const normalizeText = (value?: string): string =>
+  value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+
+const compactIsbn = (value: string): string => value.replace(/[^0-9X]/gi, '').toUpperCase();
+
+const publicationYear = (value?: string): number => {
+  const match = value?.match(/\d{4}/);
+  return match ? Number(match[0]) : new Date().getFullYear();
+};
+
+const normalizeGoogleCover = (links?: GoogleImageLinks): string | undefined => {
+  const source = links?.extraLarge ?? links?.large ?? links?.medium ?? links?.small ?? links?.thumbnail ?? links?.smallThumbnail;
+  return source?.replace(/^http:/, 'https:').replace('&edge=curl', '').replace('zoom=1', 'zoom=2');
+};
+
+const googleIdentifier = (volume: GoogleVolume, type: 'ISBN_10' | 'ISBN_13'): string | undefined =>
+  volume.volumeInfo?.industryIdentifiers?.find((item) => item.type === type)?.identifier;
+
+const normalizeHardcoverFormat = (value?: string): BookFormat => {
   const normalized = value?.toLowerCase() ?? '';
   if (normalized.includes('audio')) return 'audiobook';
   if (normalized.includes('ebook') || normalized.includes('digital') || normalized.includes('kindle')) return 'ebook';
@@ -47,10 +146,10 @@ const normalizeFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 
   return 'hardcover';
 };
 
-const imageUrl = (value?: SearchResult['image']): string | undefined =>
+const hardcoverImageUrl = (value?: HardcoverSearchResult['image']): string | undefined =>
   typeof value === 'string' ? value : value?.url;
 
-const authorNames = (result: SearchResult): string[] => {
+const hardcoverAuthorNames = (result: HardcoverSearchResult): string[] => {
   if (result.author_names?.length) return result.author_names.filter(Boolean);
   if (Array.isArray(result.authors)) {
     return result.authors
@@ -60,24 +159,137 @@ const authorNames = (result: SearchResult): string[] => {
   return ['Unknown author'];
 };
 
-const parseSearchResults = (value: unknown): SearchResult[] => {
+const parseHardcoverSearchResults = (value: unknown): HardcoverSearchResult[] => {
   if (Array.isArray(value)) {
     return value.flatMap((item) => {
       if (!item || typeof item !== 'object') return [];
       const record = item as Record<string, unknown>;
-      if (record.document && typeof record.document === 'object') return [record.document as SearchResult];
-      return [item as SearchResult];
+      if (record.document && typeof record.document === 'object') return [record.document as HardcoverSearchResult];
+      return [item as HardcoverSearchResult];
     });
   }
   if (typeof value === 'string') {
     try {
-      return parseSearchResults(JSON.parse(value));
+      return parseHardcoverSearchResults(JSON.parse(value));
     } catch {
       return [];
     }
   }
   return [];
 };
+
+const groupIdentity = (group: NormalizedGroup): string =>
+  `${normalizeText(group.title)}::${normalizeText(group.authors[0])}`;
+
+const sameEdition = (a: NormalizedEdition, b: NormalizedEdition): boolean => {
+  if (a.source === b.source && a.externalEditionId === b.externalEditionId) return true;
+  if (a.isbn13 && b.isbn13 && compactIsbn(a.isbn13) === compactIsbn(b.isbn13)) return true;
+  if (a.isbn10 && b.isbn10 && compactIsbn(a.isbn10) === compactIsbn(b.isbn10)) return true;
+  return false;
+};
+
+const mergeGroups = (primary: NormalizedGroup[], supplement: NormalizedGroup[]): NormalizedGroup[] => {
+  const merged = new Map<string, NormalizedGroup>();
+  const order: string[] = [];
+
+  const addGroup = (group: NormalizedGroup) => {
+    const identity = groupIdentity(group);
+    const existing = merged.get(identity);
+    if (!existing) {
+      merged.set(identity, { ...group, key: `inkbound:${identity}`, genres: [...group.genres], editions: [...group.editions] });
+      order.push(identity);
+      return;
+    }
+
+    if (!existing.subtitle && group.subtitle) existing.subtitle = group.subtitle;
+    if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
+    existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
+    group.editions.forEach((edition) => {
+      if (!existing.editions.some((candidate) => sameEdition(candidate, edition))) existing.editions.push(edition);
+    });
+  };
+
+  primary.forEach(addGroup);
+  supplement.forEach(addGroup);
+  return order.map((identity) => merged.get(identity)).filter((group): group is NormalizedGroup => Boolean(group)).slice(0, 50);
+};
+
+const groupGoogleVolumes = (volumes: GoogleVolume[]): NormalizedGroup[] => {
+  const groups = new Map<string, NormalizedGroup>();
+  const order: string[] = [];
+
+  volumes.forEach((volume) => {
+    const info = volume.volumeInfo;
+    if (!info?.title) return;
+    const authors = info.authors?.length ? info.authors : ['Unknown author'];
+    const edition: NormalizedEdition = {
+      source: 'google-books',
+      externalEditionId: volume.id,
+      title: info.title,
+      subtitle: info.subtitle,
+      authors,
+      publisherSummary: info.description,
+      genres: info.categories ?? [],
+      publisher: info.publisher,
+      publicationDate: info.publishedDate,
+      publicationYear: publicationYear(info.publishedDate),
+      language: info.language,
+      format: volume.saleInfo?.isEbook ? 'ebook' : 'hardcover',
+      isbn10: googleIdentifier(volume, 'ISBN_10'),
+      isbn13: googleIdentifier(volume, 'ISBN_13'),
+      pageCount: info.pageCount,
+      coverUrl: normalizeGoogleCover(info.imageLinks),
+      editionName: info.subtitle?.toLocaleLowerCase().includes('edition') ? info.subtitle : undefined,
+      binding: volume.saleInfo?.isEbook ? 'Digital' : undefined,
+      specialFeatures: [],
+    };
+    const identity = `${normalizeText(edition.title)}::${normalizeText(authors[0])}`;
+    const existing = groups.get(identity);
+    if (!existing) {
+      groups.set(identity, {
+        key: `google-books:${volume.id}`,
+        title: edition.title,
+        subtitle: edition.subtitle,
+        authors,
+        publisherSummary: edition.publisherSummary,
+        genres: edition.genres,
+        editions: [edition],
+      });
+      order.push(identity);
+      return;
+    }
+    if (!existing.editions.some((candidate) => sameEdition(candidate, edition))) existing.editions.push(edition);
+    if (!existing.publisherSummary && edition.publisherSummary) existing.publisherSummary = edition.publisherSummary;
+    existing.genres = [...new Set([...existing.genres, ...edition.genres])].slice(0, 16);
+  });
+
+  return order.map((identity) => groups.get(identity)).filter((group): group is NormalizedGroup => Boolean(group));
+};
+
+async function searchGoogleBooks(query: string): Promise<NormalizedGroup[]> {
+  const isbn = compactIsbn(query);
+  const q = /^(?:97[89])?\d{9}[\dX]$/i.test(isbn) ? `isbn:${isbn}` : query;
+  const params = new URLSearchParams({
+    q,
+    printType: 'books',
+    projection: 'full',
+    orderBy: 'relevance',
+    maxResults: '40',
+  });
+
+  try {
+    const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+    if (!response.ok) {
+      console.warn(`Google Books search returned ${response.status}.`);
+      return [];
+    }
+    const payload = await response.json() as GoogleVolumesResponse;
+    return groupGoogleVolumes(payload.items ?? []);
+  } catch (error) {
+    console.warn('Google Books search failed.', error);
+    return [];
+  }
+}
 
 async function hardcoverGraphql<T>(token: string, query: string, variables: Record<string, unknown>): Promise<T> {
   const response = await fetch(HARDCOVER_ENDPOINT, {
@@ -95,13 +307,8 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
   return payload.data;
 }
 
-export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Hardcover enrichment.');
-  const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
-  if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
-
-  const token = HARDCOVER_API_TOKEN.value();
-  if (!token) throw new HttpsError('failed-precondition', 'Hardcover search is not configured.');
+async function searchHardcoverProvider(query: string, token: string): Promise<NormalizedGroup[]> {
+  if (!token) return [];
 
   try {
     const searchData = await hardcoverGraphql<{ search?: { results?: unknown } }>(
@@ -111,7 +318,7 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
       }`,
       { q: query },
     );
-    const searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
+    const searchResults = parseHardcoverSearchResults(searchData.search?.results).filter((result) => result.title);
     const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
 
     let editions: HardcoverEdition[] = [];
@@ -130,8 +337,8 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
           { ids },
         );
         editions = editionData.editions ?? [];
-      } catch {
-        // Search results are still useful if edition expansion is unavailable.
+      } catch (error) {
+        console.warn('Hardcover edition expansion failed.', error);
       }
     }
 
@@ -142,13 +349,13 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
       editionsByBook.set(key, [...(editionsByBook.get(key) ?? []), edition]);
     });
 
-    const groups = searchResults.map((result) => {
+    return searchResults.map((result): NormalizedGroup => {
       const id = String(result.id ?? result.slug ?? result.title);
-      const authors = authorNames(result);
+      const authors = hardcoverAuthorNames(result);
       const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
-      const normalizedEditions = matchedEditions.length > 0
-        ? matchedEditions.map((edition) => ({
-            source: 'hardcover' as const,
+      const normalizedEditions: NormalizedEdition[] = matchedEditions.length > 0
+        ? matchedEditions.map((edition): NormalizedEdition => ({
+            source: 'hardcover',
             externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
             title: edition.title ?? edition.book?.title ?? result.title ?? 'Untitled',
             subtitle: edition.book?.subtitle ?? result.subtitle,
@@ -158,17 +365,17 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
             publisher: edition.publisher?.name,
             publicationDate: edition.release_date,
             publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || result.release_year || new Date().getFullYear(),
-            format: normalizeFormat(edition.edition_format),
+            format: normalizeHardcoverFormat(edition.edition_format),
             isbn10: edition.isbn_10,
             isbn13: edition.isbn_13,
             pageCount: edition.pages ?? result.pages,
-            coverUrl: edition.image?.url ?? edition.book?.image?.url ?? result.image_url ?? imageUrl(result.image),
+            coverUrl: edition.image?.url ?? edition.book?.image?.url ?? result.image_url ?? hardcoverImageUrl(result.image),
             editionName: edition.title,
             binding: edition.edition_format,
             specialFeatures: [],
           }))
         : [{
-            source: 'hardcover' as const,
+            source: 'hardcover',
             externalEditionId: id,
             title: result.title ?? 'Untitled',
             subtitle: result.subtitle,
@@ -176,9 +383,9 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
             publisherSummary: result.description,
             genres: [],
             publicationYear: result.release_year || new Date().getFullYear(),
-            format: 'hardcover' as const,
+            format: 'hardcover',
             pageCount: result.pages,
-            coverUrl: result.image_url ?? imageUrl(result.image),
+            coverUrl: result.image_url ?? hardcoverImageUrl(result.image),
             specialFeatures: [],
           }];
 
@@ -192,10 +399,32 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
         editions: normalizedEditions,
       };
     });
-
-    return { groups, totalItems: groups.length };
   } catch (error) {
-    console.error('Hardcover search failed', error);
-    throw new HttpsError('unavailable', error instanceof Error ? error.message : 'Hardcover search failed.');
+    console.warn('Hardcover search failed.', error);
+    return [];
   }
+}
+
+export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to search the Inkbound catalog.');
+  const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+  if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
+
+  const cacheKey = normalizeText(query);
+  const cached = searchCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.response;
+  if (cached) searchCache.delete(cacheKey);
+
+  const token = HARDCOVER_API_TOKEN.value().trim();
+  const [googleGroups, hardcoverGroups] = await Promise.all([
+    searchGoogleBooks(query),
+    searchHardcoverProvider(query, token),
+  ]);
+
+  // Google Books is the baseline catalog and keeps its relevance ordering.
+  // Hardcover only enriches matching works or appends additional works.
+  const groups = mergeGroups(googleGroups, hardcoverGroups);
+  const response: SearchResponse = { groups, totalItems: groups.length };
+  searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
+  return response;
 });
