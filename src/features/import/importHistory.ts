@@ -85,6 +85,52 @@ export function appendImportHistory(items: ImportRecordItem[], duplicateCount: n
   writeImportHistory([entry, ...readImportHistory()].slice(0, 50));
 }
 
+export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): ImportHistoryEntry[] {
+  const existing = readImportHistory();
+  if (existing.length > 0) return existing;
+
+  const importedBooks = books.filter((book) =>
+    book.sourceOfImport?.toLowerCase().includes('import') ||
+    book.privateTags.includes('imported') ||
+    book.id.startsWith('book-import-'),
+  );
+  if (importedBooks.length === 0) return [];
+
+  const sortedDates = importedBooks.map((book) => book.dateAdded).filter(Boolean).sort();
+  const createdAt = sortedDates.at(-1)
+    ? new Date(`${sortedDates.at(-1)}T12:00:00`).toISOString()
+    : new Date().toISOString();
+  const items: ImportHistoryItem[] = importedBooks.map((book) => {
+    const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+    const recordId = book.id.startsWith('book-import-') ? book.id.slice('book-import-'.length) : `legacy-${book.id}`;
+    return {
+      recordId,
+      targetBookId: book.id,
+      title: book.work.title,
+      author: book.work.author,
+      isbn: edition?.isbn13 || edition?.isbn10 || edition?.isbn,
+      format: edition?.format ?? 'hardcover',
+      status: book.status,
+      rating: book.rating,
+      dateRead: book.dateFinished,
+      dateAdded: book.dateAdded,
+      review: book.review,
+      coverGradient: edition?.coverGradient ?? 'from-[#5c3d62] via-[#35243f] to-[#171117]',
+    };
+  });
+
+  const entry: ImportHistoryEntry = {
+    id: 'import-history-existing-library',
+    createdAt,
+    sourceName: 'Existing Imported Library',
+    importedCount: items.length,
+    duplicateCount: 0,
+    items,
+  };
+  writeImportHistory([entry]);
+  return [entry];
+}
+
 export function isImportEnrichmentPaused(): boolean {
   try {
     return localStorage.getItem(IMPORT_ENRICHMENT_PAUSED_KEY) === 'true';
