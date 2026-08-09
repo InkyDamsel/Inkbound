@@ -1,0 +1,211 @@
+import React, { useMemo, useState } from 'react';
+import { CheckCircle2, Copy, Merge, Search, ShieldCheck } from 'lucide-react';
+import type { Edition, UserBookRecord } from '../types';
+import { BookCover } from './BookCover';
+
+export interface DuplicateMergeRequest {
+  keepBookId: string;
+  removeBookIds: string[];
+  mergedBook: UserBookRecord;
+}
+
+interface DuplicateManagerScreenProps {
+  books: UserBookRecord[];
+  onMergeGroup: (request: DuplicateMergeRequest) => void;
+  onSelectBook: (book: UserBookRecord) => void;
+}
+
+interface DuplicateGroup {
+  id: string;
+  reason: 'isbn' | 'title-author';
+  books: UserBookRecord[];
+}
+
+const IGNORED_STORAGE_KEY = 'inkbound_duplicate_groups_ignored';
+
+const normalizeText = (value?: string) =>
+  value?.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+
+const compactIsbn = (value?: string) => value?.toUpperCase().replace(/[^0-9X]/g, '') ?? '';
+
+const activeEdition = (book: UserBookRecord) =>
+  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+
+const allBookIsbns = (book: UserBookRecord) =>
+  [...new Set(book.editions.flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn]).map(compactIsbn).filter((isbn) => isbn.length === 10 || isbn.length === 13))];
+
+const uniqueText = (values: Array<string | undefined>) => {
+  const seen = new Set<string>();
+  return values.filter((value): value is string => {
+    const trimmed = value?.trim();
+    if (!trimmed) return false;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const chooseBestEdition = (keeper: Edition, candidates: Edition[]): Edition => {
+  const verified = candidates.find((edition) => edition.externalSource && !['import', 'manual'].includes(edition.externalSource));
+  const richest = verified ?? candidates.find((edition) => edition.coverUrl && (edition.pageCount || edition.publisher)) ?? candidates[0];
+  if (!richest) return keeper;
+  return {
+    ...richest,
+    ...keeper,
+    coverUrl: keeper.coverUrl || richest.coverUrl,
+    pageCount: keeper.pageCount || richest.pageCount,
+    audiobookDurationMins: keeper.audiobookDurationMins || richest.audiobookDurationMins,
+    publisher: keeper.publisher || richest.publisher,
+    publicationDate: keeper.publicationDate || richest.publicationDate,
+    isbn: keeper.isbn || richest.isbn,
+    isbn10: keeper.isbn10 || richest.isbn10,
+    isbn13: keeper.isbn13 || richest.isbn13,
+    id: keeper.id,
+  };
+};
+
+const mergeDuplicateBooks = (keeper: UserBookRecord, group: UserBookRecord[]): UserBookRecord => {
+  const others = group.filter((book) => book.id !== keeper.id);
+  const editions = group.flatMap((book) => book.editions);
+  const keeperEdition = activeEdition(keeper);
+  const mergedActiveEdition = keeperEdition ? chooseBestEdition(keeperEdition, editions) : editions[0];
+  const editionByKey = new Map<string, Edition>();
+  editions.forEach((edition) => {
+    const key = compactIsbn(edition.isbn13 || edition.isbn10 || edition.isbn) || `${edition.format}:${edition.id}`;
+    if (!editionByKey.has(key)) editionByKey.set(key, edition);
+  });
+  if (mergedActiveEdition) editionByKey.set(compactIsbn(mergedActiveEdition.isbn13 || mergedActiveEdition.isbn10 || mergedActiveEdition.isbn) || `${mergedActiveEdition.format}:${mergedActiveEdition.id}`, mergedActiveEdition);
+
+  const combinedReviews = uniqueText([keeper.review, ...others.map((book) => book.review)]);
+  const combinedNotes = uniqueText([keeper.personalNotes, ...others.map((book) => book.personalNotes)]);
+  const earliest = (values: Array<string | undefined>) => values.filter((value): value is string => Boolean(value)).sort()[0];
+  const latest = (values: Array<string | undefined>) => values.filter((value): value is string => Boolean(value)).sort().at(-1);
+
+  return {
+    ...keeper,
+    work: {
+      ...keeper.work,
+      subtitle: keeper.work.subtitle || group.find((book) => book.work.subtitle)?.work.subtitle,
+      publisherSummary: keeper.work.publisherSummary || group.find((book) => book.work.publisherSummary)?.work.publisherSummary,
+      personalSummary: keeper.work.personalSummary || group.find((book) => book.work.personalSummary)?.work.personalSummary,
+      summary: keeper.work.personalSummary || keeper.work.summary || group.find((book) => book.work.summary)?.work.summary || 'Summary unavailable.',
+      seriesName: keeper.work.seriesName || group.find((book) => book.work.seriesName)?.work.seriesName,
+      seriesOrder: keeper.work.seriesOrder ?? group.find((book) => book.work.seriesOrder != null)?.work.seriesOrder,
+      genres: [...new Set(group.flatMap((book) => book.work.genres))],
+      tropes: [...new Set(group.flatMap((book) => book.work.tropes ?? []))],
+      contentWarnings: [...new Set(group.flatMap((book) => book.work.contentWarnings ?? []))],
+      originalLanguage: keeper.work.originalLanguage || group.find((book) => book.work.originalLanguage)?.work.originalLanguage,
+      externalWorkId: keeper.work.externalWorkId || group.find((book) => book.work.externalWorkId)?.work.externalWorkId,
+    },
+    editions: [...editionByKey.values()],
+    activeEditionId: mergedActiveEdition?.id ?? keeper.activeEditionId,
+    progressPages: Math.max(...group.map((book) => book.progressPages || 0)),
+    progressMinutes: Math.max(...group.map((book) => book.progressMinutes || 0)),
+    progressPercentage: Math.max(...group.map((book) => book.progressPercentage || 0)),
+    rating: keeper.rating ?? group.find((book) => book.rating != null)?.rating,
+    review: combinedReviews.length ? combinedReviews.join('\n\n---\n\n') : undefined,
+    personalNotes: combinedNotes.length ? combinedNotes.join('\n\n---\n\n') : undefined,
+    favoriteQuotes: Array.from(new Map(group.flatMap((book) => book.favoriteQuotes ?? []).map((quote) => [quote.id || quote.quote, quote])).values()),
+    privateTags: [...new Set(group.flatMap((book) => book.privateTags))],
+    moods: [...new Set(group.flatMap((book) => book.moods))],
+    collections: [...new Set(group.flatMap((book) => book.collections))],
+    whyIAddedThis: keeper.whyIAddedThis || group.find((book) => book.whyIAddedThis)?.whyIAddedThis,
+    dateAdded: earliest(group.map((book) => book.dateAdded)) || keeper.dateAdded,
+    dateStarted: earliest(group.map((book) => book.dateStarted)),
+    dateFinished: latest(group.map((book) => book.dateFinished)),
+    lastSessionDate: latest(group.map((book) => book.lastSessionDate)),
+    rereadCount: Math.max(...group.map((book) => book.rereadCount ?? 0)),
+    importMetadataVerified: group.some((book) => book.importMetadataVerified),
+    importMetadataReviewNeeded: group.every((book) => book.importMetadataReviewNeeded),
+  };
+};
+
+const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
+  const candidateSets: Array<{ reason: 'isbn' | 'title-author'; key: string; ids: string[] }> = [];
+  const isbnMap = new Map<string, Set<string>>();
+  books.forEach((book) => allBookIsbns(book).forEach((isbn) => {
+    const ids = isbnMap.get(isbn) ?? new Set<string>();
+    ids.add(book.id);
+    isbnMap.set(isbn, ids);
+  }));
+  isbnMap.forEach((ids, isbn) => { if (ids.size > 1) candidateSets.push({ reason: 'isbn', key: isbn, ids: [...ids] }); });
+
+  const titleAuthorMap = new Map<string, Set<string>>();
+  books.forEach((book) => {
+    const title = normalizeText(book.work.title);
+    const author = normalizeText(book.work.author);
+    if (!title || !author) return;
+    const key = `${title}::${author}`;
+    const ids = titleAuthorMap.get(key) ?? new Set<string>();
+    ids.add(book.id);
+    titleAuthorMap.set(key, ids);
+  });
+  titleAuthorMap.forEach((ids, key) => { if (ids.size > 1) candidateSets.push({ reason: 'title-author', key, ids: [...ids] }); });
+
+  const merged = new Map<string, DuplicateGroup>();
+  candidateSets.forEach((candidate) => {
+    const sortedIds = [...candidate.ids].sort();
+    const id = sortedIds.join('|');
+    if (ignored.has(id)) return;
+    const existing = merged.get(id);
+    const groupBooks = sortedIds.map((bookId) => books.find((book) => book.id === bookId)).filter((book): book is UserBookRecord => Boolean(book));
+    if (groupBooks.length < 2) return;
+    if (!existing || candidate.reason === 'isbn') merged.set(id, { id, reason: candidate.reason, books: groupBooks });
+  });
+  return [...merged.values()].sort((a, b) => b.books.length - a.books.length || a.books[0].work.title.localeCompare(b.books[0].work.title));
+};
+
+export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ books, onMergeGroup, onSelectBook }) => {
+  const [ignoredGroupIds, setIgnoredGroupIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(IGNORED_STORAGE_KEY) ?? '[]') as string[]); } catch { return new Set(); }
+  });
+  const [query, setQuery] = useState('');
+  const [keeperByGroup, setKeeperByGroup] = useState<Record<string, string>>({});
+  const groups = useMemo(() => findDuplicateGroups(books, ignoredGroupIds), [books, ignoredGroupIds]);
+  const visibleGroups = useMemo(() => {
+    const normalized = normalizeText(query);
+    if (!normalized) return groups;
+    return groups.filter((group) => group.books.some((book) => normalizeText(`${book.work.title} ${book.work.author}`).includes(normalized)));
+  }, [groups, query]);
+  const booksInGroups = new Set(groups.flatMap((group) => group.books.map((book) => book.id))).size;
+
+  const ignoreGroup = (groupId: string) => {
+    const next = new Set(ignoredGroupIds); next.add(groupId); setIgnoredGroupIds(next);
+    try { localStorage.setItem(IGNORED_STORAGE_KEY, JSON.stringify([...next])); } catch { /* best effort */ }
+  };
+
+  const mergeGroup = (group: DuplicateGroup) => {
+    const keepBookId = keeperByGroup[group.id] ?? group.books[0].id;
+    const keeper = group.books.find((book) => book.id === keepBookId) ?? group.books[0];
+    const removeBookIds = group.books.filter((book) => book.id !== keeper.id).map((book) => book.id);
+    onMergeGroup({ keepBookId: keeper.id, removeBookIds, mergedBook: mergeDuplicateBooks(keeper, group.books) });
+  };
+
+  return <div className="space-y-6 pb-24">
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div><p className="inkbound-kicker">Library Cleanup</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Duplicate Management</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Inkbound scans exact ISBNs first, then normalized title + author. Nothing is merged automatically—you choose what stays.</p></div>
+      <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 py-3 text-sm"><strong className="text-[var(--ink-ivory)]">{groups.length} groups</strong><span className="ml-2 text-[var(--ink-muted)]">· {booksInGroups} books involved</span></div>
+    </header>
+
+    <section className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div><p className="font-semibold text-[var(--ink-ivory)]">Merge safely</p><p className="mt-1 text-sm text-[var(--ink-muted)]">Reading sessions are moved to the kept copy. Tags, collections, editions, notes, reviews, quotes, progress, dates, and verified metadata are preserved where possible.</p></div></div></section>
+
+    <div className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search duplicate groups by title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></div>
+
+    {visibleGroups.length === 0 ? <section className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No duplicate groups to review</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">Your current library scan is clean, or the remaining groups were marked as separate books.</p></section> : <div className="space-y-5">{visibleGroups.map((group) => {
+      const selectedKeeper = keeperByGroup[group.id] ?? group.books[0].id;
+      return <article key={group.id} className="inkbound-panel rounded-3xl p-5 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><Copy className="h-4 w-4 text-[var(--ink-gold)]" /><h2 className="font-serif text-xl font-bold text-[var(--ink-ivory)]">{group.books[0].work.title}</h2></div><p className="mt-1 text-xs text-[var(--ink-muted)]">{group.reason === 'isbn' ? 'Exact ISBN match' : 'Exact normalized title + author'} · {group.books.length} copies</p></div><div className="flex gap-2"><button type="button" onClick={() => ignoreGroup(group.id)} className="quiet-shelf-secondary-action">Not Duplicates</button><button type="button" onClick={() => mergeGroup(group)} className="quiet-shelf-primary-action"><Merge className="h-4 w-4" /> Merge Group</button></div></div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">{group.books.map((book) => {
+          const edition = activeEdition(book);
+          const selected = selectedKeeper === book.id;
+          return <label key={book.id} className={`flex cursor-pointer gap-4 rounded-2xl border p-4 ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}>
+            <input type="radio" name={`keeper-${group.id}`} value={book.id} checked={selected} onChange={() => setKeeperByGroup((current) => ({ ...current, [group.id]: book.id }))} className="mt-1" />
+            <BookCover work={book.work} edition={edition} size="sm" />
+            <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><small className="block truncate text-[var(--ink-muted)]">{book.work.author}</small><span className="mt-2 block text-xs text-[var(--ink-muted)]">{book.status} · {book.progressPercentage}% · {book.rating ? `${book.rating}★` : 'unrated'}</span><span className="mt-1 block text-xs text-[var(--ink-faint)]">ISBN {edition?.isbn13 || edition?.isbn10 || edition?.isbn || 'unknown'} · {edition?.format || 'unknown format'}</span><button type="button" onClick={(event) => { event.preventDefault(); onSelectBook(book); }} className="mt-3 text-xs font-bold text-[var(--ink-mauve)]">Open book details</button>{selected && <span className="mt-2 block text-xs font-bold text-[var(--ink-gold)]">Keep this copy</span>}</span>
+          </label>;
+        })}</div>
+      </article>;
+    })}</div>}
+  </div>;
+};
