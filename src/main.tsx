@@ -5,6 +5,7 @@ import { AppErrorBoundary } from './components/AppErrorBoundary.tsx';
 import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
+import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
@@ -23,6 +24,10 @@ const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error('Inkbound could not find its application root.');
 }
+
+// Clean up metadata that was attached by the old permissive import matcher before
+// App reads the library from browser storage. Verified metadata is never touched.
+purgeUnverifiedLegacyImportMetadata();
 
 const AuthSessionGate = ({ children }: PropsWithChildren) => {
   const { isAuthReady } = useAccountSync();
