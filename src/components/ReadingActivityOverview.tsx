@@ -15,6 +15,7 @@ interface ReadingActivityOverviewProps {
   books: UserBookRecord[];
   sessions: ReadingSession[];
   onSelectBook: (book: UserBookRecord) => void;
+  onUpdateBook?: (book: UserBookRecord) => void;
 }
 
 interface DayActivity {
@@ -40,12 +41,7 @@ const normalizeDateKey = (value?: string): string | null => {
   const month = Number(monthText);
   const day = Number(dayText);
   const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
-  if (
-    !Number.isFinite(parsed.getTime())
-    || parsed.getFullYear() !== year
-    || parsed.getMonth() !== month - 1
-    || parsed.getDate() !== day
-  ) return null;
+  if (!Number.isFinite(parsed.getTime()) || parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return null;
   return `${yearText}-${monthText}-${dayText}`;
 };
 
@@ -61,16 +57,12 @@ const addDays = (value: string, amount: number): string => {
   return toLocalDateKey(date);
 };
 
-const monthKey = (date: Date): string =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+const monthKey = (date: Date): string => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
 const monthLabel = (key: string): string => {
   const [year, month] = key.split('-').map(Number);
   if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return 'This Month';
-  return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
-    month: 'long',
-    year: 'numeric',
-  });
+  return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 };
 
 const calculateLongestStreak = (activeDates: string[]): number => {
@@ -81,9 +73,7 @@ const calculateLongestStreak = (activeDates: string[]): number => {
     if (activeDates[index] === addDays(activeDates[index - 1], 1)) {
       current += 1;
       longest = Math.max(longest, current);
-    } else {
-      current = 1;
-    }
+    } else current = 1;
   }
   return longest;
 };
@@ -103,22 +93,12 @@ const calculateCurrentStreak = (activeDates: string[]): number => {
   return streak;
 };
 
-export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = ({
-  books,
-  sessions,
-  onSelectBook,
-}) => {
-  // Reading activity is intentionally tracker-only. Imported reading dates never populate this calendar.
-  const trackerSessions = useMemo(
-    () => sessions.filter((session) => Boolean(normalizeDateKey(session.date))),
-    [sessions],
-  );
+export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = ({ books, sessions, onSelectBook }) => {
+  // This screen is the Inkbound tracker. Imported finish/read dates must never populate it.
+  const trackerSessions = useMemo(() => sessions.filter((session) => Boolean(normalizeDateKey(session.date))), [sessions]);
 
   const latestActivityDate = useMemo(() => {
-    const values = trackerSessions
-      .map((session) => normalizeDateKey(session.date))
-      .filter((value): value is string => Boolean(value))
-      .sort();
+    const values = trackerSessions.map((session) => normalizeDateKey(session.date)).filter((value): value is string => Boolean(value)).sort();
     return values.at(-1) ?? toLocalDateKey(new Date());
   }, [trackerSessions]);
 
@@ -139,11 +119,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
     return map;
   }, [trackerSessions]);
 
-  const activeDates = useMemo(
-    () => [...activityByDate.keys()].sort(),
-    [activityByDate],
-  );
-
+  const activeDates = useMemo(() => [...activityByDate.keys()].sort(), [activityByDate]);
   const currentStreak = calculateCurrentStreak(activeDates);
   const longestStreak = calculateLongestStreak(activeDates);
   const totalReadingDays = activeDates.length;
@@ -156,9 +132,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
     const firstDay = new Date(safeYear, safeMonth - 1, 1);
     const daysInMonth = new Date(safeYear, safeMonth, 0).getDate();
     const cells: Array<string | null> = Array.from({ length: firstDay.getDay() }, () => null);
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      cells.push(`${safeYear}-${String(safeMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-    }
+    for (let day = 1; day <= daysInMonth; day += 1) cells.push(`${safeYear}-${String(safeMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
     while (cells.length % 7 !== 0) cells.push(null);
     return cells;
   }, [visibleMonth]);
@@ -184,9 +158,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
           <div>
             <p className="inkbound-kicker">Your reading rhythm</p>
             <h2 id="reading-activity-title" className="mt-2 font-serif text-3xl text-[var(--ink-ivory)]">Streak & Calendar</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">
-              This calendar only reflects reading sessions recorded with Inkbound. Imported reading dates never affect your streaks or tracker history.
-            </p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">This calendar only reflects reading sessions recorded with Inkbound. Imported reading dates never affect your streaks or tracker history.</p>
           </div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => moveMonth(-1)} className="quiet-shelf-icon-button" aria-label="Previous month"><ChevronLeft /></button>
@@ -208,86 +180,37 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="inkbound-panel rounded-3xl p-4 sm:p-6">
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="py-2">{day}</span>)}
-          </div>
+          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="py-2">{day}</span>)}</div>
           <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {calendarDays.map((date, index) => {
               if (!date) return <span key={`empty-${index}`} className="aspect-square" aria-hidden="true" />;
               const activity = activityByDate.get(date);
               const isToday = date === toLocalDateKey(new Date());
               const isSelected = date === selectedDate;
-              const intensity = activity?.minutes
-                ? activity.minutes >= 90 ? 'bg-[var(--ink-mauve)]/55' : activity.minutes >= 45 ? 'bg-[var(--ink-mauve)]/35' : 'bg-[var(--ink-mauve)]/20'
-                : 'bg-[var(--ink-surface-soft)]';
+              const intensity = activity?.minutes ? activity.minutes >= 90 ? 'bg-[var(--ink-mauve)]/55' : activity.minutes >= 45 ? 'bg-[var(--ink-mauve)]/35' : 'bg-[var(--ink-mauve)]/20' : 'bg-[var(--ink-surface-soft)]';
               return (
-                <button
-                  key={date}
-                  type="button"
-                  onClick={() => setSelectedDate(date)}
-                  className={`relative aspect-square rounded-xl border p-1 text-left transition hover:-translate-y-0.5 hover:border-[var(--ink-mauve)] ${intensity} ${isSelected ? 'border-[var(--ink-gold)] ring-1 ring-[var(--ink-gold)]/40' : 'border-[var(--ink-border-subtle)]'}`}
-                  aria-label={`${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${activity?.sessions.length ?? 0} Inkbound reading sessions`}
-                >
+                <button key={date} type="button" onClick={() => setSelectedDate(date)} className={`relative aspect-square rounded-xl border p-1 text-left transition hover:-translate-y-0.5 hover:border-[var(--ink-mauve)] ${intensity} ${isSelected ? 'border-[var(--ink-gold)] ring-1 ring-[var(--ink-gold)]/40' : 'border-[var(--ink-border-subtle)]'}`} aria-label={`${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${activity?.sessions.length ?? 0} Inkbound reading sessions`}>
                   <span className={`text-xs font-semibold ${isToday ? 'text-[var(--ink-gold)]' : 'text-[var(--ink-ivory)]'}`}>{Number(date.slice(-2))}</span>
-                  {activity && (
-                    <span className="absolute inset-x-1 bottom-1 flex items-center justify-between text-[8px] text-[var(--ink-ivory)]/75">
-                      <span>{activity.minutes}m</span>
-                      <BookOpen className="h-2.5 w-2.5" />
-                    </span>
-                  )}
+                  {activity && <span className="absolute inset-x-1 bottom-1 flex items-center justify-between text-[8px] text-[var(--ink-ivory)]/75"><span>{activity.minutes}m</span><BookOpen className="h-2.5 w-2.5" /></span>}
                 </button>
               );
             })}
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[var(--ink-muted)]">
-            <span>Less</span>
-            <span className="h-4 w-4 rounded bg-[var(--ink-surface-soft)]" />
-            <span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/20" />
-            <span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/35" />
-            <span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/55" />
-            <span>More reading</span>
-          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[var(--ink-muted)]"><span>Less</span><span className="h-4 w-4 rounded bg-[var(--ink-surface-soft)]" /><span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/20" /><span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/35" /><span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/55" /><span>More reading</span></div>
         </section>
 
         <aside className="inkbound-panel rounded-3xl p-5">
           <p className="inkbound-kicker">Selected day</p>
-          <h3 className="mt-2 font-serif text-2xl text-[var(--ink-ivory)]">
-            {new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-          </h3>
-
+          <h3 className="mt-2 font-serif text-2xl text-[var(--ink-ivory)]">{new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
           {!selectedActivity ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-[var(--ink-border)] p-6 text-center">
-              <CalendarDays className="mx-auto h-7 w-7 text-[var(--ink-mauve)]" />
-              <p className="mt-3 text-sm text-[var(--ink-muted)]">No Inkbound reading session was recorded on this day.</p>
-            </div>
+            <div className="mt-5 rounded-2xl border border-dashed border-[var(--ink-border)] p-6 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[var(--ink-mauve)]" /><p className="mt-3 text-sm text-[var(--ink-muted)]">No Inkbound reading session was recorded on this day.</p></div>
           ) : (
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-[var(--ink-surface-soft)] p-3">
-                  <Clock3 className="h-4 w-4 text-[var(--ink-mauve)]" />
-                  <strong className="mt-2 block font-serif text-xl text-[var(--ink-ivory)]">{selectedActivity.minutes}m</strong>
-                  <span className="text-xs text-[var(--ink-muted)]">Reading time</span>
-                </div>
-                <div className="rounded-xl bg-[var(--ink-surface-soft)] p-3">
-                  <BookOpen className="h-4 w-4 text-[var(--ink-mauve)]" />
-                  <strong className="mt-2 block font-serif text-xl text-[var(--ink-ivory)]">{selectedActivity.pages}</strong>
-                  <span className="text-xs text-[var(--ink-muted)]">Pages read</span>
-                </div>
+                <div className="rounded-xl bg-[var(--ink-surface-soft)] p-3"><Clock3 className="h-4 w-4 text-[var(--ink-mauve)]" /><strong className="mt-2 block font-serif text-xl text-[var(--ink-ivory)]">{selectedActivity.minutes}m</strong><span className="text-xs text-[var(--ink-muted)]">Reading time</span></div>
+                <div className="rounded-xl bg-[var(--ink-surface-soft)] p-3"><BookOpen className="h-4 w-4 text-[var(--ink-mauve)]" /><strong className="mt-2 block font-serif text-xl text-[var(--ink-ivory)]">{selectedActivity.pages}</strong><span className="text-xs text-[var(--ink-muted)]">Pages read</span></div>
               </div>
-
-              {selectedSessionBooks.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books read</h4>
-                  <div className="mt-2 grid gap-2">
-                    {selectedSessionBooks.map((book) => (
-                      <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-left hover:border-[var(--ink-mauve)]">
-                        <strong className="block truncate text-sm text-[var(--ink-ivory)]">{book.work.title}</strong>
-                        <span className="text-xs text-[var(--ink-muted)]">{book.work.author}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {selectedSessionBooks.length > 0 && <div><h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books read</h4><div className="mt-2 grid gap-2">{selectedSessionBooks.map((book) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-left hover:border-[var(--ink-mauve)]"><strong className="block truncate text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><span className="text-xs text-[var(--ink-muted)]">{book.work.author}</span></button>)}</div></div>}
             </div>
           )}
         </aside>
