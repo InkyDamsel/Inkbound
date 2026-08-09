@@ -6,7 +6,6 @@ import {
   Loader2,
   Play,
   Plus,
-  Quote,
   RefreshCw,
   Save,
   Search,
@@ -19,9 +18,10 @@ import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import type {
   Edition,
-  FavoriteQuote,
   Format,
   OwnershipStatus,
+  Priority,
+  ReadingSession,
   ReadingStatus,
   UserBookRecord,
 } from '../types';
@@ -29,60 +29,47 @@ import { BookCover } from './BookCover';
 
 interface BookDetailsModalProps {
   book: UserBookRecord | null;
+  sessions?: ReadingSession[];
   onClose: () => void;
   onUpdateBook: (updatedBook: UserBookRecord) => void;
   onDeleteBook: (book: UserBookRecord) => void;
   onStartSession: (book: UserBookRecord) => void;
 }
 
-type DetailsTab = 'summary' | 'reading' | 'thoughts' | 'editions';
-type CoverMode = 'choices' | 'search' | 'upload';
+type DetailsTab = 'details' | 'summary' | 'reading' | 'sessions' | 'editions';
+type CoverMode = 'choices' | 'search';
 
 const MAX_COVER_FILE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MATCH_STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'book', 'books', 'series', 'complete', 'edition']);
 
-const normalizeMatchText = (value?: string) =>
-  value?.toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
-
-const meaningfulTokens = (value?: string) =>
-  [...new Set(normalizeMatchText(value).split(' ').filter((token) => token.length >= 3 && !MATCH_STOP_WORDS.has(token)))];
+const normalizeMatchText = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+const meaningfulTokens = (value?: string) => [...new Set(normalizeMatchText(value).split(' ').filter((token) => token.length >= 3 && !MATCH_STOP_WORDS.has(token)))];
+const csvList = (value: string) => [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
 
 const candidateMatchesBookIdentity = (book: UserBookRecord, work: BookSearchWorkGroup) => {
   const expectedTitle = meaningfulTokens(book.work.title);
   const candidateTitle = normalizeMatchText(work.title);
   const titleMatches = expectedTitle.filter((token) => candidateTitle.includes(token)).length;
-  const requiredTitleMatches = expectedTitle.length <= 2
-    ? expectedTitle.length
-    : Math.max(2, Math.ceil(expectedTitle.length * 0.67));
-
+  const requiredTitleMatches = expectedTitle.length <= 2 ? expectedTitle.length : Math.max(2, Math.ceil(expectedTitle.length * 0.67));
   if (expectedTitle.length > 0 && titleMatches < requiredTitleMatches) return false;
-
   const expectedAuthor = meaningfulTokens(book.work.author);
   if (expectedAuthor.length === 0) return true;
   const candidateAuthor = normalizeMatchText(work.authors.join(' '));
-  const authorMatches = expectedAuthor.filter((token) => candidateAuthor.includes(token)).length;
   const expectedLastName = expectedAuthor.at(-1);
-
-  return authorMatches >= Math.max(1, Math.ceil(expectedAuthor.length * 0.5))
+  return expectedAuthor.filter((token) => candidateAuthor.includes(token)).length >= Math.max(1, Math.ceil(expectedAuthor.length * 0.5))
     || Boolean(expectedLastName && candidateAuthor.includes(expectedLastName));
 };
 
 export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
   book,
+  sessions = [],
   onClose,
   onUpdateBook,
   onDeleteBook,
   onStartSession,
 }) => {
-  const [activeTab, setActiveTab] = useState<DetailsTab>('summary');
-  const [summary, setSummary] = useState(book?.work.personalSummary ?? book?.work.summary ?? '');
-  const [whyAdded, setWhyAdded] = useState(book?.whyIAddedThis ?? '');
-  const [notes, setNotes] = useState(book?.personalNotes ?? '');
-  const [review, setReview] = useState(book?.review ?? '');
-  const [quoteText, setQuoteText] = useState('');
-  const [quoteLocation, setQuoteLocation] = useState('');
-  const [newEditionFormat, setNewEditionFormat] = useState<Format>('paperback');
+  const [activeTab, setActiveTab] = useState<DetailsTab>('details');
   const [coverManagerOpen, setCoverManagerOpen] = useState(false);
   const [coverMode, setCoverMode] = useState<CoverMode>('choices');
   const [coverQuery, setCoverQuery] = useState('');
@@ -92,178 +79,136 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
   const [isSyncingBook, setIsSyncingBook] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [newEditionFormat, setNewEditionFormat] = useState<Format>('paperback');
+
+  const [title, setTitle] = useState('');
+  const [author, setAuthor] = useState('');
+  const [seriesName, setSeriesName] = useState('');
+  const [seriesOrder, setSeriesOrder] = useState('');
+  const [summary, setSummary] = useState('');
+  const [publisherSummary, setPublisherSummary] = useState('');
+  const [notes, setNotes] = useState('');
+  const [review, setReview] = useState('');
+  const [tags, setTags] = useState('');
+  const [collections, setCollections] = useState('');
 
   useEffect(() => {
-    setActiveTab('summary');
-    setSummary(book?.work.personalSummary ?? book?.work.summary ?? '');
-    setWhyAdded(book?.whyIAddedThis ?? '');
+    setActiveTab('details');
+    setTitle(book?.work.title ?? '');
+    setAuthor(book?.work.author ?? '');
+    setSeriesName(book?.work.seriesName ?? '');
+    setSeriesOrder(book?.work.seriesOrder ? String(book.work.seriesOrder) : '');
+    setSummary(book?.work.personalSummary ?? '');
+    setPublisherSummary(book?.work.publisherSummary ?? '');
     setNotes(book?.personalNotes ?? '');
     setReview(book?.review ?? '');
-    setQuoteText('');
-    setQuoteLocation('');
-    setCoverManagerOpen(false);
-    setCoverMode('choices');
+    setTags((book?.privateTags ?? []).join(', '));
+    setCollections((book?.collections ?? []).join(', '));
     setCoverQuery(book ? `${book.work.title} ${book.work.author}` : '');
     setCoverResults([]);
     setCoverError(null);
-    setIsSyncingBook(false);
     setSyncMessage(null);
-    setDeleteConfirmOpen(false);
   }, [book?.id]);
 
-  const activeEdition = useMemo(
-    () => book?.editions.find((edition) => edition.id === book.activeEditionId) ?? book?.editions[0],
-    [book],
-  );
+  const activeEdition = useMemo(() => book?.editions.find((edition) => edition.id === book.activeEditionId) ?? book?.editions[0], [book]);
+  const bookSessions = useMemo(() => sessions.filter((session) => session.bookId === book?.id).sort((a, b) => `${b.date} ${b.startTime}`.localeCompare(`${a.date} ${a.startTime}`)), [book?.id, sessions]);
 
   if (!book || !activeEdition) return null;
 
-  const updateBook = (changes: Partial<UserBookRecord>) => {
-    onUpdateBook({ ...book, ...changes });
-  };
+  const updateBook = (changes: Partial<UserBookRecord>) => onUpdateBook({ ...book, ...changes });
+  const updateWork = (changes: Partial<UserBookRecord['work']>) => onUpdateBook({ ...book, work: { ...book.work, ...changes } });
+  const updateActiveEdition = (changes: Partial<Edition>, markManual = true) => onUpdateBook({
+    ...book,
+    editions: book.editions.map((edition) => edition.id === activeEdition.id ? { ...edition, ...changes, ...(markManual ? { externalSource: 'manual' as const } : {}) } : edition),
+  });
 
-  const updateActiveEdition = (changes: Partial<Edition>) => {
+  const saveDetails = () => {
+    if (!title.trim() || !author.trim()) return;
     onUpdateBook({
       ...book,
-      editions: book.editions.map((edition) =>
-        edition.id === activeEdition.id ? { ...edition, ...changes } : edition,
-      ),
-    });
-  };
-
-  const updateStatus = (status: ReadingStatus) => {
-    updateBook({
-      status,
-      progressPercentage: status === 'finished' ? 100 : book.progressPercentage,
-      dateFinished:
-        status === 'finished'
-          ? book.dateFinished ?? new Date().toISOString().split('T')[0]
-          : book.dateFinished,
-    });
-  };
-
-  const saveSummary = () => {
-    onUpdateBook({
-      ...book,
-      whyIAddedThis: whyAdded.trim() || undefined,
       work: {
         ...book.work,
-        personalSummary: summary.trim() || undefined,
-        summary: summary.trim() || book.work.publisherSummary || book.work.summary,
+        title: title.trim(),
+        author: author.trim(),
+        seriesName: seriesName.trim() || undefined,
+        seriesOrder: seriesOrder.trim() ? Math.max(0, Number(seriesOrder)) || undefined : undefined,
       },
+      privateTags: csvList(tags),
+      collections: csvList(collections),
     });
   };
 
-  const saveThoughts = () => {
-    updateBook({ personalNotes: notes.trim() || undefined, review: review.trim() || undefined });
-  };
+  const saveSummary = () => onUpdateBook({
+    ...book,
+    work: {
+      ...book.work,
+      personalSummary: summary.trim() || undefined,
+      publisherSummary: publisherSummary.trim() || undefined,
+      summary: summary.trim() || publisherSummary.trim() || book.work.summary || 'Summary unavailable.',
+    },
+    personalNotes: notes.trim() || undefined,
+    review: review.trim() || undefined,
+  });
 
-  const addQuote = () => {
-    if (!quoteText.trim()) return;
-    const quote: FavoriteQuote = {
-      id: `quote-${Date.now()}`,
-      quote: quoteText.trim(),
-      pageOrChapter: quoteLocation.trim() || undefined,
-    };
-    updateBook({ favoriteQuotes: [...(book.favoriteQuotes ?? []), quote] });
-    setQuoteText('');
-    setQuoteLocation('');
-  };
-
-  const removeQuote = (quoteId: string) => {
-    updateBook({ favoriteQuotes: (book.favoriteQuotes ?? []).filter((quote) => quote.id !== quoteId) });
-  };
-
-  const addEdition = () => {
-    const edition: Edition = {
-      id: `edition-${Date.now()}`,
-      format: newEditionFormat,
-      pageCount: newEditionFormat === 'audiobook' ? undefined : 350,
-      audiobookDurationMins: newEditionFormat === 'audiobook' ? 600 : undefined,
-      coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
-    };
-    onUpdateBook({ ...book, activeEditionId: edition.id, editions: [...book.editions, edition] });
-  };
+  const updateStatus = (status: ReadingStatus) => updateBook({
+    status,
+    progressPercentage: status === 'finished' ? 100 : book.progressPercentage,
+    dateFinished: status === 'finished' ? book.dateFinished ?? new Date().toISOString().split('T')[0] : book.dateFinished,
+  });
 
   const syncBookMetadata = async () => {
-    if (isSyncingBook) return;
-    if (!navigator.onLine) {
-      setSyncMessage('Inkbound needs an internet connection to look for covers and book details.');
-      return;
-    }
-
+    if (isSyncingBook || !navigator.onLine) return;
     setIsSyncingBook(true);
     setSyncMessage(null);
     try {
-      // Title + author are the identity source of truth. Existing ISBN/catalog
-      // values may have been poisoned by an older bad match, so never use an
-      // ISBN alone to decide what work this record represents.
       const response = await searchGoogleBooks(`${book.work.title} ${book.work.author}`);
-      const identitySafeGroups = response.groups.filter((work) => candidateMatchesBookIdentity(book, work));
-      const candidates = identitySafeGroups.flatMap((work) =>
-        work.editions.map((edition) => ({ work, edition })),
-      );
+      const candidates = response.groups
+        .filter((work) => candidateMatchesBookIdentity(book, work))
+        .flatMap((work) => work.editions.map((edition) => ({ work, edition })));
       const match = candidates.find(({ edition }) => edition.format === activeEdition.format && Boolean(edition.coverUrl))
         ?? candidates.find(({ edition }) => Boolean(edition.coverUrl))
-        ?? candidates.find(({ edition }) => edition.format === activeEdition.format)
         ?? candidates[0];
-
       if (!match) {
-        setSyncMessage('No title-and-author match was found. Inkbound left this book unchanged rather than risk applying the wrong metadata.');
+        setSyncMessage('No safe title-and-author match was found. Inkbound left this book unchanged.');
         return;
       }
-
       const { work: matchedWork, edition: matchedEdition } = match;
-      const publisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
-      const syncedEdition: Edition = {
+      const manualEdition = activeEdition.externalSource === 'manual';
+      const nextEdition: Edition = manualEdition ? activeEdition : {
         ...activeEdition,
-        isbn: matchedEdition.isbn13 ?? matchedEdition.isbn10 ?? activeEdition.isbn,
-        isbn10: matchedEdition.isbn10 ?? activeEdition.isbn10,
-        isbn13: matchedEdition.isbn13 ?? activeEdition.isbn13,
-        pageCount: matchedEdition.pageCount ?? activeEdition.pageCount,
-        publisher: matchedEdition.publisher ?? activeEdition.publisher,
-        publicationDate: matchedEdition.publicationDate ?? activeEdition.publicationDate,
-        coverUrl: matchedEdition.coverUrl ?? activeEdition.coverUrl,
-        language: matchedEdition.language ?? activeEdition.language,
-        editionName: matchedEdition.editionName ?? activeEdition.editionName,
-        binding: matchedEdition.binding ?? activeEdition.binding,
-        specialFeatures:
-          matchedEdition.specialFeatures.length > 0
-            ? matchedEdition.specialFeatures
-            : activeEdition.specialFeatures,
+        isbn: activeEdition.isbn || matchedEdition.isbn13 || matchedEdition.isbn10,
+        isbn10: activeEdition.isbn10 || matchedEdition.isbn10,
+        isbn13: activeEdition.isbn13 || matchedEdition.isbn13,
+        pageCount: activeEdition.pageCount || matchedEdition.pageCount,
+        publisher: activeEdition.publisher || matchedEdition.publisher,
+        publicationDate: activeEdition.publicationDate || matchedEdition.publicationDate,
+        coverUrl: activeEdition.coverUrl || matchedEdition.coverUrl,
+        language: activeEdition.language || matchedEdition.language,
+        editionName: activeEdition.editionName || matchedEdition.editionName,
+        binding: activeEdition.binding || matchedEdition.binding,
+        specialFeatures: activeEdition.specialFeatures?.length ? activeEdition.specialFeatures : matchedEdition.specialFeatures,
         externalSource: matchedEdition.source,
         externalEditionId: matchedEdition.externalEditionId,
       };
-
       const nextBook: UserBookRecord = {
         ...book,
         work: {
           ...book.work,
-          subtitle: matchedWork.subtitle ?? book.work.subtitle,
-          publisherSummary: publisherSummary?.trim() || book.work.publisherSummary,
-          summary:
-            !book.work.personalSummary && publisherSummary?.trim()
-              ? publisherSummary.trim()
-              : book.work.summary,
-          genres: matchedWork.genres.length > 0 ? matchedWork.genres : book.work.genres,
-          publicationYear: matchedEdition.publicationYear || book.work.publicationYear,
-          originalLanguage: matchedEdition.language ?? book.work.originalLanguage,
+          subtitle: book.work.subtitle || matchedWork.subtitle,
+          publisherSummary: book.work.publisherSummary || matchedWork.publisherSummary,
+          summary: book.work.personalSummary || book.work.publisherSummary || matchedWork.publisherSummary || book.work.summary,
+          genres: book.work.genres.length ? book.work.genres : matchedWork.genres,
+          publicationYear: book.work.publicationYear || matchedEdition.publicationYear,
+          originalLanguage: book.work.originalLanguage || matchedEdition.language,
           externalWorkId: matchedWork.key,
         },
-        editions: book.editions.map((edition) =>
-          edition.id === activeEdition.id ? syncedEdition : edition,
-        ),
+        editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition),
       };
-
       onUpdateBook(nextBook);
-      setSummary(nextBook.work.personalSummary ?? nextBook.work.summary);
-      setSyncMessage(
-        matchedEdition.coverUrl
-          ? `Synced from ${matchedEdition.source.replaceAll('-', ' ')} and found a matching cover.`
-          : `Synced from ${matchedEdition.source.replaceAll('-', ' ')}. No matching cover was available.`,
-      );
+      setPublisherSummary(nextBook.work.publisherSummary ?? '');
+      setSyncMessage(manualEdition ? 'Metadata synced. Your manually edited edition values were preserved.' : `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}.`);
     } catch (error) {
-      setSyncMessage(error instanceof Error ? error.message : 'Inkbound could not sync this book. Please try again.');
+      setSyncMessage(error instanceof Error ? error.message : 'Inkbound could not sync this book.');
     } finally {
       setIsSyncingBook(false);
     }
@@ -276,10 +221,10 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
     setCoverError(null);
     try {
       const response = await searchGoogleBooks(coverQuery.trim());
-      setCoverResults(response.groups.filter((group) => group.editions.some((edition) => edition.coverUrl)));
+      setCoverResults(response.groups.filter((group) => candidateMatchesBookIdentity(book, group) && group.editions.some((edition) => edition.coverUrl)));
     } catch (error) {
+      setCoverError(error instanceof Error ? error.message : 'Cover search failed.');
       setCoverResults([]);
-      setCoverError(error instanceof Error ? error.message : 'Cover search failed. Please try again.');
     } finally {
       setCoverSearching(false);
     }
@@ -287,11 +232,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
 
   const chooseOnlineCover = (edition: BookSearchEdition) => {
     if (!edition.coverUrl) return;
-    updateActiveEdition({
-      coverUrl: edition.coverUrl,
-      externalSource: edition.source,
-      externalEditionId: edition.externalEditionId,
-    });
+    updateActiveEdition({ coverUrl: edition.coverUrl, externalEditionId: edition.externalEditionId }, true);
     setCoverManagerOpen(false);
   };
 
@@ -299,125 +240,128 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (!ACCEPTED_COVER_TYPES.includes(file.type)) {
-      setCoverError('Please choose a JPG, PNG, or WEBP image.');
-      return;
-    }
-    if (file.size > MAX_COVER_FILE_BYTES) {
-      setCoverError('Please choose an image smaller than 5 MB.');
-      return;
-    }
-
+    if (!ACCEPTED_COVER_TYPES.includes(file.type)) return setCoverError('Please choose a JPG, PNG, or WEBP image.');
+    if (file.size > MAX_COVER_FILE_BYTES) return setCoverError('Please choose an image smaller than 5 MB.');
     const reader = new FileReader();
-    reader.onerror = () => setCoverError('Inkbound could not read that image. Please try another file.');
     reader.onload = () => {
       if (typeof reader.result !== 'string') return;
-      updateActiveEdition({ coverUrl: reader.result });
+      updateActiveEdition({ coverUrl: reader.result }, true);
       setCoverManagerOpen(false);
     };
+    reader.onerror = () => setCoverError('Inkbound could not read that image.');
     reader.readAsDataURL(file);
   };
 
-  const removeCover = () => {
-    updateActiveEdition({ coverUrl: undefined });
-    setCoverManagerOpen(false);
+  const addEdition = () => {
+    const edition: Edition = {
+      id: `edition-${Date.now()}`,
+      format: newEditionFormat,
+      coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
+      externalSource: 'manual',
+    };
+    onUpdateBook({ ...book, activeEditionId: edition.id, editions: [...book.editions, edition] });
   };
 
+  const metadataLabel = activeEdition.externalSource === 'manual'
+    ? 'Manual / user-edited'
+    : activeEdition.externalSource
+      ? `Verified via ${activeEdition.externalSource.replaceAll('-', ' ')}`
+      : book.sourceOfImport?.includes('import')
+        ? 'Imported record'
+        : 'Inkbound record';
+
   const tabs: Array<{ id: DetailsTab; label: string }> = [
-    { id: 'summary', label: 'Summary' },
+    { id: 'details', label: 'Book Details' },
+    { id: 'summary', label: 'Summary & Notes' },
     { id: 'reading', label: 'Reading' },
-    { id: 'thoughts', label: 'Notes & Quotes' },
+    { id: 'sessions', label: `Sessions (${bookSessions.length})` },
     { id: 'editions', label: `Editions (${book.editions.length})` },
   ];
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-end bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4" onClick={onClose}>
-      <section className="flex max-h-[96dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[92vh] sm:max-w-4xl sm:rounded-3xl" role="dialog" aria-modal="true" aria-label={`Book details for ${book.work.title}`} onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-[130] flex items-end bg-black/75 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4" onClick={onClose}>
+      <section className="flex max-h-[96dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[92vh] sm:max-w-5xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Book details for ${book.work.title}`}>
         <header className="relative border-b border-[#3d2448] bg-gradient-to-r from-[#281333] via-[#1d0e26] to-[#140a1a] p-4 sm:p-6">
-          <button type="button" onClick={onClose} className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-stone-300 hover:bg-black/50 hover:text-white" aria-label="Close book details"><X className="h-5 w-5" /></button>
-
+          <button type="button" onClick={onClose} className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-stone-300" aria-label="Close book details"><X className="h-5 w-5" /></button>
           <div className="flex items-start gap-4 pr-10 sm:gap-6">
-            <button type="button" onClick={() => { setCoverManagerOpen(true); setCoverMode('choices'); setCoverError(null); }} className="group relative shrink-0 text-left" aria-label="Change book cover">
-              <BookCover work={book.work} edition={activeEdition} size="lg" />
-              <span className="absolute inset-x-2 bottom-2 flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-black/80 px-2 text-[11px] font-bold text-[#f4efe6] opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-visible:opacity-100"><ImagePlus className="h-3.5 w-3.5" /> Change Cover</span>
-            </button>
-
+            <button type="button" onClick={() => { setCoverManagerOpen(true); setCoverMode('choices'); }} className="group relative shrink-0"><BookCover work={book.work} edition={activeEdition} size="lg" /><span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/80 px-2 py-2 text-[11px] font-bold text-white opacity-0 group-hover:opacity-100">Change Cover</span></button>
             <div className="min-w-0 flex-1">
               <span className="inline-flex rounded bg-[#c5a059] px-2 py-1 text-[10px] font-bold uppercase text-[#120817]">{activeEdition.format}</span>
-              <h2 className="mt-3 line-clamp-2 font-serif text-2xl font-bold leading-tight text-[#f4efe6] sm:text-4xl">{book.work.title}</h2>
-              <p className="mt-1 truncate font-serif text-sm italic text-stone-400">by {book.work.author}</p>
+              <h2 className="mt-3 line-clamp-2 font-serif text-2xl font-bold text-[#f4efe6] sm:text-4xl">{book.work.title}</h2>
+              <p className="mt-1 text-sm italic text-stone-400">by {book.work.author}</p>
+              <p className="mt-2 text-xs text-[#b9aaba]">Metadata: <strong className="text-[#e5c158]">{metadataLabel}</strong></p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={() => setCoverManagerOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#c5a059]/30 bg-[#25132f] px-4 text-xs font-bold text-[#e5c158] hover:border-[#c5a059]/60"><ImagePlus className="h-4 w-4" /> Manage Cover</button>
-                <button type="button" onClick={() => void syncBookMetadata()} disabled={isSyncingBook} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#7b657d]/45 bg-[#25132f] px-4 text-xs font-bold text-[#d8c7d7] hover:border-[#9a7e96] disabled:cursor-wait disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${isSyncingBook ? 'animate-spin' : ''}`} /> {isSyncingBook ? 'Syncing…' : 'Sync Book'}</button>
-                <button type="button" onClick={() => setDeleteConfirmOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#c97b7b]/35 bg-[#25132f] px-4 text-xs font-bold text-[#e5aaaa] hover:border-[#c97b7b]/70"><Trash2 className="h-4 w-4" /> Delete Book</button>
+                <button type="button" onClick={() => setCoverManagerOpen(true)} className="quiet-shelf-secondary-action"><ImagePlus className="h-4 w-4" /> Manage Cover</button>
+                <button type="button" onClick={() => void syncBookMetadata()} disabled={isSyncingBook} className="quiet-shelf-secondary-action"><RefreshCw className={`h-4 w-4 ${isSyncingBook ? 'animate-spin' : ''}`} /> {isSyncingBook ? 'Syncing…' : 'Sync Metadata'}</button>
+                <button type="button" onClick={() => setDeleteConfirmOpen(true)} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" /> Delete</button>
               </div>
-              {syncMessage && <p className="mt-2 max-w-2xl text-xs text-[#b9aaba]">{syncMessage}</p>}
-
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <select value={book.status} onChange={(event) => updateStatus(event.target.value as ReadingStatus)} className="min-h-11 rounded-xl border border-[#c5a059]/30 bg-[#120817] px-4 text-sm text-[#e5c158]">
-                  <option value="currently-reading">Currently Reading</option><option value="tbr">TBR</option><option value="finished">Finished</option><option value="paused">Paused</option><option value="dnf">Did Not Finish</option>
-                </select>
-                <select value={book.ownership} onChange={(event) => updateBook({ ownership: event.target.value as OwnershipStatus })} className="min-h-11 rounded-xl border border-[#3d2448] bg-[#120817] px-4 text-sm text-stone-300">
-                  <option value="owned">Owned</option><option value="borrowed-library">Library</option><option value="borrowed-person">Borrowed</option><option value="subscription">Subscription</option><option value="wishlist">Wishlist</option>
-                </select>
-              </div>
+              {syncMessage && <p className="mt-2 text-xs text-[#b9aaba]">{syncMessage}</p>}
             </div>
           </div>
         </header>
 
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#3d2448] bg-[#120817] px-3 py-2 text-xs font-semibold">
-          {tabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`min-h-11 whitespace-nowrap rounded-xl px-4 transition ${activeTab === tab.id ? 'bg-[#c5a059] font-bold text-[#120817]' : 'text-stone-400 hover:bg-[#25132f] hover:text-stone-200'}`}>{tab.label}</button>)}
+          {tabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`min-h-11 whitespace-nowrap rounded-xl px-4 ${activeTab === tab.id ? 'bg-[#c5a059] font-bold text-[#120817]' : 'text-stone-400 hover:bg-[#25132f]'}`}>{tab.label}</button>)}
         </nav>
 
         <div className="flex-1 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-6">
+          {activeTab === 'details' && <div className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="text-xs font-bold text-[#f4efe6]">Title<input value={title} onChange={(e) => setTitle(e.target.value)} className="inkbound-select mt-2 w-full" /></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Author<input value={author} onChange={(e) => setAuthor(e.target.value)} className="inkbound-select mt-2 w-full" /></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Series<input value={seriesName} onChange={(e) => setSeriesName(e.target.value)} placeholder="Series name" className="inkbound-select mt-2 w-full" /></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Series #<input type="number" min={0} step="0.5" value={seriesOrder} onChange={(e) => setSeriesOrder(e.target.value)} className="inkbound-select mt-2 w-full" /></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Status<select value={book.status} onChange={(e) => updateStatus(e.target.value as ReadingStatus)} className="inkbound-select mt-2 w-full"><option value="currently-reading">Currently Reading</option><option value="tbr">TBR</option><option value="finished">Finished</option><option value="paused">Paused</option><option value="dnf">Did Not Finish</option><option value="wishlist">Wishlist</option></select></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Ownership<select value={book.ownership} onChange={(e) => updateBook({ ownership: e.target.value as OwnershipStatus })} className="inkbound-select mt-2 w-full"><option value="owned">Owned</option><option value="borrowed-library">Library</option><option value="borrowed-person">Borrowed</option><option value="subscription">Subscription</option><option value="wishlist">Wishlist</option><option value="none">None</option></select></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Priority<select value={book.priority} onChange={(e) => updateBook({ priority: e.target.value as Priority })} className="inkbound-select mt-2 w-full"><option value="top">Top</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Date Added<input type="date" value={book.dateAdded} onChange={(e) => updateBook({ dateAdded: e.target.value })} className="inkbound-select mt-2 w-full" /></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Date Started<input type="date" value={book.dateStarted ?? ''} onChange={(e) => updateBook({ dateStarted: e.target.value || undefined })} className="inkbound-select mt-2 w-full" /></label>
+              <label className="text-xs font-bold text-[#f4efe6]">Date Finished<input type="date" value={book.dateFinished ?? ''} onChange={(e) => updateBook({ dateFinished: e.target.value || undefined })} className="inkbound-select mt-2 w-full" /></label>
+            </div>
+            <label className="block text-xs font-bold text-[#f4efe6]">Tags<input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="romance, favorite, book-club" className="inkbound-select mt-2 w-full" /></label>
+            <label className="block text-xs font-bold text-[#f4efe6]">Collections<input value={collections} onChange={(e) => setCollections(e.target.value)} placeholder="Autumn Reads, Favorites" className="inkbound-select mt-2 w-full" /></label>
+            <button type="button" onClick={saveDetails} className="quiet-shelf-primary-action"><Save className="h-4 w-4" /> Save Book Details</button>
+          </div>}
+
           {activeTab === 'summary' && <div className="space-y-5">
-            <section className="space-y-2 rounded-2xl border border-[#3d2448] bg-[#25132f] p-4"><label className="text-xs font-bold uppercase tracking-wider text-[#e5c158]">Why I Added This</label><input value={whyAdded} onChange={(event) => setWhyAdded(event.target.value)} placeholder="Recommended by a friend, beautiful cover, book club pick..." className="min-h-12 w-full rounded-xl border border-[#3d2448] bg-[#120817] px-4 text-sm text-[#f4efe6] outline-none focus:border-[#c5a059]" /></section>
-            <section className="space-y-2"><label className="font-serif text-xl font-bold text-[#f4efe6]">My Summary</label><textarea rows={8} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Write a personal summary or keep the catalog summary..." className="w-full rounded-2xl border border-[#3d2448] bg-[#120817] p-4 text-sm leading-6 text-[#f4efe6] outline-none focus:border-[#c5a059]" /></section>
-            <button type="button" onClick={saveSummary} className="quiet-shelf-primary-action min-h-11"><Save className="h-4 w-4" /> Save Summary</button>
+            <label className="block text-xs font-bold text-[#f4efe6]">My Summary<textarea rows={6} value={summary} onChange={(e) => setSummary(e.target.value)} className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label>
+            <label className="block text-xs font-bold text-[#f4efe6]">Publisher Summary<textarea rows={6} value={publisherSummary} onChange={(e) => setPublisherSummary(e.target.value)} className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label>
+            <label className="block text-xs font-bold text-[#f4efe6]">Review<textarea rows={5} value={review} onChange={(e) => setReview(e.target.value)} className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label>
+            <label className="block text-xs font-bold text-[#f4efe6]">Private Notes<textarea rows={5} value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label>
+            <button type="button" onClick={saveSummary} className="quiet-shelf-primary-action"><Save className="h-4 w-4" /> Save Summary & Notes</button>
           </div>}
 
           {activeTab === 'reading' && <div className="space-y-5">
             <section className="rounded-2xl border border-[#3d2448] bg-[#25132f] p-5"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Reading Progress</p><p className="mt-1 font-serif text-4xl font-bold text-[#f4efe6]">{book.progressPercentage}%</p></div><BookOpen className="h-9 w-9 text-[#c5a059]" /></div><div className="mt-4 h-2.5 overflow-hidden rounded-full bg-[#120817]"><div className="h-full rounded-full bg-[#c5a059]" style={{ width: `${book.progressPercentage}%` }} /></div></section>
-            <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-[#f4efe6]">Pages Read<input type="number" value={book.progressPages} onChange={(event) => updateBook({ progressPages: Number(event.target.value) || 0 })} className="mt-2 min-h-11 w-full rounded-xl border border-[#3d2448] bg-[#120817] px-3 text-stone-200" /></label><label className="text-xs font-bold text-[#f4efe6]">Minutes Listened<input type="number" value={book.progressMinutes} onChange={(event) => updateBook({ progressMinutes: Number(event.target.value) || 0 })} className="mt-2 min-h-11 w-full rounded-xl border border-[#3d2448] bg-[#120817] px-3 text-stone-200" /></label></div>
-            <div><p className="mb-2 text-xs font-bold text-[#f4efe6]">Rating</p><div className="flex gap-2">{[1,2,3,4,5].map((rating) => <button key={rating} type="button" onClick={() => updateBook({ rating })} className="grid h-11 w-11 place-items-center rounded-xl border border-[#3d2448] bg-[#120817]"><Star className={`h-5 w-5 ${(book.rating ?? 0) >= rating ? 'fill-[#e5c158] text-[#e5c158]' : 'text-stone-600'}`} /></button>)}</div></div>
-            <button type="button" onClick={() => onStartSession(book)} className="quiet-shelf-primary-action min-h-12"><Play className="h-4 w-4 fill-current" /> Start Reading Session</button>
+            <div className="grid gap-4 sm:grid-cols-3"><label className="text-xs font-bold text-[#f4efe6]">Pages Read<input min={0} type="number" value={book.progressPages} onChange={(e) => updateBook({ progressPages: Math.max(0, Number(e.target.value) || 0) })} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Minutes Listened<input min={0} type="number" value={book.progressMinutes} onChange={(e) => updateBook({ progressMinutes: Math.max(0, Number(e.target.value) || 0) })} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Progress %<input min={0} max={100} type="number" value={book.progressPercentage} onChange={(e) => updateBook({ progressPercentage: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} className="inkbound-select mt-2 w-full" /></label></div>
+            <div><p className="mb-2 text-xs font-bold text-[#f4efe6]">Rating</p><div className="flex flex-wrap gap-2">{[1,2,3,4,5].map((rating) => <button key={rating} type="button" onClick={() => updateBook({ rating })} className="grid h-11 w-11 place-items-center rounded-xl border border-[#3d2448] bg-[#120817]"><Star className={`h-5 w-5 ${(book.rating ?? 0) >= rating ? 'fill-[#e5c158] text-[#e5c158]' : 'text-stone-600'}`} /></button>)}<button type="button" onClick={() => updateBook({ rating: undefined })} className="quiet-shelf-secondary-action">Clear</button></div></div>
+            <button type="button" onClick={() => onStartSession(book)} className="quiet-shelf-primary-action"><Play className="h-4 w-4 fill-current" /> Start Reading Session</button>
           </div>}
 
-          {activeTab === 'thoughts' && <div className="space-y-6">
-            <section className="space-y-3"><label className="font-serif text-xl font-bold text-[#f4efe6]">Review</label><textarea rows={5} value={review} onChange={(event) => setReview(event.target.value)} className="w-full rounded-2xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /><label className="font-serif text-xl font-bold text-[#f4efe6]">Private Notes</label><textarea rows={5} value={notes} onChange={(event) => setNotes(event.target.value)} className="w-full rounded-2xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /><button type="button" onClick={saveThoughts} className="quiet-shelf-primary-action"><Save className="h-4 w-4" /> Save Notes</button></section>
-            <section className="space-y-3 border-t border-[#3d2448] pt-5"><h3 className="font-serif text-xl font-bold text-[#f4efe6]">Favorite Quotes</h3><textarea rows={3} value={quoteText} onChange={(event) => setQuoteText(event.target.value)} placeholder="Add a quote..." className="w-full rounded-xl border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]" /><input value={quoteLocation} onChange={(event) => setQuoteLocation(event.target.value)} placeholder="Page or chapter (optional)" className="min-h-11 w-full rounded-xl border border-[#3d2448] bg-[#120817] px-3 text-sm text-[#f4efe6]" /><button type="button" onClick={addQuote} className="quiet-shelf-secondary-action"><Quote className="h-4 w-4" /> Add Quote</button>{(book.favoriteQuotes ?? []).map((quote) => <article key={quote.id} className="flex gap-3 rounded-xl border border-[#3d2448] bg-[#25132f] p-4"><Quote className="h-5 w-5 shrink-0 text-[#c5a059]" /><div className="min-w-0 flex-1"><p className="font-serif italic text-[#f4efe6]">“{quote.quote}”</p>{quote.pageOrChapter && <p className="mt-1 text-xs text-stone-400">{quote.pageOrChapter}</p>}</div><button type="button" onClick={() => removeQuote(quote.id)} className="text-stone-500 hover:text-red-300"><Trash2 className="h-4 w-4" /></button></article>)}</section>
-          </div>}
+          {activeTab === 'sessions' && <div className="space-y-3">{bookSessions.length === 0 ? <div className="rounded-2xl border border-dashed border-[#3d2448] p-8 text-center text-sm text-stone-400">No reading sessions logged for this book yet.</div> : bookSessions.map((session) => <article key={session.id} className="rounded-2xl border border-[#3d2448] bg-[#25132f] p-4"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-[#f4efe6]">{session.date}</strong><span className="text-xs text-[#e5c158]">{session.durationMinutes} min</span></div><p className="mt-2 text-xs text-stone-400">{session.startTime}–{session.endTime}{session.pagesRead ? ` · ${session.pagesRead} pages` : ''}{session.minutesListened ? ` · ${session.minutesListened} min listened` : ''}</p>{session.notes && <p className="mt-3 text-sm text-stone-300">{session.notes}</p>}</article>)}</div>}
 
           {activeTab === 'editions' && <div className="space-y-5">
-            <section className="grid gap-4 sm:grid-cols-2">{book.editions.map((edition) => <button key={edition.id} type="button" onClick={() => onUpdateBook({ ...book, activeEditionId: edition.id })} className={`flex gap-4 rounded-2xl border p-4 text-left ${edition.id === book.activeEditionId ? 'border-[#c5a059] bg-[#c5a059]/10' : 'border-[#3d2448] bg-[#25132f]'}`}><BookCover work={book.work} edition={edition} size="sm" /><span className="min-w-0 flex-1"><strong className="block capitalize text-[#f4efe6]">{edition.format}</strong>{edition.publisher && <span className="mt-1 block text-xs text-stone-400">{edition.publisher}</span>}{edition.isbn && <span className="mt-1 block text-xs text-stone-500">ISBN {edition.isbn}</span>}{edition.id === book.activeEditionId && <span className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#e5c158]"><Check className="h-3.5 w-3.5" /> Active edition</span>}</span></button>)}</section>
-            <section className="rounded-2xl border border-[#3d2448] bg-[#25132f] p-4"><h3 className="font-serif text-xl font-bold text-[#f4efe6]">Add another edition</h3><div className="mt-3 flex flex-col gap-3 sm:flex-row"><select value={newEditionFormat} onChange={(event) => setNewEditionFormat(event.target.value as Format)} className="inkbound-select"><option value="hardcover">Hardcover</option><option value="paperback">Paperback</option><option value="ebook">Ebook</option><option value="audiobook">Audiobook</option></select><button type="button" onClick={addEdition} className="quiet-shelf-primary-action shrink-0"><Plus className="h-4 w-4" /> Add Edition</button></div></section>
+            <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
+              <div className="space-y-3">{book.editions.map((edition) => <button key={edition.id} type="button" onClick={() => onUpdateBook({ ...book, activeEditionId: edition.id })} className={`w-full rounded-xl border p-3 text-left ${edition.id === book.activeEditionId ? 'border-[#c5a059] bg-[#c5a059]/10' : 'border-[#3d2448] bg-[#25132f]'}`}><strong className="capitalize text-[#f4efe6]">{edition.format}</strong>{edition.id === book.activeEditionId && <span className="ml-2 text-xs text-[#e5c158]">Active</span>}</button>)}</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-xs font-bold text-[#f4efe6]">Format<select value={activeEdition.format} onChange={(e) => updateActiveEdition({ format: e.target.value as Format })} className="inkbound-select mt-2 w-full"><option value="hardcover">Hardcover</option><option value="paperback">Paperback</option><option value="ebook">Ebook</option><option value="audiobook">Audiobook</option></select></label>
+                <label className="text-xs font-bold text-[#f4efe6]">ISBN<input value={activeEdition.isbn ?? activeEdition.isbn13 ?? activeEdition.isbn10 ?? ''} onChange={(e) => updateActiveEdition({ isbn: e.target.value || undefined, isbn13: e.target.value.replace(/\D/g, '').length === 13 ? e.target.value.replace(/\D/g, '') : activeEdition.isbn13, isbn10: e.target.value.replace(/[^0-9X]/gi, '').length === 10 ? e.target.value.replace(/[^0-9X]/gi, '') : activeEdition.isbn10 })} className="inkbound-select mt-2 w-full" /></label>
+                <label className="text-xs font-bold text-[#f4efe6]">Page Count<input min={0} type="number" value={activeEdition.pageCount ?? ''} onChange={(e) => updateActiveEdition({ pageCount: e.target.value ? Math.max(0, Number(e.target.value)) : undefined })} className="inkbound-select mt-2 w-full" /></label>
+                <label className="text-xs font-bold text-[#f4efe6]">Audiobook Minutes<input min={0} type="number" value={activeEdition.audiobookDurationMins ?? ''} onChange={(e) => updateActiveEdition({ audiobookDurationMins: e.target.value ? Math.max(0, Number(e.target.value)) : undefined })} className="inkbound-select mt-2 w-full" /></label>
+                <label className="text-xs font-bold text-[#f4efe6]">Publisher<input value={activeEdition.publisher ?? ''} onChange={(e) => updateActiveEdition({ publisher: e.target.value || undefined })} className="inkbound-select mt-2 w-full" /></label>
+                <label className="text-xs font-bold text-[#f4efe6]">Publication Date<input type="date" value={activeEdition.publicationDate?.slice(0,10) ?? ''} onChange={(e) => updateActiveEdition({ publicationDate: e.target.value || undefined })} className="inkbound-select mt-2 w-full" /></label>
+                <label className="text-xs font-bold text-[#f4efe6]">Language<input value={activeEdition.language ?? ''} onChange={(e) => updateActiveEdition({ language: e.target.value || undefined })} className="inkbound-select mt-2 w-full" /></label>
+                <label className="text-xs font-bold text-[#f4efe6]">Edition Name<input value={activeEdition.editionName ?? ''} onChange={(e) => updateActiveEdition({ editionName: e.target.value || undefined })} className="inkbound-select mt-2 w-full" /></label>
+              </div>
+            </div>
+            <section className="rounded-2xl border border-[#3d2448] bg-[#25132f] p-4"><h3 className="font-serif text-xl font-bold text-[#f4efe6]">Add another edition</h3><div className="mt-3 flex gap-3"><select value={newEditionFormat} onChange={(e) => setNewEditionFormat(e.target.value as Format)} className="inkbound-select"><option value="hardcover">Hardcover</option><option value="paperback">Paperback</option><option value="ebook">Ebook</option><option value="audiobook">Audiobook</option></select><button type="button" onClick={addEdition} className="quiet-shelf-primary-action"><Plus className="h-4 w-4" /> Add Edition</button></div></section>
           </div>}
         </div>
       </section>
 
-      {coverManagerOpen && <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setCoverManagerOpen(false)}>
-        <section className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Manage book cover">
-          <div className="flex items-start justify-between gap-4"><div><p className="inkbound-kicker">Edition cover</p><h2 className="mt-2 font-serif text-3xl text-[#f4efe6]">Manage Cover</h2><p className="mt-2 text-sm text-[#ad9fac]">Changes apply to this {activeEdition.format} edition everywhere in Inkbound.</p></div><button type="button" onClick={() => setCoverManagerOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-black/30 text-stone-300"><X className="h-5 w-5" /></button></div>
+      {coverManagerOpen && <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setCoverManagerOpen(false)}><section className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] p-5 sm:rounded-3xl sm:p-7" onClick={(e) => e.stopPropagation()}><div className="flex justify-between gap-4"><div><p className="inkbound-kicker">Edition cover</p><h2 className="mt-2 font-serif text-3xl text-[#f4efe6]">Manage Cover</h2></div><button type="button" onClick={() => setCoverManagerOpen(false)}><X className="h-5 w-5" /></button></div>{coverMode === 'choices' ? <div className="mt-6 grid gap-4 sm:grid-cols-3"><button type="button" onClick={() => setCoverMode('search')} className="rounded-2xl border border-[#c5a059]/25 bg-[#25132f] p-5 text-left"><Search className="h-6 w-6 text-[#e5c158]" /><h3 className="mt-3 font-serif text-xl text-[#f4efe6]">Search Online</h3></button><label className="cursor-pointer rounded-2xl border border-[#c5a059]/25 bg-[#25132f] p-5"><Upload className="h-6 w-6 text-[#e5c158]" /><h3 className="mt-3 font-serif text-xl text-[#f4efe6]">Upload Your Own</h3><input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover} className="sr-only" /></label><button type="button" onClick={() => { updateActiveEdition({ coverUrl: undefined }); setCoverManagerOpen(false); }} className="rounded-2xl border border-rose-500/25 bg-[#25132f] p-5 text-left"><Trash2 className="h-6 w-6 text-rose-300" /><h3 className="mt-3 font-serif text-xl text-[#f4efe6]">Remove Cover</h3></button></div> : <div className="mt-6 space-y-4"><button type="button" onClick={() => setCoverMode('choices')} className="text-xs font-bold text-[#e5c158]">← Back</button><form onSubmit={searchCovers} className="flex gap-3"><input value={coverQuery} onChange={(e) => setCoverQuery(e.target.value)} className="inkbound-select min-w-0 flex-1" /><button type="submit" className="quiet-shelf-primary-action" disabled={coverSearching}>{coverSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Search</button></form>{coverError && <p className="text-sm text-rose-300">{coverError}</p>}<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">{coverResults.flatMap((group) => group.editions.filter((edition) => edition.coverUrl).map((edition) => ({ group, edition }))).map(({ group, edition }) => <button key={`${group.key}-${edition.externalEditionId}`} type="button" onClick={() => chooseOnlineCover(edition)} className="rounded-xl border border-[#3d2448] bg-[#25132f] p-3 text-left"><img src={edition.coverUrl} alt={`Cover for ${group.title}`} className="aspect-[2/3] w-full rounded-lg object-cover" /><p className="mt-2 line-clamp-2 text-xs text-[#f4efe6]">{group.title}</p></button>)}</div></div>}</section></div>}
 
-          {coverMode === 'choices' && <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <button type="button" onClick={() => setCoverMode('search')} className="rounded-2xl border border-[#c5a059]/25 bg-[#25132f] p-5 text-left hover:border-[#c5a059]/60"><Search className="h-6 w-6 text-[#e5c158]" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Search Online</h3><p className="mt-2 text-sm text-[#ad9fac]">Find covers and editions across Inkbound’s connected book catalogs.</p></button>
-            <label className="cursor-pointer rounded-2xl border border-[#c5a059]/25 bg-[#25132f] p-5 hover:border-[#c5a059]/60"><Upload className="h-6 w-6 text-[#e5c158]" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Upload Your Own</h3><p className="mt-2 text-sm text-[#ad9fac]">Use a JPG, PNG, or WEBP image up to 5 MB.</p><input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadCover} className="sr-only" /></label>
-            <button type="button" onClick={removeCover} disabled={!activeEdition.coverUrl} className="rounded-2xl border border-[#c97b7b]/25 bg-[#25132f] p-5 text-left hover:border-[#c97b7b]/60 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-6 w-6 text-[#d99191]" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Remove Cover</h3><p className="mt-2 text-sm text-[#ad9fac]">Return this edition to Inkbound’s generated cover.</p></button>
-          </div>}
-
-          {coverMode === 'search' && <div className="mt-6 space-y-5"><button type="button" onClick={() => setCoverMode('choices')} className="text-xs font-bold text-[#e5c158]">← Back to cover options</button><form onSubmit={searchCovers} className="flex flex-col gap-3 sm:flex-row"><input value={coverQuery} onChange={(event) => setCoverQuery(event.target.value)} className="min-h-12 min-w-0 flex-1 rounded-xl border border-[#c5a059]/25 bg-[#0d0910] px-4 text-sm text-[#f4efe6]" placeholder="Title, author, or ISBN" /><button type="submit" disabled={!coverQuery.trim() || coverSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{coverSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{coverSearching ? 'Searching…' : 'Search Covers'}</button></form>{coverError && <p className="rounded-xl border border-[#c97b7b]/35 bg-[#c97b7b]/10 p-3 text-sm text-[#efb6b6]">{coverError}</p>}<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">{coverResults.flatMap((group) => group.editions.filter((edition) => edition.coverUrl).map((edition) => ({ group, edition }))).map(({ group, edition }) => <button key={`${group.key}-${edition.externalEditionId}`} type="button" onClick={() => chooseOnlineCover(edition)} className="group rounded-xl border border-[#3d2448] bg-[#25132f] p-3 text-left hover:border-[#c5a059]/60"><img src={edition.coverUrl} alt={`Cover for ${group.title}`} className="mx-auto aspect-[2/3] w-full rounded-lg object-cover shadow-lg" /><p className="mt-3 line-clamp-2 font-serif text-sm text-[#f4efe6]">{group.title}</p><p className="mt-1 text-[11px] capitalize text-[#ad9fac]">{edition.format} · {edition.publicationYear} · {edition.source.replaceAll('-', ' ')}</p></button>)}</div>{!coverSearching && coverResults.length === 0 && !coverError && <p className="rounded-xl border border-dashed border-[#c5a059]/25 p-8 text-center text-sm text-[#ad9fac]">Search for the title, author, or ISBN to find matching covers.</p>}</div>}
-
-          {coverMode === 'upload' && null}
-          {coverError && coverMode === 'choices' && <p className="mt-5 rounded-xl border border-[#c97b7b]/35 bg-[#c97b7b]/10 p-3 text-sm text-[#efb6b6]">{coverError}</p>}
-        </section>
-      </div>}
-
-      {deleteConfirmOpen && <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setDeleteConfirmOpen(false)}>
-        <section className="w-full max-w-md rounded-3xl border border-[#c97b7b]/35 bg-[#17101b] p-6 shadow-2xl" onClick={(event) => event.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="delete-book-title">
-          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#c97b7b]/12 text-[#e5aaaa]"><Trash2 className="h-5 w-5" /></span><div><h2 id="delete-book-title" className="font-serif text-2xl text-[#f4efe6]">Delete this book?</h2><p className="mt-2 text-sm leading-6 text-[#b9aaba]">“{book.work.title}” will be removed from your library along with its reading sessions. This deletion will sync to your other devices.</p></div></div>
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setDeleteConfirmOpen(false)} className="quiet-shelf-secondary-action min-h-11">Cancel</button><button type="button" onClick={() => onDeleteBook(book)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/55 bg-[#6d343e] px-5 text-sm font-bold text-[#f8e9e9] transition hover:bg-[#7b3b46]"><Trash2 className="h-4 w-4" /> Delete Book</button></div>
-        </section>
-      </div>}
+      {deleteConfirmOpen && <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/80 p-4" onClick={() => setDeleteConfirmOpen(false)}><section className="w-full max-w-md rounded-3xl border border-rose-500/35 bg-[#17101b] p-6" onClick={(e) => e.stopPropagation()}><h2 className="font-serif text-2xl text-[#f4efe6]">Delete this book?</h2><p className="mt-2 text-sm text-stone-400">“{book.work.title}” and its reading sessions will be removed.</p><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setDeleteConfirmOpen(false)} className="quiet-shelf-secondary-action">Cancel</button><button type="button" onClick={() => onDeleteBook(book)} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" /> Delete Book</button></div></section></div>}
     </div>
   );
 };
