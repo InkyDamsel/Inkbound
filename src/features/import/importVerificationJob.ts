@@ -18,8 +18,6 @@ export interface ImportVerificationJobSnapshot {
 type ImportExecutor = (items: ImportRecordItem[]) => Promise<void> | void;
 type Listener = (snapshot: ImportVerificationJobSnapshot) => void;
 
-// v2 intentionally invalidates the old completion snapshot that treated metadata
-// misses as failed imports / review items.
 const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v2';
 const LEGACY_SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v1';
 const METADATA_PENDING_STORAGE_KEY = 'inkbound_import_metadata_pending_v1';
@@ -35,12 +33,30 @@ const emptySnapshot = (): ImportVerificationJobSnapshot => ({
   unmatched: [],
 });
 
+function clearCompletedUiState() {
+  try {
+    localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+    localStorage.removeItem(METADATA_PENDING_STORAGE_KEY);
+  } catch {
+    // Import Center state is best-effort only. Import History and the enrichment
+    // queue are the durable records after an import has completed.
+  }
+}
+
 function readStoredSnapshot(): ImportVerificationJobSnapshot {
   try {
     localStorage.removeItem(LEGACY_SNAPSHOT_STORAGE_KEY);
     const stored = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
     if (!stored) return emptySnapshot();
     const parsed = JSON.parse(stored) as Partial<ImportVerificationJobSnapshot>;
+
+    // A completed import belongs in Import History. Reopening or refreshing the
+    // Import Center should always start a fresh import flow instead of restoring
+    // the old completion screen.
+    if (parsed.status === 'complete') {
+      clearCompletedUiState();
+      return emptySnapshot();
+    }
 
     if (parsed.status === 'running') {
       return {
@@ -110,6 +126,13 @@ function warnBeforeUnload(event: BeforeUnloadEvent) {
 }
 
 export function getImportVerificationSnapshot(): ImportVerificationJobSnapshot {
+  // The live completion screen can still be shown to the component that was
+  // subscribed when the import finished. A later visit to Import Center is a new
+  // workflow, so consume and clear that stale completion snapshot here.
+  if (snapshot.status === 'complete' && !activePromise) {
+    snapshot = emptySnapshot();
+    clearCompletedUiState();
+  }
   return snapshot;
 }
 
@@ -163,10 +186,6 @@ export function startImportVerificationJob(
         });
       });
 
-      // The exported library is authoritative for the reader's title, author,
-      // shelf/status, rating, dates, review, and ISBN. External verification is
-      // only a gate for trusting covers/summaries, never a gate for importing the
-      // reader's own library record.
       const recordsToImport = [...verification.verified, ...verification.unmatched];
       if (recordsToImport.length > 0) {
         await executeImport(recordsToImport);
