@@ -32,9 +32,7 @@ interface OpenLibraryWork {
   cover_i?: number;
   cover_edition_key?: string;
   number_of_pages_median?: number;
-  editions?: {
-    docs?: OpenLibraryEdition[];
-  };
+  editions?: { docs?: OpenLibraryEdition[] };
 }
 
 interface OpenLibraryResponse {
@@ -44,6 +42,14 @@ interface OpenLibraryResponse {
 }
 
 const OPEN_LIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
+const FIELDS = [
+  'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language',
+  'isbn', 'cover_i', 'cover_edition_key', 'number_of_pages_median', 'editions', 'editions.key',
+  'editions.title', 'editions.subtitle', 'editions.publisher', 'editions.publish_date', 'editions.publish_year',
+  'editions.isbn', 'editions.isbn_10', 'editions.isbn_13', 'editions.number_of_pages',
+  'editions.number_of_pages_median', 'editions.cover_i', 'editions.cover_edition_key',
+  'editions.language', 'editions.ebook_access',
+].join(',');
 
 const publicationYear = (value?: string, fallback?: number): number => {
   const match = value?.match(/\d{4}/);
@@ -54,11 +60,12 @@ const first = (value?: string[] | string): string | undefined =>
   Array.isArray(value) ? value.find(Boolean) : value || undefined;
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
+const normalize = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+const stripQuotes = (value: string) => value.trim().replace(/^['"]|['"]$/g, '').trim();
 
 const inferFormat = (edition: OpenLibraryEdition): Format => {
   const access = edition.ebook_access?.toLowerCase();
-  if (access && access !== 'no_ebook') return 'ebook';
-  return 'hardcover';
+  return access && access !== 'no_ebook' ? 'ebook' : 'hardcover';
 };
 
 const coverUrl = (edition: OpenLibraryEdition, work: OpenLibraryWork): string | undefined => {
@@ -97,8 +104,6 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
   };
 };
 
-const normalize = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
-
 const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
   if (!work.title) return null;
   const editionDocs = work.editions?.docs?.length ? work.editions.docs : [{}];
@@ -116,23 +121,28 @@ const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
   };
 };
 
+function buildSearchParams(query: string): URLSearchParams {
+  const trimmed = query.trim();
+  const operator = trimmed.match(/^(inauthor|intitle|isbn):\s*(.+)$/i);
+  const params = new URLSearchParams({ limit: '40', fields: FIELDS });
+  if (!operator) {
+    params.set('q', trimmed);
+    return params;
+  }
+
+  const [, kind, rawValue] = operator;
+  const value = stripQuotes(rawValue);
+  if (kind.toLowerCase() === 'inauthor') params.set('author', value);
+  else if (kind.toLowerCase() === 'intitle') params.set('title', value);
+  else params.set('isbn', compactIsbn(value));
+  return params;
+}
+
 export async function searchOpenLibrary(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
 
-  const params = new URLSearchParams({
-    q: trimmed,
-    limit: '20',
-    fields: [
-      'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language',
-      'isbn', 'cover_i', 'cover_edition_key', 'number_of_pages_median', 'editions', 'editions.key',
-      'editions.title', 'editions.subtitle', 'editions.publisher', 'editions.publish_date', 'editions.publish_year',
-      'editions.isbn', 'editions.isbn_10', 'editions.isbn_13', 'editions.number_of_pages',
-      'editions.number_of_pages_median', 'editions.cover_i', 'editions.cover_edition_key',
-      'editions.language', 'editions.ebook_access',
-    ].join(','),
-  });
-
+  const params = buildSearchParams(trimmed);
   const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
     signal,
     headers: { Accept: 'application/json' },
@@ -143,6 +153,5 @@ export async function searchOpenLibrary(query: string, signal?: AbortSignal): Pr
   const groups = (payload.docs ?? [])
     .map(mapWork)
     .filter((group): group is BookSearchWorkGroup => Boolean(group));
-
   return { groups, totalItems: payload.numFound ?? payload.num_found ?? groups.length };
 }
