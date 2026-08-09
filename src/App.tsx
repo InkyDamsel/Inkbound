@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Format,
   ImportRecordItem,
-  OwnershipStatus,
   Priority,
   ReadingSession,
   ReadingStatus,
@@ -29,7 +27,7 @@ import { InkboundStudioScreen } from './components/InkboundStudioScreen';
 import { MonthlyWrappedScreen } from './components/MonthlyWrappedScreen';
 import { YearInBooksScreen } from './components/YearInBooksScreen';
 import { BookDetailsModal } from './components/BookDetailsModal';
-import { BatchEditModal } from './components/BatchEditModal';
+import { BatchEditModal, type BatchEditChanges } from './components/BatchEditModal';
 import { ReadingSessionModal } from './components/ReadingSessionModal';
 import { ImportCenterScreen } from './components/ImportCenterScreen';
 import { StatisticsScreen } from './components/StatisticsScreen';
@@ -259,20 +257,43 @@ export default function App() {
 
   const handleUpdatePriority = (bookId: string, priority: Priority) => setBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
 
-  const handleApplyBatchChanges = (changes: { status?: ReadingStatus; ownership?: OwnershipStatus; format?: Format; priority?: Priority; addTag?: string; addCollection?: string }) => {
+  const handleApplyBatchChanges = (changes: BatchEditChanges) => {
     setPreviousBooksState(books);
     setBooks((current) => current.map((book) => {
       if (!selectedBookIds.includes(book.id)) return book;
       const updatedBook = { ...book };
+
       if (changes.status) {
         updatedBook.status = changes.status;
-        if (changes.status === 'finished') { updatedBook.progressPercentage = 100; updatedBook.dateFinished = new Date().toISOString().split('T')[0]; }
+        if (changes.status === 'finished') {
+          updatedBook.progressPercentage = 100;
+          updatedBook.dateFinished = changes.dateFinished === undefined
+            ? updatedBook.dateFinished ?? new Date().toISOString().split('T')[0]
+            : updatedBook.dateFinished;
+        }
       }
       if (changes.ownership) updatedBook.ownership = changes.ownership;
       if (changes.priority) updatedBook.priority = changes.priority;
-      if (changes.format) updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
-      if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
-      if (changes.addCollection && !updatedBook.collections.includes(changes.addCollection)) updatedBook.collections = [...updatedBook.collections, changes.addCollection];
+      if (changes.rating !== undefined) updatedBook.rating = changes.rating ?? undefined;
+      if (changes.dateStarted !== undefined) updatedBook.dateStarted = changes.dateStarted ?? undefined;
+      if (changes.dateFinished !== undefined) updatedBook.dateFinished = changes.dateFinished ?? undefined;
+      if (changes.format) {
+        updatedBook.editions = updatedBook.editions.map((edition) =>
+          edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition,
+        );
+      }
+      if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) {
+        updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
+      }
+      if (changes.removeTag) {
+        updatedBook.privateTags = updatedBook.privateTags.filter((tag) => tag.toLowerCase() !== changes.removeTag!.toLowerCase());
+      }
+      if (changes.addCollection && !updatedBook.collections.includes(changes.addCollection)) {
+        updatedBook.collections = [...updatedBook.collections, changes.addCollection];
+      }
+      if (changes.removeCollection) {
+        updatedBook.collections = updatedBook.collections.filter((collection) => collection.toLowerCase() !== changes.removeCollection!.toLowerCase());
+      }
       return updatedBook;
     }));
     const count = selectedBookIds.length;
