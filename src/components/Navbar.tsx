@@ -38,7 +38,6 @@ const navigationGroups: NavigationGroup[] = [
   { id: 'reading', label: 'Reading', items: [
     { id: 'library', label: 'My Library', icon: Library },
     { id: 'sessions', label: 'Reading Sessions', icon: Clock3 }, { id: 'collections', label: 'Collections', icon: FolderHeart },
-    { id: 'duplicates', label: 'Duplicate Management', icon: Copy },
     { id: 'import', label: 'Import', icon: DownloadCloud },
   ]},
   { id: 'journal', label: 'Journal', items: [
@@ -56,6 +55,7 @@ const navigationGroups: NavigationGroup[] = [
     { id: 'yearbook', label: 'Year in Books', icon: BookOpen }, { id: 'bookshelf-time', label: 'Bookshelf Through Time', icon: Library },
   ]},
   { id: 'account', label: 'Account', items: [
+    { id: 'duplicates', label: 'Library Maintenance', icon: Copy },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'admin', label: 'Administration', icon: ShieldCheck, adminOnly: true },
   ] },
