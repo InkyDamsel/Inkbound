@@ -85,6 +85,10 @@ export interface UserBookRecord {
   collections: string[];
   whyIAddedThis?: string;
   sourceOfImport?: string;
+  // Import metadata is disposable. These flags let the enrichment manager
+  // distinguish verified matches from legacy guesses that need review.
+  importMetadataVerified?: boolean;
+  importMetadataReviewNeeded?: boolean;
   dateAdded: string;
   dateStarted?: string;
   dateFinished?: string;
