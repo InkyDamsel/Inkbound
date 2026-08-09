@@ -9,6 +9,7 @@ export interface ImportVerificationJobSnapshot {
   total: number;
   importedCount: number;
   matchedCount: number;
+  metadataPendingCount: number;
   duplicates: ImportRecordItem[];
   unmatched: ImportRecordItem[];
   error?: string;
@@ -17,7 +18,10 @@ export interface ImportVerificationJobSnapshot {
 type ImportExecutor = (items: ImportRecordItem[]) => Promise<void> | void;
 type Listener = (snapshot: ImportVerificationJobSnapshot) => void;
 
-const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v1';
+// v2 intentionally invalidates the old completion snapshot that treated metadata
+// misses as failed imports / review items.
+const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v2';
+const LEGACY_SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v1';
 const METADATA_PENDING_STORAGE_KEY = 'inkbound_import_metadata_pending_v1';
 
 const emptySnapshot = (): ImportVerificationJobSnapshot => ({
@@ -26,12 +30,14 @@ const emptySnapshot = (): ImportVerificationJobSnapshot => ({
   total: 0,
   importedCount: 0,
   matchedCount: 0,
+  metadataPendingCount: 0,
   duplicates: [],
   unmatched: [],
 });
 
 function readStoredSnapshot(): ImportVerificationJobSnapshot {
   try {
+    localStorage.removeItem(LEGACY_SNAPSHOT_STORAGE_KEY);
     const stored = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
     if (!stored) return emptySnapshot();
     const parsed = JSON.parse(stored) as Partial<ImportVerificationJobSnapshot>;
@@ -47,9 +53,10 @@ function readStoredSnapshot(): ImportVerificationJobSnapshot {
     return {
       ...emptySnapshot(),
       ...parsed,
-      matchedCount: parsed.matchedCount ?? parsed.importedCount ?? 0,
+      matchedCount: parsed.matchedCount ?? 0,
+      metadataPendingCount: parsed.metadataPendingCount ?? 0,
       duplicates: Array.isArray(parsed.duplicates) ? parsed.duplicates : [],
-      unmatched: Array.isArray(parsed.unmatched) ? parsed.unmatched : [],
+      unmatched: [],
     };
   } catch {
     return emptySnapshot();
@@ -77,6 +84,17 @@ function persistMetadataPending(items: ImportRecordItem[]) {
     localStorage.setItem(METADATA_PENDING_STORAGE_KEY, JSON.stringify(items));
   } catch {
     // The normal enrichment queue remains the source of truth for retries.
+  }
+}
+
+export function readImportMetadataPending(): ImportRecordItem[] {
+  try {
+    const stored = localStorage.getItem(METADATA_PENDING_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as unknown;
+    return Array.isArray(parsed) ? (parsed as ImportRecordItem[]) : [];
+  } catch {
+    return [];
   }
 }
 
@@ -127,6 +145,7 @@ export function startImportVerificationJob(
     total: items.length,
     importedCount: 0,
     matchedCount: 0,
+    metadataPendingCount: 0,
     duplicates: preDetectedDuplicates,
     unmatched: [],
   });
@@ -153,10 +172,6 @@ export function startImportVerificationJob(
         await executeImport(recordsToImport);
       }
 
-      // Metadata misses should not force a reader to manually approve hundreds or
-      // thousands of books. Keep them as background metadata work instead. This
-      // list is persisted for future diagnostics/retry UI, while the normal import
-      // enrichment queue handles covers and summaries safely.
       persistMetadataPending(verification.unmatched);
 
       const duplicateMap = new Map(preDetectedDuplicates.map((record) => [record.id, record]));
@@ -168,6 +183,7 @@ export function startImportVerificationJob(
         total: items.length,
         importedCount: recordsToImport.length,
         matchedCount: verification.verified.length,
+        metadataPendingCount: verification.unmatched.length,
         duplicates: [...duplicateMap.values()],
         unmatched: [],
       });
