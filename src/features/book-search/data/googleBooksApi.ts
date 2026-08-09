@@ -80,18 +80,24 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (cached && cached.expiresAt > Date.now()) return cached.response;
   if (cached) searchCache.delete(cacheKey);
 
-  // The backend is the primary catalog source. It performs one Google Books lookup
-  // and optionally supplements it with Hardcover, so the browser never burns the
-  // Google Books quota with several parallel requests for a single search.
   const [catalog, openLibrary] = await Promise.all([
     searchHardcover(trimmed),
-    searchOpenLibrary(buildGoogleBooksQuery(trimmed), signal).catch(() => ({ groups: [], totalItems: 0 })),
+    searchOpenLibrary(buildGoogleBooksQuery(trimmed), signal).catch((error) => {
+      console.warn('Open Library search failed.', error);
+      return { groups: [], totalItems: 0 };
+    }),
   ]);
 
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   const groups = mergeGroups(catalog.groups, openLibrary.groups);
   const response: BookSearchResponse = { groups, totalItems: groups.length };
-  searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
+
+  // Only cache successful searches. A temporary provider outage or rate limit must
+  // never turn into five minutes of fake "no results" for the reader.
+  if (groups.length > 0) {
+    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
+  }
+
   return response;
 }
