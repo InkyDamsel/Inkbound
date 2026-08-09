@@ -138,6 +138,7 @@ const minimumRequiredMatches = (tokenCount: number): number => {
 const rankGroups = (groups: BookSearchWorkGroup[], query: string): BookSearchWorkGroup[] => {
   const isbnQuery = compactIsbn(query);
   const isExactIsbnSearch = /^(?:97[89])?\d{9}[\dX]$/i.test(isbnQuery);
+  const normalizedQuery = normalizeText(query.replace(/\b(?:intitle|inauthor|isbn|subject):/gi, ' ').replace(/["']/g, ' '));
   const tokens = searchTokens(query);
   const requiredMatches = minimumRequiredMatches(tokens.length);
 
@@ -152,25 +153,41 @@ const rankGroups = (groups: BookSearchWorkGroup[], query: string): BookSearchWor
     const exactIsbnMatch = group.editions.some((edition) =>
       [edition.isbn10, edition.isbn13].filter(Boolean).some((identifier) => compactIsbn(identifier ?? '') === isbnQuery),
     );
+    const exactTitlePhrase = Boolean(normalizedQuery) && (title === normalizedQuery || title.startsWith(`${normalizedQuery} `));
+    const exactAuthorPhrase = Boolean(normalizedQuery) && group.authors.some((author) => {
+      const normalizedAuthor = normalizeText(author);
+      return normalizedAuthor === normalizedQuery || normalizedAuthor.includes(normalizedQuery);
+    });
+
     let score = exactIsbnMatch ? 500 : 0;
+    if (exactTitlePhrase) score += 240;
+    if (exactAuthorPhrase) score += 220;
     tokens.forEach((token) => {
       if (title.includes(token)) score += 28;
-      if (authors.includes(token)) score += 24;
+      if (authors.includes(token)) score += 26;
       if (subtitle.includes(token)) score += 10;
     });
     if (tokens.length > 0 && matchingTokens.length === tokens.length) score += 80;
     if (titleMatches.length >= 2) score += 45;
+    if (authorMatches.length === tokens.length && tokens.length > 0) score += 65;
     if (titleMatches.length > 0 && authorMatches.length > 0) score += 55;
     if (group.editions.some((edition) => edition.coverUrl)) score += 30;
     if (group.editions.some((edition) => edition.isbn13 || edition.isbn10)) score += 12;
     if (group.editions.some((edition) => edition.publisher)) score += 6;
     if (authors.includes('unknown author')) score -= 35;
-    return { group, score, matchingTokens: matchingTokens.length, titleMatches: titleMatches.length, exactIsbnMatch };
+    return {
+      group,
+      score,
+      matchingTokens: matchingTokens.length,
+      titleMatches: titleMatches.length,
+      authorMatches: authorMatches.length,
+      exactIsbnMatch,
+    };
   }).filter((item) => {
     if (isExactIsbnSearch) return item.exactIsbnMatch;
     if (tokens.length === 0) return true;
     if (item.matchingTokens < requiredMatches) return false;
-    if (tokens.length >= 3 && item.titleMatches === 0) return false;
+    if (tokens.length >= 3 && item.titleMatches === 0 && item.authorMatches === 0) return false;
     return true;
   }).sort((a, b) => b.score - a.score).slice(0, 40).map(({ group }) => ({
     ...group,
@@ -225,14 +242,24 @@ async function searchGoogleBooksProvider(query: string, signal?: AbortSignal): P
   return { groups: groupEditions(editions), totalItems: payload.totalItems ?? editions.length };
 }
 
+const buildGoogleSearchVariants = (query: string): string[] => {
+  const compact = query.replace(/[-\s]/g, '');
+  if (/^(?:97[89])?\d{9}[\dX]$/i.test(compact)) return [query];
+
+  // Google Books' generic query heavily favors popular titles. Run focused title
+  // and author passes too so mid-list and indie authors remain discoverable.
+  return [query, `inauthor:"${query}"`, `intitle:"${query}"`];
+};
+
 // Kept under the existing exported name so Add Book, Cover Manager, and import
 // enrichment all automatically share the same provider aggregation pipeline.
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
 
+  const googleQueries = buildGoogleSearchVariants(trimmed);
   const settled = await Promise.allSettled([
-    searchGoogleBooksProvider(trimmed, signal),
+    ...googleQueries.map((googleQuery) => searchGoogleBooksProvider(googleQuery, signal)),
     searchOpenLibrary(trimmed, signal),
     searchHardcover(trimmed),
   ]);
