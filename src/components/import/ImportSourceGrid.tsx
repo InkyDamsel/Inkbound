@@ -9,14 +9,18 @@ interface ImportSourceGridProps {
   onSelectSource: (source: ImportSourceInfo) => void;
 }
 
+const HIDDEN_IMPORT_SOURCE_IDS = new Set(['fable', 'bookly']);
+
 export const ImportSourceGrid: React.FC<ImportSourceGridProps> = ({
   sources,
   selectedSourceId,
   onSelectSource,
 }) => {
+  const visibleSources = sources.filter((source) => !HIDDEN_IMPORT_SOURCE_IDS.has(source.id));
+
   return (
     <ResponsiveGrid minItemWidth={260} maxColumns={3} gap={16} alignItems="stretch">
-      {sources.map((source) => {
+      {visibleSources.map((source) => {
         const isSelected = selectedSourceId === source.id;
 
         return (
