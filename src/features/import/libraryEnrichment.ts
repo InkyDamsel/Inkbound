@@ -5,7 +5,7 @@ import type {
 import { searchGoogleBooks } from '../book-search/data/googleBooksApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 
-export const IMPORT_ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v2';
+export const IMPORT_ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v3';
 export const IMPORT_ENRICHMENT_CONCURRENCY = 3;
 export const IMPORT_ENRICHMENT_BATCH_SIZE = 12;
 
@@ -25,6 +25,11 @@ export interface ImportEnrichmentResult {
   success: boolean;
 }
 
+export interface ImportVerificationSummary {
+  verified: ImportRecordItem[];
+  unmatched: ImportRecordItem[];
+}
+
 export function readImportEnrichmentQueue(): ImportEnrichmentQueueItem[] {
   try {
     const stored = localStorage.getItem(IMPORT_ENRICHMENT_QUEUE_KEY);
@@ -42,14 +47,14 @@ export function writeImportEnrichmentQueue(items: ImportEnrichmentQueueItem[]) {
     }
     localStorage.setItem(IMPORT_ENRICHMENT_QUEUE_KEY, JSON.stringify(items));
   } catch (error) {
-    // The queue is reconstructable from the library, so storage pressure should
-    // never be allowed to take down the reader UI or an active reading session.
     console.warn('Inkbound could not persist the full enrichment queue on this device.', error);
   }
 }
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 const normalizeText = (value?: string) => value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+
+const authorSurname = (value?: string) => normalizeText(value).split(' ').filter(Boolean).at(-1) ?? '';
 
 async function searchImportedBookMetadata(query: string): Promise<BookSearchWorkGroup[]> {
   const normalizedQuery = query.trim().toLowerCase();
@@ -66,38 +71,57 @@ async function searchImportedBookMetadata(query: string): Promise<BookSearchWork
   return request;
 }
 
-function looksLikeSameWork(item: ImportRecordItem, work: BookSearchWorkGroup): boolean {
+function groupHasExactIsbn(work: BookSearchWorkGroup, requestedIsbn: string): boolean {
+  if (!requestedIsbn) return false;
+  return work.editions.some((edition) =>
+    compactIsbn(edition.isbn13) === requestedIsbn || compactIsbn(edition.isbn10) === requestedIsbn,
+  );
+}
+
+function isStrictTitleAuthorMatch(item: ImportRecordItem, work: BookSearchWorkGroup): boolean {
   const wantedTitle = normalizeText(item.title);
   const candidateTitle = normalizeText(work.title);
-  const wantedAuthor = normalizeText(item.author);
-  const candidateAuthors = normalizeText(work.authors.join(' '));
+  if (!wantedTitle || wantedTitle !== candidateTitle) return false;
 
-  const titleMatches =
-    wantedTitle === candidateTitle ||
-    wantedTitle.includes(candidateTitle) ||
-    candidateTitle.includes(wantedTitle);
-  const authorToken = wantedAuthor.split(' ').filter(Boolean).at(-1);
-  const authorMatches = !authorToken || candidateAuthors.includes(authorToken);
-  return titleMatches && authorMatches;
+  const wantedAuthor = normalizeText(item.author);
+  if (!wantedAuthor || wantedAuthor === 'unknown author') return false;
+
+  const wantedSurname = authorSurname(item.author);
+  return work.authors.some((author) => authorSurname(author) === wantedSurname);
+}
+
+function isVerifiedWork(item: ImportRecordItem, work: BookSearchWorkGroup): boolean {
+  const requestedIsbn = compactIsbn(item.isbn);
+  if (requestedIsbn && groupHasExactIsbn(work, requestedIsbn)) return true;
+  return isStrictTitleAuthorMatch(item, work);
 }
 
 function chooseImportedEdition(
   item: ImportRecordItem,
   groups: BookSearchWorkGroup[],
 ): { work?: BookSearchWorkGroup; edition?: BookSearchEdition; coverEdition?: BookSearchEdition } {
-  const viableGroups = groups.filter((work) => looksLikeSameWork(item, work));
-  const candidates = viableGroups.flatMap((work) => work.editions.map((edition) => ({ work, edition })));
+  const verifiedGroups = groups.filter((work) => isVerifiedWork(item, work));
   const requestedIsbn = compactIsbn(item.isbn);
 
-  let selected = requestedIsbn
-    ? candidates.find(({ edition }) =>
-        compactIsbn(edition.isbn13) === requestedIsbn || compactIsbn(edition.isbn10) === requestedIsbn,
+  const exactIsbnCandidates = requestedIsbn
+    ? verifiedGroups.flatMap((work) =>
+        work.editions
+          .filter((edition) =>
+            compactIsbn(edition.isbn13) === requestedIsbn || compactIsbn(edition.isbn10) === requestedIsbn,
+          )
+          .map((edition) => ({ work, edition })),
       )
-    : undefined;
+    : [];
 
-  selected ??= candidates.find(({ edition }) => edition.format === item.format && Boolean(edition.coverUrl));
-  selected ??= candidates.find(({ edition }) => Boolean(edition.coverUrl));
-  selected ??= candidates[0];
+  const workCandidates = verifiedGroups.flatMap((work) =>
+    work.editions.map((edition) => ({ work, edition })),
+  );
+
+  let selected = exactIsbnCandidates.find(({ edition }) => edition.format === item.format);
+  selected ??= exactIsbnCandidates[0];
+  selected ??= workCandidates.find(({ edition }) => edition.format === item.format && Boolean(edition.coverUrl));
+  selected ??= workCandidates.find(({ edition }) => Boolean(edition.coverUrl));
+  selected ??= workCandidates[0];
   if (!selected) return {};
 
   const coverEdition = selected.edition.coverUrl
@@ -110,23 +134,53 @@ function chooseImportedEdition(
 async function findBestImportedMetadata(
   item: ImportRecordItem,
 ): Promise<{ work?: BookSearchWorkGroup; edition?: BookSearchEdition; coverEdition?: BookSearchEdition }> {
-  const titleAuthorQuery = `${item.title} ${item.author}`.trim();
   const isbn = item.isbn?.trim();
-
   if (isbn) {
     const isbnGroups = await searchImportedBookMetadata(isbn);
     const isbnMatch = chooseImportedEdition(item, isbnGroups);
-    const isbnUseful = Boolean(
-      isbnMatch.work &&
-      isbnMatch.edition &&
-      (isbnMatch.coverEdition?.coverUrl || isbnMatch.work.publisherSummary?.trim()),
-    );
-    if (isbnUseful) return isbnMatch;
+    if (isbnMatch.work && isbnMatch.edition) return isbnMatch;
   }
 
-  if (!titleAuthorQuery) return {};
-  const titleGroups = await searchImportedBookMetadata(titleAuthorQuery);
+  if (!item.title.trim() || !item.author.trim() || normalizeText(item.author) === 'unknown author') return {};
+  const titleGroups = await searchImportedBookMetadata(`${item.title} ${item.author}`);
   return chooseImportedEdition(item, titleGroups);
+}
+
+async function canVerifyImportedBook(item: ImportRecordItem): Promise<boolean> {
+  try {
+    const match = await findBestImportedMetadata(item);
+    return Boolean(match.work && match.edition);
+  } catch {
+    return false;
+  }
+}
+
+export async function verifyImportRecords(
+  items: ImportRecordItem[],
+  onProgress?: (completed: number, total: number) => void,
+): Promise<ImportVerificationSummary> {
+  const verifiedFlags = new Array<boolean>(items.length).fill(false);
+  let nextIndex = 0;
+  let completed = 0;
+
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      verifiedFlags[index] = await canVerifyImportedBook(items[index]);
+      completed += 1;
+      onProgress?.(completed, items.length);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(IMPORT_ENRICHMENT_CONCURRENCY, items.length) }, () => worker()),
+  );
+
+  return {
+    verified: items.filter((_, index) => verifiedFlags[index]),
+    unmatched: items.filter((_, index) => !verifiedFlags[index]),
+  };
 }
 
 export function createFallbackImportedBook(item: ImportRecordItem): UserBookRecord {
@@ -175,8 +229,7 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
     const { work, edition, coverEdition } = await findBestImportedMetadata(item);
     const publisherSummary = work?.publisherSummary?.trim();
     const coverUrl = coverEdition?.coverUrl;
-    const success = Boolean(work && edition && (coverUrl || publisherSummary));
-    if (!success || !work || !edition) {
+    if (!work || !edition) {
       return { item, foundCover: false, foundSummary: false, success: false };
     }
 
@@ -186,9 +239,9 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       id: item.targetBookId,
       work: {
         id: `work-enriched-${item.id}`,
-        title: work.title || item.title,
+        title: item.title,
         subtitle: work.subtitle,
-        author: work.authors.length > 0 ? work.authors.join(', ') : item.author,
+        author: item.author,
         summary: publisherSummary || 'Summary unavailable.',
         publisherSummary: publisherSummary || undefined,
         personalSummary: item.review?.trim() || undefined,
@@ -201,9 +254,9 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       editions: [{
         id: editionId,
         format: item.format,
-        isbn: edition.isbn13 ?? edition.isbn10 ?? item.isbn,
-        isbn10: edition.isbn10,
-        isbn13: edition.isbn13,
+        isbn: item.isbn || edition.isbn13 || edition.isbn10,
+        isbn10: compactIsbn(item.isbn).length === 10 ? compactIsbn(item.isbn) : edition.isbn10,
+        isbn13: compactIsbn(item.isbn).length === 13 ? compactIsbn(item.isbn) : edition.isbn13,
         pageCount,
         publisher: edition.publisher,
         publicationDate: edition.publicationDate,
@@ -228,7 +281,7 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       priority: 'medium',
       moods: [],
       collections: [],
-      sourceOfImport: 'Library import + metadata enrichment',
+      sourceOfImport: 'Library import + verified metadata',
       dateAdded: item.dateAdded,
       dateFinished: item.dateRead,
     };
