@@ -9,11 +9,13 @@ import {
   HelpCircle,
   Loader2,
   RotateCcw,
+  SearchCheck,
   Sparkles,
   Upload,
 } from 'lucide-react';
 import { Format, ImportRecordItem, ImportSourceInfo, ReadingStatus } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
+import { verifyImportRecords } from '../features/import/libraryEnrichment';
 import { ImportAnalysisSummaryGrid } from './import/ImportAnalysisSummaryGrid';
 import { ImportSourceGrid } from './import/ImportSourceGrid';
 
@@ -201,6 +203,8 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importedCount, setImportedCount] = useState(0);
+  const [unmatchedRecords, setUnmatchedRecords] = useState<ImportRecordItem[]>([]);
+  const [verificationProgress, setVerificationProgress] = useState({ completed: 0, total: 0 });
   const [hasUndone, setHasUndone] = useState(false);
 
   const selectedRecords = useMemo(
@@ -226,6 +230,9 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     setIsReadingFile(true);
     setFileError(null);
     setImportError(null);
+    setUnmatchedRecords([]);
+    setImportedCount(0);
+    setHasUndone(false);
     try {
       const records = await readImportFile(file);
       if (records.length === 0) throw new Error('No recognizable book records were found in this file.');
@@ -281,13 +288,28 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
 
   const executeImport = async () => {
     if (selectedRecords.length === 0 || isImporting) return;
+    if (!navigator.onLine) {
+      setImportError('Connect to the internet before importing. Inkbound verifies each book so it never substitutes an unrelated title.');
+      return;
+    }
 
-    const recordsToImport = [...selectedRecords];
+    const recordsToCheck = [...selectedRecords];
     setIsImporting(true);
     setImportError(null);
+    setUnmatchedRecords([]);
+    setVerificationProgress({ completed: 0, total: recordsToCheck.length });
+
     try {
-      await onExecuteImport(recordsToImport);
-      setImportedCount(recordsToImport.length);
+      const verification = await verifyImportRecords(recordsToCheck, (completed, total) => {
+        setVerificationProgress({ completed, total });
+      });
+
+      if (verification.verified.length > 0) {
+        await onExecuteImport(verification.verified);
+      }
+
+      setImportedCount(verification.verified.length);
+      setUnmatchedRecords(verification.unmatched);
       setCurrentStep(5);
     } catch (error) {
       setImportError(
@@ -318,8 +340,8 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
       <div className="flex items-start gap-3 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4 text-xs text-stone-300">
         <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-[#c5a059]" />
         <div>
-          <p className="font-bold text-[#f4efe6]">Your library data stays yours</p>
-          <p className="mt-1 text-stone-400">Inkbound reads the file you choose and adds only the books you approve.</p>
+          <p className="font-bold text-[#f4efe6]">Accuracy before guesswork</p>
+          <p className="mt-1 text-stone-400">Inkbound verifies each selected book before adding it. If a match cannot be confirmed, the book is listed for you instead of receiving unrelated metadata.</p>
         </div>
       </div>
 
@@ -406,7 +428,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
           {isPremium ? (
             <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-emerald-200">
               <CheckCircle2 className="h-5 w-5 shrink-0" />
-              <div><p className="font-bold">Premium unlimited import</p><p className="mt-1 text-emerald-100/70">All {importRecords.length} books in this file are eligible to import.</p></div>
+              <div><p className="font-bold">Premium unlimited import</p><p className="mt-1 text-emerald-100/70">All {importRecords.length} books in this file can be selected for verification.</p></div>
             </div>
           ) : importRecords.length > remainingFreeSlots ? (
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-stone-300">
@@ -441,9 +463,20 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
 
           {importError && <div role="alert" className="rounded-xl border border-rose-500/35 bg-rose-950/25 p-4 text-sm text-rose-200">{importError}</div>}
           {isImporting && (
-            <div className="flex items-center gap-3 rounded-xl border border-[#c5a059]/35 bg-[#c5a059]/10 p-4 text-sm text-[#f4efe6]" role="status">
-              <Loader2 className="h-5 w-5 animate-spin text-[#e5c158]" />
-              <div><p className="font-bold">Adding books to your library…</p><p className="mt-1 text-xs text-stone-400">Inkbound is finding covers and metadata. Large imports may take a little while.</p></div>
+            <div className="rounded-xl border border-[#c5a059]/35 bg-[#c5a059]/10 p-4 text-sm text-[#f4efe6]" role="status">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-[#e5c158]" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold">Verifying your books…</p>
+                  <p className="mt-1 text-xs text-stone-400">Inkbound is checking identity before accepting covers or summaries. It will not guess.</p>
+                </div>
+                <span className="text-xs font-bold text-[#e5c158]">{verificationProgress.completed.toLocaleString()} / {verificationProgress.total.toLocaleString()}</span>
+              </div>
+              {verificationProgress.total > 0 && (
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/25">
+                  <div className="h-full rounded-full bg-[#c5a059] transition-[width]" style={{ width: `${Math.round((verificationProgress.completed / verificationProgress.total) * 100)}%` }} />
+                </div>
+              )}
             </div>
           )}
 
@@ -463,20 +496,46 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
           <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-[#3d2448] bg-[#0d0910]/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
             <button type="button" onClick={goBack} disabled={isImporting} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">Back</button>
             <button type="button" onClick={() => void executeImport()} disabled={selectedRecords.length === 0 || isImporting} className="quiet-shelf-primary-action min-h-11 disabled:cursor-not-allowed disabled:opacity-50">
-              {isImporting ? <><Loader2 className="h-4 w-4 animate-spin" /> Importing…</> : `Import ${selectedRecords.length.toLocaleString()} Books`}
+              {isImporting ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</> : `Verify & Import ${selectedRecords.length.toLocaleString()} Books`}
             </button>
           </div>
         </section>
       )}
 
       {currentStep === 5 && (
-        <section className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center sm:p-10">
-          <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />
-          <h2 className="mt-4 font-serif text-3xl font-bold text-[#f4efe6]">Import complete</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-stone-400">{importedCount.toLocaleString()} books were added to your Inkbound library.</p>
-          {!hasUndone ? (
-            <button type="button" onClick={undoImport} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-500/30 px-4 text-xs font-bold text-rose-300"><RotateCcw className="h-4 w-4" /> Undo This Import</button>
-          ) : <p className="mt-5 text-xs font-bold text-rose-300">The import was undone.</p>}
+        <section className="space-y-5">
+          <div className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center sm:p-10">
+            <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />
+            <h2 className="mt-4 font-serif text-3xl font-bold text-[#f4efe6]">Import complete</h2>
+            <p className="mx-auto mt-2 max-w-lg text-sm text-stone-400">
+              {importedCount.toLocaleString()} {importedCount === 1 ? 'book was' : 'books were'} confidently matched and added to your Inkbound library.
+            </p>
+            {importedCount > 0 && !hasUndone ? (
+              <button type="button" onClick={undoImport} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-500/30 px-4 text-xs font-bold text-rose-300"><RotateCcw className="h-4 w-4" /> Undo This Import</button>
+            ) : hasUndone ? <p className="mt-5 text-xs font-bold text-rose-300">The import was undone.</p> : null}
+          </div>
+
+          {unmatchedRecords.length > 0 && (
+            <section className="rounded-3xl border border-amber-500/30 bg-amber-950/15 p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <SearchCheck className="mt-0.5 h-6 w-6 shrink-0 text-amber-300" />
+                <div>
+                  <h3 className="font-serif text-2xl text-[#f4efe6]">{unmatchedRecords.length.toLocaleString()} {unmatchedRecords.length === 1 ? 'book needs' : 'books need'} review</h3>
+                  <p className="mt-1 text-sm leading-6 text-stone-400">Inkbound could not confidently verify these books, so they were not imported and no substitute cover or summary was used.</p>
+                </div>
+              </div>
+
+              <div className="mt-5 max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+                {unmatchedRecords.map((record) => (
+                  <article key={record.id} className="rounded-xl border border-amber-500/15 bg-black/15 p-3 text-left">
+                    <p className="font-semibold text-[#f4efe6]">{record.title}</p>
+                    <p className="mt-1 text-xs text-stone-400">{record.author}</p>
+                    {record.isbn && <p className="mt-1 font-mono text-[11px] text-stone-500">ISBN {record.isbn}</p>}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
         </section>
       )}
     </div>
