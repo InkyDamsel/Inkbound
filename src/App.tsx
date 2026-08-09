@@ -93,8 +93,6 @@ function isReadingTimerOpen(): boolean {
 }
 
 function isPreferredMaintenanceWindow(): boolean {
-  // Date#getHours uses the browser/device timezone, so the quiet-hours window
-  // automatically follows the reader wherever they use Inkbound.
   const hour = new Date().getHours();
   return hour >= 23 || hour < 5;
 }
@@ -122,12 +120,8 @@ export default function App() {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     return savedTheme ? savedTheme === 'dark' : true;
   });
-  const [books, setBooks] = useState<UserBookRecord[]>(() =>
-    readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []),
-  );
-  const [sessions, setSessions] = useState<ReadingSession[]>(() =>
-    readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []),
-  );
+  const [books, setBooks] = useState<UserBookRecord[]>(() => readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []));
+  const [sessions, setSessions] = useState<ReadingSession[]>(() => readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []));
   const [previousBooksState, setPreviousBooksState] = useState<UserBookRecord[] | null>(null);
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
@@ -140,29 +134,17 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
-    } catch {
-      // Theme persistence should never interrupt the app.
-    }
+    try { localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light'); } catch { /* no-op */ }
   }, [isDarkMode]);
 
   useEffect(() => {
     safeWriteLocalStorage(BOOKS_STORAGE_KEY, books);
-    try {
-      localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
-    } catch {
-      // Legacy cleanup is best-effort only.
-    }
+    try { localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); } catch { /* no-op */ }
   }, [books]);
 
   useEffect(() => {
     safeWriteLocalStorage(SESSIONS_STORAGE_KEY, sessions);
-    try {
-      localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
-    } catch {
-      // Legacy cleanup is best-effort only.
-    }
+    try { localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); } catch { /* no-op */ }
   }, [sessions]);
 
   const showToast = (message: string) => {
@@ -174,7 +156,6 @@ export default function App() {
     if (isImportQueueProcessing || !navigator.onLine || isReadingTimerOpen()) return;
     const initialQueue = readImportEnrichmentQueue();
     if (initialQueue.length === 0) return;
-
     const isQuietHours = isPreferredMaintenanceWindow();
     if (!isQuietHours && !canRunDaytimeMaintenance()) return;
 
@@ -188,58 +169,37 @@ export default function App() {
 
     try {
       while (pending.length > 0 && navigator.onLine) {
-        // Reading sessions always take priority. During the day Inkbound only
-        // performs one tiny maintenance batch; from 11 PM through 5 AM local
-        // time it may continue working through the queue while the app is open.
         if (isReadingTimerOpen()) break;
         if (!isQuietHours && processedBatchCount >= 1) break;
-
-        const batchSize = isQuietHours
-          ? IMPORT_ENRICHMENT_BATCH_SIZE
-          : DAYTIME_MAINTENANCE_BATCH_SIZE;
+        const batchSize = isQuietHours ? IMPORT_ENRICHMENT_BATCH_SIZE : DAYTIME_MAINTENANCE_BATCH_SIZE;
         const batch = pending.slice(0, batchSize);
         pending = pending.slice(batch.length);
         processedBatchCount += 1;
-
         const results = await enrichImportedBooks(batch);
         const successful = results.filter((result) => result.success && result.enriched);
-        const enrichedById = new Map(
-          successful.map((result) => [result.item.targetBookId, result.enriched!]),
-        );
-
+        const enrichedById = new Map(successful.map((result) => [result.item.targetBookId, result.enriched!]));
         if (enrichedById.size > 0) {
           setBooks((current) => current.map((book) => {
             const enriched = enrichedById.get(book.id);
             return enriched ? mergeEnrichedImportedBook(book, enriched) : book;
           }));
         }
-
         results.forEach((result) => {
           if (result.success) {
             updatedCount += 1;
             if (result.foundCover) coverCount += 1;
             if (result.foundSummary) summaryCount += 1;
-            return;
+          } else {
+            retryItems.push({ ...result.item, attempts: (result.item.attempts ?? 0) + 1, lastAttemptAt: new Date().toISOString() });
           }
-          retryItems.push({
-            ...result.item,
-            attempts: (result.item.attempts ?? 0) + 1,
-            lastAttemptAt: new Date().toISOString(),
-          });
         });
-
         writeImportEnrichmentQueue([...retryItems, ...pending]);
         await new Promise<void>((resolve) => window.setTimeout(resolve, isQuietHours ? 300 : 750));
       }
-
       writeImportEnrichmentQueue([...retryItems, ...pending]);
       if (!isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
-
-      if (updatedCount > 0) {
-        showToast(`Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`);
-      } else if (isQuietHours && initialQueue.length > 0 && !isReadingTimerOpen()) {
-        showToast('Inkbound kept the remaining books queued and will retry their details later.');
-      }
+      if (updatedCount > 0) showToast(`Updated ${updatedCount} books · ${coverCount} covers · ${summaryCount} summaries.`);
+      else if (isQuietHours && initialQueue.length > 0 && !isReadingTimerOpen()) showToast('Inkbound kept the remaining books queued and will retry their details later.');
     } catch {
       writeImportEnrichmentQueue([...retryItems, ...pending]);
       if (!isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
@@ -255,19 +215,13 @@ export default function App() {
     if (!isTimerOpen) void processImportEnrichmentQueue();
   }, [books, isTimerOpen]);
 
-  useEffect(() => {
-    if (!isTimerOpen) void processImportEnrichmentQueue();
-  }, [isTimerOpen]);
+  useEffect(() => { if (!isTimerOpen) void processImportEnrichmentQueue(); }, [isTimerOpen]);
 
   useEffect(() => {
     const resumeMaintenance = () => void processImportEnrichmentQueue();
     window.addEventListener('online', resumeMaintenance);
     window.addEventListener('focus', resumeMaintenance);
-
-    // The browser cannot wake a closed/sleeping device, but if Inkbound is left
-    // open this check notices when the user's local clock enters quiet hours.
     const interval = window.setInterval(resumeMaintenance, MAINTENANCE_CHECK_INTERVAL_MS);
-
     return () => {
       window.removeEventListener('online', resumeMaintenance);
       window.removeEventListener('focus', resumeMaintenance);
@@ -275,16 +229,10 @@ export default function App() {
     };
   }, []);
 
-  const openTimer = (bookId?: string) => {
-    setTimerInitialBookId(bookId);
-    setIsTimerOpen(true);
-  };
-
+  const openTimer = (bookId?: string) => { setTimerInitialBookId(bookId); setIsTimerOpen(true); };
   const closeTimer = () => setIsTimerOpen(false);
 
-  const handleToggleSelectBook = (id: string) => {
-    setSelectedBookIds((current) => current.includes(id) ? current.filter((bookId) => bookId !== id) : [...current, id]);
-  };
+  const handleToggleSelectBook = (id: string) => setSelectedBookIds((current) => current.includes(id) ? current.filter((bookId) => bookId !== id) : [...current, id]);
 
   const handleUpdateBook = (updatedBook: UserBookRecord) => {
     setBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book)));
@@ -300,21 +248,16 @@ export default function App() {
   };
 
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => {
-    setBooks((current) => current.map((book) => {
-      if (book.id !== bookId) return book;
-      return {
-        ...book,
-        status,
-        progressPercentage: status === 'finished' ? 100 : book.progressPercentage,
-        dateFinished: status === 'finished' ? book.dateFinished ?? new Date().toISOString().split('T')[0] : book.dateFinished,
-      };
+    setBooks((current) => current.map((book) => book.id !== bookId ? book : {
+      ...book,
+      status,
+      progressPercentage: status === 'finished' ? 100 : book.progressPercentage,
+      dateFinished: status === 'finished' ? book.dateFinished ?? new Date().toISOString().split('T')[0] : book.dateFinished,
     }));
     showToast(`Updated reading status to ${status}.`);
   };
 
-  const handleUpdatePriority = (bookId: string, priority: Priority) => {
-    setBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
-  };
+  const handleUpdatePriority = (bookId: string, priority: Priority) => setBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
 
   const handleApplyBatchChanges = (changes: { status?: ReadingStatus; ownership?: OwnershipStatus; format?: Format; priority?: Priority; addTag?: string; addCollection?: string }) => {
     setPreviousBooksState(books);
@@ -323,10 +266,7 @@ export default function App() {
       const updatedBook = { ...book };
       if (changes.status) {
         updatedBook.status = changes.status;
-        if (changes.status === 'finished') {
-          updatedBook.progressPercentage = 100;
-          updatedBook.dateFinished = new Date().toISOString().split('T')[0];
-        }
+        if (changes.status === 'finished') { updatedBook.progressPercentage = 100; updatedBook.dateFinished = new Date().toISOString().split('T')[0]; }
       }
       if (changes.ownership) updatedBook.ownership = changes.ownership;
       if (changes.priority) updatedBook.priority = changes.priority;
@@ -357,63 +297,71 @@ export default function App() {
     showToast('Undid the most recent library change.');
   };
 
-  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
-    setSessions((current) => [newSession, ...current]);
+  const updateBookFromSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
     setBooks((current) => current.map((book) => {
       if (book.id !== newSession.bookId) return book;
       const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
       const isAudiobook = activeEdition?.format === 'audiobook';
+      const nextPages = isAudiobook ? book.progressPages : Math.max(book.progressPages, updatedPages);
+      const nextMinutes = isAudiobook ? Math.max(book.progressMinutes, updatedMinutes) : book.progressMinutes;
       const total = isAudiobook ? activeEdition?.audiobookDurationMins ?? 600 : activeEdition?.pageCount ?? 350;
-      const completed = isAudiobook ? updatedMinutes : updatedPages;
-      const progressPercentage = Math.min(100, Math.round((completed / total) * 100));
+      const completed = isAudiobook ? nextMinutes : nextPages;
+      const progressPercentage = Math.min(100, Math.round((completed / Math.max(1, total)) * 100));
       return {
         ...book,
-        progressPages: isAudiobook ? book.progressPages : updatedPages,
-        progressMinutes: isAudiobook ? updatedMinutes : book.progressMinutes,
+        progressPages: nextPages,
+        progressMinutes: nextMinutes,
         progressPercentage,
         status: progressPercentage === 100 ? 'finished' : 'currently-reading',
-        dateFinished: progressPercentage === 100 ? new Date().toISOString().split('T')[0] : book.dateFinished,
-        lastSessionDate: newSession.date,
+        dateStarted: book.dateStarted ?? newSession.date,
+        dateFinished: progressPercentage === 100 ? book.dateFinished ?? newSession.date : book.dateFinished,
+        lastSessionDate: !book.lastSessionDate || newSession.date > book.lastSessionDate ? newSession.date : book.lastSessionDate,
       };
     }));
+  };
+
+  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
+    setSessions((current) => [newSession, ...current]);
+    updateBookFromSession(newSession, updatedPages, updatedMinutes);
     setTimerInitialBookId(undefined);
     setIsTimerOpen(false);
     showToast(`Saved a ${newSession.durationMinutes}-minute reading session.`);
+  };
+
+  const handleSaveManualSession = (session: ReadingSession) => {
+    setSessions((current) => [session, ...current]);
+    updateBookFromSession(session, session.endPage ?? 0, Math.floor((session.endTimestampSec ?? 0) / 60));
+    showToast('Added reading session.');
+  };
+
+  const handleUpdateSession = (session: ReadingSession) => {
+    setSessions((current) => current.map((item) => item.id === session.id ? session : item));
+    updateBookFromSession(session, session.endPage ?? 0, Math.floor((session.endTimestampSec ?? 0) / 60));
+    showToast('Updated reading session.');
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    setSessions((current) => current.filter((session) => session.id !== sessionId));
+    showToast('Deleted reading session. Book progress was left unchanged.');
   };
 
   const handleExecuteImport = async (importedItems: ImportRecordItem[]) => {
     setPreviousBooksState(books);
     const immediateBooks = importedItems.map(createFallbackImportedBook);
     setBooks((current) => [...current, ...immediateBooks]);
-
     const existingQueue = readImportEnrichmentQueue();
     const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item]));
     queueImportedItems(importedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item));
     writeImportEnrichmentQueue([...queuedByBookId.values()]);
-
-    showToast(
-      navigator.onLine
-        ? `Added ${immediateBooks.length} books. Covers and publisher summaries will continue updating automatically.`
-        : `Added ${immediateBooks.length} books offline. Covers and publisher summaries will update when Inkbound is online.`,
-    );
+    showToast(navigator.onLine ? `Added ${immediateBooks.length} books. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline. Covers and publisher summaries will update when Inkbound is online.`);
     void processImportEnrichmentQueue();
   };
 
   const handleResetData = () => {
-    setBooks([]);
-    setSessions([]);
-    setPreviousBooksState(null);
-    setSelectedBookForDetails(null);
-    setSelectedBookIds([]);
+    setBooks([]); setSessions([]); setPreviousBooksState(null); setSelectedBookForDetails(null); setSelectedBookIds([]);
     try {
-      localStorage.removeItem(BOOKS_STORAGE_KEY);
-      localStorage.removeItem(SESSIONS_STORAGE_KEY);
-      localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
-      localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY);
-      localStorage.removeItem(DAYTIME_MAINTENANCE_KEY);
-    } catch {
-      // Device cleanup is best-effort; state is already cleared above.
-    }
+      localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY);
+    } catch { /* no-op */ }
     writeImportEnrichmentQueue([]);
     showToast('Cleared all Inkbound books and reading sessions.');
   };
@@ -425,12 +373,7 @@ export default function App() {
           {activeTab === 'home' && <HomeDashboard books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} onStartSessionForBook={(book) => openTimer(book.id)} onUpdateStatus={handleUpdateStatus} onNavigateToTab={setActiveTab} onOpenAddBook={() => setIsAddBookOpen(true)} />}
           {activeTab === 'library' && <LibraryScreen books={books} selectedBookIds={selectedBookIds} onToggleSelectBook={handleToggleSelectBook} onSelectAll={setSelectedBookIds} onClearSelection={() => setSelectedBookIds([])} onSelectBook={setSelectedBookForDetails} onOpenBatchEdit={() => setIsBatchEditOpen(true)} onOpenAddBook={() => setIsAddBookOpen(true)} />}
           {activeTab === 'tbr' && <TBRScreen books={books} onSelectBook={setSelectedBookForDetails} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} />}
-          {activeTab === 'sessions' && (
-            <div className="space-y-8">
-              <ReadingActivityOverview books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />
-              <ReadingSessionsScreen books={books} sessions={sessions} onOpenTimer={openTimer} onSelectBook={setSelectedBookForDetails} />
-            </div>
-          )}
+          {activeTab === 'sessions' && <div className="space-y-8"><ReadingActivityOverview books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} /><ReadingSessionsScreen books={books} sessions={sessions} onOpenTimer={openTimer} onSelectBook={setSelectedBookForDetails} onSaveManualSession={handleSaveManualSession} onUpdateSession={handleUpdateSession} onDeleteSession={handleDeleteSession} /></div>}
           {activeTab === 'challenges' && <ReadingChallengesScreen books={books} sessions={sessions} />}
           {activeTab === 'achievements' && <AchievementsScreen books={books} sessions={sessions} />}
           {activeTab === 'collections' && <CollectionsScreen books={books} onUpdateBook={handleUpdateBook} onSelectBook={setSelectedBookForDetails} />}
