@@ -45,7 +45,9 @@ export function getImportVerificationSnapshot(): ImportVerificationJobSnapshot {
 export function subscribeToImportVerification(listener: Listener): () => void {
   listeners.add(listener);
   listener(snapshot);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function resetImportVerificationJob() {
