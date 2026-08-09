@@ -35,11 +35,17 @@ export function readImportEnrichmentQueue(): ImportEnrichmentQueueItem[] {
 }
 
 export function writeImportEnrichmentQueue(items: ImportEnrichmentQueueItem[]) {
-  if (items.length === 0) {
-    localStorage.removeItem(IMPORT_ENRICHMENT_QUEUE_KEY);
-    return;
+  try {
+    if (items.length === 0) {
+      localStorage.removeItem(IMPORT_ENRICHMENT_QUEUE_KEY);
+      return;
+    }
+    localStorage.setItem(IMPORT_ENRICHMENT_QUEUE_KEY, JSON.stringify(items));
+  } catch (error) {
+    // The queue is reconstructable from the library, so storage pressure should
+    // never be allowed to take down the reader UI or an active reading session.
+    console.warn('Inkbound could not persist the full enrichment queue on this device.', error);
   }
-  localStorage.setItem(IMPORT_ENRICHMENT_QUEUE_KEY, JSON.stringify(items));
 }
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
