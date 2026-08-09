@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Download, FileClock, Pause, Play, RefreshCw, Search } from 'lucide-react';
 import type { UserBookRecord } from '../types';
 import {
+  ensureImportHistoryForExistingLibrary,
   getImportHistoryProgress,
   isImportEnrichmentPaused,
-  readImportHistory,
   retryImportHistoryItems,
   setImportEnrichmentPaused,
   type ImportHistoryEntry,
@@ -41,7 +41,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
   const [query, setQuery] = useState('');
   const [showOnlyUnresolved, setShowOnlyUnresolved] = useState(false);
   const [paused, setPaused] = useState(() => isImportEnrichmentPaused());
-  const history = useMemo(() => readImportHistory(), [historyVersion]);
+  const history = useMemo(() => ensureImportHistoryForExistingLibrary(books), [books, historyVersion]);
   const selectedEntry = history.find((entry) => entry.id === selectedEntryId) ?? history[0] ?? null;
 
   const selectedItems = useMemo(() => {
