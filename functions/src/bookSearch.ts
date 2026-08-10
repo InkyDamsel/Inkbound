@@ -146,6 +146,8 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
       const id = String(result.id ?? result.slug ?? result.title);
       const authors = authorNames(result);
       const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
+      const publisherSummary = result.description
+        ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
       const normalizedEditions = matchedEditions.length > 0
         ? matchedEditions.map((edition) => ({
             source: 'hardcover' as const,
@@ -153,7 +155,7 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
             title: edition.title ?? edition.book?.title ?? result.title ?? 'Untitled',
             subtitle: edition.book?.subtitle ?? result.subtitle,
             authors,
-            publisherSummary: edition.book?.description ?? result.description,
+            publisherSummary: edition.book?.description ?? publisherSummary,
             genres: [],
             publisher: edition.publisher?.name,
             publicationDate: edition.release_date,
@@ -173,7 +175,7 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
             title: result.title ?? 'Untitled',
             subtitle: result.subtitle,
             authors,
-            publisherSummary: result.description,
+            publisherSummary,
             genres: [],
             publicationYear: result.release_year || new Date().getFullYear(),
             format: 'hardcover' as const,
@@ -187,7 +189,7 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
         title: result.title ?? 'Untitled',
         subtitle: result.subtitle,
         authors,
-        publisherSummary: result.description,
+        publisherSummary,
         genres: [],
         editions: normalizedEditions,
       };
