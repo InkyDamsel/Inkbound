@@ -64,7 +64,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   setIsDarkMode,
   onResetData,
 }) => {
-  const { userPlan, accessSource, freeBookLimit, openUpgradeModal } = useUserPlan();
+  const { userPlan, accessSource, openUpgradeModal } = useUserPlan();
   const { user, signOutAccount } = useAccountSync();
   const [annualGoal, setAnnualGoal] = usePersistentState('inkbound_annual_goal', '25');
   const [dailyGoalMins, setDailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
@@ -243,7 +243,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           {userPlan === 'free' ? (
             <button
               type="button"
-              onClick={() => openUpgradeModal('Upgrade to Premium for unlimited books, imports, batch editing, and detailed insights.')}
+              onClick={() => openUpgradeModal('Premium adds advanced insights, batch editing, Wrapped, Year in Books, and Studio exports.')}
               className="quiet-shelf-primary-action justify-center"
             >
               <Sparkles className="h-4 w-4" /> View Premium
@@ -258,16 +258,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16}>
           <article className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
             <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Library capacity</span>
-            <p className="mt-2 font-semibold text-[var(--ink-ivory)]">
+            <p className="mt-2 font-semibold text-[var(--ink-ivory)]">Unlimited books and imports</p>
+            <p className="mt-1 text-xs text-[var(--ink-muted)]">
               {userPlan === 'premium'
-                ? 'Unlimited books and imports'
-                : `${books.length} of ${freeBookLimit} books used`}
+                ? 'Premium adds advanced insights and power tools, not extra library space.'
+                : 'Included with Inkbound Free.'}
             </p>
-            {userPlan === 'free' && (
-              <p className="mt-1 text-xs text-[var(--ink-muted)]">
-                {Math.max(0, freeBookLimit - books.length)} spaces remaining
-              </p>
-            )}
           </article>
           <article className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
             <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Data ownership</span>
@@ -517,7 +513,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 I understand that deleting my account permanently removes my Inkbound account and cloud data and cannot be undone.
               </span>
             </label>
-
             <label className="mt-5 block text-sm font-semibold text-[var(--ink-ivory)]">
               Type <span className="select-all">{DELETE_ACCOUNT_PHRASE}</span> to confirm
               <input
