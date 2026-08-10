@@ -70,9 +70,12 @@ const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
 const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
 const DAYTIME_MAINTENANCE_KEY = 'inkbound_last_daytime_library_maintenance';
-const DAYTIME_MAINTENANCE_COOLDOWN_MS = 2 * 60 * 60 * 1000;
-const DAYTIME_MAINTENANCE_BATCH_SIZE = 3;
-const MAINTENANCE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+// Background metadata should make visible progress without bursting providers.
+// Two books per minute is intentionally conservative: large libraries keep moving,
+// while manual search remains responsive and provider rate limits are respected.
+const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
+const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
+const MAINTENANCE_CHECK_INTERVAL_MS = 60 * 1000;
 let isImportQueueProcessing = false;
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
@@ -211,7 +214,7 @@ export default function App() {
     }
 
     const isQuietHours = isPreferredMaintenanceWindow();
-    if (!forceRetry && !isQuietHours && !canRunDaytimeMaintenance()) return;
+    if (!forceRetry && !canRunDaytimeMaintenance()) return;
 
     isImportQueueProcessing = true;
     const retryItems: ImportEnrichmentQueueItem[] = [];
@@ -231,8 +234,8 @@ export default function App() {
     try {
       while (pending.length > 0 && navigator.onLine) {
         if (isReadingTimerOpen() || (!forceRetry && isImportEnrichmentPaused())) break;
-        if (!forceRetry && !isQuietHours && processedBatchCount >= 1) break;
-        const batchSize = forceRetry ? IMPORT_ENRICHMENT_BATCH_SIZE : isQuietHours ? IMPORT_ENRICHMENT_BATCH_SIZE : DAYTIME_MAINTENANCE_BATCH_SIZE;
+        if (!forceRetry && processedBatchCount >= 1) break;
+        const batchSize = forceRetry ? IMPORT_ENRICHMENT_BATCH_SIZE : DAYTIME_MAINTENANCE_BATCH_SIZE;
         const batch = pending.slice(0, batchSize);
         pending = pending.slice(batch.length);
         processedBatchCount += 1;
@@ -266,11 +269,11 @@ export default function App() {
             updatedAt: new Date().toISOString(),
           });
         }
-        await new Promise<void>((resolve) => window.setTimeout(resolve, forceRetry ? 250 : isQuietHours ? 300 : 750));
+        await new Promise<void>((resolve) => window.setTimeout(resolve, forceRetry ? 250 : 750));
       }
 
       writeImportEnrichmentQueue([...retryItems, ...pending, ...untouchedQueue]);
-      if (!forceRetry && !isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
+      if (!forceRetry && processedBatchCount > 0) markDaytimeMaintenanceRun();
 
       if (forceRetry) {
         const completed = retryTotal - pending.length;
@@ -295,7 +298,7 @@ export default function App() {
       }
     } catch {
       writeImportEnrichmentQueue([...retryItems, ...pending, ...untouchedQueue]);
-      if (!forceRetry && !isQuietHours && processedBatchCount > 0) markDaytimeMaintenanceRun();
+      if (!forceRetry && processedBatchCount > 0) markDaytimeMaintenanceRun();
       if (forceRetry) {
         writeImportEnrichmentRetryProgress({
           status: 'error',
