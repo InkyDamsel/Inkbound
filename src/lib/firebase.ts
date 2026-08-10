@@ -34,14 +34,15 @@ export const missingFirebaseEnvironmentVariables = Object.entries(requiredFireba
 
 export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length === 0;
 
-// Local development should not silently consume production Firestore writes.
-// Production builds always enable Firestore. Developers can explicitly opt into
-// live cloud-sync testing with VITE_ALLOW_PROD_FIREBASE_WRITES=true.
+// Local development must be able to READ the signed-in reader's production data
+// so a second computer can restore the same library, profile, and entitlements.
+// Production writes remain separately protected unless explicitly enabled.
 export const allowProductionFirebaseWrites =
   !import.meta.env.DEV || readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
+let readDb: Firestore | null = null;
 let db: Firestore | null = null;
 let functions: Functions | null = null;
 let storage: FirebaseStorage | null = null;
@@ -50,23 +51,27 @@ if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
 
-  if (allowProductionFirebaseWrites) {
-    db = initializeFirestore(app, {
-      ignoreUndefinedProperties: true,
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
-      }),
-    });
-  } else {
+  // One Firestore instance is initialized for authenticated reads in every
+  // environment. Code that may write must continue importing `db`, which is null
+  // in protected local development. Read-only code should import `readDb`.
+  readDb = initializeFirestore(app, {
+    ignoreUndefinedProperties: true,
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
+  });
+  db = allowProductionFirebaseWrites ? readDb : null;
+
+  if (!allowProductionFirebaseWrites) {
     console.info(
-      'Inkbound development safety: production Firestore sync is disabled. Set VITE_ALLOW_PROD_FIREBASE_WRITES=true only when intentionally testing live cloud sync.',
+      'Inkbound development safety: production Firestore writes are disabled. Cloud reads remain enabled so this device can restore the signed-in account. Set VITE_ALLOW_PROD_FIREBASE_WRITES=true only when intentionally testing live cloud writes.',
     );
   }
 
-  // Callable search functions remain available in development because book search
-  // does not need to write to Firestore.
+  // Callable functions remain available in development because account access and
+  // book search do not require browser-side Firestore writes.
   functions = getFunctions(app);
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
 }
 
-export { app, auth, db, functions, storage };
+export { app, auth, readDb, db, functions, storage };
