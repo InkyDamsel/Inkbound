@@ -15,6 +15,19 @@ interface AddBookModalProps {
 
 type AddBookTab = 'search' | 'manual';
 
+type PendingSearchEdition = {
+  work: BookSearchWorkGroup;
+  edition: BookSearchEdition;
+};
+
+const LIST_OPTIONS: Array<{ value: ReadingStatus; label: string; description: string }> = [
+  { value: 'tbr', label: 'To Be Read', description: 'Save it for later.' },
+  { value: 'currently-reading', label: 'Currently Reading', description: 'Put it into your active reading list.' },
+  { value: 'finished', label: 'Finished', description: 'Mark it as already read.' },
+  { value: 'paused', label: 'Paused', description: 'Keep it on hold without losing your place.' },
+  { value: 'dnf', label: 'Did Not Finish', description: 'Keep a record without marking it finished.' },
+];
+
 const today = () => new Date().toISOString().split('T')[0];
 const uniqueId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -31,6 +44,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
 
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -46,11 +60,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      if (pendingSearchEdition) {
+        setPendingSearchEdition(null);
+        return;
+      }
+      onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [onClose, pendingSearchEdition]);
 
   const guardBookLimit = () => {
     if (!isAtLimit) return true;
@@ -68,6 +87,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
+    setPendingSearchEdition(null);
 
     try {
       const response = await searchGoogleBooks(trimmedQuery);
@@ -80,9 +100,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
     }
   };
 
-  const addSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
+  const chooseSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
     if (!guardBookLimit()) return;
-    onAddBook(createBookFromSearchEdition({ work, edition }));
+    setPendingSearchEdition({ work, edition });
+  };
+
+  const addSearchEditionToList = (readingStatus: ReadingStatus) => {
+    if (!pendingSearchEdition || !guardBookLimit()) return;
+    onAddBook(createBookFromSearchEdition({
+      work: pendingSearchEdition.work,
+      edition: pendingSearchEdition.edition,
+      status: readingStatus,
+    }));
     onClose();
   };
 
@@ -277,7 +306,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                         <button
                           key={edition.externalEditionId}
                           type="button"
-                          onClick={() => addSearchEdition(work, edition)}
+                          onClick={() => chooseSearchEdition(work, edition)}
                           disabled={isAtLimit}
                           className="flex min-h-36 gap-3 rounded-xl border border-white/7 bg-[#120c15] p-3 text-left transition hover:-translate-y-0.5 hover:border-[#c5a059]/45 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -296,7 +325,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                             {(edition.isbn13 || edition.isbn10) && (
                               <span className="mt-1 block break-all">ISBN {edition.isbn13 ?? edition.isbn10}</span>
                             )}
-                            <span className="mt-3 block font-bold text-[#e2bd66]">Add this edition</span>
+                            <span className="mt-3 block font-bold text-[#e2bd66]">Choose this edition</span>
                           </span>
                         </button>
                       ))}
@@ -368,6 +397,84 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
             >
               Add Book to Library
             </button>
+          </div>
+        )}
+
+        {pendingSearchEdition && (
+          <div
+            className="fixed inset-0 z-[220] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setPendingSearchEdition(null);
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="choose-list-title"
+              className="w-full max-w-lg rounded-2xl border border-[#c5a059]/35 bg-[#17101b] p-5 shadow-2xl sm:p-6"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 gap-4">
+                  {pendingSearchEdition.edition.coverUrl ? (
+                    <img
+                      src={pendingSearchEdition.edition.coverUrl}
+                      alt=""
+                      className="h-28 w-20 shrink-0 rounded object-cover shadow-lg"
+                    />
+                  ) : (
+                    <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117] text-[#e2bd66]">
+                      <BookOpen className="h-6 w-6" />
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="inkbound-kicker">Add to your library</p>
+                    <h3 id="choose-list-title" className="mt-2 font-serif text-2xl text-[#f4efe6]">
+                      Which list?
+                    </h3>
+                    <p className="mt-2 line-clamp-2 text-sm font-semibold text-[#f4efe6]">
+                      {pendingSearchEdition.work.title}
+                    </p>
+                    <p className="mt-1 text-xs text-[#ad9fac]">
+                      {pendingSearchEdition.work.authors.join(', ')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingSearchEdition(null)}
+                  className="rounded-full bg-black/30 p-2 text-[#ad9fac] transition hover:bg-black/50 hover:text-white"
+                  aria-label="Go back to editions"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <p className="mt-5 text-sm text-[#ad9fac]">
+                Choose where this book belongs now. You can change its status later from Book Details.
+              </p>
+
+              <div className="mt-4 grid gap-2">
+                {LIST_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => addSearchEditionToList(option.value)}
+                    className="rounded-xl border border-[#c5a059]/18 bg-[#120c15] px-4 py-3 text-left transition hover:border-[#c5a059]/55 hover:bg-[#211526]"
+                  >
+                    <span className="block text-sm font-bold text-[#f4efe6]">{option.label}</span>
+                    <span className="mt-1 block text-xs text-[#ad9fac]">{option.description}</span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPendingSearchEdition(null)}
+                className="quiet-shelf-secondary-action mt-4 w-full"
+              >
+                Back to editions
+              </button>
+            </section>
           </div>
         )}
       </section>
