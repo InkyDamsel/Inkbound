@@ -8,6 +8,7 @@ import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
+import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
@@ -56,6 +57,7 @@ createRoot(rootElement).render(
             <AuthSessionGate>
               <SecurityBootstrap />
               <CloudPersistenceBridge />
+              <ReadOnlyCloudHydrationBridge />
               <ThemePersistenceBridge />
               <CloudDataRefreshBoundary>
                 <App />
