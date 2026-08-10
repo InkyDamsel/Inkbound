@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "dev:firebase": "npx firebase-tools emulators:start --only auth,firestore,functions,storage --project inkbound-app --import=.firebase-emulator-data --export-on-exit=.firebase-emulator-data",
-    "dev:firebase:fresh": "npx firebase-tools emulators:start --only auth,firestore,functions,storage --project inkbound-app",
+    "dev:firebase": "npx firebase-tools emulators:start --only auth,firestore,functions,storage --project inkbound-app --export-on-exit=.firebase-emulator-data",
+    "dev:firebase:restore": "npx firebase-tools emulators:start --only auth,firestore,functions,storage --project inkbound-app --import=.firebase-emulator-data --export-on-exit=.firebase-emulator-data",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
