@@ -56,10 +56,24 @@ function resolveAccess(entitlement: EntitlementRecord | undefined): { userPlan: 
     toMillis(entitlement.paidPremiumUntil) > now;
   const courtesyIsActive = toMillis(entitlement.courtesyPremiumUntil) > now;
 
+  // VIP is intentionally permanent until an owner explicitly revokes it.
   if (entitlement.vipEnabled) return { userPlan: 'premium', accessSource: 'vip' };
   if (paidIsActive) return { userPlan: 'premium', accessSource: 'subscription' };
   if (courtesyIsActive) return { userPlan: 'premium', accessSource: 'courtesy' };
   return { userPlan: 'free', accessSource: 'free' };
+}
+
+function nextTimedAccessExpiry(entitlement: EntitlementRecord | undefined): number {
+  if (!entitlement || entitlement.vipEnabled) return 0;
+  if (entitlement.subscriptionStatus === 'active' || entitlement.subscriptionStatus === 'trialing') return 0;
+
+  const now = Date.now();
+  const futureExpiries = [
+    toMillis(entitlement.paidPremiumUntil),
+    toMillis(entitlement.courtesyPremiumUntil),
+  ].filter((value) => value > now);
+
+  return futureExpiries.length > 0 ? Math.min(...futureExpiries) : 0;
 }
 
 export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -78,10 +92,37 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     let unsubscribeEntitlement: (() => void) | undefined;
+    let expiryTimer: number | undefined;
+
+    const clearExpiryTimer = () => {
+      if (expiryTimer !== undefined) {
+        window.clearTimeout(expiryTimer);
+        expiryTimer = undefined;
+      }
+    };
+
+    const applyEntitlement = (entitlement: EntitlementRecord | undefined) => {
+      clearExpiryTimer();
+
+      const access = resolveAccess(entitlement);
+      setUserPlanState(access.userPlan);
+      setAccessSource(access.accessSource);
+      setEntitlementLoading(false);
+
+      const expiresAt = nextTimedAccessExpiry(entitlement);
+      if (!expiresAt) return;
+
+      // Re-evaluate locally when temporary Premium reaches its exact expiry.
+      // Firestore does not emit a snapshot merely because time passed, so without
+      // this timer a reader could remain Premium until refresh/navigation.
+      const delay = Math.max(0, Math.min(expiresAt - Date.now() + 1000, 2_147_000_000));
+      expiryTimer = window.setTimeout(() => applyEntitlement(entitlement), delay);
+    };
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       unsubscribeEntitlement?.();
       unsubscribeEntitlement = undefined;
+      clearExpiryTimer();
 
       if (!user) {
         setUserPlanState('free');
@@ -94,12 +135,10 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       unsubscribeEntitlement = onSnapshot(
         doc(db, 'entitlements', user.uid),
         (snapshot) => {
-          const access = resolveAccess(snapshot.data() as EntitlementRecord | undefined);
-          setUserPlanState(access.userPlan);
-          setAccessSource(access.accessSource);
-          setEntitlementLoading(false);
+          applyEntitlement(snapshot.data() as EntitlementRecord | undefined);
         },
         () => {
+          clearExpiryTimer();
           setUserPlanState('free');
           setAccessSource('free');
           setEntitlementLoading(false);
@@ -108,6 +147,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
     });
 
     return () => {
+      clearExpiryTimer();
       unsubscribeEntitlement?.();
       unsubscribeAuth();
     };
