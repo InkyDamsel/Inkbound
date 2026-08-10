@@ -4,6 +4,7 @@ functions/lib/
 build/
 dist/
 coverage/
+.firebase-emulator-data/
 .DS_Store
 *.log
 .env*
