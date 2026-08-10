@@ -6,8 +6,8 @@ interface OpenLibraryEdition {
   title?: string;
   subtitle?: string;
   publisher?: string[] | string;
-  publish_date?: string;
-  publish_year?: number[];
+  publish_date?: unknown;
+  publish_year?: unknown;
   isbn?: string[];
   isbn_10?: string[];
   isbn_13?: string[];
@@ -24,8 +24,8 @@ interface OpenLibraryWork {
   title?: string;
   subtitle?: string;
   author_name?: string[];
-  first_publish_year?: number;
-  publisher?: string[];
+  first_publish_year?: unknown;
+  publisher?: string[] | string;
   subject?: string[];
   language?: string[];
   isbn?: string[];
@@ -51,10 +51,25 @@ const FIELDS = [
   'editions.language', 'editions.ebook_access',
 ].join(',');
 
-const publicationYear = (value?: string, fallback?: number): number => {
-  const match = value?.match(/\d{4}/);
-  return match ? Number(match[0]) : fallback ?? new Date().getFullYear();
+const stringValue = (value: unknown): string | undefined => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (Array.isArray(value)) {
+    const firstUsable = value.find((item) => typeof item === 'string' || typeof item === 'number');
+    return firstUsable === undefined ? undefined : String(firstUsable);
+  }
+  return undefined;
 };
+
+const numericYear = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const text = stringValue(value);
+  const match = text?.match(/\b(1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b/);
+  return match ? Number(match[0]) : undefined;
+};
+
+const publicationYear = (value: unknown, fallback?: unknown): number =>
+  numericYear(value) ?? numericYear(fallback) ?? new Date().getFullYear();
 
 const first = (value?: string[] | string): string | undefined =>
   Array.isArray(value) ? value.find(Boolean) : value || undefined;
@@ -82,7 +97,7 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
   if (!title) return null;
   const isbn13 = edition.isbn_13?.[0] ?? edition.isbn?.find((value) => compactIsbn(value).length === 13);
   const isbn10 = edition.isbn_10?.[0] ?? edition.isbn?.find((value) => compactIsbn(value).length === 10);
-  const publicationDate = edition.publish_date;
+  const publicationDate = stringValue(edition.publish_date);
   const publishers = edition.publisher ?? work.publisher;
   return {
     source: 'open-library',
@@ -93,7 +108,7 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
     genres: (work.subject ?? []).slice(0, 12),
     publisher: first(publishers),
     publicationDate,
-    publicationYear: publicationYear(publicationDate, edition.publish_year?.[0] ?? work.first_publish_year),
+    publicationYear: publicationYear(publicationDate, edition.publish_year ?? work.first_publish_year),
     language: edition.language?.[0] ?? work.language?.[0],
     format: inferFormat(edition),
     isbn10,
