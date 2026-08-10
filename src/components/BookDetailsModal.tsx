@@ -168,9 +168,17 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
     try {
       const response = await searchGoogleBooks(`${book.work.title} ${book.work.author}`);
       const candidates = response.groups.filter((work) => candidateMatchesBookIdentity(book, work)).flatMap((work) => work.editions.map((edition) => ({ work, edition })));
-      const match = candidates.find(({ edition }) => edition.format === activeEdition.format && Boolean(edition.coverUrl)) ?? candidates.find(({ edition }) => Boolean(edition.coverUrl)) ?? candidates[0];
+      const candidateHasSummary = ({ work, edition }: { work: BookSearchWorkGroup; edition: BookSearchEdition }) => Boolean((edition.publisherSummary ?? work.publisherSummary)?.trim());
+      const match = (!book.work.publisherSummary
+        ? candidates.find((candidate) => candidate.edition.format === activeEdition.format && candidateHasSummary(candidate))
+          ?? candidates.find(candidateHasSummary)
+        : undefined)
+        ?? candidates.find(({ edition }) => edition.format === activeEdition.format && Boolean(edition.coverUrl))
+        ?? candidates.find(({ edition }) => Boolean(edition.coverUrl))
+        ?? candidates[0];
       if (!match) return setSyncMessage('No safe title-and-author match was found. Inkbound left this book unchanged.');
       const { work: matchedWork, edition: matchedEdition } = match;
+      const matchedPublisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
       const manualEdition = activeEdition.externalSource === 'manual';
       const nextEdition: Edition = manualEdition ? activeEdition : {
         ...activeEdition,
@@ -191,8 +199,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         work: {
           ...book.work,
           subtitle: book.work.subtitle || matchedWork.subtitle,
-          publisherSummary: book.work.publisherSummary || matchedWork.publisherSummary,
-          summary: book.work.personalSummary || book.work.publisherSummary || matchedWork.publisherSummary || book.work.summary,
+          publisherSummary: book.work.publisherSummary || matchedPublisherSummary,
+          summary: book.work.personalSummary || book.work.publisherSummary || matchedPublisherSummary || book.work.summary,
           genres: book.work.genres.length ? book.work.genres : matchedWork.genres,
           publicationYear: book.work.publicationYear || matchedEdition.publicationYear,
           originalLanguage: book.work.originalLanguage || matchedEdition.language,
@@ -202,7 +210,11 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       };
       onUpdateBook(nextBook);
       setPublisherSummary(nextBook.work.publisherSummary ?? '');
-      setSyncMessage(manualEdition ? 'Metadata synced. Your manual edition values were preserved.' : `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}.`);
+      setSyncMessage(matchedPublisherSummary
+        ? `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}. Publisher summary updated.`
+        : manualEdition
+          ? 'Metadata synced. Your manual edition values were preserved, but no publisher summary was available from the matched sources.'
+          : `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}, but no publisher summary was available from the matched sources.`);
     } catch (error) {
       setSyncMessage(error instanceof Error ? error.message : 'Inkbound could not sync this book.');
     } finally {
