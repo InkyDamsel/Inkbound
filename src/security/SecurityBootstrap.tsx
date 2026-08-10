@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../lib/firebase';
+import { allowProductionFirebaseWrites, auth, functions } from '../lib/firebase';
 
 const OWNER_EMAILS = new Set([
   'blackdame494@gmail.com',
@@ -10,7 +10,7 @@ const OWNER_EMAILS = new Set([
 
 export function SecurityBootstrap() {
   useEffect(() => {
-    if (!auth || !functions) return;
+    if (!auth || !functions || !allowProductionFirebaseWrites) return;
 
     const syncUserDirectory = httpsCallable(functions, 'syncUserDirectory');
     const bootstrapOwner = httpsCallable(functions, 'bootstrapOwner');
