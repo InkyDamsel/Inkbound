@@ -1,10 +1,16 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
+  EmailAuthProvider,
   GoogleAuthProvider,
   User,
   browserLocalPersistence,
+  createUserWithEmailAndPassword,
+  linkWithCredential,
   onAuthStateChanged,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   setPersistence,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
 } from 'firebase/auth';
@@ -22,6 +28,11 @@ interface AccountSyncContextValue {
   message: string;
   lastSyncedAt: string | null;
   signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  createEmailAccount: (email: string, password: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  linkEmailPassword: (email: string, password: string) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
   signOutAccount: () => Promise<void>;
   uploadSnapshot: () => Promise<void>;
   restoreSnapshot: () => Promise<void>;
@@ -51,15 +62,10 @@ const SIGNED_IN_DATA_KEYS = [
 ] as const;
 
 function clearSignedInDataFromDevice(uid: string) {
-  // Tell the sync bridge this is a device/session clear, not a request to delete
-  // the user's cloud library. The flag is deliberately retained for next login.
   localStorage.setItem(`inkbound_local_clear_intent_${uid}`, '1');
   SIGNED_IN_DATA_KEYS.forEach((key) => localStorage.removeItem(key));
   localStorage.removeItem('inkbound_local_data_owner_uid');
   localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
-
-  // Pending/baseline data is only a local sync implementation detail and should
-  // not remain readable on a shared device after the account signs out.
   localStorage.removeItem(`inkbound_pending_sync_${uid}_v1`);
   localStorage.removeItem(`inkbound_sync_baseline_${uid}_v1`);
 }
@@ -71,6 +77,23 @@ function readPhotoMemories(): StoredPhotoMemory[] {
   } catch {
     return [];
   }
+}
+
+function friendlyAuthMessage(error: unknown, fallback: string): string {
+  const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
+  if (code.includes('auth/email-already-in-use')) {
+    return 'That email already belongs to an Inkbound account. Sign in instead. If you originally used Google, sign in with Google and add an email password from Account Sync.';
+  }
+  if (code.includes('auth/invalid-credential') || code.includes('auth/wrong-password')) {
+    return 'The email or password is incorrect.';
+  }
+  if (code.includes('auth/user-not-found')) return 'No Inkbound account was found for that email.';
+  if (code.includes('auth/weak-password')) return 'Choose a stronger password with at least 6 characters.';
+  if (code.includes('auth/invalid-email')) return 'Enter a valid email address.';
+  if (code.includes('auth/too-many-requests')) return 'Too many attempts. Wait a moment and try again.';
+  if (code.includes('auth/provider-already-linked')) return 'Email/password sign-in is already connected to this account.';
+  if (code.includes('auth/credential-already-in-use')) return 'That email/password credential already belongs to another account.';
+  return error instanceof Error ? error.message : fallback;
 }
 
 export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
@@ -91,18 +114,14 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       },
       (error) => {
         setStatus('error');
-        setMessage(error.message || 'Inkbound could not restore the saved Google session.');
+        setMessage(error.message || 'Inkbound could not restore the saved account session.');
         setIsAuthReady(true);
       },
     );
 
     void setPersistence(auth, browserLocalPersistence).catch((error) => {
       setStatus('error');
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Inkbound could not enable persistent Google sign-in on this browser.',
-      );
+      setMessage(error instanceof Error ? error.message : 'Inkbound could not enable persistent sign-in on this browser.');
     });
 
     return unsubscribe;
@@ -111,7 +130,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
   const signInWithGoogle = async () => {
     if (!auth) {
       setStatus('error');
-      setMessage('Google sync is not configured yet.');
+      setMessage('Account sign-in is not configured yet.');
       return;
     }
     try {
@@ -122,17 +141,96 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
       setStatus('success');
-      setMessage('Google account connected. Inkbound will remember this account on this browser until you sign out.');
+      setMessage('Google account connected. Inkbound will remember this account on this device until you sign out.');
     } catch (error) {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : 'Google sign-in failed.');
+      setMessage(friendlyAuthMessage(error, 'Google sign-in failed.'));
+    }
+  };
+
+  const signInWithEmail = async (email: string, password: string) => {
+    if (!auth) return;
+    try {
+      setStatus('working');
+      setMessage('Signing in...');
+      await setPersistence(auth, browserLocalPersistence);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      setStatus('success');
+      setMessage('Signed in. Your Inkbound account and library are restoring on this device.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Email sign-in failed.'));
+    }
+  };
+
+  const createEmailAccount = async (email: string, password: string) => {
+    if (!auth) return;
+    try {
+      setStatus('working');
+      setMessage('Creating your Inkbound account...');
+      await setPersistence(auth, browserLocalPersistence);
+      const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await sendEmailVerification(credential.user);
+      setStatus('success');
+      setMessage('Account created. Check your inbox to verify your email. Your library will follow this account across devices.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not create the account.'));
+    }
+  };
+
+  const sendPasswordReset = async (email: string) => {
+    if (!auth) return;
+    try {
+      setStatus('working');
+      setMessage('Sending password reset email...');
+      await sendPasswordResetEmail(auth, email.trim());
+      setStatus('success');
+      setMessage('Password reset email sent. Check your inbox.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not send the reset email.'));
+    }
+  };
+
+  const linkEmailPassword = async (email: string, password: string) => {
+    if (!auth?.currentUser) {
+      setStatus('error');
+      setMessage('Sign in first before adding an email/password login.');
+      return;
+    }
+    try {
+      setStatus('working');
+      setMessage('Adding email/password sign-in to this Inkbound account...');
+      const credential = EmailAuthProvider.credential(email.trim(), password);
+      const result = await linkWithCredential(auth.currentUser, credential);
+      if (!result.user.emailVerified) await sendEmailVerification(result.user);
+      setUser({ ...result.user } as User);
+      setStatus('success');
+      setMessage('Email/password sign-in added to this same Inkbound account. Check your inbox to verify the email.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not add email/password sign-in.'));
+    }
+  };
+
+  const resendVerificationEmail = async () => {
+    if (!auth?.currentUser) return;
+    try {
+      setStatus('working');
+      await sendEmailVerification(auth.currentUser);
+      setStatus('success');
+      setMessage('Verification email sent.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not send the verification email.'));
     }
   };
 
   const uploadSnapshot = async () => {
     if (!user || !db) {
       setStatus('error');
-      setMessage('Sign in with Google before syncing account extras.');
+      setMessage('Sign in before syncing account extras.');
       return;
     }
     try {
@@ -144,20 +242,8 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       const cloudPhotos = await getDocs(photoCollection);
       const localIds = new Set(localPhotos.map((photo) => photo.id));
 
-      await Promise.all(
-        cloudPhotos.docs
-          .filter((photoDocument) => !localIds.has(photoDocument.id))
-          .map((photoDocument) => deleteDoc(photoDocument.ref)),
-      );
-      await Promise.all(
-        localPhotos.map((photo) =>
-          setDoc(
-            doc(photoCollection, photo.id),
-            { ...photo, updatedAt: serverTimestamp() },
-            { merge: true },
-          ),
-        ),
-      );
+      await Promise.all(cloudPhotos.docs.filter((photoDocument) => !localIds.has(photoDocument.id)).map((photoDocument) => deleteDoc(photoDocument.ref)));
+      await Promise.all(localPhotos.map((photo) => setDoc(doc(photoCollection, photo.id), { ...photo, updatedAt: serverTimestamp() }, { merge: true })));
 
       localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
       setLastSyncedAt(syncedAt);
@@ -172,7 +258,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
   const restoreSnapshot = async () => {
     if (!user || !db) {
       setStatus('error');
-      setMessage('Sign in with Google before restoring account extras.');
+      setMessage('Sign in before restoring account extras.');
       return;
     }
     try {
@@ -212,6 +298,11 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     message,
     lastSyncedAt,
     signInWithGoogle,
+    signInWithEmail,
+    createEmailAccount,
+    sendPasswordReset,
+    linkEmailPassword,
+    resendVerificationEmail,
     signOutAccount: async () => {
       if (!auth) return;
       const signingOutUid = user?.uid ?? auth.currentUser?.uid;
@@ -221,8 +312,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
         try {
           await flushCloudDataBeforeSignOut(signingOutUid);
         } catch {
-          // The bridge keeps pending mutations durable. Sign-out cleanup must
-          // still run even if a transient network/storage request fails.
+          // Pending mutations remain durable and will retry on a later signed-in session.
         }
         clearSignedInDataFromDevice(signingOutUid);
       }
