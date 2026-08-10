@@ -1,5 +1,13 @@
 import React, { useEffect } from 'react';
-import { collection, doc, getDoc, getDocs, onSnapshot } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  type DocumentData,
+  type QuerySnapshot,
+} from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, readDb } from '../../lib/firebase';
@@ -98,7 +106,7 @@ export const ReadOnlyCloudHydrationBridge: React.FC = () => {
 
       const applyCollectionSnapshot = <T extends { id: string }>(
         storageKey: 'inkbound_books' | 'inkbound_sessions',
-        snapshot: Parameters<Parameters<typeof onSnapshot>[1]>[0],
+        snapshot: QuerySnapshot<DocumentData>,
       ) => {
         const cloudItems = snapshot.docs
           .map((item) => (item.data() as CloudRecord<T>).data)
