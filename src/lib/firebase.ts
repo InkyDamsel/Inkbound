@@ -10,6 +10,7 @@ import { Functions, getFunctions } from 'firebase/functions';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
 
 const readEnv = (value: string | undefined): string => value?.trim() ?? '';
+const readBooleanEnv = (value: string | undefined): boolean => readEnv(value).toLowerCase() === 'true';
 
 const firebaseConfig = {
   apiKey: readEnv(import.meta.env.VITE_FIREBASE_API_KEY),
@@ -33,6 +34,12 @@ export const missingFirebaseEnvironmentVariables = Object.entries(requiredFireba
 
 export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length === 0;
 
+// Local development should not silently consume production Firestore writes.
+// Production builds always enable Firestore. Developers can explicitly opt into
+// live cloud-sync testing with VITE_ALLOW_PROD_FIREBASE_WRITES=true.
+export const allowProductionFirebaseWrites =
+  !import.meta.env.DEV || readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
+
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
@@ -42,12 +49,22 @@ let storage: FirebaseStorage | null = null;
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
-  db = initializeFirestore(app, {
-    ignoreUndefinedProperties: true,
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-    }),
-  });
+
+  if (allowProductionFirebaseWrites) {
+    db = initializeFirestore(app, {
+      ignoreUndefinedProperties: true,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } else {
+    console.info(
+      'Inkbound development safety: production Firestore sync is disabled. Set VITE_ALLOW_PROD_FIREBASE_WRITES=true only when intentionally testing live cloud sync.',
+    );
+  }
+
+  // Callable search functions remain available in development because book search
+  // does not need to write to Firestore.
   functions = getFunctions(app);
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
 }
