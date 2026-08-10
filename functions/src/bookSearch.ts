@@ -18,6 +18,15 @@ interface SearchResult {
   slug?: string;
 }
 
+interface HardcoverBook {
+  id?: number | string;
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  release_year?: number;
+  image?: { url?: string };
+}
+
 interface HardcoverEdition {
   id?: number | string;
   book_id?: number | string;
@@ -29,14 +38,7 @@ interface HardcoverEdition {
   edition_format?: string;
   image?: { url?: string };
   publisher?: { name?: string };
-  book?: {
-    id?: number | string;
-    title?: string;
-    subtitle?: string;
-    description?: string;
-    release_year?: number;
-    image?: { url?: string };
-  };
+  book?: HardcoverBook;
 }
 
 const normalizeFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' => {
@@ -115,11 +117,15 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
     const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
 
     let editions: HardcoverEdition[] = [];
+    let books: HardcoverBook[] = [];
     if (ids.length > 0) {
       try {
-        const editionData = await hardcoverGraphql<{ editions?: HardcoverEdition[] }>(
+        const detailData = await hardcoverGraphql<{ editions?: HardcoverEdition[]; books?: HardcoverBook[] }>(
           token,
-          `query SearchEditions($ids: [Int!]!) {
+          `query SearchBookDetails($ids: [Int!]!) {
+            books(where: { id: { _in: $ids } }, limit: 80) {
+              id title subtitle description release_year image { url }
+            }
             editions(where: { book_id: { _in: $ids } }, limit: 80) {
               id book_id title pages isbn_10 isbn_13 release_date edition_format
               image { url }
@@ -129,11 +135,19 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
           }`,
           { ids },
         );
-        editions = editionData.editions ?? [];
-      } catch {
-        // Search results are still useful if edition expansion is unavailable.
+        editions = detailData.editions ?? [];
+        books = detailData.books ?? [];
+      } catch (error) {
+        console.warn('Hardcover detail expansion unavailable.', error);
+        // Search results are still useful if detail expansion is unavailable.
       }
     }
+
+    const booksById = new Map<string, HardcoverBook>();
+    books.forEach((book) => {
+      const key = String(book.id ?? '');
+      if (key) booksById.set(key, book);
+    });
 
     const editionsByBook = new Map<string, HardcoverEdition[]>();
     editions.forEach((edition) => {
@@ -146,25 +160,27 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
       const id = String(result.id ?? result.slug ?? result.title);
       const authors = authorNames(result);
       const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
-      const publisherSummary = result.description
+      const matchedBook = booksById.get(String(result.id ?? ''));
+      const publisherSummary = matchedBook?.description
+        ?? result.description
         ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
       const normalizedEditions = matchedEditions.length > 0
         ? matchedEditions.map((edition) => ({
             source: 'hardcover' as const,
             externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
-            title: edition.title ?? edition.book?.title ?? result.title ?? 'Untitled',
-            subtitle: edition.book?.subtitle ?? result.subtitle,
+            title: edition.title ?? edition.book?.title ?? matchedBook?.title ?? result.title ?? 'Untitled',
+            subtitle: edition.book?.subtitle ?? matchedBook?.subtitle ?? result.subtitle,
             authors,
-            publisherSummary: edition.book?.description ?? publisherSummary,
+            publisherSummary: matchedBook?.description ?? edition.book?.description ?? publisherSummary,
             genres: [],
             publisher: edition.publisher?.name,
             publicationDate: edition.release_date,
-            publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || result.release_year || new Date().getFullYear(),
+            publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || matchedBook?.release_year || result.release_year || new Date().getFullYear(),
             format: normalizeFormat(edition.edition_format),
             isbn10: edition.isbn_10,
             isbn13: edition.isbn_13,
             pageCount: edition.pages ?? result.pages,
-            coverUrl: edition.image?.url ?? edition.book?.image?.url ?? result.image_url ?? imageUrl(result.image),
+            coverUrl: edition.image?.url ?? edition.book?.image?.url ?? matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
             editionName: edition.title,
             binding: edition.edition_format,
             specialFeatures: [],
@@ -172,22 +188,22 @@ export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, a
         : [{
             source: 'hardcover' as const,
             externalEditionId: id,
-            title: result.title ?? 'Untitled',
-            subtitle: result.subtitle,
+            title: matchedBook?.title ?? result.title ?? 'Untitled',
+            subtitle: matchedBook?.subtitle ?? result.subtitle,
             authors,
             publisherSummary,
             genres: [],
-            publicationYear: result.release_year || new Date().getFullYear(),
+            publicationYear: matchedBook?.release_year || result.release_year || new Date().getFullYear(),
             format: 'hardcover' as const,
             pageCount: result.pages,
-            coverUrl: result.image_url ?? imageUrl(result.image),
+            coverUrl: matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
             specialFeatures: [],
           }];
 
       return {
         key: `hardcover:${id}`,
-        title: result.title ?? 'Untitled',
-        subtitle: result.subtitle,
+        title: matchedBook?.title ?? result.title ?? 'Untitled',
+        subtitle: matchedBook?.subtitle ?? result.subtitle,
         authors,
         publisherSummary,
         genres: [],
