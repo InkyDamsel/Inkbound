@@ -1,11 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Check, Lock, Sparkles, X } from 'lucide-react';
 import { useUserPlan } from '../context/UserPlanContext';
 
 export const UpgradeModal: React.FC = () => {
   const { isUpgradeModalOpen, closeUpgradeModal, upgradeReason, userPlan } = useUserPlan();
 
-  if (!isUpgradeModalOpen) return null;
+  useEffect(() => {
+    if (userPlan === 'premium' && isUpgradeModalOpen) {
+      closeUpgradeModal();
+    }
+  }, [closeUpgradeModal, isUpgradeModalOpen, userPlan]);
+
+  if (!isUpgradeModalOpen || userPlan === 'premium') return null;
 
   const comparisonRows = [
     { feature: 'Books in your library', free: 'Unlimited', premium: 'Unlimited' },
