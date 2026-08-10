@@ -41,6 +41,10 @@ interface OpenLibraryResponse {
   docs?: OpenLibraryWork[];
 }
 
+interface OpenLibraryWorkDetails {
+  description?: string | { value?: string };
+}
+
 const OPEN_LIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
 const FIELDS = [
   'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language',
@@ -169,4 +173,41 @@ export async function searchOpenLibrary(query: string, signal?: AbortSignal): Pr
     .map(mapWork)
     .filter((group): group is BookSearchWorkGroup => Boolean(group));
   return { groups, totalItems: payload.numFound ?? payload.num_found ?? groups.length };
+}
+
+export async function fetchOpenLibrarySummary(title: string, author: string, signal?: AbortSignal): Promise<string | undefined> {
+  const params = new URLSearchParams({
+    title: title.trim(),
+    author: author.trim(),
+    limit: '8',
+    fields: 'key,title,author_name',
+  });
+  const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) return undefined;
+
+  const payload = (await response.json()) as OpenLibraryResponse;
+  const wantedTitle = normalize(title);
+  const wantedAuthor = normalize(author);
+  const candidate = (payload.docs ?? []).find((work) => {
+    const candidateTitle = normalize(work.title);
+    const candidateAuthors = normalize((work.author_name ?? []).join(' '));
+    const titleMatch = candidateTitle === wantedTitle || candidateTitle.includes(wantedTitle) || wantedTitle.includes(candidateTitle);
+    const authorTokens = wantedAuthor.split(' ').filter(Boolean);
+    const authorMatch = authorTokens.length === 0 || authorTokens.every((token) => candidateAuthors.includes(token));
+    return Boolean(work.key && titleMatch && authorMatch);
+  });
+  if (!candidate?.key) return undefined;
+
+  const workPath = candidate.key.startsWith('/') ? candidate.key : `/works/${candidate.key}`;
+  const detailsResponse = await fetch(`https://openlibrary.org${workPath}.json`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!detailsResponse.ok) return undefined;
+  const details = (await detailsResponse.json()) as OpenLibraryWorkDetails;
+  const description = typeof details.description === 'string' ? details.description : details.description?.value;
+  return description?.trim() || undefined;
 }
