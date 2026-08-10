@@ -2,7 +2,7 @@ import React, { createContext, ReactNode, useContext, useEffect, useMemo, useSta
 import { onAuthStateChanged } from 'firebase/auth';
 import { Timestamp, doc, onSnapshot } from 'firebase/firestore';
 import { UserPlan } from '../types';
-import { auth, db } from '../lib/firebase';
+import { auth, readDb } from '../lib/firebase';
 
 // The core library is intentionally unlimited for every reader. Premium is
 // reserved for deeper reflection, analytics, creative exports, and power tools.
@@ -79,12 +79,12 @@ function nextTimedAccessExpiry(entitlement: EntitlementRecord | undefined): numb
 export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [userPlan, setUserPlanState] = useState<UserPlan>('free');
   const [accessSource, setAccessSource] = useState<AccessSource>('free');
-  const [entitlementLoading, setEntitlementLoading] = useState(Boolean(auth && db));
+  const [entitlementLoading, setEntitlementLoading] = useState(Boolean(auth && readDb));
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!auth || !db) {
+    if (!auth || !readDb) {
       setUserPlanState('free');
       setAccessSource('free');
       setEntitlementLoading(false);
@@ -133,7 +133,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       setEntitlementLoading(true);
       unsubscribeEntitlement = onSnapshot(
-        doc(db, 'entitlements', user.uid),
+        doc(readDb, 'entitlements', user.uid),
         (snapshot) => {
           applyEntitlement(snapshot.data() as EntitlementRecord | undefined);
         },
@@ -160,6 +160,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const openUpgradeModal = (reason?: string) => {
+    if (userPlan === 'premium') return;
     setUpgradeReason(reason);
     setIsUpgradeModalOpen(true);
   };
