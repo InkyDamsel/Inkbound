@@ -1,6 +1,7 @@
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { BookOpen, ImagePlus, Loader2, Play, Plus, RefreshCw, Save, Search, Star, Trash2, Upload, X } from 'lucide-react';
 import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
+import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import type { Edition, Format, OwnershipStatus, Priority, ReadingSession, ReadingStatus, UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
@@ -178,7 +179,14 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         ?? candidates[0];
       if (!match) return setSyncMessage('No safe title-and-author match was found. Inkbound left this book unchanged.');
       const { work: matchedWork, edition: matchedEdition } = match;
-      const matchedPublisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
+      let matchedPublisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
+      if (!book.work.publisherSummary && !matchedPublisherSummary) {
+        try {
+          matchedPublisherSummary = await fetchOpenLibrarySummary(book.work.title, book.work.author);
+        } catch (error) {
+          console.warn('Open Library work summary lookup failed.', error);
+        }
+      }
       const manualEdition = activeEdition.externalSource === 'manual';
       const nextEdition: Edition = manualEdition ? activeEdition : {
         ...activeEdition,
@@ -211,10 +219,10 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       onUpdateBook(nextBook);
       setPublisherSummary(nextBook.work.publisherSummary ?? '');
       setSyncMessage(matchedPublisherSummary
-        ? `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}. Publisher summary updated.`
+        ? `Metadata synced. Publisher summary updated.`
         : manualEdition
-          ? 'Metadata synced. Your manual edition values were preserved, but no publisher summary was available from the matched sources.'
-          : `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}, but no publisher summary was available from the matched sources.`);
+          ? 'Metadata synced. Your manual edition values were preserved, but no publisher summary was available from Hardcover, Google Books, or Open Library.'
+          : `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}, but no publisher summary was available from Hardcover, Google Books, or Open Library.`);
     } catch (error) {
       setSyncMessage(error instanceof Error ? error.message : 'Inkbound could not sync this book.');
     } finally {
