@@ -1,13 +1,15 @@
 import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth } from 'firebase/auth';
+import { Auth, connectAuthEmulator, getAuth } from 'firebase/auth';
 import {
   Firestore,
+  connectFirestoreEmulator,
   initializeFirestore,
+  memoryLocalCache,
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
-import { Functions, getFunctions } from 'firebase/functions';
-import { FirebaseStorage, getStorage } from 'firebase/storage';
+import { Functions, connectFunctionsEmulator, getFunctions } from 'firebase/functions';
+import { FirebaseStorage, connectStorageEmulator, getStorage } from 'firebase/storage';
 
 const readEnv = (value: string | undefined): string => value?.trim() ?? '';
 const readBooleanEnv = (value: string | undefined): boolean => readEnv(value).toLowerCase() === 'true';
@@ -34,11 +36,21 @@ export const missingFirebaseEnvironmentVariables = Object.entries(requiredFireba
 
 export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length === 0;
 
-// Local development must be able to READ the signed-in reader's production data
-// so a second computer can restore the same library, profile, and entitlements.
-// Production writes remain separately protected unless explicitly enabled.
+// DEV/PRODUCTION BOUNDARY
+// Normal `npm run dev` sessions use the Firebase Local Emulator Suite so routine
+// development cannot create Firestore/Functions/Storage charges or modify real
+// reader data. Set VITE_FIREBASE_MODE=production only for an intentional live-cloud
+// verification session. Production builds always use the real Firebase services.
+const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
+export const useFirebaseEmulators = import.meta.env.DEV && requestedFirebaseMode !== 'production';
+export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
+
+// Browser-side production writes are still protected during an intentional live
+// development session. The flag has no effect on emulator writes or production builds.
 export const allowProductionFirebaseWrites =
-  !import.meta.env.DEV || readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
+  useFirebaseEmulators ||
+  !import.meta.env.DEV ||
+  readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
@@ -51,27 +63,43 @@ if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
 
-  // One Firestore instance is initialized for authenticated reads in every
-  // environment. Code that may write must continue importing `db`, which is null
-  // in protected local development. Read-only code should import `readDb`.
+  // Emulator data must never share the persistent browser cache used by production.
+  // Keeping development Firestore in memory also makes it obvious that the Emulator
+  // Suite is the source of truth while testing locally.
   readDb = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-    }),
+    localCache: useFirebaseEmulators
+      ? memoryLocalCache()
+      : persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
   });
-  db = allowProductionFirebaseWrites ? readDb : null;
 
-  if (!allowProductionFirebaseWrites) {
-    console.info(
-      'Inkbound development safety: production Firestore writes are disabled. Cloud reads remain enabled so this device can restore the signed-in account. Set VITE_ALLOW_PROD_FIREBASE_WRITES=true only when intentionally testing live cloud writes.',
-    );
-  }
-
-  // Callable functions remain available in development because account access and
-  // book search do not require browser-side Firestore writes.
   functions = getFunctions(app);
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
+
+  if (useFirebaseEmulators) {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    connectFirestoreEmulator(readDb, '127.0.0.1', 8080);
+    connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+    if (storage) connectStorageEmulator(storage, '127.0.0.1', 9199);
+
+    // Local writes are safe and expected because they stay inside the emulators.
+    db = readDb;
+    console.info(
+      'Inkbound DEV mode: Firebase Auth, Firestore, Functions, and Storage are using local emulators. Production data and billing are not being used.',
+    );
+  } else {
+    // Production and intentional live-cloud verification share one Firestore reader.
+    // During localhost live-cloud checks, writes remain null unless separately enabled.
+    db = allowProductionFirebaseWrites ? readDb : null;
+
+    if (import.meta.env.DEV && !allowProductionFirebaseWrites) {
+      console.info(
+        'Inkbound live-cloud verification: production reads/functions are enabled, but browser Firestore writes are blocked. Set VITE_ALLOW_PROD_FIREBASE_WRITES=true only for an intentional production write test.',
+      );
+    }
+  }
 }
 
 export { app, auth, readDb, db, functions, storage };
