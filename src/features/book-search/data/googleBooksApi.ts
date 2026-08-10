@@ -169,7 +169,7 @@ const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWork
   return order.map((key) => merged.get(key)).filter((group): group is BookSearchWorkGroup => Boolean(group)).slice(0, 50);
 };
 
-async function requestGoogleBooks(query: string, signal?: AbortSignal, useKey = false): Promise<BookSearchResponse> {
+async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const params = new URLSearchParams({
     q: query,
     printType: 'books',
@@ -177,7 +177,7 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal, useKey = 
     orderBy: 'relevance',
     maxResults: '40',
   });
-  if (useKey && GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
+  if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
 
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
   if (!response.ok) throw new Error(`Google Books search failed (${response.status}).`);
@@ -189,34 +189,32 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal, useKey = 
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  const normalized = buildGoogleBooksQuery(query);
+  // Exactly one Google Books request per uncached user search. Do not immediately
+  // retry with anonymous/keyed/author variants because those bursts were causing
+  // 429s and made manual search compete with background metadata enrichment.
   try {
-    const anonymous = await requestGoogleBooks(normalized, signal, false);
-    if (anonymous.groups.length > 0) return anonymous;
+    return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
-    console.warn('Google Books anonymous search failed.', error);
+    console.warn('Google Books search unavailable; using alternate catalogs.', error);
+    return { groups: [], totalItems: 0 };
   }
+}
 
-  if (GOOGLE_BOOKS_API_KEY) {
-    try {
-      const keyed = await requestGoogleBooks(normalized, signal, true);
-      if (keyed.groups.length > 0) return keyed;
-    } catch (error) {
-      console.warn('Google Books keyed search failed.', error);
+async function searchOpenLibraryWithAuthorFallback(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
+  try {
+    const normal = await searchOpenLibrary(buildGoogleBooksQuery(query), signal);
+    if (normal.groups.length > 0 || /^isbn:/i.test(buildGoogleBooksQuery(query))) return normal;
+
+    // Open Library has a dedicated author index. Use it only when the broad
+    // search genuinely found nothing; this does not consume Google quota.
+    if (/^[\p{L}.\-' ]{3,80}$/u.test(query.trim())) {
+      return await searchOpenLibrary(`inauthor:${query.trim()}`, signal);
     }
+    return normal;
+  } catch (error) {
+    console.warn('Open Library supplement failed.', error);
+    return { groups: [], totalItems: 0 };
   }
-
-  // A second Google request is only allowed when the normal query returned nothing.
-  // This makes author-only searches reliable without recreating the old request burst.
-  if (!/^isbn:/i.test(normalized) && /^[\p{L}.\-' ]{3,80}$/u.test(query.trim())) {
-    try {
-      return await requestGoogleBooks(`inauthor:${query.trim()}`, signal, false);
-    } catch (error) {
-      console.warn('Google Books author fallback failed.', error);
-    }
-  }
-
-  return { groups: [], totalItems: 0 };
 }
 
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -235,10 +233,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
       console.warn('Hardcover supplement failed.', error);
       return { groups: [], totalItems: 0 };
     }),
-    searchOpenLibrary(buildGoogleBooksQuery(trimmed), signal).catch((error) => {
-      console.warn('Open Library supplement failed.', error);
-      return { groups: [], totalItems: 0 };
-    }),
+    searchOpenLibraryWithAuthorFallback(trimmed, signal),
   ]);
 
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
@@ -250,7 +245,11 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     openLibrary: openLibrary.groups.length,
   });
 
-  const groups = mergeGroups(google.groups, [hardcover.groups, openLibrary.groups]);
+  // Google is preferred when available, but alternate providers are fully valid
+  // primary results when Google is rate-limited. Never show an empty search just
+  // because one provider is temporarily unavailable.
+  const primary = google.groups.length > 0 ? google.groups : openLibrary.groups.length > 0 ? openLibrary.groups : hardcover.groups;
+  const groups = mergeGroups(primary, [google.groups, hardcover.groups, openLibrary.groups]);
   const response: BookSearchResponse = { groups, totalItems: groups.length };
 
   if (groups.length > 0) {
