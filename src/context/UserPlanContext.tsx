@@ -1,8 +1,9 @@
 import React, { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Timestamp, doc, onSnapshot } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { UserPlan } from '../types';
-import { auth, readDb } from '../lib/firebase';
+import { auth, functions, readDb } from '../lib/firebase';
 
 // The core library is intentionally unlimited for every reader. Premium is
 // reserved for deeper reflection, analytics, creative exports, and power tools.
@@ -12,9 +13,9 @@ export type AccessSource = 'free' | 'subscription' | 'vip' | 'courtesy';
 
 interface EntitlementRecord {
   subscriptionStatus?: 'none' | 'active' | 'trialing' | 'past_due' | 'canceled';
-  paidPremiumUntil?: Timestamp | string;
+  paidPremiumUntil?: Timestamp | string | null;
   vipEnabled?: boolean;
-  courtesyPremiumUntil?: Timestamp | string;
+  courtesyPremiumUntil?: Timestamp | string | null;
 }
 
 interface UserPlanContextType {
@@ -39,7 +40,7 @@ interface UserPlanContextType {
 
 const UserPlanContext = createContext<UserPlanContextType | undefined>(undefined);
 
-function toMillis(value: Timestamp | string | undefined): number {
+function toMillis(value: Timestamp | string | null | undefined): number {
   if (!value) return 0;
   if (value instanceof Timestamp) return value.toMillis();
   const parsed = new Date(value).getTime();
@@ -56,7 +57,6 @@ function resolveAccess(entitlement: EntitlementRecord | undefined): { userPlan: 
     toMillis(entitlement.paidPremiumUntil) > now;
   const courtesyIsActive = toMillis(entitlement.courtesyPremiumUntil) > now;
 
-  // VIP is intentionally permanent until an owner explicitly revokes it.
   if (entitlement.vipEnabled) return { userPlan: 'premium', accessSource: 'vip' };
   if (paidIsActive) return { userPlan: 'premium', accessSource: 'subscription' };
   if (courtesyIsActive) return { userPlan: 'premium', accessSource: 'courtesy' };
@@ -79,12 +79,12 @@ function nextTimedAccessExpiry(entitlement: EntitlementRecord | undefined): numb
 export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [userPlan, setUserPlanState] = useState<UserPlan>('free');
   const [accessSource, setAccessSource] = useState<AccessSource>('free');
-  const [entitlementLoading, setEntitlementLoading] = useState(Boolean(auth && readDb));
+  const [entitlementLoading, setEntitlementLoading] = useState(Boolean(auth));
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!auth || !readDb) {
+    if (!auth) {
       setUserPlanState('free');
       setAccessSource('free');
       setEntitlementLoading(false);
@@ -93,6 +93,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     let unsubscribeEntitlement: (() => void) | undefined;
     let expiryTimer: number | undefined;
+    let activeUid: string | null = null;
 
     const clearExpiryTimer = () => {
       if (expiryTimer !== undefined) {
@@ -103,7 +104,6 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const applyEntitlement = (entitlement: EntitlementRecord | undefined) => {
       clearExpiryTimer();
-
       const access = resolveAccess(entitlement);
       setUserPlanState(access.userPlan);
       setAccessSource(access.accessSource);
@@ -111,18 +111,37 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       const expiresAt = nextTimedAccessExpiry(entitlement);
       if (!expiresAt) return;
-
-      // Re-evaluate locally when temporary Premium reaches its exact expiry.
-      // Firestore does not emit a snapshot merely because time passed, so without
-      // this timer a reader could remain Premium until refresh/navigation.
       const delay = Math.max(0, Math.min(expiresAt - Date.now() + 1000, 2_147_000_000));
       expiryTimer = window.setTimeout(() => applyEntitlement(entitlement), delay);
     };
+
+    const refreshFromServer = async () => {
+      if (!functions || !activeUid) return;
+      try {
+        const getMyEntitlement = httpsCallable<undefined, EntitlementRecord>(functions, 'getMyEntitlement');
+        const response = await getMyEntitlement();
+        applyEntitlement(response.data);
+      } catch (error) {
+        console.error('Inkbound could not refresh the authoritative account entitlement.', error);
+      }
+    };
+
+    const handleEntitlementRefresh = () => {
+      void refreshFromServer();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshFromServer();
+    };
+
+    window.addEventListener('inkbound:entitlement-refresh', handleEntitlementRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       unsubscribeEntitlement?.();
       unsubscribeEntitlement = undefined;
       clearExpiryTimer();
+      activeUid = user?.uid ?? null;
 
       if (!user) {
         setUserPlanState('free');
@@ -132,29 +151,36 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
 
       setEntitlementLoading(true);
-      unsubscribeEntitlement = onSnapshot(
-        doc(readDb, 'entitlements', user.uid),
-        (snapshot) => {
-          applyEntitlement(snapshot.data() as EntitlementRecord | undefined);
-        },
-        () => {
-          clearExpiryTimer();
-          setUserPlanState('free');
-          setAccessSource('free');
-          setEntitlementLoading(false);
-        },
-      );
+
+      // First ask trusted server code for the effective entitlement. This is the
+      // same backend data used by Administration, so Settings/sidebar cannot get
+      // stuck on a stale or denied client-side Firestore read.
+      void refreshFromServer();
+
+      // Keep the direct listener as a fast live-update path when Firestore rules
+      // permit it. The server lookup above remains the authoritative fallback.
+      if (readDb) {
+        unsubscribeEntitlement = onSnapshot(
+          doc(readDb, 'entitlements', user.uid),
+          (snapshot) => {
+            if (snapshot.exists()) applyEntitlement(snapshot.data() as EntitlementRecord);
+          },
+          (error) => {
+            console.warn('Inkbound entitlement live listener is unavailable; using secure server refresh instead.', error);
+          },
+        );
+      }
     });
 
     return () => {
       clearExpiryTimer();
       unsubscribeEntitlement?.();
       unsubscribeAuth();
+      window.removeEventListener('inkbound:entitlement-refresh', handleEntitlementRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
-  // Kept only for compatibility with old prototype components. Client code is
-  // deliberately unable to modify server-authoritative account access.
   const setUserPlan = (_plan: UserPlan) => {
     console.warn('Inkbound account access can only be changed by the secure entitlement service.');
   };
