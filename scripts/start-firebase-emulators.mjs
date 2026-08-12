@@ -28,15 +28,43 @@ const child = spawn(npxCommand, args, {
   shell: false,
 });
 
+let shutdownRequested = false;
+
+const requestShutdown = (signal) => {
+  if (shutdownRequested) return;
+  shutdownRequested = true;
+  console.log(`\nInkbound DEV: stopping Firebase emulators and saving local emulator data...`);
+
+  if (!child.killed) {
+    child.kill(signal);
+  }
+};
+
+process.on('SIGINT', () => requestShutdown('SIGINT'));
+process.on('SIGTERM', () => requestShutdown('SIGTERM'));
+
 child.on('error', (error) => {
   console.error('Inkbound could not start the Firebase emulators.', error);
-  process.exit(1);
+  process.exitCode = 1;
 });
 
 child.on('exit', (code, signal) => {
-  if (signal) {
-    process.kill(process.pid, signal);
+  if (shutdownRequested) {
+    if (code && code !== 0) {
+      console.warn(`Inkbound DEV: Firebase emulators exited with code ${code} while shutting down.`);
+      process.exitCode = code;
+      return;
+    }
+    console.log('Inkbound DEV: Firebase emulators stopped. Local emulator data is ready for the next DEV session.');
+    process.exitCode = 0;
     return;
   }
-  process.exit(code ?? 1);
+
+  if (signal) {
+    console.error(`Inkbound DEV: Firebase emulators stopped unexpectedly (${signal}).`);
+    process.exitCode = 1;
+    return;
+  }
+
+  process.exitCode = code ?? 1;
 });
