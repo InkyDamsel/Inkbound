@@ -79,15 +79,22 @@ if (isFirebaseConfigured) {
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
 
   if (useFirebaseEmulators) {
-    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-    connectFirestoreEmulator(readDb, '127.0.0.1', 8080);
-    connectFunctionsEmulator(functions, '127.0.0.1', 5001);
-    if (storage) connectStorageEmulator(storage, '127.0.0.1', 9199);
+    // IMPORTANT: use the hostname that loaded Inkbound, not 127.0.0.1. When Inkbound
+    // is opened from another phone/PC/Mac at http://192.168.x.x:3000, 127.0.0.1 would
+    // point back to that test device instead of the development computer running the
+    // Firebase Emulator Suite. firebase.json binds the emulators to 0.0.0.0 so this
+    // hostname works for both localhost and same-network device testing.
+    const emulatorHost = window.location.hostname || '127.0.0.1';
+
+    connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
+    connectFirestoreEmulator(readDb, emulatorHost, 8080);
+    connectFunctionsEmulator(functions, emulatorHost, 5001);
+    if (storage) connectStorageEmulator(storage, emulatorHost, 9199);
 
     // Local writes are safe and expected because they stay inside the emulators.
     db = readDb;
     console.info(
-      'Inkbound DEV mode: Firebase Auth, Firestore, Functions, and Storage are using local emulators. Production data and billing are not being used.',
+      `Inkbound DEV mode: Firebase emulators are using ${emulatorHost}. Production data and billing are not being used.`,
     );
   } else {
     // Production and intentional live-cloud verification share one Firestore reader.
