@@ -9,6 +9,7 @@ import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLega
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
+import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
@@ -25,6 +26,10 @@ const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error('Inkbound could not find its application root.');
 }
+
+// Keep localhost DEV data and intentional live-cloud verification data separate.
+// This runs before App reads books, sessions, import history, or profile caches.
+isolateDevelopmentBrowserStorage();
 
 // Clean up metadata that was attached by the old permissive import matcher before
 // App reads the library from browser storage. Verified metadata is never touched.
