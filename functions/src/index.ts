@@ -35,7 +35,7 @@ async function requireAdmin(uid: string, allowedRoles: AdminRole[] = ['owner']) 
   const snapshot = await db.doc(`admins/${uid}`).get();
   const record = snapshot.data() as AdminRecord | undefined;
 
-  if (!record?.enabled || !allowedRoles.includes(record.role)) {
+  if (!record?.enabled || !allowedRoles.includes(record.role))) {
     throw new HttpsError('permission-denied', 'This action requires administrator access.');
   }
 
@@ -66,6 +66,15 @@ function timestampLikeToMillis(value: unknown): number {
     return Number.isNaN(parsed) ? 0 : parsed;
   }
   return 0;
+}
+
+function timestampToIso(value: unknown): string | null {
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+  return null;
 }
 
 function paidSubscriptionIsActive(entitlement: Record<string, unknown> | undefined): boolean {
@@ -173,6 +182,19 @@ export const syncUserDirectory = onCall(async (request) => {
   }
 
   return { synced: true };
+});
+
+export const getMyEntitlement = onCall(async (request) => {
+  const auth = requireAuthenticated(request);
+  const snapshot = await db.doc(`entitlements/${auth.uid}`).get();
+  const entitlement = snapshot.data() ?? {};
+
+  return {
+    subscriptionStatus: typeof entitlement.subscriptionStatus === 'string' ? entitlement.subscriptionStatus : 'none',
+    paidPremiumUntil: timestampToIso(entitlement.paidPremiumUntil),
+    vipEnabled: entitlement.vipEnabled === true,
+    courtesyPremiumUntil: timestampToIso(entitlement.courtesyPremiumUntil),
+  };
 });
 
 export const deleteMyAccount = onCall(async (request) => {
