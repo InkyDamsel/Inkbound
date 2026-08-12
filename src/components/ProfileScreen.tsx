@@ -33,21 +33,19 @@ interface StoredProfile {
   email: string;
   favoriteQuote: string;
   bio: string;
-  // URL fields are retained for backwards compatibility with profiles that were
-  // previously saved through Firebase Storage or Google account photos.
   avatarImage?: string;
   bannerImage?: string;
-  // Optimized inline images make profile pictures independent from Firebase
-  // Storage configuration. They remain small enough for the profile document.
   avatarImageData?: string;
   bannerImageData?: string;
 }
 
-const DEFAULT_PROFILE: StoredProfile = {
-  displayName: 'Jamie Lee',
-  email: 'jamie@example.com',
-  favoriteQuote: 'A reader lives a thousand lives before they die.',
-  bio: 'A lifelong reader building a quiet, personal record of every book.',
+// Production and development use the same empty account profile state.
+// Never seed a real signed-in reader with demo identity, quote, bio, avatar, or banner data.
+const EMPTY_PROFILE: StoredProfile = {
+  displayName: '',
+  email: '',
+  favoriteQuote: '',
+  bio: '',
 };
 
 const isTemporaryImageUrl = (value?: string) => Boolean(value?.startsWith('blob:'));
@@ -55,11 +53,11 @@ const isTemporaryImageUrl = (value?: string) => Boolean(value?.startsWith('blob:
 const readStoredProfile = (): StoredProfile => {
   try {
     const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (stored) return { ...DEFAULT_PROFILE, ...(JSON.parse(stored) as Partial<StoredProfile>) };
+    if (stored) return { ...EMPTY_PROFILE, ...(JSON.parse(stored) as Partial<StoredProfile>) };
   } catch {
-    // Fall back to defaults when stored profile data is invalid.
+    // Fall back to an empty account profile when stored profile data is invalid.
   }
-  return DEFAULT_PROFILE;
+  return EMPTY_PROFILE;
 };
 
 const saveStoredProfile = (profile: StoredProfile) => {
@@ -191,7 +189,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     if (!sync.user) return;
 
     const restoredProfile = readStoredProfile();
-    const nextDisplayName = sync.user.displayName?.trim() || restoredProfile.displayName;
+    const authDisplayName = sync.user.displayName?.trim() || '';
+    const storedDisplayName = restoredProfile.displayName.trim();
+    const nextDisplayName = authDisplayName || storedDisplayName || 'Reader';
     const nextEmail = sync.user.email?.trim() || restoredProfile.email;
     const nextAvatarImage =
       restoredProfile.avatarImageData || restoredProfile.avatarImage || sync.user.photoURL || undefined;
@@ -203,9 +203,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     setAvatarImage(nextAvatarImage);
     setBannerImage(restoredProfile.bannerImageData || restoredProfile.bannerImage);
 
+    // Persist only real account/profile values. Do not turn the UI-only "Reader"
+    // fallback into saved profile data merely because the page rendered.
     saveStoredProfile({
       ...restoredProfile,
-      displayName: nextDisplayName,
+      displayName: authDisplayName || storedDisplayName,
       email: nextEmail,
       avatarImage: restoredProfile.avatarImage || sync.user.photoURL || undefined,
     });
@@ -234,13 +236,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       .filter(Boolean)
       .slice(0, 2)
       .map((part) => part.charAt(0).toUpperCase())
-      .join('') || 'JL';
+      .join('') || 'R';
 
   const profileFromState = (): StoredProfile => {
     const persisted = readStoredProfile();
     return {
       ...persisted,
-      displayName,
+      displayName: displayName === 'Reader' ? persisted.displayName : displayName,
       email,
       favoriteQuote,
       bio,
@@ -281,8 +283,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       setBannerImage(dataUrl);
     }
 
-    // The local save is already complete. Firestore is a background replication
-    // target, so network latency never blocks the reader from using the profile.
     if (sync.user && db) {
       void writeCloudProfile(nextProfile).catch((error) => {
         console.error(`Inkbound could not sync the ${kind} yet.`, error);
@@ -336,10 +336,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     });
   };
 
-  // Profile identity is account-owned data. A signed-out visitor must never see
-  // the previous reader's cached name, avatar, banner, profile fields, or stats.
-  // Keep the cache intact for fast restoration after the same account signs back
-  // in, but do not render any of it until Firebase Auth confirms a user.
   if (!sync.user) {
     return (
       <div className="space-y-6 pb-20">
@@ -498,7 +494,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
             <div className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4">
               <UserRound className="h-4 w-4 text-[var(--ink-gold)]" />
               <input
-                value={displayName}
+                value={displayName === 'Reader' ? '' : displayName}
+                placeholder="Add your display name"
                 onChange={(event) => setDisplayName(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[var(--ink-ivory)] outline-none"
               />
@@ -511,7 +508,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
               <Mail className="h-4 w-4 text-[var(--ink-gold)]" />
               <input
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                readOnly
                 className="min-w-0 flex-1 bg-transparent text-[var(--ink-ivory)] outline-none"
               />
             </div>
@@ -523,6 +520,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
               <Quote className="h-4 w-4 text-[var(--ink-gold)]" />
               <input
                 value={favoriteQuote}
+                placeholder="Add a favorite quote"
                 onChange={(event) => setFavoriteQuote(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[var(--ink-ivory)] outline-none"
               />
@@ -533,6 +531,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
             Bio
             <textarea
               value={bio}
+              placeholder="Tell readers a little about yourself"
               onChange={(event) => setBio(event.target.value)}
               rows={4}
               className="w-full resize-none rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 py-3 text-[var(--ink-ivory)] outline-none"
