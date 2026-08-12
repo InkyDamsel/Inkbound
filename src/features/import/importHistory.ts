@@ -126,7 +126,15 @@ export function appendImportHistory(items: ImportRecordItem[], duplicateCount: n
 }
 
 export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): ImportHistoryEntry[] {
-  const existing = readImportHistory();
+  // Import history belongs to the active library/account. Never display a stale
+  // localhost history record when DEV is using a fresh emulator library or when a
+  // different signed-in account has no matching books.
+  if (books.length === 0) return [];
+
+  const bookIds = new Set(books.map((book) => book.id));
+  const existing = readImportHistory().filter((entry) =>
+    entry.items.some((item) => bookIds.has(item.targetBookId)),
+  );
   if (existing.length > 0) return existing;
 
   const importedBooks = books.filter((book) => {
