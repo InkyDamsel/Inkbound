@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -14,7 +14,11 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { ResponsiveGrid } from '../layout/responsive';
-import { notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
+import {
+  INKBOUND_CLOUD_DATA_EVENT,
+  notifyLocalDataChanged,
+  type CloudDataUpdatedDetail,
+} from '../features/sync/cloudSyncEvents';
 import { db } from '../lib/firebase';
 import { AccountSyncCard } from './account/AccountSyncCard';
 
@@ -39,8 +43,6 @@ interface StoredProfile {
   bannerImageData?: string;
 }
 
-// Production and development use the same empty account profile state.
-// Never seed a real signed-in reader with demo identity, quote, bio, avatar, or banner data.
 const EMPTY_PROFILE: StoredProfile = {
   displayName: '',
   email: '',
@@ -185,13 +187,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     previewRef.current = null;
   };
 
-  useEffect(() => {
+  const loadProfileIntoState = useCallback(() => {
     if (!sync.user) return;
 
     const restoredProfile = readStoredProfile();
-    const authDisplayName = sync.user.displayName?.trim() || '';
     const storedDisplayName = restoredProfile.displayName.trim();
-    const nextDisplayName = authDisplayName || storedDisplayName || 'Reader';
+    const authDisplayName = sync.user.displayName?.trim() || '';
+    const nextDisplayName = storedDisplayName || authDisplayName || 'Reader';
     const nextEmail = sync.user.email?.trim() || restoredProfile.email;
     const nextAvatarImage =
       restoredProfile.avatarImageData || restoredProfile.avatarImage || sync.user.photoURL || undefined;
@@ -202,16 +204,37 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     setBio(restoredProfile.bio);
     setAvatarImage(nextAvatarImage);
     setBannerImage(restoredProfile.bannerImageData || restoredProfile.bannerImage);
+  }, [sync.user]);
 
-    // Persist only real account/profile values. Do not turn the UI-only "Reader"
-    // fallback into saved profile data merely because the page rendered.
-    saveStoredProfile({
+  useEffect(() => {
+    if (!sync.user) return undefined;
+
+    const restoredProfile = readStoredProfile();
+    const storedDisplayName = restoredProfile.displayName.trim();
+    const authDisplayName = sync.user.displayName?.trim() || '';
+    const authEmail = sync.user.email?.trim() || '';
+    const authPhoto = sync.user.photoURL || undefined;
+
+    const identityProfile: StoredProfile = {
       ...restoredProfile,
-      displayName: authDisplayName || storedDisplayName,
-      email: nextEmail,
-      avatarImage: restoredProfile.avatarImage || sync.user.photoURL || undefined,
-    });
-  }, [sync.user?.uid]);
+      displayName: storedDisplayName || authDisplayName,
+      email: restoredProfile.email || authEmail,
+      avatarImage: restoredProfile.avatarImage || authPhoto,
+    };
+
+    if (JSON.stringify(identityProfile) !== JSON.stringify(restoredProfile)) {
+      saveStoredProfile(identityProfile);
+    }
+    loadProfileIntoState();
+
+    const handleCloudProfileUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
+      if (detail?.keys?.includes(PROFILE_STORAGE_KEY)) loadProfileIntoState();
+    };
+
+    window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudProfileUpdate);
+    return () => window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudProfileUpdate);
+  }, [loadProfileIntoState, sync.user]);
 
   useEffect(
     () => () => {
