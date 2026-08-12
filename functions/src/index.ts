@@ -35,7 +35,7 @@ async function requireAdmin(uid: string, allowedRoles: AdminRole[] = ['owner']) 
   const snapshot = await db.doc(`admins/${uid}`).get();
   const record = snapshot.data() as AdminRecord | undefined;
 
-  if (!record?.enabled || !allowedRoles.includes(record.role))) {
+  if (!record?.enabled || !allowedRoles.includes(record.role)) {
     throw new HttpsError('permission-denied', 'This action requires administrator access.');
   }
 
