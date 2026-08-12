@@ -336,6 +336,33 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     });
   };
 
+  // Profile identity is account-owned data. A signed-out visitor must never see
+  // the previous reader's cached name, avatar, banner, profile fields, or stats.
+  // Keep the cache intact for fast restoration after the same account signs back
+  // in, but do not render any of it until Firebase Auth confirms a user.
+  if (!sync.user) {
+    return (
+      <div className="space-y-6 pb-20">
+        <section className="inkbound-panel rounded-3xl p-6 sm:p-8">
+          <div className="flex items-start gap-4">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-gold)]">
+              <UserRound className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="inkbound-kicker">Reader Profile</p>
+              <h1 className="mt-2 font-serif text-3xl font-bold text-[var(--ink-ivory)]">Sign in to view your profile</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">
+                Your name, profile photo, banner, reading stats, and personal details belong to your Inkbound account and stay hidden while you are signed out.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <AccountSyncCard />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-20">
       <section className="inkbound-panel overflow-hidden rounded-3xl">
