@@ -15,8 +15,6 @@ export type SubscriptionService = 'kindle-unlimited' | 'audible-plus' | 'everand
 
 export type Priority = 'top' | 'high' | 'medium' | 'low';
 
-export type EditionSource = 'google-books' | 'open-library' | 'hardcover' | 'manual' | 'import';
-
 export interface BookWork {
   id: string;
   title: string;
@@ -53,7 +51,7 @@ export interface Edition {
   editionName?: string;
   binding?: string;
   specialFeatures?: string[];
-  externalSource?: EditionSource;
+  externalSource?: string;
   externalEditionId?: string;
 }
 
@@ -85,8 +83,6 @@ export interface UserBookRecord {
   collections: string[];
   whyIAddedThis?: string;
   sourceOfImport?: string;
-  // Import metadata is disposable. These flags let the enrichment manager
-  // distinguish verified matches from legacy guesses that need review.
   importMetadataVerified?: boolean;
   importMetadataReviewNeeded?: boolean;
   dateAdded: string;
@@ -149,4 +145,8 @@ export interface ImportRecordItem {
   confidence: number;
   duplicateAction: 'skip' | 'merge' | 'keep_both' | 'replace';
   coverGradient: string;
+  // Verification is determined before the selected records are written into the
+  // library. Carrying it with the import record keeps Import Center and Import
+  // History on the same accounting source instead of recomputing different totals.
+  importMetadataVerified?: boolean;
 }
