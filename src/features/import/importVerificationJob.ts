@@ -35,11 +35,12 @@ const emptySnapshot = (): ImportVerificationJobSnapshot => ({
 
 function clearCompletedUiState() {
   try {
+    // Only clear the transient completion card. The pending verification list is
+    // durable import accounting and is used by Import History to reconcile the
+    // exact matched/awaiting totals after a refresh or navigation.
     localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
-    localStorage.removeItem(METADATA_PENDING_STORAGE_KEY);
   } catch {
-    // Import Center state is best-effort only. Import History and the enrichment
-    // queue are the durable records after an import has completed.
+    // Import Center state is best-effort only.
   }
 }
 
@@ -143,6 +144,7 @@ export function resetImportVerificationJob() {
   snapshot = emptySnapshot();
   try {
     localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+    localStorage.removeItem(METADATA_PENDING_STORAGE_KEY);
   } catch {
     // Best-effort cleanup only.
   }
@@ -180,10 +182,6 @@ export function startImportVerificationJob(
         });
       });
 
-      // Carry the verification result into the records that are actually written
-      // to the library. Import History then reads the exact same accounting that
-      // produced the Import Complete numbers instead of starting every book at
-      // "unmatched" and slowly rediscovering the same result later.
       const verifiedRecords = verification.verified.map((record) => ({
         ...record,
         importMetadataVerified: true,
