@@ -6,6 +6,7 @@ import {
   ensureImportHistoryForExistingLibrary,
   getImportHistoryProgress,
   isImportEnrichmentPaused,
+  isImportHistoryItemMatched,
   readImportEnrichmentRetryProgress,
   retryImportHistoryItems,
   setImportEnrichmentPaused,
@@ -20,7 +21,7 @@ interface ImportHistoryScreenProps {
 
 function downloadUnresolved(entry: ImportHistoryEntry, books: UserBookRecord[]) {
   const byId = new Map(books.map((book) => [book.id, book]));
-  const rows = entry.items.filter((item) => byId.get(item.targetBookId)?.importMetadataVerified !== true);
+  const rows = entry.items.filter((item) => !isImportHistoryItemMatched(item, byId.get(item.targetBookId)));
   if (rows.length === 0) return;
   const escapeCsv = (value?: string | number) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const csvRows = [
@@ -70,7 +71,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     const normalized = query.trim().toLowerCase();
     const byId = new Map(books.map((book) => [book.id, book]));
     return selectedEntry.items.filter((item) => {
-      const unresolved = byId.get(item.targetBookId)?.importMetadataVerified !== true;
+      const unresolved = !isImportHistoryItemMatched(item, byId.get(item.targetBookId));
       if (showOnlyUnresolved && !unresolved) return false;
       if (!normalized) return true;
       return item.title.toLowerCase().includes(normalized)
@@ -174,7 +175,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
                   <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--ink-surface)]">
                     <div className="h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${entry.importedCount ? Math.round((progress.matched / entry.importedCount) * 100) : 0}%` }} />
                   </div>
-                  <p className="mt-3 text-xs text-[var(--ink-muted)]">{entry.importedCount} imported · {entry.duplicateCount} duplicates skipped · {progress.queued} background updates</p>
+                  <p className="mt-3 text-xs text-[var(--ink-muted)]">{entry.importedCount} imported · {entry.duplicateCount} duplicates skipped · {progress.unresolved} awaiting metadata</p>
                 </button>
               );
             })}
@@ -184,7 +185,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
             const progress = getImportHistoryProgress(selectedEntry, books);
             const byId = new Map(books.map((book) => [book.id, book]));
             const unresolvedIds = selectedEntry.items
-              .filter((item) => byId.get(item.targetBookId)?.importMetadataVerified !== true)
+              .filter((item) => !isImportHistoryItemMatched(item, byId.get(item.targetBookId)))
               .map((item) => item.targetBookId);
             const isExistingLibrary = selectedEntry.id === 'import-history-existing-library';
 
@@ -216,7 +217,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
                     ['Duplicates skipped', selectedEntry.duplicateCount],
                     ['Details matched', progress.matched],
                     ['Covers found', progress.covers],
-                    ['Background updates', progress.queued],
+                    ['Awaiting metadata', progress.unresolved],
                   ].map(([label, value]) => (
                     <div key={String(label)} className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
                       <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{label}</p>
@@ -240,7 +241,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
                     const book = byId.get(item.targetBookId);
                     const editions = Array.isArray(book?.editions) ? book.editions : [];
                     const edition = editions.find((editionItem) => editionItem.id === book?.activeEditionId) ?? editions[0];
-                    const matched = book?.importMetadataVerified === true;
+                    const matched = isImportHistoryItemMatched(item, book);
                     const queued = queuedBookIds.has(item.targetBookId);
                     const hasCover = Boolean(edition?.coverUrl);
                     const hasSummary = Boolean(book?.work?.publisherSummary?.trim());
