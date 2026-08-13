@@ -1,14 +1,16 @@
-import type { UserBookRecord } from '../../types';
+import type { ImportRecordItem, UserBookRecord } from '../../types';
+import { readImportHistory } from './importHistory';
 import {
   createFallbackImportedBook,
   queueImportedItems,
   readImportEnrichmentQueue,
   writeImportEnrichmentQueue,
 } from './libraryEnrichment';
-import { readImportMetadataPending } from './importVerificationJob';
+import { notifyLocalDataChanged } from '../sync/cloudSyncEvents';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
+const RECOVERY_KEY_PREFIX = 'inkbound_import_hydration_recovery_v2_';
 
 function readStoredBooks(): UserBookRecord[] {
   try {
@@ -21,39 +23,70 @@ function readStoredBooks(): UserBookRecord[] {
   }
 }
 
+function toImportRecord(item: ReturnType<typeof readImportHistory>[number]['items'][number]): ImportRecordItem {
+  return {
+    id: item.recordId,
+    title: item.title,
+    author: item.author,
+    isbn: item.isbn,
+    format: item.format,
+    status: item.status,
+    rating: item.rating,
+    dateRead: item.dateRead,
+    dateAdded: item.dateAdded,
+    review: item.review,
+    confidence: 100,
+    duplicateAction: 'merge',
+    coverGradient: item.coverGradient,
+    importMetadataVerified: item.importMetadataVerified,
+  };
+}
+
 /**
- * Repairs a DEV/production hydration race from older builds where an import could
- * finish while Firebase was still restoring the account library. The stale
- * hydration snapshot could then overwrite newly imported fallback records.
+ * Repairs the older hydration race where Firebase could replace a just-imported
+ * local library with the pre-import cloud snapshot. Import History contains the
+ * complete committed manifest, including both metadata-matched and unmatched
+ * books, so it is the only safe recovery source for the damaged import.
  *
- * The durable "awaiting metadata" list still contains the original export rows,
- * so missing records can be recreated without guessing or changing user data.
- * Existing records always win, which preserves covers and metadata already found.
+ * This repair only considers the latest import and runs once for that import ID.
+ * Future imports are protected by the cloud hydration gate and should never need
+ * this repair path.
  */
-export function recoverPendingImportBooks(): number {
+export function recoverIncompleteLatestImport(): number {
   try {
-    const pending = readImportMetadataPending();
-    if (pending.length === 0) return 0;
+    const latest = readImportHistory()[0];
+    if (!latest || latest.items.length === 0) return 0;
+
+    const recoveryKey = `${RECOVERY_KEY_PREFIX}${latest.id}`;
+    if (localStorage.getItem(recoveryKey) === 'done') return 0;
 
     const books = readStoredBooks();
     const existingIds = new Set(books.map((book) => book.id));
-    const missing = pending.filter((item) => !existingIds.has(`book-import-${item.id}`));
-    if (missing.length === 0) return 0;
+    const missingHistoryItems = latest.items.filter((item) => !existingIds.has(item.targetBookId));
 
-    const restored = missing.map(createFallbackImportedBook);
-    const mergedBooks = [...books, ...restored];
-    localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(mergedBooks));
+    // A complete import needs no repair. Mark it so we never reinterpret later
+    // intentional deletions as a failed import.
+    if (missingHistoryItems.length === 0) {
+      localStorage.setItem(recoveryKey, 'done');
+      return 0;
+    }
+
+    const missingRecords = missingHistoryItems.map(toImportRecord);
+    const restored = missingRecords.map(createFallbackImportedBook);
+    localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify([...books, ...restored]));
     localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
 
     const queueByBookId = new Map(
       readImportEnrichmentQueue().map((item) => [item.targetBookId, item]),
     );
-    queueImportedItems(missing).forEach((item) => queueByBookId.set(item.targetBookId, item));
+    queueImportedItems(missingRecords).forEach((item) => queueByBookId.set(item.targetBookId, item));
     writeImportEnrichmentQueue([...queueByBookId.values()]);
 
+    localStorage.setItem(recoveryKey, 'done');
+    notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
     return restored.length;
   } catch (error) {
-    console.warn('Inkbound could not recover pending imported books safely.', error);
+    console.warn('Inkbound could not recover the incomplete import safely.', error);
     return 0;
   }
 }
