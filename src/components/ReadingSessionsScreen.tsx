@@ -5,17 +5,29 @@ import {
   ChevronRight,
   Clock3,
   Edit3,
+  Flame,
+  Gauge,
   Headphones,
   MapPin,
   NotebookPen,
   Plus,
   Search,
   Sparkles,
+  Target,
 } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
 import { ResponsiveGrid } from '../layout/responsive';
 import { SessionEditorModal } from './SessionEditorModal';
+import { usePersistentState } from '../hooks/usePersistentState';
+import {
+  formatDurationEstimate,
+  getCurrentPace,
+  getDailyReadingMinutes,
+  getReadingStreak,
+  getSevenDayAveragePace,
+  localDateKey,
+} from '../features/reading/sessionAnalytics';
 
 interface ReadingSessionsScreenProps {
   books: UserBookRecord[];
@@ -40,6 +52,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
   const [bookFilter, setBookFilter] = useState('all');
   const [editingSession, setEditingSession] = useState<ReadingSession | null>(null);
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
+  const [dailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
 
   const booksById = useMemo(
     () => new Map(books.map((book) => [book.id, book])),
@@ -75,6 +88,11 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
   const totalPages = sessions.reduce((sum, session) => sum + Math.max(0, session.pagesRead ?? 0), 0);
   const totalListening = sessions.reduce((sum, session) => sum + Math.max(0, session.minutesListened ?? 0), 0);
   const averageMinutes = sessions.length ? Math.round(totalMinutes / sessions.length) : 0;
+  const today = localDateKey();
+  const currentStreak = getReadingStreak(sessions, today);
+  const todayMinutes = getDailyReadingMinutes(sessions, today);
+  const dailyGoal = Math.max(1, Number(dailyGoalMins) || 30);
+  const goalPercent = Math.min(100, Math.round((todayMinutes / dailyGoal) * 100));
 
   return (
     <section className="space-y-7 pb-20">
@@ -100,8 +118,35 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
 
       <ResponsiveGrid minItemWidth={220} maxColumns={4} gap={12}>
         {[
+          { label: 'Reading streak', value: `${currentStreak} day${currentStreak === 1 ? '' : 's'}`, icon: Flame },
+          { label: 'Today’s goal', value: `${todayMinutes} / ${dailyGoal} min`, icon: Target },
           { label: 'Time Read', value: `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`, icon: Clock3 },
           { label: 'Pages Read', value: totalPages.toLocaleString(), icon: BookOpen },
+        ].map(({ label, value, icon: Icon }) => (
+          <div key={label} className="inkbound-panel flex items-center gap-4 p-4">
+            <span className="grid h-11 w-11 place-items-center rounded-xl border border-[var(--ink-border)] bg-[rgba(197,160,89,0.08)] text-[var(--ink-gold-bright)]"><Icon className="h-5 w-5" /></span>
+            <div className="min-w-0"><p className="text-xl font-semibold text-[var(--ink-text-primary)]">{value}</p><p className="text-xs text-[var(--ink-text-muted)]">{label}</p></div>
+          </div>
+        ))}
+      </ResponsiveGrid>
+
+      <div className="inkbound-panel p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-[var(--ink-text-primary)]">Daily reading goal</p>
+            <p className="mt-1 text-xs text-[var(--ink-text-muted)]">
+              {todayMinutes >= dailyGoal ? `Goal reached — ${todayMinutes} minutes read today.` : `${Math.max(0, dailyGoal - todayMinutes)} minutes to go today.`}
+            </p>
+          </div>
+          <span className="text-sm font-bold text-[var(--ink-gold)]">{goalPercent}%</span>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--ink-surface)]">
+          <div className="h-full rounded-full bg-[var(--ink-gold)] transition-[width]" style={{ width: `${goalPercent}%` }} />
+        </div>
+      </div>
+
+      <ResponsiveGrid minItemWidth={220} maxColumns={4} gap={12}>
+        {[
           { label: 'Listening Time', value: `${Math.floor(totalListening / 60)}h ${totalListening % 60}m`, icon: Headphones },
           { label: 'Average Session', value: `${averageMinutes} min`, icon: Sparkles },
         ].map(({ label, value, icon: Icon }) => (
@@ -147,6 +192,10 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
             const isAudio = edition?.format === 'audiobook';
             const safePagesRead = Math.max(0, session.pagesRead ?? 0);
             const safeMinutesListened = Math.max(0, session.minutesListened ?? 0);
+            const currentPace = book && !isAudio ? getCurrentPace(session, book) : null;
+            const sevenDayPace = book && !isAudio ? getSevenDayAveragePace(sessions, book, session.date) : null;
+            const currentEstimate = formatDurationEstimate(currentPace?.estimatedRemainingSeconds);
+            const averageEstimate = formatDurationEstimate(sevenDayPace?.estimatedRemainingSeconds);
 
             return (
               <article key={session.id} className="inkbound-panel p-4 sm:p-5">
@@ -168,6 +217,24 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
                       {safePagesRead > 0 ? <span>{safePagesRead} pages</span> : null}
                       {safeMinutesListened > 0 ? <span>{safeMinutesListened} minutes listened</span> : null}
                     </div>
+
+                    {currentPace?.pagesPerHour ? (
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3">
+                          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--ink-muted)]"><Gauge className="h-3.5 w-3.5 text-[var(--ink-gold)]" /> Current pace</p>
+                          <p className="mt-1 text-sm font-semibold text-[var(--ink-text-primary)]">{Math.round(currentPace.pagesPerHour)} pages/hour</p>
+                          {currentEstimate && <p className="mt-1 text-xs text-[var(--ink-text-muted)]">About {currentEstimate} of reading remaining at this pace.</p>}
+                        </div>
+                        <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">7-day average</p>
+                          {sevenDayPace?.pagesPerHour ? (
+                            <><p className="mt-1 text-sm font-semibold text-[var(--ink-text-primary)]">{Math.round(sevenDayPace.pagesPerHour)} pages/hour</p>{averageEstimate && <p className="mt-1 text-xs text-[var(--ink-text-muted)]">About {averageEstimate} remaining at your recent average.</p>}</>
+                          ) : (
+                            <p className="mt-1 text-xs text-[var(--ink-text-muted)]">Needs at least 2 sessions and 20 tracked minutes in the last 7 days.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
 
                     {session.notes && <blockquote className="mt-4 border-l-2 border-[var(--ink-gold)] pl-4 font-serif text-sm italic leading-6 text-[var(--ink-text-secondary)]">“{session.notes}”</blockquote>}
                   </div>
