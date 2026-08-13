@@ -71,9 +71,9 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
     });
   }, [bookFilter, booksById, searchQuery, sessions]);
 
-  const totalMinutes = sessions.reduce((sum, session) => sum + session.durationMinutes, 0);
-  const totalPages = sessions.reduce((sum, session) => sum + (session.pagesRead ?? 0), 0);
-  const totalListening = sessions.reduce((sum, session) => sum + (session.minutesListened ?? 0), 0);
+  const totalMinutes = sessions.reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
+  const totalPages = sessions.reduce((sum, session) => sum + Math.max(0, session.pagesRead ?? 0), 0);
+  const totalListening = sessions.reduce((sum, session) => sum + Math.max(0, session.minutesListened ?? 0), 0);
   const averageMinutes = sessions.length ? Math.round(totalMinutes / sessions.length) : 0;
 
   return (
@@ -145,6 +145,8 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
             const book = booksById.get(session.bookId);
             const edition = book?.editions.find((item) => item.id === book.activeEditionId) ?? book?.editions[0];
             const isAudio = edition?.format === 'audiobook';
+            const safePagesRead = Math.max(0, session.pagesRead ?? 0);
+            const safeMinutesListened = Math.max(0, session.minutesListened ?? 0);
 
             return (
               <article key={session.id} className="inkbound-panel p-4 sm:p-5">
@@ -161,10 +163,10 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
 
                     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--ink-text-secondary)]">
                       <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{session.date}</span>
-                      <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{session.durationMinutes} minutes</span>
+                      <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{Math.max(0, session.durationMinutes)} minutes</span>
                       {session.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{session.location}</span>}
-                      {session.pagesRead ? <span>{session.pagesRead} pages</span> : null}
-                      {session.minutesListened ? <span>{session.minutesListened} minutes listened</span> : null}
+                      {safePagesRead > 0 ? <span>{safePagesRead} pages</span> : null}
+                      {safeMinutesListened > 0 ? <span>{safeMinutesListened} minutes listened</span> : null}
                     </div>
 
                     {session.notes && <blockquote className="mt-4 border-l-2 border-[var(--ink-gold)] pl-4 font-serif text-sm italic leading-6 text-[var(--ink-text-secondary)]">“{session.notes}”</blockquote>}
