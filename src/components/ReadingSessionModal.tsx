@@ -91,6 +91,24 @@ function fallbackDateBuckets(startedAt: number, endedAt: number, timerSeconds: n
   };
 }
 
+function allocateSplitMinutes(totalSeconds: number, firstSeconds: number) {
+  const totalMinutes = Math.max(1, Math.round(totalSeconds / 60));
+  const secondSeconds = Math.max(0, totalSeconds - firstSeconds);
+
+  if (totalMinutes === 1) {
+    return firstSeconds >= secondSeconds
+      ? { firstMinutes: 1, secondMinutes: 0 }
+      : { firstMinutes: 0, secondMinutes: 1 };
+  }
+
+  const roundedFirst = Math.round(firstSeconds / 60);
+  const firstMinutes = Math.min(totalMinutes - 1, Math.max(1, roundedFirst));
+  return {
+    firstMinutes,
+    secondMinutes: totalMinutes - firstMinutes,
+  };
+}
+
 export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
   books,
   initialBookId,
@@ -150,33 +168,37 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
 
   useEffect(() => {
     if (!draft.isActive) return undefined;
-    const now = Date.now();
-    if (draft.lastActiveAt && now > draft.lastActiveAt) {
-      const recoveredSeconds = Math.floor((now - draft.lastActiveAt) / 1000);
-      if (recoveredSeconds > 0) {
-        setDraft((current) => ({
-          ...current,
-          timerSeconds: current.timerSeconds + recoveredSeconds,
-          secondsByDate: addElapsedToDateBuckets(current.secondsByDate, draft.lastActiveAt!, now),
-          lastActiveAt: now,
-        }));
-      }
-    }
+
+    const recoveredAt = Date.now();
+    setDraft((current) => {
+      if (!current.isActive || !current.lastActiveAt || recoveredAt <= current.lastActiveAt) return current;
+      const recoveredSeconds = Math.floor((recoveredAt - current.lastActiveAt) / 1000);
+      if (recoveredSeconds <= 0) return current;
+      return {
+        ...current,
+        timerSeconds: current.timerSeconds + recoveredSeconds,
+        secondsByDate: addElapsedToDateBuckets(current.secondsByDate, current.lastActiveAt, recoveredAt),
+        lastActiveAt: recoveredAt,
+      };
+    });
 
     const interval = window.setInterval(() => {
       const tickAt = Date.now();
-      setDraft((current) => ({
-        ...current,
-        timerSeconds: current.timerSeconds + 1,
-        secondsByDate: {
-          ...(current.secondsByDate ?? {}),
-          [localDateKey(tickAt)]: ((current.secondsByDate ?? {})[localDateKey(tickAt)] ?? 0) + 1,
-        },
-        lastActiveAt: tickAt,
-      }));
+      setDraft((current) => {
+        if (!current.isActive) return current;
+        const previousTick = current.lastActiveAt ?? tickAt - 1000;
+        const elapsedSeconds = Math.max(1, Math.floor((tickAt - previousTick) / 1000));
+        return {
+          ...current,
+          timerSeconds: current.timerSeconds + elapsedSeconds,
+          secondsByDate: addElapsedToDateBuckets(current.secondsByDate, previousTick, tickAt),
+          lastActiveAt: tickAt,
+        };
+      });
     }, 1000);
+
     return () => window.clearInterval(interval);
-  }, [draft.isActive, draft.lastActiveAt, setDraft]);
+  }, [draft.isActive, setDraft]);
 
   const formatTime = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -293,10 +315,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
     const shouldSplit = crossedMidnight && draft.splitAtMidnight !== false;
 
     if (shouldSplit) {
-      const nextDate = endDate;
-      const firstDurationMinutes = Math.max(1, Math.round(firstDaySeconds / 60));
-      const secondDaySeconds = Math.max(0, totalTrackedSeconds - firstDaySeconds);
-      const secondDurationMinutes = Math.max(1, Math.round(secondDaySeconds / 60));
+      const { firstMinutes: firstDurationMinutes, secondMinutes: secondDurationMinutes } = allocateSplitMinutes(totalTrackedSeconds, firstDaySeconds);
       const firstPages = !isAudiobook ? Math.max(0, midnightProgress - draft.startPage) : undefined;
       const secondPages = !isAudiobook ? Math.max(0, draft.endPage - midnightProgress) : undefined;
       const firstListening = isAudiobook ? Math.max(0, midnightProgress - draft.startMins) : undefined;
@@ -325,7 +344,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({
       const secondSession: ReadingSession = {
         id: `sess-${splitId}-after-midnight`,
         bookId: selectedBook.id,
-        date: nextDate,
+        date: endDate,
         startTime: '00:00',
         endTime: localTime(endedAt),
         durationMinutes: secondDurationMinutes,
