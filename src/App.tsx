@@ -70,9 +70,6 @@ const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
 const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
 const DAYTIME_MAINTENANCE_KEY = 'inkbound_last_daytime_library_maintenance';
-// Background metadata should make visible progress without bursting providers.
-// Two books per minute is intentionally conservative: large libraries keep moving,
-// while manual search remains responsive and provider rate limits are respected.
 const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
 const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
 const MAINTENANCE_CHECK_INTERVAL_MS = 60 * 1000;
@@ -125,6 +122,19 @@ function markDaytimeMaintenanceRun() {
   } catch {
     // Maintenance scheduling is best-effort only.
   }
+}
+
+function sessionSortKey(session: ReadingSession): string {
+  return `${session.date}T${session.endTime || session.startTime || '00:00'}`;
+}
+
+function sessionProgress(session: ReadingSession, audiobook: boolean, edge: 'start' | 'end'): number {
+  if (audiobook) {
+    const seconds = edge === 'start' ? session.startTimestampSec : session.endTimestampSec;
+    return Math.max(0, Math.floor((seconds ?? 0) / 60));
+  }
+  const pages = edge === 'start' ? session.startPage : session.endPage;
+  return Math.max(0, pages ?? 0);
 }
 
 export default function App() {
@@ -383,7 +393,6 @@ export default function App() {
     setBooks((current) => current.map((book) => {
       if (!selectedBookIds.includes(book.id)) return book;
       const updatedBook = { ...book };
-
       if (changes.status) {
         updatedBook.status = changes.status;
         if (changes.status === 'finished') {
@@ -436,8 +445,8 @@ export default function App() {
       if (book.id !== newSession.bookId) return book;
       const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
       const isAudiobook = activeEdition?.format === 'audiobook';
-      const nextPages = isAudiobook ? book.progressPages : Math.max(book.progressPages, updatedPages);
-      const nextMinutes = isAudiobook ? Math.max(book.progressMinutes, updatedMinutes) : book.progressMinutes;
+      const nextPages = isAudiobook ? book.progressPages : Math.max(book.progressPages, Math.max(0, updatedPages));
+      const nextMinutes = isAudiobook ? Math.max(book.progressMinutes, Math.max(0, updatedMinutes)) : book.progressMinutes;
       const total = isAudiobook ? activeEdition?.audiobookDurationMins ?? 600 : activeEdition?.pageCount ?? 350;
       const completed = isAudiobook ? nextMinutes : nextPages;
       const progressPercentage = Math.min(100, Math.round((completed / Math.max(1, total)) * 100));
@@ -450,6 +459,45 @@ export default function App() {
         dateStarted: book.dateStarted ?? newSession.date,
         dateFinished: progressPercentage === 100 ? book.dateFinished ?? newSession.date : book.dateFinished,
         lastSessionDate: !book.lastSessionDate || newSession.date > book.lastSessionDate ? newSession.date : book.lastSessionDate,
+      };
+    }));
+  };
+
+  const reconcileBookProgressFromSessions = (
+    bookId: string,
+    nextSessions: ReadingSession[],
+    changedSession?: ReadingSession,
+  ) => {
+    setBooks((current) => current.map((book) => {
+      if (book.id !== bookId) return book;
+      const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+      const isAudiobook = activeEdition?.format === 'audiobook';
+      const related = nextSessions
+        .filter((item) => item.bookId === bookId)
+        .sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
+      const latest = related.at(-1);
+      const currentProgress = isAudiobook ? book.progressMinutes : book.progressPages;
+      const previousEndpoint = changedSession ? sessionProgress(changedSession, isAudiobook, 'end') : undefined;
+      const fallbackProgress = changedSession ? sessionProgress(changedSession, isAudiobook, 'start') : currentProgress;
+      const trackedProgress = latest ? sessionProgress(latest, isAudiobook, 'end') : fallbackProgress;
+
+      // A historical edit must never drag a manually-advanced book backwards.
+      // Reduction is only allowed when the session being changed was actually the
+      // source of the book's current endpoint. This keeps page continuity intact.
+      const mayReduce = previousEndpoint !== undefined && currentProgress === previousEndpoint;
+      const nextProgress = mayReduce ? trackedProgress : Math.max(currentProgress, trackedProgress);
+      const total = isAudiobook ? activeEdition?.audiobookDurationMins ?? 600 : activeEdition?.pageCount ?? 350;
+      const progressPercentage = Math.min(100, Math.round((nextProgress / Math.max(1, total)) * 100));
+      const wasTrackerFinished = previousEndpoint !== undefined && currentProgress === previousEndpoint && book.progressPercentage === 100;
+
+      return {
+        ...book,
+        progressPages: isAudiobook ? book.progressPages : nextProgress,
+        progressMinutes: isAudiobook ? nextProgress : book.progressMinutes,
+        progressPercentage,
+        status: progressPercentage === 100 ? 'finished' : wasTrackerFinished ? 'currently-reading' : book.status,
+        dateFinished: progressPercentage === 100 ? (book.dateFinished ?? latest?.date) : wasTrackerFinished ? undefined : book.dateFinished,
+        lastSessionDate: latest?.date,
       };
     }));
   };
@@ -469,14 +517,25 @@ export default function App() {
   };
 
   const handleUpdateSession = (session: ReadingSession) => {
-    setSessions((current) => current.map((item) => item.id === session.id ? session : item));
-    updateBookFromSession(session, session.endPage ?? 0, Math.floor((session.endTimestampSec ?? 0) / 60));
-    showToast('Updated reading session.');
+    const previous = sessions.find((item) => item.id === session.id);
+    const nextSessions = sessions.map((item) => item.id === session.id ? session : item);
+    setSessions(nextSessions);
+
+    if (previous && previous.bookId !== session.bookId) {
+      reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous);
+      reconcileBookProgressFromSessions(session.bookId, nextSessions);
+    } else {
+      reconcileBookProgressFromSessions(session.bookId, nextSessions, previous);
+    }
+    showToast('Updated reading session and reconciled book progress.');
   };
 
   const handleDeleteSession = (sessionId: string) => {
-    setSessions((current) => current.filter((session) => session.id !== sessionId));
-    showToast('Deleted reading session. Book progress was left unchanged.');
+    const removed = sessions.find((session) => session.id === sessionId);
+    const nextSessions = sessions.filter((session) => session.id !== sessionId);
+    setSessions(nextSessions);
+    if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed);
+    showToast('Deleted reading session and reconciled book progress.');
   };
 
   const handleExecuteImport = async (importedItems: ImportRecordItem[]) => {
