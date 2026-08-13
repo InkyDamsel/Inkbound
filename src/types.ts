@@ -15,6 +15,8 @@ export type SubscriptionService = 'kindle-unlimited' | 'audible-plus' | 'everand
 
 export type Priority = 'top' | 'high' | 'medium' | 'low';
 
+export type EditionSource = 'google-books' | 'open-library' | 'hardcover' | 'manual' | 'import';
+
 export interface BookWork {
   id: string;
   title: string;
@@ -51,7 +53,7 @@ export interface Edition {
   editionName?: string;
   binding?: string;
   specialFeatures?: string[];
-  externalSource?: string;
+  externalSource?: EditionSource;
   externalEditionId?: string;
 }
 
@@ -83,6 +85,8 @@ export interface UserBookRecord {
   collections: string[];
   whyIAddedThis?: string;
   sourceOfImport?: string;
+  // Import metadata is disposable. These flags let the enrichment manager
+  // distinguish verified matches from legacy guesses that need review.
   importMetadataVerified?: boolean;
   importMetadataReviewNeeded?: boolean;
   dateAdded: string;
