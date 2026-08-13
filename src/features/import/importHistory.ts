@@ -23,6 +23,7 @@ export interface ImportHistoryItem {
   dateAdded: string;
   review?: string;
   coverGradient: string;
+  importMetadataVerified?: boolean;
 }
 
 export interface ImportHistoryEntry {
@@ -120,15 +121,13 @@ export function appendImportHistory(items: ImportRecordItem[], duplicateCount: n
       dateAdded: item.dateAdded,
       review: item.review,
       coverGradient: item.coverGradient,
+      importMetadataVerified: item.importMetadataVerified === true,
     })),
   };
   writeImportHistory([entry, ...readImportHistory()].slice(0, 50));
 }
 
 export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): ImportHistoryEntry[] {
-  // Import history belongs to the active library/account. Never display a stale
-  // localhost history record when DEV is using a fresh emulator library or when a
-  // different signed-in account has no matching books.
   if (books.length === 0) return [];
 
   const bookIds = new Set(books.map((book) => book.id));
@@ -167,6 +166,7 @@ export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): 
       dateAdded: book.dateAdded || new Date().toISOString().slice(0, 10),
       review: book.review,
       coverGradient: edition?.coverGradient ?? 'from-[#5c3d62] via-[#35243f] to-[#171117]',
+      importMetadataVerified: book.importMetadataVerified === true,
     };
   });
 
@@ -199,12 +199,17 @@ export function setImportEnrichmentPaused(paused: boolean) {
   }
 }
 
+export function isImportHistoryItemMatched(item: ImportHistoryItem, book?: UserBookRecord): boolean {
+  return item.importMetadataVerified === true || book?.importMetadataVerified === true;
+}
+
 export function getImportHistoryProgress(entry: ImportHistoryEntry, books: UserBookRecord[]) {
   const items = Array.isArray(entry.items) ? entry.items : [];
   const ids = new Set(items.map((item) => item.targetBookId));
-  const entryBooks = books.filter((book) => ids.has(book.id));
+  const booksById = new Map(books.filter((book) => ids.has(book.id)).map((book) => [book.id, book]));
+  const entryBooks = [...booksById.values()];
   const queueIds = new Set(readImportEnrichmentQueue().filter((item) => ids.has(item.targetBookId)).map((item) => item.targetBookId));
-  const matched = entryBooks.filter((book) => book.importMetadataVerified === true).length;
+  const matched = items.filter((item) => isImportHistoryItemMatched(item, booksById.get(item.targetBookId))).length;
   const covers = entryBooks.filter((book) => {
     const editions = Array.isArray(book.editions) ? book.editions : [];
     const edition = editions.find((item) => item.id === book.activeEditionId) ?? editions[0];
@@ -218,7 +223,7 @@ export function getImportHistoryProgress(entry: ImportHistoryEntry, books: UserB
     covers,
     summaries,
     queued: queueIds.size,
-    unresolved: Math.max(0, entryBooks.length - matched),
+    unresolved: Math.max(0, entry.importedCount - matched),
   };
 }
 
