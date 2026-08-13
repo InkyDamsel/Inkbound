@@ -249,14 +249,14 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const pagesCompleted = Math.max(0, draft.endPage - draft.startPage);
   const minsCompleted = Math.max(0, draft.endMins - draft.startMins);
   const shouldSplit = crossedMidnight && draft.splitAtMidnight !== false;
+  const storedSessions = readStoredSessions();
 
   const projectedSessions = useMemo(() => {
-    if (!draft.isFinished || !selectedBook) return readStoredSessions();
-    const existing = readStoredSessions();
+    if (!draft.isFinished || !selectedBook) return storedSessions;
     if (shouldSplit) {
       const { firstMinutes, secondMinutes } = allocateSplitMinutes(totalTrackedSeconds, firstDaySeconds);
       return [
-        ...existing,
+        ...storedSessions,
         {
           id: 'preview-before-midnight', bookId: selectedBook.id, date: startDate, startTime: localTime(startedAt), endTime: '23:59', durationMinutes: firstMinutes,
           pagesRead: isAudiobook ? undefined : Math.max(0, midnightProgress - draft.startPage),
@@ -269,14 +269,17 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
         },
       ];
     }
-    return [...existing, {
+    return [...storedSessions, {
       id: 'preview-session', bookId: selectedBook.id, date: startDate, startTime: localTime(startedAt), endTime: localTime(endedAt), durationMinutes: sessionDurationMins,
       pagesRead: isAudiobook ? undefined : pagesCompleted,
       minutesListened: isAudiobook ? minsCompleted : undefined,
     }];
-  }, [draft.endMins, draft.endPage, draft.isFinished, draft.startMins, draft.startPage, endDate, endedAt, firstDaySeconds, isAudiobook, midnightProgress, minsCompleted, pagesCompleted, selectedBook, sessionDurationMins, shouldSplit, startDate, startedAt, totalTrackedSeconds]);
+  }, [draft.endMins, draft.endPage, draft.isFinished, draft.startMins, draft.startPage, endDate, endedAt, firstDaySeconds, isAudiobook, midnightProgress, minsCompleted, pagesCompleted, selectedBook, sessionDurationMins, shouldSplit, startDate, startedAt, storedSessions, totalTrackedSeconds]);
 
   const completionDate = shouldSplit ? endDate : startDate;
+  const showDailyMilestones = !storedSessions.some(
+    (session) => session.date === completionDate && Math.max(0, session.durationMinutes) > 0,
+  );
   const streak = getReadingStreak(projectedSessions, completionDate);
   const dailyGoal = Math.max(1, Number(dailyGoalMins) || 30);
   const dailyMinutes = getDailyReadingMinutes(projectedSessions, completionDate);
@@ -360,10 +363,12 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
               <div className="space-y-4">
                 <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-4 text-emerald-300"><CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" /><div><p className="text-sm font-bold">Session completed</p><p className="text-xs text-stone-300">{sessionDurationMins} minutes tracked.</p></div></div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-[#3d2448] bg-[#25132f] p-3"><p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400"><Flame className="h-3.5 w-3.5 text-[#e5c158]" /> Reading streak</p><p className="mt-1 font-serif text-2xl font-bold text-[#f4efe6]">{streak} day{streak === 1 ? '' : 's'}</p></div>
-                  <div className="rounded-xl border border-[#3d2448] bg-[#25132f] p-3"><p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400"><Target className="h-3.5 w-3.5 text-[#e5c158]" /> Daily goal</p><p className="mt-1 font-serif text-2xl font-bold text-[#f4efe6]">{dailyMinutes} / {dailyGoal}m</p><p className="mt-1 text-[11px] text-stone-400">{dailyMinutes >= dailyGoal ? 'Goal reached!' : `${dailyGoal - dailyMinutes} minutes to go.`}</p><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[#d4af37]" style={{ width: `${goalPercent}%` }} /></div></div>
-                </div>
+                {showDailyMilestones && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-[#3d2448] bg-[#25132f] p-3"><p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400"><Flame className="h-3.5 w-3.5 text-[#e5c158]" /> Reading streak</p><p className="mt-1 font-serif text-2xl font-bold text-[#f4efe6]">{streak} day{streak === 1 ? '' : 's'}</p></div>
+                    <div className="rounded-xl border border-[#3d2448] bg-[#25132f] p-3"><p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400"><Target className="h-3.5 w-3.5 text-[#e5c158]" /> Daily goal</p><p className="mt-1 font-serif text-2xl font-bold text-[#f4efe6]">{dailyMinutes} / {dailyGoal}m</p><p className="mt-1 text-[11px] text-stone-400">{dailyMinutes >= dailyGoal ? 'Goal reached!' : `${dailyGoal - dailyMinutes} minutes to go.`}</p><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[#d4af37]" style={{ width: `${goalPercent}%` }} /></div></div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Starting minute' : 'Starting page'}</label><div className="w-full rounded-lg border border-[#3d2448] bg-[#17101b] p-3 text-sm text-stone-300">{isAudiobook ? draft.startMins : draft.startPage}</div><p className="mt-1 text-[11px] text-stone-500">Locked to your saved progress when this session began.</p></div>
