@@ -30,17 +30,24 @@ const minutesBetween = (startTime: string, endTime: string) => {
 
 export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, session, onClose, onSave, onDelete }) => {
   const initialBook = books.find((book) => book.id === session?.bookId) ?? books[0];
+  const initialEdition = initialBook?.editions.find((item) => item.id === initialBook.activeEditionId) ?? initialBook?.editions[0];
+  const initialIsAudiobook = initialEdition?.format === 'audiobook';
+  const initialProgress = session
+    ? session.startPage ?? Math.floor((session.startTimestampSec ?? 0) / 60)
+    : initialIsAudiobook
+      ? initialBook?.progressMinutes ?? 0
+      : initialBook?.progressPages ?? 0;
+  const initialEndProgress = session
+    ? session.endPage ?? Math.floor((session.endTimestampSec ?? 0) / 60)
+    : initialProgress;
+
   const [bookId, setBookId] = useState(session?.bookId ?? initialBook?.id ?? '');
   const [date, setDate] = useState(session?.date ?? localDate());
   const [startTime, setStartTime] = useState(session?.startTime ?? '19:00');
   const [endTime, setEndTime] = useState(session?.endTime ?? '19:30');
   const [durationMinutes, setDurationMinutes] = useState(session?.durationMinutes ?? 30);
-  const [startProgress, setStartProgress] = useState(
-    session?.startPage ?? Math.floor((session?.startTimestampSec ?? 0) / 60) ?? initialBook?.progressPages ?? 0,
-  );
-  const [endProgress, setEndProgress] = useState(
-    session?.endPage ?? Math.floor((session?.endTimestampSec ?? 0) / 60) ?? initialBook?.progressPages ?? 0,
-  );
+  const [startProgress, setStartProgress] = useState(initialProgress);
+  const [endProgress, setEndProgress] = useState(initialEndProgress);
   const [notes, setNotes] = useState(session?.notes ?? '');
   const [mood, setMood] = useState(session?.mood ?? '');
   const [location, setLocation] = useState(session?.location ?? '');
