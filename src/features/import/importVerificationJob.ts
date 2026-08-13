@@ -50,9 +50,6 @@ function readStoredSnapshot(): ImportVerificationJobSnapshot {
     if (!stored) return emptySnapshot();
     const parsed = JSON.parse(stored) as Partial<ImportVerificationJobSnapshot>;
 
-    // A completed import belongs in Import History. Reopening or refreshing the
-    // Import Center should always start a fresh import flow instead of restoring
-    // the old completion screen.
     if (parsed.status === 'complete') {
       clearCompletedUiState();
       return emptySnapshot();
@@ -126,9 +123,6 @@ function warnBeforeUnload(event: BeforeUnloadEvent) {
 }
 
 export function getImportVerificationSnapshot(): ImportVerificationJobSnapshot {
-  // The live completion screen can still be shown to the component that was
-  // subscribed when the import finished. A later visit to Import Center is a new
-  // workflow, so consume and clear that stale completion snapshot here.
   if (snapshot.status === 'complete' && !activePromise) {
     snapshot = emptySnapshot();
     clearCompletedUiState();
@@ -186,12 +180,25 @@ export function startImportVerificationJob(
         });
       });
 
-      const recordsToImport = [...verification.verified, ...verification.unmatched];
+      // Carry the verification result into the records that are actually written
+      // to the library. Import History then reads the exact same accounting that
+      // produced the Import Complete numbers instead of starting every book at
+      // "unmatched" and slowly rediscovering the same result later.
+      const verifiedRecords = verification.verified.map((record) => ({
+        ...record,
+        importMetadataVerified: true,
+      }));
+      const unmatchedRecords = verification.unmatched.map((record) => ({
+        ...record,
+        importMetadataVerified: false,
+      }));
+      const recordsToImport = [...verifiedRecords, ...unmatchedRecords];
+
       if (recordsToImport.length > 0) {
         await executeImport(recordsToImport);
       }
 
-      persistMetadataPending(verification.unmatched);
+      persistMetadataPending(unmatchedRecords);
 
       const duplicateMap = new Map(preDetectedDuplicates.map((record) => [record.id, record]));
       verification.duplicates.forEach((record) => duplicateMap.set(record.id, record));
@@ -201,8 +208,8 @@ export function startImportVerificationJob(
         completed: items.length,
         total: items.length,
         importedCount: recordsToImport.length,
-        matchedCount: verification.verified.length,
-        metadataPendingCount: verification.unmatched.length,
+        matchedCount: verifiedRecords.length,
+        metadataPendingCount: unmatchedRecords.length,
         duplicates: [...duplicateMap.values()],
         unmatched: [],
       });
