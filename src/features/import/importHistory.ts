@@ -4,6 +4,7 @@ import {
   writeImportEnrichmentQueue,
   type ImportEnrichmentQueueItem,
 } from './libraryEnrichment';
+import { readImportMetadataPending } from './importVerificationJob';
 
 export const IMPORT_HISTORY_STORAGE_KEY = 'inkbound_import_history_v1';
 export const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v1';
@@ -127,11 +128,37 @@ export function appendImportHistory(items: ImportRecordItem[], duplicateCount: n
   writeImportHistory([entry, ...readImportHistory()].slice(0, 50));
 }
 
+function reconcileHistoryWithPendingVerification(entries: ImportHistoryEntry[]): ImportHistoryEntry[] {
+  const pending = readImportMetadataPending();
+  if (pending.length === 0) return entries;
+
+  const pendingIds = new Set(pending.map((item) => item.id));
+  let changed = false;
+  const reconciled = entries.map((entry) => {
+    const overlapsCurrentVerification = entry.items.some((item) => pendingIds.has(item.recordId));
+    if (!overlapsCurrentVerification) return entry;
+
+    const items = entry.items.map((item) => {
+      if (item.importMetadataVerified !== undefined) return item;
+      changed = true;
+      return {
+        ...item,
+        importMetadataVerified: !pendingIds.has(item.recordId),
+      };
+    });
+    return { ...entry, items };
+  });
+
+  if (changed) writeImportHistory(reconciled);
+  return reconciled;
+}
+
 export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): ImportHistoryEntry[] {
   if (books.length === 0) return [];
 
   const bookIds = new Set(books.map((book) => book.id));
-  const existing = readImportHistory().filter((entry) =>
+  const storedHistory = reconcileHistoryWithPendingVerification(readImportHistory());
+  const existing = storedHistory.filter((entry) =>
     entry.items.some((item) => bookIds.has(item.targetBookId)),
   );
   if (existing.length > 0) return existing;
