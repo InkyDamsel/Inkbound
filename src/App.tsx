@@ -61,7 +61,8 @@ import {
   writeImportHistory,
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
-import { Check, RotateCcw } from 'lucide-react';
+import { getDailyReadingMinutes, getReadingStreak } from './features/reading/sessionAnalytics';
+import { Check, Flame, RotateCcw, Target } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
 const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
@@ -70,10 +71,19 @@ const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
 const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
 const DAYTIME_MAINTENANCE_KEY = 'inkbound_last_daytime_library_maintenance';
+const DAILY_MILESTONE_SHOWN_KEY = 'inkbound_daily_milestone_shown_dates';
+const DAILY_GOAL_STORAGE_KEY = 'inkbound_daily_goal_minutes';
 const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
 const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
 const MAINTENANCE_CHECK_INTERVAL_MS = 60 * 1000;
 let isImportQueueProcessing = false;
+
+interface SessionMilestoneNotice {
+  date: string;
+  streak: number;
+  dailyMinutes: number;
+  dailyGoal: number;
+}
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
   try {
@@ -91,6 +101,33 @@ function safeWriteLocalStorage(key: string, value: unknown): boolean {
   } catch (error) {
     console.warn(`Inkbound could not update ${key} in the browser cache.`, error);
     return false;
+  }
+}
+
+function readMilestoneShownDates(): string[] {
+  try {
+    const raw = localStorage.getItem(DAILY_MILESTONE_SHOWN_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function markMilestoneShown(date: string) {
+  const existing = readMilestoneShownDates();
+  if (existing.includes(date)) return;
+  const recent = [...existing, date].sort().slice(-45);
+  safeWriteLocalStorage(DAILY_MILESTONE_SHOWN_KEY, recent);
+}
+
+function readDailyGoalMinutes(): number {
+  try {
+    const raw = localStorage.getItem(DAILY_GOAL_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : 30;
+    return Math.max(1, Number(parsed) || 30);
+  } catch {
+    return 30;
   }
 }
 
@@ -153,6 +190,7 @@ export default function App() {
   const [timerInitialBookId, setTimerInitialBookId] = usePersistentState<string | undefined>('inkbound_timer_book_id', undefined);
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [sessionMilestone, setSessionMilestone] = useState<SessionMilestoneNotice | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
@@ -170,9 +208,37 @@ export default function App() {
     try { localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); } catch { /* no-op */ }
   }, [sessions]);
 
+  useEffect(() => {
+    setBooks((current) => {
+      let changed = false;
+      const normalized = current.map((book) => {
+        if (book.progressPercentage >= 100 && book.status !== 'finished') {
+          changed = true;
+          return {
+            ...book,
+            status: 'finished' as const,
+            progressPercentage: 100,
+            dateFinished: book.dateFinished ?? book.lastSessionDate,
+          };
+        }
+        if (book.status === 'finished' && book.progressPercentage !== 100) {
+          changed = true;
+          return { ...book, progressPercentage: 100 };
+        }
+        return book;
+      });
+      return changed ? normalized : current;
+    });
+  }, [books]);
+
   const showToast = (message: string) => {
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const showSessionMilestone = (notice: SessionMilestoneNotice) => {
+    setSessionMilestone(notice);
+    window.setTimeout(() => setSessionMilestone((current) => current?.date === notice.date ? null : current), 7000);
   };
 
   const processImportEnrichmentQueue = async () => {
@@ -503,6 +569,21 @@ export default function App() {
   };
 
   const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
+    const alreadyShown = readMilestoneShownDates().includes(newSession.date);
+    const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && Math.max(0, session.durationMinutes) > 0);
+    if (!alreadyShown) {
+      if (hadPriorSessionThatDay) {
+        const projectedSessions = [newSession, ...sessions];
+        showSessionMilestone({
+          date: newSession.date,
+          streak: getReadingStreak(projectedSessions, newSession.date),
+          dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date),
+          dailyGoal: readDailyGoalMinutes(),
+        });
+      }
+      markMilestoneShown(newSession.date);
+    }
+
     setSessions((current) => [newSession, ...current]);
     updateBookFromSession(newSession, updatedPages, updatedMinutes);
     setTimerInitialBookId(undefined);
@@ -554,7 +635,7 @@ export default function App() {
   const handleResetData = () => {
     setBooks([]); setSessions([]); setPreviousBooksState(null); setSelectedBookForDetails(null); setSelectedBookIds([]);
     try {
-      localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY);
+      localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY); localStorage.removeItem(DAILY_MILESTONE_SHOWN_KEY);
     } catch { /* no-op */ }
     writeImportEnrichmentQueue([]);
     writeImportHistory([]);
@@ -562,6 +643,10 @@ export default function App() {
     setImportEnrichmentPaused(false);
     showToast('Cleared all Inkbound books and reading sessions.');
   };
+
+  const currentSelectedBook = selectedBookForDetails
+    ? books.find((book) => book.id === selectedBookForDetails.id) ?? selectedBookForDetails
+    : null;
 
   return (
     <ResponsiveShell navigation={<Navbar activeTab={activeTab} setActiveTab={setActiveTab} books={books} onSelectBook={setSelectedBookForDetails} onOpenAddBook={() => setIsAddBookOpen(true)} onOpenTimer={() => openTimer()} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}>
@@ -595,10 +680,11 @@ export default function App() {
         </ResponsiveContainer>
       </main>
 
-      {selectedBookForDetails && <BookDetailsModal book={selectedBookForDetails} sessions={sessions} onClose={() => setSelectedBookForDetails(null)} onUpdateBook={handleUpdateBook} onDeleteBook={handleDeleteBook} onStartSession={(book) => { setSelectedBookForDetails(null); openTimer(book.id); }} />}
+      {currentSelectedBook && <BookDetailsModal book={currentSelectedBook} sessions={sessions} onClose={() => setSelectedBookForDetails(null)} onUpdateBook={handleUpdateBook} onDeleteBook={handleDeleteBook} onStartSession={(book) => { setSelectedBookForDetails(null); openTimer(book.id); }} />}
       {isBatchEditOpen && <BatchEditModal selectedBookIds={selectedBookIds} books={books} onClose={() => setIsBatchEditOpen(false)} onApplyBatchChanges={handleApplyBatchChanges} onDeleteSelected={handleDeleteSelected} onUndoLastBatch={handleUndoLastBatch} />}
       {isTimerOpen && <ReadingSessionModal books={books} initialBookId={timerInitialBookId} onClose={closeTimer} onSaveSession={handleSaveSession} />}
       {isAddBookOpen && <AddBookModal currentBookCount={books.length} onClose={() => setIsAddBookOpen(false)} onAddBook={(newBook) => { setBooks((current) => [newBook, ...current]); showToast(`Added “${newBook.work.title}” to Inkbound.`); }} onAddMultipleBooks={(newBooks) => { setBooks((current) => [...newBooks, ...current]); showToast(`Added ${newBooks.length} books to Inkbound.`); }} />}
+      {sessionMilestone && <div className="fixed bottom-24 left-1/2 z-[150] w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl border border-[#c5a059]/45 bg-[#1c0f24]/95 p-4 text-[#f4efe6] shadow-2xl backdrop-blur"><div className="flex items-center justify-between gap-4"><div className="flex items-center gap-2"><Flame className="h-5 w-5 text-[#e5c158]" /><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Reading streak</p><p className="font-serif text-xl font-bold">{sessionMilestone.streak} day{sessionMilestone.streak === 1 ? '' : 's'}</p></div></div><div className="flex items-center gap-2 text-right"><Target className="h-5 w-5 text-[#e5c158]" /><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Daily goal</p><p className="font-serif text-xl font-bold">{sessionMilestone.dailyMinutes} / {sessionMilestone.dailyGoal}m</p><p className="text-xs text-stone-400">{sessionMilestone.dailyMinutes >= sessionMilestone.dailyGoal ? 'Goal reached!' : `${sessionMilestone.dailyGoal - sessionMilestone.dailyMinutes} minutes to go.`}</p></div></div></div></div>}
       {toastMessage && <div className="inkbound-toast" role="status"><Check className="h-4 w-4 text-[var(--ink-gold)]" /><span>{toastMessage}</span>{previousBooksState && <button type="button" onClick={handleUndoLastBatch}><RotateCcw className="h-3 w-3" /> Undo</button>}</div>}
     </ResponsiveShell>
   );
