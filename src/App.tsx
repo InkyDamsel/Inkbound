@@ -629,21 +629,24 @@ export default function App() {
     }));
   };
 
-  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
+  const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => {
     const alreadyShown = readMilestoneShownDates().includes(newSession.date);
     const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && Math.max(0, session.durationMinutes) > 0);
     const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && Math.max(0, newSession.durationMinutes) > 0;
-    if (!alreadyShown && isFirstCompletedSessionThatDay) {
-      const projectedSessions = [newSession, ...sessions];
-      showSessionMilestone({
-        date: newSession.date,
-        streak: getReadingStreak(projectedSessions, newSession.date),
-        dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date),
-        dailyGoal: readDailyGoalMinutes(),
-      });
-      markMilestoneShown(newSession.date);
-    }
+    if (alreadyShown || !isFirstCompletedSessionThatDay) return;
 
+    const projectedSessions = [newSession, ...sessions];
+    showSessionMilestone({
+      date: newSession.date,
+      streak: getReadingStreak(projectedSessions, newSession.date),
+      dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date),
+      dailyGoal: readDailyGoalMinutes(),
+    });
+    markMilestoneShown(newSession.date);
+  };
+
+  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
+    maybeShowFirstSessionMilestone(newSession);
     setSessions((current) => [newSession, ...current]);
     updateBookFromSession(newSession, updatedPages, updatedMinutes);
     setTimerInitialBookId(undefined);
@@ -652,6 +655,7 @@ export default function App() {
   };
 
   const handleSaveManualSession = (session: ReadingSession) => {
+    maybeShowFirstSessionMilestone(session);
     setSessions((current) => [session, ...current]);
     updateBookFromSession(session, session.endPage ?? 0, Math.floor((session.endTimestampSec ?? 0) / 60));
     showToast('Added reading session.');
