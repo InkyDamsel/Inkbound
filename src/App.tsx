@@ -632,16 +632,15 @@ export default function App() {
   const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
     const alreadyShown = readMilestoneShownDates().includes(newSession.date);
     const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && Math.max(0, session.durationMinutes) > 0);
-    if (!alreadyShown) {
-      if (hadPriorSessionThatDay) {
-        const projectedSessions = [newSession, ...sessions];
-        showSessionMilestone({
-          date: newSession.date,
-          streak: getReadingStreak(projectedSessions, newSession.date),
-          dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date),
-          dailyGoal: readDailyGoalMinutes(),
-        });
-      }
+    const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && Math.max(0, newSession.durationMinutes) > 0;
+    if (!alreadyShown && isFirstCompletedSessionThatDay) {
+      const projectedSessions = [newSession, ...sessions];
+      showSessionMilestone({
+        date: newSession.date,
+        streak: getReadingStreak(projectedSessions, newSession.date),
+        dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date),
+        dailyGoal: readDailyGoalMinutes(),
+      });
       markMilestoneShown(newSession.date);
     }
 
