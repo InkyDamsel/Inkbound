@@ -3,6 +3,8 @@ import { BarChart3, BookOpen, Clock, Filter, Flame, Lock, Sparkles } from 'lucid
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { ResponsiveGrid } from '../layout/responsive';
+import { getReadingStreak } from '../features/reading/sessionAnalytics';
+import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { StatisticsGoalOverview } from './statistics/StatisticsGoalOverview';
 import { StatisticsSummaryGrid } from './statistics/StatisticsSummaryGrid';
 
@@ -51,12 +53,12 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     (total, session) => total + session.durationMinutes,
     0,
   );
-  const annualGoal = 30;
+  const annualGoal = getAnnualReadingGoal();
   const annualGoalPercent = Math.min(
     100,
     Math.round((finishedBooks.length / annualGoal) * 100),
   );
-  const currentStreak = 14;
+  const currentStreak = getReadingStreak(sessions);
 
   const formatCounts = filteredBooks.reduce<Record<string, number>>((counts, book) => {
     const format =
