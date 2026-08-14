@@ -7,6 +7,7 @@ interface BookCoverProps {
   edition?: Edition;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   progressPercentage?: number;
+  isFinished?: boolean;
   rating?: number;
   isSelected?: boolean;
   onSelectToggle?: () => void;
@@ -26,6 +27,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
   edition,
   size = 'md',
   progressPercentage,
+  isFinished = false,
   rating,
   isSelected,
   onSelectToggle,
@@ -157,7 +159,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
         )}
       </div>
 
-      {progressPercentage === 100 && (
+      {isFinished && (
         <div className="absolute right-1 top-1 z-20 rounded bg-emerald-700 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
           Finished
         </div>
