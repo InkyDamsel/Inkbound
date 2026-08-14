@@ -14,8 +14,11 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
     }
 
     const refresh = () => {
-      const restored = recoverIncompleteLatestImport();
-      setRevision(getCloudDataRevision() + (restored > 0 ? 1 : 0));
+      const repairedDelta = recoverIncompleteLatestImport();
+      // Any repair changes the persisted library, whether books were restored or
+      // duplicate recovery rows were removed. Force App to remount from that
+      // corrected source of truth in either direction.
+      setRevision(getCloudDataRevision() + (repairedDelta !== 0 ? 1 : 0));
     };
 
     if (getCloudDataRevision() > 0) refresh();
