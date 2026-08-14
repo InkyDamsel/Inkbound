@@ -568,17 +568,22 @@ export default function App() {
       const isAudiobook = activeEdition?.format === 'audiobook';
       const nextPages = isAudiobook ? book.progressPages : Math.max(book.progressPages, Math.max(0, updatedPages));
       const nextMinutes = isAudiobook ? Math.max(book.progressMinutes, Math.max(0, updatedMinutes)) : book.progressMinutes;
-      const total = isAudiobook ? activeEdition?.audiobookDurationMins ?? 600 : activeEdition?.pageCount ?? 350;
+      const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
       const completed = isAudiobook ? nextMinutes : nextPages;
-      const progressPercentage = Math.min(100, Math.round((completed / Math.max(1, total)) * 100));
+      const hasKnownTotal = Boolean(total && total > 0);
+      const progressPercentage = hasKnownTotal
+        ? Math.min(100, Math.round((completed / total!) * 100))
+        : book.progressPercentage;
+      const reachedEnd = Boolean(hasKnownTotal && completed >= total!);
+
       return {
         ...book,
         progressPages: nextPages,
         progressMinutes: nextMinutes,
         progressPercentage,
-        status: progressPercentage === 100 ? 'finished' : 'currently-reading',
+        status: reachedEnd ? 'finished' : book.status === 'finished' ? 'finished' : 'currently-reading',
         dateStarted: book.dateStarted ?? newSession.date,
-        dateFinished: progressPercentage === 100 ? book.dateFinished ?? newSession.date : undefined,
+        dateFinished: reachedEnd ? book.dateFinished ?? newSession.date : book.status === 'finished' ? book.dateFinished : undefined,
         lastSessionDate: !book.lastSessionDate || newSession.date > book.lastSessionDate ? newSession.date : book.lastSessionDate,
       };
     }));
@@ -603,17 +608,22 @@ export default function App() {
       const trackedProgress = latest ? sessionProgress(latest, isAudiobook, 'end') : fallbackProgress;
       const mayReduce = previousEndpoint !== undefined && currentProgress === previousEndpoint;
       const nextProgress = mayReduce ? trackedProgress : Math.max(currentProgress, trackedProgress);
-      const total = isAudiobook ? activeEdition?.audiobookDurationMins ?? 600 : activeEdition?.pageCount ?? 350;
-      const progressPercentage = Math.min(100, Math.round((nextProgress / Math.max(1, total)) * 100));
+      const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
+      const hasKnownTotal = Boolean(total && total > 0);
+      const progressPercentage = hasKnownTotal
+        ? Math.min(100, Math.round((nextProgress / total!) * 100))
+        : book.progressPercentage;
+      const reachedEnd = Boolean(hasKnownTotal && nextProgress >= total!);
       const wasTrackerFinished = previousEndpoint !== undefined && currentProgress === previousEndpoint && book.progressPercentage === 100;
+      const shouldUnfinishTrackedCompletion = Boolean(hasKnownTotal && wasTrackerFinished && !reachedEnd);
 
       return {
         ...book,
         progressPages: isAudiobook ? book.progressPages : nextProgress,
         progressMinutes: isAudiobook ? nextProgress : book.progressMinutes,
         progressPercentage,
-        status: progressPercentage === 100 ? 'finished' : wasTrackerFinished ? 'currently-reading' : book.status,
-        dateFinished: progressPercentage === 100 ? (book.dateFinished ?? latest?.date) : wasTrackerFinished ? undefined : book.dateFinished,
+        status: reachedEnd ? 'finished' : shouldUnfinishTrackedCompletion ? 'currently-reading' : book.status,
+        dateFinished: reachedEnd ? (book.dateFinished ?? latest?.date) : shouldUnfinishTrackedCompletion ? undefined : book.dateFinished,
         lastSessionDate: latest?.date,
       };
     }));
