@@ -93,6 +93,14 @@ const calculateCurrentStreak = (activeDates: string[]): number => {
   return streak;
 };
 
+const getActiveEdition = (book: UserBookRecord) => book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+
+const getCoverUrl = (book: UserBookRecord): string | undefined => {
+  const value = getActiveEdition(book)?.coverUrl?.trim();
+  if (!value) return undefined;
+  return value.startsWith('http://') ? `https://${value.slice('http://'.length)}` : value;
+};
+
 export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = ({ books, sessions, onSelectBook }) => {
   // This screen is the Inkbound tracker. Imported finish/read dates must never populate it.
   const trackerSessions = useMemo(() => sessions.filter((session) => Boolean(normalizeDateKey(session.date))), [sessions]);
@@ -118,6 +126,8 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
     });
     return map;
   }, [trackerSessions]);
+
+  const booksById = useMemo(() => new Map(books.map((book) => [book.id, book])), [books]);
 
   const activeDates = useMemo(() => [...activityByDate.keys()].sort(), [activityByDate]);
   const currentStreak = calculateCurrentStreak(activeDates);
@@ -187,16 +197,37 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
               const activity = activityByDate.get(date);
               const isToday = date === toLocalDateKey(new Date());
               const isSelected = date === selectedDate;
-              const intensity = activity?.minutes ? activity.minutes >= 90 ? 'bg-[var(--ink-mauve)]/55' : activity.minutes >= 45 ? 'bg-[var(--ink-mauve)]/35' : 'bg-[var(--ink-mauve)]/20' : 'bg-[var(--ink-surface-soft)]';
+              const dayBooks = activity
+                ? [...new Set(activity.sessions.map((session) => session.bookId))].map((bookId) => booksById.get(bookId)).filter((book): book is UserBookRecord => Boolean(book))
+                : [];
+              const visibleBooks = dayBooks.slice(0, 3);
+              const extraBooks = Math.max(0, dayBooks.length - visibleBooks.length);
               return (
-                <button key={date} type="button" onClick={() => setSelectedDate(date)} className={`relative aspect-square rounded-xl border p-1 text-left transition hover:-translate-y-0.5 hover:border-[var(--ink-mauve)] ${intensity} ${isSelected ? 'border-[var(--ink-gold)] ring-1 ring-[var(--ink-gold)]/40' : 'border-[var(--ink-border-subtle)]'}`} aria-label={`${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${activity?.sessions.length ?? 0} Inkbound reading sessions`}>
-                  <span className={`text-xs font-semibold ${isToday ? 'text-[var(--ink-gold)]' : 'text-[var(--ink-ivory)]'}`}>{Number(date.slice(-2))}</span>
-                  {activity && <span className="absolute inset-x-1 bottom-1 flex items-center justify-between text-[8px] text-[var(--ink-ivory)]/75"><span>{activity.minutes}m</span><BookOpen className="h-2.5 w-2.5" /></span>}
+                <button key={date} type="button" onClick={() => setSelectedDate(date)} className={`relative aspect-square overflow-hidden rounded-xl border bg-[var(--ink-surface-soft)] p-1 text-left transition hover:-translate-y-0.5 hover:border-[var(--ink-mauve)] ${isSelected ? 'border-[var(--ink-gold)] ring-1 ring-[var(--ink-gold)]/40' : 'border-[var(--ink-border-subtle)]'}`} aria-label={`${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${activity?.sessions.length ?? 0} Inkbound reading sessions${dayBooks.length ? ` across ${dayBooks.length} ${dayBooks.length === 1 ? 'book' : 'books'}` : ''}`}>
+                  <span className={`relative z-20 text-xs font-semibold drop-shadow ${isToday ? 'text-[var(--ink-gold)]' : 'text-[var(--ink-ivory)]'}`}>{Number(date.slice(-2))}</span>
+                  {visibleBooks.length > 0 && (
+                    <span className="absolute inset-x-1 bottom-1 top-6 flex items-end justify-center gap-0.5 overflow-hidden">
+                      {visibleBooks.map((book) => {
+                        const coverUrl = getCoverUrl(book);
+                        const edition = getActiveEdition(book);
+                        return (
+                          <span key={book.id} title={book.work.title} className={`relative h-full min-w-0 flex-1 overflow-hidden rounded-[4px] border border-white/15 bg-gradient-to-br ${edition?.coverGradient ?? 'from-[#4b2f50] via-[#2c1c32] to-[#161018]'}`}>
+                            {coverUrl ? (
+                              <img src={coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+                            ) : (
+                              <span className="flex h-full w-full items-center justify-center px-0.5 text-center font-serif text-[7px] leading-tight text-[var(--ink-ivory)]/85">{book.work.title}</span>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  )}
+                  {extraBooks > 0 && <span className="absolute bottom-1 right-1 z-30 rounded-full bg-black/75 px-1.5 py-0.5 text-[8px] font-bold text-white">+{extraBooks}</span>}
                 </button>
               );
             })}
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[var(--ink-muted)]"><span>Less</span><span className="h-4 w-4 rounded bg-[var(--ink-surface-soft)]" /><span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/20" /><span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/35" /><span className="h-4 w-4 rounded bg-[var(--ink-mauve)]/55" /><span>More reading</span></div>
+          <p className="mt-4 text-xs text-[var(--ink-muted)]">Days with reading sessions show the books you actually read. Select a day for time, pages, and full book details.</p>
         </section>
 
         <aside className="inkbound-panel rounded-3xl p-5">
