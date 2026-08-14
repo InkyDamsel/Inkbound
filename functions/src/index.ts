@@ -15,6 +15,8 @@ const OWNER_EMAILS = new Set([
   'inkbound@inkydameinteractive.com',
 ]);
 
+const IS_FUNCTIONS_EMULATOR = process.env.FUNCTIONS_EMULATOR === 'true';
+
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
 type EntitlementSource = 'free' | 'subscription' | 'vip' | 'courtesy';
 
@@ -170,15 +172,30 @@ export const syncUserDirectory = onCall(async (request) => {
 
   const entitlementRef = db.doc(`entitlements/${auth.uid}`);
   const entitlement = await entitlementRef.get();
+  const seedOwnerVipInDev = IS_FUNCTIONS_EMULATOR && OWNER_EMAILS.has(email);
+
   if (!entitlement.exists) {
     await entitlementRef.set({
-      basePlan: 'free',
+      basePlan: seedOwnerVipInDev ? 'premium' : 'free',
       subscriptionStatus: 'none',
-      vipEnabled: false,
-      effectiveSource: 'free' satisfies EntitlementSource,
+      vipEnabled: seedOwnerVipInDev,
+      effectiveSource: (seedOwnerVipInDev ? 'vip' : 'free') satisfies EntitlementSource,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+  } else if (seedOwnerVipInDev && entitlement.get('vipEnabled') !== true) {
+    // DEV starts with a fresh emulator workspace. Re-seed the protected owner
+    // entitlement so the account exercises the same Premium UI/behavior it has
+    // when VIP is enabled in production instead of silently reverting to Free.
+    await entitlementRef.set(
+      {
+        basePlan: 'premium',
+        vipEnabled: true,
+        effectiveSource: 'vip' satisfies EntitlementSource,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
   }
 
   return { synced: true };
