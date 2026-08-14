@@ -1,0 +1,54 @@
+import type { Edition, ReadingStatus, UserBookRecord } from '../../types';
+
+export interface BookReadingState {
+  status: ReadingStatus;
+  isFinished: boolean;
+  activeEdition?: Edition;
+  completedUnits: number;
+  totalUnits?: number;
+  progressPercentage: number;
+  progressNeedsCorrection: boolean;
+}
+
+export function getActiveEdition(book: UserBookRecord): Edition | undefined {
+  return book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+}
+
+export function getBookReadingState(book: UserBookRecord): BookReadingState {
+  const activeEdition = getActiveEdition(book);
+  const isAudiobook = activeEdition?.format === 'audiobook';
+  const completedUnits = Math.max(0, isAudiobook ? book.progressMinutes : book.progressPages);
+  const totalUnits = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
+  const isFinished = book.status === 'finished';
+
+  const calculatedPercentage = totalUnits && totalUnits > 0
+    ? Math.round((completedUnits / totalUnits) * 100)
+    : Math.max(0, Math.round(book.progressPercentage || 0));
+
+  // Status is the single source of truth for whether a book is finished.
+  // A non-finished book can temporarily have stale progress equal to its old total
+  // while the reader corrects page count/current progress. Never display that as
+  // "100% complete" because that would contradict the canonical status.
+  const progressNeedsCorrection = !isFinished && calculatedPercentage >= 100;
+  const progressPercentage = isFinished
+    ? 100
+    : Math.max(0, Math.min(progressNeedsCorrection ? 99 : 100, calculatedPercentage));
+
+  return {
+    status: book.status,
+    isFinished,
+    activeEdition,
+    completedUnits,
+    totalUnits,
+    progressPercentage,
+    progressNeedsCorrection,
+  };
+}
+
+export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, date = new Date().toISOString().split('T')[0]): UserBookRecord {
+  return {
+    ...book,
+    status,
+    dateFinished: status === 'finished' ? book.dateFinished ?? date : undefined,
+  };
+}
