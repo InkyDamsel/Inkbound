@@ -45,7 +45,6 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   const [date, setDate] = useState(session?.date ?? localDate());
   const [startTime, setStartTime] = useState(session?.startTime ?? '19:00');
   const [endTime, setEndTime] = useState(session?.endTime ?? '19:30');
-  const [durationMinutes, setDurationMinutes] = useState(session?.durationMinutes ?? 30);
   const [startProgress, setStartProgress] = useState(initialProgress);
   const [endProgress, setEndProgress] = useState(initialEndProgress);
   const [notes, setNotes] = useState(session?.notes ?? '');
@@ -56,6 +55,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
   const edition = selectedBook?.editions.find((item) => item.id === selectedBook.activeEditionId) ?? selectedBook?.editions[0];
   const isAudiobook = edition?.format === 'audiobook';
+  const durationMinutes = useMemo(() => minutesBetween(startTime, endTime), [startTime, endTime]);
 
   const handleBookChange = (nextBookId: string) => {
     setBookId(nextBookId);
@@ -67,16 +67,6 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
     const currentProgress = nextIsAudiobook ? nextBook.progressMinutes : nextBook.progressPages;
     setStartProgress(currentProgress);
     setEndProgress(currentProgress);
-  };
-
-  const updateTime = (kind: 'start' | 'end', value: string) => {
-    const nextStart = kind === 'start' ? value : startTime;
-    const nextEnd = kind === 'end' ? value : endTime;
-    if (kind === 'start') setStartTime(value);
-    else setEndTime(value);
-
-    const derivedDuration = minutesBetween(nextStart, nextEnd);
-    if (derivedDuration !== null) setDurationMinutes(derivedDuration);
   };
 
   const save = () => {
@@ -92,8 +82,8 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
       setError('A reading session cannot be saved in the future.');
       return;
     }
-    if (durationMinutes <= 0) {
-      setError('Duration must be at least 1 minute.');
+    if (durationMinutes === null || durationMinutes <= 0) {
+      setError('Choose valid start and end times for this session.');
       return;
     }
     if (endProgress < startProgress) {
@@ -152,9 +142,9 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
             </select>
           </label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Date<input type="date" max={localDate()} value={date} onChange={(event) => setDate(event.target.value)} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Duration (minutes)<input type="number" min={1} value={durationMinutes} onChange={(event) => setDurationMinutes(Math.max(0, Number(event.target.value) || 0))} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Start time<input type="time" value={startTime} onChange={(event) => updateTime('start', event.target.value)} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">End time<input type="time" value={endTime} onChange={(event) => updateTime('end', event.target.value)} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Duration (minutes)<input type="number" value={durationMinutes ?? ''} readOnly className="inkbound-select mt-1 w-full cursor-default opacity-80" aria-describedby="session-duration-help" /><span id="session-duration-help" className="mt-1 block font-normal text-[var(--ink-text-muted)]">Calculated from start and end time.</span></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Start time<input type="time" value={startTime} onChange={(event) => { setStartTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">End time<input type="time" value={endTime} onChange={(event) => { setEndTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Starting minute' : 'Starting page'}<input type="number" min={0} value={startProgress} onChange={(event) => setStartProgress(Math.max(0, Number(event.target.value) || 0))} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Ending minute' : 'Ending page'}<input type="number" min={0} value={endProgress} onChange={(event) => setEndProgress(Math.max(0, Number(event.target.value) || 0))} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Mood <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><input value={mood} onChange={(event) => setMood(event.target.value)} placeholder="e.g. Cozy, tense, emotional" className="inkbound-select mt-1 w-full" /></label>
