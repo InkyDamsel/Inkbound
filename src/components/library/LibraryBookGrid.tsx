@@ -140,6 +140,7 @@ export function LibraryBookGrid({
                   edition={activeEdition}
                   size="md"
                   progressPercentage={book.progressPercentage}
+                  isFinished={book.status === 'finished'}
                   rating={book.rating}
                   isSelected={isSelected}
                   onSelectToggle={() => onToggleSelectBook(book.id)}
