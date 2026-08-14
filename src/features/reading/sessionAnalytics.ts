@@ -1,7 +1,5 @@
 import type { ReadingSession, UserBookRecord } from '../../types';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 export interface ReadingPaceSummary {
   pagesPerHour?: number;
   remainingPages?: number;
@@ -13,6 +11,14 @@ export interface ReadingPaceSummary {
 const parseLocalDate = (date: string) => {
   const [year, month, day] = date.split('-').map(Number);
   return new Date(year, Math.max(0, (month || 1) - 1), day || 1);
+};
+
+// Calendar-day math must use local date fields rather than fixed 24-hour
+// millisecond jumps. Around DST transitions, a local day can be 23 or 25 hours.
+const addLocalDays = (value: Date, days: number) => {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next;
 };
 
 export const localDateKey = (value = new Date()) => {
@@ -45,13 +51,13 @@ export const getReadingStreak = (sessions: ReadingSession[], throughDate = local
   let cursor = parseLocalDate(throughDate);
   const todayKey = localDateKey(cursor);
   if (!readingDates.has(todayKey)) {
-    cursor = new Date(cursor.getTime() - DAY_MS);
+    cursor = addLocalDays(cursor, -1);
   }
 
   let streak = 0;
   while (readingDates.has(localDateKey(cursor))) {
     streak += 1;
-    cursor = new Date(cursor.getTime() - DAY_MS);
+    cursor = addLocalDays(cursor, -1);
   }
   return streak;
 };
@@ -101,12 +107,12 @@ export const getSevenDayAveragePace = (
   book: UserBookRecord,
   throughDate = localDateKey(),
 ): ReadingPaceSummary => {
-  const through = parseLocalDate(throughDate).getTime();
-  const start = through - 6 * DAY_MS;
+  const through = parseLocalDate(throughDate);
+  const start = addLocalDays(through, -6);
   const eligible = validPageSessions(sessions).filter((session) => {
     if (session.bookId !== book.id) return false;
-    const time = parseLocalDate(session.date).getTime();
-    return time >= start && time <= through;
+    const sessionDate = parseLocalDate(session.date);
+    return sessionDate >= start && sessionDate <= through;
   });
   const totalPages = eligible.reduce((sum, session) => sum + Math.max(0, session.pagesRead ?? 0), 0);
   const totalMinutes = eligible.reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
