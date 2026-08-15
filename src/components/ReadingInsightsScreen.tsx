@@ -14,6 +14,11 @@ import {
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
+import {
+  getSessionDurationMinutes,
+  getSessionPagesRead,
+  localDateKey,
+} from '../features/reading/sessionAnalytics';
 
 type InsightRange = '30-days' | '90-days' | 'all-time';
 type InsightCategory = 'all' | 'habits' | 'taste' | 'progress';
@@ -39,14 +44,26 @@ const rangeDays: Record<InsightRange, number | null> = {
   'all-time': null,
 };
 
+const parseLocalDateKey = (value: string): Date | null => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (
+    parsed.getFullYear() !== year
+    || parsed.getMonth() !== month - 1
+    || parsed.getDate() !== day
+  ) return null;
+  return parsed;
+};
+
 const getSessionHour = (session: ReadingSession) => {
   const hour = Number(session.startTime?.split(':')[0]);
-  return Number.isFinite(hour) ? hour : 12;
+  return Number.isFinite(hour) && hour >= 0 && hour <= 23 ? hour : null;
 };
 
 const mostCommon = (values: string[]) => {
   const counts = new Map<string, number>();
-  values.filter(Boolean).forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+  values.map((value) => value.trim()).filter(Boolean).forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
 };
 
@@ -57,37 +74,54 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
   const [dismissedIds, setDismissedIds] = usePersistentState<string[]>('inkbound_reading_insights_dismissed', []);
 
   const filteredSessions = useMemo(() => {
+    const validSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0 && parseLocalDateKey(session.date) !== null);
     const days = rangeDays[range];
-    if (!days) return sessions;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
-    return sessions.filter((session) => new Date(session.date) >= cutoff);
+    if (!days) return validSessions;
+
+    const through = parseLocalDateKey(localDateKey())!;
+    const cutoff = new Date(through);
+    cutoff.setDate(cutoff.getDate() - (days - 1));
+    return validSessions.filter((session) => {
+      const date = parseLocalDateKey(session.date);
+      return date !== null && date >= cutoff && date <= through;
+    });
   }, [range, sessions]);
 
   const insights = useMemo<InsightCard[]>(() => {
-    const totalMinutes = filteredSessions.reduce((sum, session) => sum + session.durationMinutes, 0);
+    const totalMinutes = filteredSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
     const avgMinutes = filteredSessions.length ? Math.round(totalMinutes / filteredSessions.length) : 0;
-    const nightSessions = filteredSessions.filter((session) => getSessionHour(session) >= 19 || getSessionHour(session) < 5);
-    const morningSessions = filteredSessions.filter((session) => getSessionHour(session) >= 5 && getSessionHour(session) < 12);
+    const timedSessions = filteredSessions.filter((session) => getSessionHour(session) !== null);
+    const nightSessions = timedSessions.filter((session) => {
+      const hour = getSessionHour(session)!;
+      return hour >= 19 || hour < 5;
+    });
+    const morningSessions = timedSessions.filter((session) => {
+      const hour = getSessionHour(session)!;
+      return hour >= 5 && hour < 12;
+    });
     const finishedBooks = books.filter((book) => book.status === 'finished');
-    const ratedBooks = finishedBooks.filter((book) => typeof book.rating === 'number');
+    const readingLifecycleBooks = books.filter((book) => ['currently-reading', 'finished', 'paused', 'dnf'].includes(book.status));
+    const ratedBooks = finishedBooks.filter((book) => typeof book.rating === 'number' && Number.isFinite(book.rating));
     const avgRating = ratedBooks.length
       ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length
       : 0;
     const genre = mostCommon(finishedBooks.flatMap((book) => book.work.genres));
     const location = mostCommon(filteredSessions.map((session) => session.location ?? ''));
     const mood = mostCommon(filteredSessions.map((session) => session.mood ?? ''));
-    const audiobookBooks = books.filter((book) =>
-      book.editions.some((edition) => edition.id === book.activeEditionId && edition.format === 'audiobook'),
-    );
+    const audiobookBooks = books.filter((book) => {
+      const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+      return activeEdition?.format === 'audiobook';
+    });
     const readingDays = new Set(filteredSessions.map((session) => session.date)).size;
-    const pages = filteredSessions.reduce((sum, session) => sum + (session.pagesRead ?? 0), 0);
-    const completedPercent = books.length ? Math.round((finishedBooks.length / books.length) * 100) : 0;
+    const pages = filteredSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+    const completedPercent = readingLifecycleBooks.length
+      ? Math.round((finishedBooks.length / readingLifecycleBooks.length) * 100)
+      : 0;
 
     const preferredTime = nightSessions.length >= morningSessions.length ? 'evening' : 'morning';
     const preferredCount = Math.max(nightSessions.length, morningSessions.length);
-    const preferredShare = filteredSessions.length
-      ? Math.round((preferredCount / filteredSessions.length) * 100)
+    const preferredShare = timedSessions.length
+      ? Math.round((preferredCount / timedSessions.length) * 100)
       : 0;
 
     return [
@@ -95,22 +129,28 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         id: 'reading-window',
         category: 'habits',
         eyebrow: 'Your natural reading window',
-        title: preferredTime === 'evening' ? 'Your reading life comes alive at night' : 'Mornings are your clearest reading time',
-        body: preferredTime === 'evening'
-          ? 'Your sessions cluster after the day has quieted down. Protecting a small evening window may help you read more consistently.'
-          : 'You tend to read before the day becomes busy. A short morning ritual could turn that pattern into a dependable habit.',
-        evidence: `${preferredShare}% of timed sessions happened in the ${preferredTime}.`,
+        title: timedSessions.length === 0
+          ? 'Your preferred reading time has not emerged yet'
+          : preferredTime === 'evening' ? 'Your reading life comes alive at night' : 'Mornings are your clearest reading time',
+        body: timedSessions.length === 0
+          ? 'Log sessions with start times and Inkbound will identify when reading most naturally fits your day.'
+          : preferredTime === 'evening'
+            ? 'Your sessions cluster after the day has quieted down. Protecting a small evening window may help you read more consistently.'
+            : 'You tend to read before the day becomes busy. A short morning ritual could turn that pattern into a dependable habit.',
+        evidence: timedSessions.length ? `${preferredShare}% of ${timedSessions.length} timed sessions happened in the ${preferredTime}.` : 'No valid timed sessions in this range.',
         icon: preferredTime === 'evening' ? Moon : Clock3,
       },
       {
         id: 'session-shape',
         category: 'habits',
         eyebrow: 'Your session style',
-        title: avgMinutes >= 40 ? 'You prefer immersive reading sessions' : 'Short sessions are carrying your momentum',
-        body: avgMinutes >= 40
-          ? 'You settle in for long stretches, which is ideal for complex stories and sustained immersion.'
-          : 'You are making progress through manageable pockets of time rather than waiting for a perfect long reading block.',
-        evidence: `${avgMinutes || 0} minute average across ${filteredSessions.length} sessions.`,
+        title: filteredSessions.length === 0 ? 'Your session pattern is still waiting to form' : avgMinutes >= 40 ? 'You prefer immersive reading sessions' : 'Short sessions are carrying your momentum',
+        body: filteredSessions.length === 0
+          ? 'Complete a few reading sessions and Inkbound will summarize the shape of your reading time.'
+          : avgMinutes >= 40
+            ? 'You settle in for long stretches, which is ideal for complex stories and sustained immersion.'
+            : 'You are making progress through manageable pockets of time rather than waiting for a perfect long reading block.',
+        evidence: filteredSessions.length ? `${avgMinutes} minute average across ${filteredSessions.length} completed sessions.` : 'No completed sessions in this range.',
         icon: Clock3,
       },
       {
@@ -121,29 +161,33 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         body: genre
           ? `You return to ${genre[0].toLowerCase()} more than any other genre. It is currently the clearest signal in your finished-book history.`
           : 'Finish and rate a few more books to reveal the genres that consistently earn your attention.',
-        evidence: genre ? `${genre[1]} finished books include this genre.` : 'Not enough finished-book data yet.',
+        evidence: genre ? `${genre[1]} finished books include this genre.` : 'Not enough finished-book genre data yet.',
         icon: Compass,
       },
       {
         id: 'rating-pattern',
         category: 'taste',
         eyebrow: 'Your satisfaction pattern',
-        title: avgRating >= 4.25 ? 'You are choosing books you genuinely love' : 'Your ratings show thoughtful selectiveness',
-        body: avgRating >= 4.25
-          ? 'Your completed books are landing exceptionally well, suggesting that your selection habits are closely aligned with your taste.'
-          : 'You are willing to distinguish between an enjoyable book and a true favorite instead of rating everything the same.',
-        evidence: ratedBooks.length ? `${avgRating.toFixed(1)} average rating across ${ratedBooks.length} finished books.` : 'Add ratings to unlock this pattern.',
+        title: ratedBooks.length === 0 ? 'Your rating pattern has not emerged yet' : avgRating >= 4.25 ? 'You are choosing books you genuinely love' : 'Your ratings show thoughtful selectiveness',
+        body: ratedBooks.length === 0
+          ? 'Rate finished books and Inkbound will look for patterns in what consistently works for you.'
+          : avgRating >= 4.25
+            ? 'Your completed books are landing exceptionally well, suggesting that your selection habits are closely aligned with your taste.'
+            : 'You are willing to distinguish between an enjoyable book and a true favorite instead of rating everything the same.',
+        evidence: ratedBooks.length ? `${avgRating.toFixed(1)} average rating across ${ratedBooks.length} finished books.` : 'No rated finished books yet.',
         icon: Sparkles,
       },
       {
         id: 'completion-pattern',
         category: 'progress',
         eyebrow: 'Your completion rhythm',
-        title: completedPercent >= 60 ? 'You tend to finish what you begin' : 'Your library reflects exploration over completion',
-        body: completedPercent >= 60
-          ? 'Your shelf shows strong follow-through. You may enjoy longer series and ambitious reading goals because completion is already part of your pattern.'
-          : 'You sample widely and keep options open. A smaller active-reading list may help when you want more finishes without losing variety.',
-        evidence: `${completedPercent}% of your library is marked finished.`,
+        title: readingLifecycleBooks.length === 0 ? 'Your completion rhythm is still forming' : completedPercent >= 60 ? 'You tend to finish what you begin' : 'Your reading history reflects exploration over completion',
+        body: readingLifecycleBooks.length === 0
+          ? 'Once books move into your active reading history, Inkbound can distinguish finishing patterns from the unread books still waiting on your shelf.'
+          : completedPercent >= 60
+            ? 'Your reading history shows strong follow-through. You may enjoy longer series and ambitious reading goals because completion is already part of your pattern.'
+            : 'You sample widely and keep options open. A smaller active-reading list may help when you want more finishes without losing variety.',
+        evidence: readingLifecycleBooks.length ? `${finishedBooks.length} of ${readingLifecycleBooks.length} books in your reading history are finished (${completedPercent}%).` : 'No books have entered the active reading lifecycle yet.',
         icon: Target,
       },
       {
@@ -154,7 +198,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         body: readingDays >= 12
           ? 'You are returning often enough that reading is becoming part of your normal rhythm rather than an occasional event.'
           : 'Your session length is less important than frequency right now. Even ten minutes on two additional days each week could create visible momentum.',
-        evidence: `${readingDays} active reading days and ${pages} pages recorded in this range.`,
+        evidence: `${readingDays} active reading days and ${pages} canonical pages recorded in this range.`,
         icon: TrendingUp,
       },
       {
@@ -165,7 +209,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         body: location
           ? `Your sessions repeatedly return to ${location[0].toLowerCase()}. That setting may be an important cue that helps you settle into a book.`
           : 'Add locations to sessions and Inkbound will identify the environments where you read most consistently.',
-        evidence: location ? `${location[1]} sessions were recorded there.` : 'No session locations recorded.',
+        evidence: location ? `${location[1]} completed sessions were recorded there.` : 'No session locations recorded in this range.',
         icon: BookOpen,
       },
       {
@@ -176,7 +220,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         body: audiobookBooks.length >= Math.max(2, Math.round(books.length * 0.25))
           ? 'Audiobooks are helping your reading fit into more parts of your day, giving you a second route into stories.'
           : 'Physical books and ebooks currently dominate your shelf, suggesting you value visual reading time and page-based progress.',
-        evidence: `${audiobookBooks.length} audiobook editions in your library${mood ? `; ${mood[0]} is your most logged mood` : ''}.`,
+        evidence: `${audiobookBooks.length} books currently use an audiobook as their active edition${mood ? `; ${mood[0]} is your most logged mood in this range` : ''}.`,
         icon: Headphones,
       },
     ];
