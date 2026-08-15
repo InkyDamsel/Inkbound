@@ -1,12 +1,8 @@
 import { Dispatch, SetStateAction, useEffect, useState } from 'react';
+import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 
 export function readPersistentValue<T>(key: string, fallback: T): T {
-  try {
-    const stored = window.localStorage.getItem(key);
-    return stored === null ? fallback : (JSON.parse(stored) as T);
-  } catch {
-    return fallback;
-  }
+  return readRuntimeJson(key, fallback);
 }
 
 export function usePersistentState<T>(
@@ -19,11 +15,9 @@ export function usePersistentState<T>(
   });
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Storage can fail in private browsing or when image data exceeds quota.
-    }
+    // Persistence is intentionally routed through the runtime adapter so native
+    // builds can replace browser storage without changing feature components.
+    writeRuntimeJson(key, value);
   }, [key, value]);
 
   return [value, setValue];
