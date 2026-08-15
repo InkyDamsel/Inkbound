@@ -9,6 +9,7 @@ import {
   Sparkles,
   Trophy,
 } from 'lucide-react';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 import {
   getLongestReadingStreak,
   getReadingDates,
@@ -66,8 +67,6 @@ const monthLabel = (key: string): string => {
   return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 };
 
-const getActiveEdition = (book: UserBookRecord) => book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
-
 const getCoverUrl = (book: UserBookRecord): string | undefined => {
   const value = getActiveEdition(book)?.coverUrl?.trim();
   if (!value) return undefined;
@@ -106,7 +105,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
   const currentStreak = getReadingStreak(trackerSessions);
   const longestStreak = getLongestReadingStreak(trackerSessions);
   const totalReadingDays = activeDates.length;
-  const thisMonthReadingDays = activeDates.filter((date) => date.startsWith(visibleMonth)).length;
+  const visibleMonthReadingDays = activeDates.filter((date) => date.startsWith(visibleMonth)).length;
 
   const calendarDays = useMemo(() => {
     const [year, month] = visibleMonth.split('-').map(Number);
@@ -143,13 +142,13 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
             <h2 id="reading-activity-title" className="mt-2 font-serif text-3xl text-[var(--ink-ivory)]">Streak & Calendar</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">This calendar only reflects reading sessions recorded with Inkbound. Imported reading dates never affect your streaks or tracker history.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => moveMonth(-1)} className="quiet-shelf-icon-button" aria-label="Previous month"><ChevronLeft /></button>
-            <div className="min-w-44 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-2 text-center">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <button type="button" onClick={() => moveMonth(-1)} className="quiet-shelf-icon-button shrink-0" aria-label="Previous month"><ChevronLeft /></button>
+            <div className="min-w-0 flex-1 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 py-2 text-center sm:min-w-44 sm:flex-none sm:px-4">
               <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">Activity month</span>
-              <strong className="font-serif text-lg text-[var(--ink-ivory)]">{monthLabel(visibleMonth)}</strong>
+              <strong className="block truncate font-serif text-lg text-[var(--ink-ivory)]">{monthLabel(visibleMonth)}</strong>
             </div>
-            <button type="button" onClick={() => moveMonth(1)} className="quiet-shelf-icon-button" aria-label="Next month"><ChevronRight /></button>
+            <button type="button" onClick={() => moveMonth(1)} className="quiet-shelf-icon-button shrink-0" aria-label="Next month"><ChevronRight /></button>
           </div>
         </div>
       </header>
@@ -158,7 +157,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
         <MetricCard icon={Flame} label="Current streak" value={`${currentStreak} ${currentStreak === 1 ? 'day' : 'days'}`} detail={currentStreak > 0 ? 'Your Inkbound reading rhythm is active.' : 'Save an Inkbound session to begin.'} />
         <MetricCard icon={Trophy} label="Longest streak" value={`${longestStreak} ${longestStreak === 1 ? 'day' : 'days'}`} detail="Your tracker-only personal best." />
         <MetricCard icon={CalendarDays} label="Reading days" value={totalReadingDays.toLocaleString()} detail="Days with completed Inkbound sessions." />
-        <MetricCard icon={Sparkles} label="This month" value={`${thisMonthReadingDays} ${thisMonthReadingDays === 1 ? 'day' : 'days'}`} detail={monthLabel(visibleMonth)} />
+        <MetricCard icon={Sparkles} label="Selected month" value={`${visibleMonthReadingDays} ${visibleMonthReadingDays === 1 ? 'day' : 'days'}`} detail={monthLabel(visibleMonth)} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -205,16 +204,16 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
 
         <aside className="inkbound-panel rounded-3xl p-5">
           <p className="inkbound-kicker">Selected day</p>
-          <h3 className="mt-2 font-serif text-2xl text-[var(--ink-ivory)]">{new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+          <h3 className="mt-2 break-words font-serif text-2xl text-[var(--ink-ivory)]">{new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
           {!selectedActivity ? (
             <div className="mt-5 rounded-2xl border border-dashed border-[var(--ink-border)] p-6 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[var(--ink-mauve)]" /><p className="mt-3 text-sm text-[var(--ink-muted)]">No completed Inkbound reading session was recorded on this day.</p></div>
           ) : (
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-[var(--ink-surface-soft)] p-3"><Clock3 className="h-4 w-4 text-[var(--ink-mauve)]" /><strong className="mt-2 block font-serif text-xl text-[var(--ink-ivory)]">{selectedActivity.minutes}m</strong><span className="text-xs text-[var(--ink-muted)]">Reading time</span></div>
-                <div className="rounded-xl bg-[var(--ink-surface-soft)] p-3"><BookOpen className="h-4 w-4 text-[var(--ink-mauve)]" /><strong className="mt-2 block font-serif text-xl text-[var(--ink-ivory)]">{selectedActivity.pages}</strong><span className="text-xs text-[var(--ink-muted)]">Pages read</span></div>
+                <div className="min-w-0 rounded-xl bg-[var(--ink-surface-soft)] p-3"><Clock3 className="h-4 w-4 text-[var(--ink-mauve)]" /><strong className="mt-2 block break-words font-serif text-xl text-[var(--ink-ivory)]">{selectedActivity.minutes}m</strong><span className="text-xs text-[var(--ink-muted)]">Reading time</span></div>
+                <div className="min-w-0 rounded-xl bg-[var(--ink-surface-soft)] p-3"><BookOpen className="h-4 w-4 text-[var(--ink-mauve)]" /><strong className="mt-2 block break-words font-serif text-xl text-[var(--ink-ivory)]">{selectedActivity.pages}</strong><span className="text-xs text-[var(--ink-muted)]">Pages read</span></div>
               </div>
-              {selectedSessionBooks.length > 0 && <div><h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books read</h4><div className="mt-2 grid gap-2">{selectedSessionBooks.map((book) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-left hover:border-[var(--ink-mauve)]"><strong className="block truncate text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><span className="text-xs text-[var(--ink-muted)]">{book.work.author}</span></button>)}</div></div>}
+              {selectedSessionBooks.length > 0 && <div><h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books read</h4><div className="mt-2 grid gap-2">{selectedSessionBooks.map((book) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="min-h-11 min-w-0 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-left hover:border-[var(--ink-mauve)]"><strong className="block truncate text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><span className="block truncate text-xs text-[var(--ink-muted)]">{book.work.author}</span></button>)}</div></div>}
             </div>
           )}
         </aside>
@@ -231,10 +230,10 @@ interface MetricCardProps {
 }
 
 const MetricCard: React.FC<MetricCardProps> = ({ icon: Icon, label, value, detail }) => (
-  <article className="inkbound-panel rounded-2xl p-5">
+  <article className="inkbound-panel min-w-0 rounded-2xl p-5">
     <Icon className="h-5 w-5 text-[var(--ink-mauve)]" />
     <span className="mt-4 block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{label}</span>
-    <strong className="mt-1 block font-serif text-3xl text-[var(--ink-ivory)]">{value}</strong>
-    <p className="mt-1 text-xs text-[var(--ink-muted)]">{detail}</p>
+    <strong className="mt-1 block break-words font-serif text-3xl text-[var(--ink-ivory)]">{value}</strong>
+    <p className="mt-1 break-words text-xs text-[var(--ink-muted)]">{detail}</p>
   </article>
 );
