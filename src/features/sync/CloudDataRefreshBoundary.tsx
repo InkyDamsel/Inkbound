@@ -1,6 +1,7 @@
 import React, { PropsWithChildren, useEffect, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { readRuntimeJson } from '../../platform/runtimeStorage';
 import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
@@ -30,7 +31,11 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
 
     if (getCloudDataRevision() > 0) refresh();
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
-    return () => window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
+    const unsubscribeResume = subscribeToRuntimeResume(refresh);
+    return () => {
+      window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
+      unsubscribeResume();
+    };
   }, [user?.uid]);
 
   if (user && revision === 0) {
