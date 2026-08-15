@@ -10,6 +10,7 @@ import {
   getSessionPagesRead,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { StatisticsGoalOverview } from './statistics/StatisticsGoalOverview';
 import { StatisticsSummaryGrid } from './statistics/StatisticsSummaryGrid';
@@ -18,9 +19,6 @@ interface StatisticsScreenProps {
   books: UserBookRecord[];
   sessions: ReadingSession[];
 }
-
-const getActiveEdition = (book: UserBookRecord) =>
-  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 
 const timeframeStart = (timeframe: string, today = new Date()) => {
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -41,19 +39,22 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     [books, formatFilter],
   );
   const filteredBookIds = useMemo(() => new Set(filteredBooks.map((book) => book.id)), [filteredBooks]);
+  const reportStart = timeframeStart(timeframe);
+  const reportEnd = localDateKey();
 
-  const filteredSessions = useMemo(() => {
-    const start = timeframeStart(timeframe);
-    const today = localDateKey();
-    return sessions.filter((session) => (
-      filteredBookIds.has(session.bookId)
-      && session.date >= start
-      && session.date <= today
-      && getSessionDurationMinutes(session) > 0
-    ));
-  }, [filteredBookIds, sessions, timeframe]);
+  const filteredSessions = useMemo(() => sessions.filter((session) => (
+    filteredBookIds.has(session.bookId)
+    && session.date >= reportStart
+    && session.date <= reportEnd
+    && getSessionDurationMinutes(session) > 0
+  )), [filteredBookIds, reportEnd, reportStart, sessions]);
 
   const finishedBooks = filteredBooks.filter((book) => book.status === 'finished');
+  const reportFinishedBooks = finishedBooks.filter((book) => (
+    Boolean(book.dateFinished)
+    && book.dateFinished! >= reportStart
+    && book.dateFinished! <= reportEnd
+  ));
   const tbrBooks = filteredBooks.filter((book) => book.status === 'tbr');
   const pausedBooks = filteredBooks.filter(
     (book) => book.status === 'paused' || book.status === 'dnf',
@@ -223,9 +224,9 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                 <Flame className="h-4 w-4 text-amber-500" /> Library Movement
               </h3>
               <dl className="space-y-2 text-xs">
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Finished</dt><dd className="font-bold text-emerald-400">{finishedBooks.length}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Waiting in TBR</dt><dd className="font-bold text-[#f4efe6]">{tbrBooks.length}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Paused or DNF</dt><dd className="font-bold text-stone-300">{pausedBooks.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Finished in period</dt><dd className="font-bold text-emerald-400">{reportFinishedBooks.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Waiting in TBR now</dt><dd className="font-bold text-[#f4efe6]">{tbrBooks.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Paused or DNF now</dt><dd className="font-bold text-stone-300">{pausedBooks.length}</dd></div>
               </dl>
             </article>
 
