@@ -11,6 +11,13 @@ import {
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, readDb } from '../../lib/firebase';
+import {
+  readRuntimeJson,
+  readRuntimeValue,
+  removeRuntimeValue,
+  writeRuntimeJson,
+  writeRuntimeValue,
+} from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 
 const BOOKS_KEY = 'inkbound_books';
@@ -31,15 +38,6 @@ interface ReaderProfile {
   bannerImage?: string;
 }
 
-function safeParse<T>(key: string, fallback: T): T {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? (JSON.parse(stored) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): T[] {
   const merged = new Map(localItems.map((item) => [item.id, item]));
   cloudItems.forEach((item) => merged.set(item.id, item));
@@ -47,10 +45,10 @@ function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): 
 }
 
 /**
- * Protected localhost mode intentionally disables browser-side production writes.
+ * Protected development mode intentionally disables browser-side production writes.
  * It must not disable account restoration. This bridge reads the signed-in user's
- * cloud library/profile on a second computer while leaving all write-capable sync
- * code disabled. Production uses CloudPersistenceBridge instead.
+ * cloud library/profile while leaving all write-capable sync code disabled.
+ * Production uses CloudPersistenceBridge instead.
  */
 export const ReadOnlyCloudHydrationBridge: React.FC = () => {
   const sync = useAccountSync();
@@ -65,10 +63,10 @@ export const ReadOnlyCloudHydrationBridge: React.FC = () => {
     const unsubscribers: Array<() => void> = [];
 
     const hydrate = async () => {
-      const previousOwnerUid = localStorage.getItem(OWNER_UID_KEY);
+      const previousOwnerUid = readRuntimeValue(OWNER_UID_KEY);
       const sameAccount = !previousOwnerUid || previousOwnerUid === uid;
-      const localBooks = sameAccount ? safeParse<UserBookRecord[]>(BOOKS_KEY, []) : [];
-      const localSessions = sameAccount ? safeParse<ReadingSession[]>(SESSIONS_KEY, []) : [];
+      const localBooks = sameAccount ? readRuntimeJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
+      const localSessions = sameAccount ? readRuntimeJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
 
       const booksRef = collection(readDb, 'users', uid, 'books');
       const sessionsRef = collection(readDb, 'users', uid, 'sessions');
@@ -91,17 +89,17 @@ export const ReadOnlyCloudHydrationBridge: React.FC = () => {
       const nextBooks = sameAccount ? mergeById(localBooks, cloudBooks) : cloudBooks;
       const nextSessions = sameAccount ? mergeById(localSessions, cloudSessions) : cloudSessions;
 
-      localStorage.setItem(BOOKS_KEY, JSON.stringify(nextBooks));
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(nextSessions));
+      writeRuntimeJson(BOOKS_KEY, nextBooks);
+      writeRuntimeJson(SESSIONS_KEY, nextSessions);
 
       if (profileSnapshot.exists()) {
         const cloudProfile = (profileSnapshot.data() as CloudRecord<ReaderProfile>).data;
-        if (cloudProfile) localStorage.setItem(PROFILE_KEY, JSON.stringify(cloudProfile));
+        if (cloudProfile) writeRuntimeJson(PROFILE_KEY, cloudProfile);
       } else if (!sameAccount) {
-        localStorage.removeItem(PROFILE_KEY);
+        removeRuntimeValue(PROFILE_KEY);
       }
 
-      localStorage.setItem(OWNER_UID_KEY, uid);
+      writeRuntimeValue(OWNER_UID_KEY, uid);
       notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
 
       const applyCollectionSnapshot = <T extends { id: string }>(
@@ -111,8 +109,8 @@ export const ReadOnlyCloudHydrationBridge: React.FC = () => {
         const cloudItems = snapshot.docs
           .map((item) => (item.data() as CloudRecord<T>).data)
           .filter(Boolean);
-        const current = safeParse<T[]>(storageKey, []);
-        localStorage.setItem(storageKey, JSON.stringify(mergeById(current, cloudItems)));
+        const current = readRuntimeJson<T[]>(storageKey, []);
+        writeRuntimeJson(storageKey, mergeById(current, cloudItems));
         notifyCloudDataUpdated([storageKey]);
       };
 
@@ -123,7 +121,7 @@ export const ReadOnlyCloudHydrationBridge: React.FC = () => {
           if (!snapshot.exists()) return;
           const cloudProfile = (snapshot.data() as CloudRecord<ReaderProfile>).data;
           if (!cloudProfile) return;
-          localStorage.setItem(PROFILE_KEY, JSON.stringify(cloudProfile));
+          writeRuntimeJson(PROFILE_KEY, cloudProfile);
           notifyCloudDataUpdated([PROFILE_KEY]);
         }),
       );
