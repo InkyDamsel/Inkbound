@@ -32,19 +32,38 @@ const FORMAT_LABELS: Record<Format, string> = {
   audiobook: 'Audiobook',
 };
 
+const timeToMinutes = (value?: string): number | null => {
+  if (!value) return null;
+  const [hourText, minuteText] = value.split(':');
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+};
+
 const getSessionTimestamp = (session: ReadingSession): number => {
   const dateMatch = session.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!dateMatch) return Number.NEGATIVE_INFINITY;
   const [, yearText, monthText, dayText] = dateMatch;
-  const [hourText, minuteText] = (session.endTime || session.startTime || '12:00').split(':');
   const year = Number(yearText);
   const month = Number(monthText);
   const day = Number(dayText);
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  if (![year, month, day, hour, minute].every(Number.isFinite)) return Number.NEGATIVE_INFINITY;
-  const timestamp = new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
-  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+  if (![year, month, day].every(Number.isFinite)) return Number.NEGATIVE_INFINITY;
+
+  const startMinutes = timeToMinutes(session.startTime);
+  const endMinutes = timeToMinutes(session.endTime);
+  const selectedMinutes = endMinutes ?? startMinutes ?? 12 * 60;
+  const hour = Math.floor(selectedMinutes / 60);
+  const minute = selectedMinutes % 60;
+  const timestamp = new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  // Sessions are stored under the day they began. If the recorded end clock
+  // is earlier than the start clock, the session crossed midnight.
+  if (endMinutes !== null && startMinutes !== null && endMinutes < startMinutes) {
+    timestamp.setDate(timestamp.getDate() + 1);
+  }
+
+  return Number.isFinite(timestamp.getTime()) ? timestamp.getTime() : Number.NEGATIVE_INFINITY;
 };
 
 const getReadingDaypart = (startTime: string): string => {
@@ -116,11 +135,10 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
     [completedSessions],
   );
 
-  const isAwakePose = Boolean(
-    recentSession
-      && getSessionTimestamp(recentSession) <= Date.now()
-      && Date.now() - getSessionTimestamp(recentSession) <= RECENT_READING_WINDOW_MS,
-  );
+  const recentSessionTimestamp = recentSession ? getSessionTimestamp(recentSession) : Number.NEGATIVE_INFINITY;
+  const isAwakePose = Number.isFinite(recentSessionTimestamp)
+    && recentSessionTimestamp <= Date.now()
+    && Date.now() - recentSessionTimestamp <= RECENT_READING_WINDOW_MS;
 
   const lumisPortrait = isAwakePose
     ? {
@@ -151,15 +169,15 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
             <span className="inkbound-eyebrow">Project Lumis · Your reading companion</span>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {isRenaming ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                   <input
                     value={draftName}
                     onChange={(event) => setDraftName(event.target.value)}
                     maxLength={28}
-                    className="min-h-11 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 text-[var(--ink-ivory)] outline-none"
+                    className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 text-[var(--ink-ivory)] outline-none sm:w-auto"
                     autoFocus
                   />
-                  <button type="button" onClick={saveName} className="quiet-shelf-primary-action">
+                  <button type="button" onClick={saveName} className="quiet-shelf-primary-action w-full justify-center sm:w-auto">
                     Save name
                   </button>
                 </div>
@@ -240,23 +258,23 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
         <dl className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
             <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">Favorite genre</dt>
-            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">{favoriteGenre}</dd>
+            <dd className="mt-2 break-words font-serif text-xl text-[var(--ink-ivory)]">{favoriteGenre}</dd>
           </div>
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
             <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">Favorite format</dt>
-            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">{favoriteFormat}</dd>
+            <dd className="mt-2 break-words font-serif text-xl text-[var(--ink-ivory)]">{favoriteFormat}</dd>
           </div>
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
             <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">
               Favorite reading time
             </dt>
-            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">{favoriteReadingTime}</dd>
+            <dd className="mt-2 break-words font-serif text-xl text-[var(--ink-ivory)]">{favoriteReadingTime}</dd>
           </div>
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
             <dt className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">
               Longest reading session
             </dt>
-            <dd className="mt-2 font-serif text-xl text-[var(--ink-ivory)]">{longestReadingSession}</dd>
+            <dd className="mt-2 break-words font-serif text-xl text-[var(--ink-ivory)]">{longestReadingSession}</dd>
           </div>
         </dl>
       </section>
