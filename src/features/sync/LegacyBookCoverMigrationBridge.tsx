@@ -4,12 +4,14 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { prepareBookCoverImage } from '../../platform/prepareBookCoverImage';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
+  getCloudDataRevision,
   INKBOUND_CLOUD_DATA_EVENT,
   notifyCloudDataUpdated,
   notifyLocalDataChanged,
 } from './cloudSyncEvents';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
+const LOCAL_DATA_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
 const LEGACY_COVER_PREFIX = 'data:image/';
 
 const readBooks = (): UserBookRecord[] => {
@@ -36,9 +38,10 @@ const dataUrlToFile = async (dataUrl: string, editionId: string) => {
  * data URLs inside Edition.coverUrl. New signed-in uploads already go directly
  * to Firebase Storage through prepareBookCoverImage().
  *
- * The bridge only rewrites the canonical book after a Storage upload succeeds.
- * Offline/failing migrations leave the old cover intact and retry later, so an
- * existing reader can never lose artwork during migration.
+ * Migration waits for the current authenticated account's cloud hydration before
+ * reading local book data. This prevents a stale cache from a previously signed-
+ * in account from ever being uploaded into the new account's Storage namespace.
+ * Offline/failing migrations keep the original cover intact and retry later.
  */
 export const LegacyBookCoverMigrationBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -48,8 +51,18 @@ export const LegacyBookCoverMigrationBridge: React.FC = () => {
     if (!user) return undefined;
     let disposed = false;
 
+    const currentAccountLibraryIsVerified = () =>
+      getCloudDataRevision() > 0
+      && getRuntimeStorage().getItem(LOCAL_DATA_OWNER_UID_KEY) === user.uid;
+
     const migrate = async () => {
-      if (disposed || running.current || !navigator.onLine) return;
+      if (
+        disposed
+        || running.current
+        || !navigator.onLine
+        || !currentAccountLibraryIsVerified()
+      ) return;
+
       const books = readBooks();
       const candidates = books.flatMap((book) =>
         book.editions
@@ -65,7 +78,7 @@ export const LegacyBookCoverMigrationBridge: React.FC = () => {
         // Keep migration deliberately sequential. A large imported library can
         // contain many legacy covers and should not spike phone memory/network.
         for (const candidate of candidates) {
-          if (disposed || !navigator.onLine) break;
+          if (disposed || !navigator.onLine || !currentAccountLibraryIsVerified()) break;
           try {
             const file = await dataUrlToFile(candidate.coverUrl, candidate.editionId);
             const uploadedUrl = await prepareBookCoverImage(file);
@@ -73,12 +86,12 @@ export const LegacyBookCoverMigrationBridge: React.FC = () => {
               replacements.set(`${candidate.bookId}:${candidate.editionId}`, uploadedUrl);
             }
           } catch {
-            // Preserve the embedded image and retry on the next online/resume
-            // cycle instead of partially damaging the canonical book record.
+            // Preserve the embedded image and retry on the next online/cloud
+            // refresh instead of partially damaging the canonical book record.
           }
         }
 
-        if (disposed || replacements.size === 0) return;
+        if (disposed || replacements.size === 0 || !currentAccountLibraryIsVerified()) return;
         const currentBooks = readBooks();
         let changed = false;
         const nextBooks = currentBooks.map((book) => ({
@@ -101,7 +114,7 @@ export const LegacyBookCoverMigrationBridge: React.FC = () => {
     };
 
     const retry = () => void migrate();
-    void migrate();
+    if (currentAccountLibraryIsVerified()) void migrate();
     window.addEventListener('online', retry);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, retry);
     return () => {
