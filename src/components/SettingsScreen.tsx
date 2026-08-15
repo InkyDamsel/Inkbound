@@ -23,6 +23,9 @@ import { useUserPlan } from '../context/UserPlanContext';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { auth, functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
+import { exportRuntimeTextFile } from '../platform/runtimeExport';
+import { removeRuntimeValuesByPrefix, writeRuntimeValue } from '../platform/runtimeStorage';
+import { localDateKey } from '../features/reading/sessionAnalytics';
 import type { ReadingSession, UserBookRecord } from '../types';
 
 interface SettingsScreenProps {
@@ -36,26 +39,8 @@ interface SettingsScreenProps {
 const CLEAR_DEVICE_PHRASE = 'CLEAR THIS DEVICE';
 const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
 
-const downloadBlob = (blob: Blob, filename: string) => {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-};
-
 const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
 const billingPortalUrl = import.meta.env.VITE_BILLING_PORTAL_URL?.trim() ?? '';
-
-const clearInkboundLocalData = () => {
-  Object.keys(localStorage)
-    .filter((key) => key.startsWith('inkbound_'))
-    .forEach((key) => localStorage.removeItem(key));
-};
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   books,
@@ -83,7 +68,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     window.setTimeout(() => setExported(false), 3000);
   };
 
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     const data = {
       schemaVersion: 1,
       app: 'Inkbound',
@@ -97,14 +82,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       sessions,
     };
 
-    downloadBlob(
-      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }),
-      `inkbound-library-backup-${new Date().toISOString().split('T')[0]}.json`,
-    );
+    await exportRuntimeTextFile({
+      filename: `inkbound-library-backup-${localDateKey()}.json`,
+      mimeType: 'application/json;charset=utf-8',
+      contents: JSON.stringify(data, null, 2),
+    });
     markExported();
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     const headers = [
       'Title',
       'Subtitle',
@@ -151,10 +137,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     });
 
     const csvContent = `\uFEFF${[headers.map(csvCell).join(','), ...rows.map((row) => row.join(','))].join('\n')}`;
-    downloadBlob(
-      new Blob([csvContent], { type: 'text/csv;charset=utf-8' }),
-      `inkbound-library-${new Date().toISOString().split('T')[0]}.csv`,
-    );
+    await exportRuntimeTextFile({
+      filename: `inkbound-library-${localDateKey()}.csv`,
+      mimeType: 'text/csv;charset=utf-8',
+      contents: csvContent,
+    });
     markExported();
   };
 
@@ -163,7 +150,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setIsClearing(true);
     try {
       if (user) {
-        localStorage.setItem(`inkbound_local_clear_intent_${user.uid}`, '1');
+        writeRuntimeValue(`inkbound_local_clear_intent_${user.uid}`, '1');
         await signOutAccount();
       }
       onResetData();
@@ -200,7 +187,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       await deleteAccount({ confirmation: DELETE_ACCOUNT_PHRASE });
 
       onResetData();
-      clearInkboundLocalData();
+      removeRuntimeValuesByPrefix('inkbound_');
       window.location.assign('/');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Inkbound could not delete this account.';
@@ -339,6 +326,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             Annual book goal
             <input
               type="number"
+              inputMode="numeric"
               min="1"
               max="10000"
               value={annualGoal}
@@ -350,6 +338,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             Daily reading target in minutes
             <input
               type="number"
+              inputMode="numeric"
               min="1"
               max="1440"
               value={dailyGoalMins}
@@ -366,10 +355,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           JSON preserves the complete Inkbound record. CSV creates a spreadsheet-friendly library using each book’s active edition.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <button type="button" onClick={handleExportJSON} className="quiet-shelf-primary-action justify-center">
+          <button type="button" onClick={() => void handleExportJSON()} className="quiet-shelf-primary-action justify-center">
             <Download className="h-4 w-4" /> Complete JSON backup
           </button>
-          <button type="button" onClick={handleExportCSV} className="quiet-shelf-secondary-action justify-center">
+          <button type="button" onClick={() => void handleExportCSV()} className="quiet-shelf-secondary-action justify-center">
             <FileSpreadsheet className="h-4 w-4" /> Library CSV
           </button>
           {exported && (
@@ -422,7 +411,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             className="relative w-full max-w-lg rounded-3xl border border-[#c97b7b]/35 bg-[#17101b] p-6 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <button type="button" disabled={isClearing} onClick={() => setResetDialogOpen(false)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)] disabled:opacity-40" aria-label="Close confirmation">
+            <button type="button" disabled={isClearing} onClick={() => setResetDialogOpen(false)} className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)] disabled:opacity-40" aria-label="Close confirmation">
               <X className="h-5 w-5" />
             </button>
             <h3 id="clear-data-title" className="pr-12 font-serif text-3xl text-[var(--ink-ivory)]">Clear this device?</h3>
@@ -468,7 +457,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               type="button"
               disabled={isDeletingAccount}
               onClick={() => setDeleteDialogOpen(false)}
-              className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)] disabled:opacity-40"
+              className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)] disabled:opacity-40"
               aria-label="Close confirmation"
             >
               <X className="h-5 w-5" />
@@ -498,7 +487,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             )}
 
             <div className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-xs leading-5 text-[var(--ink-muted)]">
-              We recommend downloading a Complete JSON backup before continuing. After both confirmations below, Inkbound will ask you to verify your Google account again. Deletion begins only after that verification succeeds.
+              We recommend exporting a Complete JSON backup before continuing. After both confirmations below, Inkbound will ask you to verify your account again. Deletion begins only after that verification succeeds.
             </div>
 
             <label className="mt-5 flex items-start gap-3 rounded-xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-4 text-sm leading-5 text-[var(--ink-muted)]">
@@ -547,7 +536,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 }
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Trash2 className="h-4 w-4" /> {isDeletingAccount ? 'Deleting account…' : 'Verify Google & delete account'}
+                <Trash2 className="h-4 w-4" /> {isDeletingAccount ? 'Deleting account…' : 'Verify account & delete'}
               </button>
             </div>
           </section>
