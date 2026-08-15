@@ -31,7 +31,7 @@ import { ImportSourceGrid } from './import/ImportSourceGrid';
 import { ImportHistoryScreen } from './ImportHistoryScreen';
 
 interface ImportCenterScreenProps {
-  currentBookCount: number;
+  books: UserBookRecord[];
   onExecuteImport: (importedItems: ImportRecordItem[]) => Promise<void> | void;
   onUndoLastImport?: () => void;
 }
@@ -45,8 +45,6 @@ export const IMPORT_SOURCES: ImportSourceInfo[] = [
 
 const steps = ['Select Source', 'Upload File', 'Analyze', 'Select Books', 'Complete'];
 const IMPORT_CENTER_VIEW_KEY = 'inkbound_import_center_view';
-const BOOKS_STORAGE_KEY = 'inkbound_books';
-const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 type ImportCenterView = 'import' | 'history';
 
 const sourceInstructions: Record<string, string[]> = {
@@ -77,17 +75,6 @@ function readImportCenterView(): ImportCenterView {
     return localStorage.getItem(IMPORT_CENTER_VIEW_KEY) === 'history' ? 'history' : 'import';
   } catch {
     return 'import';
-  }
-}
-
-function readStoredLibrary(): UserBookRecord[] {
-  try {
-    const stored = localStorage.getItem(BOOKS_STORAGE_KEY) ?? localStorage.getItem(LEGACY_BOOKS_STORAGE_KEY);
-    if (!stored) return [];
-    const parsed = JSON.parse(stored) as unknown;
-    return Array.isArray(parsed) ? parsed as UserBookRecord[] : [];
-  } catch {
-    return [];
   }
 }
 
@@ -208,17 +195,17 @@ async function readImportFile(file: File): Promise<ImportRecordItem[]> {
 }
 
 export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
-  currentBookCount,
+  books,
   onExecuteImport,
   onUndoLastImport,
 }) => {
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
   const isPremium = userPlan === 'premium';
+  const currentBookCount = books.length;
   const remainingFreeSlots = Math.max(0, freeBookLimit - currentBookCount);
   const initialJob = getImportVerificationSnapshot();
 
   const [centerView, setCenterView] = useState<ImportCenterView>(() => readImportCenterView());
-  const [historyBooks, setHistoryBooks] = useState<UserBookRecord[]>(() => readStoredLibrary());
   const [currentStep, setCurrentStep] = useState(initialJob.status === 'running' ? 4 : initialJob.status === 'complete' ? 5 : 1);
   const [selectedSource, setSelectedSource] = useState<ImportSourceInfo>(IMPORT_SOURCES[0]);
   const [importRecords, setImportRecords] = useState<ImportRecordItem[]>([]);
@@ -237,14 +224,11 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
 
   const switchCenterView = (view: ImportCenterView) => {
     setCenterView(view);
-    if (view === 'history') setHistoryBooks(readStoredLibrary());
     try { localStorage.setItem(IMPORT_CENTER_VIEW_KEY, view); } catch { /* no-op */ }
   };
 
   const resumeHistoryEnrichment = () => {
-    setHistoryBooks(readStoredLibrary());
     window.dispatchEvent(new Event('online'));
-    window.setTimeout(() => setHistoryBooks(readStoredLibrary()), 750);
   };
 
   useEffect(() => subscribeToImportVerification((job) => {
@@ -300,7 +284,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     try {
       const records = await readImportFile(file);
       if (records.length === 0) throw new Error('No recognizable book records were found in this file.');
-      const duplicateAnalysis = analyzeImportDuplicates(records);
+      const duplicateAnalysis = analyzeImportDuplicates(records, books);
       setImportRecords(records);
       setDuplicateRecords(duplicateAnalysis.duplicates);
       setSelectedFileName(file.name);
@@ -363,7 +347,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     const recordsToCheck = [...selectedRecords];
     setImportError(null);
     setVerificationProgress({ completed: 0, total: recordsToCheck.length });
-    void startImportVerificationJob(recordsToCheck, duplicateRecords, onExecuteImport);
+    void startImportVerificationJob(recordsToCheck, duplicateRecords, onExecuteImport, books);
   };
 
   const undoImport = () => {
@@ -411,7 +395,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
       </div>
 
       {centerView === 'history' ? (
-        <ImportHistoryScreen books={historyBooks} onResumeEnrichment={resumeHistoryEnrichment} />
+        <ImportHistoryScreen books={books} onResumeEnrichment={resumeHistoryEnrichment} />
       ) : (
         <>
           <div className="flex items-start gap-3 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4 text-xs text-stone-300">
