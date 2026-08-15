@@ -16,6 +16,8 @@ import {
 } from '../src/features/reading/sessionAnalytics';
 import {
   AUXILIARY_ACCOUNT_KEYS,
+  CORE_ACCOUNT_RUNTIME_KEYS,
+  getAccountOwnedKeysToClearForOwnerChange,
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
 
@@ -166,6 +168,18 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.deepEqual(
     getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-b').sort(),
     Object.values(AUXILIARY_ACCOUNT_KEYS).sort(),
+  );
+}
+
+// The full UID-transition boundary also purges canonical books, sessions, and
+// profile state. This protects the failure path where new-account hydration is
+// delayed or unavailable and prevents the previous reader from remaining visible.
+{
+  assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange(null, 'reader-a'), []);
+  assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange('reader-a', 'reader-a'), []);
+  assert.deepEqual(
+    getAccountOwnedKeysToClearForOwnerChange('reader-a', 'reader-b').sort(),
+    [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS)].sort(),
   );
 }
 
