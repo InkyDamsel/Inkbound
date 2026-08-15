@@ -2,16 +2,10 @@ import React, { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, CalendarDays, ImagePlus, MapPin, Search, Trash2, Undo2, X } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { PhotoMemoryRecord } from '../features/memories/photoMemoryStore';
+import { usePhotoMemories } from '../features/memories/usePhotoMemories';
 
-export interface PhotoMemory {
-  id: string;
-  imageData: string;
-  caption: string;
-  date: string;
-  location: string;
-  bookId?: string;
-  createdAt: string;
-}
+export type PhotoMemory = PhotoMemoryRecord;
 
 interface PhotoMemoriesScreenProps {
   books: UserBookRecord[];
@@ -23,7 +17,6 @@ interface DeletedPhotoMemory {
   index: number;
 }
 
-const PHOTO_MEMORIES_KEY = 'inkbound_photo_memories';
 const PHOTO_FILTER_KEY = 'inkbound_photo_memory_filter';
 const MAX_SOURCE_IMAGE_BYTES = 12 * 1024 * 1024;
 const UNDO_DELETE_MS = 7000;
@@ -65,7 +58,7 @@ function resizeImage(file: File): Promise<string> {
 }
 
 export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books, onSelectBook }) => {
-  const [memories, setMemories] = usePersistentState<PhotoMemory[]>(PHOTO_MEMORIES_KEY, []);
+  const [memories, setMemories] = usePhotoMemories();
   const [filter, setFilter] = usePersistentState<'all' | 'linked' | 'unlinked'>(PHOTO_FILTER_KEY, 'all');
   const [search, setSearch] = useState('');
   const [isComposerOpen, setIsComposerOpen] = useState(false);
