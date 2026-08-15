@@ -3,6 +3,7 @@ import type { ReadingSession, UserBookRecord } from '../src/types';
 import {
   getActiveEdition,
   getBookReadingState,
+  reconcileFinishedBookProgress,
   withReadingStatus,
 } from '../src/features/reading/bookReadingState';
 import {
@@ -61,6 +62,26 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(state.progressPercentage, 38);
 }
 
+// Legacy/imported Finished records sometimes retained stale partial progress.
+// Finished is authoritative when the active edition has a known endpoint, so
+// those records must resolve to 100% without leaving a permanent warning.
+{
+  const staleFinished = {
+    ...baseBook(),
+    status: 'finished' as const,
+    progressPages: 190,
+    progressPercentage: 38,
+    dateFinished: '2026-08-15',
+  };
+  const repaired = reconcileFinishedBookProgress(staleFinished);
+  assert.equal(repaired.progressPages, 500);
+  assert.equal(repaired.progressPercentage, 100);
+  const state = getBookReadingState(staleFinished);
+  assert.equal(state.completedUnits, 500);
+  assert.equal(state.progressPercentage, 100);
+  assert.equal(state.progressNeedsCorrection, false);
+}
+
 // Correcting a mistaken finished book back to currently-reading must remove the
 // finish date without destroying the progress itself.
 {
@@ -69,6 +90,15 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(corrected.status, 'currently-reading');
   assert.equal(corrected.dateFinished, undefined);
   assert.equal(corrected.progressPages, 190);
+}
+
+// Explicitly marking a known-length book Finished must canonicalize its endpoint.
+{
+  const finished = withReadingStatus(baseBook(), 'finished', '2026-08-15');
+  assert.equal(finished.status, 'finished');
+  assert.equal(finished.progressPages, 500);
+  assert.equal(finished.progressPercentage, 100);
+  assert.equal(finished.dateFinished, '2026-08-15');
 }
 
 // Session endpoints override legacy aggregate fields so edits cannot leave stale
