@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { GoogleAuthProvider, reauthenticateWithPopup } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import {
   AlertTriangle,
@@ -21,9 +20,13 @@ import {
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { auth, functions } from '../lib/firebase';
+import { functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
 import { exportRuntimeTextFile } from '../platform/runtimeExport';
+import {
+  getRuntimeReauthenticationRequirement,
+  reauthenticateRuntimeUser,
+} from '../platform/runtimeReauthentication';
 import { removeRuntimeValuesByPrefix, writeRuntimeValue } from '../platform/runtimeStorage';
 import { localDateKey } from '../features/reading/sessionAnalytics';
 import type { ReadingSession, UserBookRecord } from '../types';
@@ -60,8 +63,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteAcknowledged, setDeleteAcknowledged] = useState(false);
+  const [deleteSubscriptionAcknowledged, setDeleteSubscriptionAcknowledged] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState('');
+
+  const deleteReauthenticationRequirement = user
+    ? getRuntimeReauthenticationRequirement(user)
+    : 'unsupported';
+  const hasPaidSubscription = accessSource === 'subscription';
 
   const markExported = () => {
     setExported(true);
@@ -165,23 +175,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     if (
       deleteConfirmation.trim().toUpperCase() !== DELETE_ACCOUNT_PHRASE ||
       !deleteAcknowledged ||
+      (hasPaidSubscription && !deleteSubscriptionAcknowledged) ||
+      (deleteReauthenticationRequirement === 'password' && !deletePassword) ||
       isDeletingAccount ||
       !user ||
-      !auth ||
       !functions
     ) return;
-
-    if (accessSource === 'subscription') {
-      setDeleteAccountError('Cancel your paid subscription before deleting your Inkbound account.');
-      return;
-    }
 
     setIsDeletingAccount(true);
     setDeleteAccountError('');
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      await reauthenticateWithPopup(user, provider);
+      await reauthenticateRuntimeUser(user, { password: deletePassword });
 
       const deleteAccount = httpsCallable(functions, 'deleteMyAccount');
       await deleteAccount({ confirmation: DELETE_ACCOUNT_PHRASE });
@@ -392,6 +396,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               setDeleteAccountError('');
               setDeleteConfirmation('');
               setDeleteAcknowledged(false);
+              setDeleteSubscriptionAcknowledged(false);
+              setDeletePassword('');
               setDeleteDialogOpen(true);
             }}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -472,11 +478,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {accessSource === 'subscription' && (
+            {hasPaidSubscription && (
               <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-                <p className="text-sm font-bold text-amber-300">Cancel Premium first</p>
+                <p className="text-sm font-bold text-amber-300">Your subscription is managed separately</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                  Inkbound will not delete a login while a paid subscription may still bill. Cancel your subscription, wait for the entitlement to update, then return here.
+                  Deleting your Inkbound account does not automatically cancel an App Store, Google Play, or other paid subscription. Your account can still be deleted now, but billing may continue until you cancel the subscription with the store or billing provider that manages it.
                 </p>
                 {billingPortalUrl && (
                   <button type="button" onClick={() => window.location.assign(billingPortalUrl)} className="quiet-shelf-secondary-action mt-3 justify-center">
@@ -487,7 +493,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             )}
 
             <div className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-xs leading-5 text-[var(--ink-muted)]">
-              We recommend exporting a Complete JSON backup before continuing. After both confirmations below, Inkbound will ask you to verify your account again. Deletion begins only after that verification succeeds.
+              We recommend exporting a Complete JSON backup before continuing. Inkbound requires every confirmation below and fresh account verification before permanent deletion begins.
             </div>
 
             <label className="mt-5 flex items-start gap-3 rounded-xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-4 text-sm leading-5 text-[var(--ink-muted)]">
@@ -495,25 +501,68 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 type="checkbox"
                 checked={deleteAcknowledged}
                 onChange={(event) => setDeleteAcknowledged(event.target.checked)}
-                disabled={isDeletingAccount || accessSource === 'subscription'}
+                disabled={isDeletingAccount}
                 className="mt-0.5 h-4 w-4 shrink-0"
               />
               <span>
                 I understand that deleting my account permanently removes my Inkbound account and cloud data and cannot be undone.
               </span>
             </label>
+
+            {hasPaidSubscription && (
+              <label className="mt-3 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm leading-5 text-[var(--ink-muted)]">
+                <input
+                  type="checkbox"
+                  checked={deleteSubscriptionAcknowledged}
+                  onChange={(event) => setDeleteSubscriptionAcknowledged(event.target.checked)}
+                  disabled={isDeletingAccount}
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                />
+                <span>
+                  I understand that deleting my Inkbound account does not cancel my paid subscription and I must manage that subscription separately.
+                </span>
+              </label>
+            )}
+
             <label className="mt-5 block text-sm font-semibold text-[var(--ink-ivory)]">
               Type <span className="select-all">{DELETE_ACCOUNT_PHRASE}</span> to confirm
               <input
                 value={deleteConfirmation}
                 onChange={(event) => setDeleteConfirmation(event.target.value)}
-                disabled={isDeletingAccount || accessSource === 'subscription'}
+                disabled={isDeletingAccount}
                 autoComplete="off"
                 spellCheck={false}
                 placeholder={DELETE_ACCOUNT_PHRASE}
                 className="mt-2 min-h-12 w-full rounded-xl border border-[#c97b7b]/40 bg-[#0d0910] px-4 text-[var(--ink-ivory)] outline-none disabled:opacity-45"
               />
             </label>
+
+            {deleteReauthenticationRequirement === 'password' && (
+              <label className="mt-5 block text-sm font-semibold text-[var(--ink-ivory)]">
+                Verify with your Inkbound password
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(event) => setDeletePassword(event.target.value)}
+                  disabled={isDeletingAccount}
+                  autoComplete="current-password"
+                  placeholder="Account password"
+                  className="mt-2 min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[#0d0910] px-4 text-[var(--ink-ivory)] outline-none disabled:opacity-45"
+                />
+              </label>
+            )}
+
+            {deleteReauthenticationRequirement === 'google' && (
+              <p className="mt-4 text-xs leading-5 text-[var(--ink-muted)]">
+                After you press the final delete button, Google will ask you to verify this account again before Inkbound sends the deletion request.
+              </p>
+            )}
+
+            {deleteReauthenticationRequirement === 'unsupported' && (
+              <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-200">
+                This account's sign-in provider needs a platform reauthentication adapter before deletion can continue on this device.
+              </p>
+            )}
 
             {deleteAccountError && (
               <p className="mt-4 rounded-xl border border-[#c97b7b]/30 bg-[#c97b7b]/10 p-3 text-sm text-[#e9b2b2]" role="alert">
@@ -531,12 +580,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 disabled={
                   deleteConfirmation.trim().toUpperCase() !== DELETE_ACCOUNT_PHRASE ||
                   !deleteAcknowledged ||
-                  isDeletingAccount ||
-                  accessSource === 'subscription'
+                  (hasPaidSubscription && !deleteSubscriptionAcknowledged) ||
+                  (deleteReauthenticationRequirement === 'password' && !deletePassword) ||
+                  deleteReauthenticationRequirement === 'unsupported' ||
+                  isDeletingAccount
                 }
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Trash2 className="h-4 w-4" /> {isDeletingAccount ? 'Deleting account…' : 'Verify account & delete'}
+                <Trash2 className="h-4 w-4" /> {isDeletingAccount ? 'Deleting account…' : 'Verify & permanently delete'}
               </button>
             </div>
           </section>
