@@ -3,6 +3,11 @@ import { Download, Image, Lock, Share2, Sparkles } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
+import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
+import {
+  exportRuntimeBinaryFile,
+  shareRuntimeBinaryFile,
+} from '../platform/runtimeExport';
 
 interface InkboundStudioScreenProps {
   books: UserBookRecord[];
@@ -78,12 +83,24 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
   const [message, setMessage] = useState('');
 
   const selectedBook = books.find((book) => book.id === preferences.selectedBookId) ?? shareableBooks[0] ?? books[0];
-  const bookSessions = sessions.filter((session) => session.bookId === selectedBook?.id);
-  const readingMinutes = bookSessions.reduce((sum, session) => sum + session.durationMinutes, 0);
+  const completedBookSessions = sessions.filter(
+    (session) => session.bookId === selectedBook?.id && getSessionDurationMinutes(session) > 0,
+  );
+  const readingMinutes = completedBookSessions.reduce(
+    (sum, session) => sum + getSessionDurationMinutes(session),
+    0,
+  );
   const edition = selectedBook?.editions.find((item) => item.id === selectedBook.activeEditionId) ?? selectedBook?.editions[0];
   const format = formats[preferences.format];
   const theme = themes[preferences.theme];
   const isSquare = preferences.format === 'square';
+  const lengthText = edition?.format === 'audiobook'
+    ? edition.audiobookDurationMins && edition.audiobookDurationMins > 0
+      ? `${Math.floor(edition.audiobookDurationMins / 60)}h ${edition.audiobookDurationMins % 60}m audio`
+      : 'Audio length unavailable'
+    : edition?.pageCount && edition.pageCount > 0
+      ? `${edition.pageCount} pages`
+      : 'Page count unavailable';
 
   const previewStyle = useMemo(() => ({
     aspectRatio: `${format.width} / ${format.height}`,
@@ -98,9 +115,6 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
     const rating = selectedBook.rating
       ? `${'★'.repeat(Math.round(selectedBook.rating))}${'☆'.repeat(Math.max(0, 5 - Math.round(selectedBook.rating)))}`
       : '';
-    const pageText = edition?.format === 'audiobook'
-      ? `${Math.floor((edition.audiobookDurationMins ?? 0) / 60)} hours`
-      : `${edition?.pageCount ?? selectedBook.progressPages ?? 0} pages`;
     const timeText = `${Math.floor(readingMinutes / 60)}h ${readingMinutes % 60}m reading`;
     const status = selectedBook.status === 'finished' ? 'FINISHED' : 'CURRENTLY READING';
     const titleFontSize = isSquare ? 58 : Math.max(48, format.width * 0.062);
@@ -124,14 +138,14 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
       <text text-anchor="middle" fill="${theme.text}" font-family="Georgia,serif" font-size="${titleFontSize}" font-weight="700">${titleMarkup}</text>
       <text x="50%" y="${authorY}%" text-anchor="middle" fill="${theme.text}" opacity=".72" font-family="Arial,sans-serif" font-size="30">${author}</text>
       ${preferences.showRating && rating ? `<text x="50%" y="${ratingY}%" text-anchor="middle" fill="${theme.accent}" font-size="45">${rating}</text>` : ''}
-      ${preferences.showPages ? `<text x="50%" y="${pagesY}%" text-anchor="middle" fill="${theme.text}" opacity=".82" font-family="Arial,sans-serif" font-size="30">${pageText}</text>` : ''}
+      ${preferences.showPages ? `<text x="50%" y="${pagesY}%" text-anchor="middle" fill="${theme.text}" opacity=".82" font-family="Arial,sans-serif" font-size="30">${escapeXml(lengthText)}</text>` : ''}
       ${preferences.showReadingTime ? `<text x="50%" y="${readingTimeY}%" text-anchor="middle" fill="${theme.text}" opacity=".82" font-family="Arial,sans-serif" font-size="30">${timeText}</text>` : ''}
       ${preferences.showName ? `<text x="50%" y="${isSquare ? 82 : 81}%" text-anchor="middle" fill="${theme.text}" opacity=".7" font-family="Georgia,serif" font-size="27">A reader's life, remembered.</text>` : ''}
       <text x="50%" y="89%" text-anchor="middle" fill="${theme.accent}" font-family="Arial,sans-serif" font-size="24">Created with Inkbound</text>
     </svg>`;
   };
 
-  const createPngFile = async () => {
+  const createPng = async () => {
     const svg = buildSvg();
     if (!svg) throw new Error('Choose a book before exporting.');
     const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
@@ -143,7 +157,9 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
       const canvas = document.createElement('canvas');
       canvas.width = format.width;
       canvas.height = format.height;
-      canvas.getContext('2d')?.drawImage(image, 0, 0);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not prepare the share image.');
+      context.drawImage(image, 0, 0);
       const pngBlob = await new Promise<Blob>((resolve, reject) =>
         canvas.toBlob(
           (result) => result ? resolve(result) : reject(new Error('Could not create image.')),
@@ -151,11 +167,8 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
           1,
         ),
       );
-      return new File(
-        [pngBlob],
-        `inkbound-${selectedBook?.work.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'share-card'}.png`,
-        { type: 'image/png' },
-      );
+      const filename = `inkbound-${selectedBook?.work.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'share-card'}.png`;
+      return { filename, blob: pngBlob };
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -163,14 +176,9 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
 
   const downloadImage = async () => {
     try {
-      const file = await createPngFile();
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = file.name;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage('Share image downloaded.');
+      const { filename, blob } = await createPng();
+      await exportRuntimeBinaryFile({ filename, mimeType: 'image/png', contents: blob });
+      setMessage('Share image saved.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Export failed.');
     }
@@ -178,18 +186,15 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
 
   const shareImage = async () => {
     try {
-      const file = await createPngFile();
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: 'My Inkbound reading card',
-          text: 'Made with Inkbound',
-          files: [file],
-        });
-        setMessage('Share sheet opened.');
-      } else {
-        await downloadImage();
-        setMessage('Direct sharing is not supported here, so the image was downloaded instead.');
-      }
+      const { filename, blob } = await createPng();
+      const result = await shareRuntimeBinaryFile({
+        filename,
+        mimeType: 'image/png',
+        contents: blob,
+        title: 'My Inkbound reading card',
+        text: 'Made with Inkbound',
+      });
+      setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the image was saved instead.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.');
     }
@@ -205,8 +210,8 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
         </p>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-        <section className="inkbound-panel space-y-5 rounded-3xl p-5 sm:p-7">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+        <section className="inkbound-panel min-w-0 space-y-5 rounded-3xl p-5 sm:p-7">
           <label className="block text-sm font-semibold text-[var(--ink-ivory)]">
             Book
             <select
@@ -273,9 +278,9 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
             ].map(([key, label]) => (
               <label
                 key={key}
-                className="flex min-h-11 items-center justify-between rounded-xl border border-[var(--ink-border-subtle)] px-4 text-sm text-[var(--ink-muted)]"
+                className="flex min-h-11 items-center justify-between gap-4 rounded-xl border border-[var(--ink-border-subtle)] px-4 text-sm text-[var(--ink-muted)]"
               >
-                {label}
+                <span className="min-w-0">{label}</span>
                 <input
                   type="checkbox"
                   checked={preferences[key as keyof SharePreferences] as boolean}
@@ -290,17 +295,19 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
           <div className="grid gap-3 sm:grid-cols-2">
             <button
               type="button"
+              disabled={!selectedBook}
               onClick={() => void shareImage()}
-              className="quiet-shelf-primary-action min-h-12 justify-center"
+              className="quiet-shelf-primary-action min-h-12 justify-center disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Share2 className="h-4 w-4" /> Share
             </button>
             <button
               type="button"
+              disabled={!selectedBook}
               onClick={() => void downloadImage()}
-              className="quiet-shelf-secondary-action min-h-12 justify-center"
+              className="quiet-shelf-secondary-action min-h-12 justify-center disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <Download className="h-4 w-4" /> Download PNG
+              <Download className="h-4 w-4" /> Save PNG
             </button>
           </div>
 
@@ -309,74 +316,68 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
               type="button"
               onClick={() =>
                 openUpgradeModal(
-                  'Unlock high-resolution exports, animated cards, PDF keepsakes, and premium Studio themes',
+                  'Premium adds Inkbound’s advanced creative and reflection tools.',
                 )
               }
-              className="flex w-full items-center gap-3 rounded-xl border border-[var(--ink-border)] p-4 text-left text-sm text-[var(--ink-muted)]"
+              className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-[var(--ink-border)] p-4 text-left text-sm text-[var(--ink-muted)]"
             >
-              <Lock className="h-4 w-4 text-[var(--ink-gold)]" />
-              <span>
-                <strong className="block text-[var(--ink-ivory)]">More in Premium</strong>
-                Animated cards, PDF keepsakes, exclusive themes, and transparent exports.
+              <Lock className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
+              <span className="min-w-0">
+                <strong className="block text-[var(--ink-ivory)]">More with Premium</strong>
+                Explore Inkbound’s deeper creative and reading-history experiences.
               </span>
             </button>
           )}
-          {message && <p role="status" className="text-sm text-[var(--ink-muted)]">{message}</p>}
+          {message && <p role="status" className="break-words text-sm text-[var(--ink-muted)]">{message}</p>}
         </section>
 
-        <section className="inkbound-panel flex min-h-[640px] items-center justify-center rounded-3xl p-5 sm:p-8">
+        <section className="inkbound-panel flex min-h-[460px] min-w-0 items-center justify-center rounded-3xl p-4 sm:min-h-[640px] sm:p-8">
           {selectedBook ? (
             <div
-              className={`relative flex w-full max-w-[520px] flex-col items-center justify-between overflow-hidden rounded-[32px] border border-white/15 text-center shadow-2xl ${
+              className={`relative flex w-full max-w-[520px] flex-col items-center justify-between overflow-hidden rounded-[24px] border border-white/15 text-center shadow-2xl sm:rounded-[32px] ${
                 isSquare ? 'p-[6%]' : 'p-[8%]'
               }`}
               style={previewStyle}
             >
               <div>
                 <p
-                  className="text-xs font-bold uppercase tracking-[0.4em]"
+                  className="text-[10px] font-bold uppercase tracking-[0.3em] sm:text-xs sm:tracking-[0.4em]"
                   style={{ color: theme.accent }}
                 >
                   Inkbound
                 </p>
                 <p
-                  className={`${isSquare ? 'mt-4 text-xs' : 'mt-8 text-sm'} font-bold uppercase tracking-[0.25em] opacity-80`}
+                  className={`${isSquare ? 'mt-4 text-xs' : 'mt-6 text-xs sm:mt-8 sm:text-sm'} font-bold uppercase tracking-[0.2em] opacity-80 sm:tracking-[0.25em]`}
                 >
                   {selectedBook.status === 'finished' ? 'Finished' : 'Currently Reading'}
                 </p>
               </div>
 
-              <div className={isSquare ? 'my-4' : 'my-12'}>
+              <div className={isSquare ? 'my-4 min-w-0' : 'my-8 min-w-0 sm:my-12'}>
                 <Sparkles
-                  className={`mx-auto ${isSquare ? 'mb-3 h-7 w-7' : 'mb-6 h-8 w-8'}`}
+                  className={`mx-auto ${isSquare ? 'mb-3 h-7 w-7' : 'mb-4 h-7 w-7 sm:mb-6 sm:h-8 sm:w-8'}`}
                   style={{ color: theme.accent }}
                 />
                 <h2
-                  className={`font-serif font-bold leading-tight ${
-                    isSquare ? 'text-3xl sm:text-4xl' : 'text-4xl sm:text-5xl'
+                  className={`break-words font-serif font-bold leading-tight ${
+                    isSquare ? 'text-2xl sm:text-4xl' : 'text-3xl sm:text-5xl'
                   }`}
                 >
                   {selectedBook.work.title}
                 </h2>
-                <p className={`${isSquare ? 'mt-2 text-sm' : 'mt-4 text-base'} opacity-70`}>
+                <p className={`${isSquare ? 'mt-2 text-sm' : 'mt-3 text-sm sm:mt-4 sm:text-base'} break-words opacity-70`}>
                   {selectedBook.work.author}
                 </p>
                 {preferences.showRating && selectedBook.rating && (
                   <p
-                    className={`${isSquare ? 'mt-3 text-xl' : 'mt-7 text-2xl'}`}
+                    className={`${isSquare ? 'mt-3 text-xl' : 'mt-5 text-xl sm:mt-7 sm:text-2xl'}`}
                     style={{ color: theme.accent }}
                   >
                     {'★'.repeat(Math.round(selectedBook.rating))}
                   </p>
                 )}
-                <div className={`${isSquare ? 'mt-3 space-y-1 text-xs' : 'mt-8 space-y-2 text-sm'} opacity-80`}>
-                  {preferences.showPages && (
-                    <p>
-                      {edition?.format === 'audiobook'
-                        ? `${Math.floor((edition.audiobookDurationMins ?? 0) / 60)} hours`
-                        : `${edition?.pageCount ?? selectedBook.progressPages ?? 0} pages`}
-                    </p>
-                  )}
+                <div className={`${isSquare ? 'mt-3 space-y-1 text-xs' : 'mt-6 space-y-2 text-xs sm:mt-8 sm:text-sm'} opacity-80`}>
+                  {preferences.showPages && <p>{lengthText}</p>}
                   {preferences.showReadingTime && (
                     <p>{Math.floor(readingMinutes / 60)}h {readingMinutes % 60}m reading</p>
                   )}
@@ -401,7 +402,7 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
             <div className="text-center">
               <Image className="mx-auto h-10 w-10 text-[var(--ink-gold)]" />
               <p className="mt-3 text-sm text-[var(--ink-muted)]">
-                Add a book to create your first share card.
+                Add or start a book to create your first share card.
               </p>
             </div>
           )}
