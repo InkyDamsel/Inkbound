@@ -6,6 +6,7 @@ import {
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from '../features/sync/cloudSyncEvents';
+import { readRuntimeJson } from '../platform/runtimeStorage';
 
 const PROFILE_STORAGE_KEY = 'inkbound_reader_profile';
 
@@ -15,14 +16,8 @@ interface StoredReaderIdentity {
   avatarImageData?: string;
 }
 
-const readStoredIdentity = (): StoredReaderIdentity => {
-  try {
-    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as StoredReaderIdentity) : {};
-  } catch {
-    return {};
-  }
-};
+const readStoredIdentity = (): StoredReaderIdentity =>
+  readRuntimeJson<StoredReaderIdentity>(PROFILE_STORAGE_KEY, {});
 
 export const useReaderProfileIdentity = () => {
   const { user } = useAccountSync();
