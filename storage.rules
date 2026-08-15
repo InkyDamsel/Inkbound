@@ -15,16 +15,26 @@ service firebase.storage {
         || request.resource.contentType == 'image/webp';
     }
 
-    // Profile media is normalized to WebP before upload. Keep these paths
-    // intentionally narrow so arbitrary user files cannot be stored here.
+    function isProfileMediaFile(fileName) {
+      return fileName == 'avatar.webp'
+        || fileName == 'banner.webp'
+        // Older Inkbound builds used a short content hash while migrating
+        // embedded profile images. Keep only that exact legacy shape writable
+        // until all existing accounts have crossed the migration boundary.
+        || fileName.matches('avatar-[A-Za-z0-9_-]{1,32}\\.webp')
+        || fileName.matches('banner-[A-Za-z0-9_-]{1,32}\\.webp');
+    }
+
+    // Profile media is normalized to WebP before upload. Paths remain narrow:
+    // current fixed filenames plus the legacy migration filename shape only.
     match /users/{userId}/profile/{fileName} {
       allow read: if isOwner(userId);
       allow create, update: if isOwner(userId)
-        && (fileName == 'avatar.webp' || fileName == 'banner.webp')
+        && isProfileMediaFile(fileName)
         && request.resource.size < 600 * 1024
         && request.resource.contentType == 'image/webp';
       allow delete: if isOwner(userId)
-        && (fileName == 'avatar.webp' || fileName == 'banner.webp');
+        && isProfileMediaFile(fileName);
     }
 
     // Photo memories are private user media. Current clients upload JPEGs,
@@ -37,6 +47,21 @@ service firebase.storage {
         && isSupportedPhotoMemoryType();
       allow delete: if isOwner(userId)
         && fileName.matches('[A-Za-z0-9_-]{1,128}');
+    }
+
+    // Manual book-cover media is private to the reader. New cover migration
+    // writes normalized WebP binaries here; canonical edition records carry
+    // only the resulting download URL.
+    match /users/{userId}/book-covers/{bookId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && bookId.matches('[A-Za-z0-9_-]{1,128}')
+        && fileName.matches('[A-Za-z0-9_-]{1,128}\\.webp')
+        && request.resource.size < 512 * 1024
+        && request.resource.contentType == 'image/webp';
+      allow delete: if isOwner(userId)
+        && bookId.matches('[A-Za-z0-9_-]{1,128}')
+        && fileName.matches('[A-Za-z0-9_-]{1,128}\\.webp');
     }
 
     match /{allPaths=**} {
