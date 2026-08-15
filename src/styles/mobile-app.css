@@ -5,6 +5,10 @@
   min-height: 100dvh;
 }
 
+.inkbound-responsive-grid > * {
+  min-width: 0;
+}
+
 @media (pointer: coarse) {
   .inkbound-app-shell button,
   .inkbound-app-shell [role='button'],
