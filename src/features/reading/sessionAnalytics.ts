@@ -32,6 +32,25 @@ const remainingPagesForBook = (book?: UserBookRecord) => {
   return Math.max(0, totalPages - Math.max(0, book.progressPages));
 };
 
+// Session endpoints are the canonical page-progress record when both exist.
+// Fall back to pagesRead only for legacy sessions that do not have endpoints.
+const pagesReadForSession = (
+  session: Pick<ReadingSession, 'startPage' | 'endPage' | 'pagesRead'>,
+) => {
+  if (
+    typeof session.startPage === 'number'
+    && Number.isFinite(session.startPage)
+    && typeof session.endPage === 'number'
+    && Number.isFinite(session.endPage)
+  ) {
+    return Math.max(0, session.endPage - session.startPage);
+  }
+
+  return typeof session.pagesRead === 'number' && Number.isFinite(session.pagesRead)
+    ? Math.max(0, session.pagesRead)
+    : 0;
+};
+
 export const localDateKey = (value = new Date()) => {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, '0');
@@ -79,16 +98,16 @@ export const getDailyReadingMinutes = (sessions: ReadingSession[], date = localD
     .reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
 
 const validPageSessions = (sessions: ReadingSession[]) => sessions.filter((session) => {
-  const pages = Math.max(0, session.pagesRead ?? 0);
+  const pages = pagesReadForSession(session);
   const minutes = Math.max(0, session.durationMinutes);
   return pages > 0 && minutes > 0;
 });
 
 export const getCurrentPace = (
-  session: Pick<ReadingSession, 'pagesRead' | 'durationMinutes'>,
+  session: Pick<ReadingSession, 'startPage' | 'endPage' | 'pagesRead' | 'durationMinutes'>,
   book?: UserBookRecord,
 ): ReadingPaceSummary => {
-  const pages = Math.max(0, session.pagesRead ?? 0);
+  const pages = pagesReadForSession(session);
   const minutes = Math.max(0, session.durationMinutes);
   const remainingPages = remainingPagesForBook(book);
 
@@ -122,7 +141,7 @@ export const getSevenDayAveragePace = (
     const sessionDate = parseLocalDate(session.date);
     return sessionDate >= start && sessionDate <= through;
   });
-  const totalPages = eligible.reduce((sum, session) => sum + Math.max(0, session.pagesRead ?? 0), 0);
+  const totalPages = eligible.reduce((sum, session) => sum + pagesReadForSession(session), 0);
   const totalMinutes = eligible.reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
   const remainingPages = remainingPagesForBook(book);
 
