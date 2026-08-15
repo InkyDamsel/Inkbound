@@ -19,27 +19,27 @@ export function getBookReadingState(book: UserBookRecord): BookReadingState {
   const isAudiobook = activeEdition?.format === 'audiobook';
   const completedUnits = Math.max(0, isAudiobook ? book.progressMinutes : book.progressPages);
   const totalUnits = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
+  const hasKnownTotal = typeof totalUnits === 'number' && Number.isFinite(totalUnits) && totalUnits > 0;
   const isFinished = book.status === 'finished';
 
-  const calculatedPercentage = totalUnits && totalUnits > 0
-    ? Math.round((completedUnits / totalUnits) * 100)
+  const calculatedPercentage = hasKnownTotal
+    ? Math.round((completedUnits / totalUnits!) * 100)
     : Math.max(0, Math.round(book.progressPercentage || 0));
+  const progressPercentage = Math.max(0, Math.min(100, calculatedPercentage));
 
-  // Status is the single source of truth for whether a book is finished.
-  // A non-finished book can temporarily have stale progress equal to its old total
-  // while the reader corrects page count/current progress. Never display that as
-  // "100% complete" because that would contradict the canonical status.
-  const progressNeedsCorrection = !isFinished && calculatedPercentage >= 100;
-  const progressPercentage = isFinished
-    ? 100
-    : Math.max(0, Math.min(progressNeedsCorrection ? 99 : 100, calculatedPercentage));
+  // Never hide contradictory canonical state behind a cosmetic 100% value.
+  // A finished book below its known endpoint, or a non-finished book at/above it,
+  // needs reconciliation rather than a UI-only correction.
+  const progressNeedsCorrection = hasKnownTotal
+    ? (isFinished && calculatedPercentage < 100) || (!isFinished && calculatedPercentage >= 100)
+    : false;
 
   return {
     status: book.status,
     isFinished,
     activeEdition,
     completedUnits,
-    totalUnits,
+    totalUnits: hasKnownTotal ? totalUnits : undefined,
     progressPercentage,
     progressNeedsCorrection,
   };
