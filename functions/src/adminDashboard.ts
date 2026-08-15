@@ -1,6 +1,8 @@
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
+const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
+
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
 
 interface AdminRecord {
@@ -26,7 +28,7 @@ async function requireAdmin(request: CallableRequest<unknown>, allowedRoles?: Ad
   return { auth: request.auth, admin: record };
 }
 
-export const getAdminDashboard = onCall(async (request) => {
+export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const { admin } = await requireAdmin(request);
   const db = getFirestore();
   const input = request.data as { query?: unknown } | undefined;
@@ -106,7 +108,7 @@ export const getAdminDashboard = onCall(async (request) => {
   return { role: admin.role, totals, users, audit, admins };
 });
 
-export const setAdminAccess = onCall(async (request) => {
+export const setAdminAccess = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const { auth, admin } = await requireAdmin(request, ['owner']);
   const data = request.data as Record<string, unknown> | undefined;
   const targetUserId = typeof data?.targetUserId === 'string' ? data.targetUserId.trim() : '';
