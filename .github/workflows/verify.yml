@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -31,8 +31,18 @@ jobs:
       - name: Type check
         run: npm run lint
 
+      - name: Critical reading regressions
+        run: npm run test:critical
+
       - name: Production build
         run: npm run build
+
+      - name: Verify public release pages
+        run: |
+          test -f dist/index.html
+          test -f dist/privacy.html
+          test -f dist/terms.html
+          test -f dist/delete-account.html
 
   verify-functions:
     name: Cloud Functions
@@ -42,10 +52,10 @@ jobs:
         working-directory: functions
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
