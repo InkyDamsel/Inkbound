@@ -46,8 +46,8 @@ export const BookCover: React.FC<BookCoverProps> = ({
   const sizeClasses = {
     sm: 'w-20 h-28 text-xs',
     md: 'w-28 h-40 text-xs',
-    lg: 'w-36 h-52 text-sm',
-    xl: 'w-48 h-72 text-base',
+    lg: 'w-28 h-40 text-xs sm:w-36 sm:h-52 sm:text-sm',
+    xl: 'w-36 h-52 text-sm sm:w-48 sm:h-72 sm:text-base',
   };
 
   const FormatIcon = {
