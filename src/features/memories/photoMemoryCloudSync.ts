@@ -40,7 +40,7 @@ function getDataUrlContentType(value: string): string {
   return /^data:([^;,]+)/i.exec(value)?.[1] ?? 'image/jpeg';
 }
 
-function bytesToDataUrl(bytes: Uint8Array, contentType: string): Promise<string> {
+function bytesToDataUrl(bytes: ArrayBuffer, contentType: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('A synced photo could not be restored.'));
