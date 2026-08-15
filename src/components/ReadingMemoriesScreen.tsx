@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
-import { BookHeart, CalendarDays, Clock3, MapPin, MessageSquareQuote, Save, Sparkles } from 'lucide-react';
+import { BookHeart, CalendarDays, Clock3, Headphones, MapPin, MessageSquareQuote, Save, Sparkles } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { getSessionDurationMinutes, getSessionListeningMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 
 interface ReadingMemoryEntry {
@@ -31,8 +31,9 @@ const emptyMemory = (): ReadingMemoryEntry => ({
 });
 
 const formatMinutes = (minutes: number) => {
-  const hours = Math.floor(minutes / 60);
-  const remaining = minutes % 60;
+  const rounded = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(rounded / 60);
+  const remaining = rounded % 60;
   return hours > 0 ? `${hours}h ${remaining}m` : `${remaining}m`;
 };
 
@@ -46,15 +47,20 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
   );
   const [selectedBookId, setSelectedBookId] = usePersistentState<string>(
     SELECTED_BOOK_STORAGE_KEY,
-    eligibleBooks[0]?.id ?? books[0]?.id ?? '',
+    eligibleBooks[0]?.id ?? '',
   );
   const [memories, setMemories] = usePersistentState<Record<string, ReadingMemoryEntry>>(
     MEMORIES_STORAGE_KEY,
     {},
   );
 
-  const selectedBook = books.find((book) => book.id === selectedBookId) ?? eligibleBooks[0] ?? books[0];
+  // Memories intentionally belong to books that have entered the active reading
+  // lifecycle. Never fall back to an unrelated TBR/library record just because
+  // a previously-selected book is no longer eligible.
+  const selectedBook = eligibleBooks.find((book) => book.id === selectedBookId) ?? eligibleBooks[0];
   const memory = selectedBook ? memories[selectedBook.id] ?? emptyMemory() : emptyMemory();
+  const activeEdition = selectedBook ? getActiveEdition(selectedBook) : undefined;
+  const isAudiobook = activeEdition?.format === 'audiobook';
   const bookSessions = selectedBook
     ? sessions.filter((session) => session.bookId === selectedBook.id && getSessionDurationMinutes(session) > 0)
     : [];
@@ -62,6 +68,7 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
   const stats = useMemo(() => {
     const totalMinutes = bookSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
     const pagesRead = bookSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+    const listeningMinutes = bookSessions.reduce((sum, session) => sum + getSessionListeningMinutes(session), 0);
     const averageMinutes = bookSessions.length > 0 ? Math.round(totalMinutes / bookSessions.length) : 0;
     const topLocation = Object.entries(
       bookSessions.reduce<Record<string, number>>((counts, session) => {
@@ -77,7 +84,7 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
         return counts;
       }, {}),
     ).sort((a, b) => b[1] - a[1])[0]?.[0];
-    return { totalMinutes, pagesRead, averageMinutes, topLocation, topMood };
+    return { totalMinutes, pagesRead, listeningMinutes, averageMinutes, topLocation, topMood };
   }, [bookSessions]);
 
   const updateMemory = (field: keyof ReadingMemoryEntry, value: string) => {
@@ -97,12 +104,10 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
       <div className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center">
         <BookHeart className="mx-auto h-10 w-10 text-[var(--ink-gold)]" />
         <h1 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">Your memories will begin here</h1>
-        <p className="mt-2 text-sm text-[var(--ink-muted)]">Add a book or complete a reading session first.</p>
+        <p className="mt-2 text-sm text-[var(--ink-muted)]">Start reading or finish a book and it will become available for reflection here.</p>
       </div>
     );
   }
-
-  const activeEdition = getActiveEdition(selectedBook);
 
   return (
     <div className="space-y-7 pb-24">
@@ -133,7 +138,7 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
           <h2 className="mt-3 max-w-3xl break-words font-serif text-3xl font-bold text-white sm:text-4xl">
             {selectedBook.work.title}
           </h2>
-          <p className="mt-2 text-sm text-white/75">{selectedBook.work.author}</p>
+          <p className="mt-2 break-words text-sm text-white/75">{selectedBook.work.author}</p>
           <button type="button" onClick={() => onSelectBook(selectedBook)} className="mt-5 min-h-11 rounded-full border border-white/30 px-4 py-2 text-sm font-semibold text-white">
             Open book details
           </button>
@@ -142,7 +147,7 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
         <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-7 lg:grid-cols-4">
           <div className="rounded-2xl bg-[var(--ink-surface-soft)] p-4">
             <Clock3 className="h-4 w-4 text-[var(--ink-gold)]" />
-            <strong className="mt-3 block text-xl text-[var(--ink-ivory)]">{formatMinutes(stats.totalMinutes)}</strong>
+            <strong className="mt-3 block break-words text-xl text-[var(--ink-ivory)]">{formatMinutes(stats.totalMinutes)}</strong>
             <span className="text-xs text-[var(--ink-muted)]">Total reading time</span>
           </div>
           <div className="rounded-2xl bg-[var(--ink-surface-soft)] p-4">
@@ -151,13 +156,13 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
             <span className="text-xs text-[var(--ink-muted)]">Reading sessions</span>
           </div>
           <div className="rounded-2xl bg-[var(--ink-surface-soft)] p-4">
-            <Sparkles className="h-4 w-4 text-[var(--ink-gold)]" />
-            <strong className="mt-3 block text-xl text-[var(--ink-ivory)]">{stats.pagesRead}</strong>
-            <span className="text-xs text-[var(--ink-muted)]">Pages recorded in sessions</span>
+            {isAudiobook ? <Headphones className="h-4 w-4 text-[var(--ink-gold)]" /> : <Sparkles className="h-4 w-4 text-[var(--ink-gold)]" />}
+            <strong className="mt-3 block break-words text-xl text-[var(--ink-ivory)]">{isAudiobook ? formatMinutes(stats.listeningMinutes) : stats.pagesRead.toLocaleString()}</strong>
+            <span className="text-xs text-[var(--ink-muted)]">{isAudiobook ? 'Listening progress recorded' : 'Pages recorded in sessions'}</span>
           </div>
-          <div className="rounded-2xl bg-[var(--ink-surface-soft)] p-4">
+          <div className="min-w-0 rounded-2xl bg-[var(--ink-surface-soft)] p-4">
             <MapPin className="h-4 w-4 text-[var(--ink-gold)]" />
-            <strong className="mt-3 block truncate text-xl text-[var(--ink-ivory)]">{stats.topLocation ?? 'Not recorded'}</strong>
+            <strong className="mt-3 block break-words text-xl text-[var(--ink-ivory)]">{stats.topLocation ?? 'Not recorded'}</strong>
             <span className="text-xs text-[var(--ink-muted)]">Most common place</span>
           </div>
         </div>
@@ -190,21 +195,21 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
       </div>
 
       <section className="grid gap-6 lg:grid-cols-3">
-        <article className="inkbound-panel rounded-3xl p-5 sm:p-7">
+        <article className="inkbound-panel min-w-0 rounded-3xl p-5 sm:p-7">
           <MessageSquareQuote className="h-5 w-5 text-[var(--ink-gold)]" />
           <h2 className="mt-4 font-serif text-xl font-bold text-[var(--ink-ivory)]">Favorite Quote</h2>
           <p className="mt-3 break-words text-sm italic text-[var(--ink-muted)]">{selectedBook.favoriteQuotes?.[0]?.quote ?? 'No quote has been saved for this book yet.'}</p>
         </article>
-        <article className="inkbound-panel rounded-3xl p-5 sm:p-7">
+        <article className="inkbound-panel min-w-0 rounded-3xl p-5 sm:p-7">
           <Sparkles className="h-5 w-5 text-[var(--ink-gold)]" />
           <h2 className="mt-4 font-serif text-xl font-bold text-[var(--ink-ivory)]">Your Reading Pattern</h2>
-          <p className="mt-3 text-sm text-[var(--ink-muted)]">Average session: {formatMinutes(stats.averageMinutes)}. Most common mood: {stats.topMood ?? 'not recorded'}.</p>
+          <p className="mt-3 break-words text-sm text-[var(--ink-muted)]">Average session: {formatMinutes(stats.averageMinutes)}. Most common mood: {stats.topMood ?? 'not recorded'}.</p>
         </article>
-        <article className="inkbound-panel rounded-3xl p-5 sm:p-7">
+        <article className="inkbound-panel min-w-0 rounded-3xl p-5 sm:p-7">
           <Save className="h-5 w-5 text-[var(--ink-gold)]" />
           <h2 className="mt-4 font-serif text-xl font-bold text-[var(--ink-ivory)]">Saved Automatically</h2>
           <p className="mt-3 text-sm text-[var(--ink-muted)]">Your entries save as you type and follow your Inkbound account sync.</p>
-          {memory.updatedAt && <p className="mt-3 text-xs text-[var(--ink-muted)]">Last updated {new Date(memory.updatedAt).toLocaleString()}</p>}
+          {memory.updatedAt && <p className="mt-3 break-words text-xs text-[var(--ink-muted)]">Last updated {new Date(memory.updatedAt).toLocaleString()}</p>}
         </article>
       </section>
     </div>
