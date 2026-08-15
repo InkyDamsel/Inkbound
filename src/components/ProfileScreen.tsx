@@ -245,9 +245,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     () => books.filter((book) => book.status === 'finished').length,
     [books],
   );
-  const totalMinutes = useMemo(
-    () => sessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0),
+  const completedSessions = useMemo(
+    () => sessions.filter((session) => getSessionDurationMinutes(session) > 0),
     [sessions],
+  );
+  const totalMinutes = useMemo(
+    () => completedSessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0),
+    [completedSessions],
   );
 
   const initials =
@@ -458,9 +462,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
                   <Camera className="h-4 w-4" />
                 </button>
               </div>
-              <div className="pb-1">
+              <div className="min-w-0 pb-1">
                 <p className="inkbound-kicker">Reader Profile</p>
-                <h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">{displayName}</h1>
+                <h1 className="break-words font-serif text-3xl font-bold text-[var(--ink-ivory)]">{displayName}</h1>
                 <p className="text-sm text-[var(--ink-muted)]">
                   {userPlan === 'premium' ? 'Inkbound Premium' : 'Free Plan'}
                 </p>
@@ -468,7 +472,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
             </div>
 
             <div className="flex flex-col items-stretch gap-2 sm:items-end">
-              <button type="button" onClick={handleSave} className="quiet-shelf-primary-action px-5">
+              <button type="button" onClick={handleSave} className="quiet-shelf-primary-action justify-center px-5">
                 <Save className="h-4 w-4" />
                 {saveStatus === 'saved' ? 'Saved' : 'Save Profile'}
               </button>
@@ -494,7 +498,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
         </div>
         <div className="inkbound-panel rounded-2xl p-5">
           <CalendarDays className="h-5 w-5 text-[var(--ink-gold)]" />
-          <p className="mt-3 font-serif text-3xl font-bold text-[var(--ink-ivory)]">{sessions.length}</p>
+          <p className="mt-3 font-serif text-3xl font-bold text-[var(--ink-ivory)]">{completedSessions.length}</p>
           <p className="text-sm text-[var(--ink-muted)]">Reading sessions</p>
         </div>
         <div className="inkbound-panel rounded-2xl p-5">
