@@ -12,14 +12,15 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:critical": "tsx scripts/critical-reading-regressions.ts",
+    "verify:production-env": "node scripts/verify-production-env.mjs",
     "release:verify": "npm run lint && npm run test:critical && npm run build && npm run functions:build",
     "functions:install": "npm --prefix functions install",
     "functions:build": "npm --prefix functions run build",
     "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules,storage --project inkbound-app",
     "firebase:deploy:functions": "npm run functions:build && npx firebase-tools deploy --only functions --project inkbound-app",
     "firebase:deploy:security": "npm run functions:build && npx firebase-tools deploy --only firestore:rules,storage,functions --project inkbound-app",
-    "firebase:deploy:web": "npm run release:verify && npx firebase-tools deploy --only hosting --project inkbound-app",
-    "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app"
+    "firebase:deploy:web": "npm run verify:production-env && npm run release:verify && npx firebase-tools deploy --only hosting --project inkbound-app",
+    "firebase:deploy:all": "npm run verify:production-env && npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
