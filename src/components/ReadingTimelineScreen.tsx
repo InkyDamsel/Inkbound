@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -11,6 +11,8 @@ import {
   Quote,
   Search,
   Sparkles,
+  Trash2,
+  Undo2,
   X,
 } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
@@ -38,6 +40,11 @@ interface ManualMemory {
   bookId?: string;
 }
 
+interface DeletedManualMemory {
+  memory: ManualMemory;
+  index: number;
+}
+
 interface TimelineEvent {
   id: string;
   date: string;
@@ -52,6 +59,7 @@ const FILTER_KEY = 'inkbound_timeline_filter';
 const SEARCH_KEY = 'inkbound_timeline_search';
 const COLLAPSED_KEY = 'inkbound_timeline_collapsed_months';
 const MEMORIES_KEY = 'inkbound_timeline_memories';
+const UNDO_DELETE_MS = 7000;
 
 const filterOptions: Array<{ id: TimelineFilter; label: string }> = [
   { id: 'all', label: 'Everything' },
@@ -101,6 +109,13 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
   const [memoryTitle, setMemoryTitle] = useState('');
   const [memoryBody, setMemoryBody] = useState('');
   const [memoryBookId, setMemoryBookId] = useState('');
+  const [deletedMemory, setDeletedMemory] = useState<DeletedManualMemory | null>(null);
+
+  useEffect(() => {
+    if (!deletedMemory) return undefined;
+    const timer = window.setTimeout(() => setDeletedMemory(null), UNDO_DELETE_MS);
+    return () => window.clearTimeout(timer);
+  }, [deletedMemory]);
 
   const events = useMemo<TimelineEvent[]>(() => {
     const nextEvents: TimelineEvent[] = [];
@@ -250,7 +265,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
     if (!title || !body) return;
     setMemories((current) => [
       {
-        id: `${Date.now()}`,
+        id: crypto.randomUUID(),
         date: new Date().toISOString(),
         title,
         body,
@@ -264,6 +279,25 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
     setIsMemoryOpen(false);
   };
 
+  const deleteManualMemory = (eventId: string) => {
+    const memoryId = eventId.startsWith('memory-') ? eventId.slice('memory-'.length) : eventId;
+    const index = memories.findIndex((memory) => memory.id === memoryId);
+    if (index < 0) return;
+    setDeletedMemory({ memory: memories[index], index });
+    setMemories((current) => current.filter((memory) => memory.id !== memoryId));
+  };
+
+  const undoDeleteMemory = () => {
+    if (!deletedMemory) return;
+    setMemories((current) => {
+      if (current.some((memory) => memory.id === deletedMemory.memory.id)) return current;
+      const next = [...current];
+      next.splice(Math.min(deletedMemory.index, next.length), 0, deletedMemory.memory);
+      return next;
+    });
+    setDeletedMemory(null);
+  };
+
   return (
     <div className="space-y-7 pb-24">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -274,7 +308,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
             A living journal generated from your books and sessions, with space for the memories only you can tell.
           </p>
         </div>
-        <button type="button" onClick={() => setIsMemoryOpen(true)} className="quiet-shelf-primary-action px-5">
+        <button type="button" onClick={() => setIsMemoryOpen(true)} className="quiet-shelf-primary-action w-full justify-center px-5 sm:w-auto">
           <Plus className="h-4 w-4" /> Add Memory
         </button>
       </header>
@@ -287,7 +321,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
                 key={option.id}
                 type="button"
                 onClick={() => setFilter(option.id)}
-                className={`min-h-10 shrink-0 rounded-full border px-4 text-xs font-bold ${
+                className={`min-h-11 shrink-0 rounded-full border px-4 text-xs font-bold ${
                   filter === option.id
                     ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]'
                     : 'border-[var(--ink-border)] text-[var(--ink-muted)]'
@@ -321,11 +355,11 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
                 onClick={() => toggleMonth(key)}
                 className="flex min-h-16 w-full items-center justify-between border-b border-[var(--ink-border-subtle)] px-5 text-left sm:px-7"
               >
-                <span>
-                  <strong className="font-serif text-xl text-[var(--ink-ivory)]">{label}</strong>
-                  <small className="ml-3 text-[var(--ink-muted)]">{monthEvents.length} moments</small>
+                <span className="min-w-0">
+                  <strong className="block truncate font-serif text-xl text-[var(--ink-ivory)] sm:inline">{label}</strong>
+                  <small className="mt-1 block text-[var(--ink-muted)] sm:ml-3 sm:inline">{monthEvents.length} moments</small>
                 </span>
-                {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                {collapsed ? <ChevronRight className="h-5 w-5 shrink-0" /> : <ChevronDown className="h-5 w-5 shrink-0" />}
               </button>
 
               {!collapsed && (
@@ -340,15 +374,22 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
                         </span>
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="font-serif text-lg font-bold text-[var(--ink-ivory)]">{event.title}</h2>
+                            <h2 className="break-words font-serif text-lg font-bold text-[var(--ink-ivory)]">{event.title}</h2>
                             {event.meta && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[11px] text-[var(--ink-muted)]">{event.meta}</span>}
                           </div>
                           <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--ink-muted)]">{event.description}</p>
-                          {book && (
-                            <button type="button" onClick={() => onSelectBook(book)} className="mt-3 text-xs font-bold text-[var(--ink-gold-bright)] hover:underline">
-                              Open {book.work.title}
-                            </button>
-                          )}
+                          <div className="mt-2 flex flex-wrap items-center gap-3">
+                            {book && (
+                              <button type="button" onClick={() => onSelectBook(book)} className="min-h-11 py-2 text-xs font-bold text-[var(--ink-gold-bright)] hover:underline">
+                                Open {book.work.title}
+                              </button>
+                            )}
+                            {event.type === 'memories' && (
+                              <button type="button" onClick={() => deleteManualMemory(event.id)} className="inline-flex min-h-11 items-center gap-2 py-2 text-xs font-bold text-[var(--ink-muted)] hover:text-red-300">
+                                <Trash2 className="h-4 w-4" /> Delete memory
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <time className="text-xs text-[var(--ink-muted)] sm:text-right">
                           {new Date(event.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -372,14 +413,14 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
       )}
 
       {isMemoryOpen && (
-        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4">
-          <section className="inkbound-panel w-full max-w-xl rounded-t-3xl p-5 sm:rounded-3xl sm:p-7" role="dialog" aria-modal="true" aria-label="Add reading memory">
+        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setIsMemoryOpen(false)}>
+          <section className="inkbound-panel max-h-[100dvh] w-full max-w-xl overflow-y-auto overscroll-contain rounded-t-3xl px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:max-h-[92dvh] sm:rounded-3xl sm:p-7" role="dialog" aria-modal="true" aria-label="Add reading memory" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="inkbound-kicker">Time Capsule</p>
                 <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Add a Reading Memory</h2>
               </div>
-              <button type="button" onClick={() => setIsMemoryOpen(false)} className="quiet-shelf-icon-button" aria-label="Close"><X /></button>
+              <button type="button" onClick={() => setIsMemoryOpen(false)} className="quiet-shelf-icon-button h-11 w-11 shrink-0" aria-label="Close"><X /></button>
             </div>
             <div className="mt-6 grid gap-4">
               <label className="text-sm font-semibold text-[var(--ink-ivory)]">Book (optional)
@@ -399,6 +440,15 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
               <NotebookPen className="h-4 w-4" /> Save Memory
             </button>
           </section>
+        </div>
+      )}
+
+      {deletedMemory && (
+        <div className="fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[220] mx-auto flex max-w-lg items-center justify-between gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 py-3 shadow-2xl sm:bottom-6" role="status" aria-live="polite">
+          <span className="min-w-0 text-sm font-semibold text-[var(--ink-ivory)]">Reading memory deleted.</span>
+          <button type="button" onClick={undoDeleteMemory} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-bold text-[var(--ink-gold-bright)]">
+            <Undo2 className="h-4 w-4" /> Undo
+          </button>
         </div>
       )}
     </div>
