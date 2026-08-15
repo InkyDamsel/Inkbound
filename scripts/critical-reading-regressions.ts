@@ -14,6 +14,10 @@ import {
   getSessionPagesRead,
   getSevenDayAveragePace,
 } from '../src/features/reading/sessionAnalytics';
+import {
+  AUXILIARY_ACCOUNT_KEYS,
+  getAuxiliaryKeysToClearForOwnerChange,
+} from '../src/features/sync/auxiliaryAccountSyncConfig';
 
 const baseBook = (): UserBookRecord => ({
   id: 'book-1',
@@ -151,6 +155,18 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(pace.sampleMinutes, 90);
   assert.equal(pace.pagesPerHour, 60);
   assert.equal(pace.remainingPages, 310);
+}
+
+// Shared account-owned auxiliary keys must be purged on a real UID transition,
+// while reloads for the same reader (or legacy installs without an owner marker)
+// retain their local cache for offline startup.
+{
+  assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange(null, 'reader-a'), []);
+  assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-a'), []);
+  assert.deepEqual(
+    getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-b').sort(),
+    Object.values(AUXILIARY_ACCOUNT_KEYS).sort(),
+  );
 }
 
 console.log('Inkbound critical reading regressions passed.');
