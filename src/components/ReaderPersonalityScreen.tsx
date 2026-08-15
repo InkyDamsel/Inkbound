@@ -163,9 +163,9 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
       {view === 'overview' && (
         <section className="inkbound-panel overflow-hidden rounded-3xl p-6 sm:p-9">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-center">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.3em] text-[var(--ink-gold)]">Your leading trait</p>
-              <h2 className="mt-4 font-serif text-4xl font-bold text-[var(--ink-ivory)]">
+              <h2 className="mt-4 break-words font-serif text-3xl font-bold text-[var(--ink-ivory)] sm:text-4xl">
                 {primaryTrait?.name ?? 'Your reading personality is still forming'}
               </h2>
               <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--ink-muted)]">
@@ -173,8 +173,8 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
               </p>
               {primaryTrait && <p className="mt-5 text-sm text-[var(--ink-muted)]">{primaryTrait.evidence}</p>}
             </div>
-            <div className="flex aspect-square items-center justify-center rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
-              <span className="font-serif text-6xl font-bold text-[var(--ink-gold)]">{primaryTrait?.score ?? 0}%</span>
+            <div className="mx-auto flex aspect-square w-full max-w-[280px] items-center justify-center rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
+              <span className="font-serif text-5xl font-bold text-[var(--ink-gold)] sm:text-6xl">{primaryTrait?.score ?? 0}%</span>
             </div>
           </div>
         </section>
@@ -185,18 +185,19 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
           {visibleTraits.map((trait) => {
             const Icon = trait.icon;
             return (
-              <article key={trait.id} className="inkbound-panel rounded-3xl p-6">
+              <article key={trait.id} className="inkbound-panel min-w-0 rounded-3xl p-6">
                 <div className="flex items-start justify-between gap-4">
                   <span className="rounded-2xl bg-[var(--ink-surface-soft)] p-3 text-[var(--ink-gold)]"><Icon className="h-6 w-6" /></span>
                   <button
                     type="button"
-                    onClick={() => setHiddenTraits((current) => [...current, trait.id])}
-                    className="text-xs text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]"
+                    onClick={() => setHiddenTraits((current) => current.includes(trait.id) ? current : [...current, trait.id])}
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl px-3 text-xs font-semibold text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"
+                    aria-label={`Hide ${trait.name} trait`}
                   >
                     Hide
                   </button>
                 </div>
-                <h3 className="mt-5 font-serif text-xl font-bold text-[var(--ink-ivory)]">{trait.name}</h3>
+                <h3 className="mt-5 break-words font-serif text-xl font-bold text-[var(--ink-ivory)]">{trait.name}</h3>
                 <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">{trait.description}</p>
                 <div className="mt-5 h-2 overflow-hidden rounded-full bg-[var(--ink-surface-soft)]">
                   <span className="block h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${trait.score}%` }} />
@@ -214,8 +215,8 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
           <div className="mt-5 space-y-3">
             {traits.map((trait) => (
               <div key={trait.id} className="rounded-2xl border border-[var(--ink-border-subtle)] p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <strong className="text-[var(--ink-ivory)]">{trait.name}</strong>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <strong className="break-words text-[var(--ink-ivory)]">{trait.name}</strong>
                   <span className="text-sm text-[var(--ink-gold)]">{trait.score}%</span>
                 </div>
                 <p className="mt-2 text-sm text-[var(--ink-muted)]">{trait.evidence}</p>
@@ -226,7 +227,7 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
       )}
 
       {hiddenTraits.length > 0 && (
-        <button type="button" onClick={() => setHiddenTraits([])} className="quiet-shelf-secondary-action">
+        <button type="button" onClick={() => setHiddenTraits([])} className="quiet-shelf-secondary-action min-h-11 w-full justify-center sm:w-auto">
           Restore hidden traits
         </button>
       )}
