@@ -66,7 +66,14 @@ const SIGNED_IN_DATA_KEYS = [
   'inkbound_photo_memories_v2',
   'inkbound_photo_memory_cloud_revisions_v1',
   PHOTO_MEMORY_SYNC_QUEUE_KEY,
+  // Import history is operational/device-local rather than canonical cloud data,
+  // but it can contain titles, reviews, and retry state from the signed-in reader.
+  // Clear it on account switch so another account never inherits that history.
+  'inkbound_import_history_v1',
   'inkbound_import_enrichment_queue_v1',
+  'inkbound_import_enrichment_paused_v1',
+  'inkbound_import_enrichment_retry_request_v1',
+  'inkbound_import_enrichment_retry_progress_v1',
   ...Object.values(AUXILIARY_ACCOUNT_KEYS),
   'bookhaven_books',
   'bookhaven_sessions',
