@@ -15,7 +15,7 @@ export interface ImportVerificationJobSnapshot {
   error?: string;
 }
 
-type ImportExecutor = (items: ImportRecordItem[]) => Promise<ImportRecordItem[]> | ImportRecordItem[];
+type ImportExecutor = (items: ImportRecordItem[]) => Promise<ImportRecordItem[] | void> | ImportRecordItem[] | void;
 type Listener = (snapshot: ImportVerificationJobSnapshot) => void;
 
 const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v2';
@@ -189,9 +189,10 @@ export function startImportVerificationJob(
         importMetadataVerified: false,
       }));
       const recordsToImport = [...verifiedRecords, ...unmatchedRecords];
-      const importedRecords = recordsToImport.length > 0
+      const executionResult = recordsToImport.length > 0
         ? await executeImport(recordsToImport)
         : [];
+      const importedRecords = Array.isArray(executionResult) ? executionResult : recordsToImport;
       const importedIds = new Set(importedRecords.map((record) => record.id));
       const acceptedVerified = verifiedRecords.filter((record) => importedIds.has(record.id));
       const acceptedUnmatched = unmatchedRecords.filter((record) => importedIds.has(record.id));
