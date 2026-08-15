@@ -14,6 +14,8 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { ResponsiveGrid } from '../layout/responsive';
+import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
+import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   notifyLocalDataChanged,
@@ -31,6 +33,7 @@ const PROFILE_STORAGE_KEY = 'inkbound_reader_profile';
 const PROFILE_WRITE_TIMEOUT_MS = 8000;
 const MAX_AVATAR_DATA_LENGTH = 140_000;
 const MAX_BANNER_DATA_LENGTH = 475_000;
+const MAX_PROFILE_SOURCE_BYTES = 12 * 1024 * 1024;
 
 interface StoredProfile {
   displayName: string;
@@ -52,15 +55,10 @@ const EMPTY_PROFILE: StoredProfile = {
 
 const isTemporaryImageUrl = (value?: string) => Boolean(value?.startsWith('blob:'));
 
-const readStoredProfile = (): StoredProfile => {
-  try {
-    const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (stored) return { ...EMPTY_PROFILE, ...(JSON.parse(stored) as Partial<StoredProfile>) };
-  } catch {
-    // Fall back to an empty account profile when stored profile data is invalid.
-  }
-  return EMPTY_PROFILE;
-};
+const readStoredProfile = (): StoredProfile => ({
+  ...EMPTY_PROFILE,
+  ...readRuntimeJson<Partial<StoredProfile>>(PROFILE_STORAGE_KEY, {}),
+});
 
 const saveStoredProfile = (profile: StoredProfile) => {
   const storedProfile: StoredProfile = {
@@ -69,12 +67,11 @@ const saveStoredProfile = (profile: StoredProfile) => {
     bannerImage: isTemporaryImageUrl(profile.bannerImage) ? undefined : profile.bannerImage,
   };
 
-  try {
-    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(storedProfile));
-    notifyLocalDataChanged([PROFILE_STORAGE_KEY]);
-  } catch (error) {
-    console.error('Inkbound could not store the reader profile on this device.', error);
+  if (!writeRuntimeJson(PROFILE_STORAGE_KEY, storedProfile)) {
+    console.error('Inkbound could not store the reader profile on this device.');
+    return;
   }
+  notifyLocalDataChanged([PROFILE_STORAGE_KEY]);
 };
 
 async function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> {
@@ -249,7 +246,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     [books],
   );
   const totalMinutes = useMemo(
-    () => sessions.reduce((total, session) => total + session.durationMinutes, 0),
+    () => sessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0),
     [sessions],
   );
 
@@ -314,7 +311,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   };
 
   const selectProfileImage = (file: File, kind: 'avatar' | 'banner') => {
-    if (!file.type.startsWith('image/')) return;
+    if (!file.type.startsWith('image/')) {
+      setImageStatus('error');
+      return;
+    }
+    if (file.size > MAX_PROFILE_SOURCE_BYTES) {
+      setImageStatus('error');
+      return;
+    }
 
     const requestId = imageRequestRef.current + 1;
     imageRequestRef.current = requestId;
@@ -411,7 +415,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
           <button
             type="button"
             onClick={() => bannerInputRef.current?.click()}
-            className="absolute right-4 top-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/20 bg-black/45 px-4 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-black/60"
+            className="absolute right-[max(1rem,env(safe-area-inset-right))] top-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/20 bg-black/45 px-4 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-black/60"
           >
             <ImagePlus className="h-4 w-4" />
             {bannerImage ? 'Change banner' : 'Add banner'}
@@ -421,17 +425,19 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
         <div className="px-5 pb-6 sm:px-8">
           <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="relative grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-full border-4 border-[var(--ink-surface)] bg-gradient-to-br from-[#78566e] to-[#2b1c30] font-serif text-3xl font-bold text-[var(--ink-ivory)] shadow-xl sm:h-28 sm:w-28">
-                {avatarImage ? (
-                  <img
-                    src={avatarImage}
-                    alt={`${displayName} profile`}
-                    className="h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  initials
-                )}
+              <div className="relative grid h-24 w-24 shrink-0 place-items-center overflow-visible rounded-full border-4 border-[var(--ink-surface)] bg-gradient-to-br from-[#78566e] to-[#2b1c30] font-serif text-3xl font-bold text-[var(--ink-ivory)] shadow-xl sm:h-28 sm:w-28">
+                <div className="h-full w-full overflow-hidden rounded-full">
+                  {avatarImage ? (
+                    <img
+                      src={avatarImage}
+                      alt={`${displayName} profile`}
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span className="grid h-full w-full place-items-center">{initials}</span>
+                  )}
+                </div>
                 <input
                   ref={avatarInputRef}
                   type="file"
@@ -446,7 +452,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
                 <button
                   type="button"
                   onClick={() => avatarInputRef.current?.click()}
-                  className="absolute bottom-0 right-0 grid h-9 w-9 place-items-center rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] text-[var(--ink-gold)] shadow-lg"
+                  className="absolute bottom-0 right-0 grid h-11 w-11 translate-x-1 translate-y-1 place-items-center rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] text-[var(--ink-gold)] shadow-lg"
                   aria-label="Change profile photo"
                 >
                   <Camera className="h-4 w-4" />
@@ -470,7 +476,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
                 <p className="text-xs text-[var(--ink-muted)]">Preparing image…</p>
               ) : null}
               {imageStatus === 'error' ? (
-                <p className="text-xs text-rose-400">That image could not be prepared. Try another image.</p>
+                <p className="text-xs text-rose-400">Choose an image under 12 MB and try again.</p>
               ) : null}
               {saveStatus === 'error' ? (
                 <p className="text-xs text-rose-400">Saved on this device. Cloud sync will retry.</p>
