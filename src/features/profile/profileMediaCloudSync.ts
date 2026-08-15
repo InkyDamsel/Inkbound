@@ -100,13 +100,12 @@ export async function storeAndQueueProfileMedia(
 }
 
 export async function synchronizeProfileMedia(uid: string): Promise<void> {
-  if (!storage) throw new Error('Profile image sync is unavailable until Firebase Storage is configured.');
-
   const profile = readRuntimeJson<SyncableProfile>(PROFILE_STORAGE_KEY, {});
   await queueLegacyProfileMedia(uid, profile);
   const queue = readQueue(uid);
   const entries = Object.values(queue).filter((item): item is ProfileMediaQueueItem => Boolean(item));
   if (entries.length === 0) return;
+  if (!storage) throw new Error('Profile image sync is unavailable until Firebase Storage is configured.');
 
   for (const item of entries) {
     const blob = await readProfileMedia(item.mediaKey);
