@@ -37,7 +37,7 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Verify public release pages and mobile manifest
+      - name: Verify public release pages and mobile app artifacts
         run: |
           test -f dist/index.html
           test -f dist/privacy.html
@@ -45,8 +45,10 @@ jobs:
           test -f dist/delete-account.html
           test -f dist/support.html
           test -f dist/manifest.webmanifest
+          test -f dist/sw.js
           grep -q '"display": "standalone"' dist/manifest.webmanifest
           grep -q 'rel="manifest"' dist/index.html
+          grep -q "inkbound-shell-v1" dist/sw.js
 
   verify-functions:
     name: Cloud Functions
