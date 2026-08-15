@@ -50,7 +50,7 @@ export function ResponsiveDashboardLayout({
       <div className={contentClasses} style={{ minWidth: 0 }}>
         {children}
       </div>
-      <aside className={sidebarClasses}>{sidebar}</aside>
+      <aside className={sidebarClasses} style={{ minWidth: 0 }}>{sidebar}</aside>
     </div>
   );
 }
