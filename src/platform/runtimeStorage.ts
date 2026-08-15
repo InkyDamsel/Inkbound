@@ -1,3 +1,5 @@
+import { removeRuntimeMediaByPrefix } from './runtimeMediaStorage';
+
 export interface RuntimeStorageAdapter {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -107,16 +109,15 @@ export function removeRuntimeValuesByPrefix(prefix: string): number {
         removed += 1;
       });
 
-    // A full Inkbound device wipe also owns large media blobs. Keep normal
-    // key-value cleanup synchronous, but clear each binary-media namespace
-    // asynchronously through the runtime media adapter.
+    // A full Inkbound device wipe also owns large media blobs. This module is
+    // already part of the app runtime for photo/profile media, so importing it
+    // statically avoids a misleading split-chunk warning without increasing the
+    // effective startup graph.
     if (prefix === 'inkbound_') {
-      void import('./runtimeMediaStorage').then(async ({ removeRuntimeMediaByPrefix }) => {
-        await Promise.all([
-          removeRuntimeMediaByPrefix('photo-memory:'),
-          removeRuntimeMediaByPrefix('profile-media:'),
-        ]);
-      });
+      void Promise.all([
+        removeRuntimeMediaByPrefix('photo-memory:'),
+        removeRuntimeMediaByPrefix('profile-media:'),
+      ]);
     }
   } catch {
     return removed;
