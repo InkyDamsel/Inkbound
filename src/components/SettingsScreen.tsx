@@ -19,9 +19,12 @@ import {
 } from 'lucide-react';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
+import { getActiveEdition } from '../features/reading/bookReadingState';
+import { localDateKey } from '../features/reading/sessionAnalytics';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
+import { restartRuntimeApp } from '../platform/runtimeAppControl';
 import { exportRuntimeTextFile } from '../platform/runtimeExport';
 import {
   getRuntimeReauthenticationRequirement,
@@ -32,7 +35,6 @@ import {
   openRuntimeSubscriptionManagement,
 } from '../platform/runtimeSubscriptionManagement';
 import { removeRuntimeValuesByPrefix, writeRuntimeValue } from '../platform/runtimeStorage';
-import { localDateKey } from '../features/reading/sessionAnalytics';
 import type { ReadingSession, UserBookRecord } from '../types';
 
 interface SettingsScreenProps {
@@ -126,8 +128,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     ];
 
     const rows = books.map((book) => {
-      const activeEdition =
-        book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+      const activeEdition = getActiveEdition(book);
 
       return [
         book.work.title,
@@ -196,7 +197,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
       onResetData();
       removeRuntimeValuesByPrefix('inkbound_');
-      window.location.assign('/');
+      await restartRuntimeApp();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Inkbound could not delete this account.';
       setDeleteAccountError(message.replace(/^Firebase:\s*/i, ''));
@@ -334,7 +335,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               type="number"
               inputMode="numeric"
               min="1"
-              max="10000"
+              max="1000"
               value={annualGoal}
               onChange={(event) => setAnnualGoal(event.target.value)}
               className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none"
@@ -411,12 +412,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </section>
 
       {resetDialogOpen && (
-        <div className="fixed inset-0 z-[250] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => !isClearing && setResetDialogOpen(false)}>
+        <div className="fixed inset-0 z-[250] grid place-items-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm" onClick={() => !isClearing && setResetDialogOpen(false)}>
           <section
             role="dialog"
             aria-modal="true"
             aria-labelledby="clear-data-title"
-            className="relative w-full max-w-lg rounded-3xl border border-[#c97b7b]/35 bg-[#17101b] p-6 shadow-2xl"
+            className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-3xl border border-[#c97b7b]/35 bg-[#17101b] p-6 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <button type="button" disabled={isClearing} onClick={() => setResetDialogOpen(false)} className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)] disabled:opacity-40" aria-label="Close confirmation">
@@ -453,12 +454,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       )}
 
       {deleteDialogOpen && (
-        <div className="fixed inset-0 z-[260] grid place-items-center bg-black/85 p-4 backdrop-blur-sm" onClick={() => !isDeletingAccount && setDeleteDialogOpen(false)}>
+        <div className="fixed inset-0 z-[260] grid place-items-center overflow-y-auto bg-black/85 p-4 backdrop-blur-sm" onClick={() => !isDeletingAccount && setDeleteDialogOpen(false)}>
           <section
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-account-title"
-            className="relative w-full max-w-xl rounded-3xl border border-[#c97b7b]/45 bg-[#17101b] p-6 shadow-2xl"
+            className="relative max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto overscroll-contain rounded-3xl border border-[#c97b7b]/45 bg-[#17101b] p-6 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <button
