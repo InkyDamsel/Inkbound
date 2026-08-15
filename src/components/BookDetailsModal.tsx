@@ -157,11 +157,25 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
     });
   };
 
-  const updateStatus = (status: ReadingStatus) => updateBook({
-    status,
-    progressPercentage: status === 'finished' ? 100 : book.progressPercentage,
-    dateFinished: status === 'finished' ? book.dateFinished ?? new Date().toISOString().split('T')[0] : undefined,
-  });
+  const updateStatus = (status: ReadingStatus) => {
+    if (status === 'finished') {
+      if (activeEdition.format === 'audiobook' && activeEdition.audiobookDurationMins && activeEdition.audiobookDurationMins > 0) {
+        onCorrectProgress(book.id, { progressMinutes: activeEdition.audiobookDurationMins });
+        return;
+      }
+      if (activeEdition.format !== 'audiobook' && activeEdition.pageCount && activeEdition.pageCount > 0) {
+        onCorrectProgress(book.id, { progressPages: activeEdition.pageCount });
+        return;
+      }
+
+      // A user may finish a book whose total length is unknown, but we must not
+      // invent a 100% progress value without a canonical edition total.
+      updateBook({ status: 'finished', dateFinished: book.dateFinished ?? new Date().toISOString().split('T')[0] });
+      return;
+    }
+
+    updateBook({ status, dateFinished: undefined });
+  };
 
   const correctProgressPercentage = (percentage: number) => {
     const safePercentage = Math.max(0, Math.min(100, percentage));
