@@ -1,4 +1,5 @@
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { getActiveEdition } from './bookReadingState';
 
 export interface ReadingPaceSummary {
   pagesPerHour?: number;
@@ -36,8 +37,7 @@ const positiveFiniteTotal = (value?: number) =>
 
 const remainingPagesForBook = (book?: UserBookRecord) => {
   if (!book) return undefined;
-  const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-  const totalPages = positiveFiniteTotal(edition?.pageCount);
+  const totalPages = positiveFiniteTotal(getActiveEdition(book)?.pageCount);
   if (totalPages === undefined) return undefined;
   return Math.max(0, totalPages - finiteNonnegative(book.progressPages));
 };
