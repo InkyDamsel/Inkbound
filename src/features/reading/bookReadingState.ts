@@ -14,6 +14,42 @@ export function getActiveEdition(book: UserBookRecord): Edition | undefined {
   return book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 }
 
+/**
+ * Repairs legacy/imported records where the explicit Finished status survived
+ * but stored progress did not reach the selected edition endpoint.
+ *
+ * This is intentionally narrow: only already-finished books with a known total
+ * are normalized. Correcting an edition length later still goes through the
+ * normal progress-correction path, which can move the book back to
+ * currently-reading when the corrected endpoint exceeds real progress.
+ */
+export function reconcileFinishedBookProgress(book: UserBookRecord): UserBookRecord {
+  if (book.status !== 'finished') return book;
+
+  const activeEdition = getActiveEdition(book);
+  if (!activeEdition) return book;
+
+  if (activeEdition.format === 'audiobook') {
+    const totalMinutes = activeEdition.audiobookDurationMins;
+    if (typeof totalMinutes !== 'number' || !Number.isFinite(totalMinutes) || totalMinutes <= 0) return book;
+    if (book.progressMinutes === totalMinutes && book.progressPercentage === 100) return book;
+    return {
+      ...book,
+      progressMinutes: totalMinutes,
+      progressPercentage: 100,
+    };
+  }
+
+  const totalPages = activeEdition.pageCount;
+  if (typeof totalPages !== 'number' || !Number.isFinite(totalPages) || totalPages <= 0) return book;
+  if (book.progressPages === totalPages && book.progressPercentage === 100) return book;
+  return {
+    ...book,
+    progressPages: totalPages,
+    progressPercentage: 100,
+  };
+}
+
 export function getBookReadingState(book: UserBookRecord): BookReadingState {
   const activeEdition = getActiveEdition(book);
   const isAudiobook = activeEdition?.format === 'audiobook';
@@ -27,9 +63,8 @@ export function getBookReadingState(book: UserBookRecord): BookReadingState {
     : Math.max(0, Math.round(book.progressPercentage || 0));
   const progressPercentage = Math.max(0, Math.min(100, calculatedPercentage));
 
-  // Never hide contradictory canonical state behind a cosmetic 100% value.
-  // A finished book below its known endpoint, or a non-finished book at/above it,
-  // needs reconciliation rather than a UI-only correction.
+  // Contradictions should be rare after canonical reconciliation, but keep this
+  // signal for genuinely inconsistent non-finished records and failed migrations.
   const progressNeedsCorrection = hasKnownTotal
     ? (isFinished && calculatedPercentage < 100) || (!isFinished && calculatedPercentage >= 100)
     : false;
@@ -53,9 +88,10 @@ function localDateKey(value = new Date()): string {
 }
 
 export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, date = localDateKey()): UserBookRecord {
-  return {
+  const nextBook: UserBookRecord = {
     ...book,
     status,
     dateFinished: status === 'finished' ? book.dateFinished ?? date : undefined,
   };
+  return status === 'finished' ? reconcileFinishedBookProgress(nextBook) : nextBook;
 }
