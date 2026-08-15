@@ -9,7 +9,6 @@ import {
 import {
   completePhotoMemorySyncOperation,
   PhotoMemorySyncOperation,
-  queuePhotoMemoryUpsert,
   readPhotoMemorySyncQueue,
 } from './photoMemorySyncQueue';
 
@@ -101,7 +100,7 @@ async function pushPendingOperations(uid: string) {
   }
 }
 
-async function hydrateCloudPhoto(uid: string, id: string, photo: CloudPhotoMemory): Promise<PhotoMemoryRecord | null> {
+async function hydrateCloudPhoto(id: string, photo: CloudPhotoMemory): Promise<PhotoMemoryRecord | null> {
   if (photo.deleted) return null;
   if (!photo.date || !photo.createdAt) return null;
 
@@ -111,7 +110,8 @@ async function hydrateCloudPhoto(uid: string, id: string, photo: CloudPhotoMemor
       const bytes = await getBytes(storageRef(storage, photo.storagePath), MAX_PHOTO_MEMORY_BYTES);
       imageData = await bytesToDataUrl(bytes, photo.imageContentType ?? 'image/jpeg');
     } catch {
-      // Preserve a legacy embedded image if this record predates Storage migration.
+      // Keep a local or legacy copy instead of dropping the memory on a temporary
+      // Storage/network failure. Reconciliation supplies the local fallback below.
     }
   }
   if (!imageData) return null;
@@ -143,8 +143,13 @@ async function reconcileWithCloud(uid: string) {
       tombstonedIds.add(photoDocument.id);
       continue;
     }
-    const hydrated = await hydrateCloudPhoto(uid, photoDocument.id, cloudPhoto);
-    if (hydrated) nextPhotos.push(hydrated);
+    const hydrated = await hydrateCloudPhoto(photoDocument.id, cloudPhoto);
+    if (hydrated) {
+      nextPhotos.push(hydrated);
+      continue;
+    }
+    const localFallback = localById.get(photoDocument.id);
+    if (localFallback) nextPhotos.push(localFallback);
   }
 
   // Migration path for local-only memories created before automatic sync existed.
@@ -162,10 +167,4 @@ export async function synchronizePhotoMemories(uid: string): Promise<void> {
   if (!uid) return;
   await pushPendingOperations(uid);
   await reconcileWithCloud(uid);
-}
-
-export function seedPhotoMemorySyncQueueForLocalData(): Promise<void> {
-  return readPhotoMemoriesFromDevice().then((photos) => {
-    photos.forEach((photo) => queuePhotoMemoryUpsert(photo.id));
-  });
 }
