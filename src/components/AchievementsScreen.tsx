@@ -14,6 +14,11 @@ import {
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
+import {
+  getSessionDurationMinutes,
+  getSessionPagesRead,
+} from '../features/reading/sessionAnalytics';
+import { readRuntimeJson } from '../platform/runtimeStorage';
 
 type AchievementFilter = 'all' | 'unlocked' | 'locked';
 
@@ -38,38 +43,20 @@ const SEEN_STORAGE_KEY = 'inkbound_achievement_seen';
 const FILTER_STORAGE_KEY = 'inkbound_achievement_filter';
 
 const readRecord = (key: string): Record<string, string> => {
-  try {
-    const value = localStorage.getItem(key);
-    if (!value) return {};
-    const parsed: unknown = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, string>)
-      : {};
-  } catch {
-    return {};
-  }
+  const parsed = readRuntimeJson<unknown>(key, {});
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, string>)
+    : {};
 };
 
 const readStringArray = (key: string): string[] => {
-  try {
-    const value = localStorage.getItem(key);
-    if (!value) return [];
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
+  const parsed = readRuntimeJson<unknown>(key, []);
+  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
 };
 
 const readFilter = (): AchievementFilter => {
-  try {
-    const value = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!value) return 'all';
-    const parsed: unknown = JSON.parse(value);
-    return parsed === 'unlocked' || parsed === 'locked' ? parsed : 'all';
-  } catch {
-    return 'all';
-  }
+  const parsed = readRuntimeJson<unknown>(FILTER_STORAGE_KEY, 'all');
+  return parsed === 'unlocked' || parsed === 'locked' ? parsed : 'all';
 };
 
 const getActiveEdition = (book: UserBookRecord) =>
@@ -97,12 +84,13 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
 
   const definitions = useMemo<AchievementDefinition[]>(() => {
     const finishedBooks = books.filter((book) => book.status === 'finished');
-    const totalPages = sessions.reduce(
-      (sum, session) => sum + safeNumber(session.pagesRead),
+    const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
+    const totalPages = completedSessions.reduce(
+      (sum, session) => sum + getSessionPagesRead(session),
       0,
     );
-    const totalMinutes = sessions.reduce(
-      (sum, session) => sum + safeNumber(session.durationMinutes),
+    const totalMinutes = completedSessions.reduce(
+      (sum, session) => sum + getSessionDurationMinutes(session),
       0,
     );
     const audiobookBookIds = new Set(
@@ -110,13 +98,13 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
         .filter((book) => getActiveEdition(book)?.format === 'audiobook')
         .map((book) => book.id),
     );
-    const audiobookSessions = sessions.filter((session) => audiobookBookIds.has(session.bookId));
-    const nightSessions = sessions.filter((session) => {
+    const audiobookSessions = completedSessions.filter((session) => audiobookBookIds.has(session.bookId));
+    const nightSessions = completedSessions.filter((session) => {
       const hour = Number.parseInt(session.startTime?.split(':')[0] ?? '', 10);
       return Number.isFinite(hour) && (hour >= 21 || hour < 5);
     });
     const uniqueReadingDays = new Set(
-      sessions.map((session) => session.date).filter(Boolean),
+      completedSessions.map((session) => session.date).filter(Boolean),
     ).size;
     const reviewedBooks = books.filter((book) => Boolean(book.review?.trim())).length;
     const quotedBooks = books.filter(
@@ -153,7 +141,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
         description: 'Complete ten reading sessions.',
         category: 'Habit',
         icon: Clock3,
-        progress: sessions.length,
+        progress: completedSessions.length,
         target: 10,
         unit: 'sessions',
       },
@@ -292,8 +280,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
             <p className="inkbound-kicker">Permanent Milestones</p>
             <h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Achievements</h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">
-              Achievements unlock automatically from your library and reading sessions. Once earned,
-              the unlock date is saved permanently on this device and included in cloud sync.
+              Achievements unlock automatically from your canonical library and completed reading sessions. Unlock dates are saved in your Inkbound app data.
             </p>
           </div>
           <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-6 py-4 text-center">
@@ -318,7 +305,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
             key={option}
             type="button"
             onClick={() => setFilter(option)}
-            className={`min-h-10 rounded-xl border px-4 text-sm font-semibold capitalize transition ${
+            className={`min-h-11 rounded-xl border px-4 text-sm font-semibold capitalize transition ${
               safeFilter === option
                 ? 'border-[var(--ink-gold)] bg-[rgba(197,160,89,0.14)] text-[var(--ink-ivory)]'
                 : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-muted)]'
