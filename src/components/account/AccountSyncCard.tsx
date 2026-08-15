@@ -36,7 +36,7 @@ export const AccountSyncCard: React.FC = () => {
           <p className="inkbound-kicker">Cross-device persistence</p>
           <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Take Inkbound with you</h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">
-            Sign in with Google or email to synchronize books, sessions, profile details, and profile images
+            Sign in with Google or email to synchronize books, sessions, profile details, profile images, and Photo Memories
             across your devices. Your library belongs to your Inkbound account, not one particular device.
           </p>
         </div>
@@ -139,7 +139,7 @@ export const AccountSyncCard: React.FC = () => {
           <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-page)] p-4 sm:p-5">
             <p className="text-sm font-bold text-[var(--ink-ivory)]">One account, every device</p>
             <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">
-              Books added on your phone, computer, tablet, or the web stay attached to the same signed-in Inkbound account and restore on your other devices.
+              Books, reading sessions, and Photo Memories added on your phone, computer, tablet, or the web stay attached to the same signed-in Inkbound account and restore on your other devices.
             </p>
             <p className="mt-4 text-xs leading-5 text-[var(--ink-muted)]">
               Already use Google? Keep using it. After signing in with Google, you can add an email/password login to the same account instead of creating a second library.
@@ -229,13 +229,13 @@ export const AccountSyncCard: React.FC = () => {
             <div className="min-w-0">
               <p className="text-sm font-bold text-[var(--ink-ivory)]">Automatic synchronization is active</p>
               <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                Books and sessions synchronize as separate cloud records. Profile images are stored securely. Offline changes remain on this device and synchronize after the connection returns.
+                Books and sessions synchronize as separate cloud records. Profile images and Photo Memories are stored securely. Offline changes remain on this device and synchronize automatically after the connection returns or Inkbound resumes.
               </p>
             </div>
           </div>
 
           <p className="text-xs text-[var(--ink-faint)]">
-            Signing into another device restores the cloud library for this account before that device is allowed to send changes.
+            Signing into another device restores the cloud library and Photo Memories for this account before that device reconciles its local changes.
           </p>
         </div>
       )}
