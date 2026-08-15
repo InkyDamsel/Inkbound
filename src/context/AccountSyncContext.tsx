@@ -53,6 +53,7 @@ const SIGNED_IN_DATA_KEYS = [
   'inkbound_reader_profile',
   'inkbound_photo_memories',
   'inkbound_photo_memories_v2',
+  'inkbound_photo_memory_cloud_revisions_v1',
   PHOTO_MEMORY_SYNC_QUEUE_KEY,
   'inkbound_import_enrichment_queue_v1',
   'bookhaven_books',
