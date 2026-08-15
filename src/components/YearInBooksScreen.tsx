@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, Download, Share2, Sparkles } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 
 interface YearInBooksScreenProps {
   books: UserBookRecord[];
@@ -33,6 +34,22 @@ const exportFormats: Record<ExportFormat, { label: string; width: number; height
   square: { label: 'Square 1:1', width: 1080, height: 1080 },
 };
 
+const dateYear = (value?: string): number | null => {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return null;
+  return year;
+};
+
+const formatLocalDate = (value?: string) => {
+  if (!value || dateYear(value) === null) return '—';
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0).toLocaleDateString();
+};
+
+const getActiveEdition = (book: UserBookRecord) => book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+
 const escapeXml = (value: string) =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -41,11 +58,16 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
   const availableYears = useMemo(() => {
     const years = new Set<number>([currentYear]);
     books.forEach((book) => {
-      if (book.dateFinished) years.add(new Date(book.dateFinished).getFullYear());
-      if (book.dateStarted) years.add(new Date(book.dateStarted).getFullYear());
+      const finishedYear = dateYear(book.dateFinished);
+      const startedYear = dateYear(book.dateStarted);
+      if (finishedYear !== null) years.add(finishedYear);
+      if (startedYear !== null) years.add(startedYear);
     });
-    sessions.forEach((session) => years.add(new Date(session.date).getFullYear()));
-    return [...years].filter(Number.isFinite).sort((a, b) => b - a);
+    sessions.forEach((session) => {
+      const year = dateYear(session.date);
+      if (year !== null && getSessionDurationMinutes(session) > 0) years.add(year);
+    });
+    return [...years].sort((a, b) => b - a);
   }, [books, sessions, currentYear]);
 
   const [preferences, setPreferences] = usePersistentState<YearbookPreferences>(STORAGE_KEY, {
@@ -56,28 +78,29 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
   });
   const [message, setMessage] = useState('');
 
-  const yearBooks = books.filter((book) => book.dateFinished && new Date(book.dateFinished).getFullYear() === preferences.year);
-  const yearSessions = sessions.filter((session) => new Date(session.date).getFullYear() === preferences.year);
-  const totalMinutes = yearSessions.reduce((sum, session) => sum + session.durationMinutes, 0);
-  const totalPages = yearSessions.reduce((sum, session) => sum + (session.pagesRead ?? 0), 0);
+  const yearBooks = books.filter((book) => book.status === 'finished' && dateYear(book.dateFinished) === preferences.year);
+  const yearSessions = sessions.filter((session) => dateYear(session.date) === preferences.year && getSessionDurationMinutes(session) > 0);
+  const totalMinutes = yearSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
+  const totalPages = yearSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
   const readingDays = new Set(yearSessions.map((session) => session.date)).size;
   const averageSession = yearSessions.length ? Math.round(totalMinutes / yearSessions.length) : 0;
-  const topBook = [...yearBooks].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))[0];
+  const ratedYearBooks = yearBooks.filter((book) => typeof book.rating === 'number' && Number.isFinite(book.rating));
+  const topBook = [...ratedYearBooks].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))[0];
 
-  const countValues = (values: string[]) => values.reduce<Record<string, number>>((acc, value) => {
+  const countValues = (values: string[]) => values.filter(Boolean).reduce<Record<string, number>>((acc, value) => {
     acc[value] = (acc[value] ?? 0) + 1;
     return acc;
   }, {});
   const topGenre = Object.entries(countValues(yearBooks.flatMap((book) => book.work.genres))).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Still discovering';
   const topAuthor = Object.entries(countValues(yearBooks.map((book) => book.work.author))).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Still discovering';
-  const topFormat = Object.entries(countValues(yearBooks.map((book) => (book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0])?.format ?? 'unknown'))).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'No favorite yet';
-  const longestBook = [...yearBooks].sort((a, b) => (b.editions[0]?.pageCount ?? 0) - (a.editions[0]?.pageCount ?? 0))[0];
+  const topFormat = Object.entries(countValues(yearBooks.map((book) => getActiveEdition(book)?.format ?? 'unknown'))).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'No favorite yet';
+  const longestBook = [...yearBooks].sort((a, b) => (getActiveEdition(b)?.pageCount ?? 0) - (getActiveEdition(a)?.pageCount ?? 0))[0];
 
   const pages = [
-    { kicker: `${preferences.year} Yearbook`, title: 'Your Year in Books', body: `${yearBooks.length} finished books, ${totalPages.toLocaleString()} pages, and ${Math.round(totalMinutes / 60)} hours spent reading.`, stats: [['Books', yearBooks.length.toString()], ['Pages', totalPages.toLocaleString()], ['Hours', Math.round(totalMinutes / 60).toString()], ['Reading days', readingDays.toString()]] },
-    { kicker: 'Your Reading Rhythm', title: `${yearSessions.length} sessions shaped your year`, body: `Your average session lasted ${averageSession} minutes, across ${readingDays} different reading days.`, stats: [['Sessions', yearSessions.length.toString()], ['Average', `${averageSession}m`], ['Longest book', longestBook?.work.title ?? '—'], ['Top format', topFormat]] },
-    { kicker: 'Your Story Taste', title: topGenre, body: `${topGenre} defined your year, while ${topAuthor} appeared most often on your shelf.`, stats: [['Favorite genre', topGenre], ['Most-read author', topAuthor], ['Five-star reads', yearBooks.filter((book) => book.rating === 5).length.toString()], ['Reviews written', yearBooks.filter((book) => Boolean(book.review?.trim())).length.toString()]] },
-    { kicker: 'Book of the Year', title: topBook?.work.title ?? 'Your favorite is waiting', body: topBook ? `${topBook.work.author}${topBook.rating ? ` · ${topBook.rating} stars` : ''}` : 'Finish and rate books to reveal your annual favorite.', stats: [['Author', topBook?.work.author ?? '—'], ['Rating', topBook?.rating ? `${topBook.rating} / 5` : '—'], ['Finished', topBook?.dateFinished ? new Date(topBook.dateFinished).toLocaleDateString() : '—'], ['Sessions', topBook ? yearSessions.filter((session) => session.bookId === topBook.id).length.toString() : '0']] },
+    { kicker: `${preferences.year} Yearbook`, title: 'Your Year in Books', body: `${yearBooks.length} finished books, ${totalPages.toLocaleString()} canonical pages, and ${Math.round(totalMinutes / 60)} hours spent reading.`, stats: [['Books', yearBooks.length.toString()], ['Pages', totalPages.toLocaleString()], ['Hours', Math.round(totalMinutes / 60).toString()], ['Reading days', readingDays.toString()]] },
+    { kicker: 'Your Reading Rhythm', title: yearSessions.length ? `${yearSessions.length} sessions shaped your year` : 'Your reading year is waiting to take shape', body: yearSessions.length ? `Your average completed session lasted ${averageSession} minutes, across ${readingDays} different reading days.` : 'Complete reading sessions and Inkbound will build this yearbook from your real activity.', stats: [['Sessions', yearSessions.length.toString()], ['Average', `${averageSession}m`], ['Longest book', longestBook?.work.title ?? '—'], ['Top format', topFormat]] },
+    { kicker: 'Your Story Taste', title: topGenre, body: yearBooks.length ? `${topGenre} defined your finished books, while ${topAuthor} appeared most often on your shelf.` : 'Finish books during this year to reveal the genres and authors that defined it.', stats: [['Favorite genre', topGenre], ['Most-read author', topAuthor], ['Five-star reads', yearBooks.filter((book) => book.rating === 5).length.toString()], ['Reviews written', yearBooks.filter((book) => Boolean(book.review?.trim())).length.toString()]] },
+    { kicker: 'Book of the Year', title: topBook?.work.title ?? 'Your favorite is waiting', body: topBook ? `${topBook.work.author}${topBook.rating ? ` · ${topBook.rating} stars` : ''}` : 'Finish and rate books to reveal your annual favorite.', stats: [['Author', topBook?.work.author ?? '—'], ['Rating', topBook?.rating ? `${topBook.rating} / 5` : '—'], ['Finished', formatLocalDate(topBook?.dateFinished)], ['Sessions', topBook ? yearSessions.filter((session) => session.bookId === topBook.id).length.toString() : '0']] },
   ];
 
   const safePage = Math.min(Math.max(preferences.page, 0), pages.length - 1);
