@@ -32,7 +32,7 @@ import { ImportHistoryScreen } from './ImportHistoryScreen';
 
 interface ImportCenterScreenProps {
   books: UserBookRecord[];
-  onExecuteImport: (importedItems: ImportRecordItem[]) => Promise<void> | void;
+  onExecuteImport: (importedItems: ImportRecordItem[]) => Promise<ImportRecordItem[] | void> | ImportRecordItem[] | void;
   onUndoLastImport?: () => void;
 }
 
