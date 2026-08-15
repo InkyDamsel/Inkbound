@@ -44,7 +44,7 @@ const remainingPagesForBook = (book?: UserBookRecord) => {
 
 // Session endpoints are the canonical page-progress record when both exist.
 // Fall back to pagesRead only for legacy sessions that do not have endpoints.
-const pagesReadForSession = (
+export const getSessionPagesRead = (
   session: Pick<ReadingSession, 'startPage' | 'endPage' | 'pagesRead'>,
 ) => {
   if (
@@ -111,7 +111,7 @@ export const getDailyReadingMinutes = (sessions: ReadingSession[], date = localD
 };
 
 const validPageSessions = (sessions: ReadingSession[]) => sessions.filter((session) => {
-  const pages = pagesReadForSession(session);
+  const pages = getSessionPagesRead(session);
   const minutes = sessionMinutes(session);
   return pages > 0 && minutes > 0 && parseLocalDate(session.date) !== null;
 });
@@ -120,7 +120,7 @@ export const getCurrentPace = (
   session: Pick<ReadingSession, 'startPage' | 'endPage' | 'pagesRead' | 'durationMinutes'>,
   book?: UserBookRecord,
 ): ReadingPaceSummary => {
-  const pages = pagesReadForSession(session);
+  const pages = getSessionPagesRead(session);
   const minutes = sessionMinutes(session);
   const remainingPages = remainingPagesForBook(book);
 
@@ -154,7 +154,7 @@ export const getSevenDayAveragePace = (
     const sessionDate = parseLocalDate(session.date);
     return sessionDate !== null && sessionDate >= start && sessionDate <= through;
   });
-  const totalPages = eligible.reduce((sum, session) => sum + pagesReadForSession(session), 0);
+  const totalPages = eligible.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
   const totalMinutes = eligible.reduce((sum, session) => sum + sessionMinutes(session), 0);
   const remainingPages = remainingPagesForBook(book);
 
