@@ -63,6 +63,25 @@ export function writeImportEnrichmentQueue(items: ImportEnrichmentQueueItem[]) {
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 const normalizeText = (value?: string) => value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
+function normalizeImportDate(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+
+  const canonical = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (canonical) {
+    const year = Number(canonical[1]);
+    const month = Number(canonical[2]);
+    const day = Number(canonical[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day) return trimmed;
+    return undefined;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+}
+
 function normalizeTitleCore(value?: string): string {
   if (!value) return '';
   return normalizeText(
@@ -329,6 +348,8 @@ export async function verifyImportRecords(
 export function createFallbackImportedBook(item: ImportRecordItem): UserBookRecord {
   const editionId = `edition-import-${item.id}`;
   const normalizedIsbn = compactIsbn(item.isbn);
+  const dateAdded = normalizeImportDate(item.dateAdded) ?? new Date().toISOString().slice(0, 10);
+  const dateFinished = item.status === 'finished' ? normalizeImportDate(item.dateRead) : undefined;
   return {
     id: `book-import-${item.id}`,
     work: {
@@ -338,7 +359,7 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
       summary: 'Summary unavailable.',
       personalSummary: item.review?.trim() || undefined,
       genres: [],
-      publicationYear: item.dateRead ? Number(item.dateRead.slice(0, 4)) || new Date().getFullYear() : new Date().getFullYear(),
+      publicationYear: dateFinished ? Number(dateFinished.slice(0, 4)) || new Date().getFullYear() : new Date().getFullYear(),
     },
     activeEditionId: editionId,
     editions: [{
@@ -354,7 +375,9 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
     ownership: 'owned',
     progressPages: 0,
     progressMinutes: 0,
-    progressPercentage: item.status === 'finished' ? 100 : 0,
+    // Finished is valid even when the export has no trustworthy edition total.
+    // Do not invent 100%; enrichment can reconcile to a real endpoint later.
+    progressPercentage: 0,
     rating: item.rating,
     review: item.review,
     favoriteQuotes: [],
@@ -365,8 +388,8 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
     sourceOfImport: 'Library import',
     importMetadataVerified: false,
     importMetadataReviewNeeded: false,
-    dateAdded: item.dateAdded,
-    dateFinished: item.dateRead,
+    dateAdded,
+    dateFinished,
   };
 }
 
@@ -374,8 +397,6 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
   try {
     const { work, edition, coverEdition } = await findBestImportedMetadata(item);
     if (!work || !edition) {
-      // A provider miss is not a successful enrichment. Keep the original import
-      // untouched and leave it in the retry queue for later attempts.
       return { item, foundCover: false, foundSummary: false, success: false };
     }
 
@@ -383,6 +404,12 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
     const coverUrl = coverEdition?.coverUrl;
     const editionId = `edition-enriched-${item.id}`;
     const pageCount = edition.pageCount;
+    const hasKnownPageTotal = item.format !== 'audiobook'
+      && typeof pageCount === 'number'
+      && Number.isFinite(pageCount)
+      && pageCount > 0;
+    const dateAdded = normalizeImportDate(item.dateAdded) ?? new Date().toISOString().slice(0, 10);
+    const dateFinished = item.status === 'finished' ? normalizeImportDate(item.dateRead) : undefined;
     const enriched: UserBookRecord = {
       id: item.targetBookId,
       work: {
@@ -419,9 +446,9 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       }],
       status: item.status,
       ownership: 'owned',
-      progressPages: item.status === 'finished' ? pageCount ?? 0 : 0,
+      progressPages: item.status === 'finished' && hasKnownPageTotal ? pageCount! : 0,
       progressMinutes: 0,
-      progressPercentage: item.status === 'finished' ? 100 : 0,
+      progressPercentage: item.status === 'finished' && hasKnownPageTotal ? 100 : 0,
       rating: item.rating,
       review: item.review,
       favoriteQuotes: [],
@@ -432,8 +459,8 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       sourceOfImport: 'Library import + verified metadata',
       importMetadataVerified: true,
       importMetadataReviewNeeded: false,
-      dateAdded: item.dateAdded,
-      dateFinished: item.dateRead,
+      dateAdded,
+      dateFinished,
     };
 
     return {
@@ -483,7 +510,6 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
         id: activeEdition.id,
         format: activeEdition.format,
         coverGradient: activeEdition.coverGradient,
-        // User-selected/manual values always win. Enrichment only fills gaps.
         coverUrl: activeEdition.coverUrl || enrichedEdition.coverUrl,
         isbn: activeEdition.isbn || enrichedEdition.isbn,
         isbn10: activeEdition.isbn10 || enrichedEdition.isbn10,
@@ -503,6 +529,12 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
   const visibleSummary = isPlaceholderSummary(current.work.summary)
     ? publisherSummary || enriched.work.summary || current.work.summary
     : current.work.summary;
+  const isAudiobook = mergedActiveEdition?.format === 'audiobook';
+  const total = isAudiobook ? mergedActiveEdition?.audiobookDurationMins : mergedActiveEdition?.pageCount;
+  const hasKnownTotal = typeof total === 'number' && Number.isFinite(total) && total > 0;
+  const shouldReconcileImportedFinish = current.status === 'finished'
+    && current.progressPercentage === 0
+    && hasKnownTotal;
 
   return {
     ...current,
@@ -520,6 +552,8 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
     editions: mergedActiveEdition
       ? current.editions.map((edition) => edition.id === current.activeEditionId ? mergedActiveEdition : edition)
       : current.editions,
+    ...(shouldReconcileImportedFinish && isAudiobook ? { progressMinutes: total!, progressPercentage: 100 } : {}),
+    ...(shouldReconcileImportedFinish && !isAudiobook ? { progressPages: total!, progressPercentage: 100 } : {}),
     sourceOfImport: 'Library import + verified metadata',
     importMetadataVerified: true,
     importMetadataReviewNeeded: false,
@@ -581,7 +615,6 @@ export function buildRepairQueueItems(
     });
   });
 
-  // Drop orphaned queue items whose book no longer exists.
   const existingIds = new Set(books.map((book) => book.id));
   return [...byBookId.values()].filter((item) => existingIds.has(item.targetBookId));
 }
