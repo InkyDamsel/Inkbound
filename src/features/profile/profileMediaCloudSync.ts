@@ -25,11 +25,11 @@ type ProfileMediaQueue = Partial<Record<ProfileMediaKind, ProfileMediaQueueItem>
 interface SyncableProfile {
   avatarImage?: string;
   bannerImage?: string;
-  avatarMediaKey?: string;
-  bannerMediaKey?: string;
   // Legacy fields are kept only long enough to migrate existing installs.
   avatarImageData?: string;
   bannerImageData?: string;
+  avatarMediaKey?: string;
+  bannerMediaKey?: string;
   [key: string]: unknown;
 }
 
@@ -58,7 +58,6 @@ async function queueLegacyProfileMedia(uid: string, profile: SyncableProfile) {
     migrations.push((async () => {
       const blob = await dataUrlToBlob(profile.avatarImageData!);
       const mediaKey = await storeProfileMedia(uid, 'avatar', blob);
-      profile.avatarMediaKey = mediaKey;
       enqueueProfileMediaSync('avatar', mediaKey);
     })());
   }
@@ -67,15 +66,11 @@ async function queueLegacyProfileMedia(uid: string, profile: SyncableProfile) {
     migrations.push((async () => {
       const blob = await dataUrlToBlob(profile.bannerImageData!);
       const mediaKey = await storeProfileMedia(uid, 'banner', blob);
-      profile.bannerMediaKey = mediaKey;
       enqueueProfileMediaSync('banner', mediaKey);
     })());
   }
 
-  if (migrations.length > 0) {
-    await Promise.all(migrations);
-    writeRuntimeJson(PROFILE_STORAGE_KEY, profile);
-  }
+  if (migrations.length > 0) await Promise.all(migrations);
 }
 
 export async function storeAndQueueProfileMedia(
