@@ -36,7 +36,7 @@ export const UpgradeModal: React.FC = () => {
       onClick={closeUpgradeModal}
     >
       <section
-        className="relative flex max-h-[96dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-surface)] shadow-2xl sm:max-h-[92dvh] sm:max-w-3xl sm:rounded-3xl"
+        className="relative flex max-h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-surface)] shadow-2xl sm:max-h-[92dvh] sm:max-w-3xl sm:rounded-3xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="upgrade-modal-title"
@@ -76,7 +76,7 @@ export const UpgradeModal: React.FC = () => {
             <div className="flex flex-col justify-between rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Monthly</span>
-                <div className="mt-1 flex items-baseline gap-1">
+                <div className="mt-1 flex flex-wrap items-baseline gap-1">
                   <span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">$6.99</span>
                   <span className="text-xs text-[var(--ink-muted)]">/ month</span>
                 </div>
@@ -89,7 +89,7 @@ export const UpgradeModal: React.FC = () => {
               <span className="absolute -top-3 right-4 rounded-full bg-[var(--ink-mauve)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-surface)]">Best Value</span>
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-mauve)]">Annual</span>
-                <div className="mt-1 flex items-baseline gap-1">
+                <div className="mt-1 flex flex-wrap items-baseline gap-1">
                   <span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">$59.99</span>
                   <span className="text-xs text-[var(--ink-muted)]">/ year</span>
                 </div>
@@ -105,20 +105,20 @@ export const UpgradeModal: React.FC = () => {
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)]">
-            <div className="grid grid-cols-[minmax(150px,1fr)_70px_84px] border-b border-[var(--ink-border-subtle)] bg-[var(--ink-surface)] px-4 py-3 text-xs font-bold uppercase tracking-wider text-[var(--ink-ivory)] sm:grid-cols-12">
-              <div className="sm:col-span-6">Feature</div>
+            <div className="grid grid-cols-[minmax(0,1fr)_52px_64px] border-b border-[var(--ink-border-subtle)] bg-[var(--ink-surface)] px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-[var(--ink-ivory)] sm:grid-cols-12 sm:px-4 sm:text-xs sm:tracking-wider">
+              <div className="min-w-0 sm:col-span-6">Feature</div>
               <div className="text-center text-[var(--ink-muted)] sm:col-span-3">Free</div>
               <div className="text-center text-[var(--ink-mauve)] sm:col-span-3">Premium</div>
             </div>
 
-            <div className="divide-y divide-[var(--ink-border-subtle)] text-xs">
+            <div className="divide-y divide-[var(--ink-border-subtle)] text-[11px] sm:text-xs">
               {comparisonRows.map((row) => (
-                <div key={row.feature} className="grid grid-cols-[minmax(150px,1fr)_70px_84px] items-center px-4 py-3 transition hover:bg-[var(--ink-surface)] sm:grid-cols-12">
-                  <div className="pr-3 font-medium text-[var(--ink-ivory)] sm:col-span-6">{row.feature}</div>
-                  <div className="flex justify-center font-semibold text-[var(--ink-muted)] sm:col-span-3">
+                <div key={row.feature} className="grid grid-cols-[minmax(0,1fr)_52px_64px] items-center px-3 py-3 transition hover:bg-[var(--ink-surface)] sm:grid-cols-12 sm:px-4">
+                  <div className="min-w-0 break-words pr-2 font-medium text-[var(--ink-ivory)] sm:col-span-6 sm:pr-3">{row.feature}</div>
+                  <div className="flex min-w-0 justify-center text-center font-semibold text-[var(--ink-muted)] sm:col-span-3">
                     {typeof row.free === 'boolean' ? row.free ? <Check className="h-4 w-4 text-emerald-500" /> : <X className="h-4 w-4" /> : row.free}
                   </div>
-                  <div className="flex justify-center font-bold text-[var(--ink-mauve)] sm:col-span-3">
+                  <div className="flex min-w-0 justify-center text-center font-bold text-[var(--ink-mauve)] sm:col-span-3">
                     {typeof row.premium === 'boolean' ? row.premium ? <Check className="h-4 w-4" /> : <X className="h-4 w-4 text-[var(--ink-muted)]" /> : row.premium}
                   </div>
                 </div>
