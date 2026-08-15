@@ -11,8 +11,9 @@ import {
   signOut,
 } from 'firebase/auth';
 import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteObject, getBytes, ref as storageRef, uploadString } from 'firebase/storage';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
-import { auth, db, isFirebaseConfigured } from '../lib/firebase';
+import { auth, db, isFirebaseConfigured, storage } from '../lib/firebase';
 import {
   prepareRuntimeAuthPersistence,
   signInRuntimeWithGoogle,
@@ -55,9 +56,22 @@ interface StoredPhotoMemory {
   createdAt: string;
 }
 
+interface CloudPhotoMemory {
+  caption?: string;
+  date?: string;
+  location?: string;
+  bookId?: string;
+  createdAt?: string;
+  storagePath?: string;
+  imageContentType?: string;
+  // Migration-only fallback for older records that embedded base64 in Firestore.
+  imageData?: string;
+}
+
 const AccountSyncContext = createContext<AccountSyncContextValue | undefined>(undefined);
 const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
 const PHOTO_MEMORIES_STORAGE_KEY = 'inkbound_photo_memories';
+const MAX_PHOTO_MEMORY_BYTES = 3 * 1024 * 1024;
 const SIGNED_IN_DATA_KEYS = [
   'inkbound_books',
   'inkbound_sessions',
@@ -79,6 +93,23 @@ function clearSignedInDataFromDevice(uid: string) {
 
 function readPhotoMemories(): StoredPhotoMemory[] {
   return readRuntimeJson<StoredPhotoMemory[]>(PHOTO_MEMORIES_STORAGE_KEY, []);
+}
+
+function photoStoragePath(uid: string, photoId: string) {
+  return `users/${uid}/photo-memories/${photoId}`;
+}
+
+function getDataUrlContentType(value: string): string {
+  return /^data:([^;,]+)/i.exec(value)?.[1] ?? 'image/jpeg';
+}
+
+function bytesToDataUrl(bytes: Uint8Array, contentType: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('A saved photo could not be restored.'));
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(new Blob([bytes], { type: contentType || 'image/jpeg' }));
+  });
 }
 
 function friendlyAuthMessage(error: unknown, fallback: string): string {
@@ -238,17 +269,53 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setMessage('Backing up photo memories...');
       const syncedAt = new Date().toISOString();
       const localPhotos = readPhotoMemories();
+      if (localPhotos.length > 0 && !storage) {
+        throw new Error('Photo storage is not configured for this Inkbound deployment.');
+      }
+
       const photoCollection = collection(db, 'users', user.uid, 'photoMemories');
       const cloudPhotos = await getDocs(photoCollection);
       const localIds = new Set(localPhotos.map((photo) => photo.id));
 
-      await Promise.all(cloudPhotos.docs.filter((photoDocument) => !localIds.has(photoDocument.id)).map((photoDocument) => deleteDoc(photoDocument.ref)));
-      await Promise.all(localPhotos.map((photo) => setDoc(doc(photoCollection, photo.id), { ...photo, updatedAt: serverTimestamp() }, { merge: true })));
+      await Promise.all(
+        cloudPhotos.docs
+          .filter((photoDocument) => !localIds.has(photoDocument.id))
+          .map(async (photoDocument) => {
+            const cloudPhoto = photoDocument.data() as CloudPhotoMemory;
+            await deleteDoc(photoDocument.ref);
+            if (!storage) return;
+            const path = cloudPhoto.storagePath ?? photoStoragePath(user.uid, photoDocument.id);
+            try {
+              await deleteObject(storageRef(storage, path));
+            } catch {
+              // A legacy Firestore-only photo may not have a corresponding Storage object.
+            }
+          }),
+      );
+
+      await Promise.all(
+        localPhotos.map(async (photo) => {
+          const path = photoStoragePath(user.uid, photo.id);
+          const imageContentType = getDataUrlContentType(photo.imageData);
+          if (!storage) throw new Error('Photo storage is unavailable.');
+          await uploadString(storageRef(storage, path), photo.imageData, 'data_url', { contentType: imageContentType });
+          await setDoc(doc(photoCollection, photo.id), {
+            caption: photo.caption,
+            date: photo.date,
+            location: photo.location,
+            bookId: photo.bookId ?? null,
+            createdAt: photo.createdAt,
+            storagePath: path,
+            imageContentType,
+            updatedAt: serverTimestamp(),
+          });
+        }),
+      );
 
       writeRuntimeValue(LAST_SYNC_STORAGE_KEY, syncedAt);
       setLastSyncedAt(syncedAt);
       setStatus('success');
-      setMessage('Photo memories backed up. Books and reading sessions sync automatically record by record.');
+      setMessage('Photo memories backed up securely. Images are stored privately in Firebase Storage; books and reading sessions sync automatically record by record.');
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : 'Photo-memory backup failed.');
@@ -265,18 +332,35 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setStatus('working');
       setMessage('Restoring photo memories...');
       const photoSnapshot = await getDocs(collection(db, 'users', user.uid, 'photoMemories'));
-      const restoredPhotos = photoSnapshot.docs.map((photoDocument) => {
-        const photo = photoDocument.data() as StoredPhotoMemory;
-        return {
-          id: photoDocument.id,
-          imageData: photo.imageData,
-          caption: photo.caption ?? '',
-          date: photo.date,
-          location: photo.location ?? '',
-          bookId: photo.bookId,
-          createdAt: photo.createdAt,
-        } satisfies StoredPhotoMemory;
-      });
+      const restoredPhotos = (
+        await Promise.all(
+          photoSnapshot.docs.map(async (photoDocument): Promise<StoredPhotoMemory | null> => {
+            const photo = photoDocument.data() as CloudPhotoMemory;
+            let imageData = photo.imageData ?? '';
+
+            if (photo.storagePath && storage) {
+              try {
+                const bytes = await getBytes(storageRef(storage, photo.storagePath), MAX_PHOTO_MEMORY_BYTES);
+                imageData = await bytesToDataUrl(bytes, photo.imageContentType ?? 'image/jpeg');
+              } catch {
+                // Keep the legacy embedded image, if one exists, as a migration fallback.
+              }
+            }
+
+            if (!imageData || !photo.date || !photo.createdAt) return null;
+            return {
+              id: photoDocument.id,
+              imageData,
+              caption: photo.caption ?? '',
+              date: photo.date,
+              location: photo.location ?? '',
+              bookId: photo.bookId || undefined,
+              createdAt: photo.createdAt,
+            };
+          }),
+        )
+      ).filter((photo): photo is StoredPhotoMemory => Boolean(photo));
+
       writeRuntimeJson(PHOTO_MEMORIES_STORAGE_KEY, restoredPhotos);
 
       const restoredAt = new Date().toISOString();
