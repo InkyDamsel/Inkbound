@@ -25,6 +25,8 @@ import {
   getCurrentPace,
   getDailyReadingMinutes,
   getReadingStreak,
+  getSessionDurationMinutes,
+  getSessionListeningMinutes,
   getSessionPagesRead,
   getSevenDayAveragePace,
   localDateKey,
@@ -85,9 +87,9 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
     });
   }, [bookFilter, booksById, searchQuery, sessions]);
 
-  const totalMinutes = sessions.reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
+  const totalMinutes = sessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
   const totalPages = sessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
-  const totalListening = sessions.reduce((sum, session) => sum + Math.max(0, session.minutesListened ?? 0), 0);
+  const totalListening = sessions.reduce((sum, session) => sum + getSessionListeningMinutes(session), 0);
   const averageMinutes = sessions.length ? Math.round(totalMinutes / sessions.length) : 0;
   const today = localDateKey();
   const currentStreak = getReadingStreak(sessions, today);
@@ -191,8 +193,9 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
             const book = booksById.get(session.bookId);
             const edition = book?.editions.find((item) => item.id === book.activeEditionId) ?? book?.editions[0];
             const isAudio = edition?.format === 'audiobook';
+            const safeDurationMinutes = getSessionDurationMinutes(session);
             const safePagesRead = getSessionPagesRead(session);
-            const safeMinutesListened = Math.max(0, session.minutesListened ?? 0);
+            const safeMinutesListened = getSessionListeningMinutes(session);
             const currentPace = book && !isAudio ? getCurrentPace(session, book) : null;
             const sevenDayPace = book && !isAudio ? getSevenDayAveragePace(sessions, book, session.date) : null;
             const currentEstimate = formatDurationEstimate(currentPace?.estimatedRemainingSeconds);
@@ -213,7 +216,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
 
                     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--ink-text-secondary)]">
                       <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{session.date}</span>
-                      <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{Math.max(0, session.durationMinutes)} minutes</span>
+                      <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{safeDurationMinutes} minutes</span>
                       {session.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{session.location}</span>}
                       {safePagesRead > 0 ? <span>{safePagesRead} pages</span> : null}
                       {safeMinutesListened > 0 ? <span>{safeMinutesListened} minutes listened</span> : null}
