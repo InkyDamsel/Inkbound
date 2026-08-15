@@ -21,8 +21,8 @@ const faqSections = [
     title: 'Imports & library maintenance',
     items: [
       ['How does Inkbound handle large libraries?', 'Inkbound is designed to import large libraries quickly, then fill in missing book details gradually so you do not have to wait for every cover and summary before using your library.'],
-      ['When are missing covers and summaries updated?', 'Inkbound performs light maintenance during the day and gives larger repair jobs priority between 11 PM and 5 AM in your device’s local timezone while Inkbound is open.'],
-      ['Does overnight maintenance work if Inkbound is closed?', 'Not reliably. A web app cannot wake a closed browser or sleeping computer. Inkbound resumes maintenance the next time it is open and conditions allow it.'],
+      ['When are missing covers and summaries updated?', 'Inkbound performs light maintenance while the app is active and gives larger repair jobs priority during quieter hours on your device.'],
+      ['Does maintenance keep running after I close Inkbound?', 'Not continuously. Mobile operating systems and browsers can pause background work. Inkbound safely resumes queued maintenance the next time the app becomes active and conditions allow it.'],
       ['Do I need to re-import books with missing details?', 'No. Inkbound can keep missing covers and summaries queued for repair without requiring you to import the library again.'],
       ['Will metadata repair overwrite my reading data?', 'No. Library maintenance is intended to fill missing book metadata, not replace your ratings, reviews, reading status, dates, progress, notes, tags, collections, or ownership information.'],
       ['What if Inkbound cannot find a cover or summary?', 'The book remains in your library. Inkbound can retry missing metadata later instead of treating your reading record as disposable.'],
@@ -33,6 +33,7 @@ const faqSections = [
     items: [
       ['What happens to maintenance while I use the reading timer?', 'Your reading session takes priority. Large-library metadata maintenance pauses while the timer is active and resumes later.'],
       ['What if my connection drops during a session?', 'The reading timer and session experience are designed to continue locally rather than depending on a constant internet connection. Cloud updates can catch up when connectivity returns.'],
+      ['What if I background Inkbound during a timer?', 'Your active timer draft is preserved. When Inkbound becomes active again, elapsed time is reconciled from the saved session timestamps instead of relying only on foreground timer ticks.'],
     ],
   },
   {
@@ -57,7 +58,7 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
       <button
         type="button"
         onClick={() => setHelpOpen(true)}
-        className="fixed bottom-5 right-5 z-[180] inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 text-sm font-bold text-[var(--ink-ivory)] shadow-xl transition hover:border-[var(--ink-gold)]/50"
+        className="fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[180] inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 text-sm font-bold text-[var(--ink-ivory)] shadow-xl transition hover:border-[var(--ink-gold)]/50 md:bottom-[max(1.25rem,env(safe-area-inset-bottom))] md:right-[max(1.25rem,env(safe-area-inset-right))]"
         aria-label="Open Inkbound help and frequently asked questions"
       >
         <HelpCircle className="h-4 w-4 text-[var(--ink-gold)]" /> Help
@@ -69,7 +70,7 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
             role="dialog"
             aria-modal="true"
             aria-labelledby="inkbound-help-title"
-            className="h-full w-full max-w-2xl overflow-y-auto border-l border-[var(--ink-border)] bg-[var(--ink-surface)] p-5 shadow-2xl sm:p-8"
+            className="h-[100dvh] w-full max-w-2xl overflow-y-auto overscroll-contain border-l border-[var(--ink-border)] bg-[var(--ink-surface)] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:px-8 sm:pb-[max(2rem,env(safe-area-inset-bottom))] sm:pt-[max(2rem,env(safe-area-inset-top))]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
@@ -78,7 +79,7 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
                 <h2 id="inkbound-help-title" className="mt-2 font-serif text-3xl text-[var(--ink-ivory)]">Frequently asked questions</h2>
                 <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Quick answers about syncing, imports, large libraries, reading sessions, and your Inkbound data.</p>
               </div>
-              <button type="button" onClick={() => setHelpOpen(false)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--ink-surface-soft)] text-[var(--ink-muted)]" aria-label="Close help">
+              <button type="button" onClick={() => setHelpOpen(false)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--ink-surface-soft)] text-[var(--ink-muted)]" aria-label="Close help">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -90,8 +91,8 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
                   <div className="mt-3 space-y-2">
                     {section.items.map(([question, answer]) => (
                       <details key={question} className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-3">
-                        <summary className="cursor-pointer select-none font-semibold text-[var(--ink-ivory)]">{question}</summary>
-                        <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">{answer}</p>
+                        <summary className="min-h-11 cursor-pointer select-none py-2 font-semibold text-[var(--ink-ivory)]">{question}</summary>
+                        <p className="mt-1 text-sm leading-6 text-[var(--ink-muted)]">{answer}</p>
                       </details>
                     ))}
                   </div>
@@ -106,9 +107,9 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
                   <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Still need help?</h3>
                   <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">If you cannot find the answer you are looking for, email us. For a technical issue, include a short description of what happened and a screenshot when possible.</p>
                   <div className="mt-4 flex flex-col gap-2 text-sm">
-                    <a href="mailto:inkbound_support@inkydameinteractive.com" className="font-bold text-[var(--ink-gold)] hover:underline">inkbound_support@inkydameinteractive.com</a>
+                    <a href="mailto:inkbound_support@inkydameinteractive.com" className="min-h-11 py-2 font-bold text-[var(--ink-gold)] hover:underline">inkbound_support@inkydameinteractive.com</a>
                     <span className="text-xs text-[var(--ink-muted)]">Support and technical help</span>
-                    <a href="mailto:inkbound@inkydameinteractive.com" className="mt-2 font-bold text-[var(--ink-gold)] hover:underline">inkbound@inkydameinteractive.com</a>
+                    <a href="mailto:inkbound@inkydameinteractive.com" className="mt-2 min-h-11 py-2 font-bold text-[var(--ink-gold)] hover:underline">inkbound@inkydameinteractive.com</a>
                     <span className="text-xs text-[var(--ink-muted)]">General Inkbound inquiries</span>
                   </div>
                 </div>
