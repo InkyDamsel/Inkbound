@@ -9,20 +9,34 @@ service firebase.storage {
       return signedIn() && request.auth.uid == userId;
     }
 
+    function isSupportedPhotoMemoryType() {
+      return request.resource.contentType == 'image/jpeg'
+        || request.resource.contentType == 'image/png'
+        || request.resource.contentType == 'image/webp';
+    }
+
+    // Profile media is normalized to WebP before upload. Keep these paths
+    // intentionally narrow so arbitrary user files cannot be stored here.
     match /users/{userId}/profile/{fileName} {
       allow read: if isOwner(userId);
       allow create, update: if isOwner(userId)
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-      allow delete: if isOwner(userId);
+        && (fileName == 'avatar.webp' || fileName == 'banner.webp')
+        && request.resource.size < 600 * 1024
+        && request.resource.contentType == 'image/webp';
+      allow delete: if isOwner(userId)
+        && (fileName == 'avatar.webp' || fileName == 'banner.webp');
     }
 
+    // Photo memories are private user media. Current clients upload JPEGs,
+    // while PNG/WebP remain accepted for safe migration of older records.
     match /users/{userId}/photo-memories/{fileName} {
       allow read: if isOwner(userId);
       allow create, update: if isOwner(userId)
+        && fileName.matches('[A-Za-z0-9_-]{1,128}')
         && request.resource.size < 3 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-      allow delete: if isOwner(userId);
+        && isSupportedPhotoMemoryType();
+      allow delete: if isOwner(userId)
+        && fileName.matches('[A-Za-z0-9_-]{1,128}');
     }
 
     match /{allPaths=**} {
