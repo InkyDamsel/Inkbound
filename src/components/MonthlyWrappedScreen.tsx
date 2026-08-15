@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Download, Share2, Sparkles } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 
 interface MonthlyWrappedScreenProps {
   books: UserBookRecord[];
@@ -40,6 +41,13 @@ const monthChoices = Array.from({ length: 18 }, (_, index) => {
   return { key: monthKeyFor(date), label: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) };
 });
 
+const isValidSessionDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+};
+
 const escapeXml = (value: string) =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -53,29 +61,35 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   const [message, setMessage] = useState('');
 
   const selectedMonth = monthChoices.find((month) => month.key === preferences.monthKey) ?? monthChoices[0];
-  const monthSessions = sessions.filter((session) => session.date.startsWith(preferences.monthKey));
-  const finishedBooks = books.filter((book) => book.dateFinished?.startsWith(preferences.monthKey));
+  const monthSessions = sessions.filter((session) =>
+    session.date.startsWith(preferences.monthKey)
+    && isValidSessionDate(session.date)
+    && getSessionDurationMinutes(session) > 0,
+  );
+  const finishedBooks = books.filter((book) => book.status === 'finished' && book.dateFinished?.startsWith(preferences.monthKey));
   const activeBookIds = new Set(monthSessions.map((session) => session.bookId));
   const activeBooks = books.filter((book) => activeBookIds.has(book.id));
 
   const stats = useMemo(() => {
-    const totalMinutes = monthSessions.reduce((sum, session) => sum + session.durationMinutes, 0);
-    const pagesRead = monthSessions.reduce((sum, session) => sum + (session.pagesRead ?? 0), 0);
+    const totalMinutes = monthSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
+    const pagesRead = monthSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
     const readingDays = new Set(monthSessions.map((session) => session.date)).size;
     const averageSession = monthSessions.length ? Math.round(totalMinutes / monthSessions.length) : 0;
     const genreCounts = new Map<string, number>();
     activeBooks.forEach((book) => book.work.genres.forEach((genre) => genreCounts.set(genre, (genreCounts.get(genre) ?? 0) + 1)));
     const favoriteGenre = [...genreCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Your next favorite genre';
-    const highestRated = [...finishedBooks].filter((book) => book.rating).sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))[0];
+    const highestRated = [...finishedBooks]
+      .filter((book) => typeof book.rating === 'number' && Number.isFinite(book.rating))
+      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))[0];
     const favoriteQuote = finishedBooks.flatMap((book) => book.favoriteQuotes ?? [])[0]?.quote;
     return { totalMinutes, pagesRead, readingDays, averageSession, favoriteGenre, highestRated, favoriteQuote };
   }, [activeBooks, finishedBooks, monthSessions]);
 
   const cards = [
-    { eyebrow: `${selectedMonth.label} Reading Wrapped`, title: `${finishedBooks.length} ${finishedBooks.length === 1 ? 'book' : 'books'} finished`, body: `${stats.pagesRead.toLocaleString()} pages · ${Math.floor(stats.totalMinutes / 60)}h ${stats.totalMinutes % 60}m`, footer: `${monthSessions.length} sessions across ${stats.readingDays} reading days` },
-    { eyebrow: 'Your Reading Rhythm', title: `${stats.averageSession} minute average session`, body: stats.readingDays > 0 ? `You made time to read on ${stats.readingDays} days this month.` : 'Your next reading month is waiting.', footer: `${monthSessions.length} sessions recorded with Inkbound` },
-    { eyebrow: 'Your Month in Stories', title: stats.favoriteGenre, body: stats.highestRated ? `${stats.highestRated.work.title} was your highest-rated finish${stats.highestRated.rating ? ` at ${stats.highestRated.rating} stars` : ''}.` : 'Keep rating your finished books to reveal a monthly favorite.', footer: `${activeBooks.length} books appeared in your reading life` },
-    { eyebrow: 'A Memory to Keep', title: stats.favoriteQuote ? `“${stats.favoriteQuote.slice(0, 90)}${stats.favoriteQuote.length > 90 ? '…' : ''}”` : 'A quiet month of reading, remembered.', body: stats.favoriteQuote ? 'Your saved quote of the month' : 'Save quotes while reading and Inkbound will feature one here.', footer: 'Created with Inkbound' },
+    { eyebrow: `${selectedMonth.label} Reading Wrapped`, title: `${finishedBooks.length} ${finishedBooks.length === 1 ? 'book' : 'books'} finished`, body: `${stats.pagesRead.toLocaleString()} pages · ${Math.floor(stats.totalMinutes / 60)}h ${Math.round(stats.totalMinutes % 60)}m`, footer: `${monthSessions.length} completed sessions across ${stats.readingDays} reading days` },
+    { eyebrow: 'Your Reading Rhythm', title: monthSessions.length ? `${stats.averageSession} minute average session` : 'Your next reading rhythm is waiting', body: stats.readingDays > 0 ? `You made time to read on ${stats.readingDays} days this month.` : 'Complete a reading session and Inkbound will build this recap from your real activity.', footer: `${monthSessions.length} completed sessions recorded with Inkbound` },
+    { eyebrow: 'Your Month in Stories', title: stats.favoriteGenre, body: stats.highestRated ? `${stats.highestRated.work.title} was your highest-rated finish${stats.highestRated.rating ? ` at ${stats.highestRated.rating} stars` : ''}.` : 'Keep rating your finished books to reveal a monthly favorite.', footer: `${activeBooks.length} books appeared in your recorded reading sessions` },
+    { eyebrow: 'A Memory to Keep', title: stats.favoriteQuote ? `“${stats.favoriteQuote.slice(0, 90)}${stats.favoriteQuote.length > 90 ? '…' : ''}”` : 'A quiet month of reading, remembered.', body: stats.favoriteQuote ? 'A saved quote from a book you finished this month' : 'Save quotes while reading and Inkbound will feature one here.', footer: 'Created with Inkbound' },
   ];
 
   const cardIndex = Math.min(preferences.currentCard, cards.length - 1);
