@@ -96,11 +96,15 @@ export function removeRuntimeValuesByPrefix(prefix: string): number {
       });
 
     // A full Inkbound device wipe also owns large media blobs. Keep normal
-    // key-value cleanup synchronous, but clear the binary store asynchronously.
+    // key-value cleanup synchronous, but clear each binary-media namespace
+    // asynchronously through the runtime media adapter.
     if (prefix === 'inkbound_') {
-      void import('./runtimeMediaStorage').then(({ removeRuntimeMediaByPrefix }) =>
-        removeRuntimeMediaByPrefix('photo-memory:'),
-      );
+      void import('./runtimeMediaStorage').then(async ({ removeRuntimeMediaByPrefix }) => {
+        await Promise.all([
+          removeRuntimeMediaByPrefix('photo-memory:'),
+          removeRuntimeMediaByPrefix('profile-media:'),
+        ]);
+      });
     }
   } catch {
     return removed;
