@@ -603,18 +603,39 @@ export default function App() {
         .sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
       const latest = related.at(-1);
       const currentProgress = isAudiobook ? book.progressMinutes : book.progressPages;
-      const previousEndpoint = changedSession ? sessionProgress(changedSession, isAudiobook, 'end') : undefined;
-      const fallbackProgress = changedSession ? sessionProgress(changedSession, isAudiobook, 'start') : currentProgress;
-      const trackedProgress = latest ? sessionProgress(latest, isAudiobook, 'end') : fallbackProgress;
-      const mayReduce = previousEndpoint !== undefined && currentProgress === previousEndpoint;
-      const nextProgress = mayReduce ? trackedProgress : Math.max(currentProgress, trackedProgress);
+
+      // Reconstruct the session history before the edit/delete. This tells us
+      // whether the book's saved progress was session-driven or manually ahead.
+      const previousRelated = changedSession
+        ? [
+            ...nextSessions.filter((item) => item.bookId === bookId && item.id !== changedSession.id),
+            ...(changedSession.bookId === bookId ? [changedSession] : []),
+          ].sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)))
+        : [];
+      const previousLatest = previousRelated.at(-1);
+      const previousTrackedProgress = previousLatest
+        ? sessionProgress(previousLatest, isAudiobook, 'end')
+        : changedSession && changedSession.bookId === bookId
+          ? sessionProgress(changedSession, isAudiobook, 'start')
+          : undefined;
+      const trackedProgress = latest
+        ? sessionProgress(latest, isAudiobook, 'end')
+        : changedSession && changedSession.bookId === bookId
+          ? sessionProgress(changedSession, isAudiobook, 'start')
+          : currentProgress;
+      const hasManualProgressAhead = previousTrackedProgress !== undefined && currentProgress > previousTrackedProgress;
+      const nextProgress = changedSession
+        ? hasManualProgressAhead ? Math.max(currentProgress, trackedProgress) : trackedProgress
+        : Math.max(currentProgress, trackedProgress);
       const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
       const hasKnownTotal = Boolean(total && total > 0);
       const progressPercentage = hasKnownTotal
         ? Math.min(100, Math.round((nextProgress / total!) * 100))
         : book.progressPercentage;
       const reachedEnd = Boolean(hasKnownTotal && nextProgress >= total!);
-      const wasTrackerFinished = previousEndpoint !== undefined && currentProgress === previousEndpoint && book.progressPercentage === 100;
+      const wasTrackerFinished = previousTrackedProgress !== undefined
+        && currentProgress === previousTrackedProgress
+        && book.progressPercentage === 100;
       const shouldUnfinishTrackedCompletion = Boolean(hasKnownTotal && wasTrackerFinished && !reachedEnd);
 
       return {
