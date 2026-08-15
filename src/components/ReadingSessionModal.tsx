@@ -4,6 +4,7 @@ import { usePersistentState } from '../hooks/usePersistentState';
 import { CheckCircle2, Clock, Flame, Gauge, MoonStar, Pause, Play, Square, Target, Trash2, X } from 'lucide-react';
 import {
   formatDurationEstimate,
+  getCurrentPace,
   getDailyReadingMinutes,
   getReadingStreak,
   getSevenDayAveragePace,
@@ -284,12 +285,17 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const dailyGoal = Math.max(1, Number(dailyGoalMins) || 30);
   const dailyMinutes = getDailyReadingMinutes(projectedSessions, completionDate);
   const goalPercent = Math.min(100, Math.round((dailyMinutes / dailyGoal) * 100));
-  const currentPagesPerHour = !isAudiobook && pagesCompleted > 0 && sessionDurationMins >= 2 ? pagesCompleted / (sessionDurationMins / 60) : undefined;
-  const remainingPages = !isAudiobook && activeEdition?.pageCount ? Math.max(0, activeEdition.pageCount - draft.endPage) : undefined;
-  const currentRemaining = currentPagesPerHour && remainingPages !== undefined ? (remainingPages / currentPagesPerHour) * 3600 : undefined;
   const projectedBook = selectedBook ? { ...selectedBook, progressPages: draft.endPage, progressMinutes: draft.endMins } : undefined;
+  const currentPace = projectedBook && !isAudiobook
+    ? getCurrentPace({
+        startPage: draft.startPage,
+        endPage: draft.endPage,
+        pagesRead: pagesCompleted,
+        durationMinutes: sessionDurationMins,
+      }, projectedBook)
+    : null;
   const sevenDayPace = projectedBook && !isAudiobook ? getSevenDayAveragePace(projectedSessions, projectedBook, completionDate) : null;
-  const currentRemainingLabel = formatDurationEstimate(currentRemaining);
+  const currentRemainingLabel = formatDurationEstimate(currentPace?.estimatedRemainingSeconds);
   const averageRemainingLabel = formatDurationEstimate(sevenDayPace?.estimatedRemainingSeconds);
 
   const handleSaveAndClose = () => {
@@ -375,7 +381,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
                   <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Ending minute' : 'Ending page'}</label><input min={isAudiobook ? draft.startMins : draft.startPage} max={isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount} type="number" value={isAudiobook ? draft.endMins : draft.endPage} onChange={(event) => setDraft((current) => ({ ...current, midnightProgress: undefined, ...(isAudiobook ? { endMins: Math.max(current.startMins, Number.parseInt(event.target.value, 10) || current.startMins) } : { endPage: Math.max(current.startPage, Number.parseInt(event.target.value, 10) || current.startPage) }) }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /><p className="mt-1 text-[11px] text-stone-500">Your next session will start here.</p></div>
                 </div>
 
-                {!isAudiobook && currentPagesPerHour ? <div className="rounded-2xl border border-[#c5a059]/35 bg-[#25132f] p-4"><p className="flex items-center gap-2 text-sm font-bold text-[#f4efe6]"><Gauge className="h-4 w-4 text-[#e5c158]" /> Reading pace</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#120817] p-3"><p className="text-[11px] uppercase tracking-wider text-stone-500">Current pace</p><p className="mt-1 text-lg font-bold text-[#f4efe6]">{Math.round(currentPagesPerHour)} pages/hour</p>{currentRemainingLabel && <p className="mt-1 text-xs text-stone-400">About {currentRemainingLabel} of reading remaining.</p>}</div><div className="rounded-xl bg-[#120817] p-3"><p className="text-[11px] uppercase tracking-wider text-stone-500">7-day average</p>{sevenDayPace?.pagesPerHour ? <><p className="mt-1 text-lg font-bold text-[#f4efe6]">{Math.round(sevenDayPace.pagesPerHour)} pages/hour</p>{averageRemainingLabel && <p className="mt-1 text-xs text-stone-400">About {averageRemainingLabel} remaining at your recent average.</p>}</> : <p className="mt-1 text-xs leading-5 text-stone-400">Inkbound needs at least 2 sessions and 20 tracked minutes in the last 7 days before showing an average pace.</p>}</div></div></div> : null}
+                {!isAudiobook && currentPace?.pagesPerHour ? <div className="rounded-2xl border border-[#c5a059]/35 bg-[#25132f] p-4"><p className="flex items-center gap-2 text-sm font-bold text-[#f4efe6]"><Gauge className="h-4 w-4 text-[#e5c158]" /> Reading pace</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#120817] p-3"><p className="text-[11px] uppercase tracking-wider text-stone-500">Current pace</p><p className="mt-1 text-lg font-bold text-[#f4efe6]">{Math.round(currentPace.pagesPerHour)} pages/hour</p>{currentRemainingLabel && <p className="mt-1 text-xs text-stone-400">About {currentRemainingLabel} of reading remaining.</p>}</div><div className="rounded-xl bg-[#120817] p-3"><p className="text-[11px] uppercase tracking-wider text-stone-500">7-day average</p>{sevenDayPace?.pagesPerHour ? <><p className="mt-1 text-lg font-bold text-[#f4efe6]">{Math.round(sevenDayPace.pagesPerHour)} pages/hour</p>{averageRemainingLabel && <p className="mt-1 text-xs text-stone-400">About {averageRemainingLabel} remaining at your recent average.</p>}</> : <p className="mt-1 text-xs leading-5 text-stone-400">Inkbound needs at least 2 sessions and 20 tracked minutes in the last 7 days before showing an average pace.</p>}</div></div></div> : null}
 
                 {crossedMidnight ? <div className="rounded-2xl border border-[#c5a059]/35 bg-[#25132f] p-4"><div className="flex items-start gap-3"><MoonStar className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" /><div className="flex-1"><p className="text-sm font-bold text-[#f4efe6]">This session crossed midnight</p><p className="mt-1 text-xs leading-5 text-stone-300">Inkbound can count the reading time on the day it actually happened instead of placing the entire session on one date.</p><label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-[#3d2448] bg-[#120817] p-3"><input type="checkbox" checked={draft.splitAtMidnight !== false} onChange={(event) => setDraft((current) => ({ ...current, splitAtMidnight: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#d4af37]" /><span><span className="block text-sm font-semibold text-[#f4efe6]">Split at midnight</span><span className="mt-0.5 block text-xs text-stone-400">Recommended. Uncheck this only if you want the entire reading period saved as one session.</span></span></label>{draft.splitAtMidnight !== false ? <label className="mt-3 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Minute reached at midnight' : 'Page reached at midnight'}<input min={progressStart} max={progressEnd} type="number" value={midnightProgress} onChange={(event) => setDraft((current) => ({ ...current, midnightProgress: Math.min(progressEnd, Math.max(progressStart, Number.parseInt(event.target.value, 10) || progressStart)) }))} className="mt-1 w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /><span className="mt-1 block font-normal text-stone-400">We estimate this from your tracked time, but you can correct it before saving.</span></label> : null}</div></div></div> : null}
 
