@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { ReadingSession, ReadingStatus, UserBookRecord } from '../types';
 import { getBookReadingState } from '../features/reading/bookReadingState';
+import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
+import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { BookCover } from './BookCover';
 
 interface HomeDashboardProps {
@@ -25,7 +27,6 @@ interface HomeDashboardProps {
   onOpenAddBook: () => void;
 }
 
-const annualGoal = 50;
 const AWAKE_LUMIS_ASSET = '/assets/lumis/lumis-awake.svg';
 const SLEEPING_LUMIS_ASSET = '/assets/lumis/lumis-sleeping.svg';
 const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
@@ -33,7 +34,7 @@ const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
 const getSessionTimestamp = (session: ReadingSession): number => {
   const time = session.endTime || session.startTime || '12:00';
   const timestamp = new Date(`${session.date}T${time}`).getTime();
-  return Number.isNaN(timestamp) ? new Date(session.date).getTime() : timestamp;
+  return Number.isNaN(timestamp) ? new Date(`${session.date}T12:00:00`).getTime() : timestamp;
 };
 
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
@@ -47,29 +48,24 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 }) => {
   const now = new Date();
   const greeting = getGreeting(now.getHours());
-  const month = now.getMonth();
-  const year = now.getFullYear();
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-`;
+  const yearPrefix = `${now.getFullYear()}-`;
+  const annualGoal = getAnnualReadingGoal();
 
   const currentlyReading = books.filter((book) => book.status === 'currently-reading');
   const currentBook = currentlyReading[0] ?? null;
   const finishedBooks = books.filter((book) => book.status === 'finished');
+  const finishedThisYear = finishedBooks.filter((book) => book.dateFinished?.startsWith(yearPrefix));
   const recentlyFinished = [...finishedBooks]
     .filter((book) => Boolean(book.dateFinished))
-    .sort((a, b) => new Date(b.dateFinished ?? 0).getTime() - new Date(a.dateFinished ?? 0).getTime())
+    .sort((a, b) => (b.dateFinished ?? '').localeCompare(a.dateFinished ?? ''))
     .slice(0, 5);
 
-  const monthSessions = sessions.filter((session) => {
-    const date = new Date(session.date);
-    return date.getMonth() === month && date.getFullYear() === year;
-  });
-  const monthFinished = finishedBooks.filter((book) => {
-    if (!book.dateFinished) return false;
-    const date = new Date(book.dateFinished);
-    return date.getMonth() === month && date.getFullYear() === year;
-  });
-  const monthMinutes = monthSessions.reduce((sum, session) => sum + session.durationMinutes, 0);
-  const monthPages = monthSessions.reduce((sum, session) => sum + (session.pagesRead ?? 0), 0);
-  const goalPercent = Math.min(100, Math.round((finishedBooks.length / annualGoal) * 100));
+  const monthSessions = sessions.filter((session) => session.date.startsWith(monthPrefix) && getSessionDurationMinutes(session) > 0);
+  const monthFinished = finishedBooks.filter((book) => book.dateFinished?.startsWith(monthPrefix));
+  const monthMinutes = monthSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
+  const monthPages = monthSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+  const goalPercent = Math.min(100, Math.round((finishedThisYear.length / annualGoal) * 100));
 
   const recentMemory = useMemo(() => {
     const withQuotes = books
@@ -91,7 +87,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
   }, [books]);
 
-  const recentSession = useMemo(() => [...sessions].sort((a, b) => getSessionTimestamp(b) - getSessionTimestamp(a))[0], [sessions]);
+  const recentSession = useMemo(
+    () => [...sessions].filter((session) => getSessionDurationMinutes(session) > 0).sort((a, b) => getSessionTimestamp(b) - getSessionTimestamp(a))[0],
+    [sessions],
+  );
   const isAwakePose = Boolean(recentSession && Date.now() - getSessionTimestamp(recentSession) <= RECENT_READING_WINDOW_MS);
   const lumisPortrait = isAwakePose
     ? { src: AWAKE_LUMIS_ASSET, alt: 'Lumis, an alert purple library dragon resting on a book beside a candle and tea', title: 'Lumis is curled up by your newest book', detail: 'Eager for your next adventure.' }
@@ -121,7 +120,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
         <section className="inkbound-panel rounded-3xl p-5 sm:p-7"><div className="flex items-center justify-between gap-4"><SectionHeading icon={<Quote className="h-5 w-5" />} eyebrow="Recent memory" title="Something worth keeping" /><button type="button" onClick={() => onNavigateToTab('memories')} className="quiet-shelf-secondary-action hidden sm:inline-flex">View memories</button></div>{recentMemory ? <button type="button" onClick={() => onSelectBook(recentMemory.book)} className="mt-5 w-full rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5 text-left transition hover:border-[var(--ink-border-strong)]"><p className="line-clamp-4 font-serif text-xl italic leading-8 text-[var(--ink-ivory)]">“{recentMemory.text}”</p><p className="mt-4 text-xs text-[var(--ink-muted)]">{recentMemory.type === 'quote' ? 'Favorite quote' : 'Your review'} · {recentMemory.book.work.title}</p></button> : <div className="mt-5 rounded-2xl border border-dashed border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-6"><BookHeart className="h-6 w-6 text-[var(--ink-mauve)]" /><p className="mt-3 font-serif text-xl text-[var(--ink-ivory)]">Your first memory is waiting.</p><p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Save a quote or review and it will quietly return here.</p></div>}</section>
-        <section className="inkbound-panel rounded-3xl p-5 sm:p-7"><SectionHeading icon={<Target className="h-5 w-5" />} eyebrow="Reading goal" title={`${finishedBooks.length} of ${annualGoal} books`} /><div className="mt-6 flex items-center gap-5"><div className="relative grid h-24 w-24 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(var(--ink-mauve) ${goalPercent * 3.6}deg, var(--ink-surface-soft) 0deg)` }}><div className="grid h-[74px] w-[74px] place-items-center rounded-full bg-[var(--ink-surface-raised)]"><strong className="font-serif text-2xl text-[var(--ink-ivory)]">{goalPercent}%</strong></div></div><div><p className="text-sm leading-6 text-[var(--ink-muted)]">You are building a reading year one story at a time.</p><button type="button" onClick={() => onNavigateToTab('challenges')} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[var(--ink-mauve)]">View reading goals <ArrowRight className="h-3.5 w-3.5" /></button></div></div></section>
+        <section className="inkbound-panel rounded-3xl p-5 sm:p-7"><SectionHeading icon={<Target className="h-5 w-5" />} eyebrow="Reading goal" title={`${finishedThisYear.length} of ${annualGoal} books`} /><div className="mt-6 flex items-center gap-5"><div className="relative grid h-24 w-24 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(var(--ink-mauve) ${goalPercent * 3.6}deg, var(--ink-surface-soft) 0deg)` }}><div className="grid h-[74px] w-[74px] place-items-center rounded-full bg-[var(--ink-surface-raised)]"><strong className="font-serif text-2xl text-[var(--ink-ivory)]">{goalPercent}%</strong></div></div><div><p className="text-sm leading-6 text-[var(--ink-muted)]">You are building a reading year one story at a time.</p><button type="button" onClick={() => onNavigateToTab('challenges')} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[var(--ink-mauve)]">View reading goals <ArrowRight className="h-3.5 w-3.5" /></button></div></div></section>
       </div>
 
       <BookRow title="Currently Reading" eyebrow="Continue your journey" books={currentlyReading} emptyText="Start a book and it will appear here." actionLabel="View library" onAction={() => onNavigateToTab('library')} onSelectBook={onSelectBook} onStart={(book) => onStartSessionForBook(book)} />
