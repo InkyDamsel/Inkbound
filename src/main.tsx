@@ -10,6 +10,7 @@ import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSy
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
+import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
@@ -73,6 +74,7 @@ createRoot(rootElement).render(
               <AuxiliaryAccountSyncBridge />
               <ReadOnlyCloudHydrationBridge />
               <PhotoMemoryAutoSyncBridge />
+              <LegacyBookCoverMigrationBridge />
               <ThemePersistenceBridge />
               <CloudDataRefreshBoundary>
                 <App />
@@ -85,3 +87,15 @@ createRoot(rootElement).render(
     </AppErrorBoundary>
   </StrictMode>,
 );
+
+// The service worker is intentionally production-only. Development should always
+// load fresh modules, while installed web/mobile shells get a cached app frame
+// for offline startup and recover immediately when the network returns.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
+      // Offline/install support is an enhancement; a registration failure must
+      // never prevent the reading journal itself from opening.
+    });
+  }, { once: true });
+}
