@@ -22,6 +22,13 @@ interface CreateBookFromEditionOptions {
 const uniqueId = (prefix: string): string =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const localDateKey = (value = new Date()): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const providerLabel = (source: BookSearchEdition['source']): string => {
   if (source === 'open-library') return 'Open Library';
   if (source === 'hardcover') return 'Hardcover';
@@ -43,6 +50,12 @@ export function createBookFromSearchEdition({
   const workId = uniqueId('work');
   const editionId = uniqueId('edition');
   const publisherSummary = edition.publisherSummary ?? work.publisherSummary;
+  const addedOn = localDateKey();
+  const isFinished = status === 'finished';
+  const hasKnownPrintTotal = format !== 'audiobook'
+    && typeof edition.pageCount === 'number'
+    && Number.isFinite(edition.pageCount)
+    && edition.pageCount > 0;
 
   return {
     id: bookId,
@@ -81,16 +94,17 @@ export function createBookFromSearchEdition({
     ],
     status,
     ownership,
-    progressPages: 0,
+    progressPages: isFinished && hasKnownPrintTotal ? edition.pageCount! : 0,
     progressMinutes: 0,
-    progressPercentage: status === 'finished' ? 100 : 0,
+    progressPercentage: isFinished && hasKnownPrintTotal ? 100 : 0,
     favoriteQuotes: [],
     privateTags: [],
     priority,
     moods: [],
     collections: [],
     sourceOfImport: providerLabel(edition.source),
-    dateAdded: new Date().toISOString().split('T')[0],
-    dateFinished: status === 'finished' ? new Date().toISOString().split('T')[0] : undefined,
+    dateAdded: addedOn,
+    dateStarted: status === 'currently-reading' || isFinished ? addedOn : undefined,
+    dateFinished: isFinished ? addedOn : undefined,
   };
 }
