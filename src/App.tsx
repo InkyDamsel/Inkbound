@@ -61,7 +61,7 @@ import {
   writeImportHistory,
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
-import { getDailyReadingMinutes, getReadingStreak } from './features/reading/sessionAnalytics';
+import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes } from './features/reading/sessionAnalytics';
 import { Check, Flame, RotateCcw, Target } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
@@ -163,6 +163,31 @@ function sessionProgress(session: ReadingSession, audiobook: boolean, edge: 'sta
   return Math.max(0, pages ?? 0);
 }
 
+function applyReadingStatus(book: UserBookRecord, status: ReadingStatus, today: string): UserBookRecord {
+  if (status !== 'finished') {
+    return {
+      ...book,
+      status,
+      dateStarted: status === 'currently-reading' ? book.dateStarted ?? today : book.dateStarted,
+      dateFinished: undefined,
+    };
+  }
+
+  const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+  const isAudiobook = activeEdition?.format === 'audiobook';
+  const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
+  const hasKnownTotal = typeof total === 'number' && Number.isFinite(total) && total > 0;
+
+  return {
+    ...book,
+    status: 'finished',
+    ...(hasKnownTotal && isAudiobook ? { progressMinutes: total!, progressPercentage: 100 } : {}),
+    ...(hasKnownTotal && !isAudiobook ? { progressPages: total!, progressPercentage: 100 } : {}),
+    dateStarted: book.dateStarted ?? today,
+    dateFinished: book.dateFinished ?? today,
+  };
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = usePersistentState<NavTab>('inkbound_active_tab', 'home');
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -172,6 +197,7 @@ export default function App() {
   const [books, setBooks] = useState<UserBookRecord[]>(() => readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []));
   const [sessions, setSessions] = useState<ReadingSession[]>(() => readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []));
   const [previousBooksState, setPreviousBooksState] = useState<UserBookRecord[] | null>(null);
+  const [previousSessionsState, setPreviousSessionsState] = useState<ReadingSession[] | null>(null);
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
   const [isBatchEditOpen, setIsBatchEditOpen] = useState(false);
@@ -400,6 +426,7 @@ export default function App() {
   const handleMergeDuplicateGroup = ({ keepBookId, removeBookIds, mergedBook }: DuplicateMergeRequest) => {
     const removeIds = new Set(removeBookIds);
     setPreviousBooksState(null);
+    setPreviousSessionsState(null);
     setBooks((current) => current.filter((book) => !removeIds.has(book.id)).map((book) => book.id === keepBookId ? mergedBook : book));
     setSessions((current) => current.map((session) => removeIds.has(session.bookId) ? { ...session, bookId: keepBookId } : session));
     setSelectedBookIds((current) => current.filter((id) => !removeIds.has(id)));
@@ -409,12 +436,8 @@ export default function App() {
   };
 
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => {
-    setBooks((current) => current.map((book) => book.id !== bookId ? book : {
-      ...book,
-      status,
-      progressPercentage: status === 'finished' ? 100 : book.progressPercentage,
-      dateFinished: status === 'finished' ? book.dateFinished ?? new Date().toISOString().split('T')[0] : undefined,
-    }));
+    const today = new Date().toISOString().split('T')[0];
+    setBooks((current) => current.map((book) => book.id !== bookId ? book : applyReadingStatus(book, status, today)));
     showToast(`Updated reading status to ${status}.`);
   };
 
@@ -491,29 +514,24 @@ export default function App() {
 
   const handleApplyBatchChanges = (changes: BatchEditChanges) => {
     setPreviousBooksState(books);
+    setPreviousSessionsState(null);
+    const today = new Date().toISOString().split('T')[0];
     setBooks((current) => current.map((book) => {
       if (!selectedBookIds.includes(book.id)) return book;
-      const updatedBook = { ...book };
-      if (changes.status) {
-        updatedBook.status = changes.status;
-        if (changes.status === 'finished') {
-          updatedBook.progressPercentage = 100;
-          updatedBook.dateFinished = changes.dateFinished === undefined
-            ? updatedBook.dateFinished ?? new Date().toISOString().split('T')[0]
-            : updatedBook.dateFinished;
-        } else {
-          updatedBook.dateFinished = undefined;
-        }
-      }
-      if (changes.ownership) updatedBook.ownership = changes.ownership;
-      if (changes.priority) updatedBook.priority = changes.priority;
-      if (changes.rating !== undefined) updatedBook.rating = changes.rating ?? undefined;
-      if (changes.dateStarted !== undefined) updatedBook.dateStarted = changes.dateStarted ?? undefined;
-      if (changes.dateFinished !== undefined) updatedBook.dateFinished = changes.dateFinished ?? undefined;
+      let updatedBook: UserBookRecord = { ...book };
+
       if (changes.format) {
         updatedBook.editions = updatedBook.editions.map((edition) =>
           edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition,
         );
+      }
+      if (changes.status) updatedBook = applyReadingStatus(updatedBook, changes.status, today);
+      if (changes.ownership) updatedBook.ownership = changes.ownership;
+      if (changes.priority) updatedBook.priority = changes.priority;
+      if (changes.rating !== undefined) updatedBook.rating = changes.rating ?? undefined;
+      if (changes.dateStarted !== undefined) updatedBook.dateStarted = changes.dateStarted ?? undefined;
+      if (changes.dateFinished !== undefined) {
+        updatedBook.dateFinished = updatedBook.status === 'finished' ? changes.dateFinished ?? undefined : undefined;
       }
       if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
       if (changes.removeTag) updatedBook.privateTags = updatedBook.privateTags.filter((tag) => tag.toLowerCase() !== changes.removeTag!.toLowerCase());
@@ -529,17 +547,22 @@ export default function App() {
 
   const handleDeleteSelected = () => {
     setPreviousBooksState(books);
+    setPreviousSessionsState(sessions);
+    const selectedIds = new Set(selectedBookIds);
     const count = selectedBookIds.length;
-    setBooks((current) => current.filter((book) => !selectedBookIds.includes(book.id)));
+    setBooks((current) => current.filter((book) => !selectedIds.has(book.id)));
+    setSessions((current) => current.filter((session) => !selectedIds.has(session.bookId)));
     setSelectedBookIds([]);
     setIsBatchEditOpen(false);
-    showToast(`Deleted ${count} books.`);
+    showToast(`Deleted ${count} books and their reading sessions.`);
   };
 
   const handleUndoLastBatch = () => {
     if (!previousBooksState) return;
     setBooks(previousBooksState);
+    if (previousSessionsState) setSessions(previousSessionsState);
     setPreviousBooksState(null);
+    setPreviousSessionsState(null);
     showToast('Undid the most recent library change.');
   };
 
@@ -633,8 +656,8 @@ export default function App() {
   };
 
   const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => {
-    const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && Math.max(0, session.durationMinutes) > 0);
-    const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && Math.max(0, newSession.durationMinutes) > 0;
+    const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0);
+    const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0;
     if (!isFirstCompletedSessionThatDay) return;
 
     const projectedSessions = [newSession, ...sessions];
@@ -652,7 +675,7 @@ export default function App() {
     updateBookFromSession(newSession, updatedPages, updatedMinutes);
     setTimerInitialBookId(undefined);
     setIsTimerOpen(false);
-    showToast(`Saved a ${newSession.durationMinutes}-minute reading session.`);
+    showToast(`Saved a ${getSessionDurationMinutes(newSession)}-minute reading session.`);
   };
 
   const handleSaveManualSession = (session: ReadingSession) => {
@@ -686,6 +709,7 @@ export default function App() {
 
   const handleExecuteImport = async (importedItems: ImportRecordItem[]) => {
     setPreviousBooksState(books);
+    setPreviousSessionsState(null);
     const immediateBooks = importedItems.map(createFallbackImportedBook);
     setBooks((current) => [...current, ...immediateBooks]);
     const existingQueue = readImportEnrichmentQueue();
@@ -698,7 +722,7 @@ export default function App() {
   };
 
   const handleResetData = () => {
-    setBooks([]); setSessions([]); setPreviousBooksState(null); setSelectedBookForDetails(null); setSelectedBookIds([]);
+    setBooks([]); setSessions([]); setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]);
     try {
       localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY);
     } catch { /* no-op */ }
