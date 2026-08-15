@@ -1,0 +1,78 @@
+/*
+ * Light-theme contrast guardrails.
+ *
+ * Light mode intentionally remaps many legacy dark-theme utility colors to
+ * parchment-friendly ink. Some components, however, remain intentionally dark
+ * in both themes (book artwork and the Book Details hero). Those surfaces need
+ * an explicit contrast boundary so global light-theme remapping cannot turn
+ * their text dark-on-dark.
+ */
+
+/* BookCover artwork/fallbacks are visual objects, not light-mode page surfaces. */
+html:not(.dark) .book-cover-spine .text-stone-100,
+html:not(.dark) .book-cover-spine .text-stone-200,
+html:not(.dark) .book-cover-spine .text-stone-300 {
+  color: #f7f0e8 !important;
+}
+
+html:not(.dark) .book-cover-spine [class*='text-amber-100'] {
+  color: rgba(255, 237, 213, 0.88) !important;
+}
+
+html:not(.dark) .book-cover-spine [class*='text-white'] {
+  color: #fffaf5 !important;
+}
+
+/*
+ * The Book Details header deliberately stays plum in light mode. Keep the hero
+ * copy legible instead of inheriting the page-level dark-text remapping.
+ */
+html:not(.dark) section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] h2,
+html:not(.dark) section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] .text-\[\#f4efe6\] {
+  color: #f8f1e9 !important;
+}
+
+html:not(.dark) section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] .text-stone-300 {
+  color: #e5dbe3 !important;
+}
+
+html:not(.dark) section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] .text-stone-400,
+html:not(.dark) section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] .text-\[\#b9aaba\] {
+  color: #cbbdca !important;
+}
+
+html:not(.dark) section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] > button[class*='bg-black'] {
+  background: rgba(10, 5, 13, 0.46) !important;
+  color: #f8f1e9 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Library cards need stronger secondary text and pills on warm parchment. */
+html:not(.dark) article.group.cursor-pointer h3[class*='text-[#f4efe6]'] {
+  color: #342936 !important;
+}
+
+html:not(.dark) article.group.cursor-pointer p[class*='text-[#ad9fac]'] {
+  color: #716572 !important;
+}
+
+html:not(.dark) article.group.cursor-pointer span[class*='bg-[#24172a]'] {
+  background: #e9dfe5 !important;
+  color: #4f424f !important;
+  border: 1px solid rgba(86, 63, 82, 0.12);
+}
+
+/* Warning copy should stay noticeable without relying on pale gold on cream. */
+html:not(.dark) article.group.cursor-pointer p[class*='text-[#e2bd66]'] {
+  color: #8a5c16 !important;
+  font-weight: 650;
+}
+
+/* Slightly strengthen shared secondary text across light mode. */
+html:not(.dark) {
+  --ink-muted: #685d68;
+  --ink-faint: #7e727c;
+  --ink-text-secondary: #5f545f;
+  --ink-text-muted: #746873;
+  --ink-cream-soft: #5f545f;
+}
