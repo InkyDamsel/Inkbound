@@ -60,6 +60,11 @@
     padding-inline: 10px;
     font-size: 0.8rem;
   }
+
+  [role='dialog']:not(aside) {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1rem) !important;
+    overscroll-behavior: contain;
+  }
 }
 
 @media (max-width: 767px) {
