@@ -13,12 +13,18 @@ import {
 import { synchronizePhotoMemories } from '../features/memories/photoMemoryCloudSync';
 import { clearPhotoMemoriesFromDevice } from '../features/memories/photoMemoryStore';
 import { PHOTO_MEMORY_SYNC_QUEUE_KEY } from '../features/memories/photoMemorySyncQueue';
+import { PROFILE_MEDIA_KEY_PREFIX } from '../features/profile/profileMedia';
+import {
+  PROFILE_MEDIA_SYNC_QUEUE_KEY,
+  synchronizeProfileMedia,
+} from '../features/profile/profileMediaCloudSync';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import { auth, isFirebaseConfigured } from '../lib/firebase';
 import {
   prepareRuntimeAuthPersistence,
   signInRuntimeWithGoogle,
 } from '../platform/runtimeAuthentication';
+import { removeRuntimeMediaByPrefix } from '../platform/runtimeMediaStorage';
 import {
   readRuntimeValue,
   removeRuntimeValue,
@@ -55,6 +61,7 @@ const SIGNED_IN_DATA_KEYS = [
   'inkbound_photo_memories_v2',
   'inkbound_photo_memory_cloud_revisions_v1',
   PHOTO_MEMORY_SYNC_QUEUE_KEY,
+  PROFILE_MEDIA_SYNC_QUEUE_KEY,
   'inkbound_import_enrichment_queue_v1',
   'bookhaven_books',
   'bookhaven_sessions',
@@ -261,6 +268,10 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
         try {
           await flushCloudDataBeforeSignOut(signingOutUid);
           await synchronizePhotoMemories(signingOutUid);
+          await synchronizeProfileMedia(signingOutUid);
+          // Profile media sync updates lightweight profile metadata through the
+          // normal cloud bridge, so flush once more before clearing this device.
+          await flushCloudDataBeforeSignOut(signingOutUid);
         } catch (error) {
           setStatus('error');
           setMessage(error instanceof Error
@@ -269,6 +280,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
           return;
         }
         await clearPhotoMemoriesFromDevice();
+        await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`);
         clearSignedInDataFromDevice(signingOutUid);
       }
       await signOut(auth);
