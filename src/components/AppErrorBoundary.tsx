@@ -30,7 +30,7 @@ export class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, App
     if (!this.state.hasError) return this.props.children;
 
     return (
-      <main className="grid min-h-screen place-items-center bg-[#0d0910] px-5 py-12 text-[#f4efe6]">
+      <main className="grid min-h-[100dvh] place-items-center bg-[#0d0910] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] text-[#f4efe6]">
         <section className="w-full max-w-xl rounded-3xl border border-[#c97b7b]/35 bg-[#17101b] p-7 text-center shadow-2xl sm:p-10">
           <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#c97b7b]/12 text-[#e1a0a0]">
             <AlertTriangle className="h-7 w-7" />
