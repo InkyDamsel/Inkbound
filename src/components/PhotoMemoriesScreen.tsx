@@ -212,20 +212,22 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
           </p>
         </div>
       ) : (
-        <div className="columns-1 gap-5 sm:columns-2 xl:columns-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {visibleMemories.map((memory) => {
             const book = memory.bookId ? bookById.get(memory.bookId) : undefined;
             return (
-              <article key={memory.id} className="inkbound-panel mb-5 break-inside-avoid overflow-hidden rounded-3xl">
-                <img src={memory.imageData} alt={memory.caption || 'Reading memory'} className="h-auto w-full object-cover" />
-                <div className="space-y-3 p-5">
-                  {memory.caption && <p className="font-serif text-xl leading-7 text-[var(--ink-ivory)]">{memory.caption}</p>}
+              <article key={memory.id} className="inkbound-panel min-w-0 overflow-hidden rounded-3xl">
+                <div className="aspect-[4/3] w-full overflow-hidden bg-[var(--ink-surface-soft)]">
+                  <img src={memory.imageData} alt={memory.caption || 'Reading memory'} className="h-full w-full object-cover" />
+                </div>
+                <div className="space-y-3 p-4 sm:p-5">
+                  {memory.caption && <p className="line-clamp-3 font-serif text-lg leading-6 text-[var(--ink-ivory)]">{memory.caption}</p>}
                   <div className="flex flex-wrap gap-3 text-xs text-[var(--ink-muted)]">
                     <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{new Date(`${memory.date}T12:00:00`).toLocaleDateString()}</span>
-                    {memory.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{memory.location}</span>}
+                    {memory.location && <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{memory.location}</span></span>}
                   </div>
                   {book && (
-                    <button type="button" onClick={() => onSelectBook(book)} className="block min-h-11 py-2 text-left text-sm font-semibold text-[var(--ink-gold-bright)] hover:underline">
+                    <button type="button" onClick={() => onSelectBook(book)} className="block min-h-11 max-w-full truncate py-2 text-left text-sm font-semibold text-[var(--ink-gold-bright)] hover:underline">
                       {book.work.title} · {book.work.author}
                     </button>
                   )}
