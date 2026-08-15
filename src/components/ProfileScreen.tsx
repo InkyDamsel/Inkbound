@@ -9,19 +9,22 @@ import {
   Save,
   UserRound,
 } from 'lucide-react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { ResponsiveGrid } from '../layout/responsive';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
+import { readProfileMedia } from '../features/profile/profileMedia';
+import {
+  storeAndQueueProfileMedia,
+  synchronizeProfileMedia,
+} from '../features/profile/profileMediaCloudSync';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   notifyLocalDataChanged,
   type CloudDataUpdatedDetail,
 } from '../features/sync/cloudSyncEvents';
-import { db } from '../lib/firebase';
 import { AccountSyncCard } from './account/AccountSyncCard';
 
 interface ProfileScreenProps {
@@ -30,9 +33,8 @@ interface ProfileScreenProps {
 }
 
 const PROFILE_STORAGE_KEY = 'inkbound_reader_profile';
-const PROFILE_WRITE_TIMEOUT_MS = 8000;
-const MAX_AVATAR_DATA_LENGTH = 140_000;
-const MAX_BANNER_DATA_LENGTH = 475_000;
+const MAX_AVATAR_BYTES = 140_000;
+const MAX_BANNER_BYTES = 475_000;
 const MAX_PROFILE_SOURCE_BYTES = 12 * 1024 * 1024;
 
 interface StoredProfile {
@@ -42,6 +44,9 @@ interface StoredProfile {
   bio: string;
   avatarImage?: string;
   bannerImage?: string;
+  avatarMediaKey?: string;
+  bannerMediaKey?: string;
+  // Legacy fields remain readable until the automatic media migration succeeds.
   avatarImageData?: string;
   bannerImageData?: string;
 }
@@ -60,7 +65,7 @@ const readStoredProfile = (): StoredProfile => ({
   ...readRuntimeJson<Partial<StoredProfile>>(PROFILE_STORAGE_KEY, {}),
 });
 
-const saveStoredProfile = (profile: StoredProfile) => {
+const saveStoredProfile = (profile: StoredProfile): boolean => {
   const storedProfile: StoredProfile = {
     ...profile,
     avatarImage: isTemporaryImageUrl(profile.avatarImage) ? undefined : profile.avatarImage,
@@ -69,26 +74,11 @@ const saveStoredProfile = (profile: StoredProfile) => {
 
   if (!writeRuntimeJson(PROFILE_STORAGE_KEY, storedProfile)) {
     console.error('Inkbound could not store the reader profile on this device.');
-    return;
+    return false;
   }
   notifyLocalDataChanged([PROFILE_STORAGE_KEY]);
+  return true;
 };
-
-async function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(message)), milliseconds);
-    promise.then(
-      (value) => {
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        window.clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
 
 async function decodeImage(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; release: () => void }> {
   if (typeof createImageBitmap === 'function') {
@@ -117,15 +107,25 @@ async function decodeImage(file: File): Promise<{ source: CanvasImageSource; wid
   };
 }
 
-async function prepareProfileImage(file: File, kind: 'avatar' | 'banner'): Promise<string> {
+function canvasToWebp(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error('Inkbound could not prepare the selected image.')),
+      'image/webp',
+      quality,
+    );
+  });
+}
+
+async function prepareProfileImage(file: File, kind: 'avatar' | 'banner'): Promise<Blob> {
   const decoded = await decodeImage(file);
 
   try {
-    const maxLength = kind === 'avatar' ? MAX_AVATAR_DATA_LENGTH : MAX_BANNER_DATA_LENGTH;
+    const maxBytes = kind === 'avatar' ? MAX_AVATAR_BYTES : MAX_BANNER_BYTES;
     let maximumWidth = kind === 'avatar' ? 360 : 1100;
     let maximumHeight = kind === 'avatar' ? 360 : 440;
     let quality = kind === 'avatar' ? 0.74 : 0.62;
-    let bestResult = '';
+    let bestResult: Blob | null = null;
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const scale = Math.min(1, maximumWidth / decoded.width, maximumHeight / decoded.height);
@@ -138,16 +138,16 @@ async function prepareProfileImage(file: File, kind: 'avatar' | 'banner'): Promi
       if (!context) throw new Error('Inkbound could not prepare the selected image.');
 
       context.drawImage(decoded.source, 0, 0, width, height);
-      const result = canvas.toDataURL('image/webp', quality);
+      const result = await canvasToWebp(canvas, quality);
       bestResult = result;
-      if (result.length <= maxLength) return result;
+      if (result.size <= maxBytes) return result;
 
       maximumWidth = Math.round(maximumWidth * 0.82);
       maximumHeight = Math.round(maximumHeight * 0.82);
       quality = Math.max(0.42, quality - 0.08);
     }
 
-    if (bestResult.length > maxLength) {
+    if (!bestResult || bestResult.size > maxBytes) {
       throw new Error('The selected image is still too large after optimization.');
     }
     return bestResult;
@@ -184,7 +184,24 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     previewRef.current = null;
   };
 
-  const loadProfileIntoState = useCallback(() => {
+  const loadMediaPreview = useCallback(async (
+    mediaKey: string | undefined,
+    fallback: string | undefined,
+    previewRef: React.MutableRefObject<string | null>,
+    setImage: React.Dispatch<React.SetStateAction<string | undefined>>,
+  ) => {
+    const blob = await readProfileMedia(mediaKey);
+    releasePreviewUrl(previewRef);
+    if (blob) {
+      const previewUrl = URL.createObjectURL(blob);
+      previewRef.current = previewUrl;
+      setImage(previewUrl);
+      return;
+    }
+    setImage(fallback);
+  }, []);
+
+  const loadProfileIntoState = useCallback(async () => {
     if (!sync.user) return;
 
     const restoredProfile = readStoredProfile();
@@ -192,16 +209,27 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     const authDisplayName = sync.user.displayName?.trim() || '';
     const nextDisplayName = storedDisplayName || authDisplayName || 'Reader';
     const nextEmail = sync.user.email?.trim() || restoredProfile.email;
-    const nextAvatarImage =
-      restoredProfile.avatarImageData || restoredProfile.avatarImage || sync.user.photoURL || undefined;
 
     setDisplayName(nextDisplayName);
     setEmail(nextEmail);
     setFavoriteQuote(restoredProfile.favoriteQuote);
     setBio(restoredProfile.bio);
-    setAvatarImage(nextAvatarImage);
-    setBannerImage(restoredProfile.bannerImageData || restoredProfile.bannerImage);
-  }, [sync.user]);
+
+    await Promise.all([
+      loadMediaPreview(
+        restoredProfile.avatarMediaKey,
+        restoredProfile.avatarImageData || restoredProfile.avatarImage || sync.user.photoURL || undefined,
+        avatarPreviewUrlRef,
+        setAvatarImage,
+      ),
+      loadMediaPreview(
+        restoredProfile.bannerMediaKey,
+        restoredProfile.bannerImageData || restoredProfile.bannerImage,
+        bannerPreviewUrlRef,
+        setBannerImage,
+      ),
+    ]);
+  }, [loadMediaPreview, sync.user]);
 
   useEffect(() => {
     if (!sync.user) return undefined;
@@ -216,17 +244,22 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       ...restoredProfile,
       displayName: storedDisplayName || authDisplayName,
       email: restoredProfile.email || authEmail,
-      avatarImage: restoredProfile.avatarImage || authPhoto,
+      avatarImage: restoredProfile.avatarImage
+        || (!restoredProfile.avatarMediaKey && !restoredProfile.avatarImageData ? authPhoto : undefined),
     };
 
     if (JSON.stringify(identityProfile) !== JSON.stringify(restoredProfile)) {
       saveStoredProfile(identityProfile);
     }
-    loadProfileIntoState();
+    void loadProfileIntoState();
+    void synchronizeProfileMedia(sync.user.uid).catch(() => {
+      // Existing embedded images and offline selections stay queued until Inkbound
+      // is online/foregrounded again.
+    });
 
     const handleCloudProfileUpdate = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
-      if (detail?.keys?.includes(PROFILE_STORAGE_KEY)) loadProfileIntoState();
+      if (detail?.keys?.includes(PROFILE_STORAGE_KEY)) void loadProfileIntoState();
     };
 
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudProfileUpdate);
@@ -273,45 +306,35 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     };
   };
 
-  const writeCloudProfile = async (profile: StoredProfile) => {
-    if (!sync.user || !db) return;
-    await withTimeout(
-      setDoc(
-        doc(db, 'users', sync.user.uid, 'profile', 'current'),
-        {
-          data: profile,
-          updatedAt: serverTimestamp(),
-          clientUpdatedAt: new Date().toISOString(),
-        },
-        { merge: true },
-      ),
-      PROFILE_WRITE_TIMEOUT_MS,
-      'Profile cloud write timed out.',
-    );
-  };
-
-  const persistPreparedImage = (kind: 'avatar' | 'banner', dataUrl: string) => {
+  const persistPreparedImage = async (kind: 'avatar' | 'banner', blob: Blob) => {
+    if (!sync.user) throw new Error('Sign in before changing profile images.');
+    const mediaKey = await storeAndQueueProfileMedia(sync.user.uid, kind, blob);
     const profile = profileFromState();
     const nextProfile: StoredProfile = {
       ...profile,
-      ...(kind === 'avatar' ? { avatarImageData: dataUrl } : { bannerImageData: dataUrl }),
+      ...(kind === 'avatar'
+        ? { avatarMediaKey: mediaKey, avatarImageData: undefined }
+        : { bannerMediaKey: mediaKey, bannerImageData: undefined }),
     };
 
-    saveStoredProfile(nextProfile);
+    if (!saveStoredProfile(nextProfile)) {
+      throw new Error('Inkbound could not save this profile image on the device.');
+    }
 
+    const previewUrl = URL.createObjectURL(blob);
     if (kind === 'avatar') {
       releasePreviewUrl(avatarPreviewUrlRef);
-      setAvatarImage(dataUrl);
+      avatarPreviewUrlRef.current = previewUrl;
+      setAvatarImage(previewUrl);
     } else {
       releasePreviewUrl(bannerPreviewUrlRef);
-      setBannerImage(dataUrl);
+      bannerPreviewUrlRef.current = previewUrl;
+      setBannerImage(previewUrl);
     }
 
-    if (sync.user && db) {
-      void writeCloudProfile(nextProfile).catch((error) => {
-        console.error(`Inkbound could not sync the ${kind} yet.`, error);
-      });
-    }
+    void synchronizeProfileMedia(sync.user.uid).catch(() => {
+      // The durable queue preserves this image for a later online/resume retry.
+    });
   };
 
   const selectProfileImage = (file: File, kind: 'avatar' | 'banner') => {
@@ -342,10 +365,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
     }
 
     void prepareProfileImage(file, kind)
-      .then((dataUrl) => {
+      .then(async (blob) => {
         if (imageRequestRef.current !== requestId) return;
-        persistPreparedImage(kind, dataUrl);
-        setImageStatus('idle');
+        await persistPreparedImage(kind, blob);
+        if (imageRequestRef.current === requestId) setImageStatus('idle');
       })
       .catch((error) => {
         console.error(`Inkbound could not prepare the ${kind}.`, error);
@@ -355,16 +378,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
 
   const handleSave = () => {
     const profile = profileFromState();
-
-    saveStoredProfile(profile);
+    if (!saveStoredProfile(profile)) {
+      setSaveStatus('error');
+      return;
+    }
     setSaveStatus('saved');
     window.setTimeout(() => setSaveStatus('idle'), 1800);
-
-    if (!sync.user || !db) return;
-    void writeCloudProfile(profile).catch((error) => {
-      console.error('Inkbound could not sync the reader profile yet.', error);
-      setSaveStatus('error');
-    });
   };
 
   if (!sync.user) {
@@ -483,7 +502,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
                 <p className="text-xs text-rose-400">Choose an image under 12 MB and try again.</p>
               ) : null}
               {saveStatus === 'error' ? (
-                <p className="text-xs text-rose-400">Saved on this device. Cloud sync will retry.</p>
+                <p className="text-xs text-rose-400">Inkbound could not save these profile changes on this device.</p>
               ) : null}
             </div>
           </div>
