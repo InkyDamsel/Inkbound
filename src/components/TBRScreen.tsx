@@ -40,6 +40,9 @@ const priorityLabels: Record<Priority, string> = {
   low: 'Back Shelf',
 };
 
+const getActiveEdition = (book: UserBookRecord) =>
+  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+
 export const TBRScreen: React.FC<TBRScreenProps> = ({
   books,
   onSelectBook,
@@ -93,15 +96,19 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
     setRecommendedBook(null);
 
     const candidates = tbrBooks.filter((book) => {
+      const edition = getActiveEdition(book);
       if (pickerMood !== 'all' && !book.moods.includes(pickerMood)) return false;
       if (pickerGenre !== 'all' && !book.work.genres.includes(pickerGenre)) return false;
-      if (pickerFormat !== 'all' && !book.editions.some((edition) => edition.format === pickerFormat)) return false;
+      if (pickerFormat !== 'all' && edition?.format !== pickerFormat) return false;
       if (pickerOwnedOnly && book.ownership !== 'owned') return false;
 
-      const pageCount = book.editions[0]?.pageCount || 350;
-      if (pickerLength === 'short' && pageCount >= 300) return false;
-      if (pickerLength === 'medium' && (pageCount < 300 || pageCount > 500)) return false;
-      if (pickerLength === 'long' && pageCount <= 500) return false;
+      if (pickerLength !== 'all') {
+        const pageCount = edition?.format === 'audiobook' ? undefined : edition?.pageCount;
+        if (typeof pageCount !== 'number' || !Number.isFinite(pageCount) || pageCount <= 0) return false;
+        if (pickerLength === 'short' && pageCount >= 300) return false;
+        if (pickerLength === 'medium' && (pageCount < 300 || pageCount > 500)) return false;
+        if (pickerLength === 'long' && pageCount <= 500) return false;
+      }
       return true;
     });
 
@@ -232,14 +239,14 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
       )}
 
       {isPickerOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-          <div className="inkbound-panel relative w-full max-w-xl p-6 sm:p-7">
-            <button type="button" onClick={() => setIsPickerOpen(false)} className="absolute right-4 top-4 text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <section className="inkbound-panel relative max-h-[96dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-h-[90dvh] sm:rounded-3xl sm:p-7" role="dialog" aria-modal="true" aria-label="Choose My Next Read">
+            <button type="button" onClick={() => setIsPickerOpen(false)} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] hover:bg-white/5 hover:text-[var(--ink-ivory)]" aria-label="Close next-read picker">
               <X className="h-5 w-5" />
             </button>
 
             <Sparkles className="h-7 w-7 text-[var(--ink-gold-bright)]" />
-            <h2 className="mt-3 font-serif text-3xl text-[var(--ink-ivory)]">Choose My Next Read</h2>
+            <h2 className="mt-3 pr-12 font-serif text-3xl text-[var(--ink-ivory)]">Choose My Next Read</h2>
             <p className="mt-2 text-sm text-[var(--ink-muted)]">Tell Inkbound what kind of reading experience fits today.</p>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -266,7 +273,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
               <label className="text-xs font-bold text-[var(--ink-text-secondary)]">
                 Format
                 <select value={pickerFormat} onChange={(event) => setPickerFormat(event.target.value)} className="inkbound-select mt-2 w-full">
-                  <option value="all">Any format</option>
+                  <option value="all">Any active format</option>
                   <option value="hardcover">Hardcover</option>
                   <option value="paperback">Paperback</option>
                   <option value="ebook">Ebook</option>
@@ -277,7 +284,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
               <label className="text-xs font-bold text-[var(--ink-text-secondary)]">
                 Length
                 <select value={pickerLength} onChange={(event) => setPickerLength(event.target.value)} className="inkbound-select mt-2 w-full">
-                  <option value="all">Any length</option>
+                  <option value="all">Any known length</option>
                   <option value="short">Under 300 pages</option>
                   <option value="medium">300–500 pages</option>
                   <option value="long">Over 500 pages</option>
@@ -285,8 +292,8 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
               </label>
             </div>
 
-            <label className="mt-4 flex items-center gap-2 text-xs text-[var(--ink-muted)]">
-              <input type="checkbox" checked={pickerOwnedOnly} onChange={(event) => setPickerOwnedOnly(event.target.checked)} />
+            <label className="mt-4 flex min-h-11 items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] px-3 text-xs text-[var(--ink-muted)]">
+              <input type="checkbox" checked={pickerOwnedOnly} onChange={(event) => setPickerOwnedOnly(event.target.checked)} className="h-5 w-5" />
               Only choose from books I own
             </label>
 
@@ -299,7 +306,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
               ) : recommendedBook ? (
                 <div className="rounded-2xl border border-[var(--ink-border-strong)] bg-[var(--ink-surface-raised)] p-4">
                   <div className="flex gap-4">
-                    <BookCover work={recommendedBook.work} edition={recommendedBook.editions[0]} size="md" />
+                    <BookCover work={recommendedBook.work} edition={getActiveEdition(recommendedBook)} size="md" />
                     <div className="min-w-0 flex-1">
                       <span className="inkbound-badge"><Check className="mr-1 h-3 w-3" />Your match</span>
                       <h3 className="mt-3 font-serif text-xl text-[var(--ink-ivory)]">{recommendedBook.work.title}</h3>
@@ -309,7 +316,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
                       )}
                     </div>
                   </div>
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                     <button
                       type="button"
                       onClick={() => {
@@ -320,7 +327,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
                     >
                       Start Reading
                     </button>
-                    <button type="button" onClick={() => onSelectBook(recommendedBook)} className="quiet-shelf-secondary-action px-4">
+                    <button type="button" onClick={() => onSelectBook(recommendedBook)} className="quiet-shelf-secondary-action flex-1 px-4 sm:flex-none">
                       Details <ArrowRight className="h-4 w-4" />
                     </button>
                   </div>
@@ -332,7 +339,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
                 </button>
               )}
             </div>
-          </div>
+          </section>
         </div>
       )}
     </div>
