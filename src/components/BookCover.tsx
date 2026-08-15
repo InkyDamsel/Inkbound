@@ -69,14 +69,21 @@ export const BookCover: React.FC<BookCoverProps> = ({
             event.stopPropagation();
             onSelectToggle();
           }}
-          className={`absolute left-2 top-2 z-30 flex h-5 w-5 items-center justify-center rounded border transition-all ${
-            isSelected
-              ? 'border-[#c5a059] bg-[#c5a059] text-white shadow'
-              : 'border-white/60 bg-black/40 text-transparent opacity-0 group-hover:opacity-100 hover:bg-black/60'
+          className={`book-cover-select-toggle absolute left-0 top-0 z-30 flex h-11 w-11 items-center justify-center transition-opacity ${
+            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
           }`}
           aria-label={isSelected ? 'Deselect book' : 'Select book for batch edit'}
         >
-          ✓
+          <span
+            aria-hidden="true"
+            className={`flex h-6 w-6 items-center justify-center rounded-md border text-[11px] font-black shadow transition ${
+              isSelected
+                ? 'border-[#c5a059] bg-[#c5a059] text-white'
+                : 'border-white/70 bg-black/65 text-transparent'
+            }`}
+          >
+            ✓
+          </span>
         </button>
       )}
 
