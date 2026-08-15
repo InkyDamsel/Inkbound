@@ -17,6 +17,7 @@ import {
   AUXILIARY_ACCOUNT_KEYS,
   type AuxiliaryAccountKeyName,
   getAuxiliaryBaselineKey,
+  getAuxiliaryKeysToClearForOwnerChange,
   getAuxiliaryPendingKey,
 } from './auxiliaryAccountSyncConfig';
 import {
@@ -154,6 +155,16 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
     const initialize = async () => {
       const previousOwnerUid = storage().getItem(OWNER_UID_KEY);
       const sameAccountLocalData = !previousOwnerUid || previousOwnerUid === uid;
+
+      // Shared auxiliary runtime keys belong to exactly one authenticated reader.
+      // Clear the previous reader's values before any cloud read so a sparse/new
+      // account cannot inherit collections, goals, memories, or challenges while
+      // hydration is pending or unavailable offline.
+      getAuxiliaryKeysToClearForOwnerChange(previousOwnerUid, uid).forEach((key) => {
+        storage().removeItem(key);
+        notifyRuntimeStorageChanged(key);
+      });
+
       const baseline = readBaseline(uid);
       const pending = readPending(uid);
       const now = new Date().toISOString();
