@@ -68,6 +68,7 @@
 
   [role='dialog']:not(aside) {
     max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1rem) !important;
+    overflow-y: auto;
     overscroll-behavior: contain;
   }
 }
@@ -84,7 +85,9 @@
   /* Keep full-screen and bottom-sheet editors inside the actual phone viewport. */
   [role='dialog'] {
     max-height: calc(100dvh - env(safe-area-inset-top)) !important;
+    overflow-y: auto;
     overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   [role='dialog'] textarea {
