@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useEffect, useState } from 'react';
+import { Dispatch, SetStateAction, useCallback, useEffect, useRef, useState } from 'react';
 import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 
 export function readPersistentValue<T>(key: string, fallback: T): T {
@@ -13,12 +13,28 @@ export function usePersistentState<T>(
     const resolvedFallback = fallback instanceof Function ? fallback() : fallback;
     return readPersistentValue(key, resolvedFallback);
   });
+  const valueRef = useRef(value);
 
   useEffect(() => {
-    // Persistence is intentionally routed through the runtime adapter so native
-    // builds can replace browser storage without changing feature components.
+    valueRef.current = value;
+    // Preserve the initialized value in runtime storage too. This is useful for
+    // first-run defaults and keeps native/web adapters behaviorally identical.
     writeRuntimeJson(key, value);
   }, [key, value]);
 
-  return [value, setValue];
+  const setPersistentValue = useCallback<Dispatch<SetStateAction<T>>>((nextValue) => {
+    const resolved = nextValue instanceof Function
+      ? (nextValue as (previous: T) => T)(valueRef.current)
+      : nextValue;
+
+    // Persist synchronously at the mutation boundary instead of waiting for a
+    // later React effect. Mobile apps can background or navigate immediately after
+    // a tap, so this prevents the newest local change from being lost before the
+    // component lifecycle has a chance to flush an effect.
+    valueRef.current = resolved;
+    writeRuntimeJson(key, resolved);
+    setValue(resolved);
+  }, [key]);
+
+  return [value, setPersistentValue];
 }
