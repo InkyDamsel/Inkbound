@@ -81,8 +81,9 @@
     overflow-x: clip;
   }
 
-  /* Avoid iOS rubber-band scrolling inside full-screen sheets. */
+  /* Keep full-screen and bottom-sheet editors inside the actual phone viewport. */
   [role='dialog'] {
+    max-height: calc(100dvh - env(safe-area-inset-top)) !important;
     overscroll-behavior: contain;
   }
 
@@ -95,6 +96,11 @@
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
+  /* Import/selection sticky actions must sit above the native home indicator. */
+  .inkbound-main-content [class*='sticky'][class*='bottom-0'] {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
   /* Keep bottom-sheet actions reachable above the home indicator and keyboard. */
   [role='dialog'] > :last-child[class*='border-t'] {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
@@ -105,6 +111,11 @@
   [role='dialog'] button[aria-label*='close'] {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  /* Large-phone widths still use the mobile shell; avoid premature 3-column web cards. */
+  [class~='sm:grid-cols-3'] {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }
 
