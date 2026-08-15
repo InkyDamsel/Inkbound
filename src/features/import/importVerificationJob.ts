@@ -1,4 +1,4 @@
-import type { ImportRecordItem } from '../../types';
+import type { ImportRecordItem, UserBookRecord } from '../../types';
 import { verifyImportRecords } from './libraryEnrichment';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
@@ -35,9 +35,6 @@ const emptySnapshot = (): ImportVerificationJobSnapshot => ({
 
 function clearCompletedUiState() {
   try {
-    // Only clear the transient completion card. The pending verification list is
-    // durable import accounting and is used by Import History to reconcile the
-    // exact matched/awaiting totals after a refresh or navigation.
     localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
   } catch {
     // Import Center state is best-effort only.
@@ -155,6 +152,7 @@ export function startImportVerificationJob(
   items: ImportRecordItem[],
   preDetectedDuplicates: ImportRecordItem[],
   executeImport: ImportExecutor,
+  librarySnapshot?: UserBookRecord[],
 ): Promise<void> {
   if (activePromise) return activePromise;
 
@@ -180,7 +178,7 @@ export function startImportVerificationJob(
           completed,
           total,
         });
-      });
+      }, librarySnapshot);
 
       const verifiedRecords = verification.verified.map((record) => ({
         ...record,
