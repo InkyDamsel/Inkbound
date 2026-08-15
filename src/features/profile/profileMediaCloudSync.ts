@@ -12,7 +12,7 @@ import {
 } from './profileMedia';
 
 const PROFILE_STORAGE_KEY = 'inkbound_reader_profile';
-export const PROFILE_MEDIA_SYNC_QUEUE_KEY = 'inkbound_profile_media_sync_queue_v1';
+const LEGACY_PROFILE_MEDIA_SYNC_QUEUE_KEY = 'inkbound_profile_media_sync_queue_v1';
 
 interface ProfileMediaQueueItem {
   kind: ProfileMediaKind;
@@ -33,22 +33,38 @@ interface SyncableProfile {
   [key: string]: unknown;
 }
 
-function readQueue(): ProfileMediaQueue {
-  return readRuntimeJson<ProfileMediaQueue>(PROFILE_MEDIA_SYNC_QUEUE_KEY, {});
+export function getProfileMediaSyncQueueKey(uid: string): string {
+  return `inkbound_profile_media_sync_queue_${uid}_v1`;
 }
 
-function writeQueue(queue: ProfileMediaQueue) {
+function readQueue(uid: string): ProfileMediaQueue {
+  const accountQueue = readRuntimeJson<ProfileMediaQueue>(getProfileMediaSyncQueueKey(uid), {});
+  if (Object.keys(accountQueue).length > 0) return accountQueue;
+
+  // This key existed briefly during development before queues became account
+  // scoped. Absorb it once so local test data does not become stranded.
+  const legacyQueue = readRuntimeJson<ProfileMediaQueue>(LEGACY_PROFILE_MEDIA_SYNC_QUEUE_KEY, {});
+  if (Object.keys(legacyQueue).length > 0) {
+    writeRuntimeJson(getProfileMediaSyncQueueKey(uid), legacyQueue);
+    removeRuntimeValue(LEGACY_PROFILE_MEDIA_SYNC_QUEUE_KEY);
+    return legacyQueue;
+  }
+  return {};
+}
+
+function writeQueue(uid: string, queue: ProfileMediaQueue) {
+  const key = getProfileMediaSyncQueueKey(uid);
   if (Object.keys(queue).length === 0) {
-    removeRuntimeValue(PROFILE_MEDIA_SYNC_QUEUE_KEY);
+    removeRuntimeValue(key);
     return;
   }
-  writeRuntimeJson(PROFILE_MEDIA_SYNC_QUEUE_KEY, queue);
+  writeRuntimeJson(key, queue);
 }
 
-export function enqueueProfileMediaSync(kind: ProfileMediaKind, mediaKey: string) {
-  const queue = readQueue();
+export function enqueueProfileMediaSync(uid: string, kind: ProfileMediaKind, mediaKey: string) {
+  const queue = readQueue(uid);
   queue[kind] = { kind, mediaKey, queuedAt: new Date().toISOString() };
-  writeQueue(queue);
+  writeQueue(uid, queue);
 }
 
 async function queueLegacyProfileMedia(uid: string, profile: SyncableProfile) {
@@ -58,7 +74,7 @@ async function queueLegacyProfileMedia(uid: string, profile: SyncableProfile) {
     migrations.push((async () => {
       const blob = await dataUrlToBlob(profile.avatarImageData!);
       const mediaKey = await storeProfileMedia(uid, 'avatar', blob);
-      enqueueProfileMediaSync('avatar', mediaKey);
+      enqueueProfileMediaSync(uid, 'avatar', mediaKey);
     })());
   }
 
@@ -66,7 +82,7 @@ async function queueLegacyProfileMedia(uid: string, profile: SyncableProfile) {
     migrations.push((async () => {
       const blob = await dataUrlToBlob(profile.bannerImageData!);
       const mediaKey = await storeProfileMedia(uid, 'banner', blob);
-      enqueueProfileMediaSync('banner', mediaKey);
+      enqueueProfileMediaSync(uid, 'banner', mediaKey);
     })());
   }
 
@@ -79,7 +95,7 @@ export async function storeAndQueueProfileMedia(
   blob: Blob,
 ): Promise<string> {
   const mediaKey = await storeProfileMedia(uid, kind, blob);
-  enqueueProfileMediaSync(kind, mediaKey);
+  enqueueProfileMediaSync(uid, kind, mediaKey);
   return mediaKey;
 }
 
@@ -88,7 +104,7 @@ export async function synchronizeProfileMedia(uid: string): Promise<void> {
 
   const profile = readRuntimeJson<SyncableProfile>(PROFILE_STORAGE_KEY, {});
   await queueLegacyProfileMedia(uid, profile);
-  const queue = readQueue();
+  const queue = readQueue(uid);
   const entries = Object.values(queue).filter((item): item is ProfileMediaQueueItem => Boolean(item));
   if (entries.length === 0) return;
 
@@ -116,10 +132,10 @@ export async function synchronizeProfileMedia(uid: string): Promise<void> {
     writeRuntimeJson(PROFILE_STORAGE_KEY, latestProfile);
     notifyLocalDataChanged([PROFILE_STORAGE_KEY]);
 
-    const latestQueue = readQueue();
+    const latestQueue = readQueue(uid);
     if (latestQueue[item.kind]?.mediaKey === item.mediaKey) {
       delete latestQueue[item.kind];
-      writeQueue(latestQueue);
+      writeQueue(uid, latestQueue);
       await removeProfileMedia(item.mediaKey);
     }
   }
