@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { CalendarClock, LockKeyhole, MailOpen, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { CalendarClock, LockKeyhole, MailOpen, Plus, Trash2, Undo2 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
@@ -20,8 +20,14 @@ interface ReadingTimeCapsulesScreenProps {
   onSelectBook: (book: UserBookRecord) => void;
 }
 
+interface DeletedTimeCapsule {
+  capsule: TimeCapsule;
+  index: number;
+}
+
 const CAPSULES_KEY = 'inkbound_reading_time_capsules';
 const CAPSULE_FILTER_KEY = 'inkbound_time_capsule_filter';
+const UNDO_DELETE_MS = 7000;
 
 function getStatus(capsule: TimeCapsule): CapsuleStatus {
   if (capsule.openedAt) return 'opened';
@@ -44,6 +50,13 @@ export const ReadingTimeCapsulesScreen: React.FC<ReadingTimeCapsulesScreenProps>
   const [bookId, setBookId] = useState(books[0]?.id ?? '');
   const [message, setMessage] = useState('');
   const [revealAt, setRevealAt] = useState(defaultRevealDate);
+  const [deletedCapsule, setDeletedCapsule] = useState<DeletedTimeCapsule | null>(null);
+
+  useEffect(() => {
+    if (!deletedCapsule) return undefined;
+    const timer = window.setTimeout(() => setDeletedCapsule(null), UNDO_DELETE_MS);
+    return () => window.clearTimeout(timer);
+  }, [deletedCapsule]);
 
   const visibleCapsules = useMemo(
     () => capsules
@@ -78,6 +91,24 @@ export const ReadingTimeCapsulesScreen: React.FC<ReadingTimeCapsulesScreenProps>
           : capsule,
       ),
     );
+  };
+
+  const deleteCapsule = (id: string) => {
+    const index = capsules.findIndex((capsule) => capsule.id === id);
+    if (index < 0) return;
+    setDeletedCapsule({ capsule: capsules[index], index });
+    setCapsules((current) => current.filter((capsule) => capsule.id !== id));
+  };
+
+  const undoDeleteCapsule = () => {
+    if (!deletedCapsule) return;
+    setCapsules((current) => {
+      if (current.some((capsule) => capsule.id === deletedCapsule.capsule.id)) return current;
+      const next = [...current];
+      next.splice(Math.min(deletedCapsule.index, next.length), 0, deletedCapsule.capsule);
+      return next;
+    });
+    setDeletedCapsule(null);
   };
 
   return (
@@ -138,7 +169,7 @@ export const ReadingTimeCapsulesScreen: React.FC<ReadingTimeCapsulesScreenProps>
                       <p className="mt-1 text-sm text-[var(--ink-muted)]">Reveals {new Date(capsule.revealAt).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  <button type="button" onClick={() => setCapsules((current) => current.filter((item) => item.id !== capsule.id))} className="quiet-shelf-icon-button shrink-0" aria-label="Delete time capsule">
+                  <button type="button" onClick={() => deleteCapsule(capsule.id)} className="quiet-shelf-icon-button shrink-0" aria-label="Delete time capsule">
                     <Trash2 />
                   </button>
                 </div>
@@ -184,6 +215,15 @@ export const ReadingTimeCapsulesScreen: React.FC<ReadingTimeCapsulesScreenProps>
               <button type="button" className="quiet-shelf-primary-action justify-center" onClick={createCapsule} disabled={!bookId || !message.trim() || !revealAt || revealAt < localDateKey()}>Seal capsule</button>
             </div>
           </section>
+        </div>
+      )}
+
+      {deletedCapsule && (
+        <div className="fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[220] mx-auto flex max-w-lg items-center justify-between gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 py-3 shadow-2xl sm:bottom-6" role="status" aria-live="polite">
+          <span className="min-w-0 text-sm font-semibold text-[var(--ink-ivory)]">Time capsule deleted.</span>
+          <button type="button" onClick={undoDeleteCapsule} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-bold text-[var(--ink-gold-bright)]">
+            <Undo2 className="h-4 w-4" /> Undo
+          </button>
         </div>
       )}
     </div>
