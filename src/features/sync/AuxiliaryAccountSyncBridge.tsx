@@ -14,29 +14,15 @@ import {
   notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
 import {
+  AUXILIARY_ACCOUNT_KEYS,
+  type AuxiliaryAccountKeyName,
+  getAuxiliaryBaselineKey,
+  getAuxiliaryPendingKey,
+} from './auxiliaryAccountSyncConfig';
+import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
   type BeforeSignOutDetail,
 } from './cloudSyncEvents';
-
-/**
- * Reader-authored data that is not part of a Book or ReadingSession record but
- * still belongs to the reader's Inkbound archive and therefore must follow the
- * authenticated account across devices.
- *
- * UI-only state (filters, collapsed sections, selected tabs, onboarding state)
- * intentionally stays device-local and should not be added here.
- */
-export const AUXILIARY_ACCOUNT_KEYS = {
-  collectionDefinitions: 'inkbound_collection_definitions',
-  annualReadingGoal: 'inkbound_annual_goal',
-  dailyReadingGoalMinutes: 'inkbound_daily_goal_minutes',
-  readingMemories: 'inkbound_book_memories',
-  timelineMemories: 'inkbound_timeline_memories',
-  readingTimeCapsules: 'inkbound_reading_time_capsules',
-  joinedChallenges: 'inkbound_joined_challenges',
-} as const;
-
-type AccountKeyName = keyof typeof AUXILIARY_ACCOUNT_KEYS;
 
 interface CloudAuxiliaryRecord {
   data: unknown;
@@ -48,14 +34,11 @@ interface PendingAuxiliaryMutation {
   clientUpdatedAt: string;
 }
 
-type PendingState = Partial<Record<AccountKeyName, PendingAuxiliaryMutation>>;
-type BaselineState = Partial<Record<AccountKeyName, string>>;
+type PendingState = Partial<Record<AuxiliaryAccountKeyName, PendingAuxiliaryMutation>>;
+type BaselineState = Partial<Record<AuxiliaryAccountKeyName, string>>;
 
 const POLL_MS = 1500;
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
-export const getAuxiliaryPendingKey = (uid: string) => `inkbound_auxiliary_pending_${uid}_v1`;
-export const getAuxiliaryBaselineKey = (uid: string) => `inkbound_auxiliary_baseline_${uid}_v1`;
-
 const storage = () => getRuntimeStorage();
 const stable = (value: unknown) => JSON.stringify(value);
 
@@ -109,7 +92,7 @@ function isMeaningful(value: unknown): boolean {
 export const AuxiliaryAccountSyncBridge: React.FC = () => {
   const sync = useAccountSync();
   const hydrated = useRef(false);
-  const fingerprints = useRef<Partial<Record<AccountKeyName, string>>>({});
+  const fingerprints = useRef<Partial<Record<AuxiliaryAccountKeyName, string>>>({});
   const pollRunning = useRef(false);
 
   useEffect(() => {
@@ -126,7 +109,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       const pending = readPending(uid);
       const now = new Date().toISOString();
 
-      (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AccountKeyName, string]>).forEach(([name, key]) => {
+      (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, key]) => {
         const value = readLocalValue(key);
         if (value === undefined) return;
         const fingerprint = stable(value);
@@ -140,7 +123,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
 
     const flushPending = async () => {
       const pending = readPending(uid);
-      const entries = Object.entries(pending) as Array<[AccountKeyName, PendingAuxiliaryMutation]>;
+      const entries = Object.entries(pending) as Array<[AuxiliaryAccountKeyName, PendingAuxiliaryMutation]>;
       if (entries.length === 0) return;
 
       const baseline = readBaseline(uid);
@@ -176,7 +159,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       const now = new Date().toISOString();
 
       if (sameAccountLocalData) {
-        (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AccountKeyName, string]>).forEach(([name, key]) => {
+        (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, key]) => {
           const localValue = readLocalValue(key);
           if (localValue === undefined) return;
           const fingerprint = stable(localValue);
@@ -195,14 +178,14 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       }
       if (disposed) return;
 
-      const cloudByName = new Map<AccountKeyName, CloudAuxiliaryRecord>();
+      const cloudByName = new Map<AuxiliaryAccountKeyName, CloudAuxiliaryRecord>();
       cloudDocs?.docs.forEach((item) => {
         if (!(item.id in AUXILIARY_ACCOUNT_KEYS)) return;
-        cloudByName.set(item.id as AccountKeyName, item.data() as CloudAuxiliaryRecord);
+        cloudByName.set(item.id as AuxiliaryAccountKeyName, item.data() as CloudAuxiliaryRecord);
       });
 
       const nextBaseline: BaselineState = { ...baseline };
-      (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AccountKeyName, string]>).forEach(([name, key]) => {
+      (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, key]) => {
         const cloudRecord = cloudByName.get(name);
         const localValue = sameAccountLocalData ? readLocalValue(key) : undefined;
         const localPending = pending[name];
@@ -244,7 +227,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
     void initialize().catch(() => {
       if (disposed) return;
       hydrated.current = true;
-      (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AccountKeyName, string]>).forEach(([name, key]) => {
+      (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, key]) => {
         const value = readLocalValue(key);
         fingerprints.current[name] = value === undefined ? undefined : stable(value);
       });
@@ -260,7 +243,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
 
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'removed' || !(change.doc.id in AUXILIARY_ACCOUNT_KEYS)) return;
-          const name = change.doc.id as AccountKeyName;
+          const name = change.doc.id as AuxiliaryAccountKeyName;
           if (pending[name]) return;
           const record = change.doc.data() as CloudAuxiliaryRecord;
           const key = AUXILIARY_ACCOUNT_KEYS[name];
