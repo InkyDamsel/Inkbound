@@ -15,6 +15,19 @@ export const AUXILIARY_ACCOUNT_KEYS = {
   joinedChallenges: 'inkbound_joined_challenges',
 } as const;
 
+/**
+ * Canonical reader state uses shared runtime keys while Firestore remains the
+ * cross-device authority. These keys must never remain populated with another
+ * authenticated reader's data during an account transition.
+ */
+export const CORE_ACCOUNT_RUNTIME_KEYS = [
+  'inkbound_books',
+  'inkbound_sessions',
+  'inkbound_reader_profile',
+] as const;
+
+export const ACCOUNT_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+
 export type AuxiliaryAccountKeyName = keyof typeof AUXILIARY_ACCOUNT_KEYS;
 
 export const getAuxiliaryPendingKey = (uid: string) => `inkbound_auxiliary_pending_${uid}_v1`;
@@ -32,4 +45,17 @@ export const getAuxiliaryKeysToClearForOwnerChange = (
   nextOwnerUid: string,
 ) => previousOwnerUid && previousOwnerUid !== nextOwnerUid
   ? Object.values(AUXILIARY_ACCOUNT_KEYS)
+  : [];
+
+/**
+ * Full account-transition isolation boundary. Do not set the owner marker while
+ * clearing these keys: CloudPersistenceBridge uses the previous owner marker to
+ * know the newly-empty cache does not represent intentional deletions by the new
+ * reader. The marker changes only after canonical cloud hydration succeeds.
+ */
+export const getAccountOwnedKeysToClearForOwnerChange = (
+  previousOwnerUid: string | null,
+  nextOwnerUid: string,
+) => previousOwnerUid && previousOwnerUid !== nextOwnerUid
+  ? [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS)]
   : [];
