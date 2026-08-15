@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Download, Share2, Sparkles } from 'lucide-re
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 
 interface MonthlyWrappedScreenProps {
   books: UserBookRecord[];
@@ -139,26 +140,22 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   const downloadCurrent = async () => {
     try {
       const file = await createPngFile();
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = file.name;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage('Wrapped card downloaded.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Download failed.'); }
+      await exportRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file });
+      setMessage('Wrapped card saved.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Save failed.'); }
   };
 
   const shareCurrent = async () => {
     try {
       const file = await createPngFile();
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ title: `${selectedMonth.label} Reading Wrapped`, text: 'Made with Inkbound', files: [file] });
-        setMessage('Share sheet opened.');
-      } else {
-        await downloadCurrent();
-        setMessage('Direct sharing is unavailable here, so the card was downloaded.');
-      }
+      const result = await shareRuntimeBinaryFile({
+        filename: file.name,
+        mimeType: 'image/png',
+        contents: file,
+        title: `${selectedMonth.label} Reading Wrapped`,
+        text: 'Made with Inkbound',
+      });
+      setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the card was saved instead.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); }
   };
 
@@ -179,7 +176,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
           </label>
           <div>
             <p className="text-sm font-semibold text-[var(--ink-ivory)]">Export size</p>
-            <div className="mt-2 grid grid-cols-3 gap-2">
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {(Object.entries(formatOptions) as [WrappedFormat, (typeof formatOptions)[WrappedFormat]][]).map(([id, option]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, format: id }))} className={`min-h-11 rounded-xl border px-2 text-xs font-semibold ${preferences.format === id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}>{option.label}</button>)}
             </div>
           </div>
@@ -189,18 +186,18 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
               {(Object.entries(themeOptions) as [WrappedTheme, (typeof themeOptions)[WrappedTheme]][]).map(([id, option]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, theme: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.theme === id ? 'border-[var(--ink-gold)] text-white' : 'border-[var(--ink-border)] text-white/70'}`} style={{ background: option.background }}>{option.label}</button>)}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <button type="button" onClick={() => void shareCurrent()} className="quiet-shelf-primary-action min-h-12 justify-center"><Share2 className="h-4 w-4" /> Share</button>
-            <button type="button" onClick={() => void downloadCurrent()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Download</button>
+            <button type="button" onClick={() => void downloadCurrent()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Save PNG</button>
           </div>
           {message && <p role="status" className="text-sm text-[var(--ink-muted)]">{message}</p>}
         </section>
 
-        <section className="inkbound-panel flex min-h-[650px] flex-col items-center justify-center rounded-3xl p-5 sm:p-8">
+        <section className="inkbound-panel flex min-h-0 flex-col items-center justify-center rounded-3xl p-4 sm:min-h-[650px] sm:p-8">
           <div className="mb-4 flex w-full max-w-[560px] items-center justify-between">
-            <button type="button" onClick={() => changeCard(cardIndex - 1)} className="quiet-shelf-icon-button" aria-label="Previous Wrapped card"><ChevronLeft /></button>
+            <button type="button" onClick={() => changeCard(cardIndex - 1)} className="quiet-shelf-icon-button h-11 w-11" aria-label="Previous Wrapped card"><ChevronLeft /></button>
             <span className="text-xs font-semibold text-[var(--ink-muted)]">Card {cardIndex + 1} of {cards.length}</span>
-            <button type="button" onClick={() => changeCard(cardIndex + 1)} className="quiet-shelf-icon-button" aria-label="Next Wrapped card"><ChevronRight /></button>
+            <button type="button" onClick={() => changeCard(cardIndex + 1)} className="quiet-shelf-icon-button h-11 w-11" aria-label="Next Wrapped card"><ChevronRight /></button>
           </div>
           <div className={`relative flex w-full max-w-[560px] flex-col items-center justify-between overflow-hidden rounded-[32px] border border-white/15 text-center shadow-2xl ${isSquare ? 'p-[7%]' : isStory ? 'p-[10%]' : 'p-[9%]'}`} style={{ aspectRatio: `${format.width} / ${format.height}`, background: `radial-gradient(circle at top right, ${theme.accent}66, transparent 42%), ${theme.background}`, color: theme.text }}>
             <div>
