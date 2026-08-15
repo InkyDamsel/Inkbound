@@ -40,7 +40,7 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
 
   if (!isAuthReady) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[var(--ink-page)] px-6 text-center">
+      <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
         <div className="max-w-sm">
           <div className="mx-auto h-9 w-9 animate-pulse rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]" />
           <p className="mt-4 font-serif text-xl text-[var(--ink-ivory)]">Opening Inkbound</p>
