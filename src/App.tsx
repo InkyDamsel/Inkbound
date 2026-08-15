@@ -609,8 +609,6 @@ export default function App() {
       const latest = related.at(-1);
       const currentProgress = isAudiobook ? book.progressMinutes : book.progressPages;
 
-      // Reconstruct the session history before the edit/delete. This tells us
-      // whether the book's saved progress was session-driven or manually ahead.
       const previousRelated = changedSession
         ? [
             ...nextSessions.filter((item) => item.bookId === bookId && item.id !== changedSession.id),
@@ -762,7 +760,7 @@ export default function App() {
           {activeTab === 'wrapped' && <MonthlyWrappedScreen books={books} sessions={sessions} />}
           {activeTab === 'yearbook' && <YearInBooksScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
-          {activeTab === 'import' && <ImportCenterScreen currentBookCount={books.length} onExecuteImport={handleExecuteImport} onUndoLastImport={handleUndoLastBatch} />}
+          {activeTab === 'import' && <ImportCenterScreen books={books} onExecuteImport={handleExecuteImport} onUndoLastImport={handleUndoLastBatch} />}
           {activeTab === 'settings' && <SettingsScreen books={books} sessions={sessions} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} onResetData={handleResetData} />}
           {activeTab === 'profile' && <ProfileScreen books={books} sessions={sessions} />}
           {activeTab === 'admin' && <AdminScreen />}
