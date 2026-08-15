@@ -37,13 +37,16 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Verify public release pages
+      - name: Verify public release pages and mobile manifest
         run: |
           test -f dist/index.html
           test -f dist/privacy.html
           test -f dist/terms.html
           test -f dist/delete-account.html
           test -f dist/support.html
+          test -f dist/manifest.webmanifest
+          grep -q '"display": "standalone"' dist/manifest.webmanifest
+          grep -q 'rel="manifest"' dist/index.html
 
   verify-functions:
     name: Cloud Functions
