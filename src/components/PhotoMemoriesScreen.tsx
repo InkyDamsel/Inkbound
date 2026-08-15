@@ -1,5 +1,5 @@
-import React, { ChangeEvent, useMemo, useRef, useState } from 'react';
-import { Camera, CalendarDays, ImagePlus, MapPin, Search, Trash2, X } from 'lucide-react';
+import React, { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, CalendarDays, ImagePlus, MapPin, Search, Trash2, Undo2, X } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 
@@ -18,9 +18,15 @@ interface PhotoMemoriesScreenProps {
   onSelectBook: (book: UserBookRecord) => void;
 }
 
+interface DeletedPhotoMemory {
+  memory: PhotoMemory;
+  index: number;
+}
+
 const PHOTO_MEMORIES_KEY = 'inkbound_photo_memories';
 const PHOTO_FILTER_KEY = 'inkbound_photo_memory_filter';
 const MAX_SOURCE_IMAGE_BYTES = 12 * 1024 * 1024;
+const UNDO_DELETE_MS = 7000;
 
 const localDateKey = (value = new Date()) => {
   const year = value.getFullYear();
@@ -69,7 +75,14 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
   const [date, setDate] = useState(localDateKey);
   const [bookId, setBookId] = useState('');
   const [error, setError] = useState('');
+  const [deletedMemory, setDeletedMemory] = useState<DeletedPhotoMemory | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!deletedMemory) return undefined;
+    const timer = window.setTimeout(() => setDeletedMemory(null), UNDO_DELETE_MS);
+    return () => window.clearTimeout(timer);
+  }, [deletedMemory]);
 
   const bookById = useMemo(() => new Map(books.map((book) => [book.id, book])), [books]);
   const normalizedSearch = search.trim().toLowerCase();
@@ -135,7 +148,21 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
   };
 
   const deleteMemory = (id: string) => {
+    const index = memories.findIndex((memory) => memory.id === id);
+    if (index < 0) return;
+    setDeletedMemory({ memory: memories[index], index });
     setMemories((current) => current.filter((memory) => memory.id !== id));
+  };
+
+  const undoDeleteMemory = () => {
+    if (!deletedMemory) return;
+    setMemories((current) => {
+      if (current.some((memory) => memory.id === deletedMemory.memory.id)) return current;
+      const next = [...current];
+      next.splice(Math.min(deletedMemory.index, next.length), 0, deletedMemory.memory);
+      return next;
+    });
+    setDeletedMemory(null);
   };
 
   return (
@@ -241,6 +268,15 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
             {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={resetComposer} className="quiet-shelf-secondary-action w-full justify-center sm:w-auto">Cancel</button><button type="button" onClick={saveMemory} className="quiet-shelf-primary-action w-full justify-center sm:w-auto"><Camera />Save Memory</button></div>
           </section>
+        </div>
+      )}
+
+      {deletedMemory && (
+        <div className="fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[220] mx-auto flex max-w-lg items-center justify-between gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 py-3 shadow-2xl sm:bottom-6" role="status" aria-live="polite">
+          <span className="min-w-0 text-sm font-semibold text-[var(--ink-ivory)]">Photo memory deleted.</span>
+          <button type="button" onClick={undoDeleteMemory} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-bold text-[var(--ink-gold-bright)]">
+            <Undo2 className="h-4 w-4" /> Undo
+          </button>
         </div>
       )}
     </section>
