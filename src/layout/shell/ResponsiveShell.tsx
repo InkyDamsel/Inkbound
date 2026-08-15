@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { HelpCircle, Mail, X } from 'lucide-react';
+import { ExternalLink, HelpCircle, Mail, X } from 'lucide-react';
 import { useBreakpoint } from '../responsive/BreakpointProvider';
 
 interface ResponsiveShellProps {
@@ -44,6 +44,13 @@ const faqSections = [
       ['What is the difference between clearing this device and deleting my account?', 'Clearing a device removes its local Inkbound data and keeps your cloud account. Deleting your account permanently removes the account and its associated Inkbound cloud data.'],
     ],
   },
+];
+
+const legalLinks = [
+  { href: '/privacy.html', label: 'Privacy Policy' },
+  { href: '/terms.html', label: 'Terms of Service' },
+  { href: '/delete-account.html', label: 'Delete Account' },
+  { href: '/support.html', label: 'Support' },
 ];
 
 export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) {
@@ -103,18 +110,32 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
             <section className="mt-9 rounded-3xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 p-5">
               <div className="flex items-start gap-3">
                 <Mail className="mt-1 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
-                <div>
+                <div className="min-w-0">
                   <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Still need help?</h3>
                   <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">If you cannot find the answer you are looking for, email us. For a technical issue, include a short description of what happened and a screenshot when possible.</p>
-                  <div className="mt-4 flex flex-col gap-2 text-sm">
-                    <a href="mailto:inkbound_support@inkydameinteractive.com" className="min-h-11 py-2 font-bold text-[var(--ink-gold)] hover:underline">inkbound_support@inkydameinteractive.com</a>
-                    <span className="text-xs text-[var(--ink-muted)]">Support and technical help</span>
-                    <a href="mailto:inkbound@inkydameinteractive.com" className="mt-2 min-h-11 py-2 font-bold text-[var(--ink-gold)] hover:underline">inkbound@inkydameinteractive.com</a>
-                    <span className="text-xs text-[var(--ink-muted)]">General Inkbound inquiries</span>
-                  </div>
+                  <a href="mailto:inkbound@inkydameinteractive.com" className="mt-4 inline-flex min-h-11 max-w-full items-center py-2 font-bold text-[var(--ink-gold)] hover:underline">
+                    <span className="break-all">inkbound@inkydameinteractive.com</span>
+                  </a>
+                  <p className="text-xs text-[var(--ink-muted)]">Account, sync, import, privacy, billing, and technical support</p>
                 </div>
               </div>
             </section>
+
+            <nav className="mt-6 border-t border-[var(--ink-border-subtle)] pt-5" aria-label="Inkbound privacy, legal, and account resources">
+              <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Privacy & account resources</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {legalLinks.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    className="inline-flex min-h-11 items-center justify-between gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-2 text-sm font-semibold text-[var(--ink-ivory)] hover:border-[var(--ink-gold)]/40"
+                  >
+                    {link.label}
+                    <ExternalLink className="h-4 w-4 shrink-0 text-[var(--ink-muted)]" />
+                  </a>
+                ))}
+              </div>
+            </nav>
           </aside>
         </div>
       )}
