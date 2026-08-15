@@ -1,6 +1,6 @@
-const MAX_COVER_DATA_LENGTH = 180_000;
-const INITIAL_MAX_WIDTH = 700;
-const INITIAL_MAX_HEIGHT = 1050;
+const MAX_COVER_DATA_LENGTH = 120_000;
+const INITIAL_MAX_WIDTH = 600;
+const INITIAL_MAX_HEIGHT = 900;
 
 async function decodeImage(file: File): Promise<{
   source: CanvasImageSource;
@@ -36,8 +36,11 @@ async function decodeImage(file: File): Promise<{
 
 /**
  * Prepares user-selected cover art before it enters canonical book state.
- * Phone photos can be many megabytes; saved edition data should stay small
- * enough for local persistence and cloud synchronization.
+ *
+ * IMPORTANT: manual book covers are still temporarily represented inside the
+ * edition record so older clients remain compatible. Keep this payload tightly
+ * bounded until the dedicated book-cover Storage migration is completed.
+ * Phone camera originals must never enter book/Firestore state directly.
  */
 export async function prepareBookCoverImage(file: File): Promise<string> {
   const decoded = await decodeImage(file);
@@ -45,10 +48,10 @@ export async function prepareBookCoverImage(file: File): Promise<string> {
   try {
     let maximumWidth = INITIAL_MAX_WIDTH;
     let maximumHeight = INITIAL_MAX_HEIGHT;
-    let quality = 0.76;
+    let quality = 0.72;
     let bestResult = '';
 
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+    for (let attempt = 0; attempt < 7; attempt += 1) {
       const scale = Math.min(1, maximumWidth / decoded.width, maximumHeight / decoded.height);
       const width = Math.max(1, Math.round(decoded.width * scale));
       const height = Math.max(1, Math.round(decoded.height * scale));
@@ -65,7 +68,7 @@ export async function prepareBookCoverImage(file: File): Promise<string> {
 
       maximumWidth = Math.round(maximumWidth * 0.82);
       maximumHeight = Math.round(maximumHeight * 0.82);
-      quality = Math.max(0.44, quality - 0.07);
+      quality = Math.max(0.40, quality - 0.07);
     }
 
     if (bestResult.length > MAX_COVER_DATA_LENGTH) {
