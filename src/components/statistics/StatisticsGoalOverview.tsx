@@ -20,12 +20,13 @@ export const StatisticsGoalOverview: React.FC<StatisticsGoalOverviewProps> = ({
   monthlyData,
 }) => {
   const maxMonthCount = Math.max(1, ...monthlyData.map((item) => item.count));
+  const currentYear = new Date().getFullYear();
 
   return (
     <ResponsiveGrid minItemWidth={280} maxColumns={3} gap={24}>
       <div className="flex flex-col justify-between space-y-3 rounded-2xl border border-[#c5a059]/20 bg-[#1c0f24] p-5 shadow-xl">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs font-bold uppercase text-stone-400">2026 Goal Progress</span>
+          <span className="text-xs font-bold uppercase text-stone-400">{currentYear} Goal Progress</span>
           <span className="text-xs font-bold text-[#e5c158]">
             {completedBooks} / {annualGoal} books
           </span>
@@ -42,27 +43,29 @@ export const StatisticsGoalOverview: React.FC<StatisticsGoalOverviewProps> = ({
         </div>
       </div>
 
-      <div className="space-y-3 rounded-2xl border border-[#c5a059]/20 bg-[#1c0f24] p-5 shadow-xl md:col-span-2">
-        <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0 space-y-3 rounded-2xl border border-[#c5a059]/20 bg-[#1c0f24] p-5 shadow-xl md:col-span-2">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <span className="text-xs font-bold uppercase text-stone-400">Monthly Finished Books Count</span>
           <span className="text-xs font-bold text-[#e5c158]">Simple Monthly Tracker</span>
         </div>
 
-        <div className="flex h-28 items-end justify-between gap-2 border-b border-[#3d2448] pt-2">
-          {monthlyData.map((item) => {
-            const heightPercent = Math.round((item.count / maxMonthCount) * 100);
+        <div className="overflow-x-auto pb-1">
+          <div className="flex h-28 min-w-[480px] items-end justify-between gap-2 border-b border-[#3d2448] pt-2 sm:min-w-0">
+            {monthlyData.map((item) => {
+              const heightPercent = Math.round((item.count / maxMonthCount) * 100);
 
-            return (
-              <div key={item.month} className="group flex flex-1 flex-col items-center gap-1">
-                <span className="text-[10px] font-bold text-[#e5c158]">{item.count}</span>
-                <div
-                  className="w-full rounded-t bg-gradient-to-t from-[#c5a059] to-[#e5c158] transition-all duration-500"
-                  style={{ height: `${heightPercent}%` }}
-                />
-                <span className="text-[10px] font-semibold text-stone-400">{item.month}</span>
-              </div>
-            );
-          })}
+              return (
+                <div key={item.month} className="group flex min-w-7 flex-1 flex-col items-center gap-1">
+                  <span className="text-[10px] font-bold text-[#e5c158]">{item.count}</span>
+                  <div
+                    className="w-full rounded-t bg-gradient-to-t from-[#c5a059] to-[#e5c158] transition-all duration-500"
+                    style={{ height: `${heightPercent}%` }}
+                  />
+                  <span className="text-[10px] font-semibold text-stone-400">{item.month}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </ResponsiveGrid>
