@@ -232,18 +232,13 @@ export const deleteMyAccount = onCall(async (request) => {
   if (!authTime || Date.now() - authTime > recentAuthWindowMs) {
     throw new HttpsError(
       'failed-precondition',
-      'For your security, sign in with Google again before deleting your account.',
+      'For your security, verify your account again before deleting it.',
     );
   }
 
-  const entitlementSnapshot = await db.doc(`entitlements/${auth.uid}`).get();
-  if (paidSubscriptionIsActive(entitlementSnapshot.data())) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Cancel your paid Inkbound subscription before deleting your account so billing cannot continue after your login is removed.',
-    );
-  }
-
+  // Personal account deletion is intentionally independent from billing state.
+  // Store/provider subscriptions must be managed separately; users should never
+  // be forced to retain their Inkbound account or personal data to avoid billing.
   await eraseInkboundUser(auth.uid);
   return { success: true };
 });
