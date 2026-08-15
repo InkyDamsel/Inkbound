@@ -100,12 +100,16 @@ export const formatDurationEstimate = (totalSeconds?: number) => {
   return parts.join(' ');
 };
 
+// Reading-day metrics share one definition: a valid local date with positive
+// completed reading time. Zero-duration placeholders never create streak days.
+export const getReadingDates = (sessions: ReadingSession[]) => [...new Set(
+  sessions
+    .filter((session) => getSessionDurationMinutes(session) > 0 && parseLocalDate(session.date) !== null)
+    .map((session) => session.date),
+)].sort();
+
 export const getReadingStreak = (sessions: ReadingSession[], throughDate = localDateKey()) => {
-  const readingDates = new Set(
-    sessions
-      .filter((session) => getSessionDurationMinutes(session) > 0 && parseLocalDate(session.date) !== null)
-      .map((session) => session.date),
-  );
+  const readingDates = new Set(getReadingDates(sessions));
 
   let cursor = parseLocalDate(throughDate) ?? parseLocalDate(localDateKey())!;
   const todayKey = localDateKey(cursor);
@@ -119,6 +123,24 @@ export const getReadingStreak = (sessions: ReadingSession[], throughDate = local
     cursor = addLocalDays(cursor, -1);
   }
   return streak;
+};
+
+export const getLongestReadingStreak = (sessions: ReadingSession[]) => {
+  const dates = getReadingDates(sessions);
+  if (dates.length === 0) return 0;
+
+  let longest = 1;
+  let current = 1;
+  for (let index = 1; index < dates.length; index += 1) {
+    const previous = parseLocalDate(dates[index - 1]);
+    if (previous && dates[index] === localDateKey(addLocalDays(previous, 1))) {
+      current += 1;
+      longest = Math.max(longest, current);
+    } else {
+      current = 1;
+    }
+  }
+  return longest;
 };
 
 export const getDailyReadingMinutes = (sessions: ReadingSession[], date = localDateKey()) => {
