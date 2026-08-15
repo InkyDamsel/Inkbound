@@ -1,5 +1,13 @@
 import React from 'react';
 import { ArrowRight, BarChart3, Clock, Flame } from 'lucide-react';
+import { getActiveEdition } from '../../features/reading/bookReadingState';
+import { getAnnualReadingGoal } from '../../features/reading/readingPreferences';
+import {
+  getReadingStreak,
+  getSessionDurationMinutes,
+  getSessionListeningMinutes,
+  getSessionPagesRead,
+} from '../../features/reading/sessionAnalytics';
 import { ReadingSession, UserBookRecord } from '../../types';
 
 interface DashboardSidebarProps {
@@ -9,59 +17,66 @@ interface DashboardSidebarProps {
   onViewAllSessions: () => void;
 }
 
+const formatSessionDate = (value: string) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0).toLocaleDateString();
+};
+
+const sessionSortKey = (session: ReadingSession) =>
+  `${session.date}T${session.endTime || session.startTime || '00:00'}`;
+
 export function DashboardSidebar({
   books,
   sessions,
-  annualGoal = 50,
+  annualGoal,
   onViewAllSessions,
 }: DashboardSidebarProps) {
   const tbrBooks = books.filter((book) => book.status === 'tbr');
   const finishedBooksCount = books.filter((book) => book.status === 'finished').length;
-  const goalPercent = Math.min(100, Math.round((finishedBooksCount / annualGoal) * 100));
+  const resolvedAnnualGoal = annualGoal ?? getAnnualReadingGoal();
+  const goalPercent = resolvedAnnualGoal > 0
+    ? Math.min(100, Math.round((finishedBooksCount / resolvedAnnualGoal) * 100))
+    : 0;
 
-  const totalPagesRead = books.reduce((total, book) => {
-    const activeEdition =
-      book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
-
-    if (activeEdition?.format === 'audiobook') return total;
-    if (book.status === 'finished') return total + (activeEdition?.pageCount ?? 300);
-    if (book.status === 'currently-reading') return total + book.progressPages;
-    return total;
+  // Reading activity comes from completed sessions rather than inferred book
+  // progress. This keeps this legacy sidebar aligned with Inkbound's canonical
+  // statistics model if it is reused in a future dashboard layout.
+  const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
+  const totalPagesRead = completedSessions.reduce((total, session) => {
+    const book = books.find((item) => item.id === session.bookId);
+    if (getActiveEdition(book)?.format === 'audiobook') return total;
+    return total + getSessionPagesRead(session);
   }, 0);
-
-  const listeningMinutes = books.reduce((total, book) => {
-    const activeEdition =
-      book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
-
-    if (activeEdition?.format !== 'audiobook') return total;
-    if (book.status === 'finished') return total + (activeEdition.audiobookDurationMins ?? 0);
-    if (book.status === 'currently-reading') return total + book.progressMinutes;
-    return total;
+  const listeningMinutes = completedSessions.reduce((total, session) => {
+    const book = books.find((item) => item.id === session.bookId);
+    if (getActiveEdition(book)?.format !== 'audiobook') return total;
+    return total + getSessionListeningMinutes(session);
   }, 0);
-
   const listeningHours = (listeningMinutes / 60).toFixed(1);
-  const recentSessions = sessions.slice(0, 5);
+  const currentStreak = getReadingStreak(completedSessions);
+  const recentSessions = [...completedSessions]
+    .sort((a, b) => sessionSortKey(b).localeCompare(sessionSortKey(a)))
+    .slice(0, 5);
 
   return (
     <div className="space-y-5">
       <section>
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <BarChart3 className="h-5 w-5 text-[#7b5b6b]" />
-            <h2 className="font-serif text-2xl text-[#e8ded3]">Reading Goals</h2>
-          </div>
-          <button
-            type="button"
-            className="text-xs font-semibold text-[#876477] hover:text-[#a17b8d]"
-          >
-            Edit Goal
-          </button>
+        <div className="mb-4 flex items-center gap-2.5">
+          <BarChart3 className="h-5 w-5 text-[#7b5b6b]" />
+          <h2 className="font-serif text-2xl text-[#e8ded3]">Reading Goals</h2>
         </div>
 
         <div className="rounded-2xl border border-[#7b5b6b]/16 bg-[#141116] p-5 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
           <div className="flex items-center gap-5">
             <div
               className="relative grid h-28 w-28 shrink-0 place-items-center rounded-full"
+              role="progressbar"
+              aria-label="Annual reading goal"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={goalPercent}
               style={{
                 background: `conic-gradient(#8c687b ${goalPercent * 3.6}deg, #33282f 0deg)`,
               }}
@@ -70,9 +85,9 @@ export function DashboardSidebar({
                 <span className="font-serif text-3xl text-[#e8ded3]">{goalPercent}%</span>
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="font-serif text-2xl text-[#e8ded3]">
-                {finishedBooksCount} of {annualGoal}
+                {finishedBooksCount} of {resolvedAnnualGoal}
               </p>
               <p className="mt-1 text-xs text-[#948984]">books completed</p>
               <p className="mt-4 text-xs font-medium text-[#c9bbb0]">
@@ -86,7 +101,7 @@ export function DashboardSidebar({
             <Metric label="Listening Time" value={`${listeningHours}h`} />
             <Metric
               label="Current Streak"
-              value="14 days"
+              value={`${currentStreak} day${currentStreak === 1 ? '' : 's'}`}
               icon={<Flame className="h-4 w-4 text-[#c9bbb0]" />}
             />
             <Metric label="Books on TBR" value={String(tbrBooks.length)} />
@@ -95,7 +110,7 @@ export function DashboardSidebar({
       </section>
 
       <section>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <Clock className="h-5 w-5 text-[#7b5b6b]" />
             <h2 className="font-serif text-2xl text-[#e8ded3]">Recent Activity</h2>
@@ -103,7 +118,7 @@ export function DashboardSidebar({
           <button
             type="button"
             onClick={onViewAllSessions}
-            className="text-xs font-semibold text-[#876477] hover:text-[#a17b8d]"
+            className="inline-flex min-h-11 items-center px-2 text-xs font-semibold text-[#876477] hover:text-[#a17b8d]"
           >
             View all
           </button>
@@ -119,9 +134,9 @@ const Metric: React.FC<{ label: string; value: string; icon?: React.ReactNode }>
   value,
   icon,
 }) => (
-  <div className="min-h-[92px] border-b border-r border-white/6 p-4 last:border-r-0">
+  <div className="min-h-[92px] min-w-0 border-b border-r border-white/6 p-4 last:border-r-0">
     <div className="flex items-center gap-2">
-      <p className="font-serif text-xl text-[#e8ded3]">{value}</p>
+      <p className="break-words font-serif text-xl text-[#e8ded3]">{value}</p>
       {icon}
     </div>
     <p className="mt-1 text-[11px] text-[#817672]">{label}</p>
@@ -154,12 +169,12 @@ const ActivityList: React.FC<{
             <div className="min-w-0 flex-1">
               <p className="text-xs leading-5 text-[#cfc4ba]">
                 Reading session completed for{' '}
-                <span className="font-serif text-sm text-[#e8ded3]">
+                <span className="break-words font-serif text-sm text-[#e8ded3]">
                   {book?.work.title || 'a book'}
                 </span>
               </p>
               <p className="mt-1 text-[11px] text-[#786e6b]">
-                {session.date} · {session.durationMinutes} minutes
+                {formatSessionDate(session.date)} · {getSessionDurationMinutes(session)} minutes
               </p>
             </div>
             <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-[#817672]" />
