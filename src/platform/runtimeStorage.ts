@@ -5,6 +5,8 @@ export interface RuntimeStorageAdapter {
   getAllKeys(): string[];
 }
 
+export const INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT = 'inkbound:runtime-storage-refresh';
+
 const browserStorageAdapter: RuntimeStorageAdapter = {
   getItem: (key) => {
     if (typeof window === 'undefined') return null;
@@ -39,6 +41,16 @@ export function configureRuntimeStorage(adapter: RuntimeStorageAdapter) {
 
 export function getRuntimeStorage(): RuntimeStorageAdapter {
   return activeStorageAdapter;
+}
+
+/**
+ * Use after an external source (for example cloud reconciliation) changes a
+ * runtime value behind a mounted usePersistentState hook. Local hook mutations
+ * do not need this signal because React state is already updated directly.
+ */
+export function notifyRuntimeStorageChanged(key: string) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, { detail: { key } }));
 }
 
 export function readRuntimeJson<T>(key: string, fallback: T): T {
