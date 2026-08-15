@@ -5,6 +5,14 @@ import {
   replacePhotoMemoriesOnDevice,
   subscribeToPhotoMemoryChanges,
 } from './photoMemoryStore';
+import {
+  queuePhotoMemoryDelete,
+  queuePhotoMemoryUpsert,
+} from './photoMemorySyncQueue';
+
+function recordsMatch(left: PhotoMemoryRecord, right: PhotoMemoryRecord) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 export function usePhotoMemories(): [
   PhotoMemoryRecord[],
@@ -26,7 +34,19 @@ export function usePhotoMemories(): [
       const next = typeof nextValue === 'function'
         ? (nextValue as (value: PhotoMemoryRecord[]) => PhotoMemoryRecord[])(current)
         : nextValue;
-      void replacePhotoMemoriesOnDevice(next);
+      const currentById = new Map(current.map((memory) => [memory.id, memory]));
+      const nextById = new Map(next.map((memory) => [memory.id, memory]));
+
+      void replacePhotoMemoriesOnDevice(next).then(() => {
+        current.forEach((memory) => {
+          if (!nextById.has(memory.id)) queuePhotoMemoryDelete(memory.id);
+        });
+        next.forEach((memory) => {
+          const previous = currentById.get(memory.id);
+          if (!previous || !recordsMatch(previous, memory)) queuePhotoMemoryUpsert(memory.id);
+        });
+      });
+
       return next;
     });
   }, []);
