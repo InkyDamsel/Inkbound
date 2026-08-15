@@ -31,6 +31,7 @@ const browserReauthenticationAdapter: RuntimeReauthenticationAdapter = {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       await reauthenticateWithPopup(user, provider);
+      await user.getIdToken(true);
       return;
     }
 
@@ -41,6 +42,7 @@ const browserReauthenticationAdapter: RuntimeReauthenticationAdapter = {
         throw new Error('Enter your password to verify this account before deleting it.');
       }
       await reauthenticateWithCredential(user, EmailAuthProvider.credential(email, password));
+      await user.getIdToken(true);
       return;
     }
 
