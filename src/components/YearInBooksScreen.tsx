@@ -3,6 +3,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Download, Share2, Sparkles } from 
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 
 interface YearInBooksScreenProps {
@@ -48,8 +49,6 @@ const formatLocalDate = (value?: string) => {
   const [year, month, day] = value.split('-').map(Number);
   return new Date(year, month - 1, day, 12, 0, 0, 0).toLocaleDateString();
 };
-
-const getActiveEdition = (book: UserBookRecord) => book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
 
 const escapeXml = (value: string) =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
