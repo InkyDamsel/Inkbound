@@ -21,6 +21,9 @@ const addLocalDays = (value: Date, days: number) => {
   return next;
 };
 
+const finiteNonnegative = (value?: number) =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
+
 const positiveFiniteTotal = (value?: number) =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 
@@ -29,7 +32,7 @@ const remainingPagesForBook = (book?: UserBookRecord) => {
   const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
   const totalPages = positiveFiniteTotal(edition?.pageCount);
   if (totalPages === undefined) return undefined;
-  return Math.max(0, totalPages - Math.max(0, book.progressPages));
+  return Math.max(0, totalPages - finiteNonnegative(book.progressPages));
 };
 
 // Session endpoints are the canonical page-progress record when both exist.
@@ -46,10 +49,11 @@ const pagesReadForSession = (
     return Math.max(0, session.endPage - session.startPage);
   }
 
-  return typeof session.pagesRead === 'number' && Number.isFinite(session.pagesRead)
-    ? Math.max(0, session.pagesRead)
-    : 0;
+  return finiteNonnegative(session.pagesRead);
 };
+
+const sessionMinutes = (session: Pick<ReadingSession, 'durationMinutes'>) =>
+  finiteNonnegative(session.durationMinutes);
 
 export const localDateKey = (value = new Date()) => {
   const year = value.getFullYear();
@@ -74,7 +78,7 @@ export const formatDurationEstimate = (totalSeconds?: number) => {
 export const getReadingStreak = (sessions: ReadingSession[], throughDate = localDateKey()) => {
   const readingDates = new Set(
     sessions
-      .filter((session) => Math.max(0, session.durationMinutes) > 0)
+      .filter((session) => sessionMinutes(session) > 0)
       .map((session) => session.date),
   );
 
@@ -95,11 +99,11 @@ export const getReadingStreak = (sessions: ReadingSession[], throughDate = local
 export const getDailyReadingMinutes = (sessions: ReadingSession[], date = localDateKey()) =>
   sessions
     .filter((session) => session.date === date)
-    .reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
+    .reduce((sum, session) => sum + sessionMinutes(session), 0);
 
 const validPageSessions = (sessions: ReadingSession[]) => sessions.filter((session) => {
   const pages = pagesReadForSession(session);
-  const minutes = Math.max(0, session.durationMinutes);
+  const minutes = sessionMinutes(session);
   return pages > 0 && minutes > 0;
 });
 
@@ -108,7 +112,7 @@ export const getCurrentPace = (
   book?: UserBookRecord,
 ): ReadingPaceSummary => {
   const pages = pagesReadForSession(session);
-  const minutes = Math.max(0, session.durationMinutes);
+  const minutes = sessionMinutes(session);
   const remainingPages = remainingPagesForBook(book);
 
   if (pages <= 0 || minutes < 2) {
@@ -142,7 +146,7 @@ export const getSevenDayAveragePace = (
     return sessionDate >= start && sessionDate <= through;
   });
   const totalPages = eligible.reduce((sum, session) => sum + pagesReadForSession(session), 0);
-  const totalMinutes = eligible.reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
+  const totalMinutes = eligible.reduce((sum, session) => sum + sessionMinutes(session), 0);
   const remainingPages = remainingPagesForBook(book);
 
   if (eligible.length < 2 || totalMinutes < 20 || totalPages <= 0) {
