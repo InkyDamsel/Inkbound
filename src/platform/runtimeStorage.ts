@@ -94,6 +94,14 @@ export function removeRuntimeValuesByPrefix(prefix: string): number {
         activeStorageAdapter.removeItem(key);
         removed += 1;
       });
+
+    // A full Inkbound device wipe also owns large media blobs. Keep normal
+    // key-value cleanup synchronous, but clear the binary store asynchronously.
+    if (prefix === 'inkbound_') {
+      void import('./runtimeMediaStorage').then(({ removeRuntimeMediaByPrefix }) =>
+        removeRuntimeMediaByPrefix('photo-memory:'),
+      );
+    }
   } catch {
     return removed;
   }
