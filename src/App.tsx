@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ImportRecordItem,
   Priority,
@@ -41,6 +41,7 @@ import { ResponsiveShell } from './layout/shell/ResponsiveShell';
 import { ResponsiveContainer } from './layout/responsive/ResponsiveContainer';
 import { usePersistentState } from './hooks/usePersistentState';
 import {
+  analyzeImportDuplicates,
   buildRepairQueueItems,
   createFallbackImportedBook,
   enrichImportedBooks,
@@ -195,6 +196,7 @@ export default function App() {
     return savedTheme ? savedTheme === 'dark' : true;
   });
   const [books, setBooks] = useState<UserBookRecord[]>(() => readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []));
+  const booksRef = useRef(books);
   const [sessions, setSessions] = useState<ReadingSession[]>(() => readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []));
   const [previousBooksState, setPreviousBooksState] = useState<UserBookRecord[] | null>(null);
   const [previousSessionsState, setPreviousSessionsState] = useState<ReadingSession[] | null>(null);
@@ -214,6 +216,7 @@ export default function App() {
   }, [isDarkMode]);
 
   useEffect(() => {
+    booksRef.current = books;
     safeWriteLocalStorage(BOOKS_STORAGE_KEY, books);
     try { localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); } catch { /* no-op */ }
   }, [books]);
@@ -559,6 +562,7 @@ export default function App() {
 
   const handleUndoLastBatch = () => {
     if (!previousBooksState) return;
+    booksRef.current = previousBooksState;
     setBooks(previousBooksState);
     if (previousSessionsState) setSessions(previousSessionsState);
     setPreviousBooksState(null);
@@ -705,21 +709,38 @@ export default function App() {
     showToast('Deleted reading session and reconciled book progress.');
   };
 
-  const handleExecuteImport = async (importedItems: ImportRecordItem[]) => {
-    setPreviousBooksState(books);
+  const handleExecuteImport = async (importedItems: ImportRecordItem[]): Promise<ImportRecordItem[]> => {
+    const currentLibrary = booksRef.current;
+    const { unique: acceptedItems, duplicates: writeDuplicates } = analyzeImportDuplicates(importedItems, currentLibrary);
+    if (acceptedItems.length === 0) {
+      showToast('No books were added because they already exist in your library.');
+      return [];
+    }
+
+    setPreviousBooksState(currentLibrary);
     setPreviousSessionsState(null);
-    const immediateBooks = importedItems.map(createFallbackImportedBook);
-    setBooks((current) => [...current, ...immediateBooks]);
+    const immediateBooks = acceptedItems.map(createFallbackImportedBook);
+    const nextLibrary = [...currentLibrary, ...immediateBooks];
+    booksRef.current = nextLibrary;
+    setBooks(nextLibrary);
+
     const existingQueue = readImportEnrichmentQueue();
     const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item]));
-    queueImportedItems(importedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item));
+    queueImportedItems(acceptedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item));
     writeImportEnrichmentQueue([...queuedByBookId.values()]);
-    appendImportHistory(importedItems, getImportVerificationSnapshot().duplicates.length);
-    showToast(navigator.onLine ? `Added ${immediateBooks.length} books. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline. Covers and publisher summaries will update when Inkbound is online.`);
+
+    const verificationSnapshot = getImportVerificationSnapshot();
+    appendImportHistory(acceptedItems, verificationSnapshot.duplicates.length + writeDuplicates.length);
+    const skippedAtWrite = importedItems.length - acceptedItems.length;
+    showToast(navigator.onLine
+      ? `Added ${immediateBooks.length} books${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will continue updating automatically.`
+      : `Added ${immediateBooks.length} books offline${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will update when Inkbound is online.`);
     void processImportEnrichmentQueue();
+    return acceptedItems;
   };
 
   const handleResetData = () => {
+    booksRef.current = [];
     setBooks([]); setSessions([]); setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]);
     try {
       localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY);
