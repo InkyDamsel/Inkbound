@@ -156,8 +156,10 @@ function isSameBookIdentity(item: ImportRecordItem, book: UserBookRecord): boole
   return Boolean(incomingKey && existingKey && incomingKey === existingKey);
 }
 
-export function analyzeImportDuplicates(items: ImportRecordItem[]): ImportDuplicateAnalysis {
-  const library = readCurrentLibrary();
+export function analyzeImportDuplicates(
+  items: ImportRecordItem[],
+  library: UserBookRecord[] = readCurrentLibrary(),
+): ImportDuplicateAnalysis {
   const unique: ImportRecordItem[] = [];
   const duplicates: ImportRecordItem[] = [];
   const seenIsbns = new Set<string>();
@@ -290,8 +292,9 @@ async function canVerifyImportedBook(item: ImportRecordItem): Promise<boolean> {
 export async function verifyImportRecords(
   items: ImportRecordItem[],
   onProgress?: (completed: number, total: number) => void,
+  library?: UserBookRecord[],
 ): Promise<ImportVerificationSummary> {
-  const { unique, duplicates } = analyzeImportDuplicates(items);
+  const { unique, duplicates } = analyzeImportDuplicates(items, library);
   const verifiedFlags = new Array<boolean>(unique.length).fill(false);
   let nextIndex = 0;
   let completed = 0;
