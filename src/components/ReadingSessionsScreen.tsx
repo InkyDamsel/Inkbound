@@ -87,10 +87,11 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
     });
   }, [bookFilter, booksById, searchQuery, sessions]);
 
-  const totalMinutes = sessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
-  const totalPages = sessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
-  const totalListening = sessions.reduce((sum, session) => sum + getSessionListeningMinutes(session), 0);
-  const averageMinutes = sessions.length ? Math.round(totalMinutes / sessions.length) : 0;
+  const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
+  const totalMinutes = completedSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
+  const totalPages = completedSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+  const totalListening = completedSessions.reduce((sum, session) => sum + getSessionListeningMinutes(session), 0);
+  const averageMinutes = completedSessions.length ? Math.round(totalMinutes / completedSessions.length) : 0;
   const today = localDateKey();
   const currentStreak = getReadingStreak(sessions, today);
   const todayMinutes = getDailyReadingMinutes(sessions, today);
