@@ -20,13 +20,15 @@ export function ResponsiveGrid({
   ...rest
 }: ResponsiveGridProps) {
   const classes = ['inkbound-responsive-grid', className].filter(Boolean).join(' ');
-  const gapValue = typeof gap === 'number' ? `${gap}px` : gap;
 
   // maxColumns limits track count without constraining the grid container itself.
   // The old implementation converted maxColumns into maxWidth, which left wide
   // Library, Collections, and Import screens permanently capped near mobile widths.
-  const minimumTrackWidth = maxColumns
-    ? `min(100%, max(${minItemWidth}px, calc((100% - (${gapValue} * ${maxColumns - 1})) / ${maxColumns})))`
+  const maximumColumnFloor = maxColumns && typeof gap === 'number'
+    ? `calc((100% - ${gap * (maxColumns - 1)}px) / ${maxColumns})`
+    : undefined;
+  const minimumTrackWidth = maximumColumnFloor
+    ? `min(100%, max(${minItemWidth}px, ${maximumColumnFloor}))`
     : `min(100%, ${minItemWidth}px)`;
 
   return (
