@@ -1,4 +1,9 @@
 import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
+import {
+  AppCheck,
+  ReCaptchaEnterpriseProvider,
+  initializeAppCheck,
+} from 'firebase/app-check';
 import { Auth, connectAuthEmulator, getAuth } from 'firebase/auth';
 import {
   Firestore,
@@ -22,6 +27,8 @@ const firebaseConfig = {
   messagingSenderId: readEnv(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
   appId: readEnv(import.meta.env.VITE_FIREBASE_APP_ID),
 };
+
+const appCheckSiteKey = readEnv(import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY);
 
 const requiredFirebaseFields = {
   VITE_FIREBASE_API_KEY: firebaseConfig.apiKey,
@@ -53,6 +60,7 @@ export const allowProductionFirebaseWrites =
   readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
 
 let app: FirebaseApp | null = null;
+let appCheck: AppCheck | null = null;
 let auth: Auth | null = null;
 let readDb: Firestore | null = null;
 let db: Firestore | null = null;
@@ -61,6 +69,19 @@ let storage: FirebaseStorage | null = null;
 
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+  // Production Firebase services share the same App Check instance. This must be
+  // initialized before protected Functions/Firestore/Storage requests are made so
+  // legitimate Inkbound clients receive and refresh reCAPTCHA Enterprise tokens.
+  // Emulator development intentionally skips App Check so local workflows remain
+  // usable without production reCAPTCHA configuration.
+  if (!useFirebaseEmulators && appCheckSiteKey) {
+    appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
+
   auth = getAuth(app);
 
   // Emulator data must never share the persistent browser cache used by production.
@@ -101,6 +122,12 @@ if (isFirebaseConfigured) {
     // During localhost live-cloud checks, writes remain null unless separately enabled.
     db = allowProductionFirebaseWrites ? readDb : null;
 
+    if (!appCheckSiteKey) {
+      console.warn(
+        'Inkbound production Firebase mode is missing VITE_FIREBASE_APP_CHECK_SITE_KEY. App Check-protected requests may be rejected.',
+      );
+    }
+
     if (import.meta.env.DEV && !allowProductionFirebaseWrites) {
       console.info(
         'Inkbound live-cloud verification: production reads/functions are enabled, but browser Firestore writes are blocked. Set VITE_ALLOW_PROD_FIREBASE_WRITES=true only for an intentional production write test.',
@@ -109,4 +136,4 @@ if (isFirebaseConfigured) {
   }
 }
 
-export { app, auth, readDb, db, functions, storage };
+export { app, appCheck, auth, readDb, db, functions, storage };
