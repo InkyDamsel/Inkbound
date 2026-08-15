@@ -3,6 +3,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Download, Share2, Sparkles } from 
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 
 interface YearInBooksScreenProps {
   books: UserBookRecord[];
@@ -155,26 +156,22 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
   const download = async () => {
     try {
       const file = await createPng();
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = file.name;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage('Yearbook page downloaded.');
+      await exportRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file });
+      setMessage('Yearbook page saved.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Export failed.'); }
   };
 
   const share = async () => {
     try {
       const file = await createPng();
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ title: `${preferences.year} Year in Books`, text: 'My reading year, made with Inkbound', files: [file] });
-        setMessage('Share sheet opened.');
-      } else {
-        await download();
-        setMessage('Direct sharing is unavailable here, so the image was downloaded.');
-      }
+      const result = await shareRuntimeBinaryFile({
+        filename: file.name,
+        mimeType: 'image/png',
+        contents: file,
+        title: `${preferences.year} Year in Books`,
+        text: 'My reading year, made with Inkbound',
+      });
+      setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the image was saved instead.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); }
   };
 
@@ -186,7 +183,7 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
           <h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Year in Books</h1>
           <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">A collectible annual recap built from your real books and reading sessions.</p>
         </div>
-        <select value={preferences.year} onChange={(event) => setPreferences((current) => ({ ...current, year: Number(event.target.value), page: 0 }))} className="min-h-12 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-[var(--ink-ivory)]">
+        <select value={preferences.year} onChange={(event) => setPreferences((current) => ({ ...current, year: Number(event.target.value), page: 0 }))} className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-[var(--ink-ivory)] sm:w-auto">
           {availableYears.map((year) => <option key={year} value={year}>{year}</option>)}
         </select>
       </header>
@@ -205,28 +202,28 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
               {(Object.entries(exportFormats) as [ExportFormat, typeof exportFormats[ExportFormat]][]).map(([id, item]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, exportFormat: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm ${preferences.exportFormat === id ? 'border-[var(--ink-gold)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}>{item.label}</button>)}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <button type="button" onClick={() => void share()} className="quiet-shelf-primary-action min-h-12 justify-center"><Share2 className="h-4 w-4" /> Share</button>
-            <button type="button" onClick={() => void download()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> PNG</button>
+            <button type="button" onClick={() => void download()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Save PNG</button>
           </div>
           {message && <p role="status" className="text-sm text-[var(--ink-muted)]">{message}</p>}
         </section>
 
-        <section className="inkbound-panel rounded-3xl p-5 sm:p-8">
-          <div className={`mx-auto flex w-full max-w-3xl flex-col overflow-hidden rounded-[32px] border border-white/10 shadow-2xl ${isSquare ? 'p-6 sm:p-8' : isStory ? 'p-8 sm:p-12' : 'p-7 sm:p-10'}`} style={{ aspectRatio: `${exportFormat.width} / ${exportFormat.height}`, background: `radial-gradient(circle at top right, ${theme.accent}66, transparent 42%), ${theme.background}`, color: theme.text }}>
-            <p className="text-center text-xs font-bold uppercase tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound · {page.kicker}</p>
-            <Sparkles className={`mx-auto ${isSquare ? 'mt-5 h-6 w-6' : isStory ? 'mt-14 h-9 w-9' : 'mt-9 h-8 w-8'}`} style={{ color: theme.accent }} />
-            <h2 className={`text-center font-serif font-bold leading-tight ${isSquare ? 'mt-4 text-3xl sm:text-4xl' : isStory ? 'mt-8 text-5xl sm:text-6xl' : 'mt-6 text-4xl sm:text-5xl'}`}>{page.title}</h2>
-            <p className={`mx-auto max-w-xl text-center leading-7 opacity-75 ${isSquare ? 'mt-3 text-sm' : 'mt-5 text-sm sm:text-base'}`}>{page.body}</p>
-            <div className={`grid gap-3 ${isSquare ? 'mt-5 grid-cols-2' : isStory ? 'mt-auto grid-cols-1' : 'mt-8 grid-cols-2'}`}>
-              {page.stats.map(([label, value]) => <div key={label} className={`rounded-2xl border border-white/10 bg-white/5 ${isSquare ? 'p-3' : 'p-4'}`}><p className="text-xs uppercase tracking-wider opacity-60">{label}</p><p className={`${isSquare ? 'mt-1 text-lg' : 'mt-2 text-2xl'} break-words font-serif font-bold`}>{value}</p></div>)}
+        <section className="inkbound-panel rounded-3xl p-4 sm:p-8">
+          <div className={`mx-auto flex w-full max-w-3xl flex-col overflow-hidden rounded-[32px] border border-white/10 shadow-2xl ${isSquare ? 'p-5 sm:p-8' : isStory ? 'p-6 sm:p-12' : 'p-6 sm:p-10'}`} style={{ aspectRatio: `${exportFormat.width} / ${exportFormat.height}`, background: `radial-gradient(circle at top right, ${theme.accent}66, transparent 42%), ${theme.background}`, color: theme.text }}>
+            <p className="text-center text-[10px] font-bold uppercase tracking-[0.25em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound · {page.kicker}</p>
+            <Sparkles className={`mx-auto ${isSquare ? 'mt-5 h-6 w-6' : isStory ? 'mt-8 h-7 w-7 sm:mt-14 sm:h-9 sm:w-9' : 'mt-7 h-7 w-7 sm:mt-9 sm:h-8 sm:w-8'}`} style={{ color: theme.accent }} />
+            <h2 className={`text-center font-serif font-bold leading-tight ${isSquare ? 'mt-4 text-2xl sm:text-4xl' : isStory ? 'mt-6 text-3xl sm:mt-8 sm:text-6xl' : 'mt-5 text-3xl sm:mt-6 sm:text-5xl'}`}>{page.title}</h2>
+            <p className={`mx-auto max-w-xl text-center leading-6 opacity-75 ${isSquare ? 'mt-3 text-xs sm:text-sm' : 'mt-4 text-xs sm:mt-5 sm:text-base'}`}>{page.body}</p>
+            <div className={`grid gap-2 sm:gap-3 ${isSquare ? 'mt-4 grid-cols-2 sm:mt-5' : isStory ? 'mt-auto grid-cols-1' : 'mt-6 grid-cols-2 sm:mt-8'}`}>
+              {page.stats.map(([label, value]) => <div key={label} className={`rounded-2xl border border-white/10 bg-white/5 ${isSquare ? 'p-2 sm:p-3' : 'p-3 sm:p-4'}`}><p className="text-[10px] uppercase tracking-wider opacity-60 sm:text-xs">{label}</p><p className={`${isSquare ? 'mt-1 text-base sm:text-lg' : 'mt-1 text-lg sm:mt-2 sm:text-2xl'} break-words font-serif font-bold`}>{value}</p></div>)}
             </div>
-            {safePage === 3 && topBook && <button type="button" onClick={() => onSelectBook(topBook)} className={`${isStory ? 'mt-8' : 'mt-5'} mx-auto flex items-center gap-2 text-sm font-semibold`} style={{ color: theme.accent }}><BookOpen className="h-4 w-4" /> Open book memory</button>}
+            {safePage === 3 && topBook && <button type="button" onClick={() => onSelectBook(topBook)} className={`${isStory ? 'mt-6 sm:mt-8' : 'mt-4 sm:mt-5'} mx-auto flex min-h-11 items-center gap-2 text-sm font-semibold`} style={{ color: theme.accent }}><BookOpen className="h-4 w-4" /> Open book memory</button>}
           </div>
 
-          <div className="mt-6 flex items-center justify-between gap-3">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
             <button type="button" disabled={safePage === 0} onClick={() => setPreferences((current) => ({ ...current, page: Math.max(0, current.page - 1) }))} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Previous</button>
-            <div className="flex gap-2" aria-label="Yearbook pages">{pages.map((_, index) => <button key={index} type="button" onClick={() => setPreferences((current) => ({ ...current, page: index }))} className={`h-2.5 rounded-full transition-all ${index === safePage ? 'w-8 bg-[var(--ink-gold)]' : 'w-2.5 bg-[var(--ink-border)]'}`} aria-label={`Open page ${index + 1}`} />)}</div>
+            <div className="order-3 flex w-full justify-center gap-2 sm:order-none sm:w-auto" aria-label="Yearbook pages">{pages.map((_, index) => <button key={index} type="button" onClick={() => setPreferences((current) => ({ ...current, page: index }))} className={`min-h-11 min-w-11 rounded-full transition-all ${index === safePage ? 'bg-[var(--ink-gold)]/20' : 'bg-transparent'}`} aria-label={`Open page ${index + 1}`}><span className={`mx-auto block h-2.5 rounded-full transition-all ${index === safePage ? 'w-8 bg-[var(--ink-gold)]' : 'w-2.5 bg-[var(--ink-border)]'}`} /></button>)}</div>
             <button type="button" disabled={safePage === pages.length - 1} onClick={() => setPreferences((current) => ({ ...current, page: Math.min(pages.length - 1, current.page + 1) }))} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-40">Next <ChevronRight className="h-4 w-4" /></button>
           </div>
         </section>
