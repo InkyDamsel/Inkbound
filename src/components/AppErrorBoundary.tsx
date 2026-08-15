@@ -1,5 +1,6 @@
 import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { restartRuntimeApp } from '../platform/runtimeAppControl';
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -22,8 +23,8 @@ export class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, App
     console.error('Inkbound encountered an unrecoverable interface error.', error, info);
   }
 
-  private reload = () => {
-    window.location.reload();
+  private restart = () => {
+    void restartRuntimeApp();
   };
 
   render() {
@@ -36,12 +37,12 @@ export class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, App
             <AlertTriangle className="h-7 w-7" />
           </span>
           <p className="mt-6 text-xs font-bold uppercase tracking-[0.2em] text-[#b990a8]">Inkbound needs a moment</p>
-          <h1 className="mt-3 font-serif text-3xl">This page could not be displayed.</h1>
+          <h1 className="mt-3 font-serif text-3xl">This screen could not be displayed.</h1>
           <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#ad9fac]">
-            Your saved library has not been removed. Reload Inkbound to restore the reading sanctuary.
+            Your saved library has not been removed. Restart Inkbound to restore your reading space.
           </p>
-          <button type="button" onClick={this.reload} className="quiet-shelf-primary-action mx-auto mt-6 min-h-11 justify-center px-6">
-            <RefreshCw className="h-4 w-4" /> Reload Inkbound
+          <button type="button" onClick={this.restart} className="quiet-shelf-primary-action mx-auto mt-6 min-h-11 justify-center px-6">
+            <RefreshCw className="h-4 w-4" /> Restart Inkbound
           </button>
         </section>
       </main>
