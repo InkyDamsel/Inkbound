@@ -20,8 +20,9 @@ export function ResponsiveGrid({
   ...rest
 }: ResponsiveGridProps) {
   const classes = ['inkbound-responsive-grid', className].filter(Boolean).join(' ');
+  const gapValue = typeof gap === 'number' ? `${gap}px` : gap;
   const maximumWidth = maxColumns
-    ? `min(100%, calc(${minItemWidth}px * ${maxColumns} + ${String(gap)} * ${maxColumns - 1}))`
+    ? `min(100%, calc(${minItemWidth}px * ${maxColumns} + ${gapValue} * ${maxColumns - 1}))`
     : undefined;
 
   return (
