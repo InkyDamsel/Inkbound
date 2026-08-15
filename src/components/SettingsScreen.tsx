@@ -27,6 +27,10 @@ import {
   getRuntimeReauthenticationRequirement,
   reauthenticateRuntimeUser,
 } from '../platform/runtimeReauthentication';
+import {
+  canManageRuntimeSubscription,
+  openRuntimeSubscriptionManagement,
+} from '../platform/runtimeSubscriptionManagement';
 import { removeRuntimeValuesByPrefix, writeRuntimeValue } from '../platform/runtimeStorage';
 import { localDateKey } from '../features/reading/sessionAnalytics';
 import type { ReadingSession, UserBookRecord } from '../types';
@@ -43,7 +47,6 @@ const CLEAR_DEVICE_PHRASE = 'CLEAR THIS DEVICE';
 const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
 
 const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-const billingPortalUrl = import.meta.env.VITE_BILLING_PORTAL_URL?.trim() ?? '';
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   books,
@@ -72,6 +75,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     ? getRuntimeReauthenticationRequirement(user)
     : 'unsupported';
   const hasPaidSubscription = accessSource === 'subscription';
+  const canManageSubscription = canManageRuntimeSubscription();
 
   const markExported = () => {
     setExported(true);
@@ -270,20 +274,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <CreditCard className="h-4 w-4 text-[var(--ink-mauve)]" /> Subscription & billing
               </div>
               <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                Change your plan, update payment details, view invoices, or cancel Premium from the secure billing portal.
+                Change your plan, update payment details, view invoices, or cancel Premium from the billing service that owns your subscription.
               </p>
-              {!billingPortalUrl && (
+              {!canManageSubscription && (
                 <p className="mt-2 text-xs text-amber-400">
-                  The billing portal has not been connected to this deployment yet.
+                  Subscription management has not been connected on this device yet.
                 </p>
               )}
             </div>
             <button
               type="button"
-              disabled={!billingPortalUrl}
-              onClick={() => {
-                if (billingPortalUrl) window.location.assign(billingPortalUrl);
-              }}
+              disabled={!canManageSubscription}
+              onClick={() => void openRuntimeSubscriptionManagement()}
               className="quiet-shelf-secondary-action shrink-0 justify-center disabled:cursor-not-allowed disabled:opacity-45"
             >
               <ExternalLink className="h-4 w-4" /> Manage subscription
@@ -484,8 +486,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
                   Deleting your Inkbound account does not automatically cancel an App Store, Google Play, or other paid subscription. Your account can still be deleted now, but billing may continue until you cancel the subscription with the store or billing provider that manages it.
                 </p>
-                {billingPortalUrl && (
-                  <button type="button" onClick={() => window.location.assign(billingPortalUrl)} className="quiet-shelf-secondary-action mt-3 justify-center">
+                {canManageSubscription && (
+                  <button type="button" onClick={() => void openRuntimeSubscriptionManagement()} className="quiet-shelf-secondary-action mt-3 justify-center">
                     <ExternalLink className="h-4 w-4" /> Manage subscription
                   </button>
                 )}
