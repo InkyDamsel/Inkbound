@@ -14,6 +14,7 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
+import { FirebaseAppCheckBridge } from './security/FirebaseAppCheckBridge.tsx';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
 import './index.css';
 import './styles/app-shell.css';
@@ -66,6 +67,7 @@ createRoot(rootElement).render(
         <UserPlanProvider>
           <AccountSyncProvider>
             <AuthSessionGate>
+              <FirebaseAppCheckBridge />
               <SecurityBootstrap />
               <CloudPersistenceBridge />
               <AuxiliaryAccountSyncBridge />
