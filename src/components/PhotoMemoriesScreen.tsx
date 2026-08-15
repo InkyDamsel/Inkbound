@@ -36,8 +36,6 @@ function resizeImage(file: File): Promise<string> {
       const image = new Image();
       image.onerror = () => reject(new Error('The image could not be prepared.'));
       image.onload = () => {
-        // Keep photo memories useful on phones without retaining multi-megapixel
-        // camera originals in runtime storage and sync payloads.
         const maxDimension = 1080;
         const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
         const canvas = document.createElement('canvas');
@@ -62,6 +60,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
   const [filter, setFilter] = usePersistentState<'all' | 'linked' | 'unlinked'>(PHOTO_FILTER_KEY, 'all');
   const [search, setSearch] = useState('');
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [selectedMemory, setSelectedMemory] = useState<PhotoMemory | null>(null);
   const [imageData, setImageData] = useState('');
   const [caption, setCaption] = useState('');
   const [location, setLocation] = useState('');
@@ -76,6 +75,15 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
     const timer = window.setTimeout(() => setDeletedMemory(null), UNDO_DELETE_MS);
     return () => window.clearTimeout(timer);
   }, [deletedMemory]);
+
+  useEffect(() => {
+    if (!selectedMemory) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedMemory(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedMemory]);
 
   const bookById = useMemo(() => new Map(books.map((book) => [book.id, book])), [books]);
   const normalizedSearch = search.trim().toLowerCase();
@@ -217,9 +225,18 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
             const book = memory.bookId ? bookById.get(memory.bookId) : undefined;
             return (
               <article key={memory.id} className="inkbound-panel min-w-0 overflow-hidden rounded-3xl">
-                <div className="aspect-[4/3] w-full overflow-hidden bg-[var(--ink-surface-soft)]">
-                  <img src={memory.imageData} alt={memory.caption || 'Reading memory'} className="h-full w-full object-cover" />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMemory(memory)}
+                  className="group block aspect-[4/3] w-full overflow-hidden bg-[var(--ink-surface-soft)] text-left"
+                  aria-label={`Open ${memory.caption || 'photo memory'} full size`}
+                >
+                  <img
+                    src={memory.imageData}
+                    alt={memory.caption || 'Reading memory'}
+                    className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                  />
+                </button>
                 <div className="space-y-3 p-4 sm:p-5">
                   {memory.caption && <p className="line-clamp-3 font-serif text-lg leading-6 text-[var(--ink-ivory)]">{memory.caption}</p>}
                   <div className="flex flex-wrap gap-3 text-xs text-[var(--ink-muted)]">
@@ -238,6 +255,38 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
               </article>
             );
           })}
+        </div>
+      )}
+
+      {selectedMemory && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/90 p-3 backdrop-blur-sm sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={selectedMemory.caption || 'Photo memory'}
+          onClick={() => setSelectedMemory(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setSelectedMemory(null)}
+            className="quiet-shelf-icon-button absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-10 h-11 w-11 bg-black/55 text-white"
+            aria-label="Close full photo"
+          >
+            <X />
+          </button>
+          <div className="flex max-h-[calc(100dvh-2rem)] max-w-[min(96vw,1200px)] flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
+            <img
+              src={selectedMemory.imageData}
+              alt={selectedMemory.caption || 'Reading memory'}
+              className="max-h-[calc(100dvh-7rem)] max-w-full rounded-2xl object-contain shadow-2xl"
+            />
+            {(selectedMemory.caption || selectedMemory.location) && (
+              <div className="max-w-3xl rounded-2xl bg-black/55 px-4 py-3 text-center backdrop-blur-sm">
+                {selectedMemory.caption && <p className="font-serif text-base text-white sm:text-lg">{selectedMemory.caption}</p>}
+                {selectedMemory.location && <p className="mt-1 text-xs text-white/70">{selectedMemory.location}</p>}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
