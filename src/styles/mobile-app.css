@@ -5,7 +5,9 @@
   min-height: 100dvh;
 }
 
-.inkbound-responsive-grid > * {
+.inkbound-responsive-grid > *,
+[data-responsive-stack] > *,
+.inkbound-responsive-dashboard > * {
   min-width: 0;
 }
 
