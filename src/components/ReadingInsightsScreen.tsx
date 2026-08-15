@@ -14,6 +14,7 @@ import {
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 import {
   getSessionDurationMinutes,
   getSessionPagesRead,
@@ -44,8 +45,8 @@ const rangeDays: Record<InsightRange, number | null> = {
   'all-time': null,
 };
 
-const parseLocalDateKey = (value: string): Date | null => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+const parseLocalDateKey = (value?: string): Date | null => {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const [year, month, day] = value.split('-').map(Number);
   const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
   if (
@@ -73,19 +74,26 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
   const [category, setCategory] = usePersistentState<InsightCategory>('inkbound_reading_insights_category', 'all');
   const [dismissedIds, setDismissedIds] = usePersistentState<string[]>('inkbound_reading_insights_dismissed', []);
 
-  const filteredSessions = useMemo(() => {
-    const validSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0 && parseLocalDateKey(session.date) !== null);
-    const days = rangeDays[range];
-    if (!days) return validSessions;
-
+  const rangeWindow = useMemo(() => {
     const through = parseLocalDateKey(localDateKey())!;
+    const days = rangeDays[range];
+    if (!days) return { through, cutoff: null as Date | null };
     const cutoff = new Date(through);
     cutoff.setDate(cutoff.getDate() - (days - 1));
-    return validSessions.filter((session) => {
-      const date = parseLocalDateKey(session.date);
-      return date !== null && date >= cutoff && date <= through;
-    });
-  }, [range, sessions]);
+    return { through, cutoff };
+  }, [range]);
+
+  const dateIsInRange = (value?: string) => {
+    const date = parseLocalDateKey(value);
+    if (!date) return false;
+    if (date > rangeWindow.through) return false;
+    return rangeWindow.cutoff ? date >= rangeWindow.cutoff : true;
+  };
+
+  const filteredSessions = useMemo(() => {
+    const validSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0 && parseLocalDateKey(session.date) !== null);
+    return validSessions.filter((session) => dateIsInRange(session.date));
+  }, [rangeWindow, sessions]);
 
   const insights = useMemo<InsightCard[]>(() => {
     const totalMinutes = filteredSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
@@ -99,8 +107,16 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
       const hour = getSessionHour(session)!;
       return hour >= 5 && hour < 12;
     });
-    const finishedBooks = books.filter((book) => book.status === 'finished');
-    const readingLifecycleBooks = books.filter((book) => ['currently-reading', 'finished', 'paused', 'dnf'].includes(book.status));
+
+    const sessionBookIds = new Set(filteredSessions.map((session) => session.bookId));
+    const allTime = range === 'all-time';
+    const finishedBooks = books.filter((book) => (
+      book.status === 'finished'
+      && (allTime || dateIsInRange(book.dateFinished))
+    ));
+    const readingLifecycleBooks = allTime
+      ? books.filter((book) => ['currently-reading', 'finished', 'paused', 'dnf'].includes(book.status))
+      : books.filter((book) => sessionBookIds.has(book.id) || dateIsInRange(book.dateFinished));
     const ratedBooks = finishedBooks.filter((book) => typeof book.rating === 'number' && Number.isFinite(book.rating));
     const avgRating = ratedBooks.length
       ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length
@@ -108,10 +124,8 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     const genre = mostCommon(finishedBooks.flatMap((book) => book.work.genres));
     const location = mostCommon(filteredSessions.map((session) => session.location ?? ''));
     const mood = mostCommon(filteredSessions.map((session) => session.mood ?? ''));
-    const audiobookBooks = books.filter((book) => {
-      const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
-      return activeEdition?.format === 'audiobook';
-    });
+    const formatBooks = allTime ? books : books.filter((book) => sessionBookIds.has(book.id));
+    const audiobookBooks = formatBooks.filter((book) => getActiveEdition(book)?.format === 'audiobook');
     const readingDays = new Set(filteredSessions.map((session) => session.date)).size;
     const pages = filteredSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
     const completedPercent = readingLifecycleBooks.length
@@ -123,6 +137,10 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     const preferredShare = timedSessions.length
       ? Math.round((preferredCount / timedSessions.length) * 100)
       : 0;
+
+    const rangeLabel = allTime ? 'your full history' : 'this range';
+    const formatBaseCount = formatBooks.length;
+    const audioIsMeaningful = audiobookBooks.length >= Math.max(2, Math.round(formatBaseCount * 0.25));
 
     return [
       {
@@ -159,9 +177,9 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         eyebrow: 'The stories pulling you back',
         title: genre ? `${genre[0]} has the strongest hold on your shelf` : 'Your reading taste is still taking shape',
         body: genre
-          ? `You return to ${genre[0].toLowerCase()} more than any other genre. It is currently the clearest signal in your finished-book history.`
+          ? `You return to ${genre[0].toLowerCase()} more than any other genre among books finished in ${rangeLabel}.`
           : 'Finish and rate a few more books to reveal the genres that consistently earn your attention.',
-        evidence: genre ? `${genre[1]} finished books include this genre.` : 'Not enough finished-book genre data yet.',
+        evidence: genre ? `${genre[1]} finished books in ${rangeLabel} include this genre.` : `Not enough finished-book genre data in ${rangeLabel} yet.`,
         icon: Compass,
       },
       {
@@ -174,7 +192,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
           : avgRating >= 4.25
             ? 'Your completed books are landing exceptionally well, suggesting that your selection habits are closely aligned with your taste.'
             : 'You are willing to distinguish between an enjoyable book and a true favorite instead of rating everything the same.',
-        evidence: ratedBooks.length ? `${avgRating.toFixed(1)} average rating across ${ratedBooks.length} finished books.` : 'No rated finished books yet.',
+        evidence: ratedBooks.length ? `${avgRating.toFixed(1)} average rating across ${ratedBooks.length} rated books finished in ${rangeLabel}.` : `No rated finished books in ${rangeLabel} yet.`,
         icon: Sparkles,
       },
       {
@@ -187,7 +205,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
           : completedPercent >= 60
             ? 'Your reading history shows strong follow-through. You may enjoy longer series and ambitious reading goals because completion is already part of your pattern.'
             : 'You sample widely and keep options open. A smaller active-reading list may help when you want more finishes without losing variety.',
-        evidence: readingLifecycleBooks.length ? `${finishedBooks.length} of ${readingLifecycleBooks.length} books in your reading history are finished (${completedPercent}%).` : 'No books have entered the active reading lifecycle yet.',
+        evidence: readingLifecycleBooks.length ? `${finishedBooks.length} of ${readingLifecycleBooks.length} books represented in ${rangeLabel} are finished (${completedPercent}%).` : `No books entered the active reading lifecycle in ${rangeLabel}.`,
         icon: Target,
       },
       {
@@ -198,7 +216,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         body: readingDays >= 12
           ? 'You are returning often enough that reading is becoming part of your normal rhythm rather than an occasional event.'
           : 'Your session length is less important than frequency right now. Even ten minutes on two additional days each week could create visible momentum.',
-        evidence: `${readingDays} active reading days and ${pages} canonical pages recorded in this range.`,
+        evidence: `${readingDays} active reading days and ${pages} canonical pages recorded in ${rangeLabel}.`,
         icon: TrendingUp,
       },
       {
@@ -209,22 +227,26 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         body: location
           ? `Your sessions repeatedly return to ${location[0].toLowerCase()}. That setting may be an important cue that helps you settle into a book.`
           : 'Add locations to sessions and Inkbound will identify the environments where you read most consistently.',
-        evidence: location ? `${location[1]} completed sessions were recorded there.` : 'No session locations recorded in this range.',
+        evidence: location ? `${location[1]} completed sessions were recorded there in ${rangeLabel}.` : `No session locations recorded in ${rangeLabel}.`,
         icon: BookOpen,
       },
       {
         id: 'format-signal',
         category: 'taste',
         eyebrow: 'Format flexibility',
-        title: audiobookBooks.length >= Math.max(2, Math.round(books.length * 0.25)) ? 'Audio is a meaningful part of your reading life' : 'Your reading is led by the page',
-        body: audiobookBooks.length >= Math.max(2, Math.round(books.length * 0.25))
-          ? 'Audiobooks are helping your reading fit into more parts of your day, giving you a second route into stories.'
-          : 'Physical books and ebooks currently dominate your shelf, suggesting you value visual reading time and page-based progress.',
-        evidence: `${audiobookBooks.length} books currently use an audiobook as their active edition${mood ? `; ${mood[0]} is your most logged mood in this range` : ''}.`,
+        title: formatBaseCount === 0 ? 'Your format pattern has not emerged yet' : audioIsMeaningful ? 'Audio is a meaningful part of your reading life' : 'Your reading is led by the page',
+        body: formatBaseCount === 0
+          ? 'Read across a few formats and Inkbound will show how audio, print, and ebooks fit into your reading life.'
+          : audioIsMeaningful
+            ? 'Audiobooks are helping your reading fit into more parts of your day, giving you a second route into stories.'
+            : 'Physical books and ebooks currently dominate the books represented in this reading window.',
+        evidence: formatBaseCount
+          ? `${audiobookBooks.length} of ${formatBaseCount} books represented in ${rangeLabel} use an audiobook as their active edition${mood ? `; ${mood[0]} is your most logged mood in ${rangeLabel}` : ''}.`
+          : `No books are represented in ${rangeLabel} yet.`,
         icon: Headphones,
       },
     ];
-  }, [books, filteredSessions]);
+  }, [books, filteredSessions, range, rangeWindow]);
 
   const visibleInsights = insights.filter(
     (insight) => !dismissedIds.includes(insight.id) && (category === 'all' || insight.category === category),
@@ -251,7 +273,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
                 key={option}
                 type="button"
                 onClick={() => setRange(option)}
-                className={`rounded-full border px-4 py-2 text-sm font-semibold ${range === option ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}
+                className={`min-h-11 rounded-full border px-4 py-2 text-sm font-semibold ${range === option ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}
               >
                 {option === '30-days' ? '30 days' : option === '90-days' ? '90 days' : 'All time'}
               </button>
@@ -268,7 +290,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
             </span>
             <h3 className="mt-5 font-serif text-3xl text-[var(--ink-ivory)]">Unlock your full reading pattern</h3>
             <p className="mt-3 text-sm leading-7 text-[var(--ink-muted)]">
-              Free readers can preview the kinds of patterns Inkbound analyzes. Premium unlocks the full evidence-backed insight feed and future AI-generated reflections.
+              Free readers can preview the kinds of patterns Inkbound analyzes. Premium unlocks the full evidence-backed insight feed.
             </p>
             <button
               type="button"
@@ -287,7 +309,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
             key={option}
             type="button"
             onClick={() => setCategory(option)}
-            className={`rounded-full border px-4 py-2 text-sm font-semibold capitalize ${category === option ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}
+            className={`min-h-11 rounded-full border px-4 py-2 text-sm font-semibold capitalize ${category === option ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}
           >
             {option}
           </button>
@@ -299,24 +321,28 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
           const Icon = insight.icon;
           const locked = !isPremium && index > 1;
           return (
-            <article key={insight.id} className="inkbound-panel relative overflow-hidden rounded-3xl p-6">
+            <article key={insight.id} className="inkbound-panel relative min-w-0 overflow-hidden rounded-3xl p-6">
               {locked && <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--ink-surface)]/80 backdrop-blur-sm"><Lock className="h-6 w-6 text-[var(--ink-gold-bright)]" /></div>}
               <div className="flex items-start justify-between gap-4">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--ink-surface-soft)] text-[var(--ink-gold-bright)]">
                   <Icon className="h-5 w-5" />
                 </span>
                 {isPremium && (
-                  <button type="button" onClick={() => setDismissedIds([...dismissedIds, insight.id])} className="text-xs text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]">
+                  <button
+                    type="button"
+                    onClick={() => setDismissedIds((current) => current.includes(insight.id) ? current : [...current, insight.id])}
+                    className="inline-flex min-h-11 items-center px-2 text-xs font-semibold text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]"
+                  >
                     Hide
                   </button>
                 )}
               </div>
               <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-gold-bright)]">{insight.eyebrow}</p>
-              <h3 className="mt-2 font-serif text-2xl text-[var(--ink-ivory)]">{insight.title}</h3>
-              <p className="mt-3 text-sm leading-7 text-[var(--ink-muted)]">{insight.body}</p>
+              <h3 className="mt-2 break-words font-serif text-2xl text-[var(--ink-ivory)]">{insight.title}</h3>
+              <p className="mt-3 break-words text-sm leading-7 text-[var(--ink-muted)]">{insight.body}</p>
               <div className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--ink-muted)]"><BarChart3 className="h-4 w-4" /> Evidence</div>
-                <p className="mt-2 text-sm text-[var(--ink-ivory)]">{insight.evidence}</p>
+                <p className="mt-2 break-words text-sm text-[var(--ink-ivory)]">{insight.evidence}</p>
               </div>
             </article>
           );
@@ -324,7 +350,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
       </div>
 
       {isPremium && dismissedIds.length > 0 && (
-        <button type="button" onClick={() => setDismissedIds([])} className="text-sm font-semibold text-[var(--ink-gold-bright)]">
+        <button type="button" onClick={() => setDismissedIds([])} className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--ink-gold-bright)]">
           Restore {dismissedIds.length} hidden insight{dismissedIds.length === 1 ? '' : 's'}
         </button>
       )}
