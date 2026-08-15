@@ -101,6 +101,22 @@
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 
+  /* Library batch actions should never spill beyond a narrow phone. */
+  .inkbound-main-content [class*='fixed'][class*='bottom-20'][class*='left-1/2'] {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    width: calc(100vw - max(28px, env(safe-area-inset-left)) - max(28px, env(safe-area-inset-right)));
+    max-width: 34rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 1rem;
+  }
+
+  /* Collection cover selectors should stack instead of forcing a desktop row. */
+  .inkbound-main-content select[class*='max-w-[240px]'] {
+    width: 100%;
+    max-width: 100%;
+  }
+
   /* Keep bottom-sheet actions reachable above the home indicator and keyboard. */
   [role='dialog'] > :last-child[class*='border-t'] {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
