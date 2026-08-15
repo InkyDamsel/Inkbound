@@ -6,6 +6,9 @@
  * in both themes (book artwork and the Book Details hero). Those surfaces need
  * an explicit contrast boundary so global light-theme remapping cannot turn
  * their text dark-on-dark.
+ *
+ * This file is intentionally imported after mobile-app.css so these rules also
+ * remain authoritative inside phone/tablet WebViews and installed app shells.
  */
 
 /* BookCover artwork/fallbacks are visual objects, not light-mode page surfaces. */
@@ -75,4 +78,67 @@ html:not(.dark) {
   --ink-text-secondary: #5f545f;
   --ink-text-muted: #746873;
   --ink-cream-soft: #5f545f;
+}
+
+/*
+ * Phone/tablet app guardrails.
+ * Native shells use the same DOM/CSS through a WebView, but coarse-touch and
+ * narrow layouts can expose different hover/focus and compressed-text states.
+ */
+@media (max-width: 1023px), (pointer: coarse) {
+  html:not(.dark) .inkbound-app-shell article.group.cursor-pointer h3[class*='text-[#f4efe6]'] {
+    color: #2f2531 !important;
+  }
+
+  html:not(.dark) .inkbound-app-shell article.group.cursor-pointer p[class*='text-[#ad9fac]'] {
+    color: #655965 !important;
+  }
+
+  html:not(.dark) .inkbound-app-shell article.group.cursor-pointer span[class*='bg-[#24172a]'] {
+    background: #e5d9e1 !important;
+    color: #493d49 !important;
+  }
+
+  /* Preserve fallback-cover readability at phone sizes where text is smaller. */
+  html:not(.dark) .inkbound-app-shell .book-cover-spine .text-stone-100,
+  html:not(.dark) .inkbound-app-shell .book-cover-spine .text-stone-200,
+  html:not(.dark) .inkbound-app-shell .book-cover-spine .text-stone-300 {
+    color: #fff8f0 !important;
+    text-shadow: 0 1px 2px rgba(12, 7, 12, 0.72);
+  }
+
+  html:not(.dark) .inkbound-app-shell .book-cover-spine [class*='text-amber-100'] {
+    color: #f8e6d1 !important;
+    text-shadow: 0 1px 2px rgba(12, 7, 12, 0.64);
+  }
+
+  /* The mobile Book Details sheet keeps its hero dark in both themes. */
+  html:not(.dark) .inkbound-app-shell [role='dialog'] section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] h2,
+  html:not(.dark) .inkbound-app-shell [role='dialog'] section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] .text-\[\#f4efe6\] {
+    color: #fff8f0 !important;
+    text-shadow: 0 1px 2px rgba(16, 8, 18, 0.5);
+  }
+
+  html:not(.dark) .inkbound-app-shell [role='dialog'] section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] .text-stone-400,
+  html:not(.dark) .inkbound-app-shell [role='dialog'] section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] .text-\[\#b9aaba\] {
+    color: #d4c7d3 !important;
+  }
+
+  html:not(.dark) .inkbound-app-shell [role='dialog'] section[class*='bg-[#1c0f24]'] > header[class*='from-[#281333]'] > button[class*='bg-black'] {
+    background: rgba(8, 4, 10, 0.6) !important;
+    color: #fff8f0 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Smaller phone typography needs a little more contrast than desktop. */
+  html:not(.dark) .inkbound-app-shell {
+    --ink-muted: #615661;
+    --ink-faint: #746974;
+    --ink-text-muted: #6b606b;
+  }
+
+  html:not(.dark) .inkbound-app-shell article.group.cursor-pointer p[class*='text-[#e2bd66]'] {
+    color: #7a4c0d !important;
+  }
 }
