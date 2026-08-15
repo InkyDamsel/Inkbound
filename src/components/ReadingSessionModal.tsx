@@ -7,8 +7,10 @@ import {
   getCurrentPace,
   getDailyReadingMinutes,
   getReadingStreak,
+  getSessionDurationMinutes,
   getSevenDayAveragePace,
 } from '../features/reading/sessionAnalytics';
+import { readRuntimeJson, removeRuntimeValue } from '../platform/runtimeStorage';
 
 interface ReadingSessionModalProps {
   books: UserBookRecord[];
@@ -44,6 +46,7 @@ interface SessionDraft {
 const SESSION_DRAFT_KEY = 'inkbound_active_session_draft';
 const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
+const MAX_BACKGROUND_RECOVERY_SECONDS = 8 * 60 * 60;
 
 const localDateKey = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -56,13 +59,10 @@ const localDateKey = (timestamp: number) => {
 const localTime = (timestamp: number) => new Date(timestamp).toTimeString().substring(0, 5);
 
 function readStoredSessions(): ReadingSession[] {
-  try {
-    const raw = localStorage.getItem(SESSIONS_STORAGE_KEY) ?? localStorage.getItem(LEGACY_SESSIONS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed as ReadingSession[] : [];
-  } catch {
-    return [];
-  }
+  const current = readRuntimeJson<unknown>(SESSIONS_STORAGE_KEY, null);
+  if (Array.isArray(current)) return current as ReadingSession[];
+  const legacy = readRuntimeJson<unknown>(LEGACY_SESSIONS_STORAGE_KEY, []);
+  return Array.isArray(legacy) ? legacy as ReadingSession[] : [];
 }
 
 function addElapsedToDateBuckets(existing: Record<string, number> | undefined, startTimestamp: number, endTimestamp: number) {
@@ -152,6 +152,16 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   useEffect(() => {
     if (!draft.isActive) return undefined;
     const recoveredAt = Date.now();
+    const initialRecoverySeconds = draft.lastActiveAt && recoveredAt > draft.lastActiveAt
+      ? Math.floor((recoveredAt - draft.lastActiveAt) / 1000)
+      : 0;
+
+    if (initialRecoverySeconds > MAX_BACKGROUND_RECOVERY_SECONDS) {
+      setError('Inkbound paused this timer after a very long background gap so closed-app time is not mistaken for reading. Resume when you are ready.');
+      setDraft((current) => ({ ...current, isActive: false, lastActiveAt: undefined }));
+      return undefined;
+    }
+
     setDraft((current) => {
       if (!current.isActive || !current.lastActiveAt || recoveredAt <= current.lastActiveAt) return current;
       const recoveredSeconds = Math.floor((recoveredAt - current.lastActiveAt) / 1000);
@@ -163,12 +173,17 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
         lastActiveAt: recoveredAt,
       };
     });
+
     const interval = window.setInterval(() => {
       const tickAt = Date.now();
       setDraft((current) => {
         if (!current.isActive) return current;
         const previousTick = current.lastActiveAt ?? tickAt - 1000;
         const elapsedSeconds = Math.max(1, Math.floor((tickAt - previousTick) / 1000));
+        if (elapsedSeconds > MAX_BACKGROUND_RECOVERY_SECONDS) {
+          window.setTimeout(() => setError('Inkbound paused this timer after a very long background gap so closed-app time is not mistaken for reading. Resume when you are ready.'), 0);
+          return { ...current, isActive: false, lastActiveAt: undefined };
+        }
         return {
           ...current,
           timerSeconds: current.timerSeconds + elapsedSeconds,
@@ -178,7 +193,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
       });
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [draft.isActive, setDraft]);
+  }, [draft.isActive, draft.lastActiveAt, setDraft]);
 
   const formatTime = (totalSeconds: number) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -216,7 +231,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   };
   const pause = () => setDraft((current) => ({ ...current, isActive: false, lastActiveAt: undefined }));
   const handleFinishSession = () => setDraft((current) => ({ ...current, isActive: false, isFinished: true, lastActiveAt: undefined, endedAt: Date.now() }));
-  const clearDraft = () => window.localStorage.removeItem(SESSION_DRAFT_KEY);
+  const clearDraft = () => removeRuntimeValue(SESSION_DRAFT_KEY);
   const discardSession = () => {
     if (!window.confirm('Discard this reading session? The timer and unsaved notes will be removed.')) return;
     clearDraft();
@@ -279,7 +294,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
   const completionDate = shouldSplit ? endDate : startDate;
   const showDailyMilestones = !storedSessions.some(
-    (session) => session.date === completionDate && Math.max(0, session.durationMinutes) > 0,
+    (session) => session.date === completionDate && getSessionDurationMinutes(session) > 0,
   );
   const streak = getReadingStreak(projectedSessions, completionDate);
   const dailyGoal = Math.max(1, Number(dailyGoalMins) || 30);
@@ -342,9 +357,9 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <section className="relative flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
-        <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 rounded-full bg-black/30 p-2 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close reading session without discarding it" title="Close — your session will remain saved"><X className="h-5 w-5" /></button>
-        <div className="overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-6 sm:p-6">
+      <section className="relative flex max-h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90dvh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
+        <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close reading session without discarding it" title="Close — your session will remain saved"><X className="h-5 w-5" /></button>
+        <div className="overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:p-6">
           <div className="space-y-5">
             <header className="space-y-1 pr-10 text-center">
               <Clock className="mx-auto h-8 w-8 animate-pulse text-[#e5c158]" />
@@ -363,7 +378,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
                   {!draft.isActive ? <button type="button" onClick={startOrResume} className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-6 text-xs font-bold text-[#120817] shadow-md transition hover:opacity-95"><Play className="h-4 w-4 fill-current" /><span>{draft.timerSeconds === 0 ? 'Start Timer' : 'Resume'}</span></button> : <button type="button" onClick={pause} className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-amber-600 px-6 text-xs font-bold text-white shadow-md transition hover:bg-amber-700"><Pause className="h-4 w-4 fill-current" /><span>Pause</span></button>}
                   {draft.timerSeconds > 0 && <button type="button" onClick={handleFinishSession} className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-emerald-700 px-6 text-xs font-bold text-white shadow-md transition hover:bg-emerald-800"><Square className="h-4 w-4 fill-current" /><span>Complete Session</span></button>}
                 </div>
-                {(draft.timerSeconds > 0 || draft.notes) && <button type="button" onClick={discardSession} className="mx-auto flex items-center gap-2 text-xs font-bold text-rose-300 hover:text-rose-200"><Trash2 className="h-3.5 w-3.5" /> Discard Session</button>}
+                {(draft.timerSeconds > 0 || draft.notes) && <button type="button" onClick={discardSession} className="mx-auto flex min-h-11 items-center gap-2 text-xs font-bold text-rose-300 hover:text-rose-200"><Trash2 className="h-3.5 w-3.5" /> Discard Session</button>}
               </div>
             ) : (
               <div className="space-y-4">
@@ -378,12 +393,12 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Starting minute' : 'Starting page'}</label><div className="w-full rounded-lg border border-[#3d2448] bg-[#17101b] p-3 text-sm text-stone-300">{isAudiobook ? draft.startMins : draft.startPage}</div><p className="mt-1 text-[11px] text-stone-500">Locked to your saved progress when this session began.</p></div>
-                  <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Ending minute' : 'Ending page'}</label><input min={isAudiobook ? draft.startMins : draft.startPage} max={isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount} type="number" value={isAudiobook ? draft.endMins : draft.endPage} onChange={(event) => setDraft((current) => ({ ...current, midnightProgress: undefined, ...(isAudiobook ? { endMins: Math.max(current.startMins, Number.parseInt(event.target.value, 10) || current.startMins) } : { endPage: Math.max(current.startPage, Number.parseInt(event.target.value, 10) || current.startPage) }) }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /><p className="mt-1 text-[11px] text-stone-500">Your next session will start here.</p></div>
+                  <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Ending minute' : 'Ending page'}</label><input inputMode="numeric" min={isAudiobook ? draft.startMins : draft.startPage} max={isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount} type="number" value={isAudiobook ? draft.endMins : draft.endPage} onChange={(event) => setDraft((current) => ({ ...current, midnightProgress: undefined, ...(isAudiobook ? { endMins: Math.max(current.startMins, Number.parseInt(event.target.value, 10) || current.startMins) } : { endPage: Math.max(current.startPage, Number.parseInt(event.target.value, 10) || current.startPage) }) }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /><p className="mt-1 text-[11px] text-stone-500">Your next session will start here.</p></div>
                 </div>
 
                 {!isAudiobook && currentPace?.pagesPerHour ? <div className="rounded-2xl border border-[#c5a059]/35 bg-[#25132f] p-4"><p className="flex items-center gap-2 text-sm font-bold text-[#f4efe6]"><Gauge className="h-4 w-4 text-[#e5c158]" /> Reading pace</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#120817] p-3"><p className="text-[11px] uppercase tracking-wider text-stone-500">Current pace</p><p className="mt-1 text-lg font-bold text-[#f4efe6]">{Math.round(currentPace.pagesPerHour)} pages/hour</p>{currentRemainingLabel && <p className="mt-1 text-xs text-stone-400">About {currentRemainingLabel} of reading remaining.</p>}</div><div className="rounded-xl bg-[#120817] p-3"><p className="text-[11px] uppercase tracking-wider text-stone-500">7-day average</p>{sevenDayPace?.pagesPerHour ? <><p className="mt-1 text-lg font-bold text-[#f4efe6]">{Math.round(sevenDayPace.pagesPerHour)} pages/hour</p>{averageRemainingLabel && <p className="mt-1 text-xs text-stone-400">About {averageRemainingLabel} remaining at your recent average.</p>}</> : <p className="mt-1 text-xs leading-5 text-stone-400">Inkbound needs at least 2 sessions and 20 tracked minutes in the last 7 days before showing an average pace.</p>}</div></div></div> : null}
 
-                {crossedMidnight ? <div className="rounded-2xl border border-[#c5a059]/35 bg-[#25132f] p-4"><div className="flex items-start gap-3"><MoonStar className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" /><div className="flex-1"><p className="text-sm font-bold text-[#f4efe6]">This session crossed midnight</p><p className="mt-1 text-xs leading-5 text-stone-300">Inkbound can count the reading time on the day it actually happened instead of placing the entire session on one date.</p><label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-[#3d2448] bg-[#120817] p-3"><input type="checkbox" checked={draft.splitAtMidnight !== false} onChange={(event) => setDraft((current) => ({ ...current, splitAtMidnight: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#d4af37]" /><span><span className="block text-sm font-semibold text-[#f4efe6]">Split at midnight</span><span className="mt-0.5 block text-xs text-stone-400">Recommended. Uncheck this only if you want the entire reading period saved as one session.</span></span></label>{draft.splitAtMidnight !== false ? <label className="mt-3 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Minute reached at midnight' : 'Page reached at midnight'}<input min={progressStart} max={progressEnd} type="number" value={midnightProgress} onChange={(event) => setDraft((current) => ({ ...current, midnightProgress: Math.min(progressEnd, Math.max(progressStart, Number.parseInt(event.target.value, 10) || progressStart)) }))} className="mt-1 w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /><span className="mt-1 block font-normal text-stone-400">We estimate this from your tracked time, but you can correct it before saving.</span></label> : null}</div></div></div> : null}
+                {crossedMidnight ? <div className="rounded-2xl border border-[#c5a059]/35 bg-[#25132f] p-4"><div className="flex items-start gap-3"><MoonStar className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" /><div className="flex-1"><p className="text-sm font-bold text-[#f4efe6]">This session crossed midnight</p><p className="mt-1 text-xs leading-5 text-stone-300">Inkbound can count the reading time on the day it actually happened instead of placing the entire session on one date.</p><label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-[#3d2448] bg-[#120817] p-3"><input type="checkbox" checked={draft.splitAtMidnight !== false} onChange={(event) => setDraft((current) => ({ ...current, splitAtMidnight: event.target.checked }))} className="mt-0.5 h-5 w-5 shrink-0 accent-[#d4af37]" /><span><span className="block text-sm font-semibold text-[#f4efe6]">Split at midnight</span><span className="mt-0.5 block text-xs text-stone-400">Recommended. Uncheck this only if you want the entire reading period saved as one session.</span></span></label>{draft.splitAtMidnight !== false ? <label className="mt-3 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Minute reached at midnight' : 'Page reached at midnight'}<input inputMode="numeric" min={progressStart} max={progressEnd} type="number" value={midnightProgress} onChange={(event) => setDraft((current) => ({ ...current, midnightProgress: Math.min(progressEnd, Math.max(progressStart, Number.parseInt(event.target.value, 10) || progressStart)) }))} className="mt-1 w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /><span className="mt-1 block font-normal text-stone-400">We estimate this from your tracked time, but you can correct it before saving.</span></label> : null}</div></div></div> : null}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Reading Mood <span className="font-normal text-stone-500">(optional)</span></label><select value={draft.mood} onChange={(event) => setDraft((current) => ({ ...current, mood: event.target.value }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]"><option value="">Not specified</option><option value="Atmospheric">Atmospheric</option><option value="Cozy">Cozy</option><option value="Fast-paced">Fast-paced</option><option value="Mind-bending">Mind-bending</option><option value="Relaxing">Relaxing</option></select></div><div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Location <span className="font-normal text-stone-500">(optional)</span></label><select value={draft.location} onChange={(event) => setDraft((current) => ({ ...current, location: event.target.value }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6]"><option value="">Not specified</option><option value="Cozy Armchair">Cozy Armchair</option><option value="Bed">Bed</option><option value="Coffee Shop">Coffee Shop</option><option value="Library">Library</option><option value="Airport">Airport</option><option value="Commute">Commute</option><option value="Study">Study</option></select></div></div>
                 <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Session Notes & Reflections <span className="font-normal text-stone-500">(optional)</span></label><textarea rows={3} placeholder="What happened in this session?" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} className="w-full resize-y rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /></div>
