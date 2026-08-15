@@ -4,6 +4,7 @@ import { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { ResponsiveGrid } from '../../layout/responsive';
 import { getBookReadingState } from '../../features/reading/bookReadingState';
+import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   getCloudDataRevision,
   INKBOUND_CLOUD_DATA_EVENT,
@@ -25,7 +26,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
   const { user, isAuthReady } = useAccountSync();
   const [cloudLibraryReady, setCloudLibraryReady] = useState(() => {
     if (!user) return true;
-    return getCloudDataRevision() > 0 && localStorage.getItem(LOCAL_DATA_OWNER_UID_KEY) === user.uid;
+    return getCloudDataRevision() > 0 && getRuntimeStorage().getItem(LOCAL_DATA_OWNER_UID_KEY) === user.uid;
   });
   const [hydrationTimedOut, setHydrationTimedOut] = useState(false);
 
@@ -41,7 +42,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
     if (!isAuthReady) setCloudLibraryReady(false);
     else if (!user) setCloudLibraryReady(true);
-    else setCloudLibraryReady(getCloudDataRevision() > 0 && localStorage.getItem(LOCAL_DATA_OWNER_UID_KEY) === user.uid);
+    else setCloudLibraryReady(getCloudDataRevision() > 0 && getRuntimeStorage().getItem(LOCAL_DATA_OWNER_UID_KEY) === user.uid);
     const fallbackTimer = user ? window.setTimeout(() => setHydrationTimedOut(true), HYDRATION_FALLBACK_MS) : null;
     return () => {
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
@@ -73,7 +74,19 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
           const isSelected = selectedBookIds.includes(book.id);
           const readingState = getBookReadingState(book);
           return (
-            <article key={book.id} onClick={() => onSelectBook(book)} className={`group cursor-pointer rounded-2xl border p-3 transition duration-200 ${isSelected ? 'border-[#c5a059] bg-[#c5a059]/12 shadow-[0_16px_34px_rgba(0,0,0,.4)]' : 'border-white/5 bg-[#17101b] hover:-translate-y-1 hover:border-[#c5a059]/35 hover:bg-[#1d1422]'}`}>
+            <article
+              key={book.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelectBook(book)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelectBook(book);
+                }
+              }}
+              className={`group cursor-pointer rounded-2xl border p-3 transition duration-200 ${isSelected ? 'border-[#c5a059] bg-[#c5a059]/12 shadow-[0_16px_34px_rgba(0,0,0,.4)]' : 'border-white/5 bg-[#17101b] hover:-translate-y-1 hover:border-[#c5a059]/35 hover:bg-[#1d1422]'}`}
+            >
               <div className="flex justify-center"><BookCover work={book.work} edition={readingState.activeEdition} size="md" progressPercentage={readingState.progressPercentage} isFinished={readingState.isFinished} rating={book.rating} isSelected={isSelected} onSelectToggle={() => onToggleSelectBook(book.id)} /></div>
               <div className="mt-4 min-w-0"><h3 className="line-clamp-2 font-serif text-base font-bold leading-tight text-[#f4efe6] transition group-hover:text-[#e2bd66]">{book.work.title}</h3><p className="mt-1 truncate text-xs text-[#ad9fac]">{book.work.author}</p><div className="mt-3 flex items-center justify-between gap-2 text-[11px]"><span className="rounded-full bg-[#24172a] px-2.5 py-1 capitalize text-[#cfc2cf]">{readingState.status.replaceAll('-', ' ')}</span>{book.rating ? <span className="flex items-center gap-1 font-bold text-[#e2bd66]"><Star className="h-3 w-3 fill-current" />{book.rating.toFixed(1)}</span> : null}</div>{readingState.progressNeedsCorrection ? <p className="mt-2 text-[10px] text-[#e2bd66]">Progress needs correction</p> : null}</div>
             </article>
