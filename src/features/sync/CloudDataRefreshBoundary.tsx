@@ -5,6 +5,7 @@ import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { readRuntimeJson } from '../../platform/runtimeStorage';
 import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
+import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
 import { getCloudDataRevision, INKBOUND_CLOUD_DATA_EVENT } from './cloudSyncEvents';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
@@ -27,8 +28,15 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       const repairedDelta = recoverIncompleteLatestImport();
       const historyChanged = reconcileRepeatedImportHistory(readStoredBooks());
       setRevision(getCloudDataRevision() + (repairedDelta !== 0 || historyChanged ? 1 : 0));
+      void synchronizeProfileMedia(user.uid).catch(() => {
+        // Offline/background failures are expected. The durable media queue will
+        // retry on the next foreground/online refresh without blocking the app.
+      });
     };
 
+    // Retry pending profile media immediately after account hydration as well as
+    // on later resume/online events.
+    void synchronizeProfileMedia(user.uid).catch(() => undefined);
     if (getCloudDataRevision() > 0) refresh();
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
     const unsubscribeResume = subscribeToRuntimeResume(refresh);
