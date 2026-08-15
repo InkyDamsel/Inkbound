@@ -62,6 +62,29 @@
   [role='dialog'] textarea {
     max-height: 45dvh;
   }
+
+  /* Fixed desktop-style date control pairs become cramped on small phones. */
+  [class*='grid-cols-[130px_1fr]'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Keep bottom-sheet actions reachable above the home indicator and keyboard. */
+  [role='dialog'] > :last-child[class*='border-t'] {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Standalone icon close buttons need a full touch target, not only visual padding. */
+  [role='dialog'] button[aria-label*='Close'],
+  [role='dialog'] button[aria-label*='close'] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (min-width: 430px) and (max-width: 767px) {
+  [class*='grid-cols-[130px_1fr]'] {
+    grid-template-columns: minmax(100px, 120px) minmax(0, 1fr) !important;
+  }
 }
 
 @media (max-width: 767px) and (orientation: landscape) {
