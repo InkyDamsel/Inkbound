@@ -9,6 +9,13 @@ import {
   Sparkles,
   Trophy,
 } from 'lucide-react';
+import {
+  getLongestReadingStreak,
+  getReadingDates,
+  getReadingStreak,
+  getSessionDurationMinutes,
+  getSessionPagesRead,
+} from '../features/reading/sessionAnalytics';
 import type { ReadingSession, UserBookRecord } from '../types';
 
 interface ReadingActivityOverviewProps {
@@ -51,46 +58,12 @@ const parseDateKey = (value: string): Date => {
   return new Date(year, month - 1, day, 12, 0, 0, 0);
 };
 
-const addDays = (value: string, amount: number): string => {
-  const date = parseDateKey(value);
-  date.setDate(date.getDate() + amount);
-  return toLocalDateKey(date);
-};
-
 const monthKey = (date: Date): string => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
 const monthLabel = (key: string): string => {
   const [year, month] = key.split('-').map(Number);
   if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return 'This Month';
   return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-};
-
-const calculateLongestStreak = (activeDates: string[]): number => {
-  if (activeDates.length === 0) return 0;
-  let longest = 1;
-  let current = 1;
-  for (let index = 1; index < activeDates.length; index += 1) {
-    if (activeDates[index] === addDays(activeDates[index - 1], 1)) {
-      current += 1;
-      longest = Math.max(longest, current);
-    } else current = 1;
-  }
-  return longest;
-};
-
-const calculateCurrentStreak = (activeDates: string[]): number => {
-  if (activeDates.length === 0) return 0;
-  const active = new Set(activeDates);
-  const today = toLocalDateKey(new Date());
-  const yesterday = addDays(today, -1);
-  let cursor = active.has(today) ? today : active.has(yesterday) ? yesterday : '';
-  if (!cursor) return 0;
-  let streak = 0;
-  while (active.has(cursor)) {
-    streak += 1;
-    cursor = addDays(cursor, -1);
-  }
-  return streak;
 };
 
 const getActiveEdition = (book: UserBookRecord) => book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
@@ -102,13 +75,14 @@ const getCoverUrl = (book: UserBookRecord): string | undefined => {
 };
 
 export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = ({ books, sessions, onSelectBook }) => {
-  // This screen is the Inkbound tracker. Imported finish/read dates must never populate it.
-  const trackerSessions = useMemo(() => sessions.filter((session) => Boolean(normalizeDateKey(session.date))), [sessions]);
+  // A reading day is defined by shared analytics: valid local date + positive completed duration.
+  const trackerSessions = useMemo(
+    () => sessions.filter((session) => Boolean(normalizeDateKey(session.date)) && getSessionDurationMinutes(session) > 0),
+    [sessions],
+  );
 
-  const latestActivityDate = useMemo(() => {
-    const values = trackerSessions.map((session) => normalizeDateKey(session.date)).filter((value): value is string => Boolean(value)).sort();
-    return values.at(-1) ?? toLocalDateKey(new Date());
-  }, [trackerSessions]);
+  const activeDates = useMemo(() => getReadingDates(trackerSessions), [trackerSessions]);
+  const latestActivityDate = activeDates.at(-1) ?? toLocalDateKey(new Date());
 
   const [visibleMonth, setVisibleMonth] = useState(() => monthKey(parseDateKey(latestActivityDate)));
   const [selectedDate, setSelectedDate] = useState(() => latestActivityDate);
@@ -120,8 +94,8 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
       if (!date) return;
       const existing = map.get(date) ?? { date, sessions: [], minutes: 0, pages: 0 };
       existing.sessions.push(session);
-      existing.minutes += session.durationMinutes ?? 0;
-      existing.pages += session.pagesRead ?? Math.max(0, (session.endPage ?? 0) - (session.startPage ?? 0));
+      existing.minutes += getSessionDurationMinutes(session);
+      existing.pages += getSessionPagesRead(session);
       map.set(date, existing);
     });
     return map;
@@ -129,9 +103,8 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
 
   const booksById = useMemo(() => new Map(books.map((book) => [book.id, book])), [books]);
 
-  const activeDates = useMemo(() => [...activityByDate.keys()].sort(), [activityByDate]);
-  const currentStreak = calculateCurrentStreak(activeDates);
-  const longestStreak = calculateLongestStreak(activeDates);
+  const currentStreak = getReadingStreak(trackerSessions);
+  const longestStreak = getLongestReadingStreak(trackerSessions);
   const totalReadingDays = activeDates.length;
   const thisMonthReadingDays = activeDates.filter((date) => date.startsWith(visibleMonth)).length;
 
@@ -184,7 +157,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={Flame} label="Current streak" value={`${currentStreak} ${currentStreak === 1 ? 'day' : 'days'}`} detail={currentStreak > 0 ? 'Your Inkbound reading rhythm is active.' : 'Save an Inkbound session to begin.'} />
         <MetricCard icon={Trophy} label="Longest streak" value={`${longestStreak} ${longestStreak === 1 ? 'day' : 'days'}`} detail="Your tracker-only personal best." />
-        <MetricCard icon={CalendarDays} label="Reading days" value={totalReadingDays.toLocaleString()} detail="Days with saved Inkbound sessions." />
+        <MetricCard icon={CalendarDays} label="Reading days" value={totalReadingDays.toLocaleString()} detail="Days with completed Inkbound sessions." />
         <MetricCard icon={Sparkles} label="This month" value={`${thisMonthReadingDays} ${thisMonthReadingDays === 1 ? 'day' : 'days'}`} detail={monthLabel(visibleMonth)} />
       </div>
 
@@ -227,14 +200,14 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
               );
             })}
           </div>
-          <p className="mt-4 text-xs text-[var(--ink-muted)]">Days with reading sessions show the books you actually read. Select a day for time, pages, and full book details.</p>
+          <p className="mt-4 text-xs text-[var(--ink-muted)]">Days with completed reading sessions show the books you actually read. Select a day for time, pages, and full book details.</p>
         </section>
 
         <aside className="inkbound-panel rounded-3xl p-5">
           <p className="inkbound-kicker">Selected day</p>
           <h3 className="mt-2 font-serif text-2xl text-[var(--ink-ivory)]">{new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
           {!selectedActivity ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-[var(--ink-border)] p-6 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[var(--ink-mauve)]" /><p className="mt-3 text-sm text-[var(--ink-muted)]">No Inkbound reading session was recorded on this day.</p></div>
+            <div className="mt-5 rounded-2xl border border-dashed border-[var(--ink-border)] p-6 text-center"><CalendarDays className="mx-auto h-7 w-7 text-[var(--ink-mauve)]" /><p className="mt-3 text-sm text-[var(--ink-muted)]">No completed Inkbound reading session was recorded on this day.</p></div>
           ) : (
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
