@@ -20,6 +20,14 @@ interface PhotoMemoriesScreenProps {
 
 const PHOTO_MEMORIES_KEY = 'inkbound_photo_memories';
 const PHOTO_FILTER_KEY = 'inkbound_photo_memory_filter';
+const MAX_SOURCE_IMAGE_BYTES = 12 * 1024 * 1024;
+
+const localDateKey = (value = new Date()) => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 function resizeImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -29,18 +37,20 @@ function resizeImage(file: File): Promise<string> {
       const image = new Image();
       image.onerror = () => reject(new Error('The image could not be prepared.'));
       image.onload = () => {
-        const maxDimension = 1400;
+        // Keep photo memories useful on phones without retaining multi-megapixel
+        // camera originals in runtime storage and sync payloads.
+        const maxDimension = 1080;
         const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(image.width * scale));
         canvas.height = Math.max(1, Math.round(image.height * scale));
         const context = canvas.getContext('2d');
         if (!context) {
-          reject(new Error('Image processing is unavailable in this browser.'));
+          reject(new Error('Image processing is unavailable on this device.'));
           return;
         }
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.76));
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
       };
       image.src = String(reader.result);
     };
@@ -56,7 +66,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
   const [imageData, setImageData] = useState('');
   const [caption, setCaption] = useState('');
   const [location, setLocation] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localDateKey);
   const [bookId, setBookId] = useState('');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,13 +82,13 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(normalizedSearch));
     })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   const resetComposer = () => {
     setImageData('');
     setCaption('');
     setLocation('');
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(localDateKey());
     setBookId('');
     setError('');
     setIsComposerOpen(false);
@@ -89,6 +99,11 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       setError('Choose a photo file.');
+      return;
+    }
+    if (file.size > MAX_SOURCE_IMAGE_BYTES) {
+      setError('Choose a photo smaller than 12 MB. Large camera originals should be reduced before adding them to Inkbound.');
+      event.target.value = '';
       return;
     }
     try {
@@ -147,7 +162,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
               key={value}
               type="button"
               onClick={() => setFilter(value)}
-              className={`rounded-full border px-4 py-2 text-sm font-semibold capitalize ${
+              className={`min-h-11 rounded-full border px-4 py-2 text-sm font-semibold capitalize ${
                 filter === value
                   ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-raised)] text-[var(--ink-ivory)]'
                   : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'
@@ -190,11 +205,11 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
                     {memory.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{memory.location}</span>}
                   </div>
                   {book && (
-                    <button type="button" onClick={() => onSelectBook(book)} className="block text-left text-sm font-semibold text-[var(--ink-gold-bright)] hover:underline">
+                    <button type="button" onClick={() => onSelectBook(book)} className="block min-h-11 py-2 text-left text-sm font-semibold text-[var(--ink-gold-bright)] hover:underline">
                       {book.work.title} · {book.work.author}
                     </button>
                   )}
-                  <button type="button" onClick={() => deleteMemory(memory.id)} className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)] hover:text-red-300">
+                  <button type="button" onClick={() => deleteMemory(memory.id)} className="inline-flex min-h-11 items-center gap-2 text-xs font-semibold text-[var(--ink-muted)] hover:text-red-300">
                     <Trash2 className="h-3.5 w-3.5" /> Delete memory
                   </button>
                 </div>
@@ -205,11 +220,11 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
       )}
 
       {isComposerOpen && (
-        <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/75 p-3 backdrop-blur-sm sm:items-center" onClick={resetComposer}>
-          <section className="inkbound-panel max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl p-5 sm:p-7" role="dialog" aria-modal="true" aria-label="Add photo memory" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-[160] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={resetComposer}>
+          <section className="inkbound-panel max-h-[100dvh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-3xl px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:max-h-[92dvh] sm:rounded-3xl sm:p-7" role="dialog" aria-modal="true" aria-label="Add photo memory" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4">
               <div><span className="inkbound-eyebrow">New scrapbook entry</span><h3 className="mt-1 font-serif text-2xl text-[var(--ink-ivory)]">Add a Photo Memory</h3></div>
-              <button type="button" className="quiet-shelf-icon-button" onClick={resetComposer}><X /></button>
+              <button type="button" className="quiet-shelf-icon-button h-11 w-11 shrink-0" onClick={resetComposer} aria-label="Close photo memory composer"><X /></button>
             </div>
 
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
@@ -219,12 +234,12 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="sm:col-span-2"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Caption</span><textarea value={caption} onChange={(event) => setCaption(event.target.value)} rows={3} placeholder="What do you want to remember?" className="w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
-              <label><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]" /></label>
+              <label><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Date</span><input type="date" max={localDateKey()} value={date} onChange={(event) => setDate(event.target.value)} className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]" /></label>
               <label><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Location</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Home, library, vacation..." className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
               <label className="sm:col-span-2"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Related book (optional)</span><select value={bookId} onChange={(event) => setBookId(event.target.value)} className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="">Not linked to a book</option>{books.map((book) => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}</select></label>
             </div>
             {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={resetComposer} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={saveMemory} className="quiet-shelf-primary-action justify-center"><Camera />Save Memory</button></div>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={resetComposer} className="quiet-shelf-secondary-action w-full justify-center sm:w-auto">Cancel</button><button type="button" onClick={saveMemory} className="quiet-shelf-primary-action w-full justify-center sm:w-auto"><Camera />Save Memory</button></div>
           </section>
         </div>
       )}
