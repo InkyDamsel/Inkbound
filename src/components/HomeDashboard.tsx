@@ -37,6 +37,8 @@ const getSessionTimestamp = (session: ReadingSession): number => {
   return Number.isNaN(timestamp) ? new Date(`${session.date}T12:00:00`).getTime() : timestamp;
 };
 
+const readingRecencyKey = (book: UserBookRecord) => book.lastSessionDate ?? book.dateStarted ?? book.dateAdded;
+
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   books,
   sessions,
@@ -53,7 +55,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const annualGoal = getAnnualReadingGoal();
 
   const currentlyReading = books.filter((book) => book.status === 'currently-reading');
-  const currentBook = currentlyReading[0] ?? null;
+  const currentBook = [...currentlyReading].sort((a, b) => readingRecencyKey(b).localeCompare(readingRecencyKey(a)))[0] ?? null;
   const finishedBooks = books.filter((book) => book.status === 'finished');
   const finishedThisYear = finishedBooks.filter((book) => book.dateFinished?.startsWith(yearPrefix));
   const recentlyFinished = [...finishedBooks]
