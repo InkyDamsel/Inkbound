@@ -11,11 +11,24 @@
   min-width: 0;
 }
 
+/* Respect OS-level accessibility preferences in installed and web builds. */
+@media (prefers-reduced-motion: reduce) {
+  .inkbound-app-shell *,
+  .inkbound-app-shell *::before,
+  .inkbound-app-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @media (pointer: coarse) {
   .inkbound-app-shell button,
   .inkbound-app-shell [role='button'],
   .inkbound-app-shell a[href] {
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   .inkbound-app-shell button,
