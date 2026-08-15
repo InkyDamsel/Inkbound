@@ -3,7 +3,13 @@ import { BarChart3, BookOpen, Clock, Filter, Flame, Lock, Sparkles } from 'lucid
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { ResponsiveGrid } from '../layout/responsive';
-import { getReadingStreak } from '../features/reading/sessionAnalytics';
+import {
+  getReadingStreak,
+  getSessionDurationMinutes,
+  getSessionListeningMinutes,
+  getSessionPagesRead,
+  localDateKey,
+} from '../features/reading/sessionAnalytics';
 import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { StatisticsGoalOverview } from './statistics/StatisticsGoalOverview';
 import { StatisticsSummaryGrid } from './statistics/StatisticsSummaryGrid';
@@ -13,15 +19,17 @@ interface StatisticsScreenProps {
   sessions: ReadingSession[];
 }
 
-const monthlyData = [
-  { month: 'Jan', count: 3 },
-  { month: 'Feb', count: 4 },
-  { month: 'Mar', count: 2 },
-  { month: 'Apr', count: 5 },
-  { month: 'May', count: 3 },
-  { month: 'Jun', count: 4 },
-  { month: 'Jul', count: 6 },
-];
+const getActiveEdition = (book: UserBookRecord) =>
+  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+
+const timeframeStart = (timeframe: string, today = new Date()) => {
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (timeframe === 'week') start.setDate(start.getDate() - 6);
+  else if (timeframe === 'month') start.setDate(1);
+  else if (timeframe === 'quarter') start.setMonth(Math.floor(start.getMonth() / 3) * 3, 1);
+  else start.setMonth(0, 1);
+  return localDateKey(start);
+};
 
 export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessions }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
@@ -29,14 +37,21 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
   const [formatFilter, setFormatFilter] = useState('all');
 
   const filteredBooks = useMemo(
-    () =>
-      books.filter(
-        (book) =>
-          formatFilter === 'all' ||
-          book.editions.some((edition) => edition.format === formatFilter),
-      ),
+    () => books.filter((book) => formatFilter === 'all' || getActiveEdition(book)?.format === formatFilter),
     [books, formatFilter],
   );
+  const filteredBookIds = useMemo(() => new Set(filteredBooks.map((book) => book.id)), [filteredBooks]);
+
+  const filteredSessions = useMemo(() => {
+    const start = timeframeStart(timeframe);
+    const today = localDateKey();
+    return sessions.filter((session) => (
+      filteredBookIds.has(session.bookId)
+      && session.date >= start
+      && session.date <= today
+      && getSessionDurationMinutes(session) > 0
+    ));
+  }, [filteredBookIds, sessions, timeframe]);
 
   const finishedBooks = filteredBooks.filter((book) => book.status === 'finished');
   const tbrBooks = filteredBooks.filter((book) => book.status === 'tbr');
@@ -44,27 +59,32 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     (book) => book.status === 'paused' || book.status === 'dnf',
   );
 
-  const totalPagesRead = sessions.reduce((total, session) => total + (session.pagesRead ?? 0), 0);
-  const totalAudioMinutes = sessions.reduce(
-    (total, session) => total + (session.minutesListened ?? 0),
-    0,
-  );
-  const totalReadingMinutes = sessions.reduce(
-    (total, session) => total + session.durationMinutes,
-    0,
-  );
+  const totalPagesRead = filteredSessions.reduce((total, session) => total + getSessionPagesRead(session), 0);
+  const totalAudioMinutes = filteredSessions.reduce((total, session) => total + getSessionListeningMinutes(session), 0);
+  const totalReadingMinutes = filteredSessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0);
   const annualGoal = getAnnualReadingGoal();
+  const currentYear = new Date().getFullYear();
+  const completedThisYear = finishedBooks.filter((book) => book.dateFinished?.startsWith(`${currentYear}-`));
   const annualGoalPercent = Math.min(
     100,
-    Math.round((finishedBooks.length / annualGoal) * 100),
+    Math.round((completedThisYear.length / annualGoal) * 100),
   );
   const currentStreak = getReadingStreak(sessions);
 
+  const monthlyData = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat(undefined, { month: 'short' });
+    return Array.from({ length: 12 }, (_, monthIndex) => {
+      const month = String(monthIndex + 1).padStart(2, '0');
+      const prefix = `${currentYear}-${month}-`;
+      return {
+        month: formatter.format(new Date(currentYear, monthIndex, 1)),
+        count: completedThisYear.filter((book) => book.dateFinished?.startsWith(prefix)).length,
+      };
+    });
+  }, [completedThisYear, currentYear]);
+
   const formatCounts = filteredBooks.reduce<Record<string, number>>((counts, book) => {
-    const format =
-      book.editions.find((edition) => edition.id === book.activeEditionId)?.format ??
-      book.editions[0]?.format ??
-      'unknown';
+    const format = getActiveEdition(book)?.format ?? 'unknown';
     counts[format] = (counts[format] ?? 0) + 1;
     return counts;
   }, {});
@@ -111,14 +131,14 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
         </h2>
 
         <StatisticsSummaryGrid
-          completedBooks={finishedBooks.length}
+          completedBooks={completedThisYear.length}
           totalPagesRead={totalPagesRead}
           totalAudioMinutes={totalAudioMinutes}
           currentStreak={currentStreak}
         />
 
         <StatisticsGoalOverview
-          completedBooks={finishedBooks.length}
+          completedBooks={completedThisYear.length}
           annualGoal={annualGoal}
           annualGoalPercent={annualGoalPercent}
           monthlyData={monthlyData}
@@ -147,7 +167,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                 <option value="week">This Week</option>
                 <option value="month">This Month</option>
                 <option value="quarter">This Quarter</option>
-                <option value="year">Full Year 2026</option>
+                <option value="year">Full Year {currentYear}</option>
               </select>
               <select
                 value={formatFilter}
@@ -192,9 +212,9 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                 <Clock className="h-4 w-4 text-[#c5a059]" /> Session Pace
               </h3>
               <dl className="space-y-2 text-xs">
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Sessions</dt><dd className="font-bold text-[#f4efe6]">{sessions.length}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Minutes read</dt><dd className="font-bold text-[#f4efe6]">{totalReadingMinutes}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Average session</dt><dd className="font-bold text-[#e5c158]">{sessions.length ? Math.round(totalReadingMinutes / sessions.length) : 0} min</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Sessions</dt><dd className="font-bold text-[#f4efe6]">{filteredSessions.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Minutes read</dt><dd className="font-bold text-[#f4efe6]">{Math.round(totalReadingMinutes)}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Average session</dt><dd className="font-bold text-[#e5c158]">{filteredSessions.length ? Math.round(totalReadingMinutes / filteredSessions.length) : 0} min</dd></div>
               </dl>
             </article>
 
