@@ -13,6 +13,10 @@ import {
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
+import {
+  getSessionDurationMinutes,
+  getSessionPagesRead,
+} from '../features/reading/sessionAnalytics';
 
 interface ReadingChallengesScreenProps {
   books: UserBookRecord[];
@@ -31,6 +35,9 @@ interface ChallengeDefinition {
 
 const clampProgress = (progress: number, target: number) => Math.min(target, Math.max(0, progress));
 
+const getActiveEdition = (book: UserBookRecord) =>
+  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+
 export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = ({ books, sessions }) => {
   const [joinedChallengeIds, setJoinedChallengeIds] = usePersistentState<string[]>(
     'inkbound_joined_challenges',
@@ -39,18 +46,13 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
 
   const challenges = useMemo<ChallengeDefinition[]>(() => {
     const finishedBooks = books.filter((book) => book.status === 'finished');
-    const uniqueSessionDays = new Set(sessions.map((session) => session.date)).size;
-    const pagesRead = sessions.reduce((total, session) => total + (session.pagesRead ?? 0), 0);
-    const audiobookBooks = finishedBooks.filter((book) => {
-      const edition =
-        book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-      return edition?.format === 'audiobook';
-    }).length;
-    const longBooksFinished = finishedBooks.filter((book) =>
-      book.editions.some((edition) => (edition.pageCount ?? 0) >= 500),
-    ).length;
-    const tbrBooksStarted = books.filter(
-      (book) => book.status === 'currently-reading' && book.dateAdded,
+    const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
+    const uniqueSessionDays = new Set(completedSessions.map((session) => session.date).filter(Boolean)).size;
+    const pagesRead = completedSessions.reduce((total, session) => total + getSessionPagesRead(session), 0);
+    const audiobookBooks = finishedBooks.filter((book) => getActiveEdition(book)?.format === 'audiobook').length;
+    const longBooksFinished = finishedBooks.filter((book) => (getActiveEdition(book)?.pageCount ?? 0) >= 500).length;
+    const activeBooksStarted = books.filter(
+      (book) => book.status === 'currently-reading' && Boolean(book.dateStarted),
     ).length;
 
     return [
@@ -66,7 +68,7 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
       {
         id: 'read-seven-days',
         title: 'Seven Reading Days',
-        description: 'Record reading sessions on seven different days.',
+        description: 'Complete reading sessions on seven different days.',
         target: 7,
         unit: 'days',
         icon: CalendarDays,
@@ -75,7 +77,7 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
       {
         id: 'thousand-pages',
         title: 'The Thousand Page Journey',
-        description: 'Read a total of 1,000 pages across your logged sessions.',
+        description: 'Read a total of 1,000 tracked pages across completed sessions.',
         target: 1000,
         unit: 'pages',
         icon: LibraryBig,
@@ -93,7 +95,7 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
       {
         id: 'epic-reader',
         title: 'Epic Reader',
-        description: 'Finish a book with at least 500 pages.',
+        description: 'Finish an active edition with at least 500 pages.',
         target: 1,
         unit: 'epic book',
         icon: Trophy,
@@ -101,12 +103,12 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
       },
       {
         id: 'tbr-breaker',
-        title: 'TBR Breaker',
-        description: 'Move three books from waiting on your TBR into active reading.',
+        title: 'Reading Momentum',
+        description: 'Start three books and move them into active reading.',
         target: 3,
         unit: 'books started',
         icon: Flame,
-        progress: tbrBooksStarted,
+        progress: activeBooksStarted,
       },
     ];
   }, [books, sessions]);
@@ -126,28 +128,28 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
 
   return (
     <div className="space-y-7 pb-24 md:pb-12">
-      <section className="inkbound-panel overflow-hidden rounded-3xl p-6 sm:p-8">
+      <section className="inkbound-panel overflow-hidden rounded-3xl p-5 sm:p-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-2xl">
+          <div className="min-w-0 max-w-2xl">
             <p className="inkbound-kicker">Your Reading Year</p>
             <h1 className="mt-1 font-serif text-3xl font-bold text-[var(--ink-ivory)] sm:text-4xl">
               Reading Challenges
             </h1>
             <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
               Join challenges that fit your reading life. Progress updates automatically from your
-              books and reading sessions, and your selections are saved across refreshes and cloud sync.
+              canonical books and completed reading sessions. Your challenge selections are saved in Inkbound app data.
             </p>
           </div>
 
-          <div className="grid min-w-[240px] grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
+          <div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:min-w-[240px]">
+            <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
               <Award className="h-5 w-5 text-[var(--ink-gold)]" />
               <p className="mt-3 font-serif text-3xl font-bold text-[var(--ink-ivory)]">
                 {completedCount}
               </p>
               <p className="text-xs text-[var(--ink-muted)]">Completed</p>
             </div>
-            <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
+            <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
               <Sparkles className="h-5 w-5 text-[var(--ink-gold)]" />
               <p className="mt-3 font-serif text-3xl font-bold text-[var(--ink-ivory)]">
                 {joinedChallenges.length}
@@ -177,12 +179,12 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
             return (
               <article
                 key={challenge.id}
-                className={`inkbound-panel flex min-h-[300px] flex-col rounded-3xl p-5 transition ${
+                className={`inkbound-panel flex min-h-[300px] min-w-0 flex-col rounded-3xl p-5 transition ${
                   completed ? 'ring-1 ring-[var(--ink-gold)]' : ''
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <span className="grid h-12 w-12 place-items-center rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-gold)]">
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-gold)]">
                     <Icon className="h-6 w-6" />
                   </span>
                   {completed && joined && (
@@ -200,11 +202,11 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
                 </p>
 
                 <div className="mt-auto pt-6">
-                  <div className="flex items-center justify-between text-xs text-[var(--ink-muted)]">
-                    <span>
+                  <div className="flex min-w-0 items-center justify-between gap-3 text-xs text-[var(--ink-muted)]">
+                    <span className="min-w-0 break-words">
                       {progress.toLocaleString()} of {challenge.target.toLocaleString()} {challenge.unit}
                     </span>
-                    <strong className="text-[var(--ink-ivory)]">{percentage}%</strong>
+                    <strong className="shrink-0 text-[var(--ink-ivory)]">{percentage}%</strong>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--ink-surface-soft)]">
                     <div
