@@ -1,6 +1,7 @@
 import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
 import { deleteObject, getBytes, ref as storageRef, uploadString } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
+import { readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
 import {
   PhotoMemoryRecord,
   readPhotoMemoriesFromDevice,
@@ -21,11 +22,15 @@ interface CloudPhotoMemory {
   storagePath?: string;
   imageContentType?: string;
   deleted?: boolean;
+  syncRevision?: string;
   // Migration-only fallback for older records that embedded base64 in Firestore.
   imageData?: string;
 }
 
 const MAX_PHOTO_MEMORY_BYTES = 3 * 1024 * 1024;
+const PHOTO_CLOUD_REVISIONS_KEY = 'inkbound_photo_memory_cloud_revisions_v1';
+
+type CloudRevisionMap = Record<string, string>;
 
 function photoStoragePath(uid: string, photoId: string) {
   return `users/${uid}/photo-memories/${photoId}`;
@@ -44,10 +49,15 @@ function bytesToDataUrl(bytes: Uint8Array, contentType: string): Promise<string>
   });
 }
 
-async function uploadPhoto(uid: string, photo: PhotoMemoryRecord) {
+function createSyncRevision() {
+  return `${Date.now()}-${crypto.randomUUID()}`;
+}
+
+async function uploadPhoto(uid: string, photo: PhotoMemoryRecord): Promise<string> {
   if (!db || !storage) throw new Error('Photo sync is not configured for this Inkbound deployment.');
   const path = photoStoragePath(uid, photo.id);
   const imageContentType = getDataUrlContentType(photo.imageData);
+  const syncRevision = createSyncRevision();
   await uploadString(storageRef(storage, path), photo.imageData, 'data_url', { contentType: imageContentType });
   await setDoc(doc(collection(db, 'users', uid, 'photoMemories'), photo.id), {
     caption: photo.caption,
@@ -58,8 +68,10 @@ async function uploadPhoto(uid: string, photo: PhotoMemoryRecord) {
     storagePath: path,
     imageContentType,
     deleted: false,
+    syncRevision,
     updatedAt: serverTimestamp(),
   });
+  return syncRevision;
 }
 
 async function deletePhoto(uid: string, photoId: string) {
@@ -77,8 +89,16 @@ async function deletePhoto(uid: string, photoId: string) {
   await setDoc(doc(collection(db, 'users', uid, 'photoMemories'), photoId), {
     deleted: true,
     storagePath: path,
+    syncRevision: createSyncRevision(),
     updatedAt: serverTimestamp(),
   }, { merge: true });
+}
+
+function updateStoredRevision(id: string, revision?: string) {
+  const revisions = readRuntimeJson<CloudRevisionMap>(PHOTO_CLOUD_REVISIONS_KEY, {});
+  if (revision) revisions[id] = revision;
+  else delete revisions[id];
+  writeRuntimeJson(PHOTO_CLOUD_REVISIONS_KEY, revisions);
 }
 
 async function applyOperation(uid: string, operation: PhotoMemorySyncOperation) {
@@ -87,14 +107,17 @@ async function applyOperation(uid: string, operation: PhotoMemorySyncOperation) 
 
   if (operation.type === 'delete' || !localPhoto) {
     await deletePhoto(uid, operation.id);
+    updateStoredRevision(operation.id);
   } else {
-    await uploadPhoto(uid, localPhoto);
+    const revision = await uploadPhoto(uid, localPhoto);
+    updateStoredRevision(operation.id, revision);
   }
 
   completePhotoMemorySyncOperation(operation);
 }
 
-async function pushPendingOperations(uid: string) {
+export async function flushPhotoMemorySyncQueue(uid: string): Promise<void> {
+  if (!uid) return;
   for (const operation of readPhotoMemorySyncQueue()) {
     await applyOperation(uid, operation);
   }
@@ -132,6 +155,8 @@ async function reconcileWithCloud(uid: string) {
 
   const localPhotos = await readPhotoMemoriesFromDevice();
   const localById = new Map(localPhotos.map((photo) => [photo.id, photo]));
+  const storedRevisions = readRuntimeJson<CloudRevisionMap>(PHOTO_CLOUD_REVISIONS_KEY, {});
+  const nextRevisions: CloudRevisionMap = {};
   const snapshot = await getDocs(collection(db, 'users', uid, 'photoMemories'));
   const cloudIds = new Set(snapshot.docs.map((item) => item.id));
   const tombstonedIds = new Set<string>();
@@ -143,28 +168,44 @@ async function reconcileWithCloud(uid: string) {
       tombstonedIds.add(photoDocument.id);
       continue;
     }
+
+    const localPhoto = localById.get(photoDocument.id);
+    if (localPhoto && cloudPhoto.syncRevision && storedRevisions[photoDocument.id] === cloudPhoto.syncRevision) {
+      nextPhotos.push(localPhoto);
+      nextRevisions[photoDocument.id] = cloudPhoto.syncRevision;
+      continue;
+    }
+
     const hydrated = await hydrateCloudPhoto(photoDocument.id, cloudPhoto);
     if (hydrated) {
       nextPhotos.push(hydrated);
+      if (cloudPhoto.syncRevision) nextRevisions[photoDocument.id] = cloudPhoto.syncRevision;
       continue;
     }
-    const localFallback = localById.get(photoDocument.id);
-    if (localFallback) nextPhotos.push(localFallback);
+
+    if (localPhoto) {
+      nextPhotos.push(localPhoto);
+      if (storedRevisions[photoDocument.id]) nextRevisions[photoDocument.id] = storedRevisions[photoDocument.id];
+    }
   }
 
   // Migration path for local-only memories created before automatic sync existed.
   // Tombstones always win so deleted memories cannot be resurrected by stale devices.
   for (const localPhoto of localPhotos) {
     if (cloudIds.has(localPhoto.id) || tombstonedIds.has(localPhoto.id)) continue;
-    await uploadPhoto(uid, localPhoto);
+    const revision = await uploadPhoto(uid, localPhoto);
+    nextRevisions[localPhoto.id] = revision;
     nextPhotos.push(localPhoto);
   }
 
   await replacePhotoMemoriesOnDevice(nextPhotos);
+  writeRuntimeJson(PHOTO_CLOUD_REVISIONS_KEY, nextRevisions);
 }
 
 export async function synchronizePhotoMemories(uid: string): Promise<void> {
   if (!uid) return;
-  await pushPendingOperations(uid);
+  await flushPhotoMemorySyncQueue(uid);
   await reconcileWithCloud(uid);
 }
+
+export { PHOTO_CLOUD_REVISIONS_KEY };
