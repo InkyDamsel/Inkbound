@@ -53,8 +53,10 @@
 
 @media (max-width: 767px) {
   .quiet-shelf-topbar {
-    min-height: 64px;
-    padding-inline: 16px;
+    min-height: calc(64px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-left: max(16px, env(safe-area-inset-left));
   }
 
   .quiet-shelf-page-heading h1 {
@@ -68,16 +70,22 @@
 
   body > #root > div > main {
     margin-left: 0;
-    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+    padding-top: calc(64px + env(safe-area-inset-top));
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
   }
 
   .quiet-shelf-mobile-nav {
-    padding-bottom: env(safe-area-inset-bottom);
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: max(8px, env(safe-area-inset-left));
+    padding-bottom: 0;
   }
 
   .quiet-shelf-mobile-nav button {
     min-width: 0;
+    min-height: 52px;
     padding: 8px 4px;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .quiet-shelf-mobile-nav button span {
