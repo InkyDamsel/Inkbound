@@ -11,6 +11,7 @@ import {
   Library,
   Sparkles,
 } from 'lucide-react';
+import { readRuntimeJson, removeRuntimeValue, writeRuntimeJson } from '../../platform/runtimeStorage';
 
 const ONBOARDING_KEY = 'inkbound_onboarding_complete_v1';
 const ONBOARDING_PROFILE_KEY = 'inkbound_onboarding_profile_v1';
@@ -53,9 +54,7 @@ interface OnboardingProfile {
 }
 
 export const OnboardingGate: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [isComplete, setIsComplete] = useState(
-    () => window.localStorage.getItem(ONBOARDING_KEY) === 'true',
-  );
+  const [isComplete, setIsComplete] = useState(() => readRuntimeJson<boolean>(ONBOARDING_KEY, false));
   const [stepIndex, setStepIndex] = useState(0);
   const [readerStyle, setReaderStyle] = useState<string | null>(null);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
@@ -89,9 +88,9 @@ export const OnboardingGate: React.FC<React.PropsWithChildren> = ({ children }) 
       completedAt: new Date().toISOString(),
     };
 
-    window.localStorage.setItem(ONBOARDING_PROFILE_KEY, JSON.stringify(profile));
-    window.localStorage.setItem(ONBOARDING_KEY, 'true');
-    window.localStorage.removeItem('inkbound_library_sanctuary_v1');
+    writeRuntimeJson(ONBOARDING_PROFILE_KEY, profile);
+    writeRuntimeJson(ONBOARDING_KEY, true);
+    removeRuntimeValue('inkbound_library_sanctuary_v1');
     document.documentElement.dataset.textSize = textSize;
     document.documentElement.classList.toggle('reduce-motion', reduceMotion);
     document.documentElement.classList.toggle('high-contrast', highContrast);
@@ -100,12 +99,12 @@ export const OnboardingGate: React.FC<React.PropsWithChildren> = ({ children }) 
   };
 
   return (
-    <main className="min-h-screen bg-[#100d12] px-4 py-6 text-[#eee5da] sm:px-8 sm:py-10">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-[#6d5263]/25 bg-[radial-gradient(circle_at_50%_0%,rgba(116,82,101,0.18),transparent_38%),linear-gradient(180deg,#1c171e,#121014)] shadow-[0_30px_100px_rgba(0,0,0,0.45)]">
+    <main className="min-h-[100dvh] bg-[#100d12] px-[max(1rem,env(safe-area-inset-left))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-[#eee5da] sm:px-8 sm:py-10">
+      <div className="mx-auto flex min-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-[#6d5263]/25 bg-[radial-gradient(circle_at_50%_0%,rgba(116,82,101,0.18),transparent_38%),linear-gradient(180deg,#1c171e,#121014)] shadow-[0_30px_100px_rgba(0,0,0,0.45)] sm:min-h-[calc(100dvh-5rem)]">
         <div className="flex items-center justify-between border-b border-white/5 px-5 py-4 sm:px-8">
           <div>
             <span className="font-serif text-xl">Inkbound</span>
-            <span className="ml-3 text-[10px] uppercase tracking-[0.24em] text-[#a999a3]">Welcome Home</span>
+            <span className="ml-3 hidden text-[10px] uppercase tracking-[0.24em] text-[#a999a3] min-[390px]:inline">Welcome Home</span>
           </div>
           <span className="text-xs text-[#8f8189]">{stepIndex + 1} of {steps.length}</span>
         </div>
@@ -162,12 +161,12 @@ export const OnboardingGate: React.FC<React.PropsWithChildren> = ({ children }) 
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-white/5 px-5 py-4 sm:px-8">
-          <button type="button" onClick={() => setStepIndex((current) => Math.max(0, current - 1))} disabled={stepIndex === 0} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-[#a99aa3] transition hover:text-[#eee5da] disabled:invisible"><ArrowLeft className="h-4 w-4" /> Back</button>
+        <div className="flex items-center justify-between gap-3 border-t border-white/5 px-5 py-4 sm:px-8">
+          <button type="button" onClick={() => setStepIndex((current) => Math.max(0, current - 1))} disabled={stepIndex === 0} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm text-[#a99aa3] transition hover:text-[#eee5da] disabled:invisible sm:px-4"><ArrowLeft className="h-4 w-4" /> Back</button>
           {currentStep === 'Home' ? (
-            <button type="button" onClick={complete} className="inline-flex items-center gap-2 rounded-xl bg-[#75546a] px-5 py-3 text-sm font-semibold text-[#f2e9de] transition hover:bg-[#876177]">Enter your library <ArrowRight className="h-4 w-4" /></button>
+            <button type="button" onClick={complete} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#75546a] px-4 py-3 text-sm font-semibold text-[#f2e9de] transition hover:bg-[#876177] sm:px-5">Enter your library <ArrowRight className="h-4 w-4" /></button>
           ) : (
-            <button type="button" onClick={next} disabled={!canContinue} className="inline-flex items-center gap-2 rounded-xl bg-[#75546a] px-5 py-3 text-sm font-semibold text-[#f2e9de] transition hover:bg-[#876177] disabled:cursor-not-allowed disabled:opacity-40">{currentStep === 'Welcome' ? 'Begin my library' : 'Continue'} <ArrowRight className="h-4 w-4" /></button>
+            <button type="button" onClick={next} disabled={!canContinue} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#75546a] px-4 py-3 text-sm font-semibold text-[#f2e9de] transition hover:bg-[#876177] disabled:cursor-not-allowed disabled:opacity-40 sm:px-5">{currentStep === 'Welcome' ? 'Begin my library' : 'Continue'} <ArrowRight className="h-4 w-4" /></button>
           )}
         </div>
       </div>
@@ -194,5 +193,5 @@ const ChoiceButton: React.FC<React.PropsWithChildren<{ selected: boolean; onClic
 );
 
 const ToggleChoice: React.FC<{ label: string; selected: boolean; onClick: () => void }> = ({ label, selected, onClick }) => (
-  <button type="button" onClick={onClick} className="flex items-center justify-between rounded-2xl border border-white/8 bg-[#171319] p-4 text-left"><span className="inline-flex items-center gap-3"><Accessibility className="h-5 w-5 text-[#9e758f]" />{label}</span><span className={`h-6 w-11 rounded-full p-1 transition ${selected ? 'bg-[#75546a]' : 'bg-[#312832]'}`}><span className={`block h-4 w-4 rounded-full bg-[#eee5da] transition ${selected ? 'translate-x-5' : ''}`} /></span></button>
+  <button type="button" onClick={onClick} className="flex min-h-14 items-center justify-between rounded-2xl border border-white/8 bg-[#171319] p-4 text-left"><span className="inline-flex items-center gap-3"><Accessibility className="h-5 w-5 text-[#9e758f]" />{label}</span><span className={`h-6 w-11 rounded-full p-1 transition ${selected ? 'bg-[#75546a]' : 'bg-[#312832]'}`}><span className={`block h-4 w-4 rounded-full bg-[#eee5da] transition ${selected ? 'translate-x-5' : ''}`} /></span></button>
 );
