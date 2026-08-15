@@ -15,7 +15,7 @@ import { clearPhotoMemoriesFromDevice } from '../features/memories/photoMemorySt
 import { PHOTO_MEMORY_SYNC_QUEUE_KEY } from '../features/memories/photoMemorySyncQueue';
 import { PROFILE_MEDIA_KEY_PREFIX } from '../features/profile/profileMedia';
 import {
-  PROFILE_MEDIA_SYNC_QUEUE_KEY,
+  getProfileMediaSyncQueueKey,
   synchronizeProfileMedia,
 } from '../features/profile/profileMediaCloudSync';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
@@ -61,7 +61,6 @@ const SIGNED_IN_DATA_KEYS = [
   'inkbound_photo_memories_v2',
   'inkbound_photo_memory_cloud_revisions_v1',
   PHOTO_MEMORY_SYNC_QUEUE_KEY,
-  PROFILE_MEDIA_SYNC_QUEUE_KEY,
   'inkbound_import_enrichment_queue_v1',
   'bookhaven_books',
   'bookhaven_sessions',
@@ -70,6 +69,9 @@ const SIGNED_IN_DATA_KEYS = [
 function clearSignedInDataFromDevice(uid: string) {
   writeRuntimeValue(`inkbound_local_clear_intent_${uid}`, '1');
   SIGNED_IN_DATA_KEYS.forEach((key) => removeRuntimeValue(key));
+  removeRuntimeValue(getProfileMediaSyncQueueKey(uid));
+  // Clean up the short-lived pre-UID queue key from development builds too.
+  removeRuntimeValue('inkbound_profile_media_sync_queue_v1');
   removeRuntimeValue('inkbound_local_data_owner_uid');
   removeRuntimeValue(LAST_SYNC_STORAGE_KEY);
   removeRuntimeValue(`inkbound_pending_sync_${uid}_v1`);
