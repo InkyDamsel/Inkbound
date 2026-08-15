@@ -22,7 +22,7 @@ import {
   AUXILIARY_ACCOUNT_KEYS,
   getAuxiliaryBaselineKey,
   getAuxiliaryPendingKey,
-} from '../features/sync/AuxiliaryAccountSyncBridge';
+} from '../features/sync/auxiliaryAccountSyncConfig';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import { auth, isFirebaseConfigured } from '../lib/firebase';
 import {
