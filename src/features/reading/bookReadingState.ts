@@ -51,26 +51,30 @@ export function reconcileFinishedBookProgress(book: UserBookRecord): UserBookRec
 }
 
 export function getBookReadingState(book: UserBookRecord): BookReadingState {
-  const activeEdition = getActiveEdition(book);
+  // The canonical resolver must not expose a stale legacy contradiction to UI.
+  // Finished is authoritative when the selected edition has a known endpoint.
+  const resolvedBook = reconcileFinishedBookProgress(book);
+  const activeEdition = getActiveEdition(resolvedBook);
   const isAudiobook = activeEdition?.format === 'audiobook';
-  const completedUnits = Math.max(0, isAudiobook ? book.progressMinutes : book.progressPages);
+  const completedUnits = Math.max(0, isAudiobook ? resolvedBook.progressMinutes : resolvedBook.progressPages);
   const totalUnits = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
   const hasKnownTotal = typeof totalUnits === 'number' && Number.isFinite(totalUnits) && totalUnits > 0;
-  const isFinished = book.status === 'finished';
+  const isFinished = resolvedBook.status === 'finished';
 
   const calculatedPercentage = hasKnownTotal
     ? Math.round((completedUnits / totalUnits!) * 100)
-    : Math.max(0, Math.round(book.progressPercentage || 0));
+    : Math.max(0, Math.round(resolvedBook.progressPercentage || 0));
   const progressPercentage = Math.max(0, Math.min(100, calculatedPercentage));
 
-  // Contradictions should be rare after canonical reconciliation, but keep this
-  // signal for genuinely inconsistent non-finished records and failed migrations.
+  // A non-finished record at/above a known endpoint still needs reconciliation.
+  // Finished records are normalized above, so users never receive a warning with
+  // no actionable correction to make.
   const progressNeedsCorrection = hasKnownTotal
-    ? (isFinished && calculatedPercentage < 100) || (!isFinished && calculatedPercentage >= 100)
+    ? !isFinished && calculatedPercentage >= 100
     : false;
 
   return {
-    status: book.status,
+    status: resolvedBook.status,
     isFinished,
     activeEdition,
     completedUnits,
