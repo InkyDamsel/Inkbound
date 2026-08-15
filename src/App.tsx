@@ -71,7 +71,6 @@ const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
 const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
 const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
 const DAYTIME_MAINTENANCE_KEY = 'inkbound_last_daytime_library_maintenance';
-const DAILY_MILESTONE_SHOWN_KEY = 'inkbound_daily_milestone_shown_dates';
 const DAILY_GOAL_STORAGE_KEY = 'inkbound_daily_goal_minutes';
 const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
 const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
@@ -109,23 +108,6 @@ function safeWriteLocalStorage(key: string, value: unknown): boolean {
     console.warn(`Inkbound could not update ${key} in the browser cache.`, error);
     return false;
   }
-}
-
-function readMilestoneShownDates(): string[] {
-  try {
-    const raw = localStorage.getItem(DAILY_MILESTONE_SHOWN_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function markMilestoneShown(date: string) {
-  const existing = readMilestoneShownDates();
-  if (existing.includes(date)) return;
-  const recent = [...existing, date].sort().slice(-45);
-  safeWriteLocalStorage(DAILY_MILESTONE_SHOWN_KEY, recent);
 }
 
 function readDailyGoalMinutes(): number {
@@ -651,10 +633,9 @@ export default function App() {
   };
 
   const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => {
-    const alreadyShown = readMilestoneShownDates().includes(newSession.date);
     const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && Math.max(0, session.durationMinutes) > 0);
     const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && Math.max(0, newSession.durationMinutes) > 0;
-    if (alreadyShown || !isFirstCompletedSessionThatDay) return;
+    if (!isFirstCompletedSessionThatDay) return;
 
     const projectedSessions = [newSession, ...sessions];
     showSessionMilestone({
@@ -663,7 +644,6 @@ export default function App() {
       dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date),
       dailyGoal: readDailyGoalMinutes(),
     });
-    markMilestoneShown(newSession.date);
   };
 
   const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
@@ -720,7 +700,7 @@ export default function App() {
   const handleResetData = () => {
     setBooks([]); setSessions([]); setPreviousBooksState(null); setSelectedBookForDetails(null); setSelectedBookIds([]);
     try {
-      localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY); localStorage.removeItem(DAILY_MILESTONE_SHOWN_KEY);
+      localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY);
     } catch { /* no-op */ }
     writeImportEnrichmentQueue([]);
     writeImportHistory([]);
