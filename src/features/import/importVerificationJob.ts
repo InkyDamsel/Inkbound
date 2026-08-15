@@ -15,7 +15,7 @@ export interface ImportVerificationJobSnapshot {
   error?: string;
 }
 
-type ImportExecutor = (items: ImportRecordItem[]) => Promise<void> | void;
+type ImportExecutor = (items: ImportRecordItem[]) => Promise<ImportRecordItem[]> | ImportRecordItem[];
 type Listener = (snapshot: ImportVerificationJobSnapshot) => void;
 
 const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v2';
@@ -189,23 +189,29 @@ export function startImportVerificationJob(
         importMetadataVerified: false,
       }));
       const recordsToImport = [...verifiedRecords, ...unmatchedRecords];
+      const importedRecords = recordsToImport.length > 0
+        ? await executeImport(recordsToImport)
+        : [];
+      const importedIds = new Set(importedRecords.map((record) => record.id));
+      const acceptedVerified = verifiedRecords.filter((record) => importedIds.has(record.id));
+      const acceptedUnmatched = unmatchedRecords.filter((record) => importedIds.has(record.id));
+      const writeRejected = recordsToImport
+        .filter((record) => !importedIds.has(record.id))
+        .map((record) => ({ ...record, duplicateAction: 'skip' as const }));
 
-      if (recordsToImport.length > 0) {
-        await executeImport(recordsToImport);
-      }
-
-      persistMetadataPending(unmatchedRecords);
+      persistMetadataPending(acceptedUnmatched);
 
       const duplicateMap = new Map(preDetectedDuplicates.map((record) => [record.id, record]));
       verification.duplicates.forEach((record) => duplicateMap.set(record.id, record));
+      writeRejected.forEach((record) => duplicateMap.set(record.id, record));
 
       emit({
         status: 'complete',
         completed: items.length,
         total: items.length,
-        importedCount: recordsToImport.length,
-        matchedCount: verifiedRecords.length,
-        metadataPendingCount: unmatchedRecords.length,
+        importedCount: importedRecords.length,
+        matchedCount: acceptedVerified.length,
+        metadataPendingCount: acceptedUnmatched.length,
         duplicates: [...duplicateMap.values()],
         unmatched: [],
       });
