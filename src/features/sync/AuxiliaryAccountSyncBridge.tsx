@@ -14,14 +14,17 @@ import {
   notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
 import {
+  ACCOUNT_OWNER_UID_KEY,
   AUXILIARY_ACCOUNT_KEYS,
+  CORE_ACCOUNT_RUNTIME_KEYS,
   type AuxiliaryAccountKeyName,
+  getAccountOwnedKeysToClearForOwnerChange,
   getAuxiliaryBaselineKey,
-  getAuxiliaryKeysToClearForOwnerChange,
   getAuxiliaryPendingKey,
 } from './auxiliaryAccountSyncConfig';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
+  notifyCloudDataUpdated,
   type BeforeSignOutDetail,
 } from './cloudSyncEvents';
 
@@ -39,7 +42,6 @@ type PendingState = Partial<Record<AuxiliaryAccountKeyName, PendingAuxiliaryMuta
 type BaselineState = Partial<Record<AuxiliaryAccountKeyName, string>>;
 
 const POLL_MS = 1500;
-const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
 const storage = () => getRuntimeStorage();
 const stable = (value: unknown) => JSON.stringify(value);
 
@@ -153,17 +155,22 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
     };
 
     const initialize = async () => {
-      const previousOwnerUid = storage().getItem(OWNER_UID_KEY);
+      const previousOwnerUid = storage().getItem(ACCOUNT_OWNER_UID_KEY);
       const sameAccountLocalData = !previousOwnerUid || previousOwnerUid === uid;
 
-      // Shared auxiliary runtime keys belong to exactly one authenticated reader.
-      // Clear the previous reader's values before any cloud read so a sparse/new
-      // account cannot inherit collections, goals, memories, or challenges while
-      // hydration is pending or unavailable offline.
-      getAuxiliaryKeysToClearForOwnerChange(previousOwnerUid, uid).forEach((key) => {
+      // A UID transition invalidates every shared account-owned runtime value, not
+      // just auxiliary state. Clear those values before this bridge performs any
+      // cloud read so a failed/slow hydration can never leave the prior reader's
+      // books, sessions, profile, collections, goals, or memories visible.
+      const keysToClear = getAccountOwnedKeysToClearForOwnerChange(previousOwnerUid, uid);
+      const auxiliaryKeys = new Set(Object.values(AUXILIARY_ACCOUNT_KEYS));
+      keysToClear.forEach((key) => {
         storage().removeItem(key);
-        notifyRuntimeStorageChanged(key);
+        if (auxiliaryKeys.has(key as (typeof AUXILIARY_ACCOUNT_KEYS)[keyof typeof AUXILIARY_ACCOUNT_KEYS])) {
+          notifyRuntimeStorageChanged(key);
+        }
       });
+      if (keysToClear.length > 0) notifyCloudDataUpdated([...CORE_ACCOUNT_RUNTIME_KEYS]);
 
       const baseline = readBaseline(uid);
       const pending = readPending(uid);
