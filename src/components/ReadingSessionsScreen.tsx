@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -14,12 +14,14 @@ import {
   Search,
   Sparkles,
   Target,
+  Undo2,
 } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
 import { ResponsiveGrid } from '../layout/responsive';
 import { SessionEditorModal } from './SessionEditorModal';
-import { usePersistentState } from '../hooks/usePersistentState';
+import { getActiveEdition } from '../features/reading/bookReadingState';
+import { getDailyReadingGoalMinutes } from '../features/reading/readingPreferences';
 import {
   formatDurationEstimate,
   getCurrentPace,
@@ -42,6 +44,16 @@ interface ReadingSessionsScreenProps {
   onDeleteSession: (sessionId: string) => void;
 }
 
+const SESSION_DELETE_UNDO_MS = 7000;
+
+const formatSessionDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return value;
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
   books,
   sessions,
@@ -55,7 +67,75 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
   const [bookFilter, setBookFilter] = useState('all');
   const [editingSession, setEditingSession] = useState<ReadingSession | null>(null);
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
-  const [dailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
+  const [pendingDelete, setPendingDelete] = useState<ReadingSession | null>(null);
+  const pendingDeleteRef = useRef<ReadingSession | null>(null);
+  const deleteTimerRef = useRef<number | null>(null);
+  const onDeleteSessionRef = useRef(onDeleteSession);
+
+  useEffect(() => {
+    onDeleteSessionRef.current = onDeleteSession;
+  }, [onDeleteSession]);
+
+  const clearDeleteTimer = () => {
+    if (deleteTimerRef.current === null) return;
+    window.clearTimeout(deleteTimerRef.current);
+    deleteTimerRef.current = null;
+  };
+
+  const commitPendingDelete = () => {
+    const session = pendingDeleteRef.current;
+    clearDeleteTimer();
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+    if (session) onDeleteSessionRef.current(session.id);
+  };
+
+  const requestSessionDelete = (sessionId: string) => {
+    const session = sessions.find((item) => item.id === sessionId);
+    if (!session) return;
+
+    // Only the latest single-item deletion is undoable. Commit any earlier pending
+    // deletion before opening a fresh Undo window so canonical reconciliation runs once.
+    if (pendingDeleteRef.current) commitPendingDelete();
+
+    pendingDeleteRef.current = session;
+    setPendingDelete(session);
+    deleteTimerRef.current = window.setTimeout(() => {
+      const current = pendingDeleteRef.current;
+      pendingDeleteRef.current = null;
+      deleteTimerRef.current = null;
+      setPendingDelete(null);
+      if (current) onDeleteSessionRef.current(current.id);
+    }, SESSION_DELETE_UNDO_MS);
+  };
+
+  const undoSessionDelete = () => {
+    clearDeleteTimer();
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+  };
+
+  useEffect(() => () => {
+    // If the reader leaves this screen during the Undo window, finish the deletion
+    // rather than silently losing the requested action or restoring stale snapshots.
+    const session = pendingDeleteRef.current;
+    clearDeleteTimer();
+    pendingDeleteRef.current = null;
+    if (session) onDeleteSessionRef.current(session.id);
+  }, []);
+
+  useEffect(() => {
+    const pending = pendingDeleteRef.current;
+    if (!pending || sessions.some((session) => session.id === pending.id)) return;
+    clearDeleteTimer();
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+  }, [sessions]);
+
+  const visibleSessions = useMemo(
+    () => pendingDelete ? sessions.filter((session) => session.id !== pendingDelete.id) : sessions,
+    [pendingDelete, sessions],
+  );
 
   const booksById = useMemo(
     () => new Map(books.map((book) => [book.id, book])),
@@ -64,16 +144,16 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
 
   const sessionBooks = useMemo(
     () =>
-      Array.from(new Set(sessions.map((session) => session.bookId)))
+      Array.from(new Set(visibleSessions.map((session) => session.bookId)))
         .map((bookId) => booksById.get(bookId))
         .filter((book): book is UserBookRecord => Boolean(book))
         .sort((a, b) => a.work.title.localeCompare(b.work.title)),
-    [booksById, sessions],
+    [booksById, visibleSessions],
   );
 
   const filteredSessions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return sessions.filter((session) => {
+    return visibleSessions.filter((session) => {
       const book = booksById.get(session.bookId);
       if (bookFilter !== 'all' && session.bookId !== bookFilter) return false;
       if (!query) return true;
@@ -85,17 +165,17 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
         session.mood?.toLowerCase().includes(query)
       );
     });
-  }, [bookFilter, booksById, searchQuery, sessions]);
+  }, [bookFilter, booksById, searchQuery, visibleSessions]);
 
-  const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
+  const completedSessions = visibleSessions.filter((session) => getSessionDurationMinutes(session) > 0);
   const totalMinutes = completedSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
   const totalPages = completedSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
   const totalListening = completedSessions.reduce((sum, session) => sum + getSessionListeningMinutes(session), 0);
   const averageMinutes = completedSessions.length ? Math.round(totalMinutes / completedSessions.length) : 0;
   const today = localDateKey();
-  const currentStreak = getReadingStreak(sessions, today);
-  const todayMinutes = getDailyReadingMinutes(sessions, today);
-  const dailyGoal = Math.max(1, Number(dailyGoalMins) || 30);
+  const currentStreak = getReadingStreak(visibleSessions, today);
+  const todayMinutes = getDailyReadingMinutes(visibleSessions, today);
+  const dailyGoal = getDailyReadingGoalMinutes();
   const goalPercent = Math.min(100, Math.round((todayMinutes / dailyGoal) * 100));
 
   return (
@@ -108,11 +188,11 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
             <p className="inkbound-page-copy mt-3">Keep a record of the time, pages, places, and thoughts that shape your reading life.</p>
           </div>
 
-          <div className="flex flex-wrap gap-2 self-start xl:self-auto">
-            <button type="button" onClick={() => setIsManualEntryOpen(true)} className="quiet-shelf-secondary-action">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap xl:self-auto">
+            <button type="button" onClick={() => setIsManualEntryOpen(true)} className="quiet-shelf-secondary-action w-full justify-center sm:w-auto">
               <Plus className="h-4 w-4" /> Add Manually
             </button>
-            <button type="button" onClick={() => onOpenTimer()} className="quiet-shelf-primary-action">
+            <button type="button" onClick={() => onOpenTimer()} className="quiet-shelf-primary-action w-full justify-center sm:w-auto">
               <Clock3 className="h-4 w-4" /> Start a Session
             </button>
           </div>
@@ -129,22 +209,22 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
         ].map(({ label, value, icon: Icon }) => (
           <div key={label} className="inkbound-panel flex items-center gap-4 p-4">
             <span className="grid h-11 w-11 place-items-center rounded-xl border border-[var(--ink-border)] bg-[rgba(197,160,89,0.08)] text-[var(--ink-gold-bright)]"><Icon className="h-5 w-5" /></span>
-            <div className="min-w-0"><p className="text-xl font-semibold text-[var(--ink-text-primary)]">{value}</p><p className="text-xs text-[var(--ink-text-muted)]">{label}</p></div>
+            <div className="min-w-0"><p className="break-words text-xl font-semibold text-[var(--ink-text-primary)]">{value}</p><p className="text-xs text-[var(--ink-text-muted)]">{label}</p></div>
           </div>
         ))}
       </ResponsiveGrid>
 
       <div className="inkbound-panel p-4">
         <div className="flex items-center justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-[var(--ink-text-primary)]">Daily reading goal</p>
             <p className="mt-1 text-xs text-[var(--ink-text-muted)]">
               {todayMinutes >= dailyGoal ? `Goal reached — ${todayMinutes} minutes read today.` : `${Math.max(0, dailyGoal - todayMinutes)} minutes to go today.`}
             </p>
           </div>
-          <span className="text-sm font-bold text-[var(--ink-gold)]">{goalPercent}%</span>
+          <span className="shrink-0 text-sm font-bold text-[var(--ink-gold)]">{goalPercent}%</span>
         </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--ink-surface)]">
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--ink-surface)]" role="progressbar" aria-label="Daily reading goal progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={goalPercent}>
           <div className="h-full rounded-full bg-[var(--ink-gold)] transition-[width]" style={{ width: `${goalPercent}%` }} />
         </div>
       </div>
@@ -156,7 +236,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
         ].map(({ label, value, icon: Icon }) => (
           <div key={label} className="inkbound-panel flex items-center gap-4 p-4">
             <span className="grid h-11 w-11 place-items-center rounded-xl border border-[var(--ink-border)] bg-[rgba(197,160,89,0.08)] text-[var(--ink-gold-bright)]"><Icon className="h-5 w-5" /></span>
-            <div><p className="text-xl font-semibold text-[var(--ink-text-primary)]">{value}</p><p className="text-xs text-[var(--ink-text-muted)]">{label}</p></div>
+            <div className="min-w-0"><p className="break-words text-xl font-semibold text-[var(--ink-text-primary)]">{value}</p><p className="text-xs text-[var(--ink-text-muted)]">{label}</p></div>
           </div>
         ))}
       </ResponsiveGrid>
@@ -192,33 +272,33 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
         <div className="space-y-4">
           {filteredSessions.map((session) => {
             const book = booksById.get(session.bookId);
-            const edition = book?.editions.find((item) => item.id === book.activeEditionId) ?? book?.editions[0];
+            const edition = book ? getActiveEdition(book) : undefined;
             const isAudio = edition?.format === 'audiobook';
             const safeDurationMinutes = getSessionDurationMinutes(session);
             const safePagesRead = getSessionPagesRead(session);
             const safeMinutesListened = getSessionListeningMinutes(session);
             const currentPace = book && !isAudio ? getCurrentPace(session, book) : null;
-            const sevenDayPace = book && !isAudio ? getSevenDayAveragePace(sessions, book, session.date) : null;
+            const sevenDayPace = book && !isAudio ? getSevenDayAveragePace(visibleSessions, book, session.date) : null;
             const currentEstimate = formatDurationEstimate(currentPace?.estimatedRemainingSeconds);
             const averageEstimate = formatDurationEstimate(sevenDayPace?.estimatedRemainingSeconds);
 
             return (
-              <article key={session.id} className="inkbound-panel p-4 sm:p-5">
+              <article key={session.id} className="inkbound-panel min-w-0 p-4 sm:p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                   {book && <button type="button" onClick={() => onSelectBook(book)} className="shrink-0 text-left"><BookCover work={book.work} edition={edition} size="sm" showFormatBadge={false} /></button>}
 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="inkbound-badge">{isAudio ? 'Listening Session' : 'Reading Session'}</span>
-                      {session.mood && <span className="text-xs text-[var(--ink-gold)]">{session.mood}</span>}
+                      {session.mood && <span className="break-words text-xs text-[var(--ink-gold)]">{session.mood}</span>}
                     </div>
-                    <button type="button" onClick={() => book && onSelectBook(book)} className="mt-2 text-left font-serif text-xl text-[var(--ink-text-primary)] hover:text-[var(--ink-gold-bright)]">{book?.work.title ?? 'Reading Session'}</button>
-                    <p className="mt-1 text-xs text-[var(--ink-text-muted)]">{book?.work.author}</p>
+                    <button type="button" onClick={() => book && onSelectBook(book)} className="mt-2 min-h-11 max-w-full break-words py-1 text-left font-serif text-xl text-[var(--ink-text-primary)] hover:text-[var(--ink-gold-bright)]">{book?.work.title ?? 'Reading Session'}</button>
+                    <p className="mt-1 break-words text-xs text-[var(--ink-text-muted)]">{book?.work.author}</p>
 
                     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--ink-text-secondary)]">
-                      <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{session.date}</span>
-                      <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{safeDurationMinutes} minutes</span>
-                      {session.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-[var(--ink-gold)]" />{session.location}</span>}
+                      <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 shrink-0 text-[var(--ink-gold)]" />{formatSessionDate(session.date)}</span>
+                      <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 shrink-0 text-[var(--ink-gold)]" />{safeDurationMinutes} minutes</span>
+                      {session.location && <span className="inline-flex min-w-0 items-center gap-1.5"><MapPin className="h-3.5 w-3.5 shrink-0 text-[var(--ink-gold)]" /><span className="break-words">{session.location}</span></span>}
                       {safePagesRead > 0 ? <span>{safePagesRead} pages</span> : null}
                       {safeMinutesListened > 0 ? <span>{safeMinutesListened} minutes listened</span> : null}
                     </div>
@@ -241,13 +321,13 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
                       </div>
                     ) : null}
 
-                    {session.notes && <blockquote className="mt-4 border-l-2 border-[var(--ink-gold)] pl-4 font-serif text-sm italic leading-6 text-[var(--ink-text-secondary)]">“{session.notes}”</blockquote>}
+                    {session.notes && <blockquote className="mt-4 break-words border-l-2 border-[var(--ink-gold)] pl-4 font-serif text-sm italic leading-6 text-[var(--ink-text-secondary)]">“{session.notes}”</blockquote>}
                   </div>
 
-                  <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col">
-                    {book && <button type="button" onClick={() => onOpenTimer(book.id)} className="quiet-shelf-primary-action">Continue</button>}
-                    <button type="button" onClick={() => setEditingSession(session)} className="quiet-shelf-secondary-action"><Edit3 className="h-3.5 w-3.5" /> Edit</button>
-                    {book && <button type="button" onClick={() => onSelectBook(book)} className="quiet-shelf-secondary-action">Details <ChevronRight className="h-3.5 w-3.5" /></button>}
+                  <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto sm:flex-col">
+                    {book && <button type="button" onClick={() => onOpenTimer(book.id)} className="quiet-shelf-primary-action flex-1 justify-center sm:flex-none">Continue</button>}
+                    <button type="button" onClick={() => setEditingSession(session)} className="quiet-shelf-secondary-action flex-1 justify-center sm:flex-none"><Edit3 className="h-3.5 w-3.5" /> Edit</button>
+                    {book && <button type="button" onClick={() => onSelectBook(book)} className="quiet-shelf-secondary-action flex-1 justify-center sm:flex-none">Details <ChevronRight className="h-3.5 w-3.5" /></button>}
                   </div>
                 </div>
               </article>
@@ -257,7 +337,16 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
       )}
 
       {isManualEntryOpen && <SessionEditorModal books={books} onClose={() => setIsManualEntryOpen(false)} onSave={onSaveManualSession} />}
-      {editingSession && <SessionEditorModal books={books} session={editingSession} onClose={() => setEditingSession(null)} onSave={onUpdateSession} onDelete={onDeleteSession} />}
+      {editingSession && <SessionEditorModal books={books} session={editingSession} onClose={() => setEditingSession(null)} onSave={onUpdateSession} onDelete={requestSessionDelete} />}
+
+      {pendingDelete && (
+        <div className="fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[220] mx-auto flex max-w-lg items-center justify-between gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 py-3 shadow-2xl sm:bottom-6" role="status" aria-live="polite">
+          <span className="min-w-0 text-sm font-semibold text-[var(--ink-ivory)]">Reading session deleted.</span>
+          <button type="button" onClick={undoSessionDelete} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-bold text-[var(--ink-gold-bright)]">
+            <Undo2 className="h-4 w-4" /> Undo
+          </button>
+        </div>
+      )}
     </section>
   );
 };
