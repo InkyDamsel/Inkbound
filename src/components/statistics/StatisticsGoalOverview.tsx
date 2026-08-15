@@ -21,11 +21,15 @@ export const StatisticsGoalOverview: React.FC<StatisticsGoalOverviewProps> = ({
 }) => {
   const maxMonthCount = Math.max(1, ...monthlyData.map((item) => item.count));
   const currentYear = new Date().getFullYear();
+  const remainingBooks = Math.max(0, annualGoal - completedBooks);
+  const goalStatus = annualGoalPercent >= 100
+    ? 'Annual reading goal complete.'
+    : `${remainingBooks} ${remainingBooks === 1 ? 'book' : 'books'} to reach this year's goal.`;
 
   return (
     <ResponsiveGrid minItemWidth={280} maxColumns={3} gap={24}>
       <div className="flex flex-col justify-between space-y-3 rounded-2xl border border-[#c5a059]/20 bg-[#1c0f24] p-5 shadow-xl">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-xs font-bold uppercase text-stone-400">{currentYear} Goal Progress</span>
           <span className="text-xs font-bold text-[#e5c158]">
             {completedBooks} / {annualGoal} books
@@ -33,9 +37,16 @@ export const StatisticsGoalOverview: React.FC<StatisticsGoalOverviewProps> = ({
         </div>
         <div>
           <p className="font-serif text-3xl font-bold text-[#f4efe6]">{annualGoalPercent}%</p>
-          <p className="mt-1 text-xs text-stone-400">On pace to meet annual reading target.</p>
+          <p className="mt-1 text-xs text-stone-400">{goalStatus}</p>
         </div>
-        <div className="h-2.5 w-full overflow-hidden rounded-full border border-[#3d2448] bg-[#120817]">
+        <div
+          className="h-2.5 w-full overflow-hidden rounded-full border border-[#3d2448] bg-[#120817]"
+          role="progressbar"
+          aria-label={`${currentYear} reading goal`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={annualGoalPercent}
+        >
           <div
             className="h-full rounded-full bg-gradient-to-r from-[#c5a059] to-[#d4af37] transition-all duration-500"
             style={{ width: `${annualGoalPercent}%` }}
@@ -60,6 +71,7 @@ export const StatisticsGoalOverview: React.FC<StatisticsGoalOverviewProps> = ({
                   <div
                     className="w-full rounded-t bg-gradient-to-t from-[#c5a059] to-[#e5c158] transition-all duration-500"
                     style={{ height: `${heightPercent}%` }}
+                    aria-hidden="true"
                   />
                   <span className="text-[10px] font-semibold text-stone-400">{item.month}</span>
                 </div>
