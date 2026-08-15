@@ -7,6 +7,7 @@ import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContex
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
+import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
@@ -64,6 +65,7 @@ createRoot(rootElement).render(
             <AuthSessionGate>
               <SecurityBootstrap />
               <CloudPersistenceBridge />
+              <AuxiliaryAccountSyncBridge />
               <ReadOnlyCloudHydrationBridge />
               <PhotoMemoryAutoSyncBridge />
               <ThemePersistenceBridge />
