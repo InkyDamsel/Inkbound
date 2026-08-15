@@ -28,7 +28,13 @@ const LIST_OPTIONS: Array<{ value: ReadingStatus; label: string; description: st
   { value: 'dnf', label: 'Did Not Finish', description: 'Keep a record without marking it finished.' },
 ];
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => {
+  const value = new Date();
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 const uniqueId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -122,6 +128,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
     const editionId = uniqueId('edition');
     const bookId = uniqueId('book');
     const parsedPageCount = Number.parseInt(pageCount, 10);
+    const validPageCount = Number.isFinite(parsedPageCount) && parsedPageCount > 0 ? parsedPageCount : undefined;
+    const hasKnownPrintTotal = format !== 'audiobook' && validPageCount !== undefined;
+    const isFinished = status === 'finished';
+    const addedOn = today();
 
     const newBook: UserBookRecord = {
       id: bookId,
@@ -142,23 +152,24 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
         {
           id: editionId,
           format,
-          pageCount: Number.isFinite(parsedPageCount) && parsedPageCount > 0 ? parsedPageCount : undefined,
+          pageCount: format === 'audiobook' ? undefined : validPageCount,
           coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
         },
       ],
       status,
       ownership,
-      progressPages: 0,
+      progressPages: isFinished && hasKnownPrintTotal ? validPageCount! : 0,
       progressMinutes: 0,
-      progressPercentage: status === 'finished' ? 100 : 0,
+      progressPercentage: isFinished && hasKnownPrintTotal ? 100 : 0,
       favoriteQuotes: [],
       privateTags: [],
       priority,
       moods: [],
       collections: [],
       sourceOfImport: 'Manual entry',
-      dateAdded: today(),
-      dateFinished: status === 'finished' ? today() : undefined,
+      dateAdded: addedOn,
+      dateStarted: status === 'currently-reading' || isFinished ? addedOn : undefined,
+      dateFinished: isFinished ? addedOn : undefined,
     };
 
     onAddBook(newBook);
@@ -173,7 +184,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
       }}
     >
       <section
-        className="relative max-h-[100dvh] w-full max-w-4xl overflow-y-auto rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7"
+        className="relative max-h-[100dvh] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7"
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-book-title"
@@ -181,7 +192,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 rounded-full bg-black/30 p-2 text-[#ad9fac] transition hover:bg-black/50 hover:text-white"
+          className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full bg-black/30 text-[#ad9fac] transition hover:bg-black/50 hover:text-white"
           aria-label="Close add book dialog"
         >
           <X className="h-5 w-5" />
@@ -208,7 +219,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
               <button
                 type="button"
                 onClick={() => openUpgradeModal('Upgrade to Premium to add unlimited books.')}
-                className="mt-2 inline-flex items-center gap-1.5 font-bold text-[#e2bd66] hover:underline"
+                className="mt-2 inline-flex min-h-11 items-center gap-1.5 font-bold text-[#e2bd66] hover:underline"
               >
                 <Sparkles className="h-4 w-4" /> Upgrade to Premium
               </button>
@@ -347,9 +358,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
               <Field label="Genres">
                 <input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance" />
               </Field>
-              <Field label="Page count">
-                <input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" />
-              </Field>
+              {format !== 'audiobook' && <Field label="Page count">
+                <input type="number" inputMode="numeric" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" />
+              </Field>}
               <Field label="Format">
                 <select value={format} onChange={(event) => setFormat(event.target.value as Format)}>
                   <option value="hardcover">Hardcover</option>
@@ -402,7 +413,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
 
         {pendingSearchEdition && (
           <div
-            className="fixed inset-0 z-[220] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[220] grid place-items-center bg-black/70 p-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm"
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) setPendingSearchEdition(null);
             }}
@@ -411,7 +422,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
               role="dialog"
               aria-modal="true"
               aria-labelledby="choose-list-title"
-              className="w-full max-w-lg rounded-2xl border border-[#c5a059]/35 bg-[#17101b] p-5 shadow-2xl sm:p-6"
+              className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-[#c5a059]/35 bg-[#17101b] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:p-6"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 gap-4">
@@ -442,7 +453,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setPendingSearchEdition(null)}
-                  className="rounded-full bg-black/30 p-2 text-[#ad9fac] transition hover:bg-black/50 hover:text-white"
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-black/30 text-[#ad9fac] transition hover:bg-black/50 hover:text-white"
                   aria-label="Go back to editions"
                 >
                   <X className="h-5 w-5" />
@@ -459,7 +470,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                     key={option.value}
                     type="button"
                     onClick={() => addSearchEditionToList(option.value)}
-                    className="rounded-xl border border-[#c5a059]/18 bg-[#120c15] px-4 py-3 text-left transition hover:border-[#c5a059]/55 hover:bg-[#211526]"
+                    className="min-h-12 rounded-xl border border-[#c5a059]/18 bg-[#120c15] px-4 py-3 text-left transition hover:border-[#c5a059]/55 hover:bg-[#211526]"
                   >
                     <span className="block text-sm font-bold text-[#f4efe6]">{option.label}</span>
                     <span className="mt-1 block text-xs text-[#ad9fac]">{option.description}</span>
