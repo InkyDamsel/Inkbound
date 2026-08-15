@@ -12,9 +12,9 @@
     "lint": "tsc --noEmit",
     "functions:install": "npm --prefix functions install",
     "functions:build": "npm --prefix functions run build",
-    "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules --project inkbound-app",
+    "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules,storage --project inkbound-app",
     "firebase:deploy:functions": "npm run functions:build && npx firebase-tools deploy --only functions --project inkbound-app",
-    "firebase:deploy:security": "npm run functions:build && npx firebase-tools deploy --only firestore:rules,functions --project inkbound-app"
+    "firebase:deploy:security": "npm run functions:build && npx firebase-tools deploy --only firestore:rules,storage,functions --project inkbound-app"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
