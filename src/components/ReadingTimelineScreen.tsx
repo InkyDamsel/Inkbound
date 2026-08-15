@@ -11,11 +11,15 @@ import {
   Quote,
   Search,
   Sparkles,
-  Star,
   X,
 } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import {
+  getSessionDurationMinutes,
+  getSessionListeningMinutes,
+  getSessionPagesRead,
+} from '../features/reading/sessionAnalytics';
 
 interface ReadingTimelineScreenProps {
   books: UserBookRecord[];
@@ -68,7 +72,17 @@ const eventIcon = {
 
 const normalizeDate = (value?: string) => {
   if (!value) return null;
-  const parsed = new Date(value);
+  const trimmed = value.trim();
+  const dateOnly = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const [, yearText, monthText, dayText] = dateOnly;
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+    return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day ? parsed : null;
+  }
+  const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
@@ -118,7 +132,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
         });
       }
 
-      const finished = normalizeDate(book.dateFinished);
+      const finished = book.status === 'finished' ? normalizeDate(book.dateFinished) : null;
       if (finished) {
         nextEvents.push({
           id: `finished-${book.id}`,
@@ -162,20 +176,24 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
     });
 
     sessions.forEach((session) => {
-      const date = normalizeDate(session.date) ?? normalizeDate(session.endTime) ?? normalizeDate(session.startTime);
+      const durationMinutes = getSessionDurationMinutes(session);
+      if (durationMinutes <= 0) return;
+      const date = normalizeDate(session.date);
       if (!date) return;
       const book = books.find((item) => item.id === session.bookId);
-      const progress = session.pagesRead
-        ? `${session.pagesRead} pages`
-        : session.minutesListened
-          ? `${session.minutesListened} listening minutes`
-          : `${session.durationMinutes} minutes`;
+      const pagesRead = getSessionPagesRead(session);
+      const minutesListened = getSessionListeningMinutes(session);
+      const progress = pagesRead > 0
+        ? `${pagesRead} pages`
+        : minutesListened > 0
+          ? `${Math.round(minutesListened)} listening minutes`
+          : `${durationMinutes} minutes`;
       nextEvents.push({
         id: `session-${session.id}`,
         date: date.toISOString(),
         type: 'sessions',
         title: book ? `Read ${book.work.title}` : 'Reading session',
-        description: session.notes?.trim() || `${session.durationMinutes} minutes of reading time.`,
+        description: session.notes?.trim() || `${durationMinutes} minutes of reading time.`,
         bookId: book?.id,
         meta: progress,
       });
