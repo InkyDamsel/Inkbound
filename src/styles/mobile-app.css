@@ -23,6 +23,11 @@
     min-height: 44px;
   }
 
+  .inkbound-app-shell input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
+  .inkbound-app-shell select {
+    min-height: 44px;
+  }
+
   .inkbound-app-shell [class*='overflow-x-auto'] {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
