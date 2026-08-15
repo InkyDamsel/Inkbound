@@ -162,7 +162,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
               <select
                 value={timeframe}
                 onChange={(event) => setTimeframe(event.target.value)}
-                className="min-h-10 rounded-lg border border-[#3d2448] bg-[#120817] px-3 text-[#f4efe6]"
+                className="min-h-11 rounded-lg border border-[#3d2448] bg-[#120817] px-3 text-[#f4efe6]"
               >
                 <option value="week">This Week</option>
                 <option value="month">This Month</option>
@@ -172,7 +172,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
               <select
                 value={formatFilter}
                 onChange={(event) => setFormatFilter(event.target.value)}
-                className="min-h-10 rounded-lg border border-[#3d2448] bg-[#120817] px-3 text-[#f4efe6]"
+                className="min-h-11 rounded-lg border border-[#3d2448] bg-[#120817] px-3 text-[#f4efe6]"
               >
                 <option value="all">All Formats</option>
                 <option value="hardcover">Hardcover</option>
