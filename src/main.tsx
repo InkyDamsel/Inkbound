@@ -20,6 +20,7 @@ import './styles/theme-modes.css';
 import './styles/core-pages.css';
 import './styles/release-polish.css';
 import './styles/light-theme-2.css';
+import './styles/mobile-app.css';
 
 const rootElement = document.getElementById('root');
 
