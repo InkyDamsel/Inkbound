@@ -156,7 +156,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
         {error && <p className="mt-4 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>}
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-          {session && onDelete ? <button type="button" onClick={() => { if (window.confirm('Delete this reading session?')) { onDelete(session.id); onClose(); } }} className="quiet-shelf-secondary-action w-full justify-center text-rose-300 sm:w-auto"><Trash2 className="h-4 w-4" /> Delete</button> : <span />}
+          {session && onDelete ? <button type="button" onClick={() => { onDelete(session.id); onClose(); }} className="quiet-shelf-secondary-action w-full justify-center text-rose-300 sm:w-auto"><Trash2 className="h-4 w-4" /> Delete</button> : <span />}
           <button type="button" onClick={save} className="quiet-shelf-primary-action w-full justify-center sm:w-auto"><Save className="h-4 w-4" /> {session ? 'Save Changes' : 'Add Session'}</button>
         </div>
       </section>
