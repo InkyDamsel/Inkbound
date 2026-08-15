@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { BookHeart, CalendarDays, Clock3, MapPin, MessageSquareQuote, Save, Sparkles } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 
 interface ReadingMemoryEntry {
   feeling: string;
@@ -54,22 +56,24 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
   const selectedBook = books.find((book) => book.id === selectedBookId) ?? eligibleBooks[0] ?? books[0];
   const memory = selectedBook ? memories[selectedBook.id] ?? emptyMemory() : emptyMemory();
   const bookSessions = selectedBook
-    ? sessions.filter((session) => session.bookId === selectedBook.id)
+    ? sessions.filter((session) => session.bookId === selectedBook.id && getSessionDurationMinutes(session) > 0)
     : [];
 
   const stats = useMemo(() => {
-    const totalMinutes = bookSessions.reduce((sum, session) => sum + session.durationMinutes, 0);
-    const pagesRead = bookSessions.reduce((sum, session) => sum + (session.pagesRead ?? 0), 0);
+    const totalMinutes = bookSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
+    const pagesRead = bookSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
     const averageMinutes = bookSessions.length > 0 ? Math.round(totalMinutes / bookSessions.length) : 0;
     const topLocation = Object.entries(
       bookSessions.reduce<Record<string, number>>((counts, session) => {
-        if (session.location) counts[session.location] = (counts[session.location] ?? 0) + 1;
+        const location = session.location?.trim();
+        if (location) counts[location] = (counts[location] ?? 0) + 1;
         return counts;
       }, {}),
     ).sort((a, b) => b[1] - a[1])[0]?.[0];
     const topMood = Object.entries(
       bookSessions.reduce<Record<string, number>>((counts, session) => {
-        if (session.mood) counts[session.mood] = (counts[session.mood] ?? 0) + 1;
+        const mood = session.mood?.trim();
+        if (mood) counts[mood] = (counts[mood] ?? 0) + 1;
         return counts;
       }, {}),
     ).sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -98,6 +102,8 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
     );
   }
 
+  const activeEdition = getActiveEdition(selectedBook);
+
   return (
     <div className="space-y-7 pb-24">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -120,7 +126,7 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
       </header>
 
       <section className="inkbound-panel overflow-hidden rounded-3xl">
-        <div className={`bg-gradient-to-br ${selectedBook.editions[0]?.coverGradient ?? 'from-[#76586a] to-[#382b40]'} p-6 sm:p-8`}>
+        <div className={`bg-gradient-to-br ${activeEdition?.coverGradient ?? 'from-[#76586a] to-[#382b40]'} p-6 sm:p-8`}>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/70">
             {selectedBook.status === 'finished' ? 'Finished Memory' : 'Reading in Progress'}
           </p>
@@ -146,8 +152,8 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
           </div>
           <div className="rounded-2xl bg-[var(--ink-surface-soft)] p-4">
             <Sparkles className="h-4 w-4 text-[var(--ink-gold)]" />
-            <strong className="mt-3 block text-xl text-[var(--ink-ivory)]">{stats.pagesRead || selectedBook.progressPages}</strong>
-            <span className="text-xs text-[var(--ink-muted)]">Pages recorded</span>
+            <strong className="mt-3 block text-xl text-[var(--ink-ivory)]">{stats.pagesRead}</strong>
+            <span className="text-xs text-[var(--ink-muted)]">Pages recorded in sessions</span>
           </div>
           <div className="rounded-2xl bg-[var(--ink-surface-soft)] p-4">
             <MapPin className="h-4 w-4 text-[var(--ink-gold)]" />
