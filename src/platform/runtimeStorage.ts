@@ -2,6 +2,7 @@ export interface RuntimeStorageAdapter {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
+  getAllKeys(): string[];
 }
 
 const browserStorageAdapter: RuntimeStorageAdapter = {
@@ -16,6 +17,10 @@ const browserStorageAdapter: RuntimeStorageAdapter = {
   removeItem: (key) => {
     if (typeof window === 'undefined') return;
     window.localStorage.removeItem(key);
+  },
+  getAllKeys: () => {
+    if (typeof window === 'undefined') return [];
+    return Object.keys(window.localStorage);
   },
 };
 
@@ -54,6 +59,23 @@ export function writeRuntimeJson(key: string, value: unknown): boolean {
   }
 }
 
+export function writeRuntimeValue(key: string, value: string): boolean {
+  try {
+    activeStorageAdapter.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function readRuntimeValue(key: string): string | null {
+  try {
+    return activeStorageAdapter.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export function removeRuntimeValue(key: string): boolean {
   try {
     activeStorageAdapter.removeItem(key);
@@ -61,4 +83,19 @@ export function removeRuntimeValue(key: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function removeRuntimeValuesByPrefix(prefix: string): number {
+  let removed = 0;
+  try {
+    activeStorageAdapter.getAllKeys()
+      .filter((key) => key.startsWith(prefix))
+      .forEach((key) => {
+        activeStorageAdapter.removeItem(key);
+        removed += 1;
+      });
+  } catch {
+    return removed;
+  }
+  return removed;
 }
