@@ -21,6 +21,17 @@ const addLocalDays = (value: Date, days: number) => {
   return next;
 };
 
+const positiveFiniteTotal = (value?: number) =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+
+const remainingPagesForBook = (book?: UserBookRecord) => {
+  if (!book) return undefined;
+  const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+  const totalPages = positiveFiniteTotal(edition?.pageCount);
+  if (totalPages === undefined) return undefined;
+  return Math.max(0, totalPages - Math.max(0, book.progressPages));
+};
+
 export const localDateKey = (value = new Date()) => {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, '0');
@@ -79,10 +90,7 @@ export const getCurrentPace = (
 ): ReadingPaceSummary => {
   const pages = Math.max(0, session.pagesRead ?? 0);
   const minutes = Math.max(0, session.durationMinutes);
-  const edition = book?.editions.find((item) => item.id === book.activeEditionId) ?? book?.editions[0];
-  const remainingPages = edition?.pageCount
-    ? Math.max(0, edition.pageCount - Math.max(0, book?.progressPages ?? 0))
-    : undefined;
+  const remainingPages = remainingPagesForBook(book);
 
   if (pages <= 0 || minutes < 2) {
     return { remainingPages, sampleMinutes: minutes, sampleSessions: pages > 0 ? 1 : 0 };
@@ -116,10 +124,7 @@ export const getSevenDayAveragePace = (
   });
   const totalPages = eligible.reduce((sum, session) => sum + Math.max(0, session.pagesRead ?? 0), 0);
   const totalMinutes = eligible.reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
-  const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-  const remainingPages = edition?.pageCount
-    ? Math.max(0, edition.pageCount - Math.max(0, book.progressPages))
-    : undefined;
+  const remainingPages = remainingPagesForBook(book);
 
   if (eligible.length < 2 || totalMinutes < 20 || totalPages <= 0) {
     return { remainingPages, sampleMinutes: totalMinutes, sampleSessions: eligible.length };
