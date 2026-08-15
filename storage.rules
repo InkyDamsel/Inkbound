@@ -11,16 +11,18 @@ service firebase.storage {
 
     match /users/{userId}/profile/{fileName} {
       allow read: if isOwner(userId);
-      allow write: if isOwner(userId)
+      allow create, update: if isOwner(userId)
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
+      allow delete: if isOwner(userId);
     }
 
     match /users/{userId}/photo-memories/{fileName} {
       allow read: if isOwner(userId);
-      allow write: if isOwner(userId)
+      allow create, update: if isOwner(userId)
         && request.resource.size < 3 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
+      allow delete: if isOwner(userId);
     }
 
     match /{allPaths=**} {
