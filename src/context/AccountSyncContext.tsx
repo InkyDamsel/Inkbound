@@ -12,6 +12,12 @@ import {
 } from 'firebase/auth';
 import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
 import { deleteObject, getBytes, ref as storageRef, uploadString } from 'firebase/storage';
+import {
+  clearPhotoMemoriesFromDevice,
+  PhotoMemoryRecord,
+  readPhotoMemoriesFromDevice,
+  replacePhotoMemoriesOnDevice,
+} from '../features/memories/photoMemoryStore';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import { auth, db, isFirebaseConfigured, storage } from '../lib/firebase';
 import {
@@ -19,10 +25,8 @@ import {
   signInRuntimeWithGoogle,
 } from '../platform/runtimeAuthentication';
 import {
-  readRuntimeJson,
   readRuntimeValue,
   removeRuntimeValue,
-  writeRuntimeJson,
   writeRuntimeValue,
 } from '../platform/runtimeStorage';
 
@@ -46,16 +50,6 @@ interface AccountSyncContextValue {
   restoreSnapshot: () => Promise<void>;
 }
 
-interface StoredPhotoMemory {
-  id: string;
-  imageData: string;
-  caption: string;
-  date: string;
-  location: string;
-  bookId?: string;
-  createdAt: string;
-}
-
 interface CloudPhotoMemory {
   caption?: string;
   date?: string;
@@ -70,13 +64,13 @@ interface CloudPhotoMemory {
 
 const AccountSyncContext = createContext<AccountSyncContextValue | undefined>(undefined);
 const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
-const PHOTO_MEMORIES_STORAGE_KEY = 'inkbound_photo_memories';
 const MAX_PHOTO_MEMORY_BYTES = 3 * 1024 * 1024;
 const SIGNED_IN_DATA_KEYS = [
   'inkbound_books',
   'inkbound_sessions',
   'inkbound_reader_profile',
   'inkbound_photo_memories',
+  'inkbound_photo_memories_v2',
   'inkbound_import_enrichment_queue_v1',
   'bookhaven_books',
   'bookhaven_sessions',
@@ -89,10 +83,6 @@ function clearSignedInDataFromDevice(uid: string) {
   removeRuntimeValue(LAST_SYNC_STORAGE_KEY);
   removeRuntimeValue(`inkbound_pending_sync_${uid}_v1`);
   removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`);
-}
-
-function readPhotoMemories(): StoredPhotoMemory[] {
-  return readRuntimeJson<StoredPhotoMemory[]>(PHOTO_MEMORIES_STORAGE_KEY, []);
 }
 
 function photoStoragePath(uid: string, photoId: string) {
@@ -268,7 +258,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setStatus('working');
       setMessage('Backing up photo memories...');
       const syncedAt = new Date().toISOString();
-      const localPhotos = readPhotoMemories();
+      const localPhotos = await readPhotoMemoriesFromDevice();
       if (localPhotos.length > 0 && !storage) {
         throw new Error('Photo storage is not configured for this Inkbound deployment.');
       }
@@ -334,7 +324,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       const photoSnapshot = await getDocs(collection(db, 'users', user.uid, 'photoMemories'));
       const restoredPhotos = (
         await Promise.all(
-          photoSnapshot.docs.map(async (photoDocument): Promise<StoredPhotoMemory | null> => {
+          photoSnapshot.docs.map(async (photoDocument): Promise<PhotoMemoryRecord | null> => {
             const photo = photoDocument.data() as CloudPhotoMemory;
             let imageData = photo.imageData ?? '';
 
@@ -359,9 +349,9 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
             };
           }),
         )
-      ).filter((photo): photo is StoredPhotoMemory => Boolean(photo));
+      ).filter((photo): photo is PhotoMemoryRecord => Boolean(photo));
 
-      writeRuntimeJson(PHOTO_MEMORIES_STORAGE_KEY, restoredPhotos);
+      await replacePhotoMemoriesOnDevice(restoredPhotos);
 
       const restoredAt = new Date().toISOString();
       writeRuntimeValue(LAST_SYNC_STORAGE_KEY, restoredAt);
@@ -398,6 +388,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
         } catch {
           // Pending mutations remain durable and will retry on a later signed-in session.
         }
+        await clearPhotoMemoriesFromDevice();
         clearSignedInDataFromDevice(signingOutUid);
       }
       await signOut(auth);
