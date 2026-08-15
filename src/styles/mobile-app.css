@@ -28,6 +28,11 @@
     overscroll-behavior-x: contain;
   }
 
+  /* Touch devices do not have a dependable hover state. */
+  .book-cover-select-toggle {
+    opacity: 1 !important;
+  }
+
   /* Hover elevation can remain latched after a tap on touch WebViews. */
   main article:hover,
   .book-card-glow:hover,
