@@ -25,6 +25,7 @@ import {
   getCurrentPace,
   getDailyReadingMinutes,
   getReadingStreak,
+  getSessionPagesRead,
   getSevenDayAveragePace,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
@@ -85,7 +86,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
   }, [bookFilter, booksById, searchQuery, sessions]);
 
   const totalMinutes = sessions.reduce((sum, session) => sum + Math.max(0, session.durationMinutes), 0);
-  const totalPages = sessions.reduce((sum, session) => sum + Math.max(0, session.pagesRead ?? 0), 0);
+  const totalPages = sessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
   const totalListening = sessions.reduce((sum, session) => sum + Math.max(0, session.minutesListened ?? 0), 0);
   const averageMinutes = sessions.length ? Math.round(totalMinutes / sessions.length) : 0;
   const today = localDateKey();
@@ -190,7 +191,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
             const book = booksById.get(session.bookId);
             const edition = book?.editions.find((item) => item.id === book.activeEditionId) ?? book?.editions[0];
             const isAudio = edition?.format === 'audiobook';
-            const safePagesRead = Math.max(0, session.pagesRead ?? 0);
+            const safePagesRead = getSessionPagesRead(session);
             const safeMinutesListened = Math.max(0, session.minutesListened ?? 0);
             const currentPace = book && !isAudio ? getCurrentPace(session, book) : null;
             const sevenDayPace = book && !isAudio ? getSevenDayAveragePace(sessions, book, session.date) : null;
