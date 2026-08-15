@@ -17,6 +17,13 @@ import {
 import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
+import {
+  readRuntimeJson,
+  readRuntimeValue,
+  removeRuntimeValue,
+  writeRuntimeJson,
+  writeRuntimeValue,
+} from '../platform/runtimeStorage';
 
 type SyncStatus = 'idle' | 'working' | 'success' | 'error';
 
@@ -62,21 +69,16 @@ const SIGNED_IN_DATA_KEYS = [
 ] as const;
 
 function clearSignedInDataFromDevice(uid: string) {
-  localStorage.setItem(`inkbound_local_clear_intent_${uid}`, '1');
-  SIGNED_IN_DATA_KEYS.forEach((key) => localStorage.removeItem(key));
-  localStorage.removeItem('inkbound_local_data_owner_uid');
-  localStorage.removeItem(LAST_SYNC_STORAGE_KEY);
-  localStorage.removeItem(`inkbound_pending_sync_${uid}_v1`);
-  localStorage.removeItem(`inkbound_sync_baseline_${uid}_v1`);
+  writeRuntimeValue(`inkbound_local_clear_intent_${uid}`, '1');
+  SIGNED_IN_DATA_KEYS.forEach((key) => removeRuntimeValue(key));
+  removeRuntimeValue('inkbound_local_data_owner_uid');
+  removeRuntimeValue(LAST_SYNC_STORAGE_KEY);
+  removeRuntimeValue(`inkbound_pending_sync_${uid}_v1`);
+  removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`);
 }
 
 function readPhotoMemories(): StoredPhotoMemory[] {
-  try {
-    const stored = localStorage.getItem(PHOTO_MEMORIES_STORAGE_KEY);
-    return stored ? (JSON.parse(stored) as StoredPhotoMemory[]) : [];
-  } catch {
-    return [];
-  }
+  return readRuntimeJson<StoredPhotoMemory[]>(PHOTO_MEMORIES_STORAGE_KEY, []);
 }
 
 function friendlyAuthMessage(error: unknown, fallback: string): string {
@@ -101,7 +103,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
   const [isAuthReady, setIsAuthReady] = useState(() => !auth || Boolean(auth.currentUser));
   const [status, setStatus] = useState<SyncStatus>('idle');
   const [message, setMessage] = useState('');
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => localStorage.getItem(LAST_SYNC_STORAGE_KEY));
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => readRuntimeValue(LAST_SYNC_STORAGE_KEY));
 
   useEffect(() => {
     if (!auth) return undefined;
@@ -121,7 +123,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
 
     void setPersistence(auth, browserLocalPersistence).catch((error) => {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : 'Inkbound could not enable persistent sign-in on this browser.');
+      setMessage(error instanceof Error ? error.message : 'Inkbound could not enable persistent sign-in on this device.');
     });
 
     return unsubscribe;
@@ -245,7 +247,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       await Promise.all(cloudPhotos.docs.filter((photoDocument) => !localIds.has(photoDocument.id)).map((photoDocument) => deleteDoc(photoDocument.ref)));
       await Promise.all(localPhotos.map((photo) => setDoc(doc(photoCollection, photo.id), { ...photo, updatedAt: serverTimestamp() }, { merge: true })));
 
-      localStorage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
+      writeRuntimeValue(LAST_SYNC_STORAGE_KEY, syncedAt);
       setLastSyncedAt(syncedAt);
       setStatus('success');
       setMessage('Photo memories backed up. Books and reading sessions sync automatically record by record.');
@@ -277,10 +279,10 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
           createdAt: photo.createdAt,
         } satisfies StoredPhotoMemory;
       });
-      localStorage.setItem(PHOTO_MEMORIES_STORAGE_KEY, JSON.stringify(restoredPhotos));
+      writeRuntimeJson(PHOTO_MEMORIES_STORAGE_KEY, restoredPhotos);
 
       const restoredAt = new Date().toISOString();
-      localStorage.setItem(LAST_SYNC_STORAGE_KEY, restoredAt);
+      writeRuntimeValue(LAST_SYNC_STORAGE_KEY, restoredAt);
       setLastSyncedAt(restoredAt);
       setStatus('success');
       setMessage('Photo memories restored. Books and reading sessions already sync automatically.');
