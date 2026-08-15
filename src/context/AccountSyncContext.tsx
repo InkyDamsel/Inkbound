@@ -1,22 +1,22 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   EmailAuthProvider,
-  GoogleAuthProvider,
   User,
-  browserLocalPersistence,
   createUserWithEmailAndPassword,
   linkWithCredential,
   onAuthStateChanged,
   sendEmailVerification,
   sendPasswordResetEmail,
-  setPersistence,
   signInWithEmailAndPassword,
-  signInWithPopup,
   signOut,
 } from 'firebase/auth';
 import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
+import {
+  prepareRuntimeAuthPersistence,
+  signInRuntimeWithGoogle,
+} from '../platform/runtimeAuthentication';
 import {
   readRuntimeJson,
   readRuntimeValue,
@@ -121,7 +121,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       },
     );
 
-    void setPersistence(auth, browserLocalPersistence).catch((error) => {
+    void prepareRuntimeAuthPersistence(auth).catch((error) => {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : 'Inkbound could not enable persistent sign-in on this device.');
     });
@@ -138,10 +138,8 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     try {
       setStatus('working');
       setMessage('Opening Google sign-in...');
-      await setPersistence(auth, browserLocalPersistence);
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
+      await prepareRuntimeAuthPersistence(auth);
+      await signInRuntimeWithGoogle(auth);
       setStatus('success');
       setMessage('Google account connected. Inkbound will remember this account on this device until you sign out.');
     } catch (error) {
@@ -155,7 +153,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     try {
       setStatus('working');
       setMessage('Signing in...');
-      await setPersistence(auth, browserLocalPersistence);
+      await prepareRuntimeAuthPersistence(auth);
       await signInWithEmailAndPassword(auth, email.trim(), password);
       setStatus('success');
       setMessage('Signed in. Your Inkbound account and library are restoring on this device.');
@@ -170,7 +168,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     try {
       setStatus('working');
       setMessage('Creating your Inkbound account...');
-      await setPersistence(auth, browserLocalPersistence);
+      await prepareRuntimeAuthPersistence(auth);
       const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       await sendEmailVerification(credential.user);
       setStatus('success');
