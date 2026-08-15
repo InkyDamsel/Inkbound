@@ -6,6 +6,7 @@ import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
+import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
@@ -64,6 +65,7 @@ createRoot(rootElement).render(
               <SecurityBootstrap />
               <CloudPersistenceBridge />
               <ReadOnlyCloudHydrationBridge />
+              <PhotoMemoryAutoSyncBridge />
               <ThemePersistenceBridge />
               <CloudDataRefreshBoundary>
                 <App />
