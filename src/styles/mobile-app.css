@@ -1,0 +1,80 @@
+/* Mobile-app runtime polish shared by phone and tablet builds. */
+
+@media (pointer: coarse) {
+  .inkbound-app-shell button,
+  .inkbound-app-shell [role='button'],
+  .inkbound-app-shell a[href] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .inkbound-app-shell button,
+  .inkbound-app-shell [role='button'] {
+    min-height: 44px;
+  }
+
+  .inkbound-app-shell [class*='overflow-x-auto'] {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Hover elevation can remain latched after a tap on touch WebViews. */
+  main article:hover,
+  .book-card-glow:hover,
+  .quiet-shelf-primary-action:hover,
+  .quiet-shelf-secondary-action:hover,
+  .quiet-shelf-icon-button:hover {
+    transform: none;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .inkbound-page-canvas {
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-left: max(20px, env(safe-area-inset-left));
+  }
+
+  /* Tablet portrait needs more content width than the desktop sidebar ratio. */
+  :root {
+    --ink-sidebar-width: 196px;
+  }
+
+  .quiet-shelf-sidebar-link {
+    gap: 10px;
+    padding-inline: 10px;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 767px) {
+  body {
+    min-width: 0;
+  }
+
+  .inkbound-app-shell {
+    overflow-x: clip;
+  }
+
+  /* Avoid iOS rubber-band scrolling inside full-screen sheets. */
+  [role='dialog'] {
+    overscroll-behavior: contain;
+  }
+
+  [role='dialog'] textarea {
+    max-height: 45dvh;
+  }
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+  .quiet-shelf-mobile-nav button {
+    min-height: 46px;
+    padding-block: 5px;
+  }
+
+  .quiet-shelf-mobile-nav button span {
+    display: none;
+  }
+
+  .inkbound-main-content {
+    padding-bottom: calc(70px + env(safe-area-inset-bottom));
+  }
+}
