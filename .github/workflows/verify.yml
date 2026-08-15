@@ -43,6 +43,7 @@ jobs:
           test -f dist/privacy.html
           test -f dist/terms.html
           test -f dist/delete-account.html
+          test -f dist/support.html
 
   verify-functions:
     name: Cloud Functions
