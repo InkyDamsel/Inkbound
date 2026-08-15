@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { BookOpen, Clock3, Compass, Headphones, Moon, Sparkles } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 
 type PersonalityView = 'overview' | 'traits' | 'evidence';
 
@@ -31,34 +33,46 @@ const countBy = (values: string[]) =>
 const topEntry = (counts: Record<string, number>) =>
   Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
 
+const validSessionHour = (session: ReadingSession) => {
+  const hour = Number(session.startTime?.split(':')[0]);
+  return Number.isFinite(hour) && hour >= 0 && hour <= 23 ? hour : null;
+};
+
 export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = ({ books, sessions }) => {
   const [view, setView] = usePersistentState<PersonalityView>(VIEW_KEY, 'overview');
   const [hiddenTraits, setHiddenTraits] = usePersistentState<string[]>(HIDDEN_KEY, []);
 
   const traits = useMemo<TraitResult[]>(() => {
-    const finished = books.filter((book) => book.status === 'finished');
-    const genres = books.flatMap((book) => book.work.genres);
+    const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
+    const readingLifecycleBooks = books.filter((book) => ['currently-reading', 'finished', 'paused', 'dnf'].includes(book.status));
+    const finished = readingLifecycleBooks.filter((book) => book.status === 'finished');
+    const tasteBooks = readingLifecycleBooks.length > 0 ? readingLifecycleBooks : books;
+    const genres = tasteBooks.flatMap((book) => book.work.genres).filter(Boolean);
     const genreLeader = topEntry(countBy(genres));
-    const locations = sessions.map((session) => session.location).filter((value): value is string => Boolean(value));
+    const locations = completedSessions
+      .map((session) => session.location?.trim())
+      .filter((value): value is string => Boolean(value));
     const locationLeader = topEntry(countBy(locations));
-    const sessionHours = sessions.map((session) => Number(session.startTime?.split(':')[0] ?? 12));
+    const sessionHours = completedSessions.map(validSessionHour).filter((hour): hour is number => hour !== null);
     const eveningSessions = sessionHours.filter((hour) => hour >= 18 || hour < 5).length;
-    const audioBooks = books.filter((book) => {
-      const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-      return edition?.format === 'audiobook';
-    }).length;
-    const averageMinutes = sessions.length
-      ? Math.round(sessions.reduce((sum, session) => sum + session.durationMinutes, 0) / sessions.length)
+    const audioBooks = tasteBooks.filter((book) => getActiveEdition(book)?.format === 'audiobook').length;
+    const totalSessionMinutes = completedSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
+    const averageMinutes = completedSessions.length
+      ? Math.round(totalSessionMinutes / completedSessions.length)
       : 0;
-    const completionRate = books.length ? Math.round((finished.length / books.length) * 100) : 0;
+    const completionRate = readingLifecycleBooks.length
+      ? Math.round((finished.length / readingLifecycleBooks.length) * 100)
+      : 0;
 
     return [
       {
         id: 'night-reader',
         name: 'Night Reader',
         description: 'Your reading life comes alive after the day quiets down.',
-        score: sessions.length ? Math.round((eveningSessions / sessions.length) * 100) : 0,
-        evidence: `${eveningSessions} of ${sessions.length} sessions began in the evening or overnight.`,
+        score: sessionHours.length ? Math.round((eveningSessions / sessionHours.length) * 100) : 0,
+        evidence: sessionHours.length
+          ? `${eveningSessions} of ${sessionHours.length} timed reading sessions began in the evening or overnight.`
+          : 'No completed sessions with a valid start time have been recorded yet.',
         icon: Moon,
       },
       {
@@ -66,7 +80,9 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
         name: `${genreLeader?.[0] ?? 'Story'} Explorer`,
         description: 'You repeatedly return to the worlds and themes that feel most like home.',
         score: genres.length && genreLeader ? Math.round((genreLeader[1] / genres.length) * 100) : 0,
-        evidence: `${genreLeader?.[0] ?? 'Your leading genre'} appears across ${genreLeader?.[1] ?? 0} library records.`,
+        evidence: genreLeader
+          ? `${genreLeader[0]} appears across ${genreLeader[1]} genre tags on books in your reading life.`
+          : 'Not enough genre data yet.',
         icon: Compass,
       },
       {
@@ -75,8 +91,10 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
         description: averageMinutes >= 35
           ? 'You settle into stories for long, absorbing stretches.'
           : 'You keep books close through short, steady reading moments.',
-        score: Math.min(100, Math.round((averageMinutes / 60) * 100)),
-        evidence: `Your average reading session lasts ${averageMinutes} minutes.`,
+        score: completedSessions.length ? Math.min(100, Math.round((averageMinutes / 60) * 100)) : 0,
+        evidence: completedSessions.length
+          ? `Your average completed reading session lasts ${averageMinutes} minutes.`
+          : 'Complete a reading session to reveal your session style.',
         icon: Clock3,
       },
       {
@@ -86,15 +104,17 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
           ? 'You like seeing the journeys you begin through to the final page.'
           : 'You give yourself permission to explore widely and move on when needed.',
         score: completionRate,
-        evidence: `${finished.length} of ${books.length} tracked books are finished.`,
+        evidence: readingLifecycleBooks.length
+          ? `${finished.length} of ${readingLifecycleBooks.length} books you started or actively tracked are finished.`
+          : 'Start reading a book to reveal your completion pattern.',
         icon: BookOpen,
       },
       {
         id: 'audio-companion',
         name: 'Audiobook Companion',
         description: 'Stories travel with you beyond the page.',
-        score: books.length ? Math.round((audioBooks / books.length) * 100) : 0,
-        evidence: `${audioBooks} books in your library use the audiobook format.`,
+        score: tasteBooks.length ? Math.round((audioBooks / tasteBooks.length) * 100) : 0,
+        evidence: `${audioBooks} ${audioBooks === 1 ? 'book uses' : 'books use'} an audiobook active edition among the books shaping this profile.`,
         icon: Headphones,
       },
       {
@@ -102,7 +122,9 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
         name: `${locationLeader?.[0] ?? 'Cozy'} Reader`,
         description: 'Your favorite reading environment is part of the ritual.',
         score: locations.length && locationLeader ? Math.round((locationLeader[1] / locations.length) * 100) : 0,
-        evidence: `${locationLeader?.[0] ?? 'No location yet'} is your most-recorded reading place.`,
+        evidence: locationLeader
+          ? `${locationLeader[0]} is your most-recorded reading place across completed sessions.`
+          : 'No completed session locations have been recorded yet.',
         icon: Sparkles,
       },
     ];
