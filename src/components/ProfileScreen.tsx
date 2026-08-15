@@ -17,6 +17,7 @@ import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics'
 import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import { readProfileMedia } from '../features/profile/profileMedia';
 import {
+  profileMediaKeyFor,
   storeAndQueueProfileMedia,
   synchronizeProfileMedia,
 } from '../features/profile/profileMediaCloudSync';
@@ -44,11 +45,11 @@ interface StoredProfile {
   bio: string;
   avatarImage?: string;
   bannerImage?: string;
-  avatarMediaKey?: string;
-  bannerMediaKey?: string;
   // Legacy fields remain readable until the automatic media migration succeeds.
   avatarImageData?: string;
   bannerImageData?: string;
+  avatarMediaKey?: string;
+  bannerMediaKey?: string;
 }
 
 const EMPTY_PROFILE: StoredProfile = {
@@ -71,6 +72,11 @@ const saveStoredProfile = (profile: StoredProfile): boolean => {
     avatarImage: isTemporaryImageUrl(profile.avatarImage) ? undefined : profile.avatarImage,
     bannerImage: isTemporaryImageUrl(profile.bannerImage) ? undefined : profile.bannerImage,
   };
+
+  // Device-local media keys must never become cloud profile metadata. Older
+  // builds may have written them, so strip them whenever the profile is saved.
+  delete storedProfile.avatarMediaKey;
+  delete storedProfile.bannerMediaKey;
 
   if (!writeRuntimeJson(PROFILE_STORAGE_KEY, storedProfile)) {
     console.error('Inkbound could not store the reader profile on this device.');
@@ -185,7 +191,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   };
 
   const loadMediaPreview = useCallback(async (
-    mediaKey: string | undefined,
+    mediaKey: string,
     fallback: string | undefined,
     previewRef: React.MutableRefObject<string | null>,
     setImage: React.Dispatch<React.SetStateAction<string | undefined>>,
@@ -217,13 +223,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
 
     await Promise.all([
       loadMediaPreview(
-        restoredProfile.avatarMediaKey,
+        profileMediaKeyFor(sync.user.uid, 'avatar'),
         restoredProfile.avatarImageData || restoredProfile.avatarImage || sync.user.photoURL || undefined,
         avatarPreviewUrlRef,
         setAvatarImage,
       ),
       loadMediaPreview(
-        restoredProfile.bannerMediaKey,
+        profileMediaKeyFor(sync.user.uid, 'banner'),
         restoredProfile.bannerImageData || restoredProfile.bannerImage,
         bannerPreviewUrlRef,
         setBannerImage,
@@ -244,8 +250,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
       ...restoredProfile,
       displayName: storedDisplayName || authDisplayName,
       email: restoredProfile.email || authEmail,
-      avatarImage: restoredProfile.avatarImage
-        || (!restoredProfile.avatarMediaKey && !restoredProfile.avatarImageData ? authPhoto : undefined),
+      avatarImage: restoredProfile.avatarImage || (!restoredProfile.avatarImageData ? authPhoto : undefined),
     };
 
     if (JSON.stringify(identityProfile) !== JSON.stringify(restoredProfile)) {
@@ -308,13 +313,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
 
   const persistPreparedImage = async (kind: 'avatar' | 'banner', blob: Blob) => {
     if (!sync.user) throw new Error('Sign in before changing profile images.');
-    const mediaKey = await storeAndQueueProfileMedia(sync.user.uid, kind, blob);
+    await storeAndQueueProfileMedia(sync.user.uid, kind, blob);
     const profile = profileFromState();
     const nextProfile: StoredProfile = {
       ...profile,
       ...(kind === 'avatar'
-        ? { avatarMediaKey: mediaKey, avatarImageData: undefined }
-        : { bannerMediaKey: mediaKey, bannerImageData: undefined }),
+        ? { avatarImageData: undefined, avatarMediaKey: undefined }
+        : { bannerImageData: undefined, bannerMediaKey: undefined }),
     };
 
     if (!saveStoredProfile(nextProfile)) {
