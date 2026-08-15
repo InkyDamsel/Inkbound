@@ -10,10 +10,11 @@ import {
   getSessionDurationMinutes,
   getSevenDayAveragePace,
 } from '../features/reading/sessionAnalytics';
-import { readRuntimeJson, removeRuntimeValue } from '../platform/runtimeStorage';
+import { removeRuntimeValue } from '../platform/runtimeStorage';
 
 interface ReadingSessionModalProps {
   books: UserBookRecord[];
+  sessions: ReadingSession[];
   initialBookId?: string;
   onClose: () => void;
   onSaveSession: (
@@ -44,8 +45,6 @@ interface SessionDraft {
 }
 
 const SESSION_DRAFT_KEY = 'inkbound_active_session_draft';
-const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
-const LEGACY_SESSIONS_STORAGE_KEY = 'bookhaven_sessions';
 const MAX_BACKGROUND_RECOVERY_SECONDS = 8 * 60 * 60;
 
 const localDateKey = (timestamp: number) => {
@@ -57,13 +56,6 @@ const localDateKey = (timestamp: number) => {
 };
 
 const localTime = (timestamp: number) => new Date(timestamp).toTimeString().substring(0, 5);
-
-function readStoredSessions(): ReadingSession[] {
-  const current = readRuntimeJson<unknown>(SESSIONS_STORAGE_KEY, null);
-  if (Array.isArray(current)) return current as ReadingSession[];
-  const legacy = readRuntimeJson<unknown>(LEGACY_SESSIONS_STORAGE_KEY, []);
-  return Array.isArray(legacy) ? legacy as ReadingSession[] : [];
-}
 
 function addElapsedToDateBuckets(existing: Record<string, number> | undefined, startTimestamp: number, endTimestamp: number) {
   const next = { ...(existing ?? {}) };
@@ -103,7 +95,7 @@ function allocateSplitMinutes(totalSeconds: number, firstSeconds: number) {
   return { firstMinutes, secondMinutes: totalMinutes - firstMinutes };
 }
 
-export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books, initialBookId, onClose, onSaveSession }) => {
+export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books, sessions, initialBookId, onClose, onSaveSession }) => {
   const readingBooks = books.filter((book) => book.status === 'currently-reading' || book.status === 'tbr');
   const selectableBooks = readingBooks.length > 0 ? readingBooks : books;
   const initialBook = books.find((book) => book.id === initialBookId) ?? selectableBooks[0] ?? books[0];
@@ -265,14 +257,13 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const pagesCompleted = Math.max(0, draft.endPage - draft.startPage);
   const minsCompleted = Math.max(0, draft.endMins - draft.startMins);
   const shouldSplit = crossedMidnight && draft.splitAtMidnight !== false;
-  const storedSessions = readStoredSessions();
 
   const projectedSessions = useMemo(() => {
-    if (!draft.isFinished || !selectedBook) return storedSessions;
+    if (!draft.isFinished || !selectedBook) return sessions;
     if (shouldSplit) {
       const { firstMinutes, secondMinutes } = allocateSplitMinutes(totalTrackedSeconds, firstDaySeconds);
       return [
-        ...storedSessions,
+        ...sessions,
         {
           id: 'preview-before-midnight', bookId: selectedBook.id, date: startDate, startTime: localTime(startedAt), endTime: '23:59', durationMinutes: firstMinutes,
           pagesRead: isAudiobook ? undefined : Math.max(0, midnightProgress - draft.startPage),
@@ -285,15 +276,15 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
         },
       ];
     }
-    return [...storedSessions, {
+    return [...sessions, {
       id: 'preview-session', bookId: selectedBook.id, date: startDate, startTime: localTime(startedAt), endTime: localTime(endedAt), durationMinutes: sessionDurationMins,
       pagesRead: isAudiobook ? undefined : pagesCompleted,
       minutesListened: isAudiobook ? minsCompleted : undefined,
     }];
-  }, [draft.endMins, draft.endPage, draft.isFinished, draft.startMins, draft.startPage, endDate, endedAt, firstDaySeconds, isAudiobook, midnightProgress, minsCompleted, pagesCompleted, selectedBook, sessionDurationMins, shouldSplit, startDate, startedAt, storedSessions, totalTrackedSeconds]);
+  }, [draft.endMins, draft.endPage, draft.isFinished, draft.startMins, draft.startPage, endDate, endedAt, firstDaySeconds, isAudiobook, midnightProgress, minsCompleted, pagesCompleted, selectedBook, sessionDurationMins, sessions, shouldSplit, startDate, startedAt, totalTrackedSeconds]);
 
   const completionDate = shouldSplit ? endDate : startDate;
-  const showDailyMilestones = !storedSessions.some(
+  const showDailyMilestones = !sessions.some(
     (session) => session.date === completionDate && getSessionDurationMinutes(session) > 0,
   );
   const streak = getReadingStreak(projectedSessions, completionDate);
