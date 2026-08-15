@@ -3,6 +3,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
 const HARDCOVER_API_TOKEN = defineSecret('HARDCOVER_API_TOKEN');
 const HARDCOVER_ENDPOINT = 'https://api.hardcover.app/v1/graphql';
+const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 
 interface SearchResult {
   id?: number | string;
@@ -97,123 +98,125 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
   return payload.data;
 }
 
-export const searchHardcoverBooks = onCall({ secrets: [HARDCOVER_API_TOKEN] }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Hardcover enrichment.');
-  const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
-  if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
+export const searchHardcoverBooks = onCall(
+  { secrets: [HARDCOVER_API_TOKEN], enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Hardcover enrichment.');
+    const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+    if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
 
-  const token = HARDCOVER_API_TOKEN.value();
-  if (!token) throw new HttpsError('failed-precondition', 'Hardcover search is not configured.');
+    const token = HARDCOVER_API_TOKEN.value();
+    if (!token) throw new HttpsError('failed-precondition', 'Hardcover search is not configured.');
 
-  try {
-    const searchData = await hardcoverGraphql<{ search?: { results?: unknown } }>(
-      token,
-      `query SearchBooks($q: String!) {
-        search(query: $q, query_type: "Book", per_page: 15, page: 1) { results }
-      }`,
-      { q: query },
-    );
-    const searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
-    const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
+    try {
+      const searchData = await hardcoverGraphql<{ search?: { results?: unknown } }>(
+        token,
+        `query SearchBooks($q: String!) {
+          search(query: $q, query_type: "Book", per_page: 15, page: 1) { results }
+        }`,
+        { q: query },
+      );
+      const searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
+      const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
 
-    let editions: HardcoverEdition[] = [];
-    let books: HardcoverBook[] = [];
-    if (ids.length > 0) {
-      try {
-        const detailData = await hardcoverGraphql<{ editions?: HardcoverEdition[]; books?: HardcoverBook[] }>(
-          token,
-          `query SearchBookDetails($ids: [Int!]!) {
-            books(where: { id: { _in: $ids } }, limit: 80) {
-              id title subtitle description release_year image { url }
-            }
-            editions(where: { book_id: { _in: $ids } }, limit: 80) {
-              id book_id title pages isbn_10 isbn_13 release_date edition_format
-              image { url }
-              publisher { name }
-              book { id title subtitle description release_year image { url } }
-            }
-          }`,
-          { ids },
-        );
-        editions = detailData.editions ?? [];
-        books = detailData.books ?? [];
-      } catch (error) {
-        console.warn('Hardcover detail expansion unavailable.', error);
-        // Search results are still useful if detail expansion is unavailable.
+      let editions: HardcoverEdition[] = [];
+      let books: HardcoverBook[] = [];
+      if (ids.length > 0) {
+        try {
+          const detailData = await hardcoverGraphql<{ editions?: HardcoverEdition[]; books?: HardcoverBook[] }>(
+            token,
+            `query SearchBookDetails($ids: [Int!]!) {
+              books(where: { id: { _in: $ids } }, limit: 80) {
+                id title subtitle description release_year image { url }
+              }
+              editions(where: { book_id: { _in: $ids } }, limit: 80) {
+                id book_id title pages isbn_10 isbn_13 release_date edition_format
+                image { url }
+                publisher { name }
+                book { id title subtitle description release_year image { url } }
+              }
+            }`,
+            { ids },
+          );
+          editions = detailData.editions ?? [];
+          books = detailData.books ?? [];
+        } catch (error) {
+          console.warn('Hardcover detail expansion unavailable.', error);
+        }
       }
+
+      const booksById = new Map<string, HardcoverBook>();
+      books.forEach((book) => {
+        const key = String(book.id ?? '');
+        if (key) booksById.set(key, book);
+      });
+
+      const editionsByBook = new Map<string, HardcoverEdition[]>();
+      editions.forEach((edition) => {
+        const key = String(edition.book_id ?? edition.book?.id ?? '');
+        if (!key) return;
+        editionsByBook.set(key, [...(editionsByBook.get(key) ?? []), edition]);
+      });
+
+      const groups = searchResults.map((result) => {
+        const id = String(result.id ?? result.slug ?? result.title);
+        const authors = authorNames(result);
+        const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
+        const matchedBook = booksById.get(String(result.id ?? ''));
+        const publisherSummary = matchedBook?.description
+          ?? result.description
+          ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
+        const normalizedEditions = matchedEditions.length > 0
+          ? matchedEditions.map((edition) => ({
+              source: 'hardcover' as const,
+              externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
+              title: edition.title ?? edition.book?.title ?? matchedBook?.title ?? result.title ?? 'Untitled',
+              subtitle: edition.book?.subtitle ?? matchedBook?.subtitle ?? result.subtitle,
+              authors,
+              publisherSummary: matchedBook?.description ?? edition.book?.description ?? publisherSummary,
+              genres: [],
+              publisher: edition.publisher?.name,
+              publicationDate: edition.release_date,
+              publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || matchedBook?.release_year || result.release_year || new Date().getFullYear(),
+              format: normalizeFormat(edition.edition_format),
+              isbn10: edition.isbn_10,
+              isbn13: edition.isbn_13,
+              pageCount: edition.pages ?? result.pages,
+              coverUrl: edition.image?.url ?? edition.book?.image?.url ?? matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
+              editionName: edition.title,
+              binding: edition.edition_format,
+              specialFeatures: [],
+            }))
+          : [{
+              source: 'hardcover' as const,
+              externalEditionId: id,
+              title: matchedBook?.title ?? result.title ?? 'Untitled',
+              subtitle: matchedBook?.subtitle ?? result.subtitle,
+              authors,
+              publisherSummary,
+              genres: [],
+              publicationYear: matchedBook?.release_year || result.release_year || new Date().getFullYear(),
+              format: 'hardcover' as const,
+              pageCount: result.pages,
+              coverUrl: matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
+              specialFeatures: [],
+            }];
+
+        return {
+          key: `hardcover:${id}`,
+          title: matchedBook?.title ?? result.title ?? 'Untitled',
+          subtitle: matchedBook?.subtitle ?? result.subtitle,
+          authors,
+          publisherSummary,
+          genres: [],
+          editions: normalizedEditions,
+        };
+      });
+
+      return { groups, totalItems: groups.length };
+    } catch (error) {
+      console.error('Hardcover search failed', error);
+      throw new HttpsError('unavailable', error instanceof Error ? error.message : 'Hardcover search failed.');
     }
-
-    const booksById = new Map<string, HardcoverBook>();
-    books.forEach((book) => {
-      const key = String(book.id ?? '');
-      if (key) booksById.set(key, book);
-    });
-
-    const editionsByBook = new Map<string, HardcoverEdition[]>();
-    editions.forEach((edition) => {
-      const key = String(edition.book_id ?? edition.book?.id ?? '');
-      if (!key) return;
-      editionsByBook.set(key, [...(editionsByBook.get(key) ?? []), edition]);
-    });
-
-    const groups = searchResults.map((result) => {
-      const id = String(result.id ?? result.slug ?? result.title);
-      const authors = authorNames(result);
-      const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
-      const matchedBook = booksById.get(String(result.id ?? ''));
-      const publisherSummary = matchedBook?.description
-        ?? result.description
-        ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
-      const normalizedEditions = matchedEditions.length > 0
-        ? matchedEditions.map((edition) => ({
-            source: 'hardcover' as const,
-            externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
-            title: edition.title ?? edition.book?.title ?? matchedBook?.title ?? result.title ?? 'Untitled',
-            subtitle: edition.book?.subtitle ?? matchedBook?.subtitle ?? result.subtitle,
-            authors,
-            publisherSummary: matchedBook?.description ?? edition.book?.description ?? publisherSummary,
-            genres: [],
-            publisher: edition.publisher?.name,
-            publicationDate: edition.release_date,
-            publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || matchedBook?.release_year || result.release_year || new Date().getFullYear(),
-            format: normalizeFormat(edition.edition_format),
-            isbn10: edition.isbn_10,
-            isbn13: edition.isbn_13,
-            pageCount: edition.pages ?? result.pages,
-            coverUrl: edition.image?.url ?? edition.book?.image?.url ?? matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
-            editionName: edition.title,
-            binding: edition.edition_format,
-            specialFeatures: [],
-          }))
-        : [{
-            source: 'hardcover' as const,
-            externalEditionId: id,
-            title: matchedBook?.title ?? result.title ?? 'Untitled',
-            subtitle: matchedBook?.subtitle ?? result.subtitle,
-            authors,
-            publisherSummary,
-            genres: [],
-            publicationYear: matchedBook?.release_year || result.release_year || new Date().getFullYear(),
-            format: 'hardcover' as const,
-            pageCount: result.pages,
-            coverUrl: matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
-            specialFeatures: [],
-          }];
-
-      return {
-        key: `hardcover:${id}`,
-        title: matchedBook?.title ?? result.title ?? 'Untitled',
-        subtitle: matchedBook?.subtitle ?? result.subtitle,
-        authors,
-        publisherSummary,
-        genres: [],
-        editions: normalizedEditions,
-      };
-    });
-
-    return { groups, totalItems: groups.length };
-  } catch (error) {
-    console.error('Hardcover search failed', error);
-    throw new HttpsError('unavailable', error instanceof Error ? error.message : 'Hardcover search failed.');
-  }
-});
+  },
+);
