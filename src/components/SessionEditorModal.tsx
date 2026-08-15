@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { Save, Trash2, X } from 'lucide-react';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 
 interface SessionEditorModalProps {
   books: UserBookRecord[];
@@ -30,7 +31,7 @@ const minutesBetween = (startTime: string, endTime: string) => {
 
 export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, session, onClose, onSave, onDelete }) => {
   const initialBook = books.find((book) => book.id === session?.bookId) ?? books[0];
-  const initialEdition = initialBook?.editions.find((item) => item.id === initialBook.activeEditionId) ?? initialBook?.editions[0];
+  const initialEdition = initialBook ? getActiveEdition(initialBook) : undefined;
   const initialIsAudiobook = initialEdition?.format === 'audiobook';
   const initialProgress = session
     ? session.startPage ?? Math.floor((session.startTimestampSec ?? 0) / 60)
@@ -53,7 +54,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   const [error, setError] = useState('');
 
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
-  const edition = selectedBook?.editions.find((item) => item.id === selectedBook.activeEditionId) ?? selectedBook?.editions[0];
+  const edition = selectedBook ? getActiveEdition(selectedBook) : undefined;
   const isAudiobook = edition?.format === 'audiobook';
   const durationMinutes = useMemo(() => minutesBetween(startTime, endTime), [startTime, endTime]);
 
@@ -62,7 +63,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
     setError('');
     const nextBook = books.find((book) => book.id === nextBookId);
     if (!nextBook) return;
-    const nextEdition = nextBook.editions.find((item) => item.id === nextBook.activeEditionId) ?? nextBook.editions[0];
+    const nextEdition = getActiveEdition(nextBook);
     const nextIsAudiobook = nextEdition?.format === 'audiobook';
     const currentProgress = nextIsAudiobook ? nextBook.progressMinutes : nextBook.progressPages;
     setStartProgress(currentProgress);
@@ -101,7 +102,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
     }
 
     onSave({
-      id: session?.id ?? `sess-${Date.now()}`,
+      id: session?.id ?? crypto.randomUUID(),
       bookId: selectedBook.id,
       date,
       startTime,
@@ -124,8 +125,8 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   if (!initialBook) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <section className="max-h-[100dvh] w-full max-w-xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-panel)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-2xl sm:max-h-[92dvh] sm:rounded-2xl sm:p-6" role="dialog" aria-modal="true" aria-labelledby="session-editor-title">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <section className="max-h-[100dvh] w-full max-w-xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-panel)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-2xl sm:max-h-[92dvh] sm:rounded-2xl sm:p-6" role="dialog" aria-modal="true" aria-labelledby="session-editor-title" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="inkbound-kicker">Reading journal</p>
