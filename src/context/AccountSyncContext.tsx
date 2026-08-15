@@ -18,6 +18,11 @@ import {
   getProfileMediaSyncQueueKey,
   synchronizeProfileMedia,
 } from '../features/profile/profileMediaCloudSync';
+import {
+  AUXILIARY_ACCOUNT_KEYS,
+  getAuxiliaryBaselineKey,
+  getAuxiliaryPendingKey,
+} from '../features/sync/AuxiliaryAccountSyncBridge';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import { auth, isFirebaseConfigured } from '../lib/firebase';
 import {
@@ -62,6 +67,7 @@ const SIGNED_IN_DATA_KEYS = [
   'inkbound_photo_memory_cloud_revisions_v1',
   PHOTO_MEMORY_SYNC_QUEUE_KEY,
   'inkbound_import_enrichment_queue_v1',
+  ...Object.values(AUXILIARY_ACCOUNT_KEYS),
   'bookhaven_books',
   'bookhaven_sessions',
 ] as const;
@@ -70,6 +76,8 @@ function clearSignedInDataFromDevice(uid: string) {
   writeRuntimeValue(`inkbound_local_clear_intent_${uid}`, '1');
   SIGNED_IN_DATA_KEYS.forEach((key) => removeRuntimeValue(key));
   removeRuntimeValue(getProfileMediaSyncQueueKey(uid));
+  removeRuntimeValue(getAuxiliaryPendingKey(uid));
+  removeRuntimeValue(getAuxiliaryBaselineKey(uid));
   // Clean up the short-lived pre-UID queue key from development builds too.
   removeRuntimeValue('inkbound_profile_media_sync_queue_v1');
   removeRuntimeValue('inkbound_local_data_owner_uid');
@@ -153,7 +161,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       await prepareRuntimeAuthPersistence(auth);
       await signInWithEmailAndPassword(auth, email.trim(), password);
       setStatus('success');
-      setMessage('Signed in. Your Inkbound account and library are restoring on this device.');
+      setMessage('Signed in. Your Inkbound account and reading archive are restoring on this device.');
     } catch (error) {
       setStatus('error');
       setMessage(friendlyAuthMessage(error, 'Email sign-in failed.'));
@@ -169,7 +177,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       await sendEmailVerification(credential.user);
       setStatus('success');
-      setMessage('Account created. Check your inbox to verify your email. Your library will follow this account across devices.');
+      setMessage('Account created. Check your inbox to verify your email. Your reading archive will follow this account across devices.');
     } catch (error) {
       setStatus('error');
       setMessage(friendlyAuthMessage(error, 'Inkbound could not create the account.'));
@@ -268,6 +276,8 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
         setStatus('working');
         setMessage('Saving your latest changes before signing out...');
         try {
+          // Every account-bound sync bridge participates in this flush event,
+          // including books/sessions/profile and auxiliary reader-authored data.
           await flushCloudDataBeforeSignOut(signingOutUid);
           await synchronizePhotoMemories(signingOutUid);
           await synchronizeProfileMedia(signingOutUid);
