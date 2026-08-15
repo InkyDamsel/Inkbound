@@ -5,6 +5,8 @@
  */
 export const AUXILIARY_ACCOUNT_KEYS = {
   collectionDefinitions: 'inkbound_collection_definitions',
+  libraryCustomLists: 'inkbound_library_custom_lists',
+  libraryCustomListMembers: 'inkbound_library_custom_list_members',
   annualReadingGoal: 'inkbound_annual_goal',
   dailyReadingGoalMinutes: 'inkbound_daily_goal_minutes',
   readingMemories: 'inkbound_book_memories',
