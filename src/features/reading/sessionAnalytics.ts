@@ -9,8 +9,15 @@ export interface ReadingPaceSummary {
 }
 
 const parseLocalDate = (date: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   const [year, month, day] = date.split('-').map(Number);
-  return new Date(year, Math.max(0, (month || 1) - 1), day || 1);
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year
+    || parsed.getMonth() !== month - 1
+    || parsed.getDate() !== day
+  ) return null;
+  return parsed;
 };
 
 // Calendar-day math must use local date fields rather than fixed 24-hour
@@ -78,11 +85,11 @@ export const formatDurationEstimate = (totalSeconds?: number) => {
 export const getReadingStreak = (sessions: ReadingSession[], throughDate = localDateKey()) => {
   const readingDates = new Set(
     sessions
-      .filter((session) => sessionMinutes(session) > 0)
+      .filter((session) => sessionMinutes(session) > 0 && parseLocalDate(session.date) !== null)
       .map((session) => session.date),
   );
 
-  let cursor = parseLocalDate(throughDate);
+  let cursor = parseLocalDate(throughDate) ?? parseLocalDate(localDateKey())!;
   const todayKey = localDateKey(cursor);
   if (!readingDates.has(todayKey)) {
     cursor = addLocalDays(cursor, -1);
@@ -96,15 +103,17 @@ export const getReadingStreak = (sessions: ReadingSession[], throughDate = local
   return streak;
 };
 
-export const getDailyReadingMinutes = (sessions: ReadingSession[], date = localDateKey()) =>
-  sessions
-    .filter((session) => session.date === date)
+export const getDailyReadingMinutes = (sessions: ReadingSession[], date = localDateKey()) => {
+  if (parseLocalDate(date) === null) return 0;
+  return sessions
+    .filter((session) => session.date === date && parseLocalDate(session.date) !== null)
     .reduce((sum, session) => sum + sessionMinutes(session), 0);
+};
 
 const validPageSessions = (sessions: ReadingSession[]) => sessions.filter((session) => {
   const pages = pagesReadForSession(session);
   const minutes = sessionMinutes(session);
-  return pages > 0 && minutes > 0;
+  return pages > 0 && minutes > 0 && parseLocalDate(session.date) !== null;
 });
 
 export const getCurrentPace = (
@@ -138,12 +147,12 @@ export const getSevenDayAveragePace = (
   book: UserBookRecord,
   throughDate = localDateKey(),
 ): ReadingPaceSummary => {
-  const through = parseLocalDate(throughDate);
+  const through = parseLocalDate(throughDate) ?? parseLocalDate(localDateKey())!;
   const start = addLocalDays(through, -6);
   const eligible = validPageSessions(sessions).filter((session) => {
     if (session.bookId !== book.id) return false;
     const sessionDate = parseLocalDate(session.date);
-    return sessionDate >= start && sessionDate <= through;
+    return sessionDate !== null && sessionDate >= start && sessionDate <= through;
   });
   const totalPages = eligible.reduce((sum, session) => sum + pagesReadForSession(session), 0);
   const totalMinutes = eligible.reduce((sum, session) => sum + sessionMinutes(session), 0);
