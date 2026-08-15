@@ -1,6 +1,7 @@
 import React, { PropsWithChildren, useEffect, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { readRuntimeJson } from '../../platform/runtimeStorage';
 import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
 import { getCloudDataRevision, INKBOUND_CLOUD_DATA_EVENT } from './cloudSyncEvents';
@@ -8,14 +9,7 @@ import { getCloudDataRevision, INKBOUND_CLOUD_DATA_EVENT } from './cloudSyncEven
 const BOOKS_STORAGE_KEY = 'inkbound_books';
 
 function readStoredBooks(): UserBookRecord[] {
-  try {
-    const raw = localStorage.getItem(BOOKS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed as UserBookRecord[] : [];
-  } catch {
-    return [];
-  }
+  return readRuntimeJson<UserBookRecord[]>(BOOKS_STORAGE_KEY, []);
 }
 
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
@@ -40,7 +34,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
   }, [user?.uid]);
 
   if (user && revision === 0) {
-    return <main className="grid min-h-screen place-items-center bg-[var(--ink-page)] text-[var(--ink-ivory)]">Opening Inkbound...</main>;
+    return <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-6 text-center text-[var(--ink-ivory)]">Opening Inkbound...</main>;
   }
 
   return <React.Fragment key={`${user?.uid ?? 'signed-out'}:${revision}`}>{children}</React.Fragment>;
