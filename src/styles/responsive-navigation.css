@@ -11,6 +11,21 @@
     display: flex;
     min-height: 0;
     overflow: hidden;
+    padding-top: calc(24px + env(safe-area-inset-top));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+
+  .quiet-shelf-topbar {
+    min-height: calc(var(--ink-topbar-height) + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-right: max(18px, env(safe-area-inset-right));
+  }
+
+  .inkbound-main-content {
+    padding-top: calc(var(--ink-topbar-height) + env(safe-area-inset-top));
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .quiet-shelf-sidebar-nav {
