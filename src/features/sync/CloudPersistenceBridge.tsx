@@ -15,12 +15,22 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, storage } from '../../lib/firebase';
+import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   notifyCloudDataUpdated,
   type BeforeSignOutDetail,
 } from './cloudSyncEvents';
+
+// Keep the synchronization algorithm independent from the underlying persistence
+// implementation. Each call resolves the currently configured runtime adapter so
+// a native shell can replace browser localStorage during bootstrap.
+const localStorage = {
+  getItem: (key: string) => getRuntimeStorage().getItem(key),
+  setItem: (key: string, value: string) => getRuntimeStorage().setItem(key, value),
+  removeItem: (key: string) => getRuntimeStorage().removeItem(key),
+};
 
 const BOOKS_KEY = 'inkbound_books';
 const SESSIONS_KEY = 'inkbound_sessions';
@@ -628,7 +638,7 @@ export const CloudPersistenceBridge: React.FC = () => {
       try {
         await flushPending();
       } catch {
-        // Pending mutations remain durable in localStorage and will retry later.
+        // Pending mutations remain durable in runtime storage and will retry later.
       }
     };
 
