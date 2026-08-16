@@ -12,6 +12,7 @@ const runtimeAuthenticationPath = path.join(cwd, 'src/platform/runtimeAuthentica
 const runtimeReauthenticationPath = path.join(cwd, 'src/platform/runtimeReauthentication.ts');
 const runtimeExportPath = path.join(cwd, 'src/platform/runtimeExport.ts');
 const runtimeNativeAppCheckPath = path.join(cwd, 'src/platform/runtimeNativeAppCheck.ts');
+const runtimeNativeReadinessPath = path.join(cwd, 'src/platform/runtimeNativeReadiness.ts');
 
 const fail = (message) => {
   console.error(`Inkbound Android verification failed: ${message}`);
@@ -29,6 +30,7 @@ for (const requiredPath of [
   runtimeReauthenticationPath,
   runtimeExportPath,
   runtimeNativeAppCheckPath,
+  runtimeNativeReadinessPath,
 ]) {
   if (!fs.existsSync(requiredPath)) fail(`required Android boundary is missing: ${path.relative(cwd, requiredPath)}`);
 }
@@ -61,6 +63,14 @@ if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication
 const mainSource = fs.readFileSync(mainPath, 'utf8');
 if (!mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator")) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
+}
+if (!mainSource.includes('<NativeRuntimeGate>')) {
+  fail('Android startup must gate account/security providers until native services are ready.');
+}
+
+const nativeReadinessSource = fs.readFileSync(runtimeNativeReadinessPath, 'utf8');
+if (!nativeReadinessSource.includes('markNativeRuntimeReady')) {
+  fail('native adapter bootstrap must retain an explicit readiness completion signal.');
 }
 
 const firebaseSource = fs.readFileSync(firebasePath, 'utf8');
