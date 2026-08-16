@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const cwd = process.cwd();
 const configPath = path.join(cwd, 'capacitor.config.json');
+const mainPath = path.join(cwd, 'src/main.tsx');
 const runtimeSubscriptionPath = path.join(cwd, 'src/platform/runtimeSubscriptionManagement.ts');
 const runtimePlatformPath = path.join(cwd, 'src/platform/runtimePlatform.ts');
 const runtimeAuthenticationPath = path.join(cwd, 'src/platform/runtimeAuthentication.ts');
@@ -16,6 +17,7 @@ const fail = (message) => {
 
 for (const requiredPath of [
   configPath,
+  mainPath,
   runtimePlatformPath,
   runtimeSubscriptionPath,
   runtimeAuthenticationPath,
@@ -40,6 +42,11 @@ if (config.webDir !== 'dist') fail('Capacitor webDir must remain dist.');
 if (config.android?.allowMixedContent !== false) fail('Android mixed-content access must remain disabled.');
 if (config.android?.webContentsDebuggingEnabled !== false) {
   fail('Android WebView debugging must remain disabled in the release configuration.');
+}
+
+const mainSource = fs.readFileSync(mainPath, 'utf8');
+if (!mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator")) {
+  fail('PWA service workers must remain disabled inside the native Android WebView.');
 }
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');
