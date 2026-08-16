@@ -5,6 +5,7 @@ const CAPACITOR_VERSION = '8.4.0';
 const CAPACITOR_APP_VERSION = '8.1.1';
 const CAPACITOR_FILESYSTEM_VERSION = '8.1.2';
 const CAPACITOR_SHARE_VERSION = '8.0.1';
+const CAPACITOR_FIREBASE_VERSION = '8.3.0';
 const minimumNodeMajor = 22;
 const nodeMajor = Number(process.versions.node.split('.')[0]);
 
@@ -31,6 +32,8 @@ run('npm', [
   `@capacitor/app@${CAPACITOR_APP_VERSION}`,
   `@capacitor/filesystem@${CAPACITOR_FILESYSTEM_VERSION}`,
   `@capacitor/share@${CAPACITOR_SHARE_VERSION}`,
+  `@capacitor-firebase/authentication@${CAPACITOR_FIREBASE_VERSION}`,
+  `@capacitor-firebase/app-check@${CAPACITOR_FIREBASE_VERSION}`,
 ]);
 run('npm', ['install', '--save-dev', '--save-exact', `@capacitor/cli@${CAPACITOR_VERSION}`]);
 run('npm', ['run', 'release:verify']);
@@ -60,5 +63,5 @@ if (!target36 || !compile36 || !min24) {
 run('npm', ['run', 'verify:android-config']);
 
 console.log('Inkbound Android shell is ready: API 24 minimum, API 36 compile/target.');
-console.log('Native lifecycle/export plugin dependencies are installed for the next adapter pass.');
-console.log('Next: add the Firebase Android app configuration, then open android/ in Android Studio for the first Gradle/device run.');
+console.log('Native lifecycle/export plus Firebase Authentication/App Check dependencies are installed for the adapter pass.');
+console.log('Next: add the Firebase Android app configuration, then wire Google credentials and Play Integrity into the shared Firebase JS session.');
