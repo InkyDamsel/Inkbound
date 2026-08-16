@@ -5,6 +5,7 @@ import {
   reauthenticateWithCredential,
   reauthenticateWithPopup,
 } from 'firebase/auth';
+import { isNativeRuntime } from './runtimePlatform';
 
 export type ReauthenticationRequirement = 'google' | 'password' | 'unsupported';
 
@@ -50,12 +51,39 @@ const browserReauthenticationAdapter: RuntimeReauthenticationAdapter = {
   },
 };
 
-let activeReauthenticationAdapter: RuntimeReauthenticationAdapter = browserReauthenticationAdapter;
+const nativeSafeReauthenticationAdapter: RuntimeReauthenticationAdapter = {
+  getRequirement: (user) => {
+    const providers = new Set(user.providerData.map((provider) => provider.providerId));
+    // Email/password reauthentication is supported by the shared Firebase SDK and
+    // does not require a browser surface. Google requires the native Android auth
+    // adapter so we never fall back to reauthenticateWithPopup inside a WebView.
+    if (providers.has('password')) return 'password';
+    return 'unsupported';
+  },
+  reauthenticate: async (user, options = {}) => {
+    if (nativeSafeReauthenticationAdapter.getRequirement(user) === 'password') {
+      const email = user.email?.trim();
+      const password = options.password ?? '';
+      if (!email || !password) {
+        throw new Error('Enter your password to verify this account before deleting it.');
+      }
+      await reauthenticateWithCredential(user, EmailAuthProvider.credential(email, password));
+      await user.getIdToken(true);
+      return;
+    }
+
+    throw new Error('Google account verification is not connected to the Android native authentication adapter yet.');
+  },
+};
+
+let activeReauthenticationAdapter: RuntimeReauthenticationAdapter = isNativeRuntime()
+  ? nativeSafeReauthenticationAdapter
+  : browserReauthenticationAdapter;
 
 /**
  * Platform boundary for security-sensitive account verification.
- * Native iOS/Android shells can install an adapter backed by Apple/Google/native
- * authentication without changing Settings or account-deletion UI logic.
+ * Native iOS/Android shells install an adapter backed by native authentication
+ * without changing Settings or account-deletion UI logic.
  */
 export function configureRuntimeReauthentication(adapter: RuntimeReauthenticationAdapter) {
   activeReauthenticationAdapter = adapter;
