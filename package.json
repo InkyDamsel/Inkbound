@@ -17,6 +17,7 @@
     "verify:function-security": "node scripts/verify-function-security.mjs",
     "verify:android-config": "node scripts/verify-android-config.mjs",
     "release:verify": "npm run lint && npm run test:critical && npm run build && npm run verify:release-artifacts && npm run verify:function-security && npm run verify:android-config && npm run functions:build",
+    "android:bootstrap": "node scripts/bootstrap-android.mjs",
     "functions:install": "npm --prefix functions install",
     "functions:build": "npm --prefix functions run build",
     "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules,storage --project inkbound-app",
