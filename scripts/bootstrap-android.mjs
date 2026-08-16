@@ -36,7 +36,11 @@ run('npm', [
   `@capacitor-firebase/app-check@${CAPACITOR_FIREBASE_VERSION}`,
 ]);
 run('npm', ['install', '--save-dev', '--save-exact', `@capacitor/cli@${CAPACITOR_VERSION}`]);
+
+// First prove the shared application is green, then rebuild specifically for
+// Android so web-only browser credentials are not copied into the native bundle.
 run('npm', ['run', 'release:verify']);
+run('npm', ['run', 'build:android']);
 
 if (!fs.existsSync('android')) {
   run('npx', ['cap', 'add', 'android']);
@@ -64,4 +68,5 @@ run('npm', ['run', 'verify:android-config']);
 
 console.log('Inkbound Android shell is ready: API 24 minimum, API 36 compile/target.');
 console.log('Native lifecycle/export plus Firebase Authentication/App Check dependencies are installed for the adapter pass.');
+console.log('The copied Android web bundle excludes the web-only Google Books API key.');
 console.log('Next: add the Firebase Android app configuration, then wire Google credentials and Play Integrity into the shared Firebase JS session.');
