@@ -16,6 +16,7 @@ const OWNER_EMAILS = new Set([
 ]);
 
 const IS_FUNCTIONS_EMULATOR = process.env.FUNCTIONS_EMULATOR === 'true';
+const ENFORCE_APP_CHECK = !IS_FUNCTIONS_EMULATOR;
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
 type EntitlementSource = 'free' | 'subscription' | 'vip' | 'courtesy';
@@ -130,7 +131,7 @@ async function writeAudit(input: {
   });
 }
 
-export const bootstrapOwner = onCall(async (request) => {
+export const bootstrapOwner = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
   const email = normalizeEmail(auth.token.email);
   const emailVerified = auth.token.email_verified === true;
@@ -153,7 +154,7 @@ export const bootstrapOwner = onCall(async (request) => {
   return { enabled: true, role: 'owner' };
 });
 
-export const syncUserDirectory = onCall(async (request) => {
+export const syncUserDirectory = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
   const email = normalizeEmail(auth.token.email);
 
@@ -201,7 +202,7 @@ export const syncUserDirectory = onCall(async (request) => {
   return { synced: true };
 });
 
-export const getMyEntitlement = onCall(async (request) => {
+export const getMyEntitlement = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
   const snapshot = await db.doc(`entitlements/${auth.uid}`).get();
   const entitlement = snapshot.data() ?? {};
@@ -214,7 +215,7 @@ export const getMyEntitlement = onCall(async (request) => {
   };
 });
 
-export const deleteMyAccount = onCall(async (request) => {
+export const deleteMyAccount = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
   const data = request.data as Record<string, unknown> | undefined;
   const confirmation = requireString(data?.confirmation, 'confirmation', 64).toUpperCase();
@@ -243,7 +244,7 @@ export const deleteMyAccount = onCall(async (request) => {
   return { success: true };
 });
 
-export const eraseUserAccountByAdmin = onCall(async (request) => {
+export const eraseUserAccountByAdmin = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
   const admin = await requireAdmin(auth.uid, ['owner']);
   const data = request.data as Record<string, unknown> | undefined;
@@ -295,7 +296,7 @@ export const eraseUserAccountByAdmin = onCall(async (request) => {
   return { success: true };
 });
 
-export const grantVip = onCall(async (request) => {
+export const grantVip = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
   const admin = await requireAdmin(auth.uid, ['owner']);
   const data = request.data as Record<string, unknown> | undefined;
@@ -323,7 +324,7 @@ export const grantVip = onCall(async (request) => {
   return { success: true };
 });
 
-export const revokeVip = onCall(async (request) => {
+export const revokeVip = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
   const admin = await requireAdmin(auth.uid, ['owner']);
   const data = request.data as Record<string, unknown> | undefined;
@@ -338,7 +339,7 @@ export const revokeVip = onCall(async (request) => {
   return { success: true };
 });
 
-export const addCourtesyTime = onCall(async (request) => {
+export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
   const admin = await requireAdmin(auth.uid, ['owner', 'support', 'billing']);
   const data = request.data as Record<string, unknown> | undefined;
