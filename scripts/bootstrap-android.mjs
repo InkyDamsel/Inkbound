@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const CAPACITOR_VERSION = '8.4.0';
+const CAPACITOR_APP_VERSION = '8.1.1';
+const CAPACITOR_FILESYSTEM_VERSION = '8.1.2';
+const CAPACITOR_SHARE_VERSION = '8.0.1';
 const minimumNodeMajor = 22;
 const nodeMajor = Number(process.versions.node.split('.')[0]);
 
@@ -20,7 +23,15 @@ if (!Number.isFinite(nodeMajor) || nodeMajor < minimumNodeMajor) {
 
 console.log(`Preparing Inkbound Android with Capacitor ${CAPACITOR_VERSION}...`);
 
-run('npm', ['install', '--save-exact', `@capacitor/core@${CAPACITOR_VERSION}`, `@capacitor/android@${CAPACITOR_VERSION}`]);
+run('npm', [
+  'install',
+  '--save-exact',
+  `@capacitor/core@${CAPACITOR_VERSION}`,
+  `@capacitor/android@${CAPACITOR_VERSION}`,
+  `@capacitor/app@${CAPACITOR_APP_VERSION}`,
+  `@capacitor/filesystem@${CAPACITOR_FILESYSTEM_VERSION}`,
+  `@capacitor/share@${CAPACITOR_SHARE_VERSION}`,
+]);
 run('npm', ['install', '--save-dev', '--save-exact', `@capacitor/cli@${CAPACITOR_VERSION}`]);
 run('npm', ['run', 'release:verify']);
 
@@ -46,5 +57,8 @@ if (!target36 || !compile36 || !min24) {
   process.exit(1);
 }
 
+run('npm', ['run', 'verify:android']);
+
 console.log('Inkbound Android shell is ready: API 24 minimum, API 36 compile/target.');
-console.log('Next: open android/ in Android Studio and let Gradle finish its first sync.');
+console.log('Native lifecycle/export plugin dependencies are installed for the next adapter pass.');
+console.log('Next: add the Firebase Android app configuration, then open android/ in Android Studio for the first Gradle/device run.');
