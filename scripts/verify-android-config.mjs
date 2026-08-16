@@ -99,7 +99,7 @@ if (fs.existsSync(androidDir)) {
   const appGradlePath = path.join(androidDir, 'app', 'build.gradle');
   if (!fs.existsSync(appGradlePath)) fail('generated Android app/build.gradle is missing.');
   const appGradle = fs.readFileSync(appGradlePath, 'utf8');
-  if (!appGradle.includes('applicationId "com.inkydameinteractive.inkbound"')) {
+  if (!/applicationId\s+["']com\.inkydameinteractive\.inkbound["']/.test(appGradle)) {
     fail('generated Android applicationId must remain com.inkydameinteractive.inkbound.');
   }
 }
