@@ -4,12 +4,14 @@ import path from 'node:path';
 const cwd = process.cwd();
 const configPath = path.join(cwd, 'capacitor.config.json');
 const mainPath = path.join(cwd, 'src/main.tsx');
+const firebasePath = path.join(cwd, 'src/lib/firebase.ts');
 const googleBooksPath = path.join(cwd, 'src/features/book-search/data/googleBooksApi.ts');
 const runtimeSubscriptionPath = path.join(cwd, 'src/platform/runtimeSubscriptionManagement.ts');
 const runtimePlatformPath = path.join(cwd, 'src/platform/runtimePlatform.ts');
 const runtimeAuthenticationPath = path.join(cwd, 'src/platform/runtimeAuthentication.ts');
 const runtimeReauthenticationPath = path.join(cwd, 'src/platform/runtimeReauthentication.ts');
 const runtimeExportPath = path.join(cwd, 'src/platform/runtimeExport.ts');
+const runtimeNativeAppCheckPath = path.join(cwd, 'src/platform/runtimeNativeAppCheck.ts');
 
 const fail = (message) => {
   console.error(`Inkbound Android verification failed: ${message}`);
@@ -19,12 +21,14 @@ const fail = (message) => {
 for (const requiredPath of [
   configPath,
   mainPath,
+  firebasePath,
   googleBooksPath,
   runtimePlatformPath,
   runtimeSubscriptionPath,
   runtimeAuthenticationPath,
   runtimeReauthenticationPath,
   runtimeExportPath,
+  runtimeNativeAppCheckPath,
 ]) {
   if (!fs.existsSync(requiredPath)) fail(`required Android boundary is missing: ${path.relative(cwd, requiredPath)}`);
 }
@@ -57,6 +61,25 @@ if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication
 const mainSource = fs.readFileSync(mainPath, 'utf8');
 if (!mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator")) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
+}
+
+const firebaseSource = fs.readFileSync(firebasePath, 'utf8');
+if (!firebaseSource.includes('new CustomProvider')) {
+  fail('Android Firebase App Check must use the JS CustomProvider bridge.');
+}
+if (!firebaseSource.includes('getNativeAppCheckToken')) {
+  fail('Android Firebase App Check must obtain tokens from the native Play Integrity adapter.');
+}
+if (!firebaseSource.includes('if (isNativeRuntime())')) {
+  fail('Firebase App Check must keep separate native and web attestation paths.');
+}
+
+const nativeAppCheckSource = fs.readFileSync(runtimeNativeAppCheckPath, 'utf8');
+if (!nativeAppCheckSource.includes('configureNativeAppCheck')) {
+  fail('the native Play Integrity App Check adapter registration point is missing.');
+}
+if (!nativeAppCheckSource.includes('expireTimeMillis')) {
+  fail('native App Check tokens must include an explicit expiration time.');
 }
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');
