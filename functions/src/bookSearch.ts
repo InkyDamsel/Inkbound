@@ -2,7 +2,9 @@ import { defineSecret } from 'firebase-functions/params';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
 const HARDCOVER_API_TOKEN = defineSecret('HARDCOVER_API_TOKEN');
+const GOOGLE_BOOKS_API_KEY = defineSecret('GOOGLE_BOOKS_API_KEY');
 const HARDCOVER_ENDPOINT = 'https://api.hardcover.app/v1/graphql';
+const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 
 interface SearchResult {
@@ -97,6 +99,40 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
   if (!payload.data) throw new Error('Hardcover returned an empty response.');
   return payload.data;
 }
+
+export const searchGoogleBooksCatalog = onCall(
+  { secrets: [GOOGLE_BOOKS_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to search Google Books from the mobile app.');
+    const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+    if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
+
+    const apiKey = GOOGLE_BOOKS_API_KEY.value();
+    if (!apiKey) throw new HttpsError('failed-precondition', 'Google Books mobile search is not configured.');
+
+    const params = new URLSearchParams({
+      q: query,
+      printType: 'books',
+      projection: 'full',
+      orderBy: 'relevance',
+      maxResults: '40',
+      key: apiKey,
+    });
+
+    try {
+      const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+      if (!response.ok) throw new Error(`Google Books returned ${response.status}.`);
+      const payload = await response.json() as { totalItems?: unknown; items?: unknown };
+      return {
+        totalItems: typeof payload.totalItems === 'number' ? payload.totalItems : 0,
+        items: Array.isArray(payload.items) ? payload.items : [],
+      };
+    } catch (error) {
+      console.error('Google Books mobile proxy failed', error);
+      throw new HttpsError('unavailable', error instanceof Error ? error.message : 'Google Books search failed.');
+    }
+  },
+);
 
 export const searchHardcoverBooks = onCall(
   { secrets: [HARDCOVER_API_TOKEN], enforceAppCheck: ENFORCE_APP_CHECK },
