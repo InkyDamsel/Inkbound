@@ -57,7 +57,7 @@ if (!target36 || !compile36 || !min24) {
   process.exit(1);
 }
 
-run('npm', ['run', 'verify:android']);
+run('npm', ['run', 'verify:android-config']);
 
 console.log('Inkbound Android shell is ready: API 24 minimum, API 36 compile/target.');
 console.log('Native lifecycle/export plugin dependencies are installed for the next adapter pass.');
