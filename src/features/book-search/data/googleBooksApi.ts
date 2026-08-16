@@ -1,4 +1,7 @@
+import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
+import { functions } from '../../../lib/firebase';
+import { isNativeRuntime } from '../../../platform/runtimePlatform';
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
@@ -170,19 +173,32 @@ const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWork
 };
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  const params = new URLSearchParams({
-    q: query,
-    printType: 'books',
-    projection: 'full',
-    orderBy: 'relevance',
-    maxResults: '40',
-  });
-  if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
+  let payload: GoogleVolumesResponse;
 
-  const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
-  if (!response.ok) throw new Error(`Google Books search failed (${response.status}).`);
+  if (isNativeRuntime()) {
+    if (!functions) throw new Error('Google Books mobile search is unavailable until Firebase is configured.');
+    const callable = httpsCallable<
+      { query: string; provider: 'google-books' },
+      GoogleVolumesResponse
+    >(functions, 'searchHardcoverBooks');
+    const response = await callable({ query, provider: 'google-books' });
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    payload = response.data;
+  } else {
+    const params = new URLSearchParams({
+      q: query,
+      printType: 'books',
+      projection: 'full',
+      orderBy: 'relevance',
+      maxResults: '40',
+    });
+    if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
 
-  const payload = await response.json() as GoogleVolumesResponse;
+    const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
+    if (!response.ok) throw new Error(`Google Books search failed (${response.status}).`);
+    payload = await response.json() as GoogleVolumesResponse;
+  }
+
   const editions = (payload.items ?? []).map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
   const groups = groupGoogleEditions(editions);
   return { groups, totalItems: payload.totalItems ?? groups.length };
