@@ -21,6 +21,7 @@
     "android:bootstrap": "node scripts/bootstrap-android.mjs",
     "android:sync": "npm run build:android && npx cap sync android && npm run verify:android-config",
     "android:open": "npx cap open android",
+    "android:bump": "node scripts/bump-android-version.mjs",
     "functions:install": "npm --prefix functions install",
     "functions:build": "npm --prefix functions run build",
     "firebase:secret:hardcover": "npx firebase-tools functions:secrets:set HARDCOVER_API_TOKEN --project inkbound-app",
