@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   verify-web:
-    name: Web application
+    name: Web and Android shared application
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,8 +37,14 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Verify public release pages and mobile app artifacts
+      - name: Verify public release artifacts
         run: npm run verify:release-artifacts
+
+      - name: Verify callable security boundaries
+        run: npm run verify:function-security
+
+      - name: Verify Android shared configuration
+        run: npm run verify:android-config
 
   verify-functions:
     name: Cloud Functions
