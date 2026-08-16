@@ -44,6 +44,14 @@ if (config.android?.webContentsDebuggingEnabled !== false) {
   fail('Android WebView debugging must remain disabled in the release configuration.');
 }
 
+const firebaseAuthentication = config.plugins?.FirebaseAuthentication;
+if (firebaseAuthentication?.skipNativeAuth !== true) {
+  fail('FirebaseAuthentication must keep skipNativeAuth enabled so the JS Firebase session remains authoritative.');
+}
+if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication.providers.includes('google.com')) {
+  fail('FirebaseAuthentication must keep the native Google provider enabled.');
+}
+
 const mainSource = fs.readFileSync(mainPath, 'utf8');
 if (!mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator")) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
