@@ -10,3 +10,23 @@ firebase-export-*/
 *.log
 .env*
 !.env.example
+
+# Android / Capacitor local build state. Commit the generated android/ project,
+# but never commit machine-local SDK paths, Gradle caches, build outputs, or keys.
+android/.gradle/
+android/.idea/
+android/local.properties
+android/build/
+android/app/build/
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.jks
+*.keystore
+keystore.properties
+android/keystore.properties
+
+# Firebase Android app configuration is injected per environment rather than
+# stored in source control. It contains project-specific identifiers and should
+# be supplied locally/CI when the native Firebase app is configured.
+android/app/google-services.json
