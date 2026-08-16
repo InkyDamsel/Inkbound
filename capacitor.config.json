@@ -1,0 +1,11 @@
+{
+  "appId": "com.inkydameinteractive.inkbound",
+  "appName": "Inkbound",
+  "webDir": "dist",
+  "backgroundColor": "#120817",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}
