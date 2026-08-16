@@ -15,6 +15,7 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
+import { isNativeRuntime } from './platform/runtimePlatform.ts';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
 import './index.css';
 import './styles/app-shell.css';
@@ -86,10 +87,10 @@ createRoot(rootElement).render(
   </StrictMode>,
 );
 
-// The service worker is intentionally production-only. Development should always
-// load fresh modules, while installed web/mobile shells get a cached app frame
-// for offline startup and recover immediately when the network returns.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// PWA caching is web-only. Capacitor Android already packages the production
+// bundle inside the native app; registering the service worker in its WebView
+// would create a second cache that can serve stale assets after an app update.
+if (import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
       // Offline/install support is an enhancement; a registration failure must
