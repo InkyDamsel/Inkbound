@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const cwd = process.cwd();
 const configPath = path.join(cwd, 'capacitor.config.json');
+const releaseMetadataPath = path.join(cwd, 'android-release.json');
 const mainPath = path.join(cwd, 'src/main.tsx');
 const firebasePath = path.join(cwd, 'src/lib/firebase.ts');
 const googleBooksPath = path.join(cwd, 'src/features/book-search/data/googleBooksApi.ts');
@@ -21,6 +22,7 @@ const fail = (message) => {
 
 for (const requiredPath of [
   configPath,
+  releaseMetadataPath,
   mainPath,
   firebasePath,
   googleBooksPath,
@@ -40,6 +42,19 @@ try {
   config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 } catch {
   fail('capacitor.config.json is not valid JSON.');
+}
+
+let releaseMetadata;
+try {
+  releaseMetadata = JSON.parse(fs.readFileSync(releaseMetadataPath, 'utf8'));
+} catch {
+  fail('android-release.json is not valid JSON.');
+}
+if (!Number.isInteger(releaseMetadata.versionCode) || releaseMetadata.versionCode < 1) {
+  fail('android-release.json versionCode must be a positive integer.');
+}
+if (typeof releaseMetadata.versionName !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(releaseMetadata.versionName)) {
+  fail('android-release.json versionName must use semantic version format.');
 }
 
 if (config.appId !== 'com.inkydameinteractive.inkbound') {
@@ -135,6 +150,14 @@ if (fs.existsSync(androidDir)) {
   if (!/applicationId\s+["']com\.inkydameinteractive\.inkbound["']/.test(appGradle)) {
     fail('generated Android applicationId must remain com.inkydameinteractive.inkbound.');
   }
+  const versionCodeMatch = /versionCode\s+(\d+)/.exec(appGradle);
+  const versionNameMatch = /versionName\s+["']([^"']+)["']/.exec(appGradle);
+  if (Number(versionCodeMatch?.[1]) !== releaseMetadata.versionCode) {
+    fail('generated Android versionCode does not match android-release.json.');
+  }
+  if (versionNameMatch?.[1] !== releaseMetadata.versionName) {
+    fail('generated Android versionName does not match android-release.json.');
+  }
 }
 
-console.log('Inkbound Android configuration verified (com.inkydameinteractive.inkbound, API 36 baseline).');
+console.log(`Inkbound Android configuration verified (com.inkydameinteractive.inkbound, ${releaseMetadata.versionName} (${releaseMetadata.versionCode}), API 36 baseline).`);
