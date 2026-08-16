@@ -1,4 +1,4 @@
-import { PropsWithChildren, StrictMode } from 'react';
+import { PropsWithChildren, StrictMode, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { AppErrorBoundary } from './components/AppErrorBoundary.tsx';
@@ -15,6 +15,10 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
+import {
+  isNativeRuntimeReady,
+  subscribeNativeRuntimeReadiness,
+} from './platform/runtimeNativeReadiness.ts';
 import { isNativeRuntime } from './platform/runtimePlatform.ts';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
 import './index.css';
@@ -43,19 +47,35 @@ isolateDevelopmentBrowserStorage();
 // App reads the library from browser storage. Verified metadata is never touched.
 purgeUnverifiedLegacyImportMetadata();
 
+const OpeningScreen = ({ message }: { message: string }) => (
+  <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
+    <div className="max-w-sm">
+      <div className="mx-auto h-9 w-9 animate-pulse rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]" />
+      <p className="mt-4 font-serif text-xl text-[var(--ink-ivory)]">Opening Inkbound</p>
+      <p className="mt-2 text-sm text-[var(--ink-muted)]">{message}</p>
+    </div>
+  </main>
+);
+
+const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
+  const ready = useSyncExternalStore(
+    subscribeNativeRuntimeReadiness,
+    isNativeRuntimeReady,
+    isNativeRuntimeReady,
+  );
+
+  if (!ready) {
+    return <OpeningScreen message="Preparing secure Android services..." />;
+  }
+
+  return <>{children}</>;
+};
+
 const AuthSessionGate = ({ children }: PropsWithChildren) => {
   const { isAuthReady } = useAccountSync();
 
   if (!isAuthReady) {
-    return (
-      <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
-        <div className="max-w-sm">
-          <div className="mx-auto h-9 w-9 animate-pulse rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]" />
-          <p className="mt-4 font-serif text-xl text-[var(--ink-ivory)]">Opening Inkbound</p>
-          <p className="mt-2 text-sm text-[var(--ink-muted)]">Restoring your saved account and library securely...</p>
-        </div>
-      </main>
-    );
+    return <OpeningScreen message="Restoring your saved account and library securely..." />;
   }
 
   return <>{children}</>;
@@ -65,23 +85,25 @@ createRoot(rootElement).render(
   <StrictMode>
     <AppErrorBoundary>
       <BreakpointProvider>
-        <UserPlanProvider>
-          <AccountSyncProvider>
-            <AuthSessionGate>
-              <SecurityBootstrap />
-              <CloudPersistenceBridge />
-              <AuxiliaryAccountSyncBridge />
-              <ReadOnlyCloudHydrationBridge />
-              <PhotoMemoryAutoSyncBridge />
-              <LegacyBookCoverMigrationBridge />
-              <ThemePersistenceBridge />
-              <CloudDataRefreshBoundary>
-                <App />
-              </CloudDataRefreshBoundary>
-              <UpgradeModal />
-            </AuthSessionGate>
-          </AccountSyncProvider>
-        </UserPlanProvider>
+        <NativeRuntimeGate>
+          <UserPlanProvider>
+            <AccountSyncProvider>
+              <AuthSessionGate>
+                <SecurityBootstrap />
+                <CloudPersistenceBridge />
+                <AuxiliaryAccountSyncBridge />
+                <ReadOnlyCloudHydrationBridge />
+                <PhotoMemoryAutoSyncBridge />
+                <LegacyBookCoverMigrationBridge />
+                <ThemePersistenceBridge />
+                <CloudDataRefreshBoundary>
+                  <App />
+                </CloudDataRefreshBoundary>
+                <UpgradeModal />
+              </AuthSessionGate>
+            </AccountSyncProvider>
+          </UserPlanProvider>
+        </NativeRuntimeGate>
       </BreakpointProvider>
     </AppErrorBoundary>
   </StrictMode>,
