@@ -3,6 +3,8 @@ type CapacitorRuntime = {
   getPlatform?: () => string;
 };
 
+const buildRuntimeTarget = import.meta.env.VITE_RUNTIME_TARGET;
+
 function getCapacitorRuntime(): CapacitorRuntime | undefined {
   if (typeof globalThis === 'undefined') return undefined;
   return (globalThis as typeof globalThis & { Capacitor?: CapacitorRuntime }).Capacitor;
@@ -11,15 +13,19 @@ function getCapacitorRuntime(): CapacitorRuntime | undefined {
 /**
  * Single platform boundary for browser-versus-native behavior.
  *
- * Keep feature components unaware of Capacitor directly. Native Android adapters
- * should be installed through the platform modules while the browser remains a
- * supported development and fallback runtime.
+ * Android production bundles are stamped at build time so security-sensitive
+ * modules fail closed from their first evaluation even before Capacitor's runtime
+ * global is consulted. The runtime global remains the authority for normal web
+ * development and future native shells that are not using the stamped build.
  */
 export function isNativeRuntime(): boolean {
+  if (buildRuntimeTarget === 'android' || buildRuntimeTarget === 'ios') return true;
   return getCapacitorRuntime()?.isNativePlatform?.() === true;
 }
 
 export function getRuntimePlatform(): 'android' | 'ios' | 'web' | 'native' {
+  if (buildRuntimeTarget === 'android' || buildRuntimeTarget === 'ios') return buildRuntimeTarget;
+
   const capacitor = getCapacitorRuntime();
   if (capacitor?.isNativePlatform?.() !== true) return 'web';
 
