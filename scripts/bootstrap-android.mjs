@@ -17,6 +17,44 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+function readAndroidReleaseMetadata() {
+  const path = 'android-release.json';
+  if (!fs.existsSync(path)) {
+    console.error('Inkbound Android bootstrap requires android-release.json.');
+    process.exit(1);
+  }
+  const parsed = JSON.parse(fs.readFileSync(path, 'utf8'));
+  if (!Number.isInteger(parsed.versionCode) || parsed.versionCode < 1) {
+    console.error('android-release.json versionCode must be a positive integer.');
+    process.exit(1);
+  }
+  if (typeof parsed.versionName !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(parsed.versionName)) {
+    console.error('android-release.json versionName must use semantic version format.');
+    process.exit(1);
+  }
+  return parsed;
+}
+
+function applyAndroidReleaseVersion() {
+  const metadata = readAndroidReleaseMetadata();
+  const appGradlePath = 'android/app/build.gradle';
+  if (!fs.existsSync(appGradlePath)) {
+    console.error('Inkbound Android bootstrap could not find android/app/build.gradle.');
+    process.exit(1);
+  }
+
+  let gradle = fs.readFileSync(appGradlePath, 'utf8');
+  if (!/versionCode\s+\d+/.test(gradle) || !/versionName\s+["'][^"']+["']/.test(gradle)) {
+    console.error('Inkbound Android bootstrap could not locate versionCode/versionName in app/build.gradle.');
+    process.exit(1);
+  }
+  gradle = gradle
+    .replace(/versionCode\s+\d+/, `versionCode ${metadata.versionCode}`)
+    .replace(/versionName\s+["'][^"']+["']/, `versionName "${metadata.versionName}"`);
+  fs.writeFileSync(appGradlePath, gradle);
+  console.log(`Applied Android release version ${metadata.versionName} (${metadata.versionCode}).`);
+}
+
 if (!Number.isFinite(nodeMajor) || nodeMajor < minimumNodeMajor) {
   console.error(`Inkbound Android bootstrap requires Node ${minimumNodeMajor}+ (current: ${process.versions.node}).`);
   process.exit(1);
@@ -47,6 +85,8 @@ if (!fs.existsSync('android')) {
 } else {
   run('npx', ['cap', 'sync', 'android']);
 }
+
+applyAndroidReleaseVersion();
 
 const variablesPath = 'android/variables.gradle';
 if (!fs.existsSync(variablesPath)) {
