@@ -1,3 +1,5 @@
+import { isNativeRuntime } from './runtimePlatform';
+
 export interface RuntimeSubscriptionManagementAdapter {
   isAvailable(): boolean;
   open(): Promise<void>;
@@ -6,8 +8,13 @@ export interface RuntimeSubscriptionManagementAdapter {
 const webBillingPortalUrl = import.meta.env.VITE_BILLING_PORTAL_URL?.trim() ?? '';
 
 const browserSubscriptionManagementAdapter: RuntimeSubscriptionManagementAdapter = {
-  isAvailable: () => Boolean(webBillingPortalUrl),
+  // A Google Play build must never fall back to a web billing portal. Native
+  // runtimes stay unavailable until their store-owned adapter is installed.
+  isAvailable: () => !isNativeRuntime() && Boolean(webBillingPortalUrl),
   open: async () => {
+    if (isNativeRuntime()) {
+      throw new Error('Subscription management is not connected to this app store build yet.');
+    }
     if (!webBillingPortalUrl || typeof window === 'undefined') {
       throw new Error('Subscription management is not connected on this device yet.');
     }
@@ -19,8 +26,8 @@ let activeSubscriptionManagementAdapter = browserSubscriptionManagementAdapter;
 
 /**
  * Platform boundary for opening the billing surface that owns a subscription.
- * Web can use a secure billing portal; native iOS/Android shells can install
- * adapters that open App Store or Google Play subscription management instead.
+ * Web can use a secure billing portal; Android installs a Google Play adapter.
+ * Apple remains intentionally out of scope until the iOS shell is started.
  */
 export function configureRuntimeSubscriptionManagement(
   adapter: RuntimeSubscriptionManagementAdapter,
