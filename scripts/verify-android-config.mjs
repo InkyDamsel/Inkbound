@@ -4,6 +4,7 @@ import path from 'node:path';
 const cwd = process.cwd();
 const configPath = path.join(cwd, 'capacitor.config.json');
 const mainPath = path.join(cwd, 'src/main.tsx');
+const googleBooksPath = path.join(cwd, 'src/features/book-search/data/googleBooksApi.ts');
 const runtimeSubscriptionPath = path.join(cwd, 'src/platform/runtimeSubscriptionManagement.ts');
 const runtimePlatformPath = path.join(cwd, 'src/platform/runtimePlatform.ts');
 const runtimeAuthenticationPath = path.join(cwd, 'src/platform/runtimeAuthentication.ts');
@@ -18,6 +19,7 @@ const fail = (message) => {
 for (const requiredPath of [
   configPath,
   mainPath,
+  googleBooksPath,
   runtimePlatformPath,
   runtimeSubscriptionPath,
   runtimeAuthenticationPath,
@@ -75,6 +77,14 @@ if (!reauthenticationSource.includes('nativeSafeReauthenticationAdapter')) {
 const exportSource = fs.readFileSync(runtimeExportPath, 'utf8');
 if (!exportSource.includes('nativeSafeExportAdapter')) {
   fail('native exports must not fall back to browser download behavior.');
+}
+
+const googleBooksSource = fs.readFileSync(googleBooksPath, 'utf8');
+if (!googleBooksSource.includes("provider: 'google-books'")) {
+  fail('Android Google Books traffic must stay behind the protected Firebase catalog gateway.');
+}
+if (!googleBooksSource.includes('if (isNativeRuntime())')) {
+  fail('Google Books transport must keep a distinct native-safe request path.');
 }
 
 const androidDir = path.join(cwd, 'android');
