@@ -6,6 +6,11 @@ const GOOGLE_BOOKS_API_KEY = defineSecret('GOOGLE_BOOKS_API_KEY');
 const HARDCOVER_ENDPOINT = 'https://api.hardcover.app/v1/graphql';
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
+const GOOGLE_BOOKS_CACHE_TTL_MS = 5 * 60 * 1000;
+const GOOGLE_BOOKS_CACHE_MAX = 500;
+
+type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[] };
+const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBooksCatalogPayload }>();
 
 interface SearchResult {
   id?: number | string;
@@ -100,7 +105,34 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
   return payload.data;
 }
 
-async function googleBooksCatalog(query: string) {
+function readGoogleBooksCache(query: string): GoogleBooksCatalogPayload | undefined {
+  const key = query.trim().toLowerCase();
+  const cached = googleBooksCache.get(key);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    googleBooksCache.delete(key);
+    return undefined;
+  }
+  // Refresh insertion order so actively used searches survive bounded eviction.
+  googleBooksCache.delete(key);
+  googleBooksCache.set(key, cached);
+  return cached.payload;
+}
+
+function writeGoogleBooksCache(query: string, payload: GoogleBooksCatalogPayload) {
+  const key = query.trim().toLowerCase();
+  googleBooksCache.set(key, { expiresAt: Date.now() + GOOGLE_BOOKS_CACHE_TTL_MS, payload });
+  while (googleBooksCache.size > GOOGLE_BOOKS_CACHE_MAX) {
+    const oldestKey = googleBooksCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    googleBooksCache.delete(oldestKey);
+  }
+}
+
+async function googleBooksCatalog(query: string): Promise<GoogleBooksCatalogPayload> {
+  const cached = readGoogleBooksCache(query);
+  if (cached) return cached;
+
   const apiKey = GOOGLE_BOOKS_API_KEY.value();
   if (!apiKey) throw new HttpsError('failed-precondition', 'Google Books mobile search is not configured.');
 
@@ -114,11 +146,13 @@ async function googleBooksCatalog(query: string) {
   });
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
   if (!response.ok) throw new Error(`Google Books returned ${response.status}.`);
-  const payload = await response.json() as { totalItems?: unknown; items?: unknown };
-  return {
-    totalItems: typeof payload.totalItems === 'number' ? payload.totalItems : 0,
-    items: Array.isArray(payload.items) ? payload.items : [],
+  const raw = await response.json() as { totalItems?: unknown; items?: unknown };
+  const payload: GoogleBooksCatalogPayload = {
+    totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
+    items: Array.isArray(raw.items) ? raw.items : [],
   };
+  writeGoogleBooksCache(query, payload);
+  return payload;
 }
 
 async function hardcoverCatalog(query: string) {
