@@ -1,3 +1,5 @@
+import { isNativeRuntime } from './runtimePlatform';
+
 export interface RuntimeTextExport {
   filename: string;
   mimeType: string;
@@ -54,13 +56,26 @@ const browserExportAdapter: RuntimeExportAdapter = {
   },
 };
 
-let activeExportAdapter: RuntimeExportAdapter = browserExportAdapter;
+const nativeSafeExportAdapter: RuntimeExportAdapter = {
+  exportTextFile: async () => {
+    throw new Error('Android file export is not connected to the native Filesystem/Share adapter yet.');
+  },
+  exportBinaryFile: async () => {
+    throw new Error('Android file export is not connected to the native Filesystem/Share adapter yet.');
+  },
+  shareBinaryFile: async () => {
+    throw new Error('Android sharing is not connected to the native Filesystem/Share adapter yet.');
+  },
+};
+
+let activeExportAdapter: RuntimeExportAdapter = isNativeRuntime()
+  ? nativeSafeExportAdapter
+  : browserExportAdapter;
 
 /**
  * Platform boundary for exporting or sharing user-owned Inkbound data and media.
- * Web downloads files / uses Web Share where supported. Native shells can install
- * an adapter backed by the system share sheet and Files/document APIs without
- * changing feature code.
+ * Web downloads files / uses Web Share where supported. Native shells install an
+ * adapter backed by the system share sheet and Files/document APIs.
  */
 export function configureRuntimeExport(adapter: RuntimeExportAdapter) {
   activeExportAdapter = adapter;
