@@ -1,6 +1,7 @@
 import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
 import {
   AppCheck,
+  CustomProvider,
   ReCaptchaEnterpriseProvider,
   initializeAppCheck,
 } from 'firebase/app-check';
@@ -15,6 +16,8 @@ import {
 } from 'firebase/firestore';
 import { Functions, connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 import { FirebaseStorage, connectStorageEmulator, getStorage } from 'firebase/storage';
+import { getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
+import { isNativeRuntime } from '../platform/runtimePlatform';
 
 const readEnv = (value: string | undefined): string => value?.trim() ?? '';
 const readBooleanEnv = (value: string | undefined): boolean => readEnv(value).toLowerCase() === 'true';
@@ -70,16 +73,24 @@ let storage: FirebaseStorage | null = null;
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-  // Production Firebase services share the same App Check instance. This must be
-  // initialized before protected Functions/Firestore/Storage requests are made so
-  // legitimate Inkbound clients receive and refresh reCAPTCHA Enterprise tokens.
-  // Emulator development intentionally skips App Check so local workflows remain
-  // usable without production reCAPTCHA configuration.
-  if (!useFirebaseEmulators && appCheckSiteKey) {
-    appCheck = initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
-      isTokenAutoRefreshEnabled: true,
-    });
+  // Inkbound keeps one Firebase JS client on every platform. Web attests with
+  // reCAPTCHA Enterprise. Android's JS App Check instance uses a CustomProvider
+  // that asks the native Play Integrity adapter for tokens, so Functions,
+  // Firestore, and Storage continue to share the same JS Firebase authority.
+  if (!useFirebaseEmulators) {
+    if (isNativeRuntime()) {
+      appCheck = initializeAppCheck(app, {
+        provider: new CustomProvider({
+          getToken: async () => getNativeAppCheckToken(),
+        }),
+        isTokenAutoRefreshEnabled: true,
+      });
+    } else if (appCheckSiteKey) {
+      appCheck = initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+    }
   }
 
   auth = getAuth(app);
@@ -100,11 +111,6 @@ if (isFirebaseConfigured) {
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
 
   if (useFirebaseEmulators) {
-    // IMPORTANT: use the hostname that loaded Inkbound, not 127.0.0.1. When Inkbound
-    // is opened from another phone/PC/Mac at http://192.168.x.x:3000, 127.0.0.1 would
-    // point back to that test device instead of the development computer running the
-    // Firebase Emulator Suite. firebase.json binds the emulators to 0.0.0.0 so this
-    // hostname works for both localhost and same-network device testing.
     const emulatorHost = window.location.hostname || '127.0.0.1';
 
     connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
@@ -112,17 +118,14 @@ if (isFirebaseConfigured) {
     connectFunctionsEmulator(functions, emulatorHost, 5001);
     if (storage) connectStorageEmulator(storage, emulatorHost, 9199);
 
-    // Local writes are safe and expected because they stay inside the emulators.
     db = readDb;
     console.info(
       `Inkbound DEV mode: Firebase emulators are using ${emulatorHost}. Production data and billing are not being used.`,
     );
   } else {
-    // Production and intentional live-cloud verification share one Firestore reader.
-    // During localhost live-cloud checks, writes remain null unless separately enabled.
     db = allowProductionFirebaseWrites ? readDb : null;
 
-    if (!appCheckSiteKey) {
+    if (!isNativeRuntime() && !appCheckSiteKey) {
       console.warn(
         'Inkbound production Firebase mode is missing VITE_FIREBASE_APP_CHECK_SITE_KEY. App Check-protected requests may be rejected.',
       );
