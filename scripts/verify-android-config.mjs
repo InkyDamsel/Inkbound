@@ -5,15 +5,25 @@ const cwd = process.cwd();
 const configPath = path.join(cwd, 'capacitor.config.json');
 const runtimeSubscriptionPath = path.join(cwd, 'src/platform/runtimeSubscriptionManagement.ts');
 const runtimePlatformPath = path.join(cwd, 'src/platform/runtimePlatform.ts');
+const runtimeAuthenticationPath = path.join(cwd, 'src/platform/runtimeAuthentication.ts');
+const runtimeReauthenticationPath = path.join(cwd, 'src/platform/runtimeReauthentication.ts');
+const runtimeExportPath = path.join(cwd, 'src/platform/runtimeExport.ts');
 
 const fail = (message) => {
   console.error(`Inkbound Android verification failed: ${message}`);
   process.exit(1);
 };
 
-if (!fs.existsSync(configPath)) fail('capacitor.config.json is missing.');
-if (!fs.existsSync(runtimePlatformPath)) fail('the native runtime platform boundary is missing.');
-if (!fs.existsSync(runtimeSubscriptionPath)) fail('the subscription platform boundary is missing.');
+for (const requiredPath of [
+  configPath,
+  runtimePlatformPath,
+  runtimeSubscriptionPath,
+  runtimeAuthenticationPath,
+  runtimeReauthenticationPath,
+  runtimeExportPath,
+]) {
+  if (!fs.existsSync(requiredPath)) fail(`required Android boundary is missing: ${path.relative(cwd, requiredPath)}`);
+}
 
 let config;
 try {
@@ -37,4 +47,36 @@ if (!subscriptionSource.includes('!isNativeRuntime() && Boolean(webBillingPortal
   fail('native builds must not fall back to the web billing portal.');
 }
 
-console.log('Inkbound Android configuration verified (com.inkydameinteractive.inkbound).');
+const authenticationSource = fs.readFileSync(runtimeAuthenticationPath, 'utf8');
+if (!authenticationSource.includes('isNativeRuntime()')) {
+  fail('Google authentication must keep a native-safe boundary instead of browser popup fallback.');
+}
+
+const reauthenticationSource = fs.readFileSync(runtimeReauthenticationPath, 'utf8');
+if (!reauthenticationSource.includes('nativeSafeReauthenticationAdapter')) {
+  fail('security-sensitive reauthentication must fail closed until the native Android adapter is installed.');
+}
+
+const exportSource = fs.readFileSync(runtimeExportPath, 'utf8');
+if (!exportSource.includes('nativeSafeExportAdapter')) {
+  fail('native exports must not fall back to browser download behavior.');
+}
+
+const androidDir = path.join(cwd, 'android');
+if (fs.existsSync(androidDir)) {
+  const variablesPath = path.join(androidDir, 'variables.gradle');
+  if (!fs.existsSync(variablesPath)) fail('generated Android project is missing variables.gradle.');
+  const variables = fs.readFileSync(variablesPath, 'utf8');
+  if (!/minSdkVersion\s*=\s*24/.test(variables)) fail('generated Android minSdkVersion must remain 24.');
+  if (!/compileSdkVersion\s*=\s*36/.test(variables)) fail('generated Android compileSdkVersion must remain 36.');
+  if (!/targetSdkVersion\s*=\s*36/.test(variables)) fail('generated Android targetSdkVersion must remain 36.');
+
+  const appGradlePath = path.join(androidDir, 'app', 'build.gradle');
+  if (!fs.existsSync(appGradlePath)) fail('generated Android app/build.gradle is missing.');
+  const appGradle = fs.readFileSync(appGradlePath, 'utf8');
+  if (!appGradle.includes('applicationId "com.inkydameinteractive.inkbound"')) {
+    fail('generated Android applicationId must remain com.inkydameinteractive.inkbound.');
+  }
+}
+
+console.log('Inkbound Android configuration verified (com.inkydameinteractive.inkbound, API 36 baseline).');
