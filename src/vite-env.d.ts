@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_ALLOW_PROD_FIREBASE_WRITES?: string;
   readonly VITE_GOOGLE_BOOKS_API_KEY?: string;
   readonly VITE_BILLING_PORTAL_URL?: string;
+  readonly VITE_RUNTIME_TARGET?: 'android' | 'ios' | 'web';
 }
 
 interface ImportMeta {
