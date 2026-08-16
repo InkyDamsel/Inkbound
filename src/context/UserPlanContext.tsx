@@ -143,9 +143,16 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       clearExpiryTimer();
       activeUid = user?.uid ?? null;
 
+      // Authentication changes are an account-isolation boundary. Never carry a
+      // previous reader's premium state into the next account while its entitlement
+      // is still loading (or if the initial network refresh fails). Every new UID
+      // starts fail-closed as Free and may only elevate after authoritative data.
+      setUserPlanState('free');
+      setAccessSource('free');
+      setIsUpgradeModalOpen(false);
+      setUpgradeReason(undefined);
+
       if (!user) {
-        setUserPlanState('free');
-        setAccessSource('free');
         setEntitlementLoading(false);
         return;
       }
@@ -163,7 +170,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
         unsubscribeEntitlement = onSnapshot(
           doc(readDb, 'entitlements', user.uid),
           (snapshot) => {
-            if (snapshot.exists()) applyEntitlement(snapshot.data() as EntitlementRecord);
+            applyEntitlement(snapshot.exists() ? snapshot.data() as EntitlementRecord : undefined);
           },
           (error) => {
             console.warn('Inkbound entitlement live listener is unavailable; using secure server refresh instead.', error);
