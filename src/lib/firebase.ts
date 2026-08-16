@@ -46,17 +46,10 @@ export const missingFirebaseEnvironmentVariables = Object.entries(requiredFireba
 
 export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length === 0;
 
-// DEV/PRODUCTION BOUNDARY
-// Normal `npm run dev` sessions use the Firebase Local Emulator Suite so routine
-// development cannot create Firestore/Functions/Storage charges or modify real
-// reader data. Set VITE_FIREBASE_MODE=production only for an intentional live-cloud
-// verification session. Production builds always use the real Firebase services.
 const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
 export const useFirebaseEmulators = import.meta.env.DEV && requestedFirebaseMode !== 'production';
 export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
 
-// Browser-side production writes are still protected during an intentional live
-// development session. The flag has no effect on emulator writes or production builds.
 export const allowProductionFirebaseWrites =
   useFirebaseEmulators ||
   !import.meta.env.DEV ||
@@ -70,34 +63,41 @@ let db: Firestore | null = null;
 let functions: Functions | null = null;
 let storage: FirebaseStorage | null = null;
 
+/**
+ * Android App Check is intentionally initialized only after the native Play
+ * Integrity adapter is registered. initializeAppCheck may immediately ask its
+ * provider for a token when auto-refresh is enabled, so doing this at module
+ * evaluation time would race the native bootstrap.
+ */
+export function initializeNativeFirebaseAppCheck(): AppCheck | null {
+  if (!app || useFirebaseEmulators || !isNativeRuntime()) return appCheck;
+  if (appCheck) return appCheck;
+
+  appCheck = initializeAppCheck(app, {
+    provider: new CustomProvider({
+      getToken: async () => getNativeAppCheckToken(),
+    }),
+    isTokenAutoRefreshEnabled: true,
+  });
+  return appCheck;
+}
+
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-  // Inkbound keeps one Firebase JS client on every platform. Web attests with
-  // reCAPTCHA Enterprise. Android's JS App Check instance uses a CustomProvider
-  // that asks the native Play Integrity adapter for tokens, so Functions,
-  // Firestore, and Storage continue to share the same JS Firebase authority.
-  if (!useFirebaseEmulators) {
-    if (isNativeRuntime()) {
-      appCheck = initializeAppCheck(app, {
-        provider: new CustomProvider({
-          getToken: async () => getNativeAppCheckToken(),
-        }),
-        isTokenAutoRefreshEnabled: true,
-      });
-    } else if (appCheckSiteKey) {
-      appCheck = initializeAppCheck(app, {
-        provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
-        isTokenAutoRefreshEnabled: true,
-      });
-    }
+  // Web initializes reCAPTCHA Enterprise immediately. Android defers App Check
+  // until configureNativeAppCheck(...) has installed the Play Integrity token
+  // source; initializeNativeFirebaseAppCheck() then binds that token source to
+  // this same Firebase JS client before protected app providers are mounted.
+  if (!useFirebaseEmulators && !isNativeRuntime() && appCheckSiteKey) {
+    appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
   }
 
   auth = getAuth(app);
 
-  // Emulator data must never share the persistent browser cache used by production.
-  // Keeping development Firestore in memory also makes it obvious that the Emulator
-  // Suite is the source of truth while testing locally.
   readDb = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
     localCache: useFirebaseEmulators
