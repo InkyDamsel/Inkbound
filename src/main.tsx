@@ -15,11 +15,14 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
+import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
 import {
+  getNativeRuntimeError,
   isNativeRuntimeReady,
+  markNativeRuntimeFailed,
   subscribeNativeRuntimeReadiness,
 } from './platform/runtimeNativeReadiness.ts';
-import { isNativeRuntime } from './platform/runtimePlatform.ts';
+import { isAndroidRuntime, isNativeRuntime } from './platform/runtimePlatform.ts';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
 import './index.css';
 import './styles/app-shell.css';
@@ -47,6 +50,13 @@ isolateDevelopmentBrowserStorage();
 // App reads the library from browser storage. Verified metadata is never touched.
 purgeUnverifiedLegacyImportMetadata();
 
+// Android initializes Play Integrity, Google-native auth plumbing, and native
+// lifecycle adapters before any account/security providers can make protected
+// Firebase requests. NativeRuntimeGate remains closed until this succeeds.
+if (isAndroidRuntime()) {
+  void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
+}
+
 const OpeningScreen = ({ message }: { message: string }) => (
   <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
     <div className="max-w-sm">
@@ -63,6 +73,19 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
     isNativeRuntimeReady,
     isNativeRuntimeReady,
   );
+  const error = useSyncExternalStore(
+    subscribeNativeRuntimeReadiness,
+    getNativeRuntimeError,
+    getNativeRuntimeError,
+  );
+
+  if (error) {
+    return (
+      <OpeningScreen
+        message={`Android services could not start: ${error}`}
+      />
+    );
+  }
 
   if (!ready) {
     return <OpeningScreen message="Preparing secure Android services..." />;
