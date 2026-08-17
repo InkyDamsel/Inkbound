@@ -10,10 +10,15 @@ const minimumNodeMajor = 22;
 const nodeMajor = Number(process.versions.node.split('.')[0]);
 
 function run(command, args) {
-  const result = spawnSync(command, args, {
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  });
+  const windows = process.platform === 'win32';
+  const result = windows
+    ? spawnSync([command, ...args].join(' '), {
+        stdio: 'inherit',
+        shell: true,
+      })
+    : spawnSync(command, args, {
+        stdio: 'inherit',
+      });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
@@ -109,4 +114,4 @@ run('npm', ['run', 'verify:android-config']);
 console.log('Inkbound Android shell is ready: API 24 minimum, API 36 compile/target.');
 console.log('Native lifecycle/export plus Firebase Authentication/App Check dependencies are installed for the adapter pass.');
 console.log('The copied Android web bundle excludes the web-only Google Books API key.');
-console.log('Next: add the Firebase Android app configuration, then wire Google credentials and Play Integrity into the shared Firebase JS session.');
+console.log('Next: add the Firebase Android app configuration, then verify Google credentials and Play Integrity on a real Android runtime.');
