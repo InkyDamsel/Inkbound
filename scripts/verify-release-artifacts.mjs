@@ -56,6 +56,7 @@ const checks = [
 
 const sourceFilesWithAppCheckInitialization = [];
 const sourceRoot = path.join(root, 'src');
+const normalizeRelativePath = (value) => value.split(path.sep).join('/');
 const visitSource = (directory) => {
   fs.readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
     const fullPath = path.join(directory, entry.name);
@@ -66,7 +67,7 @@ const visitSource = (directory) => {
     if (!/\.(ts|tsx)$/.test(entry.name)) return;
     const content = fs.readFileSync(fullPath, 'utf8');
     if (content.includes('initializeAppCheck(')) {
-      sourceFilesWithAppCheckInitialization.push(path.relative(root, fullPath));
+      sourceFilesWithAppCheckInitialization.push(normalizeRelativePath(path.relative(root, fullPath)));
     }
   });
 };
