@@ -52,6 +52,44 @@ jobs:
       - name: Verify Android shared configuration
         run: npm run verify:android-config
 
+  verify-android:
+    name: Android native debug build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Android-safe web bundle
+        run: npm run build:android
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Verify Android configuration
+        run: npm run verify:android-config
+
+      - name: Build Android debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
   verify-functions:
     name: Cloud Functions
     runs-on: ubuntu-latest
