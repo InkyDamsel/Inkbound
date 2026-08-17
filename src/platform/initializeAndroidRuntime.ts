@@ -2,6 +2,7 @@ import { FirebaseAppCheck } from '@capacitor-firebase/app-check';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { App as CapacitorApp } from '@capacitor/app';
 import {
+  EmailAuthProvider,
   GoogleAuthProvider,
   browserLocalPersistence,
   reauthenticateWithCredential,
@@ -26,18 +27,11 @@ import { isAndroidRuntime } from './runtimePlatform';
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
+  // Native App Check must be initialized before its token source is bound to the
+  // Firebase JS SDK, but Android is not marked ready until every adapter below is
+  // configured. That prevents account/security providers from racing startup.
   await FirebaseAppCheck.initialize({
     isTokenAutoRefreshEnabled: true,
-  });
-
-  initializeNativeSecurityRuntime({
-    getToken: async (forceRefresh = false) => {
-      const result = await FirebaseAppCheck.getToken({ forceRefresh });
-      return {
-        token: result.token,
-        expireTimeMillis: result.expireTimeMillis,
-      };
-    },
   });
 
   configureRuntimeAuthentication({
@@ -54,8 +48,10 @@ export async function initializeAndroidRuntime() {
       if (!idToken) {
         throw new Error('Google sign-in did not return an Android identity token.');
       }
-      const credential = GoogleAuthProvider.credential(idToken, accessToken || undefined);
-      await signInWithCredential(auth, credential);
+      await signInWithCredential(
+        auth,
+        GoogleAuthProvider.credential(idToken, accessToken || undefined),
+      );
     },
   });
 
@@ -88,9 +84,6 @@ export async function initializeAndroidRuntime() {
       }
 
       if (providers.has('password')) {
-        // Keep the canonical password flow in runtimeReauthentication instead of
-        // maintaining a second password implementation in the native layer.
-        const { EmailAuthProvider } = await import('firebase/auth');
         const email = user.email?.trim();
         const password = options.password ?? '';
         if (!email || !password) {
@@ -119,6 +112,18 @@ export async function initializeAndroidRuntime() {
         removed = true;
         window.removeEventListener('online', handleOnline);
         void handlePromise.then((handle) => handle.remove());
+      };
+    },
+  });
+
+  // This is intentionally last. It binds native Play Integrity tokens to the
+  // single Firebase JS App Check instance and only then releases NativeRuntimeGate.
+  initializeNativeSecurityRuntime({
+    getToken: async (forceRefresh = false) => {
+      const result = await FirebaseAppCheck.getToken({ forceRefresh });
+      return {
+        token: result.token,
+        expireTimeMillis: result.expireTimeMillis,
       };
     },
   });
