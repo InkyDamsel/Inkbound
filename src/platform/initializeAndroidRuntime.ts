@@ -1,6 +1,8 @@
 import { FirebaseAppCheck } from '@capacitor-firebase/app-check';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
@@ -10,10 +12,43 @@ import {
   signInWithCredential,
 } from 'firebase/auth';
 import { configureRuntimeAuthentication } from './runtimeAuthentication';
+import { configureRuntimeExport } from './runtimeExport';
 import { configureRuntimeLifecycle } from './runtimeLifecycle';
 import { initializeNativeSecurityRuntime } from './runtimeNativeSecurityBootstrap';
 import { configureRuntimeReauthentication } from './runtimeReauthentication';
 import { isAndroidRuntime } from './runtimePlatform';
+
+const sanitizeExportFilename = (filename: string) => {
+  const cleaned = filename.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+/, '');
+  return cleaned || 'inkbound-export';
+};
+
+const exportCachePath = (filename: string) =>
+  `inkbound-exports/${Date.now()}-${crypto.randomUUID()}/${sanitizeExportFilename(filename)}`;
+
+const blobToBase64 = async (blob: Blob): Promise<string> => {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, Math.min(index + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+};
+
+const shareCachedFile = async (uri: string, title?: string, text?: string) => {
+  const supported = await Share.canShare();
+  if (!supported.value) {
+    throw new Error('Android sharing is unavailable on this device.');
+  }
+  await Share.share({
+    files: [uri],
+    title,
+    text,
+    dialogTitle: title ?? 'Share Inkbound export',
+  });
+};
 
 /**
  * Installs Android-native service adapters while preserving Inkbound's existing
@@ -23,6 +58,7 @@ import { isAndroidRuntime } from './runtimePlatform';
  * - Play Integrity -> Firebase JS App Check CustomProvider
  * - Google Credential Manager -> Firebase JS Auth credential
  * - Capacitor App lifecycle -> Inkbound runtime resume signal
+ * - Filesystem/Share -> user-owned export/share flows
  */
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
@@ -95,6 +131,41 @@ export async function initializeAndroidRuntime() {
       }
 
       throw new Error('This sign-in method cannot be verified on Android yet.');
+    },
+  });
+
+  configureRuntimeExport({
+    exportTextFile: async ({ filename, contents }) => {
+      const path = exportCachePath(filename);
+      const result = await Filesystem.writeFile({
+        path,
+        data: contents,
+        directory: Directory.Cache,
+        encoding: Encoding.UTF8,
+        recursive: true,
+      });
+      await shareCachedFile(result.uri, `Export ${sanitizeExportFilename(filename)}`);
+    },
+    exportBinaryFile: async ({ filename, contents }) => {
+      const path = exportCachePath(filename);
+      const result = await Filesystem.writeFile({
+        path,
+        data: await blobToBase64(contents),
+        directory: Directory.Cache,
+        recursive: true,
+      });
+      await shareCachedFile(result.uri, `Export ${sanitizeExportFilename(filename)}`);
+    },
+    shareBinaryFile: async ({ filename, contents, title, text }) => {
+      const path = exportCachePath(filename);
+      const result = await Filesystem.writeFile({
+        path,
+        data: await blobToBase64(contents),
+        directory: Directory.Cache,
+        recursive: true,
+      });
+      await shareCachedFile(result.uri, title ?? sanitizeExportFilename(filename), text);
+      return 'shared';
     },
   });
 
