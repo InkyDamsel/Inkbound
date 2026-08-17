@@ -33,6 +33,13 @@
     "firebase:deploy:all": "npm run verify:production-env && npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app"
   },
   "dependencies": {
+    "@capacitor-firebase/app-check": "8.3.0",
+    "@capacitor-firebase/authentication": "8.3.0",
+    "@capacitor/android": "8.4.0",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.4.0",
+    "@capacitor/filesystem": "8.1.2",
+    "@capacitor/share": "8.0.1",
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
@@ -46,6 +53,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.4.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
