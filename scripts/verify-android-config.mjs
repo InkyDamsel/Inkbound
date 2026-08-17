@@ -14,6 +14,7 @@ const runtimeReauthenticationPath = path.join(cwd, 'src/platform/runtimeReauthen
 const runtimeExportPath = path.join(cwd, 'src/platform/runtimeExport.ts');
 const runtimeNativeAppCheckPath = path.join(cwd, 'src/platform/runtimeNativeAppCheck.ts');
 const runtimeNativeReadinessPath = path.join(cwd, 'src/platform/runtimeNativeReadiness.ts');
+const runtimeNativeSecurityBootstrapPath = path.join(cwd, 'src/platform/runtimeNativeSecurityBootstrap.ts');
 
 const fail = (message) => {
   console.error(`Inkbound Android verification failed: ${message}`);
@@ -33,6 +34,7 @@ for (const requiredPath of [
   runtimeExportPath,
   runtimeNativeAppCheckPath,
   runtimeNativeReadinessPath,
+  runtimeNativeSecurityBootstrapPath,
 ]) {
   if (!fs.existsSync(requiredPath)) fail(`required Android boundary is missing: ${path.relative(cwd, requiredPath)}`);
 }
@@ -95,8 +97,11 @@ if (!firebaseSource.includes('new CustomProvider')) {
 if (!firebaseSource.includes('getNativeAppCheckToken')) {
   fail('Android Firebase App Check must obtain tokens from the native Play Integrity adapter.');
 }
-if (!firebaseSource.includes('if (isNativeRuntime())')) {
-  fail('Firebase App Check must keep separate native and web attestation paths.');
+if (!firebaseSource.includes('export function initializeNativeFirebaseAppCheck()')) {
+  fail('Android Firebase App Check must remain explicitly deferred until native Play Integrity is configured.');
+}
+if (!firebaseSource.includes('!useFirebaseEmulators && !isNativeRuntime() && appCheckSiteKey')) {
+  fail('web reCAPTCHA App Check must remain excluded from native Android builds.');
 }
 
 const nativeAppCheckSource = fs.readFileSync(runtimeNativeAppCheckPath, 'utf8');
@@ -105,6 +110,14 @@ if (!nativeAppCheckSource.includes('configureNativeAppCheck')) {
 }
 if (!nativeAppCheckSource.includes('expireTimeMillis')) {
   fail('native App Check tokens must include an explicit expiration time.');
+}
+
+const nativeSecurityBootstrapSource = fs.readFileSync(runtimeNativeSecurityBootstrapPath, 'utf8');
+const configureIndex = nativeSecurityBootstrapSource.indexOf('configureNativeAppCheck(appCheckAdapter)');
+const initializeIndex = nativeSecurityBootstrapSource.indexOf('initializeNativeFirebaseAppCheck()');
+const readyIndex = nativeSecurityBootstrapSource.indexOf('markNativeRuntimeReady()');
+if (configureIndex < 0 || initializeIndex < 0 || readyIndex < 0 || !(configureIndex < initializeIndex && initializeIndex < readyIndex)) {
+  fail('Android security startup must remain ordered: configure Play Integrity, initialize JS App Check, then mark native runtime ready.');
 }
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');
