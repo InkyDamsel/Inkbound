@@ -15,6 +15,7 @@ const runtimeExportPath = path.join(cwd, 'src/platform/runtimeExport.ts');
 const runtimeNativeAppCheckPath = path.join(cwd, 'src/platform/runtimeNativeAppCheck.ts');
 const runtimeNativeReadinessPath = path.join(cwd, 'src/platform/runtimeNativeReadiness.ts');
 const runtimeNativeSecurityBootstrapPath = path.join(cwd, 'src/platform/runtimeNativeSecurityBootstrap.ts');
+const initializeAndroidRuntimePath = path.join(cwd, 'src/platform/initializeAndroidRuntime.ts');
 
 const fail = (message) => {
   console.error(`Inkbound Android verification failed: ${message}`);
@@ -35,6 +36,7 @@ for (const requiredPath of [
   runtimeNativeAppCheckPath,
   runtimeNativeReadinessPath,
   runtimeNativeSecurityBootstrapPath,
+  initializeAndroidRuntimePath,
 ]) {
   if (!fs.existsSync(requiredPath)) fail(`required Android boundary is missing: ${path.relative(cwd, requiredPath)}`);
 }
@@ -84,10 +86,16 @@ if (!mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'service
 if (!mainSource.includes('<NativeRuntimeGate>')) {
   fail('Android startup must gate account/security providers until native services are ready.');
 }
+if (!mainSource.includes('initializeAndroidRuntime().catch(markNativeRuntimeFailed)')) {
+  fail('Android startup must initialize native services and surface initialization failures.');
+}
 
 const nativeReadinessSource = fs.readFileSync(runtimeNativeReadinessPath, 'utf8');
 if (!nativeReadinessSource.includes('markNativeRuntimeReady')) {
   fail('native adapter bootstrap must retain an explicit readiness completion signal.');
+}
+if (!nativeReadinessSource.includes('markNativeRuntimeFailed')) {
+  fail('native adapter bootstrap must surface startup failures instead of hanging indefinitely.');
 }
 
 const firebaseSource = fs.readFileSync(firebasePath, 'utf8');
@@ -118,6 +126,30 @@ const initializeIndex = nativeSecurityBootstrapSource.indexOf('initializeNativeF
 const readyIndex = nativeSecurityBootstrapSource.indexOf('markNativeRuntimeReady()');
 if (configureIndex < 0 || initializeIndex < 0 || readyIndex < 0 || !(configureIndex < initializeIndex && initializeIndex < readyIndex)) {
   fail('Android security startup must remain ordered: configure Play Integrity, initialize JS App Check, then mark native runtime ready.');
+}
+
+const androidRuntimeSource = fs.readFileSync(initializeAndroidRuntimePath, 'utf8');
+for (const requiredSnippet of [
+  'FirebaseAppCheck.initialize',
+  'FirebaseAuthentication.signInWithGoogle',
+  'skipNativeAuth: true',
+  'useCredentialManager: true',
+  'signInWithCredential',
+  'reauthenticateWithCredential',
+  "CapacitorApp.addListener('appStateChange'",
+  'initializeNativeSecurityRuntime',
+]) {
+  if (!androidRuntimeSource.includes(requiredSnippet)) {
+    fail(`Android runtime adapter is missing required native integration: ${requiredSnippet}`);
+  }
+}
+const authConfigIndex = androidRuntimeSource.indexOf('configureRuntimeAuthentication');
+const reauthConfigIndex = androidRuntimeSource.indexOf('configureRuntimeReauthentication');
+const lifecycleConfigIndex = androidRuntimeSource.indexOf('configureRuntimeLifecycle');
+const securityReadyIndex = androidRuntimeSource.lastIndexOf('initializeNativeSecurityRuntime');
+if ([authConfigIndex, reauthConfigIndex, lifecycleConfigIndex, securityReadyIndex].some((index) => index < 0)
+  || !(authConfigIndex < securityReadyIndex && reauthConfigIndex < securityReadyIndex && lifecycleConfigIndex < securityReadyIndex)) {
+  fail('Android runtime must configure auth, reauthentication, and lifecycle before releasing native readiness.');
 }
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');
@@ -156,6 +188,27 @@ if (fs.existsSync(androidDir)) {
   if (!/minSdkVersion\s*=\s*24/.test(variables)) fail('generated Android minSdkVersion must remain 24.');
   if (!/compileSdkVersion\s*=\s*36/.test(variables)) fail('generated Android compileSdkVersion must remain 36.');
   if (!/targetSdkVersion\s*=\s*36/.test(variables)) fail('generated Android targetSdkVersion must remain 36.');
+  if (!/rgcfaIncludeGoogle\s*=\s*true/.test(variables)) fail('native Google sign-in dependencies must remain enabled.');
+  if (!/androidxCredentialsVersion\s*=\s*["']1\.3\.0["']/.test(variables)) {
+    fail('native Google Credential Manager dependency baseline is missing.');
+  }
+
+  const manifestPath = path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
+  if (!fs.existsSync(manifestPath)) fail('generated Android main manifest is missing.');
+  const manifest = fs.readFileSync(manifestPath, 'utf8');
+  if (!/android:allowBackup=["']false["']/.test(manifest)) {
+    fail('Android production backups must remain disabled for account-owned local data.');
+  }
+  if (!/android:usesCleartextTraffic=["']false["']/.test(manifest)) {
+    fail('Android production cleartext traffic must remain disabled.');
+  }
+
+  const debugManifestPath = path.join(androidDir, 'app', 'src', 'debug', 'AndroidManifest.xml');
+  if (!fs.existsSync(debugManifestPath)) fail('Android debug manifest is missing.');
+  const debugManifest = fs.readFileSync(debugManifestPath, 'utf8');
+  if (!/android:usesCleartextTraffic=["']true["']/.test(debugManifest)) {
+    fail('Android debug builds must retain explicit HTTP support for local emulator/LAN development.');
+  }
 
   const appGradlePath = path.join(androidDir, 'app', 'build.gradle');
   if (!fs.existsSync(appGradlePath)) fail('generated Android app/build.gradle is missing.');
