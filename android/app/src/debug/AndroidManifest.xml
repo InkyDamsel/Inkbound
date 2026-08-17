@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Debug builds may connect to Firebase emulators or a LAN development host
+         over HTTP. Release builds inherit usesCleartextTraffic=false from main. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>
