@@ -44,11 +44,21 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
+def servicesJSON = file('google-services.json')
+def hasFirebaseAndroidConfig = servicesJSON.exists() && servicesJSON.text?.trim()
+
+if (hasFirebaseAndroidConfig) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.lifecycle('Inkbound Android: google-services.json is not installed. Firebase native Auth/App Check will be unavailable.')
+
+    // Debug/IDE work may intentionally begin before Firebase Android credentials
+    // are installed, but never allow a Play/release artifact to be produced in
+    // that state.
+    def releaseRequested = gradle.startParameter.taskNames.any { taskName ->
+        taskName.toLowerCase().contains('release')
     }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+    if (releaseRequested) {
+        throw new GradleException('Inkbound release builds require android/app/google-services.json. Download it from the Firebase Android app configuration before building an AAB/APK.')
+    }
 }
