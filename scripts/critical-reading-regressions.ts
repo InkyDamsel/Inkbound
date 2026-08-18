@@ -20,46 +20,24 @@ import {
   getAccountOwnedKeysToClearForOwnerChange,
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
+import { shouldPromoteLocalRecordMissingFromCloud } from '../src/features/sync/syncConflictPolicy';
 
 const baseBook = (): UserBookRecord => ({
   id: 'book-1',
-  work: {
-    id: 'work-1',
-    title: 'Regression Book',
-    author: 'Inkbound',
-    summary: '',
-    genres: ['Fiction'],
-    publicationYear: 2026,
-  },
+  work: { id: 'work-1', title: 'Regression Book', author: 'Inkbound', summary: '', genres: ['Fiction'], publicationYear: 2026 },
   activeEditionId: 'paper-500',
   editions: [
     { id: 'paper-400', format: 'paperback', pageCount: 400, coverGradient: '' },
     { id: 'paper-500', format: 'hardcover', pageCount: 500, coverGradient: '' },
   ],
-  status: 'currently-reading',
-  ownership: 'owned',
-  progressPages: 190,
-  progressMinutes: 0,
-  progressPercentage: 0,
-  privateTags: [],
-  priority: 'medium',
-  moods: [],
-  collections: [],
-  dateAdded: '2026-08-01',
+  status: 'currently-reading', ownership: 'owned', progressPages: 190, progressMinutes: 0,
+  progressPercentage: 0, privateTags: [], priority: 'medium', moods: [], collections: [], dateAdded: '2026-08-01',
 });
 
 const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
-  id: crypto.randomUUID(),
-  bookId: 'book-1',
-  date: '2026-08-15',
-  startTime: '20:00',
-  endTime: '20:30',
-  durationMinutes: 30,
-  ...overrides,
+  id: crypto.randomUUID(), bookId: 'book-1', date: '2026-08-15', startTime: '20:00', endTime: '20:30', durationMinutes: 30, ...overrides,
 });
 
-// Active edition is canonical. Never silently use editions[0] when a different
-// edition is selected.
 {
   const book = baseBook();
   assert.equal(getActiveEdition(book)?.id, 'paper-500');
@@ -68,17 +46,8 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(state.progressPercentage, 38);
 }
 
-// Legacy/imported Finished records sometimes retained stale partial progress.
-// Finished is authoritative when the active edition has a known endpoint, so
-// those records must resolve to 100% without leaving a permanent warning.
 {
-  const staleFinished = {
-    ...baseBook(),
-    status: 'finished' as const,
-    progressPages: 190,
-    progressPercentage: 38,
-    dateFinished: '2026-08-15',
-  };
+  const staleFinished = { ...baseBook(), status: 'finished' as const, progressPages: 190, progressPercentage: 38, dateFinished: '2026-08-15' };
   const repaired = reconcileFinishedBookProgress(staleFinished);
   assert.equal(repaired.progressPages, 500);
   assert.equal(repaired.progressPercentage, 100);
@@ -88,8 +57,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(state.progressNeedsCorrection, false);
 }
 
-// Correcting a mistaken finished book back to currently-reading must remove the
-// finish date without destroying the progress itself.
 {
   const book = { ...baseBook(), status: 'finished' as const, dateFinished: '2026-08-15' };
   const corrected = withReadingStatus(book, 'currently-reading');
@@ -98,7 +65,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(corrected.progressPages, 190);
 }
 
-// Explicitly marking a known-length book Finished must canonicalize its endpoint.
 {
   const finished = withReadingStatus(baseBook(), 'finished', '2026-08-15');
   assert.equal(finished.status, 'finished');
@@ -107,22 +73,15 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(finished.dateFinished, '2026-08-15');
 }
 
-// Session endpoints override legacy aggregate fields so edits cannot leave stale
-// pagesRead values driving statistics.
 {
   assert.equal(getSessionPagesRead(session({ startPage: 100, endPage: 140, pagesRead: 999 })), 40);
   assert.equal(getSessionPagesRead(session({ pagesRead: 25 })), 25);
 }
 
-// Audiobook timestamp endpoints are canonical when present.
 {
-  assert.equal(
-    getSessionListeningMinutes(session({ startTimestampSec: 120, endTimestampSec: 1920, minutesListened: 999 })),
-    30,
-  );
+  assert.equal(getSessionListeningMinutes(session({ startTimestampSec: 120, endTimestampSec: 1920, minutesListened: 999 })), 30);
 }
 
-// Zero-duration placeholders never become reading days or streak entries.
 {
   const sessions = [
     session({ id: 's1', date: '2026-08-13', durationMinutes: 20 }),
@@ -134,8 +93,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(getReadingStreak(sessions, '2026-08-15'), 3);
 }
 
-// Current pace and remaining-time estimates must use canonical active-edition
-// length and canonical endpoint pages.
 {
   const book = baseBook();
   const pace = getCurrentPace(session({ startPage: 150, endPage: 190, durationMinutes: 40 }), book);
@@ -144,7 +101,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(Math.round((pace.estimatedRemainingSeconds ?? 0) / 60), 310);
 }
 
-// Seven-day pace ignores old sessions and requires enough valid recent activity.
 {
   const book = baseBook();
   const sessions = [
@@ -159,21 +115,12 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(pace.remainingPages, 310);
 }
 
-// Shared account-owned auxiliary keys must be purged on a real UID transition,
-// while reloads for the same reader (or legacy installs without an owner marker)
-// retain their local cache for offline startup.
 {
   assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange(null, 'reader-a'), []);
   assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-a'), []);
-  assert.deepEqual(
-    getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-b').sort(),
-    Object.values(AUXILIARY_ACCOUNT_KEYS).sort(),
-  );
+  assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-b').sort(), Object.values(AUXILIARY_ACCOUNT_KEYS).sort());
 }
 
-// The full UID-transition boundary also purges canonical books, sessions, and
-// profile state. This protects the failure path where new-account hydration is
-// delayed or unavailable and prevents the previous reader from remaining visible.
 {
   assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange(null, 'reader-a'), []);
   assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange('reader-a', 'reader-a'), []);
@@ -183,4 +130,32 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   );
 }
 
-console.log('Inkbound critical reading regressions passed.');
+// A stale device must respect a deletion already observed in its previous baseline.
+// Otherwise reconnecting that device would silently resurrect deleted books/sessions.
+{
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({
+    hasCloudRecord: false,
+    baselineFingerprint: '{"id":"book-1"}',
+    hasPendingMutation: false,
+  }), false);
+}
+
+// A genuinely new offline record has no baseline entry and must still upload.
+{
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({
+    hasCloudRecord: false,
+    baselineFingerprint: undefined,
+    hasPendingMutation: false,
+  }), true);
+}
+
+// Existing pending intent is handled by the durable queue and must not be duplicated.
+{
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({
+    hasCloudRecord: false,
+    baselineFingerprint: undefined,
+    hasPendingMutation: true,
+  }), false);
+}
+
+console.log('Inkbound critical reading and beta sync regressions passed.');
