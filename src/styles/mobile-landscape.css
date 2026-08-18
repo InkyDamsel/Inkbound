@@ -1,0 +1,32 @@
+/* Phone-landscape layout overrides.
+   Keep this focused on short coarse-pointer viewports so tablets/desktops retain
+   their normal centered content widths. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  .inkbound-main-content {
+    width: 100vw;
+    max-width: none;
+  }
+
+  .inkbound-page-canvas,
+  .inkbound-page-canvas[data-container-width='content'],
+  .inkbound-page-canvas[data-container-width='wide'],
+  .inkbound-page-canvas[data-container-width='full'] {
+    width: 100vw !important;
+    max-width: none !important;
+    margin-inline: 0 !important;
+    padding-right: max(16px, env(safe-area-inset-right)) !important;
+    padding-left: max(16px, env(safe-area-inset-left)) !important;
+  }
+
+  .quiet-shelf-topbar {
+    width: 100vw;
+    max-width: none;
+  }
+
+  /* Prevent desktop-width children from recreating a large artificial gutter
+     after the shell itself has switched to its phone-landscape layout. */
+  .inkbound-main-content > *,
+  .inkbound-page-canvas > * {
+    max-width: 100%;
+  }
+}
