@@ -128,6 +128,32 @@ body {
     overflow-x: clip;
   }
 
+  /* app-shell.css intentionally collapses the top-bar Add control to an icon on
+     phones. That selector used to be global, so every primary CTA in page content
+     was also forced to 40px wide. Restore normal content-button geometry here;
+     the top-bar button remains compact because it lives outside main content. */
+  .inkbound-main-content .quiet-shelf-primary-action {
+    width: auto;
+    max-width: 100%;
+    min-height: 48px;
+    padding-inline: 18px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+
+  .inkbound-main-content .quiet-shelf-primary-action.w-full {
+    width: 100%;
+  }
+
+  .inkbound-main-content .quiet-shelf-primary-action span {
+    display: inline;
+  }
+
+  .inkbound-main-content .quiet-shelf-primary-action svg {
+    flex: 0 0 auto;
+  }
+
   /* Keep full-screen and bottom-sheet editors inside the actual phone viewport. */
   [role='dialog'] {
     max-height: calc(100dvh - env(safe-area-inset-top)) !important;
