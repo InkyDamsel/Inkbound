@@ -128,13 +128,13 @@ body {
     overflow-x: clip;
   }
 
-  /* app-shell.css intentionally collapses the top-bar Add control to an icon on
-     phones. That selector used to be global, so every primary CTA in page content
-     was also forced to 40px wide. Restore normal content-button geometry here;
-     the top-bar button remains compact because it lives outside main content. */
-  .inkbound-main-content .quiet-shelf-primary-action {
+  /* Primary CTAs anywhere in the phone shell (including portaled sheets such as
+     More) should keep readable labels. Only the fixed top-bar action is allowed
+     to collapse to an icon-sized control. */
+  .inkbound-app-shell .quiet-shelf-primary-action {
     width: auto;
     max-width: 100%;
+    min-width: max-content;
     min-height: 48px;
     padding-inline: 18px;
     flex-wrap: nowrap;
@@ -142,16 +142,27 @@ body {
     line-height: 1.2;
   }
 
-  .inkbound-main-content .quiet-shelf-primary-action.w-full {
+  .inkbound-app-shell .quiet-shelf-primary-action.w-full {
     width: 100%;
+    min-width: 0;
   }
 
-  .inkbound-main-content .quiet-shelf-primary-action span {
+  .inkbound-app-shell .quiet-shelf-primary-action span {
     display: inline;
   }
 
-  .inkbound-main-content .quiet-shelf-primary-action svg {
+  .inkbound-app-shell .quiet-shelf-primary-action svg {
     flex: 0 0 auto;
+  }
+
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-primary-action {
+    width: 40px;
+    min-width: 40px;
+    padding-inline: 0;
+  }
+
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-primary-action span {
+    display: none;
   }
 
   /* Keep full-screen and bottom-sheet editors inside the actual phone viewport. */
