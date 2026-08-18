@@ -74,12 +74,10 @@ body {
     overscroll-behavior-x: contain;
   }
 
-  /* Touch devices do not have a dependable hover state. */
   .book-cover-select-toggle {
     opacity: 1 !important;
   }
 
-  /* Hover elevation can remain latched after a tap on touch WebViews. */
   main article:hover,
   .book-card-glow:hover,
   .quiet-shelf-primary-action:hover,
@@ -104,7 +102,6 @@ body {
     padding-left: max(20px, env(safe-area-inset-left));
   }
 
-  /* Tablet portrait needs more content width than the desktop sidebar ratio. */
   :root {
     --ink-sidebar-width: 196px;
   }
@@ -131,9 +128,6 @@ body {
     overflow-x: clip;
   }
 
-  /* Primary CTAs anywhere in the phone shell (including portaled sheets such as
-     More) should keep readable labels. Only the fixed top-bar action is allowed
-     to collapse to an icon-sized control. */
   .inkbound-app-shell .quiet-shelf-primary-action {
     width: auto;
     max-width: 100%;
@@ -168,7 +162,6 @@ body {
     display: none;
   }
 
-  /* Keep full-screen and bottom-sheet editors inside the actual phone viewport. */
   [role='dialog'] {
     max-height: calc(100dvh - env(safe-area-inset-top)) !important;
     overflow-y: auto;
@@ -180,17 +173,14 @@ body {
     max-height: 45dvh;
   }
 
-  /* Fixed desktop-style date control pairs become cramped on small phones. */
   [class*='grid-cols-[130px_1fr]'] {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  /* Import/selection sticky actions must sit above the native home indicator. */
   .inkbound-main-content [class*='sticky'][class*='bottom-0'] {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 
-  /* Library batch actions should never spill beyond a narrow phone. */
   .inkbound-main-content [class*='fixed'][class*='bottom-20'][class*='left-1/2'] {
     bottom: calc(76px + env(safe-area-inset-bottom));
     width: calc(100vw - max(28px, env(safe-area-inset-left)) - max(28px, env(safe-area-inset-right)));
@@ -200,25 +190,21 @@ body {
     border-radius: 1rem;
   }
 
-  /* Collection cover selectors should stack instead of forcing a desktop row. */
   .inkbound-main-content select[class*='max-w-[240px]'] {
     width: 100%;
     max-width: 100%;
   }
 
-  /* Keep bottom-sheet actions reachable above the home indicator and keyboard. */
   [role='dialog'] > :last-child[class*='border-t'] {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 
-  /* Standalone icon close buttons need a full touch target, not only visual padding. */
   [role='dialog'] button[aria-label*='Close'],
   [role='dialog'] button[aria-label*='close'] {
     min-width: 44px;
     min-height: 44px;
   }
 
-  /* Large-phone widths still use the mobile shell; avoid premature 3-column web cards. */
   [class~='sm:grid-cols-3'] {
     grid-template-columns: minmax(0, 1fr) !important;
   }
@@ -245,17 +231,27 @@ body {
   }
 }
 
-/* A phone can exceed the 767px CSS-width breakpoint when rotated. Do not let
-   orientation alone switch the installed app into the desktop sidebar shell.
-   Short coarse-pointer landscape viewports remain mobile and therefore keep
-   the same navigation model before and after rotation. */
+/* Phones can exceed the normal tablet breakpoint when rotated. Keep the phone
+   navigation model, but let the reading surface use the entire landscape
+   viewport instead of inheriting desktop/sidebar canvas constraints. */
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
   :root {
     --ink-topbar-height: 58px;
+    --ink-sidebar-width: 0px;
+  }
+
+  html,
+  body,
+  #root,
+  .inkbound-app-shell,
+  .inkbound-main-content {
+    width: 100%;
+    max-width: none;
   }
 
   body {
     min-width: 0;
+    overflow-x: hidden;
   }
 
   .quiet-shelf-sidebar {
@@ -264,7 +260,10 @@ body {
 
   .quiet-shelf-topbar {
     inset: 0 0 auto 0;
-    grid-template-columns: auto 1fr auto;
+    width: 100vw;
+    max-width: none;
+    margin-left: 0;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     min-height: var(--ink-topbar-height);
     padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
   }
@@ -317,12 +316,22 @@ body {
   }
 
   .inkbound-main-content {
-    margin-left: 0;
+    margin-left: 0 !important;
+    max-width: none !important;
     padding-top: var(--ink-topbar-height);
     padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
+  .inkbound-main-content > main,
+  .inkbound-main-content > section,
   .inkbound-page-canvas {
+    width: 100% !important;
+    max-width: none !important;
+    margin-inline: 0 !important;
+  }
+
+  .inkbound-page-canvas {
+    box-sizing: border-box;
     padding: 14px max(16px, env(safe-area-inset-right)) 28px max(16px, env(safe-area-inset-left));
   }
 
