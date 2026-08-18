@@ -92,6 +92,9 @@ body {
 @media (min-width: 768px) {
   .quiet-shelf-sidebar {
     height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -239,5 +242,135 @@ body {
 
   .inkbound-main-content {
     padding-bottom: calc(70px + env(safe-area-inset-bottom));
+  }
+}
+
+/* A phone can exceed the 767px CSS-width breakpoint when rotated. Do not let
+   orientation alone switch the installed app into the desktop sidebar shell.
+   Short coarse-pointer landscape viewports remain mobile and therefore keep
+   the same navigation model before and after rotation. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  :root {
+    --ink-topbar-height: 58px;
+  }
+
+  body {
+    min-width: 0;
+  }
+
+  .quiet-shelf-sidebar {
+    display: none !important;
+  }
+
+  .quiet-shelf-topbar {
+    inset: 0 0 auto 0;
+    grid-template-columns: auto 1fr auto;
+    min-height: var(--ink-topbar-height);
+    padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+  }
+
+  .quiet-shelf-page-heading h1 {
+    font-size: 1.25rem;
+  }
+
+  .quiet-shelf-header-search {
+    justify-self: end;
+    width: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .quiet-shelf-header-search input,
+  .quiet-shelf-header-search kbd {
+    display: none;
+  }
+
+  .quiet-shelf-header-search > svg {
+    margin: auto;
+  }
+
+  .quiet-shelf-search-panel {
+    position: fixed;
+    top: calc(var(--ink-topbar-height) - 4px);
+    right: max(12px, env(safe-area-inset-right));
+    left: max(12px, env(safe-area-inset-left));
+  }
+
+  .quiet-shelf-actions {
+    gap: 6px;
+  }
+
+  .quiet-shelf-actions .quiet-shelf-icon-button:first-child,
+  .quiet-shelf-secondary-action {
+    display: none;
+  }
+
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-primary-action {
+    width: 40px;
+    min-width: 40px;
+    padding-inline: 0;
+  }
+
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-primary-action span {
+    display: none;
+  }
+
+  .inkbound-main-content {
+    margin-left: 0;
+    padding-top: var(--ink-topbar-height);
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  .inkbound-page-canvas {
+    padding: 14px max(16px, env(safe-area-inset-right)) 28px max(16px, env(safe-area-inset-left));
+  }
+
+  .quiet-shelf-mobile-nav {
+    position: fixed;
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: max(10px, env(safe-area-inset-left));
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid rgba(219, 162, 174, 0.14);
+    border-radius: 14px;
+    background: rgba(19, 15, 20, 0.96);
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.46);
+    backdrop-filter: blur(18px);
+  }
+
+  .quiet-shelf-mobile-nav button {
+    display: flex;
+    min-width: 0;
+    min-height: 46px;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 4px;
+    color: #877b84;
+    font-size: 0.56rem;
+  }
+
+  .quiet-shelf-mobile-nav button.is-active {
+    background: rgba(137, 58, 91, 0.22);
+    color: #9a7889;
+  }
+
+  .quiet-shelf-mobile-nav button span {
+    display: none;
+  }
+
+  .quiet-shelf-mobile-nav svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .inkbound-toast {
+    right: max(16px, env(safe-area-inset-right));
+    bottom: calc(68px + env(safe-area-inset-bottom));
+    left: max(16px, env(safe-area-inset-left));
   }
 }
