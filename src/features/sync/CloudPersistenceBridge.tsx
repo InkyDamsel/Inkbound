@@ -21,6 +21,7 @@ import {
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   notifyCloudDataUpdated,
   type BeforeSignOutDetail,
+  type CloudSyncedStorageKey,
 } from './cloudSyncEvents';
 import { shouldPromoteLocalRecordMissingFromCloud } from './syncConflictPolicy';
 
@@ -30,9 +31,9 @@ const localStorage = {
   removeItem: (key: string) => getRuntimeStorage().removeItem(key),
 };
 
-const BOOKS_KEY = 'inkbound_books';
-const SESSIONS_KEY = 'inkbound_sessions';
-const PROFILE_KEY = 'inkbound_reader_profile';
+const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
+const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
+const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
 const BRIDGE_VERSION = '5';
 const LOCAL_CHANGE_POLL_MS = 1500;
@@ -364,7 +365,7 @@ export const CloudPersistenceBridge: React.FC = () => {
       localStorage.removeItem(clearIntentKey(uid));
 
       const subscribeCollection = <T extends { id: string }>(
-        name: 'books' | 'sessions', storageKey: string,
+        name: 'books' | 'sessions', storageKey: CloudSyncedStorageKey,
         fingerprints: React.MutableRefObject<Map<string, string>>,
         pendingSelector: (state: PendingSyncState) => Record<string, RecordMutation<T>>,
         baselineSelector: (state: SyncBaseline) => Record<string, string>,
@@ -411,18 +412,17 @@ export const CloudPersistenceBridge: React.FC = () => {
           const fingerprint = stable(cloudValue);
           const currentBaseline = readBaseline(uid);
           if (currentBaseline.profile !== fingerprint) { currentBaseline.profile = fingerprint; writeBaseline(uid, currentBaseline); }
-          if (fingerprint !== profileFingerprint.current) {
-            profileFingerprint.current = fingerprint;
-            localStorage.setItem(PROFILE_KEY, fingerprint);
-            notifyCloudDataUpdated([PROFILE_KEY]);
-          }
+          if (fingerprint === profileFingerprint.current) return;
+          profileFingerprint.current = fingerprint;
+          localStorage.setItem(PROFILE_KEY, fingerprint);
+          notifyCloudDataUpdated([PROFILE_KEY]);
         }, () => undefined),
       );
 
       hydrated.current = true;
       localStorage.setItem(BRIDGE_VERSION_KEY, BRIDGE_VERSION);
       notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
-      try { await flushPending(); } catch { /* durable queue retries below */ }
+      try { await flushPending(); } catch { /* durable pending queue retries later */ }
     };
 
     void initialize().catch(() => {
@@ -440,12 +440,12 @@ export const CloudPersistenceBridge: React.FC = () => {
       if (!hydrated.current || disposed || pollRunning.current) return;
       pollRunning.current = true;
       try { captureCurrentChanges(); await flushPending(); }
-      catch { /* offline/transient failures remain queued */ }
+      catch { /* offline/transient failures leave mutations queued */ }
       finally { pollRunning.current = false; }
     }, LOCAL_CHANGE_POLL_MS);
 
-    const preservePending = () => captureCurrentChanges();
-    const syncImmediately = () => {
+    const preserve = () => captureCurrentChanges();
+    const syncNow = () => {
       if (!hydrated.current || disposed) return;
       captureCurrentChanges();
       void flushPending().catch(() => undefined);
@@ -457,17 +457,15 @@ export const CloudPersistenceBridge: React.FC = () => {
       detail.waitUntil(flushPending());
     };
 
-    window.addEventListener('pagehide', preservePending);
-    document.addEventListener('visibilitychange', preservePending);
-    window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncImmediately);
+    window.addEventListener('pagehide', preserve);
+    document.addEventListener('visibilitychange', preserve);
+    window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncNow);
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
     return () => {
-      preservePending();
-      disposed = true;
-      window.clearInterval(poll);
-      window.removeEventListener('pagehide', preservePending);
-      document.removeEventListener('visibilitychange', preservePending);
-      window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncImmediately);
+      preserve(); disposed = true; window.clearInterval(poll);
+      window.removeEventListener('pagehide', preserve);
+      document.removeEventListener('visibilitychange', preserve);
+      window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncNow);
       window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
