@@ -32,6 +32,7 @@ import './styles/core-pages.css';
 import './styles/release-polish.css';
 import './styles/light-theme-2.css';
 import './styles/mobile-app.css';
+import './styles/mobile-help-position.css';
 // Keep this last: it protects intentionally dark artwork/hero surfaces from
 // broad light-theme utility remapping and strengthens parchment-mode contrast.
 import './styles/light-theme-contrast.css';
