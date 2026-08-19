@@ -37,6 +37,13 @@ interface DashboardData {
 
 const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
 
+// Administration is owner-only and read-only until an explicit action is taken.
+// Keep the last successfully loaded dashboard in module memory so ordinary app
+// remounts cannot make a successful Refresh appear to do nothing. This cache is
+// intentionally not written to localStorage, Firestore, or any reader data source.
+let cachedDashboard: DashboardData | null = null;
+let cachedSelectedUserId: string | null = null;
+
 const formatDate = (value: string | null) => value
   ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   : 'Not available';
@@ -68,11 +75,16 @@ function normalizeDashboardPayload(value: unknown): DashboardData {
 export const AdminScreen: React.FC = () => {
   const { user } = useAccountSync();
   const [query, setQuery] = useState('');
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [data, setData] = useState<DashboardData | null>(() => cachedDashboard);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(() => {
+    if (!cachedDashboard) return null;
+    return cachedDashboard.users.find((item) => item.uid === cachedSelectedUserId)
+      ?? cachedDashboard.users[0]
+      ?? null;
+  });
   const [reason, setReason] = useState('');
   const [courtesyDays, setCourtesyDays] = useState(7);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(() => cachedDashboard ? 'Owner data loaded.' : '');
   const [loading, setLoading] = useState(false);
   const [eraseDialogOpen, setEraseDialogOpen] = useState(false);
   const [eraseConfirmation, setEraseConfirmation] = useState('');
@@ -80,6 +92,11 @@ export const AdminScreen: React.FC = () => {
   const [erasing, setErasing] = useState(false);
 
   const approvedOwner = Boolean(user?.email && OWNER_EMAILS.has(user.email.toLowerCase()));
+
+  const selectReader = (reader: AdminUser) => {
+    cachedSelectedUserId = reader.uid;
+    setSelectedUser(reader);
+  };
 
   const loadDashboard = async (search = '') => {
     setStatus('Refresh requested…');
@@ -103,8 +120,14 @@ export const AdminScreen: React.FC = () => {
       const getAdminDashboard = httpsCallable<{ query: string }, unknown>(functions, 'getAdminDashboard');
       const response = await getAdminDashboard({ query: search });
       const dashboard = normalizeDashboardPayload(response.data);
+      const nextSelected = dashboard.users.find((item) => item.uid === (selectedUser?.uid ?? cachedSelectedUserId))
+        ?? dashboard.users[0]
+        ?? null;
+
+      cachedDashboard = dashboard;
+      cachedSelectedUserId = nextSelected?.uid ?? null;
       setData(dashboard);
-      setSelectedUser((current) => dashboard.users.find((item) => item.uid === current?.uid) ?? dashboard.users[0] ?? null);
+      setSelectedUser(nextSelected);
       setStatus('Owner data refreshed.');
     } catch (error) {
       setStatus(error instanceof Error ? `Administration refresh failed: ${error.message}` : 'The admin dashboard could not be loaded.');
@@ -182,6 +205,7 @@ export const AdminScreen: React.FC = () => {
       setEraseDialogOpen(false);
       setEraseConfirmation('');
       setEraseReason('');
+      cachedSelectedUserId = null;
       setSelectedUser(null);
       setStatus('Reader account and Inkbound data permanently erased.');
       await loadDashboard(query);
@@ -219,7 +243,7 @@ export const AdminScreen: React.FC = () => {
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.7fr)]">
         <div className="inkbound-panel p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Readers</h2><p className="text-sm text-[var(--ink-muted)]">Search by name, email, or Firebase UID.</p></div><form onSubmit={(event) => { event.preventDefault(); void loadDashboard(query); }} className="flex gap-2"><label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3"><Search className="h-4 w-4 text-[var(--ink-muted)]" /><input id="admin-reader-search" name="adminReaderSearch" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search readers" className="min-w-0 bg-transparent text-sm text-[var(--ink-ivory)] outline-none" /></label><button className="quiet-shelf-primary-action" type="submit" disabled={loading}>Search</button></form></div>
-          <div className="mt-5 grid gap-2">{data === null ? <p className="py-8 text-center text-[var(--ink-muted)]">Press Refresh to load owner data.</p> : data.users.length ? data.users.map((reader) => <button key={reader.uid} type="button" onClick={() => setSelectedUser(reader)} className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${selectedUser?.uid === reader.uid ? 'border-[var(--ink-mauve)] bg-[var(--ink-surface-soft)]' : 'border-[var(--ink-border-subtle)] hover:bg-[var(--ink-surface-soft)]'}`}>{reader.photoUrl ? <img src={reader.photoUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <span className="grid h-11 w-11 place-items-center rounded-full bg-[var(--ink-surface-raised)] font-serif text-[var(--ink-ivory)]">{(reader.displayName || reader.email).charAt(0).toUpperCase()}</span>}<span className="min-w-0 flex-1"><strong className="block truncate text-[var(--ink-ivory)]">{reader.displayName || 'Unnamed reader'}</strong><small className="block truncate text-[var(--ink-muted)]">{reader.email}</small></span>{reader.vipEnabled && <span className="quiet-shelf-premium-pill">VIP</span>}</button>) : <p className="py-8 text-center text-[var(--ink-muted)]">No matching readers found.</p>}</div>
+          <div className="mt-5 grid gap-2">{data === null ? <p className="py-8 text-center text-[var(--ink-muted)]">Press Refresh to load owner data.</p> : data.users.length ? data.users.map((reader) => <button key={reader.uid} type="button" onClick={() => selectReader(reader)} className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${selectedUser?.uid === reader.uid ? 'border-[var(--ink-mauve)] bg-[var(--ink-surface-soft)]' : 'border-[var(--ink-border-subtle)] hover:bg-[var(--ink-surface-soft)]'}`}>{reader.photoUrl ? <img src={reader.photoUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <span className="grid h-11 w-11 place-items-center rounded-full bg-[var(--ink-surface-raised)] font-serif text-[var(--ink-ivory)]">{(reader.displayName || reader.email).charAt(0).toUpperCase()}</span>}<span className="min-w-0 flex-1"><strong className="block truncate text-[var(--ink-ivory)]">{reader.displayName || 'Unnamed reader'}</strong><small className="block truncate text-[var(--ink-muted)]">{reader.email}</small></span>{reader.vipEnabled && <span className="quiet-shelf-premium-pill">VIP</span>}</button>) : <p className="py-8 text-center text-[var(--ink-muted)]">No matching readers found.</p>}</div>
         </div>
 
         <aside className="inkbound-panel p-5">
