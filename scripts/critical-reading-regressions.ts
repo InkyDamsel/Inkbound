@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
+import { mergeEnrichedImportedBook } from '../src/features/import/libraryEnrichment';
 import {
   getActiveEdition,
   getBookReadingState,
   reconcileFinishedBookProgress,
   withReadingStatus,
 } from '../src/features/reading/bookReadingState';
+import { analyzeLibraryIntegrity } from '../src/features/recovery/libraryIntegrity';
 import {
   getCurrentPace,
   getReadingDates,
@@ -158,4 +160,58 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), false);
 }
 
-console.log('Inkbound critical reading and beta sync regressions passed.');
+// Enrichment may fill missing metadata, but must never replace a valid existing
+// cover with a missing/new empty cover. This protects already-enriched imports.
+{
+  const current: UserBookRecord = {
+    ...baseBook(),
+    sourceOfImport: 'Library import',
+    privateTags: ['imported'],
+    activeEditionId: 'paper-500',
+    editions: baseBook().editions.map((edition) => edition.id === 'paper-500'
+      ? { ...edition, coverUrl: 'https://covers.example/existing.jpg' }
+      : edition),
+  };
+  const enriched: UserBookRecord = {
+    ...baseBook(),
+    id: current.id,
+    activeEditionId: 'enriched',
+    work: { ...baseBook().work, publisherSummary: 'Publisher summary' },
+    editions: [{ id: 'enriched', format: 'hardcover', pageCount: 510, coverGradient: '', coverUrl: undefined }],
+  };
+  const merged = mergeEnrichedImportedBook(current, enriched);
+  const active = merged.editions.find((edition) => edition.id === merged.activeEditionId);
+  assert.equal(active?.coverUrl, 'https://covers.example/existing.jpg');
+  assert.equal(active?.pageCount, 500);
+}
+
+// Integrity diagnostics distinguish actual stored covers from the number of covers
+// found by a single import/retry run and flag structurally unsafe state.
+{
+  const covered = {
+    ...baseBook(),
+    editions: baseBook().editions.map((edition) => edition.id === 'paper-500'
+      ? { ...edition, coverUrl: 'https://covers.example/current.jpg' }
+      : edition),
+  };
+  const report = analyzeLibraryIntegrity(
+    [covered],
+    [session({ id: 'integrity-session', bookId: covered.id })],
+  );
+  assert.equal(report.bookCount, 1);
+  assert.equal(report.activeCoverCount, 1);
+  assert.equal(report.anyEditionCoverCount, 1);
+  assert.equal(report.orphanSessionCount, 0);
+  assert.equal(report.healthy, true);
+}
+
+{
+  const report = analyzeLibraryIntegrity(
+    [baseBook()],
+    [session({ id: 'orphan', bookId: 'missing-book' })],
+  );
+  assert.equal(report.orphanSessionCount, 1);
+  assert.equal(report.healthy, false);
+}
+
+console.log('Inkbound critical reading, import integrity, and beta sync regressions passed.');
