@@ -14,6 +14,7 @@ import { analyzeLibraryIntegrity } from './libraryIntegrity';
 const RESTORE_PHRASE = 'RESTORE';
 const BOOKS_KEY = 'inkbound_books';
 const SESSIONS_KEY = 'inkbound_sessions';
+const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
 
 function formatRecoveryDate(value: string) {
   const parsed = new Date(value);
@@ -66,6 +67,12 @@ export const RecoveryCenter: React.FC = () => {
   }, [open, user?.uid]);
 
   if (!user) return null;
+
+  // Owner accounts use the Administration recovery workflow instead of the
+  // personal floating shortcut. RecoverySafetyBridge still creates owner
+  // snapshots normally, so owner data remains protected and recoverable.
+  const isOwnerAccount = Boolean(user.email && OWNER_EMAILS.has(user.email.toLowerCase()));
+  if (isOwnerAccount) return null;
 
   const createManualPoint = async () => {
     setLoading(true);
