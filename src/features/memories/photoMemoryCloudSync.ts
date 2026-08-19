@@ -1,5 +1,5 @@
 import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
-import { deleteObject, getBytes, ref as storageRef, uploadString } from 'firebase/storage';
+import { getBytes, ref as storageRef, uploadString } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
 import {
@@ -22,6 +22,7 @@ interface CloudPhotoMemory {
   storagePath?: string;
   imageContentType?: string;
   deleted?: boolean;
+  deletedAt?: string;
   syncRevision?: string;
   // Migration-only fallback for older records that embedded base64 in Firestore.
   imageData?: string;
@@ -68,6 +69,7 @@ async function uploadPhoto(uid: string, photo: PhotoMemoryRecord): Promise<strin
     storagePath: path,
     imageContentType,
     deleted: false,
+    deletedAt: null,
     syncRevision,
     updatedAt: serverTimestamp(),
   });
@@ -77,17 +79,14 @@ async function uploadPhoto(uid: string, photo: PhotoMemoryRecord): Promise<strin
 async function deletePhoto(uid: string, photoId: string) {
   if (!db) throw new Error('Photo sync is not configured for this Inkbound deployment.');
   const path = photoStoragePath(uid, photoId);
-  if (storage) {
-    try {
-      await deleteObject(storageRef(storage, path));
-    } catch {
-      // Missing media is already equivalent to a completed delete.
-    }
-  }
-  // Keep a small tombstone so another device with stale local data cannot resurrect
-  // a memory that was intentionally deleted elsewhere.
+
+  // Soft-delete only. Keep the Storage object so a Recovery Center restore can
+  // make the memory visible again with its original binary intact. A future
+  // retention/cleanup job may permanently purge old tombstoned media after a
+  // deliberate grace period, but beta builds must prefer recoverability.
   await setDoc(doc(collection(db, 'users', uid, 'photoMemories'), photoId), {
     deleted: true,
+    deletedAt: new Date().toISOString(),
     storagePath: path,
     syncRevision: createSyncRevision(),
     updatedAt: serverTimestamp(),
