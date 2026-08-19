@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
+import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
@@ -55,13 +56,8 @@ const normalizeText = (value?: string): string =>
 
 const compactIsbn = (value: string): string => value.replace(/[^0-9X]/gi, '').toUpperCase();
 
-const isAdministrationActive = (): boolean => {
-  try {
-    return localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) === 'admin';
-  } catch {
-    return false;
-  }
-};
+const isAdministrationActive = (): boolean =>
+  readRuntimeJson<string>(ACTIVE_TAB_STORAGE_KEY, 'home') === 'admin';
 
 const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<void> => {
   while (isAdministrationActive()) {
