@@ -176,8 +176,11 @@ const googleBooksSource = fs.readFileSync(googleBooksPath, 'utf8');
 if (!googleBooksSource.includes("provider: 'google-books'")) {
   fail('Android Google Books traffic must stay behind the protected Firebase catalog gateway.');
 }
-if (!googleBooksSource.includes('if (isNativeRuntime())')) {
-  fail('Google Books transport must keep a distinct native-safe request path.');
+if (!googleBooksSource.includes("httpsCallable<") || !googleBooksSource.includes("'searchHardcoverBooks'")) {
+  fail('Google Books must retain the App Check-protected Firebase catalog transport used by Android.');
+}
+if (!googleBooksSource.includes('functions && auth?.currentUser')) {
+  fail('signed-in catalog enrichment must prefer the protected Firebase transport before any web-only direct fallback.');
 }
 
 const androidDir = path.join(cwd, 'android');
