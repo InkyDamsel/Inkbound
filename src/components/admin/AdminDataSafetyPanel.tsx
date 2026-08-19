@@ -294,7 +294,10 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
 
             <div className="mt-4 space-y-3">
               {currentRecoveryPoints.length === 0 ? (
-                <p className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-4 text-sm text-[var(--ink-muted)]">No recovery points are available for this reader yet.</p>
+                <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-4 text-sm text-[var(--ink-muted)]">
+                  <strong className="block text-[var(--ink-ivory)]">No recovery history yet</strong>
+                  <p className="mt-2 leading-6">This reader has not created their first automatic Inkbound safety snapshot yet. Restore becomes available after they open a build with recovery protection enabled and complete initial cloud hydration. Until a snapshot exists, there is no earlier saved state for Administration to restore.</p>
+                </div>
               ) : currentRecoveryPoints.map((point) => (
                 <article key={point.id} className="flex flex-col gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-4 md:flex-row md:items-center md:justify-between">
                   <div>
