@@ -58,17 +58,19 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
   const [helpOpen, setHelpOpen] = useState(false);
 
   return (
-    <div className="inkbound-app-shell" data-viewport={viewport}>
+    <div className="inkbound-app-shell pb-24 md:pb-20" data-viewport={viewport}>
       {navigation}
       {children}
 
       <button
         type="button"
         onClick={() => setHelpOpen(true)}
-        className="fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[110] inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 text-sm font-bold text-[var(--ink-ivory)] shadow-xl transition hover:border-[var(--ink-gold)]/50 md:bottom-[max(1.25rem,env(safe-area-inset-bottom))] md:right-[max(1.25rem,env(safe-area-inset-right))] md:z-[180]"
+        className="fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[110] grid h-11 w-11 place-items-center rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-0 text-[var(--ink-ivory)] shadow-xl transition hover:border-[var(--ink-gold)]/50 md:bottom-[max(1.25rem,env(safe-area-inset-bottom))] md:right-[max(1.25rem,env(safe-area-inset-right))] md:z-[180]"
         aria-label="Open Inkbound help and frequently asked questions"
+        title="Help"
       >
-        <HelpCircle className="h-4 w-4 text-[var(--ink-gold)]" /> Help
+        <HelpCircle className="h-5 w-5 text-[var(--ink-gold)]" />
+        <span className="sr-only">Help</span>
       </button>
 
       {helpOpen && (
