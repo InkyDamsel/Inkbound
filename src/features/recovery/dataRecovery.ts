@@ -14,15 +14,37 @@ import {
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage, notifyRuntimeStorageChanged } from '../../platform/runtimeStorage';
 import type { ReadingSession, UserBookRecord } from '../../types';
-import { AUXILIARY_ACCOUNT_KEYS, type AuxiliaryAccountKeyName } from '../sync/auxiliaryAccountSyncConfig';
+import {
+  IMPORT_ENRICHMENT_PAUSED_KEY,
+  IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY,
+  IMPORT_ENRICHMENT_RETRY_REQUEST_KEY,
+  IMPORT_HISTORY_STORAGE_KEY,
+} from '../import/importHistory';
+import { IMPORT_ENRICHMENT_QUEUE_KEY } from '../import/libraryEnrichment';
+import {
+  AUXILIARY_ACCOUNT_KEYS,
+  getAuxiliaryBaselineKey,
+  getAuxiliaryPendingKey,
+  type AuxiliaryAccountKeyName,
+} from '../sync/auxiliaryAccountSyncConfig';
 import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../sync/cloudSyncEvents';
 
 const RECOVERY_COLLECTION = 'recoverySnapshots';
 const BOOKS_KEY = 'inkbound_books';
 const SESSIONS_KEY = 'inkbound_sessions';
 const PROFILE_KEY = 'inkbound_reader_profile';
+const PHOTO_REVISION_KEY = 'inkbound_photo_memory_cloud_revisions_v1';
+const RESTORE_REQUEST_KEY = 'inkbound_pending_recovery_restore_v1';
 const MAX_LISTED_RECOVERY_POINTS = 12;
 const WRITE_BATCH_SIZE = 350;
+
+const RECOVERABLE_RUNTIME_KEYS = [
+  IMPORT_HISTORY_STORAGE_KEY,
+  IMPORT_ENRICHMENT_QUEUE_KEY,
+  IMPORT_ENRICHMENT_PAUSED_KEY,
+  IMPORT_ENRICHMENT_RETRY_REQUEST_KEY,
+  IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY,
+] as const;
 
 interface CloudRecord<T> {
   data: T;
@@ -37,6 +59,12 @@ interface ReaderProfile {
   bannerImage?: string;
 }
 
+interface ScheduledRecoveryRestore {
+  uid: string;
+  snapshotId: string;
+  requestedAt: string;
+}
+
 export interface RecoveryPointSummary {
   id: string;
   createdAtClient: string;
@@ -45,6 +73,7 @@ export interface RecoveryPointSummary {
   sessionCount: number;
   auxiliaryCount: number;
   photoMemoryCount: number;
+  runtimeStateCount: number;
   fingerprint: string;
 }
 
@@ -54,6 +83,7 @@ interface SnapshotPayload {
   profile?: ReaderProfile;
   auxiliary: Array<{ id: AuxiliaryAccountKeyName; data: unknown }>;
   photoMemories: Array<{ id: string; data: Record<string, unknown> }>;
+  runtimeState: Array<{ id: string; data: string }>;
 }
 
 const stable = (value: unknown) => JSON.stringify(value);
@@ -69,13 +99,26 @@ function hashText(value: string): string {
 
 function snapshotFingerprint(payload: SnapshotPayload): string {
   const compact = {
-    books: payload.books.map((book) => [book.id, stable(book)]),
-    sessions: payload.sessions.map((session) => [session.id, stable(session)]),
+    books: [...payload.books].sort((a, b) => a.id.localeCompare(b.id)).map((book) => [book.id, stable(book)]),
+    sessions: [...payload.sessions].sort((a, b) => a.id.localeCompare(b.id)).map((session) => [session.id, stable(session)]),
     profile: payload.profile ? stable(payload.profile) : '',
-    auxiliary: payload.auxiliary.map((item) => [item.id, stable(item.data)]),
-    photoMemories: payload.photoMemories.map((item) => [item.id, stable(item.data)]),
+    auxiliary: [...payload.auxiliary].sort((a, b) => a.id.localeCompare(b.id)).map((item) => [item.id, stable(item.data)]),
+    photoMemories: [...payload.photoMemories].sort((a, b) => a.id.localeCompare(b.id)).map((item) => [item.id, stable(item.data)]),
+    runtimeState: [...payload.runtimeState].sort((a, b) => a.id.localeCompare(b.id)).map((item) => [item.id, item.data]),
   };
   return hashText(stable(compact));
+}
+
+function readRecoverableRuntimeState(): SnapshotPayload['runtimeState'] {
+  const storage = getRuntimeStorage();
+  return RECOVERABLE_RUNTIME_KEYS.flatMap((key) => {
+    try {
+      const value = storage.getItem(key);
+      return value === null ? [] : [{ id: key, data: value }];
+    } catch {
+      return [];
+    }
+  });
 }
 
 async function readCloudPayload(uid: string): Promise<SnapshotPayload> {
@@ -106,12 +149,12 @@ async function readCloudPayload(uid: string): Promise<SnapshotPayload> {
         data: (item.data() as CloudRecord<unknown>).data,
       })),
     // Photo-memory recovery intentionally stores Firestore metadata and Storage
-    // paths. Binary media remains in Firebase Storage and should not be deleted
-    // merely because a record is hidden/tombstoned.
+    // paths. Binary media remains in Firebase Storage behind soft-delete tombstones.
     photoMemories: photoSnapshot.docs.map((item) => ({
       id: item.id,
       data: item.data() as Record<string, unknown>,
     })),
+    runtimeState: readRecoverableRuntimeState(),
   };
 }
 
@@ -142,6 +185,7 @@ export async function listRecoveryPoints(uid: string): Promise<RecoveryPointSumm
       sessionCount: Number(data.sessionCount ?? 0),
       auxiliaryCount: Number(data.auxiliaryCount ?? 0),
       photoMemoryCount: Number(data.photoMemoryCount ?? 0),
+      runtimeStateCount: Number(data.runtimeStateCount ?? 0),
       fingerprint: String(data.fingerprint ?? ''),
     };
   });
@@ -159,6 +203,7 @@ export async function createRecoveryPoint(
     payload.sessions.length === 0 &&
     payload.auxiliary.length === 0 &&
     payload.photoMemories.length === 0 &&
+    payload.runtimeState.length === 0 &&
     !payload.profile
   ) return null;
 
@@ -169,18 +214,6 @@ export async function createRecoveryPoint(
   const createdAtClient = new Date().toISOString();
   const snapshotId = `${Date.now()}-${crypto.randomUUID()}`;
   const snapshotRef = doc(db, 'users', uid, RECOVERY_COLLECTION, snapshotId);
-
-  await setDoc(snapshotRef, {
-    schemaVersion: 1,
-    createdAt: serverTimestamp(),
-    createdAtClient,
-    reason,
-    fingerprint,
-    bookCount: payload.books.length,
-    sessionCount: payload.sessions.length,
-    auxiliaryCount: payload.auxiliary.length,
-    photoMemoryCount: payload.photoMemories.length,
-  });
 
   const tasks: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
   payload.books.forEach((book) => tasks.push((batch) => batch.set(
@@ -199,10 +232,29 @@ export async function createRecoveryPoint(
     doc(snapshotRef, 'photoMemories', item.id),
     { data: item.data },
   )));
+  payload.runtimeState.forEach((item) => tasks.push((batch) => batch.set(
+    doc(snapshotRef, 'runtimeState', item.id),
+    { data: item.data },
+  )));
   if (payload.profile) {
     tasks.push((batch) => batch.set(doc(snapshotRef, 'profile', 'current'), { data: payload.profile }));
   }
   await commitTasks(tasks);
+
+  // Publish the root metadata only after every child record has committed. This
+  // prevents a partially-written recovery point from appearing as restorable.
+  await setDoc(snapshotRef, {
+    schemaVersion: 2,
+    createdAt: serverTimestamp(),
+    createdAtClient,
+    reason,
+    fingerprint,
+    bookCount: payload.books.length,
+    sessionCount: payload.sessions.length,
+    auxiliaryCount: payload.auxiliary.length,
+    photoMemoryCount: payload.photoMemories.length,
+    runtimeStateCount: payload.runtimeState.length,
+  });
 
   return {
     id: snapshotId,
@@ -212,6 +264,7 @@ export async function createRecoveryPoint(
     sessionCount: payload.sessions.length,
     auxiliaryCount: payload.auxiliary.length,
     photoMemoryCount: payload.photoMemories.length,
+    runtimeStateCount: payload.runtimeState.length,
     fingerprint,
   };
 }
@@ -222,25 +275,32 @@ async function readRecoveryPayload(uid: string, snapshotId: string): Promise<Sna
   const rootSnapshot = await getDoc(root);
   if (!rootSnapshot.exists()) throw new Error('That recovery point no longer exists.');
 
-  const [booksSnapshot, sessionsSnapshot, profileSnapshot, auxiliarySnapshot, photoSnapshot] = await Promise.all([
+  const [booksSnapshot, sessionsSnapshot, profileSnapshot, auxiliarySnapshot, photoSnapshot, runtimeSnapshot] = await Promise.all([
     getDocs(collection(root, 'books')),
     getDocs(collection(root, 'sessions')),
     getDoc(doc(root, 'profile', 'current')),
     getDocs(collection(root, 'auxiliary')),
     getDocs(collection(root, 'photoMemories')),
+    getDocs(collection(root, 'runtimeState')),
   ]);
 
   return {
     books: booksSnapshot.docs.map((item) => (item.data() as CloudRecord<UserBookRecord>).data).filter(Boolean),
     sessions: sessionsSnapshot.docs.map((item) => (item.data() as CloudRecord<ReadingSession>).data).filter(Boolean),
     profile: profileSnapshot.exists() ? (profileSnapshot.data() as CloudRecord<ReaderProfile>).data : undefined,
-    auxiliary: auxiliarySnapshot.docs.map((item) => ({
-      id: item.id as AuxiliaryAccountKeyName,
-      data: (item.data() as CloudRecord<unknown>).data,
-    })),
+    auxiliary: auxiliarySnapshot.docs
+      .filter((item) => item.id in AUXILIARY_ACCOUNT_KEYS)
+      .map((item) => ({
+        id: item.id as AuxiliaryAccountKeyName,
+        data: (item.data() as CloudRecord<unknown>).data,
+      })),
     photoMemories: photoSnapshot.docs.map((item) => ({
       id: item.id,
       data: (item.data() as CloudRecord<Record<string, unknown>>).data,
+    })),
+    runtimeState: runtimeSnapshot.docs.map((item) => ({
+      id: item.id,
+      data: String((item.data() as CloudRecord<unknown>).data ?? ''),
     })),
   };
 }
@@ -260,13 +320,39 @@ async function replaceCollection(
   current.docs.forEach((item) => {
     if (!wantedIds.has(item.id)) tasks.push((batch) => batch.delete(item.ref));
   });
+  const clientUpdatedAt = new Date().toISOString();
   records.forEach((item) => tasks.push((batch) => batch.set(
     doc(targetCollection, item.id),
     wrapData
-      ? { data: item.data, updatedAt: serverTimestamp(), clientUpdatedAt: new Date().toISOString() }
+      ? { data: item.data, updatedAt: serverTimestamp(), clientUpdatedAt }
       : item.data as Record<string, unknown>,
   )));
   await commitTasks(tasks);
+}
+
+export function scheduleRecoveryRestore(uid: string, snapshotId: string): void {
+  getRuntimeStorage().setItem(RESTORE_REQUEST_KEY, stable({
+    uid,
+    snapshotId,
+    requestedAt: new Date().toISOString(),
+  } satisfies ScheduledRecoveryRestore));
+}
+
+export function readScheduledRecoveryRestore(uid: string): ScheduledRecoveryRestore | null {
+  try {
+    const raw = getRuntimeStorage().getItem(RESTORE_REQUEST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ScheduledRecoveryRestore>;
+    return parsed.uid === uid && typeof parsed.snapshotId === 'string' && parsed.snapshotId
+      ? parsed as ScheduledRecoveryRestore
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearScheduledRecoveryRestore(): void {
+  getRuntimeStorage().removeItem(RESTORE_REQUEST_KEY);
 }
 
 export async function restoreRecoveryPoint(uid: string, snapshotId: string): Promise<void> {
@@ -293,15 +379,37 @@ export async function restoreRecoveryPoint(uid: string, snapshotId: string): Pro
   }
 
   const storage = getRuntimeStorage();
+
+  // Discard sync metadata created for the superseded state. The bridges mount
+  // only after this gated restore completes and will build fresh baselines from
+  // the restored cloud records instead of replaying stale mutations.
+  storage.removeItem(`inkbound_pending_sync_${uid}_v1`);
+  storage.removeItem(`inkbound_sync_baseline_${uid}_v1`);
+  storage.removeItem(getAuxiliaryPendingKey(uid));
+  storage.removeItem(getAuxiliaryBaselineKey(uid));
+
   storage.setItem(BOOKS_KEY, stable(payload.books));
   storage.setItem(SESSIONS_KEY, stable(payload.sessions));
   storage.setItem(PROFILE_KEY, stable(payload.profile ?? {}));
-  payload.auxiliary.forEach((item) => {
-    const runtimeKey = AUXILIARY_ACCOUNT_KEYS[item.id];
-    if (!runtimeKey) return;
-    storage.setItem(runtimeKey, stable(item.data));
+
+  const restoredAuxiliary = new Map(payload.auxiliary.map((item) => [item.id, item.data]));
+  (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, runtimeKey]) => {
+    if (restoredAuxiliary.has(name)) storage.setItem(runtimeKey, stable(restoredAuxiliary.get(name)));
+    else storage.removeItem(runtimeKey);
     notifyRuntimeStorageChanged(runtimeKey);
   });
+
+  const restoredRuntime = new Map(payload.runtimeState.map((item) => [item.id, item.data]));
+  RECOVERABLE_RUNTIME_KEYS.forEach((runtimeKey) => {
+    const value = restoredRuntime.get(runtimeKey);
+    if (value === undefined) storage.removeItem(runtimeKey);
+    else storage.setItem(runtimeKey, value);
+    notifyRuntimeStorageChanged(runtimeKey);
+  });
+
+  // Force PhotoMemory sync to compare restored cloud metadata against Storage
+  // rather than trusting revision fingerprints from the state we just replaced.
+  storage.removeItem(PHOTO_REVISION_KEY);
 
   notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
   notifyLocalDataChanged([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
