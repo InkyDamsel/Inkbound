@@ -45,12 +45,28 @@ interface GoogleVolumesResponse {
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
+const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
+let catalogBackoffUntil = 0;
 
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
 const compactIsbn = (value: string): string => value.replace(/[^0-9X]/gi, '').toUpperCase();
+
+const isAdministrationActive = (): boolean => {
+  try {
+    return localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) === 'admin';
+  } catch {
+    return false;
+  }
+};
+
+const shouldBackOffCatalog = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /\b(?:429|503)\b|resource-exhausted|unavailable/i.test(message);
+};
 
 export const buildGoogleBooksQuery = (value: string): string => {
   const trimmed = value.trim();
@@ -200,9 +216,6 @@ async function requestDirectGoogleBooks(query: string, signal?: AbortSignal): Pr
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  // Signed-in readers always use the protected Functions gateway. This keeps the
-  // Google API key out of the browser and avoids referrer/key-restriction failures
-  // during import repair. Signed-out web search retains the public direct fallback.
   const payload = functions && auth?.currentUser
     ? await requestProtectedGoogleBooks(query, signal)
     : await requestDirectGoogleBooks(query, signal);
@@ -213,13 +226,15 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  // Exactly one Google Books request per uncached search. Do not immediately
-  // retry with anonymous/keyed variants because those bursts can trigger quotas
-  // and make manual search compete with background metadata enrichment.
   try {
     return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
-    console.warn('Google Books search unavailable; using alternate catalogs.', error);
+    if (shouldBackOffCatalog(error)) {
+      catalogBackoffUntil = Math.max(catalogBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+      console.warn('Inkbound catalog enrichment is cooling down after a provider rate limit/outage.', error);
+    } else {
+      console.warn('Google Books search unavailable; using alternate catalogs.', error);
+    }
     return { groups: [], totalItems: 0 };
   }
 }
@@ -229,8 +244,6 @@ async function searchOpenLibraryWithAuthorFallback(query: string, signal?: Abort
     const normal = await searchOpenLibrary(buildGoogleBooksQuery(query), signal);
     if (normal.groups.length > 0 || /^isbn:/i.test(buildGoogleBooksQuery(query))) return normal;
 
-    // Open Library has a dedicated author index. Use it only when the broad
-    // search genuinely found nothing; this does not consume Google quota.
     if (/^[\p{L}.\-' ]{3,80}$/u.test(query.trim())) {
       return await searchOpenLibrary(`inauthor:${query.trim()}`, signal);
     }
@@ -246,6 +259,16 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (!trimmed) return { groups: [], totalItems: 0 };
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
+  // Administration must remain operational even while a large import repair is
+  // queued elsewhere in the app. Never run catalog enrichment in the background
+  // while owner tools are active.
+  if (isAdministrationActive()) return { groups: [], totalItems: 0 };
+
+  // A provider 429/503 means continuing immediately only creates a request storm.
+  // Keep the queue intact and let the normal maintenance/retry scheduler resume
+  // later instead of repeatedly hammering Functions and destabilizing the UI.
+  if (Date.now() < catalogBackoffUntil) return { groups: [], totalItems: 0 };
+
   const cacheKey = normalizeText(trimmed);
   const cached = searchCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.response;
@@ -254,6 +277,9 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const [google, hardcover, openLibrary] = await Promise.all([
     searchGoogleBaseline(trimmed, signal),
     searchHardcover(trimmed).catch((error) => {
+      if (shouldBackOffCatalog(error)) {
+        catalogBackoffUntil = Math.max(catalogBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+      }
       console.warn('Hardcover supplement failed.', error);
       return { groups: [], totalItems: 0 };
     }),
@@ -269,9 +295,6 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     openLibrary: openLibrary.groups.length,
   });
 
-  // Google is preferred when available, but alternate providers are fully valid
-  // primary results when Google is rate-limited. Never show an empty search just
-  // because one provider is temporarily unavailable.
   const primary = google.groups.length > 0 ? google.groups : openLibrary.groups.length > 0 ? openLibrary.groups : hardcover.groups;
   const groups = mergeGroups(primary, [google.groups, hardcover.groups, openLibrary.groups]);
   const response: BookSearchResponse = { groups, totalItems: groups.length };
