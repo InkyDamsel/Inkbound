@@ -19,7 +19,7 @@
     "verify:android-config": "node scripts/verify-android-config.mjs",
     "verify:android-gradle": "node scripts/verify-android-gradle.mjs",
     "verify:android-native": "node scripts/verify-android-native-ready.mjs",
-    "release:verify": "npm run lint && npm run test:critical && npm run build && npm run verify:release-artifacts && npm run verify:function-security && npm run verify:android-config && npm run verify:android-gradle && npm run functions:build",
+    "release:verify": "npm run lint && npm run test:critical && npm run build && npm run verify:release-artifacts && npm run verify:function-security && npm run verify:android-config && npm run verify:android-gradle && npm run verify:android-native && npm run functions:build",
     "android:bootstrap": "node scripts/bootstrap-android.mjs",
     "android:sync": "npm run build:android && npx cap sync android && npm run verify:android-config && npm run verify:android-gradle",
     "android:open": "npx cap open android",
