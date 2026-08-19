@@ -450,10 +450,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
           </button>
         </div>
 
-        <div className="px-5 pb-6 sm:px-8">
-          <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="relative grid h-24 w-24 shrink-0 place-items-center overflow-visible rounded-full border-4 border-[var(--ink-surface)] bg-gradient-to-br from-[#78566e] to-[#2b1c30] font-serif text-3xl font-bold text-[var(--ink-ivory)] shadow-xl sm:h-28 sm:w-28">
+        <div className="px-5 pb-6 pt-4 sm:px-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
+              <div className="relative -mt-16 grid h-24 w-24 shrink-0 place-items-center overflow-visible rounded-full border-4 border-[var(--ink-surface)] bg-gradient-to-br from-[#78566e] to-[#2b1c30] font-serif text-3xl font-bold text-[var(--ink-ivory)] shadow-xl sm:-mt-20 sm:h-28 sm:w-28">
                 <div className="h-full w-full overflow-hidden rounded-full">
                   {avatarImage ? (
                     <img
@@ -486,7 +486,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
                   <Camera className="h-4 w-4" />
                 </button>
               </div>
-              <div className="min-w-0 pb-1">
+              <div className="min-w-0 pb-1 sm:pt-2">
                 <p className="inkbound-kicker">Reader Profile</p>
                 <h1 className="break-words font-serif text-3xl font-bold text-[var(--ink-ivory)]">{displayName}</h1>
                 <p className="text-sm text-[var(--ink-muted)]">
