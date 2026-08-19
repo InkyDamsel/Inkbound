@@ -55,9 +55,15 @@ const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowe
 export const useFirebaseEmulators = import.meta.env.DEV && requestedFirebaseMode === 'emulator';
 export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
 
+// In development, production writes require explicit intent. Either the dedicated
+// write flag or VITE_FIREBASE_MODE=production is sufficient. This keeps an ordinary
+// blank-mode DEV session read-only, while making intentional live-cloud beta tests
+// fully writable instead of allowing local-only changes that disappear on rehydrate.
+const explicitProductionMode = import.meta.env.DEV && requestedFirebaseMode === 'production';
 export const allowProductionFirebaseWrites =
   useFirebaseEmulators ||
   !import.meta.env.DEV ||
+  explicitProductionMode ||
   readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
 
 let app: FirebaseApp | null = null;
@@ -158,7 +164,13 @@ if (isFirebaseConfigured) {
 
     if (import.meta.env.DEV && !allowProductionFirebaseWrites) {
       console.info(
-        'Inkbound live-cloud verification: production reads/functions are enabled, but browser Firestore writes are blocked. Set VITE_ALLOW_PROD_FIREBASE_WRITES=true only for an intentional production write test.',
+        'Inkbound live-cloud verification: production reads/functions are enabled, but browser Firestore writes are blocked. Set VITE_FIREBASE_MODE=production (recommended for intentional beta testing) or VITE_ALLOW_PROD_FIREBASE_WRITES=true before changing production-backed reader data.',
+      );
+    }
+
+    if (import.meta.env.DEV && explicitProductionMode) {
+      console.info(
+        'Inkbound live-cloud beta test mode: production reads, functions, and Firestore writes are enabled by explicit VITE_FIREBASE_MODE=production.',
       );
     }
   }
