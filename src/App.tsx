@@ -63,6 +63,7 @@ import {
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
 import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes } from './features/reading/sessionAnalytics';
+import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
 import { Check, Flame, RotateCcw, Target } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
@@ -233,6 +234,26 @@ export default function App() {
     safeWriteLocalStorage(SESSIONS_STORAGE_KEY, sessions);
     try { localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); } catch { /* no-op */ }
   }, [sessions]);
+
+  useEffect(() => {
+    const refreshCanonicalCollections = (event: Event) => {
+      const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
+      const keys = detail?.keys ?? [];
+
+      if (keys.includes(BOOKS_STORAGE_KEY)) {
+        const nextBooks = readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []);
+        booksRef.current = nextBooks;
+        setBooks(nextBooks);
+      }
+
+      if (keys.includes(SESSIONS_STORAGE_KEY)) {
+        setSessions(readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []));
+      }
+    };
+
+    window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refreshCanonicalCollections);
+    return () => window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, refreshCanonicalCollections);
+  }, []);
 
   const showToast = (message: string) => {
     setToastMessage(message);
