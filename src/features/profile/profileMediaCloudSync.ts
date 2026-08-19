@@ -33,6 +33,8 @@ interface SyncableProfile {
   [key: string]: unknown;
 }
 
+const profileMediaSyncInFlight = new Map<string, Promise<void>>();
+
 export function getProfileMediaSyncQueueKey(uid: string): string {
   return `inkbound_profile_media_sync_queue_${uid}_v1`;
 }
@@ -104,7 +106,7 @@ function versionedProfileMediaPath(uid: string, item: ProfileMediaQueueItem): st
   return `users/${uid}/profile/${item.kind}-${version || Date.now()}.webp`;
 }
 
-export async function synchronizeProfileMedia(uid: string): Promise<void> {
+async function runProfileMediaSynchronization(uid: string): Promise<void> {
   const profile = readRuntimeJson<SyncableProfile>(PROFILE_STORAGE_KEY, {});
   await queueLegacyProfileMedia(uid, profile);
   const queue = readQueue(uid);
@@ -146,6 +148,19 @@ export async function synchronizeProfileMedia(uid: string): Promise<void> {
       await removeProfileMedia(item.mediaKey);
     }
   }
+}
+
+export function synchronizeProfileMedia(uid: string): Promise<void> {
+  const existing = profileMediaSyncInFlight.get(uid);
+  if (existing) return existing;
+
+  const synchronization = runProfileMediaSynchronization(uid).finally(() => {
+    if (profileMediaSyncInFlight.get(uid) === synchronization) {
+      profileMediaSyncInFlight.delete(uid);
+    }
+  });
+  profileMediaSyncInFlight.set(uid, synchronization);
+  return synchronization;
 }
 
 export function profileMediaKeyFor(uid: string, kind: ProfileMediaKind): string {
