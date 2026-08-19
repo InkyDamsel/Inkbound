@@ -99,6 +99,11 @@ export async function storeAndQueueProfileMedia(
   return mediaKey;
 }
 
+function versionedProfileMediaPath(uid: string, item: ProfileMediaQueueItem): string {
+  const version = item.queuedAt.replace(/[^0-9A-Za-z]/g, '');
+  return `users/${uid}/profile/${item.kind}-${version || Date.now()}.webp`;
+}
+
 export async function synchronizeProfileMedia(uid: string): Promise<void> {
   const profile = readRuntimeJson<SyncableProfile>(PROFILE_STORAGE_KEY, {});
   await queueLegacyProfileMedia(uid, profile);
@@ -111,10 +116,13 @@ export async function synchronizeProfileMedia(uid: string): Promise<void> {
     const blob = await readProfileMedia(item.mediaKey);
     if (!blob) continue;
 
-    const imageRef = ref(storage, `users/${uid}/profile/${item.kind}.webp`);
+    // Use an immutable/versioned object instead of overwriting avatar.webp or
+    // banner.webp. Older recovery points therefore continue to reference the
+    // exact image bytes that were current when that snapshot was made.
+    const imageRef = ref(storage, versionedProfileMediaPath(uid, item));
     await uploadBytes(imageRef, blob, {
       contentType: blob.type || 'image/webp',
-      cacheControl: 'private,max-age=3600',
+      cacheControl: 'private,max-age=31536000,immutable',
     });
     const downloadUrl = await getDownloadURL(imageRef);
 
@@ -132,7 +140,7 @@ export async function synchronizeProfileMedia(uid: string): Promise<void> {
     notifyLocalDataChanged([PROFILE_STORAGE_KEY]);
 
     const latestQueue = readQueue(uid);
-    if (latestQueue[item.kind]?.mediaKey === item.mediaKey) {
+    if (latestQueue[item.kind]?.mediaKey === item.mediaKey && latestQueue[item.kind]?.queuedAt === item.queuedAt) {
       delete latestQueue[item.kind];
       writeQueue(uid, latestQueue);
       await removeProfileMedia(item.mediaKey);
