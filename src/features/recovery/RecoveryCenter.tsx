@@ -95,10 +95,11 @@ export const RecoveryCenter: React.FC = () => {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 left-5 z-[140] inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 text-xs font-bold text-[var(--ink-muted)] shadow-2xl transition hover:text-[var(--ink-ivory)]"
-        aria-label="Open Inkbound Recovery Center"
+        className="fixed bottom-20 right-5 z-[140] inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-4 text-xs font-bold text-[var(--ink-muted)] shadow-2xl transition hover:text-[var(--ink-ivory)]"
+        aria-label="Open your personal Inkbound Recovery Center"
+        title="Personal recovery for your own Inkbound account"
       >
-        <ShieldCheck className="h-4 w-4 text-[var(--ink-mauve)]" /> Data Safety
+        <ShieldCheck className="h-4 w-4 text-[var(--ink-mauve)]" /> My Recovery
       </button>
 
       {open && (
@@ -112,12 +113,12 @@ export const RecoveryCenter: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="inkbound-eyebrow">Data protection</p>
+                <p className="inkbound-eyebrow">Personal data protection</p>
                 <h2 className="mt-2 flex items-center gap-2 font-serif text-3xl text-[var(--ink-ivory)]">
-                  <ShieldCheck className="h-6 w-6 text-[var(--ink-mauve)]" /> Recovery Center
+                  <ShieldCheck className="h-6 w-6 text-[var(--ink-mauve)]" /> My Recovery Center
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">
-                  Inkbound keeps separate recovery points for your synced books, reading sessions, profile,
+                  These recovery points belong only to your signed-in Inkbound account. Inkbound keeps separate recovery points for your synced books, reading sessions, profile,
                   collections, goals, memories, import state, and photo-memory metadata. Restoring a recovery point
                   first saves the state you are replacing, so recovery itself can be reversed.
                 </p>
@@ -166,11 +167,7 @@ export const RecoveryCenter: React.FC = () => {
               </button>
             </div>
 
-            {message && (
-              <p className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-3 text-sm text-[var(--ink-muted)]">
-                {message}
-              </p>
-            )}
+            {message && <p className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-3 text-sm text-[var(--ink-muted)]">{message}</p>}
 
             <div className="mt-6 space-y-3">
               {points.length === 0 && !loading ? (
@@ -181,22 +178,11 @@ export const RecoveryCenter: React.FC = () => {
                 <article key={point.id} className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink-ivory)]">
-                        <Clock3 className="h-4 w-4 text-[var(--ink-mauve)]" /> {formatRecoveryDate(point.createdAtClient)}
-                      </div>
+                      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink-ivory)]"><Clock3 className="h-4 w-4 text-[var(--ink-mauve)]" /> {formatRecoveryDate(point.createdAtClient)}</div>
                       <p className="mt-1 text-xs text-[var(--ink-muted)]">{point.reason}</p>
-                      <p className="mt-2 text-xs text-[var(--ink-muted)]">
-                        {point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} account records · {point.photoMemoryCount} photo-memory records · {point.runtimeStateCount} import-state records
-                      </p>
+                      <p className="mt-2 text-xs text-[var(--ink-muted)]">{point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} account records · {point.photoMemoryCount} photo-memory records · {point.runtimeStateCount} import-state records</p>
                     </div>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => { setSelected(point); setConfirmation(''); }}
-                      className="quiet-shelf-secondary-action shrink-0 justify-center disabled:opacity-50"
-                    >
-                      <RotateCcw className="h-4 w-4" /> Restore
-                    </button>
+                    <button type="button" disabled={loading} onClick={() => { setSelected(point); setConfirmation(''); }} className="quiet-shelf-secondary-action shrink-0 justify-center disabled:opacity-50"><RotateCcw className="h-4 w-4" /> Restore</button>
                   </div>
                 </article>
               ))}
@@ -205,29 +191,11 @@ export const RecoveryCenter: React.FC = () => {
             {selected && (
               <div className="mt-6 rounded-2xl border border-amber-400/25 bg-amber-400/5 p-5">
                 <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Restore {formatRecoveryDate(selected.createdAtClient)}?</h3>
-                <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-                  Inkbound will restart into protected recovery mode, save a new recovery point of your current cloud state, then replace the synced account records with this copy before normal sync starts.
-                  Type <strong className="text-[var(--ink-ivory)]">RESTORE</strong> to continue.
-                </p>
-                <input
-                  value={confirmation}
-                  onChange={(event) => setConfirmation(event.target.value)}
-                  className="mt-4 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-3 text-[var(--ink-ivory)] outline-none"
-                  placeholder="RESTORE"
-                  autoComplete="off"
-                />
+                <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Inkbound will restart into protected recovery mode, save a new recovery point of your current cloud state, then replace the synced account records with this copy before normal sync starts. Type <strong className="text-[var(--ink-ivory)]">RESTORE</strong> to continue.</p>
+                <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-4 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-3 text-[var(--ink-ivory)] outline-none" placeholder="RESTORE" autoComplete="off" />
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    disabled={loading || confirmation.trim().toUpperCase() !== RESTORE_PHRASE}
-                    onClick={restore}
-                    className="quiet-shelf-primary-action disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <RotateCcw className="h-4 w-4" /> Restore this recovery point
-                  </button>
-                  <button type="button" disabled={loading} onClick={() => setSelected(null)} className="quiet-shelf-secondary-action">
-                    Cancel
-                  </button>
+                  <button type="button" disabled={loading || confirmation.trim().toUpperCase() !== RESTORE_PHRASE} onClick={restore} className="quiet-shelf-primary-action disabled:cursor-not-allowed disabled:opacity-45"><RotateCcw className="h-4 w-4" /> Restore this recovery point</button>
+                  <button type="button" disabled={loading} onClick={() => setSelected(null)} className="quiet-shelf-secondary-action">Cancel</button>
                 </div>
               </div>
             )}
