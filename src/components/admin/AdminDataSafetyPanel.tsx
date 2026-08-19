@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, HardDrive, Image, RefreshCw, ShieldCheck } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
@@ -70,10 +70,14 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
   const [inspectedUserId, setInspectedUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const requestInFlight = useRef(false);
 
-  const loadReport = useCallback(async () => {
-    if (!targetUserId || !functions || loading) return;
+  // IMPORTANT: this is the only path that may invoke getAdminDataIntegrity.
+  // There are deliberately no effects, subscriptions, timers, retries, or mount-time calls.
+  const runIntegrityCheckFromClick = async () => {
+    if (!targetUserId || !functions || requestInFlight.current) return;
 
+    requestInFlight.current = true;
     setLoading(true);
     setError('');
     try {
@@ -82,17 +86,16 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
       setReport(response.data);
       setInspectedUserId(targetUserId);
     } catch (requestError) {
-      // Data Safety is deliberately failure-isolated from the rest of Administration.
-      // A transient callable/CORS outage must never remount or destabilize the admin page.
       setReport(null);
       setInspectedUserId(targetUserId);
       setError(requestError instanceof Error
         ? requestError.message
         : 'The integrity service is temporarily unavailable. Administration is still safe to use; retry this check later.');
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
     }
-  }, [loading, targetUserId]);
+  };
 
   const currentReport = inspectedUserId === targetUserId ? report : null;
   const currentError = inspectedUserId === targetUserId ? error : '';
@@ -107,12 +110,12 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
             <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Data safety</h2>
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ink-muted)]">
-            Read-only cloud integrity inspection for {targetLabel || 'the selected reader'}. Checks run only when requested and never edit, sync, restore, or delete reader data.
+            Read-only cloud integrity inspection for {targetLabel || 'the selected reader'}. Nothing runs until you press Run integrity check.
           </p>
         </div>
         <button
           type="button"
-          onClick={() => void loadReport()}
+          onClick={runIntegrityCheckFromClick}
           disabled={!targetUserId || loading}
           className="quiet-shelf-secondary-action justify-center disabled:opacity-45"
         >
@@ -122,7 +125,7 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
       </div>
 
       {!targetUserId && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Select a reader above to inspect their canonical cloud data.</p>}
-      {needsManualInspection && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Ready to inspect this reader. Run the integrity check when you want a fresh canonical-cloud snapshot.</p>}
+      {needsManualInspection && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Ready to inspect this reader. No integrity request has been sent.</p>}
       {currentError && <p className="mt-5 rounded-2xl border border-[#c97b7b]/35 bg-[#c97b7b]/5 p-4 text-sm text-[#e9b2b2]">Data Safety is temporarily unavailable. Administration remains usable. {currentError}</p>}
 
       {currentReport && (
