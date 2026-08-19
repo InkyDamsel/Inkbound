@@ -63,6 +63,13 @@ const isAdministrationActive = (): boolean => {
   }
 };
 
+const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<void> => {
+  while (isAdministrationActive()) {
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+  }
+};
+
 const shouldBackOffCatalog = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return /\b(?:429|503)\b|resource-exhausted|unavailable/i.test(message);
@@ -259,10 +266,11 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (!trimmed) return { groups: [], totalItems: 0 };
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  // Administration must remain operational even while a large import repair is
-  // queued elsewhere in the app. Never run catalog enrichment in the background
-  // while owner tools are active.
-  if (isAdministrationActive()) return { groups: [], totalItems: 0 };
+  // Owner tools must be completely isolated from background enrichment. Pause
+  // the in-flight promise instead of returning an empty result so the caller
+  // cannot churn through the rest of a large retry queue while Administration
+  // is open. The same promise resumes after the user leaves Administration.
+  await waitUntilAdministrationInactive(signal);
 
   // A provider 429/503 means continuing immediately only creates a request storm.
   // Keep the queue intact and let the normal maintenance/retry scheduler resume
