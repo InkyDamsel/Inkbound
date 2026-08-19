@@ -1,4 +1,6 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
+import { auth } from '../../lib/firebase';
+import { createRecoveryPoint } from '../recovery/dataRecovery';
 import { verifyImportRecords } from './libraryEnrichment';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
@@ -189,6 +191,14 @@ export function startImportVerificationJob(
         importMetadataVerified: false,
       }));
       const recordsToImport = [...verifiedRecords, ...unmatchedRecords];
+
+      // Verification itself is read-only. Immediately before the first library
+      // mutation, preserve the entire signed-in cloud account so an import can
+      // always be rolled back even if a later sync or enrichment bug is found.
+      if (recordsToImport.length > 0 && auth?.currentUser) {
+        await createRecoveryPoint(auth.currentUser.uid, `Before import of ${recordsToImport.length} books`, { force: true });
+      }
+
       const executionResult = recordsToImport.length > 0
         ? await executeImport(recordsToImport)
         : [];
