@@ -1,0 +1,16 @@
+/* Canonical app-shell branding comes from assets/branding. Keep this file as the
+ * presentation bridge so the source artwork remains centralized outside src/. */
+.quiet-shelf-mark {
+  overflow: hidden;
+  border: 1px solid rgba(181, 106, 142, 0.32);
+  border-radius: 12px;
+  background-image: url('../../assets/branding/favicons/favicon-96x96.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  box-shadow: 0 8px 24px rgba(11, 7, 13, 0.28);
+}
+
+.quiet-shelf-mark svg {
+  display: none;
+}
