@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Crown, Gift, RefreshCw, Search, ShieldCheck, Star, Trash2, Users, X } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
@@ -54,12 +54,12 @@ export const AdminScreen: React.FC = () => {
   const [eraseConfirmation, setEraseConfirmation] = useState('');
   const [eraseReason, setEraseReason] = useState('');
   const [erasing, setErasing] = useState(false);
-  const dashboardRequestInFlight = useRef(false);
 
   const approvedOwner = Boolean(user?.email && OWNER_EMAILS.has(user.email.toLowerCase()));
 
   const loadDashboard = async (search = '') => {
-    if (dashboardRequestInFlight.current) return;
+    setStatus('Refresh requested…');
+
     if (!user) {
       setStatus('Sign in with an approved owner account before loading Administration.');
       return;
@@ -73,7 +73,6 @@ export const AdminScreen: React.FC = () => {
       return;
     }
 
-    dashboardRequestInFlight.current = true;
     setLoading(true);
     setStatus('Loading owner data…');
     try {
@@ -88,7 +87,6 @@ export const AdminScreen: React.FC = () => {
     } catch (error) {
       setStatus(error instanceof Error ? `Administration refresh failed: ${error.message}` : 'The admin dashboard could not be loaded.');
     } finally {
-      dashboardRequestInFlight.current = false;
       setLoading(false);
     }
   };
@@ -184,7 +182,7 @@ export const AdminScreen: React.FC = () => {
     <div className="space-y-6 pb-20">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--ink-mauve)]">Owner tools</p><h1 className="font-serif text-4xl text-[var(--ink-ivory)]">Administration</h1><p className="mt-2 text-[var(--ink-muted)]">Manage complimentary access, protected account actions, and reader data requests.</p></div>
-        <button type="button" onClick={() => void loadDashboard(query)} disabled={loading} className="quiet-shelf-secondary-action justify-center"><RefreshCw className={loading ? 'animate-spin' : ''} />{loading ? 'Refreshing…' : 'Refresh'}</button>
+        <button type="button" onClick={() => void loadDashboard(query)} className="quiet-shelf-secondary-action justify-center"><RefreshCw className={loading ? 'animate-spin' : ''} />{loading ? 'Refreshing…' : 'Refresh'}</button>
       </header>
 
       {status && <p className="rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-muted)]" role="status">{status}</p>}
