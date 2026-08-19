@@ -9,11 +9,9 @@ import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
 import {
   getCloudDataRevision,
   INKBOUND_CLOUD_DATA_EVENT,
-  type CloudDataUpdatedDetail,
 } from './cloudSyncEvents';
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
-const SESSIONS_STORAGE_KEY = 'inkbound_sessions';
 
 function readStoredBooks(): UserBookRecord[] {
   return readRuntimeJson<UserBookRecord[]>(BOOKS_STORAGE_KEY, []);
@@ -21,33 +19,27 @@ function readStoredBooks(): UserBookRecord[] {
 
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
   const { user } = useAccountSync();
-  const [revision, setRevision] = useState(() => getCloudDataRevision());
+  const [hydrated, setHydrated] = useState(() => !user || getCloudDataRevision() > 0);
 
   useEffect(() => {
     if (!user) {
-      setRevision(getCloudDataRevision());
+      setHydrated(true);
       return;
     }
 
-    const refresh = (event?: Event) => {
-      const repairedDelta = recoverIncompleteLatestImport();
-      const historyChanged = reconcileRepeatedImportHistory(readStoredBooks());
-      const detail = event
-        ? (event as CustomEvent<CloudDataUpdatedDetail>).detail
-        : undefined;
-      const canonicalCollectionsChanged = detail?.keys?.some(
-        (key) => key === BOOKS_STORAGE_KEY || key === SESSIONS_STORAGE_KEY,
-      ) ?? false;
+    // The boundary has one responsibility now: hold the first signed-in render
+    // until canonical cloud hydration has completed. Later cloud updates must NOT
+    // remount the entire App. Remounting destroys navigation state, sidebar scroll,
+    // dialogs, admin request state, and can make a single click appear to require
+    // a second click while background sync/enrichment is active.
+    const refresh = () => {
+      recoverIncompleteLatestImport();
+      reconcileRepeatedImportHistory(readStoredBooks());
 
-      // ProfileScreen already consumes profile cloud events directly. Remounting
-      // the entire App for a profile-only update destroys transient mobile shell
-      // state (for example an open More menu/navigation transition) and can bounce
-      // the reader back to the previous screen just after selecting Profile.
-      // Keep the legacy full refresh only for canonical book/session changes or
-      // an actual local import repair that must be reflected throughout the app.
-      if (canonicalCollectionsChanged || repairedDelta !== 0 || historyChanged) {
-        setRevision(getCloudDataRevision() + (repairedDelta !== 0 || historyChanged ? 1 : 0));
-      }
+      // Open the app exactly once after the first cloud-data revision arrives.
+      // Subsequent revisions are handled by the feature/state owners themselves;
+      // they do not recreate the application shell.
+      setHydrated((current) => current || getCloudDataRevision() > 0);
 
       void synchronizeProfileMedia(user.uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
@@ -55,26 +47,20 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       });
     };
 
-    // Retry pending profile media immediately after account hydration as well as
-    // on later resume/online events.
     void synchronizeProfileMedia(user.uid).catch(() => undefined);
-    if (getCloudDataRevision() > 0) {
-      // The first signed-in mount still needs to reveal the already-hydrated app.
-      // Do not force an additional App remount merely because that hydration was
-      // profile-only; the current storage snapshot will be read when children mount.
-      setRevision(getCloudDataRevision());
-    }
+    if (getCloudDataRevision() > 0) setHydrated(true);
+
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
-    const unsubscribeResume = subscribeToRuntimeResume(() => refresh());
+    const unsubscribeResume = subscribeToRuntimeResume(refresh);
     return () => {
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
       unsubscribeResume();
     };
   }, [user?.uid]);
 
-  if (user && revision === 0) {
+  if (user && !hydrated) {
     return <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-6 text-center text-[var(--ink-ivory)]">Opening Inkbound...</main>;
   }
 
-  return <React.Fragment key={`${user?.uid ?? 'signed-out'}:${revision}`}>{children}</React.Fragment>;
+  return <>{children}</>;
 };
