@@ -69,6 +69,25 @@ let functions: Functions | null = null;
 let storage: FirebaseStorage | null = null;
 
 /**
+ * Firebase App Check debug mode is safe only in a development build. It lets a
+ * localhost browser call App Check-protected production Functions without
+ * weakening enforcement for actual beta/production clients.
+ *
+ * Firebase prints the generated debug token in the browser console the first
+ * time this runs. Register that token once in Firebase Console -> App Check ->
+ * your web app -> Manage debug tokens. Never copy the token into source control.
+ */
+function enableWebAppCheckDebugMode() {
+  if (!import.meta.env.DEV || useFirebaseEmulators || isNativeRuntime()) return;
+  const debugGlobal = globalThis as typeof globalThis & {
+    FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean | string;
+  };
+  if (debugGlobal.FIREBASE_APPCHECK_DEBUG_TOKEN === undefined) {
+    debugGlobal.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+}
+
+/**
  * Android App Check is intentionally initialized only after the native Play
  * Integrity adapter is registered. initializeAppCheck may immediately ask its
  * provider for a token when auto-refresh is enabled, so doing this at module
@@ -90,10 +109,11 @@ export function initializeNativeFirebaseAppCheck(): AppCheck | null {
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-  // Web initializes reCAPTCHA Enterprise immediately. Android defers App Check
-  // until configureNativeAppCheck(...) has installed the Play Integrity token
-  // source; initializeNativeFirebaseAppCheck() then binds that token source to
-  // this same Firebase JS client before protected app providers are mounted.
+  // Local live-cloud testing still honors App Check. DEV uses Firebase's debug
+  // provider token, while deployed web builds use reCAPTCHA Enterprise and the
+  // Android beta uses Play Integrity through initializeNativeFirebaseAppCheck().
+  enableWebAppCheckDebugMode();
+
   if (!useFirebaseEmulators && !isNativeRuntime() && appCheckSiteKey) {
     appCheck = initializeAppCheck(app, {
       provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
