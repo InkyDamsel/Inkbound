@@ -1,4 +1,4 @@
-import React, { PropsWithChildren, useEffect, useState } from 'react';
+import React, { PropsWithChildren, useEffect, useRef, useState } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import {
   clearScheduledRecoveryRestore,
@@ -10,11 +10,13 @@ export const RecoveryRestoreGate: React.FC<PropsWithChildren> = ({ children }) =
   const { user } = useAccountSync();
   const [state, setState] = useState<'idle' | 'restoring' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const restoreStarted = useRef(false);
 
   const scheduled = user ? readScheduledRecoveryRestore(user.uid) : null;
 
   useEffect(() => {
-    if (!user || !scheduled || state !== 'idle') return;
+    if (!user || !scheduled || restoreStarted.current) return;
+    restoreStarted.current = true;
     setState('restoring');
     void restoreRecoveryPoint(user.uid, scheduled.snapshotId)
       .then(() => {
@@ -28,7 +30,7 @@ export const RecoveryRestoreGate: React.FC<PropsWithChildren> = ({ children }) =
         setErrorMessage(error instanceof Error ? error.message : 'Inkbound could not restore this recovery point.');
         setState('error');
       });
-  }, [user?.uid, scheduled?.snapshotId, state]);
+  }, [user?.uid, scheduled?.snapshotId]);
 
   if (scheduled || state === 'restoring') {
     return (
