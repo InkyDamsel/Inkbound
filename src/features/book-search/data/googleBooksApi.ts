@@ -49,7 +49,8 @@ const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
 const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
-let catalogBackoffUntil = 0;
+let googleBackoffUntil = 0;
+let hardcoverBackoffUntil = 0;
 
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -229,12 +230,13 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
+  if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
   try {
     return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
     if (shouldBackOffCatalog(error)) {
-      catalogBackoffUntil = Math.max(catalogBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
-      console.warn('Inkbound catalog enrichment is cooling down after a provider rate limit/outage.', error);
+      googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+      console.warn('Google Books is cooling down after a provider rate limit/outage; alternate catalogs remain available.', error);
     } else {
       console.warn('Google Books search unavailable; using alternate catalogs.', error);
     }
@@ -257,6 +259,19 @@ async function searchOpenLibraryWithAuthorFallback(query: string, signal?: Abort
   }
 }
 
+async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResponse> {
+  if (Date.now() < hardcoverBackoffUntil) return { groups: [], totalItems: 0 };
+  try {
+    return await searchHardcover(query);
+  } catch (error) {
+    if (shouldBackOffCatalog(error)) {
+      hardcoverBackoffUntil = Math.max(hardcoverBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+    }
+    console.warn('Hardcover supplement failed.', error);
+    return { groups: [], totalItems: 0 };
+  }
+}
+
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
@@ -268,25 +283,17 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   // is open. The same promise resumes after the user leaves Administration.
   await waitUntilAdministrationInactive(signal);
 
-  // A provider 429/503 means continuing immediately only creates a request storm.
-  // Keep the queue intact and let the normal maintenance/retry scheduler resume
-  // later instead of repeatedly hammering Functions and destabilizing the UI.
-  if (Date.now() < catalogBackoffUntil) return { groups: [], totalItems: 0 };
-
   const cacheKey = normalizeText(trimmed);
   const cached = searchCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.response;
   if (cached) searchCache.delete(cacheKey);
 
+  // Provider cooldowns are intentionally isolated. A Google Books or Hardcover
+  // outage must never suppress Open Library or turn a temporary provider error
+  // into a false "no metadata exists" result for an entire import queue.
   const [google, hardcover, openLibrary] = await Promise.all([
     searchGoogleBaseline(trimmed, signal),
-    searchHardcover(trimmed).catch((error) => {
-      if (shouldBackOffCatalog(error)) {
-        catalogBackoffUntil = Math.max(catalogBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
-      }
-      console.warn('Hardcover supplement failed.', error);
-      return { groups: [], totalItems: 0 };
-    }),
+    searchHardcoverWithBackoff(trimmed),
     searchOpenLibraryWithAuthorFallback(trimmed, signal),
   ]);
 
