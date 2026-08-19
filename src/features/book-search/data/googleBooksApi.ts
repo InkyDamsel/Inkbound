@@ -1,7 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
-import { functions } from '../../../lib/firebase';
-import { isNativeRuntime } from '../../../platform/runtimePlatform';
+import { auth, functions } from '../../../lib/firebase';
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
@@ -172,32 +171,41 @@ const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWork
   return order.map((key) => merged.get(key)).filter((group): group is BookSearchWorkGroup => Boolean(group)).slice(0, 50);
 };
 
-async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  let payload: GoogleVolumesResponse;
-
-  if (isNativeRuntime()) {
-    if (!functions) throw new Error('Google Books mobile search is unavailable until Firebase is configured.');
-    const callable = httpsCallable<
-      { query: string; provider: 'google-books' },
-      GoogleVolumesResponse
-    >(functions, 'searchHardcoverBooks');
-    const response = await callable({ query, provider: 'google-books' });
-    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-    payload = response.data;
-  } else {
-    const params = new URLSearchParams({
-      q: query,
-      printType: 'books',
-      projection: 'full',
-      orderBy: 'relevance',
-      maxResults: '40',
-    });
-    if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
-
-    const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
-    if (!response.ok) throw new Error(`Google Books search failed (${response.status}).`);
-    payload = await response.json() as GoogleVolumesResponse;
+async function requestProtectedGoogleBooks(query: string, signal?: AbortSignal): Promise<GoogleVolumesResponse> {
+  if (!functions || !auth?.currentUser) {
+    throw new Error('Protected Google Books search requires a signed-in Inkbound account.');
   }
+  const callable = httpsCallable<
+    { query: string; provider: 'google-books' },
+    GoogleVolumesResponse
+  >(functions, 'searchHardcoverBooks');
+  const response = await callable({ query, provider: 'google-books' });
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+  return response.data;
+}
+
+async function requestDirectGoogleBooks(query: string, signal?: AbortSignal): Promise<GoogleVolumesResponse> {
+  const params = new URLSearchParams({
+    q: query,
+    printType: 'books',
+    projection: 'full',
+    orderBy: 'relevance',
+    maxResults: '40',
+  });
+  if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
+
+  const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
+  if (!response.ok) throw new Error(`Google Books search failed (${response.status}).`);
+  return response.json() as Promise<GoogleVolumesResponse>;
+}
+
+async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
+  // Signed-in readers always use the protected Functions gateway. This keeps the
+  // Google API key out of the browser and avoids referrer/key-restriction failures
+  // during import repair. Signed-out web search retains the public direct fallback.
+  const payload = functions && auth?.currentUser
+    ? await requestProtectedGoogleBooks(query, signal)
+    : await requestDirectGoogleBooks(query, signal);
 
   const editions = (payload.items ?? []).map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
   const groups = groupGoogleEditions(editions);
@@ -205,9 +213,9 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  // Exactly one Google Books request per uncached user search. Do not immediately
-  // retry with anonymous/keyed/author variants because those bursts were causing
-  // 429s and made manual search compete with background metadata enrichment.
+  // Exactly one Google Books request per uncached search. Do not immediately
+  // retry with anonymous/keyed variants because those bursts can trigger quotas
+  // and make manual search compete with background metadata enrichment.
   try {
     return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
