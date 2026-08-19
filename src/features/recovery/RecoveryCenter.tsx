@@ -1,19 +1,33 @@
-import React, { useEffect, useState } from 'react';
-import { Clock3, RefreshCw, RotateCcw, ShieldCheck, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Clock3, RefreshCw, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import type { ReadingSession, UserBookRecord } from '../../types';
 import {
   createRecoveryPoint,
   listRecoveryPoints,
   restoreRecoveryPoint,
   type RecoveryPointSummary,
 } from './dataRecovery';
+import { analyzeLibraryIntegrity } from './libraryIntegrity';
 
 const RESTORE_PHRASE = 'RESTORE';
+const BOOKS_KEY = 'inkbound_books';
+const SESSIONS_KEY = 'inkbound_sessions';
 
 function formatRecoveryDate(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return 'Unknown time';
   return parsed.toLocaleString();
+}
+
+function readLocalJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = getRuntimeStorage().getItem(key);
+    return raw ? JSON.parse(raw) as T : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export const RecoveryCenter: React.FC = () => {
@@ -24,6 +38,13 @@ export const RecoveryCenter: React.FC = () => {
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState<RecoveryPointSummary | null>(null);
   const [confirmation, setConfirmation] = useState('');
+  const [diagnosticRevision, setDiagnosticRevision] = useState(0);
+
+  const integrity = useMemo(() => {
+    const books = readLocalJson<UserBookRecord[]>(BOOKS_KEY, []);
+    const sessions = readLocalJson<ReadingSession[]>(SESSIONS_KEY, []);
+    return analyzeLibraryIntegrity(books, sessions);
+  }, [diagnosticRevision, open]);
 
   const refresh = async () => {
     if (!user) return;
@@ -31,6 +52,7 @@ export const RecoveryCenter: React.FC = () => {
     setMessage('');
     try {
       setPoints(await listRecoveryPoints(user.uid));
+      setDiagnosticRevision((current) => current + 1);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not load recovery points.');
     } finally {
@@ -52,6 +74,7 @@ export const RecoveryCenter: React.FC = () => {
       await createRecoveryPoint(user.uid, 'Manual recovery point', { force: true });
       setMessage('Recovery point created.');
       setPoints(await listRecoveryPoints(user.uid));
+      setDiagnosticRevision((current) => current + 1);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not create a recovery point.');
     } finally {
@@ -109,6 +132,36 @@ export const RecoveryCenter: React.FC = () => {
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            <section className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+              <div className="flex items-start gap-3">
+                {integrity.healthy
+                  ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+                  : <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />}
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-[var(--ink-ivory)]">Current library integrity</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                    {integrity.bookCount.toLocaleString()} books · {integrity.sessionCount.toLocaleString()} sessions · {integrity.activeCoverCount.toLocaleString()} active covers · {integrity.anyEditionCoverCount.toLocaleString()} books with a cover on any edition
+                  </p>
+                  <div className="mt-3 grid gap-2 text-xs text-[var(--ink-muted)] sm:grid-cols-2">
+                    <span>{integrity.importedBookCount.toLocaleString()} imported books</span>
+                    <span>{integrity.verifiedImportMetadataCount.toLocaleString()} metadata-verified imports</span>
+                    <span>{integrity.visibleSummaryCount.toLocaleString()} visible summaries</span>
+                    <span>{integrity.publisherSummaryCount.toLocaleString()} publisher summaries</span>
+                    <span>{integrity.missingActiveCoverCount.toLocaleString()} missing active covers</span>
+                    <span>{integrity.duplicateIdentityGroupCount.toLocaleString()} possible duplicate identity groups</span>
+                  </div>
+                  {!integrity.healthy && (
+                    <p className="mt-3 text-xs leading-5 text-amber-300">
+                      Structural warnings: {integrity.duplicateBookIdCount} duplicate book IDs, {integrity.duplicateSessionIdCount} duplicate session IDs, {integrity.missingActiveEditionCount} missing active editions, {integrity.orphanSessionCount} orphan sessions.
+                    </p>
+                  )}
+                  <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">
+                    Cover counts here are the covers currently stored in your library. Import/retry messages such as “14 covers” report covers found during that run, not this total.
+                  </p>
+                </div>
+              </div>
+            </section>
 
             <div className="mt-5 flex flex-wrap gap-3">
               <button type="button" disabled={loading} onClick={() => void createManualPoint()} className="quiet-shelf-primary-action disabled:opacity-50">
