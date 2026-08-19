@@ -53,8 +53,10 @@ const navigationGroups: NavigationGroup[] = [
     { id: 'achievements', label: 'Achievements', icon: Trophy },
   ]},
   { id: 'studio', label: 'Studio', items: [
-    { id: 'studio', label: 'Inkbound Studio', icon: Palette }, { id: 'wrapped', label: 'Monthly Wrapped', icon: CalendarDays },
-    { id: 'yearbook', label: 'Year in Books', icon: BookOpen }, { id: 'bookshelf-time', label: 'Bookshelf Through Time', icon: Library },
+    { id: 'studio', label: 'Inkbound Studio', icon: Palette, premium: true },
+    { id: 'wrapped', label: 'Monthly Wrapped', icon: CalendarDays, premium: true },
+    { id: 'yearbook', label: 'Year in Books', icon: BookOpen, premium: true },
+    { id: 'bookshelf-time', label: 'Bookshelf Through Time', icon: Library, premium: true },
   ]},
   { id: 'account', label: 'Account', items: [
     { id: 'duplicates', label: 'Library Maintenance', icon: Copy },
@@ -93,6 +95,12 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
     setActiveTab('import');
   }, [activeTab, setActiveTab]);
 
+  useEffect(() => {
+    if (userPlan !== 'free') return;
+    const activeItem = allNavigationItems.find((item) => item.id === activeTab);
+    if (activeItem?.premium) setActiveTab('home');
+  }, [activeTab, setActiveTab, userPlan]);
+
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchResults = normalizedQuery ? books.filter((book) =>
     book.work.title.toLowerCase().includes(normalizedQuery) || book.work.author.toLowerCase().includes(normalizedQuery) ||
@@ -110,16 +118,24 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
     }
     setActiveTab(tab); setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false); setSearchQuery('');
   };
+  const navigateToItem = (item: NavigationItem) => {
+    if (item.premium && userPlan === 'free') {
+      setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false);
+      openUpgradeModal(`${item.label} is an Inkbound Premium feature. Beta feedback on this feature is welcome from the Premium preview.`);
+      return;
+    }
+    navigate(item.id);
+  };
   const toggleGroup = (groupId: NavigationGroupId) => setCollapsedGroups((current) => ({ ...current, [groupId]: !current[groupId] }));
   const renderNavigationItem = (item: NavigationItem, mobile = false) => {
     const Icon = item.icon;
     const premium = item.premium && userPlan === 'free';
     return mobile ? (
-      <button key={item.id} type="button" onClick={() => navigate(item.id)} className={`flex min-h-12 items-center gap-3 rounded-xl border px-4 text-left text-sm font-semibold ${activeTab === item.id ? 'border-[var(--ink-mauve)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}>
+      <button key={item.id} type="button" onClick={() => navigateToItem(item)} className={`flex min-h-12 items-center gap-3 rounded-xl border px-4 text-left text-sm font-semibold ${activeTab === item.id ? 'border-[var(--ink-mauve)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}>
         <Icon className="h-5 w-5 text-[var(--ink-mauve)]" /><span className="flex-1">{item.label}</span>{premium && <small className="quiet-shelf-premium-pill">Premium</small>}
       </button>
     ) : (
-      <button key={item.id} type="button" onClick={() => navigate(item.id)} className={`quiet-shelf-sidebar-link ${activeTab === item.id ? 'is-active' : ''}`}>
+      <button key={item.id} type="button" onClick={() => navigateToItem(item)} className={`quiet-shelf-sidebar-link ${activeTab === item.id ? 'is-active' : ''}`}>
         <Icon /><span>{item.label}</span>{premium && <small className="quiet-shelf-premium-pill">Premium</small>}
       </button>
     );
@@ -146,6 +162,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
 
     {isMobileMenuOpen && <div className="fixed inset-0 z-[120] flex items-end bg-black/70 px-[max(0.75rem,env(safe-area-inset-left))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm lg:hidden" onClick={() => setIsMobileMenuOpen(false)}><section className="inkbound-panel flex max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1.5rem)] w-full flex-col overflow-hidden rounded-3xl p-5" role="dialog" aria-modal="true" aria-label="More navigation options" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between border-b border-[var(--ink-border-subtle)] pb-4"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">More</h2><button type="button" className="quiet-shelf-icon-button h-11 w-11" onClick={() => setIsMobileMenuOpen(false)} aria-label="Close more navigation"><X /></button></div><div className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pr-1">{mobileNavigationGroups.map((group) => <section key={group.id}><h3 className="mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">{group.label}</h3><div className="grid gap-2">{group.items.map((item) => renderNavigationItem(item, true))}</div></section>)}<section><h3 className="mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">Profile</h3><button type="button" onClick={() => navigate('profile')} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] px-4 text-left text-sm font-semibold text-[var(--ink-muted)]"><UserRound className="h-5 w-5 text-[var(--ink-mauve)]" />Profile & account</button></section></div><div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--ink-border-subtle)] pt-4"><button type="button" onClick={() => { setIsMobileMenuOpen(false); onOpenTimer(); }} className="quiet-shelf-secondary-action justify-center"><Clock3 />Start Session</button><button type="button" onClick={() => { setIsMobileMenuOpen(false); onOpenAddBook(); }} className="quiet-shelf-primary-action justify-center"><Plus />Add Book</button></div></section></div>}
 
-    <nav className="quiet-shelf-mobile-nav" aria-label="Mobile navigation">{mobilePrimaryItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => navigate(item.id)} className={activeTab === item.id ? 'is-active' : ''}><Icon /><span>{item.label}</span></button>; })}<button type="button" onClick={() => setIsMobileMenuOpen(true)} className={isMoreSectionActive || activeTab === 'profile' ? 'is-active' : ''}><MoreHorizontal /><span>More</span></button></nav>
+    <nav className="quiet-shelf-mobile-nav" aria-label="Mobile navigation">{mobilePrimaryItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => navigateToItem(item)} className={activeTab === item.id ? 'is-active' : ''}><Icon /><span>{item.label}</span></button>; })}<button type="button" onClick={() => setIsMobileMenuOpen(true)} className={isMoreSectionActive || activeTab === 'profile' ? 'is-active' : ''}><MoreHorizontal /><span>More</span></button></nav>
   </>;
 };
