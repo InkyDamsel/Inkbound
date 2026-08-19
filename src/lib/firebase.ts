@@ -47,7 +47,12 @@ export const missingFirebaseEnvironmentVariables = Object.entries(requiredFireba
 export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length === 0;
 
 const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
-export const useFirebaseEmulators = import.meta.env.DEV && requestedFirebaseMode !== 'production';
+
+// Emulator routing must be explicit. A normal `npm run dev` session is also how
+// we perform browser beta verification, so silently redirecting Auth to :9099
+// makes Google sign-in fail whenever the local emulator suite is not running.
+// Set VITE_FIREBASE_MODE=emulator only for an intentional emulator session.
+export const useFirebaseEmulators = import.meta.env.DEV && requestedFirebaseMode === 'emulator';
 export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
 
 export const allowProductionFirebaseWrites =
