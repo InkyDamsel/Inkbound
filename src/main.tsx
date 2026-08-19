@@ -7,9 +7,6 @@ import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContex
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
-import { RecoveryCenter } from './features/recovery/RecoveryCenter.tsx';
-import { RecoveryRestoreGate } from './features/recovery/RecoveryRestoreGate.tsx';
-import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.tsx';
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
@@ -118,21 +115,17 @@ createRoot(rootElement).render(
           <UserPlanProvider>
             <AccountSyncProvider>
               <AuthSessionGate>
-                <RecoveryRestoreGate>
-                  <SecurityBootstrap />
-                  <RecoverySafetyBridge />
-                  <CloudPersistenceBridge />
-                  <AuxiliaryAccountSyncBridge />
-                  <ReadOnlyCloudHydrationBridge />
-                  <PhotoMemoryAutoSyncBridge />
-                  <LegacyBookCoverMigrationBridge />
-                  <ThemePersistenceBridge />
-                  <CloudDataRefreshBoundary>
-                    <App />
-                  </CloudDataRefreshBoundary>
-                  <RecoveryCenter />
-                  <UpgradeModal />
-                </RecoveryRestoreGate>
+                <SecurityBootstrap />
+                <CloudPersistenceBridge />
+                <AuxiliaryAccountSyncBridge />
+                <ReadOnlyCloudHydrationBridge />
+                <PhotoMemoryAutoSyncBridge />
+                <LegacyBookCoverMigrationBridge />
+                <ThemePersistenceBridge />
+                <CloudDataRefreshBoundary>
+                  <App />
+                </CloudDataRefreshBoundary>
+                <UpgradeModal />
               </AuthSessionGate>
             </AccountSyncProvider>
           </UserPlanProvider>
