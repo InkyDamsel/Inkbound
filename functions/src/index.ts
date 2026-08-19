@@ -185,9 +185,6 @@ export const syncUserDirectory = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
       updatedAt: FieldValue.serverTimestamp(),
     });
   } else if (seedOwnerVipInDev && entitlement.get('vipEnabled') !== true) {
-    // DEV starts with a fresh emulator workspace. Re-seed the protected owner
-    // entitlement so the account exercises the same Premium UI/behavior it has
-    // when VIP is enabled in production instead of silently reverting to Free.
     await entitlementRef.set(
       {
         basePlan: 'premium',
@@ -221,25 +218,16 @@ export const deleteMyAccount = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
   const confirmation = requireString(data?.confirmation, 'confirmation', 64).toUpperCase();
 
   if (confirmation !== 'DELETE MY ACCOUNT') {
-    throw new HttpsError(
-      'failed-precondition',
-      'Account deletion requires the exact confirmation phrase.',
-    );
+    throw new HttpsError('failed-precondition', 'Account deletion requires the exact confirmation phrase.');
   }
 
   const authTime = Number(auth.token.auth_time ?? 0) * 1000;
   const recentAuthWindowMs = 10 * 60 * 1000;
 
   if (!authTime || Date.now() - authTime > recentAuthWindowMs) {
-    throw new HttpsError(
-      'failed-precondition',
-      'For your security, verify your account again before deleting it.',
-    );
+    throw new HttpsError('failed-precondition', 'For your security, verify your account again before deleting it.');
   }
 
-  // Personal account deletion is intentionally independent from billing state.
-  // Store/provider subscriptions must be managed separately; users should never
-  // be forced to retain their Inkbound account or personal data to avoid billing.
   await eraseInkboundUser(auth.uid);
   return { success: true };
 });
@@ -253,46 +241,23 @@ export const eraseUserAccountByAdmin = onCall({ enforceAppCheck: ENFORCE_APP_CHE
   const reason = requireString(data?.reason, 'reason', 1000);
   const confirmation = requireString(data?.confirmation, 'confirmation', 320).toLowerCase();
 
-  if (!targetEmail) {
-    throw new HttpsError('invalid-argument', 'The target email is required.');
-  }
-  if (targetUserId === auth.uid) {
-    throw new HttpsError('failed-precondition', 'Use the personal account-deletion flow to delete your own account.');
-  }
-  if (OWNER_EMAILS.has(targetEmail)) {
-    throw new HttpsError('failed-precondition', 'Protected owner accounts cannot be erased from the admin dashboard.');
-  }
-  if (confirmation !== `erase ${targetEmail}`) {
-    throw new HttpsError('failed-precondition', `Type ERASE ${targetEmail} exactly to confirm.`);
-  }
+  if (!targetEmail) throw new HttpsError('invalid-argument', 'The target email is required.');
+  if (targetUserId === auth.uid) throw new HttpsError('failed-precondition', 'Use the personal account-deletion flow to delete your own account.');
+  if (OWNER_EMAILS.has(targetEmail)) throw new HttpsError('failed-precondition', 'Protected owner accounts cannot be erased from the admin dashboard.');
+  if (confirmation !== `erase ${targetEmail}`) throw new HttpsError('failed-precondition', `Type ERASE ${targetEmail} exactly to confirm.`);
 
   const directorySnapshot = await db.doc(`userDirectory/${targetUserId}`).get();
   const directoryEmail = normalizeEmail(directorySnapshot.get('email'));
-  if (!directorySnapshot.exists || directoryEmail !== targetEmail) {
-    throw new HttpsError('failed-precondition', 'The selected reader no longer matches this account. Refresh and try again.');
-  }
+  if (!directorySnapshot.exists || directoryEmail !== targetEmail) throw new HttpsError('failed-precondition', 'The selected reader no longer matches this account. Refresh and try again.');
 
   const entitlementSnapshot = await db.doc(`entitlements/${targetUserId}`).get();
   if (paidSubscriptionIsActive(entitlementSnapshot.data())) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Cancel the reader\'s paid subscription before erasing the account so billing cannot continue after login removal.',
-    );
+    throw new HttpsError('failed-precondition', 'Cancel the reader\'s paid subscription before erasing the account so billing cannot continue after login removal.');
   }
 
   await eraseInkboundUser(targetUserId);
 
-  await writeAudit({
-    action: 'admin_erased_user_account',
-    targetUserId: 'deleted',
-    targetEmail: '[deleted]',
-    performedBy: auth.uid,
-    performedByEmail: admin.email,
-    reason,
-    previousValue: null,
-    newValue: { erased: true },
-  });
-
+  await writeAudit({ action: 'admin_erased_user_account', targetUserId: 'deleted', targetEmail: '[deleted]', performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: null, newValue: { erased: true } });
   return { success: true };
 });
 
@@ -306,20 +271,7 @@ export const grantVip = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (re
   const entitlementRef = db.doc(`entitlements/${targetUserId}`);
   const previous = (await entitlementRef.get()).data() ?? null;
 
-  await entitlementRef.set(
-    {
-      basePlan: 'premium',
-      vipEnabled: true,
-      vipGrantedAt: FieldValue.serverTimestamp(),
-      vipGrantedBy: auth.uid,
-      vipReason: reason,
-      effectiveSource: 'vip' satisfies EntitlementSource,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: auth.uid,
-    },
-    { merge: true },
-  );
-
+  await entitlementRef.set({ basePlan: 'premium', vipEnabled: true, vipGrantedAt: FieldValue.serverTimestamp(), vipGrantedBy: auth.uid, vipReason: reason, effectiveSource: 'vip' satisfies EntitlementSource, updatedAt: FieldValue.serverTimestamp(), updatedBy: auth.uid }, { merge: true });
   await writeAudit({ action: 'grant_vip', targetUserId, targetEmail, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { vipEnabled: true } });
   return { success: true };
 });
@@ -348,9 +300,7 @@ export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
   const targetEmail = normalizeEmail(data?.targetEmail);
   const days = Number(data?.days);
 
-  if (!Number.isInteger(days) || days < 1 || days > 730) {
-    throw new HttpsError('invalid-argument', 'Courtesy days must be between 1 and 730.');
-  }
+  if (!Number.isInteger(days) || days < 1 || days > 730) throw new HttpsError('invalid-argument', 'Courtesy days must be between 1 and 730.');
 
   const entitlementRef = db.doc(`entitlements/${targetUserId}`);
   let previous: unknown = null;
@@ -371,4 +321,5 @@ export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
 });
 
 export { getAdminDashboard, getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
+export { listAdminRecoveryPoints, restoreAdminRecoveryPoint } from './adminRecovery.js';
 export { searchHardcoverBooks } from './bookSearch.js';
