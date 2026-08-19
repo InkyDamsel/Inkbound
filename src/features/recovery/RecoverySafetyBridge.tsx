@@ -3,7 +3,7 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { INKBOUND_BEFORE_SIGN_OUT_EVENT, type BeforeSignOutDetail } from '../sync/cloudSyncEvents';
 import { createRecoveryPoint } from './dataRecovery';
 
-const PERIODIC_RECOVERY_MS = 30 * 60 * 1000;
+const DAILY_RECOVERY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Creates durable, account-owned recovery points independently of the normal
@@ -33,14 +33,16 @@ export const RecoverySafetyBridge: React.FC = () => {
       }
     };
 
-    // Capture the cloud state at the beginning of each signed-in app session.
-    // Fingerprint de-duplication prevents repeated reloads from storing identical
-    // copies while still preserving a state that predates later edits/imports.
-    void checkpoint('Automatic session safety copy');
+    // Establish one safety baseline when a signed-in session starts. The snapshot
+    // fingerprint prevents identical reloads from storing duplicate full copies.
+    void checkpoint('Automatic daily safety copy');
 
+    // A full library snapshot can contain hundreds or thousands of records, so
+    // periodic protection is intentionally daily rather than minute-based. Risky
+    // operations such as imports and restores create their own event-based copies.
     const interval = window.setInterval(() => {
-      void checkpoint('Automatic periodic safety copy');
-    }, PERIODIC_RECOVERY_MS);
+      void checkpoint('Automatic daily safety copy');
+    }, DAILY_RECOVERY_MS);
 
     const beforeSignOut = (event: Event) => {
       const detail = (event as CustomEvent<BeforeSignOutDetail>).detail;
