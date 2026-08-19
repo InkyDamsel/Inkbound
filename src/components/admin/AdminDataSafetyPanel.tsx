@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { AlertTriangle, CheckCircle2, Database, HardDrive, Image, RefreshCw, ShieldCheck } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
@@ -49,6 +49,36 @@ interface AdminDataSafetyPanelProps {
   targetLabel: string;
 }
 
+interface DataSafetyState {
+  report: DataIntegrityReport | null;
+  inspectedUserId: string | null;
+  loading: boolean;
+  error: string;
+}
+
+const dataSafetyListeners = new Set<() => void>();
+let dataSafetyState: DataSafetyState = {
+  report: null,
+  inspectedUserId: null,
+  loading: false,
+  error: '',
+};
+let dataSafetyRequestInFlight = false;
+
+function subscribeDataSafety(listener: () => void) {
+  dataSafetyListeners.add(listener);
+  return () => dataSafetyListeners.delete(listener);
+}
+
+function getDataSafetySnapshot() {
+  return dataSafetyState;
+}
+
+function updateDataSafetyState(next: Partial<DataSafetyState>) {
+  dataSafetyState = { ...dataSafetyState, ...next };
+  dataSafetyListeners.forEach((listener) => listener());
+}
+
 const Metric = ({ label, value, note }: { label: string; value: React.ReactNode; note?: string }) => (
   <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
     <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{label}</span>
@@ -66,34 +96,57 @@ const formatDateTime = (value: string | null) => {
 };
 
 export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targetUserId, targetLabel }) => {
-  const [report, setReport] = useState<DataIntegrityReport | null>(null);
-  const [inspectedUserId, setInspectedUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const requestInFlight = useRef(false);
+  const { report, inspectedUserId, loading, error } = useSyncExternalStore(
+    subscribeDataSafety,
+    getDataSafetySnapshot,
+    getDataSafetySnapshot,
+  );
 
-  // IMPORTANT: this is the only path that may invoke getAdminDataIntegrity.
-  // There are deliberately no effects, subscriptions, timers, retries, or mount-time calls.
+  // This is intentionally the only code path that starts an integrity request.
+  // The subscription above only keeps UI state alive across Administration remounts.
   const runIntegrityCheckFromClick = async () => {
-    if (!targetUserId || !functions || requestInFlight.current) return;
+    if (!targetUserId) {
+      updateDataSafetyState({ error: 'Select a reader before running an integrity check.' });
+      return;
+    }
+    if (!functions) {
+      updateDataSafetyState({
+        inspectedUserId: targetUserId,
+        error: 'Firebase Functions are unavailable in this Inkbound runtime.',
+      });
+      return;
+    }
+    if (dataSafetyRequestInFlight) return;
 
-    requestInFlight.current = true;
-    setLoading(true);
-    setError('');
+    dataSafetyRequestInFlight = true;
+    updateDataSafetyState({
+      inspectedUserId: targetUserId,
+      report: null,
+      loading: true,
+      error: '',
+    });
+
     try {
       const getIntegrity = httpsCallable<{ targetUserId: string }, DataIntegrityReport>(functions, 'getAdminDataIntegrity');
       const response = await getIntegrity({ targetUserId });
-      setReport(response.data);
-      setInspectedUserId(targetUserId);
+      updateDataSafetyState({
+        report: response.data,
+        inspectedUserId: targetUserId,
+        loading: false,
+        error: '',
+      });
     } catch (requestError) {
-      setReport(null);
-      setInspectedUserId(targetUserId);
-      setError(requestError instanceof Error
-        ? requestError.message
-        : 'The integrity service is temporarily unavailable. Administration is still safe to use; retry this check later.');
+      updateDataSafetyState({
+        report: null,
+        inspectedUserId: targetUserId,
+        loading: false,
+        error: requestError instanceof Error
+          ? requestError.message
+          : 'The integrity service is temporarily unavailable. Administration is still safe to use; retry this check later.',
+      });
     } finally {
-      requestInFlight.current = false;
-      setLoading(false);
+      dataSafetyRequestInFlight = false;
+      if (dataSafetyState.loading) updateDataSafetyState({ loading: false });
     }
   };
 
@@ -115,7 +168,7 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
         </div>
         <button
           type="button"
-          onClick={runIntegrityCheckFromClick}
+          onClick={() => void runIntegrityCheckFromClick()}
           disabled={!targetUserId || loading}
           className="quiet-shelf-secondary-action justify-center disabled:opacity-45"
         >
@@ -125,6 +178,7 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
       </div>
 
       {!targetUserId && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Select a reader above to inspect their canonical cloud data.</p>}
+      {loading && inspectedUserId === targetUserId && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Inspecting canonical cloud data now…</p>}
       {needsManualInspection && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Ready to inspect this reader. No integrity request has been sent.</p>}
       {currentError && <p className="mt-5 rounded-2xl border border-[#c97b7b]/35 bg-[#c97b7b]/5 p-4 text-sm text-[#e9b2b2]">Data Safety is temporarily unavailable. Administration remains usable. {currentError}</p>}
 
