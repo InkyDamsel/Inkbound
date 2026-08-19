@@ -5,8 +5,10 @@ import { AppErrorBoundary } from './components/AppErrorBoundary.tsx';
 import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
-import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
+import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeUnverifiedLegacyImportMetadata.ts';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
+import { RecoveryCenter } from './features/recovery/RecoveryCenter.tsx';
+import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.tsx';
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
@@ -116,6 +118,7 @@ createRoot(rootElement).render(
             <AccountSyncProvider>
               <AuthSessionGate>
                 <SecurityBootstrap />
+                <RecoverySafetyBridge />
                 <CloudPersistenceBridge />
                 <AuxiliaryAccountSyncBridge />
                 <ReadOnlyCloudHydrationBridge />
@@ -125,6 +128,7 @@ createRoot(rootElement).render(
                 <CloudDataRefreshBoundary>
                   <App />
                 </CloudDataRefreshBoundary>
+                <RecoveryCenter />
                 <UpgradeModal />
               </AuthSessionGate>
             </AccountSyncProvider>
