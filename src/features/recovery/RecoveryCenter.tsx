@@ -6,7 +6,7 @@ import type { ReadingSession, UserBookRecord } from '../../types';
 import {
   createRecoveryPoint,
   listRecoveryPoints,
-  restoreRecoveryPoint,
+  scheduleRecoveryRestore,
   type RecoveryPointSummary,
 } from './dataRecovery';
 import { analyzeLibraryIntegrity } from './libraryIntegrity';
@@ -82,18 +82,12 @@ export const RecoveryCenter: React.FC = () => {
     }
   };
 
-  const restore = async () => {
+  const restore = () => {
     if (!selected || confirmation.trim().toUpperCase() !== RESTORE_PHRASE) return;
     setLoading(true);
-    setMessage('Restoring this recovery point and preserving the current state first...');
-    try {
-      await restoreRecoveryPoint(user.uid, selected.id);
-      setMessage('Recovery complete. Reloading Inkbound...');
-      window.setTimeout(() => window.location.reload(), 700);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Recovery failed. Nothing was intentionally cleared.');
-      setLoading(false);
-    }
+    setMessage('Restarting Inkbound into protected recovery mode...');
+    scheduleRecoveryRestore(user.uid, selected.id);
+    window.location.reload();
   };
 
   return (
@@ -124,8 +118,8 @@ export const RecoveryCenter: React.FC = () => {
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">
                   Inkbound keeps separate recovery points for your synced books, reading sessions, profile,
-                  collections, goals, memories, and photo-memory metadata. Restoring a recovery point first
-                  saves the state you are replacing, so recovery itself can be reversed.
+                  collections, goals, memories, import state, and photo-memory metadata. Restoring a recovery point
+                  first saves the state you are replacing, so recovery itself can be reversed.
                 </p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="quiet-shelf-icon-button" aria-label="Close Recovery Center">
@@ -181,7 +175,7 @@ export const RecoveryCenter: React.FC = () => {
             <div className="mt-6 space-y-3">
               {points.length === 0 && !loading ? (
                 <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5 text-sm text-[var(--ink-muted)]">
-                  No recovery points yet. Create one now; automatic safety copies are also created while you use a signed-in Inkbound account.
+                  No recovery points yet. Create one now; Inkbound also keeps a daily safety baseline and creates a recovery point immediately before imports.
                 </div>
               ) : points.map((point) => (
                 <article key={point.id} className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
@@ -192,7 +186,7 @@ export const RecoveryCenter: React.FC = () => {
                       </div>
                       <p className="mt-1 text-xs text-[var(--ink-muted)]">{point.reason}</p>
                       <p className="mt-2 text-xs text-[var(--ink-muted)]">
-                        {point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} account records · {point.photoMemoryCount} photo-memory records
+                        {point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} account records · {point.photoMemoryCount} photo-memory records · {point.runtimeStateCount} import-state records
                       </p>
                     </div>
                     <button
@@ -212,7 +206,7 @@ export const RecoveryCenter: React.FC = () => {
               <div className="mt-6 rounded-2xl border border-amber-400/25 bg-amber-400/5 p-5">
                 <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Restore {formatRecoveryDate(selected.createdAtClient)}?</h3>
                 <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-                  Inkbound will create a new recovery point of your current cloud state first, then replace the synced account records with this copy.
+                  Inkbound will restart into protected recovery mode, save a new recovery point of your current cloud state, then replace the synced account records with this copy before normal sync starts.
                   Type <strong className="text-[var(--ink-ivory)]">RESTORE</strong> to continue.
                 </p>
                 <input
@@ -226,7 +220,7 @@ export const RecoveryCenter: React.FC = () => {
                   <button
                     type="button"
                     disabled={loading || confirmation.trim().toUpperCase() !== RESTORE_PHRASE}
-                    onClick={() => void restore()}
+                    onClick={restore}
                     className="quiet-shelf-primary-action disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <RotateCcw className="h-4 w-4" /> Restore this recovery point
