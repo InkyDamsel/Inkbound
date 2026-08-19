@@ -3,6 +3,7 @@ import { AlertTriangle, Crown, Gift, RefreshCw, Search, ShieldCheck, Star, Trash
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
 import { useAccountSync } from '../context/AccountSyncContext';
+import { AdminDataSafetyPanel } from './admin/AdminDataSafetyPanel';
 
 interface AdminUser {
   uid: string;
@@ -210,6 +211,11 @@ export const AdminScreen: React.FC = () => {
           {status && <p className="mt-4 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-muted)]">{status}</p>}
         </aside>
       </section>
+
+      <AdminDataSafetyPanel
+        targetUserId={selectedUser?.uid ?? null}
+        targetLabel={selectedUser?.displayName || selectedUser?.email || ''}
+      />
 
       <section className="inkbound-panel p-5"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Recent admin activity</h2><div className="mt-4 divide-y divide-[var(--ink-border-subtle)]">{data?.audit.length ? data.audit.map((entry) => <article key={entry.id} className="grid gap-1 py-3 md:grid-cols-[180px_1fr_1fr]"><span className="text-sm text-[var(--ink-muted)]">{formatDate(entry.createdAt)}</span><strong className="text-sm text-[var(--ink-ivory)]">{entry.action.replaceAll('_', ' ')} · {entry.targetEmail || 'Unknown reader'}</strong><span className="text-sm text-[var(--ink-muted)]">{entry.reason}</span></article>) : <p className="py-6 text-[var(--ink-muted)]">No admin activity yet.</p>}</div></section>
 
