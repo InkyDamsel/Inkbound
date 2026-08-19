@@ -19,27 +19,27 @@ function readStoredBooks(): UserBookRecord[] {
 
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
   const { user } = useAccountSync();
-  const [hydrated, setHydrated] = useState(() => !user || getCloudDataRevision() > 0);
+  const [initialCloudRevision, setInitialCloudRevision] = useState(() => getCloudDataRevision());
 
   useEffect(() => {
     if (!user) {
-      setHydrated(true);
+      setInitialCloudRevision(getCloudDataRevision());
       return;
     }
 
-    // The boundary has one responsibility now: hold the first signed-in render
-    // until canonical cloud hydration has completed. Later cloud updates must NOT
-    // remount the entire App. Remounting destroys navigation state, sidebar scroll,
-    // dialogs, admin request state, and can make a single click appear to require
-    // a second click while background sync/enrichment is active.
+    // This boundary now has one responsibility: hold the FIRST signed-in render
+    // until canonical cloud hydration is available. Later cloud updates must not
+    // remount App. The previous keyed remount destroyed navigation/sidebar state,
+    // admin request state, dialogs, and other transient UI whenever books or
+    // sessions synced in the background.
     const refresh = () => {
       recoverIncompleteLatestImport();
       reconcileRepeatedImportHistory(readStoredBooks());
 
-      // Open the app exactly once after the first cloud-data revision arrives.
-      // Subsequent revisions are handled by the feature/state owners themselves;
-      // they do not recreate the application shell.
-      setHydrated((current) => current || getCloudDataRevision() > 0);
+      // Capture the first non-zero cloud revision only. Once App is mounted for
+      // this signed-in session, later revisions stay inside their feature/state
+      // owners rather than recreating the entire application shell.
+      setInitialCloudRevision((current) => current > 0 ? current : getCloudDataRevision());
 
       void synchronizeProfileMedia(user.uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
@@ -48,7 +48,8 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
     };
 
     void synchronizeProfileMedia(user.uid).catch(() => undefined);
-    if (getCloudDataRevision() > 0) setHydrated(true);
+    const currentRevision = getCloudDataRevision();
+    if (currentRevision > 0) setInitialCloudRevision((current) => current > 0 ? current : currentRevision);
 
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
     const unsubscribeResume = subscribeToRuntimeResume(refresh);
@@ -58,7 +59,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
     };
   }, [user?.uid]);
 
-  if (user && !hydrated) {
+  if (user && initialCloudRevision === 0) {
     return <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-6 text-center text-[var(--ink-ivory)]">Opening Inkbound...</main>;
   }
 
