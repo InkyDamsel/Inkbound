@@ -370,5 +370,5 @@ export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
   return { success: true, courtesyPremiumUntil: courtesyIso };
 });
 
-export { getAdminDashboard, setAdminAccess } from './adminDashboard.js';
+export { getAdminDashboard, getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
 export { searchHardcoverBooks } from './bookSearch.js';
