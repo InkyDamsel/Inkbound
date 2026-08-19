@@ -41,6 +41,30 @@ const formatDate = (value: string | null) => value
   ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   : 'Not available';
 
+function isDashboardData(value: unknown): value is DashboardData {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Partial<DashboardData>;
+  const totals = candidate.totals as DashboardData['totals'] | undefined;
+  return typeof candidate.role === 'string'
+    && Array.isArray(candidate.users)
+    && Array.isArray(candidate.audit)
+    && Boolean(totals)
+    && typeof totals?.users === 'number'
+    && typeof totals?.vip === 'number'
+    && typeof totals?.courtesy === 'number'
+    && typeof totals?.paid === 'number';
+}
+
+function normalizeDashboardPayload(value: unknown): DashboardData {
+  if (isDashboardData(value)) return value;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (isDashboardData(record.result)) return record.result;
+    if (isDashboardData(record.data)) return record.data;
+  }
+  throw new Error('The Administration service returned an unexpected response shape.');
+}
+
 export const AdminScreen: React.FC = () => {
   const { user } = useAccountSync();
   const [query, setQuery] = useState('');
@@ -76,13 +100,11 @@ export const AdminScreen: React.FC = () => {
     setLoading(true);
     setStatus('Loading owner data…');
     try {
-      // Refresh is intentionally read-only. Owner bootstrap is not part of the
-      // normal Administration path and must not run merely because the owner
-      // wants to inspect current dashboard data.
-      const getAdminDashboard = httpsCallable<{ query: string }, DashboardData>(functions, 'getAdminDashboard');
+      const getAdminDashboard = httpsCallable<{ query: string }, unknown>(functions, 'getAdminDashboard');
       const response = await getAdminDashboard({ query: search });
-      setData(response.data);
-      setSelectedUser((current) => response.data.users.find((item) => item.uid === current?.uid) ?? response.data.users[0] ?? null);
+      const dashboard = normalizeDashboardPayload(response.data);
+      setData(dashboard);
+      setSelectedUser((current) => dashboard.users.find((item) => item.uid === current?.uid) ?? dashboard.users[0] ?? null);
       setStatus('Owner data refreshed.');
     } catch (error) {
       setStatus(error instanceof Error ? `Administration refresh failed: ${error.message}` : 'The admin dashboard could not be loaded.');
