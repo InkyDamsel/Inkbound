@@ -1,0 +1,308 @@
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+} from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { getRuntimeStorage, notifyRuntimeStorageChanged } from '../../platform/runtimeStorage';
+import type { ReadingSession, UserBookRecord } from '../../types';
+import { AUXILIARY_ACCOUNT_KEYS, type AuxiliaryAccountKeyName } from '../sync/auxiliaryAccountSyncConfig';
+import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../sync/cloudSyncEvents';
+
+const RECOVERY_COLLECTION = 'recoverySnapshots';
+const BOOKS_KEY = 'inkbound_books';
+const SESSIONS_KEY = 'inkbound_sessions';
+const PROFILE_KEY = 'inkbound_reader_profile';
+const MAX_LISTED_RECOVERY_POINTS = 12;
+const WRITE_BATCH_SIZE = 350;
+
+interface CloudRecord<T> {
+  data: T;
+}
+
+interface ReaderProfile {
+  displayName?: string;
+  email?: string;
+  favoriteQuote?: string;
+  bio?: string;
+  avatarImage?: string;
+  bannerImage?: string;
+}
+
+export interface RecoveryPointSummary {
+  id: string;
+  createdAtClient: string;
+  reason: string;
+  bookCount: number;
+  sessionCount: number;
+  auxiliaryCount: number;
+  photoMemoryCount: number;
+  fingerprint: string;
+}
+
+interface SnapshotPayload {
+  books: UserBookRecord[];
+  sessions: ReadingSession[];
+  profile?: ReaderProfile;
+  auxiliary: Array<{ id: AuxiliaryAccountKeyName; data: unknown }>;
+  photoMemories: Array<{ id: string; data: Record<string, unknown> }>;
+}
+
+const stable = (value: unknown) => JSON.stringify(value);
+
+function hashText(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function snapshotFingerprint(payload: SnapshotPayload): string {
+  const compact = {
+    books: payload.books.map((book) => [book.id, stable(book)]),
+    sessions: payload.sessions.map((session) => [session.id, stable(session)]),
+    profile: payload.profile ? stable(payload.profile) : '',
+    auxiliary: payload.auxiliary.map((item) => [item.id, stable(item.data)]),
+    photoMemories: payload.photoMemories.map((item) => [item.id, stable(item.data)]),
+  };
+  return hashText(stable(compact));
+}
+
+async function readCloudPayload(uid: string): Promise<SnapshotPayload> {
+  if (!db) throw new Error('Cloud recovery is unavailable because Firebase is not configured.');
+
+  const [booksSnapshot, sessionsSnapshot, profileSnapshot, auxiliarySnapshot, photoSnapshot] = await Promise.all([
+    getDocs(collection(db, 'users', uid, 'books')),
+    getDocs(collection(db, 'users', uid, 'sessions')),
+    getDoc(doc(db, 'users', uid, 'profile', 'current')),
+    getDocs(collection(db, 'users', uid, 'auxiliary')),
+    getDocs(collection(db, 'users', uid, 'photoMemories')),
+  ]);
+
+  return {
+    books: booksSnapshot.docs
+      .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
+      .filter(Boolean),
+    sessions: sessionsSnapshot.docs
+      .map((item) => (item.data() as CloudRecord<ReadingSession>).data)
+      .filter(Boolean),
+    profile: profileSnapshot.exists()
+      ? (profileSnapshot.data() as CloudRecord<ReaderProfile>).data
+      : undefined,
+    auxiliary: auxiliarySnapshot.docs
+      .filter((item) => item.id in AUXILIARY_ACCOUNT_KEYS)
+      .map((item) => ({
+        id: item.id as AuxiliaryAccountKeyName,
+        data: (item.data() as CloudRecord<unknown>).data,
+      })),
+    // Photo-memory recovery intentionally stores Firestore metadata and Storage
+    // paths. Binary media remains in Firebase Storage and should not be deleted
+    // merely because a record is hidden/tombstoned.
+    photoMemories: photoSnapshot.docs.map((item) => ({
+      id: item.id,
+      data: item.data() as Record<string, unknown>,
+    })),
+  };
+}
+
+async function commitTasks(tasks: Array<(batch: ReturnType<typeof writeBatch>) => void>) {
+  if (!db) return;
+  for (let index = 0; index < tasks.length; index += WRITE_BATCH_SIZE) {
+    const batch = writeBatch(db);
+    tasks.slice(index, index + WRITE_BATCH_SIZE).forEach((task) => task(batch));
+    await batch.commit();
+  }
+}
+
+export async function listRecoveryPoints(uid: string): Promise<RecoveryPointSummary[]> {
+  if (!db || !uid) return [];
+  const snapshot = await getDocs(query(
+    collection(db, 'users', uid, RECOVERY_COLLECTION),
+    orderBy('createdAtClient', 'desc'),
+    limit(MAX_LISTED_RECOVERY_POINTS),
+  ));
+
+  return snapshot.docs.map((item) => {
+    const data = item.data() as Partial<RecoveryPointSummary>;
+    return {
+      id: item.id,
+      createdAtClient: String(data.createdAtClient ?? ''),
+      reason: String(data.reason ?? 'Automatic safety copy'),
+      bookCount: Number(data.bookCount ?? 0),
+      sessionCount: Number(data.sessionCount ?? 0),
+      auxiliaryCount: Number(data.auxiliaryCount ?? 0),
+      photoMemoryCount: Number(data.photoMemoryCount ?? 0),
+      fingerprint: String(data.fingerprint ?? ''),
+    };
+  });
+}
+
+export async function createRecoveryPoint(
+  uid: string,
+  reason: string,
+  options: { force?: boolean } = {},
+): Promise<RecoveryPointSummary | null> {
+  if (!db || !uid) return null;
+  const payload = await readCloudPayload(uid);
+  if (
+    payload.books.length === 0 &&
+    payload.sessions.length === 0 &&
+    payload.auxiliary.length === 0 &&
+    payload.photoMemories.length === 0 &&
+    !payload.profile
+  ) return null;
+
+  const fingerprint = snapshotFingerprint(payload);
+  const latest = (await listRecoveryPoints(uid))[0];
+  if (!options.force && latest?.fingerprint === fingerprint) return latest;
+
+  const createdAtClient = new Date().toISOString();
+  const snapshotId = `${Date.now()}-${crypto.randomUUID()}`;
+  const snapshotRef = doc(db, 'users', uid, RECOVERY_COLLECTION, snapshotId);
+
+  await setDoc(snapshotRef, {
+    schemaVersion: 1,
+    createdAt: serverTimestamp(),
+    createdAtClient,
+    reason,
+    fingerprint,
+    bookCount: payload.books.length,
+    sessionCount: payload.sessions.length,
+    auxiliaryCount: payload.auxiliary.length,
+    photoMemoryCount: payload.photoMemories.length,
+  });
+
+  const tasks: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+  payload.books.forEach((book) => tasks.push((batch) => batch.set(
+    doc(snapshotRef, 'books', book.id),
+    { data: book },
+  )));
+  payload.sessions.forEach((session) => tasks.push((batch) => batch.set(
+    doc(snapshotRef, 'sessions', session.id),
+    { data: session },
+  )));
+  payload.auxiliary.forEach((item) => tasks.push((batch) => batch.set(
+    doc(snapshotRef, 'auxiliary', item.id),
+    { data: item.data },
+  )));
+  payload.photoMemories.forEach((item) => tasks.push((batch) => batch.set(
+    doc(snapshotRef, 'photoMemories', item.id),
+    { data: item.data },
+  )));
+  if (payload.profile) {
+    tasks.push((batch) => batch.set(doc(snapshotRef, 'profile', 'current'), { data: payload.profile }));
+  }
+  await commitTasks(tasks);
+
+  return {
+    id: snapshotId,
+    createdAtClient,
+    reason,
+    bookCount: payload.books.length,
+    sessionCount: payload.sessions.length,
+    auxiliaryCount: payload.auxiliary.length,
+    photoMemoryCount: payload.photoMemories.length,
+    fingerprint,
+  };
+}
+
+async function readRecoveryPayload(uid: string, snapshotId: string): Promise<SnapshotPayload> {
+  if (!db) throw new Error('Cloud recovery is unavailable because Firebase is not configured.');
+  const root = doc(db, 'users', uid, RECOVERY_COLLECTION, snapshotId);
+  const rootSnapshot = await getDoc(root);
+  if (!rootSnapshot.exists()) throw new Error('That recovery point no longer exists.');
+
+  const [booksSnapshot, sessionsSnapshot, profileSnapshot, auxiliarySnapshot, photoSnapshot] = await Promise.all([
+    getDocs(collection(root, 'books')),
+    getDocs(collection(root, 'sessions')),
+    getDoc(doc(root, 'profile', 'current')),
+    getDocs(collection(root, 'auxiliary')),
+    getDocs(collection(root, 'photoMemories')),
+  ]);
+
+  return {
+    books: booksSnapshot.docs.map((item) => (item.data() as CloudRecord<UserBookRecord>).data).filter(Boolean),
+    sessions: sessionsSnapshot.docs.map((item) => (item.data() as CloudRecord<ReadingSession>).data).filter(Boolean),
+    profile: profileSnapshot.exists() ? (profileSnapshot.data() as CloudRecord<ReaderProfile>).data : undefined,
+    auxiliary: auxiliarySnapshot.docs.map((item) => ({
+      id: item.id as AuxiliaryAccountKeyName,
+      data: (item.data() as CloudRecord<unknown>).data,
+    })),
+    photoMemories: photoSnapshot.docs.map((item) => ({
+      id: item.id,
+      data: (item.data() as CloudRecord<Record<string, unknown>>).data,
+    })),
+  };
+}
+
+async function replaceCollection(
+  uid: string,
+  name: 'books' | 'sessions' | 'auxiliary' | 'photoMemories',
+  records: Array<{ id: string; data: unknown }>,
+  wrapData: boolean,
+) {
+  if (!db) return;
+  const targetCollection = collection(db, 'users', uid, name);
+  const current = await getDocs(targetCollection);
+  const wantedIds = new Set(records.map((item) => item.id));
+  const tasks: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+
+  current.docs.forEach((item) => {
+    if (!wantedIds.has(item.id)) tasks.push((batch) => batch.delete(item.ref));
+  });
+  records.forEach((item) => tasks.push((batch) => batch.set(
+    doc(targetCollection, item.id),
+    wrapData
+      ? { data: item.data, updatedAt: serverTimestamp(), clientUpdatedAt: new Date().toISOString() }
+      : item.data as Record<string, unknown>,
+  )));
+  await commitTasks(tasks);
+}
+
+export async function restoreRecoveryPoint(uid: string, snapshotId: string): Promise<void> {
+  if (!db || !uid) throw new Error('Cloud recovery is unavailable.');
+
+  // Always preserve the state being replaced so a restore itself is reversible.
+  await createRecoveryPoint(uid, 'Before recovery restore', { force: true });
+  const payload = await readRecoveryPayload(uid, snapshotId);
+
+  await replaceCollection(uid, 'books', payload.books.map((book) => ({ id: book.id, data: book })), true);
+  await replaceCollection(uid, 'sessions', payload.sessions.map((session) => ({ id: session.id, data: session })), true);
+  await replaceCollection(uid, 'auxiliary', payload.auxiliary, true);
+  await replaceCollection(uid, 'photoMemories', payload.photoMemories, false);
+
+  const profileRef = doc(db, 'users', uid, 'profile', 'current');
+  if (payload.profile) {
+    await setDoc(profileRef, {
+      data: payload.profile,
+      updatedAt: serverTimestamp(),
+      clientUpdatedAt: new Date().toISOString(),
+    });
+  } else {
+    await deleteDoc(profileRef);
+  }
+
+  const storage = getRuntimeStorage();
+  storage.setItem(BOOKS_KEY, stable(payload.books));
+  storage.setItem(SESSIONS_KEY, stable(payload.sessions));
+  storage.setItem(PROFILE_KEY, stable(payload.profile ?? {}));
+  payload.auxiliary.forEach((item) => {
+    const runtimeKey = AUXILIARY_ACCOUNT_KEYS[item.id];
+    if (!runtimeKey) return;
+    storage.setItem(runtimeKey, stable(item.data));
+    notifyRuntimeStorageChanged(runtimeKey);
+  });
+
+  notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
+  notifyLocalDataChanged([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
+}
