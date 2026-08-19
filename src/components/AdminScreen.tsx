@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Crown, Gift, RefreshCw, Search, ShieldCheck, Star, Trash2, Users, X } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
@@ -54,26 +54,44 @@ export const AdminScreen: React.FC = () => {
   const [eraseConfirmation, setEraseConfirmation] = useState('');
   const [eraseReason, setEraseReason] = useState('');
   const [erasing, setErasing] = useState(false);
+  const dashboardRequestInFlight = useRef(false);
 
   const approvedOwner = Boolean(user?.email && OWNER_EMAILS.has(user.email.toLowerCase()));
 
-  const loadDashboard = useCallback(async (search = '') => {
-    if (!functions || !approvedOwner || loading) return;
+  const loadDashboard = async (search = '') => {
+    if (dashboardRequestInFlight.current) return;
+    if (!user) {
+      setStatus('Sign in with an approved owner account before loading Administration.');
+      return;
+    }
+    if (!approvedOwner) {
+      setStatus('This account is not approved for Inkbound administration.');
+      return;
+    }
+    if (!functions) {
+      setStatus('Firebase Functions are unavailable in this Inkbound runtime. Check the Firebase environment configuration and reload the app.');
+      return;
+    }
+
+    dashboardRequestInFlight.current = true;
     setLoading(true);
-    setStatus('');
+    setStatus('Loading owner data…');
     try {
-      const bootstrapOwner = httpsCallable(functions, 'bootstrapOwner');
-      await bootstrapOwner();
+      // Refresh is intentionally read-only. Owner bootstrap is not part of the
+      // normal Administration path and must not run merely because the owner
+      // wants to inspect current dashboard data.
       const getAdminDashboard = httpsCallable<{ query: string }, DashboardData>(functions, 'getAdminDashboard');
       const response = await getAdminDashboard({ query: search });
       setData(response.data);
       setSelectedUser((current) => response.data.users.find((item) => item.uid === current?.uid) ?? response.data.users[0] ?? null);
+      setStatus('Owner data refreshed.');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'The admin dashboard could not be loaded.');
+      setStatus(error instanceof Error ? `Administration refresh failed: ${error.message}` : 'The admin dashboard could not be loaded.');
     } finally {
+      dashboardRequestInFlight.current = false;
       setLoading(false);
     }
-  }, [approvedOwner, loading]);
+  };
 
   const runAction = async (action: 'grantVip' | 'revokeVip' | 'addCourtesyTime') => {
     if (!functions || !selectedUser || !reason.trim()) {
@@ -166,8 +184,10 @@ export const AdminScreen: React.FC = () => {
     <div className="space-y-6 pb-20">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--ink-mauve)]">Owner tools</p><h1 className="font-serif text-4xl text-[var(--ink-ivory)]">Administration</h1><p className="mt-2 text-[var(--ink-muted)]">Manage complimentary access, protected account actions, and reader data requests.</p></div>
-        <button type="button" onClick={() => void loadDashboard(query)} disabled={loading} className="quiet-shelf-secondary-action justify-center"><RefreshCw className={loading ? 'animate-spin' : ''} />Refresh</button>
+        <button type="button" onClick={() => void loadDashboard(query)} disabled={loading} className="quiet-shelf-secondary-action justify-center"><RefreshCw className={loading ? 'animate-spin' : ''} />{loading ? 'Refreshing…' : 'Refresh'}</button>
       </header>
+
+      {status && <p className="rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-muted)]" role="status">{status}</p>}
 
       {data && <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[['Readers', data.totals.users, Users], ['Paid Premium', data.totals.paid, Crown], ['VIP', data.totals.vip, Star], ['Courtesy', data.totals.courtesy, Gift]].map(([label, value, Icon]) => {
@@ -178,7 +198,7 @@ export const AdminScreen: React.FC = () => {
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.7fr)]">
         <div className="inkbound-panel p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Readers</h2><p className="text-sm text-[var(--ink-muted)]">Search by name, email, or Firebase UID.</p></div><form onSubmit={(event) => { event.preventDefault(); void loadDashboard(query); }} className="flex gap-2"><label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3"><Search className="h-4 w-4 text-[var(--ink-muted)]" /><input id="admin-reader-search" name="adminReaderSearch" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search readers" className="min-w-0 bg-transparent text-sm text-[var(--ink-ivory)] outline-none" /></label><button className="quiet-shelf-primary-action" type="submit">Search</button></form></div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Readers</h2><p className="text-sm text-[var(--ink-muted)]">Search by name, email, or Firebase UID.</p></div><form onSubmit={(event) => { event.preventDefault(); void loadDashboard(query); }} className="flex gap-2"><label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3"><Search className="h-4 w-4 text-[var(--ink-muted)]" /><input id="admin-reader-search" name="adminReaderSearch" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search readers" className="min-w-0 bg-transparent text-sm text-[var(--ink-ivory)] outline-none" /></label><button className="quiet-shelf-primary-action" type="submit" disabled={loading}>Search</button></form></div>
           <div className="mt-5 grid gap-2">{data === null ? <p className="py-8 text-center text-[var(--ink-muted)]">Press Refresh to load owner data.</p> : data.users.length ? data.users.map((reader) => <button key={reader.uid} type="button" onClick={() => setSelectedUser(reader)} className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${selectedUser?.uid === reader.uid ? 'border-[var(--ink-mauve)] bg-[var(--ink-surface-soft)]' : 'border-[var(--ink-border-subtle)] hover:bg-[var(--ink-surface-soft)]'}`}>{reader.photoUrl ? <img src={reader.photoUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <span className="grid h-11 w-11 place-items-center rounded-full bg-[var(--ink-surface-raised)] font-serif text-[var(--ink-ivory)]">{(reader.displayName || reader.email).charAt(0).toUpperCase()}</span>}<span className="min-w-0 flex-1"><strong className="block truncate text-[var(--ink-ivory)]">{reader.displayName || 'Unnamed reader'}</strong><small className="block truncate text-[var(--ink-muted)]">{reader.email}</small></span>{reader.vipEnabled && <span className="quiet-shelf-premium-pill">VIP</span>}</button>) : <p className="py-8 text-center text-[var(--ink-muted)]">No matching readers found.</p>}</div>
         </div>
 
@@ -204,7 +224,6 @@ export const AdminScreen: React.FC = () => {
               </div>
             </div>
           </div> : <p className="mt-5 text-[var(--ink-muted)]">Select a reader to manage access.</p>}
-          {status && <p className="mt-4 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-muted)]">{status}</p>}
         </aside>
       </section>
 
