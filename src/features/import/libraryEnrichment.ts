@@ -210,7 +210,13 @@ async function searchImportedBookMetadata(query: string): Promise<BookSearchWork
   if (cached) return cached;
 
   const request = searchGoogleBooks(query)
-    .then((response) => response.groups)
+    .then((response) => {
+      // Empty catalog responses are not durable facts. They may be caused by a
+      // temporary provider cooldown/outage, so never poison future retries by
+      // caching an empty answer for the rest of the app session.
+      if (response.groups.length === 0) importSearchCache.delete(normalizedQuery);
+      return response.groups;
+    })
     .catch((error) => {
       importSearchCache.delete(normalizedQuery);
       throw error;
