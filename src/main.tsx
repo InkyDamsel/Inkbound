@@ -7,8 +7,6 @@ import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContex
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
-import { RecoveryCenter } from './features/recovery/RecoveryCenter.tsx';
-import { RecoveryRestoreGate } from './features/recovery/RecoveryRestoreGate.tsx';
 import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.tsx';
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
@@ -119,20 +117,19 @@ createRoot(rootElement).render(
             <AccountSyncProvider>
               <AuthSessionGate>
                 <SecurityBootstrap />
-                <RecoveryRestoreGate>
-                  <CloudPersistenceBridge />
-                  <AuxiliaryAccountSyncBridge />
-                  <ReadOnlyCloudHydrationBridge />
-                  <PhotoMemoryAutoSyncBridge />
-                  <LegacyBookCoverMigrationBridge />
-                  <ThemePersistenceBridge />
-                  <CloudDataRefreshBoundary>
-                    <RecoverySafetyBridge />
-                    <App />
-                    <RecoveryCenter />
-                  </CloudDataRefreshBoundary>
-                  <UpgradeModal />
-                </RecoveryRestoreGate>
+                <CloudPersistenceBridge />
+                <AuxiliaryAccountSyncBridge />
+                <ReadOnlyCloudHydrationBridge />
+                <PhotoMemoryAutoSyncBridge />
+                <LegacyBookCoverMigrationBridge />
+                <ThemePersistenceBridge />
+                <CloudDataRefreshBoundary>
+                  {/* Recovery snapshots are created automatically for every signed-in reader,
+                      but restore controls are intentionally admin-only. */}
+                  <RecoverySafetyBridge />
+                  <App />
+                </CloudDataRefreshBoundary>
+                <UpgradeModal />
               </AuthSessionGate>
             </AccountSyncProvider>
           </UserPlanProvider>
