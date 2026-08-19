@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { INKBOUND_BEFORE_SIGN_OUT_EVENT, type BeforeSignOutDetail } from '../sync/cloudSyncEvents';
-import { createRecoveryPoint } from './dataRecovery';
+import { createRecoveryPoint, listRecoveryPoints } from './dataRecovery';
 
 const DAILY_RECOVERY_MS = 24 * 60 * 60 * 1000;
 
@@ -20,11 +20,14 @@ export const RecoverySafetyBridge: React.FC = () => {
     const uid = user.uid;
     let disposed = false;
 
-    const checkpoint = async (reason: string, force = false) => {
+    const checkpoint = async (reason: string) => {
       if (disposed || checkpointRunning.current) return;
       checkpointRunning.current = true;
       try {
-        await createRecoveryPoint(uid, reason, { force });
+        const latest = (await listRecoveryPoints(uid))[0];
+        const latestMillis = latest?.createdAtClient ? new Date(latest.createdAtClient).getTime() : 0;
+        const hasRecentRecovery = Number.isFinite(latestMillis) && latestMillis > 0 && Date.now() - latestMillis < DAILY_RECOVERY_MS;
+        if (!hasRecentRecovery) await createRecoveryPoint(uid, reason);
       } catch (error) {
         // Recovery is a safety net and must never prevent normal reading/sync.
         console.warn('Inkbound could not create a recovery point.', error);
@@ -33,13 +36,9 @@ export const RecoverySafetyBridge: React.FC = () => {
       }
     };
 
-    // Establish one safety baseline when a signed-in session starts. The snapshot
-    // fingerprint prevents identical reloads from storing duplicate full copies.
+    // Establish at most one automatic safety baseline per 24-hour period.
     void checkpoint('Automatic daily safety copy');
 
-    // A full library snapshot can contain hundreds or thousands of records, so
-    // periodic protection is intentionally daily rather than minute-based. Risky
-    // operations such as imports and restores create their own event-based copies.
     const interval = window.setInterval(() => {
       void checkpoint('Automatic daily safety copy');
     }, DAILY_RECOVERY_MS);
@@ -47,7 +46,7 @@ export const RecoverySafetyBridge: React.FC = () => {
     const beforeSignOut = (event: Event) => {
       const detail = (event as CustomEvent<BeforeSignOutDetail>).detail;
       if (detail?.uid !== uid) return;
-      detail.waitUntil(checkpoint('Before sign out'));
+      detail.waitUntil(checkpoint('Automatic daily safety copy'));
     };
 
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, beforeSignOut);
