@@ -2,8 +2,8 @@
   "name": "Inkbound — Personal Reading Journal",
   "short_name": "Inkbound",
   "description": "A private personal reading journal for books, sessions, memories, collections, and reading insights.",
-  "id": "/",
-  "start_url": "/",
+  "id": "/app",
+  "start_url": "/app",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
@@ -13,10 +13,22 @@
   "categories": ["books", "lifestyle", "productivity"],
   "icons": [
     {
-      "src": "/assets/lumis/lumis-companion.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/assets/branding/pwa/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/assets/branding/pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/branding/pwa/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
