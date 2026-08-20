@@ -2,6 +2,7 @@ import { PropsWithChildren, StrictMode, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { AppErrorBoundary } from './components/AppErrorBoundary.tsx';
+import { PublicWebsite } from './components/PublicWebsite.tsx';
 import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
@@ -36,6 +37,7 @@ import './styles/light-theme-2.css';
 import './styles/mobile-app.css';
 import './styles/mobile-help-position.css';
 import './styles/mobile-landscape.css';
+import './styles/public-website.css';
 // Keep this last: it protects intentionally dark artwork/hero surfaces from
 // broad light-theme utility remapping and strengthens parchment-mode contrast.
 import './styles/light-theme-contrast.css';
@@ -46,13 +48,19 @@ if (!rootElement) {
   throw new Error('Inkbound could not find its application root.');
 }
 
-// Keep localhost DEV data and intentional live-cloud verification data separate.
-// This runs before App reads books, sessions, import history, or profile caches.
-isolateDevelopmentBrowserStorage();
+const isPublicWebsite = !isNativeRuntime() && window.location.pathname === '/';
 
-// Clean up metadata that was attached by the old permissive import matcher before
-// App reads the library from browser storage. Verified metadata is never touched.
-purgeUnverifiedLegacyImportMetadata();
+// Public marketing pages never touch account-bound browser storage. The full
+// Inkbound application remains at /app on the web and at / inside Capacitor.
+if (!isPublicWebsite) {
+  // Keep localhost DEV data and intentional live-cloud verification data separate.
+  // This runs before App reads books, sessions, import history, or profile caches.
+  isolateDevelopmentBrowserStorage();
+
+  // Clean up metadata that was attached by the old permissive import matcher before
+  // App reads the library from browser storage. Verified metadata is never touched.
+  purgeUnverifiedLegacyImportMetadata();
+}
 
 // Android initializes Play Integrity, Google-native auth plumbing, and native
 // lifecycle adapters before any account/security providers can make protected
@@ -84,11 +92,7 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
   );
 
   if (error) {
-    return (
-      <OpeningScreen
-        message={`Android services could not start: ${error}`}
-      />
-    );
+    return <OpeningScreen message={`Android services could not start: ${error}`} />;
   }
 
   if (!ready) {
@@ -108,33 +112,37 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
   return <>{children}</>;
 };
 
+const InkboundApplication = () => (
+  <BreakpointProvider>
+    <NativeRuntimeGate>
+      <UserPlanProvider>
+        <AccountSyncProvider>
+          <AuthSessionGate>
+            <SecurityBootstrap />
+            <CloudPersistenceBridge />
+            <AuxiliaryAccountSyncBridge />
+            <ReadOnlyCloudHydrationBridge />
+            <PhotoMemoryAutoSyncBridge />
+            <LegacyBookCoverMigrationBridge />
+            <ThemePersistenceBridge />
+            <CloudDataRefreshBoundary>
+              {/* Recovery snapshots are created automatically for every signed-in reader,
+                  but restore controls are intentionally admin-only. */}
+              <RecoverySafetyBridge />
+              <App />
+            </CloudDataRefreshBoundary>
+            <UpgradeModal />
+          </AuthSessionGate>
+        </AccountSyncProvider>
+      </UserPlanProvider>
+    </NativeRuntimeGate>
+  </BreakpointProvider>
+);
+
 createRoot(rootElement).render(
   <StrictMode>
     <AppErrorBoundary>
-      <BreakpointProvider>
-        <NativeRuntimeGate>
-          <UserPlanProvider>
-            <AccountSyncProvider>
-              <AuthSessionGate>
-                <SecurityBootstrap />
-                <CloudPersistenceBridge />
-                <AuxiliaryAccountSyncBridge />
-                <ReadOnlyCloudHydrationBridge />
-                <PhotoMemoryAutoSyncBridge />
-                <LegacyBookCoverMigrationBridge />
-                <ThemePersistenceBridge />
-                <CloudDataRefreshBoundary>
-                  {/* Recovery snapshots are created automatically for every signed-in reader,
-                      but restore controls are intentionally admin-only. */}
-                  <RecoverySafetyBridge />
-                  <App />
-                </CloudDataRefreshBoundary>
-                <UpgradeModal />
-              </AuthSessionGate>
-            </AccountSyncProvider>
-          </UserPlanProvider>
-        </NativeRuntimeGate>
-      </BreakpointProvider>
+      {isPublicWebsite ? <PublicWebsite /> : <InkboundApplication />}
     </AppErrorBoundary>
   </StrictMode>,
 );
