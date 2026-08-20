@@ -2,10 +2,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { auth as authV1 } from 'firebase-functions/v1';
-import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
-import { onSchedule } from 'firebase-functions/v2/scheduler';
 
 const adminApp = getApps()[0] ?? initializeApp();
 const db = getFirestore(adminApp);
@@ -56,7 +53,7 @@ async function removeInkboundDataForUid(uid: string) {
   ]);
 
   await bucket.deleteFiles({ prefix: `users/${uid}/` }).catch((error: unknown) => {
-    console.warn(`Could not remove every Storage object for deleted Firebase user ${uid}.`, error);
+    console.warn(`Could not remove every Storage object for stale Firebase user ${uid}.`, error);
   });
 }
 
@@ -69,40 +66,16 @@ async function canonicalDirectoryRecord(user: UserRecord) {
   const profile = profileData(profileSnapshot.data() ?? {});
   const existing = directorySnapshot.data() ?? {};
 
-  const displayName = text(profile.displayName)
-    || text(user.displayName)
-    || text(existing.displayName);
-  const photoUrl = text(profile.avatarImage)
-    || text(user.photoURL)
-    || text(existing.photoUrl);
-
   return {
     uid: user.uid,
     email: text(user.email).toLowerCase(),
-    displayName,
-    photoUrl,
+    displayName: text(profile.displayName) || text(user.displayName) || text(existing.displayName),
+    photoUrl: text(profile.avatarImage) || text(user.photoURL) || text(existing.photoUrl),
     emailVerified: user.emailVerified,
     authProviderIds: user.providerData.map((provider) => provider.providerId),
     updatedAt: FieldValue.serverTimestamp(),
     ...(directorySnapshot.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
   };
-}
-
-async function upsertCanonicalDirectoryForUid(uid: string) {
-  let user: UserRecord;
-  try {
-    user = await auth.getUser(uid);
-  } catch (error) {
-    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
-    if (code === 'auth/user-not-found') {
-      await removeInkboundDataForUid(uid);
-      return;
-    }
-    throw error;
-  }
-
-  const record = await canonicalDirectoryRecord(user);
-  await db.doc(`userDirectory/${uid}`).set(record, { merge: true });
 }
 
 async function listAllAuthUsers(): Promise<UserRecord[]> {
@@ -123,14 +96,13 @@ async function reconcileDirectory() {
     db.collection('entitlements').get(),
   ]);
 
-  const authByUid = new Map(authUsers.map((user) => [user.uid, user]));
+  const authUidSet = new Set(authUsers.map((user) => user.uid));
   const staleUids = new Set<string>();
-
   directorySnapshot.docs.forEach((document) => {
-    if (!authByUid.has(document.id)) staleUids.add(document.id);
+    if (!authUidSet.has(document.id)) staleUids.add(document.id);
   });
   entitlementsSnapshot.docs.forEach((document) => {
-    if (!authByUid.has(document.id)) staleUids.add(document.id);
+    if (!authUidSet.has(document.id)) staleUids.add(document.id);
   });
 
   await Promise.all([...staleUids].map((uid) => removeInkboundDataForUid(uid)));
@@ -143,15 +115,20 @@ async function reconcileDirectory() {
   await Promise.all(canonicalRecords.map(({ user, record }) =>
     db.doc(`userDirectory/${user.uid}`).set(record, { merge: true })));
 
-  return { authUsers, staleUids };
+  return authUsers;
 }
 
+/**
+ * Firebase Auth is the canonical account list. Each dashboard refresh reconciles
+ * Firestore against Auth, removes stale Inkbound records for deleted Auth users,
+ * and derives names/photos from the reader's canonical Inkbound profile.
+ */
 export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const input = request.data as { query?: unknown } | undefined;
   const query = typeof input?.query === 'string' ? input.query.trim().toLowerCase() : '';
 
-  const { authUsers } = await reconcileDirectory();
+  const authUsers = await reconcileDirectory();
   const [directorySnapshot, entitlementsSnapshot, auditSnapshot, adminsSnapshot] = await Promise.all([
     db.collection('userDirectory').get(),
     db.collection('entitlements').get(),
@@ -170,7 +147,10 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
       const email = text(user.email).toLowerCase();
       const displayName = text(record.displayName) || text(user.displayName);
       const photoUrl = text(record.photoUrl) || text(user.photoURL);
-      const matches = !query || email.includes(query) || displayName.toLowerCase().includes(query) || user.uid.toLowerCase().includes(query);
+      const matches = !query
+        || email.includes(query)
+        || displayName.toLowerCase().includes(query)
+        || user.uid.toLowerCase().includes(query);
       if (!matches) return null;
 
       return {
@@ -207,26 +187,28 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
 
   const audit = auditSnapshot.docs.map((document) => {
     const data = document.data();
-    return { id: document.id, action: typeof data.action === 'string' ? data.action : 'unknown', targetEmail: typeof data.targetEmail === 'string' ? data.targetEmail : '', performedByEmail: typeof data.performedByEmail === 'string' ? data.performedByEmail : '', reason: typeof data.reason === 'string' ? data.reason : '', createdAt: timestampToIso(data.createdAt) };
+    return {
+      id: document.id,
+      action: typeof data.action === 'string' ? data.action : 'unknown',
+      targetEmail: typeof data.targetEmail === 'string' ? data.targetEmail : '',
+      performedByEmail: typeof data.performedByEmail === 'string' ? data.performedByEmail : '',
+      reason: typeof data.reason === 'string' ? data.reason : '',
+      createdAt: timestampToIso(data.createdAt),
+    };
   });
 
-  const admins = adminsSnapshot.docs.filter((document) => authUidSet.has(document.id)).map((document) => {
-    const data = document.data();
-    return { uid: document.id, email: typeof data.email === 'string' ? data.email : '', role: (typeof data.role === 'string' ? data.role : 'viewer') as AdminRole, enabled: data.enabled === true, updatedAt: timestampToIso(data.updatedAt) };
-  });
+  const admins = adminsSnapshot.docs
+    .filter((document) => authUidSet.has(document.id))
+    .map((document) => {
+      const data = document.data();
+      return {
+        uid: document.id,
+        email: typeof data.email === 'string' ? data.email : '',
+        role: (typeof data.role === 'string' ? data.role : 'viewer') as AdminRole,
+        enabled: data.enabled === true,
+        updatedAt: timestampToIso(data.updatedAt),
+      };
+    });
 
   return { role: admin.role, totals, users, audit, admins };
-});
-
-export const cleanupInkboundAfterAuthDelete = authV1.user().onDelete(async (user) => {
-  await removeInkboundDataForUid(user.uid);
-});
-
-export const syncReaderDirectoryFromProfile = onDocumentWritten('users/{uid}/profile/current', async (event) => {
-  await upsertCanonicalDirectoryForUid(event.params.uid);
-});
-
-export const reconcileReaderDirectory = onSchedule('every 1 hours', async () => {
-  const { authUsers, staleUids } = await reconcileDirectory();
-  console.info('Inkbound reader directory reconciliation complete.', { authUsers: authUsers.length, staleUsersRemoved: staleUids.size });
 });
