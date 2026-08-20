@@ -1,11 +1,25 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
-import { defineConfig } from 'vite';
+import fs from 'node:fs';
+import path from 'node:path';
+import { defineConfig, type Plugin } from 'vite';
+
+function copyInkboundBranding(): Plugin {
+  return {
+    name: 'copy-inkbound-branding',
+    closeBundle() {
+      const source = path.resolve(__dirname, 'assets', 'branding');
+      const destination = path.resolve(__dirname, 'dist', 'assets', 'branding');
+      if (!fs.existsSync(source)) return;
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.cpSync(source, destination, { recursive: true });
+    },
+  };
+}
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), copyInkboundBranding()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
