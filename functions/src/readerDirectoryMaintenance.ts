@@ -3,7 +3,7 @@ import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { auth as authV1 } from 'firebase-functions/v1';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 
 const db = getFirestore();
@@ -37,7 +37,7 @@ function timestampToIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
-async function requireAdmin(request: Parameters<Parameters<typeof onCall>[1]>[0]) {
+async function requireAdmin(request: CallableRequest<unknown>) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
   const snapshot = await db.doc(`admins/${request.auth.uid}`).get();
   const record = snapshot.data() as AdminRecord | undefined;
