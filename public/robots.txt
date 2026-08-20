@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /app
+
+# Add the production sitemap URL after the custom Inkbound domain is connected.
