@@ -3,42 +3,170 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Delete Inkbound Account</title>
+  <meta name="description" content="Learn how to permanently delete an Inkbound account and the reading, library, profile, and account data associated with it." />
+  <title>Delete Your Inkbound Account</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#120817; color:#f4efe6; }
-    body { margin:0; background:#120817; }
-    main { max-width:720px; margin:0 auto; padding:48px 24px 80px; line-height:1.7; }
-    h1,h2 { font-family: Georgia, serif; line-height:1.2; }
-    h1 { font-size:2.35rem; margin-bottom:.35rem; } h2 { margin-top:2rem; font-size:1.3rem; }
-    p,li { color:#d8ccd6; } a { color:#d9afc4; } .meta { color:#a996a5; font-size:.9rem; }
-    .card { border:1px solid #493747; background:#1b111e; border-radius:18px; padding:20px; }
-    .button { display:inline-flex; min-height:44px; align-items:center; justify-content:center; margin-top:10px; padding:0 18px; border-radius:12px; background:#d9afc4; color:#24121f; font-weight:800; text-decoration:none; }
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:#120817;
+      color:#f4efe6;
+      --page:#120817;
+      --panel:#1b111e;
+      --border:#493747;
+      --text:#f4efe6;
+      --muted:#d8ccd6;
+      --faint:#a996a5;
+      --accent:#92516f;
+      --danger:#d78989;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(circle at 80% 0%, rgba(146,81,111,.18), transparent 34rem), var(--page); }
+    a { color:#e1b7cd; }
+    header { max-width:920px; margin:0 auto; padding:28px 24px 0; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .brand { display:flex; align-items:center; gap:12px; color:var(--text); text-decoration:none; font-family:Georgia,serif; font-size:1.25rem; }
+    .brand img { width:38px; height:38px; border-radius:10px; }
+    .home-link { color:var(--muted); text-decoration:none; font-size:.9rem; }
+    main { max-width:920px; margin:0 auto; padding:64px 24px 88px; line-height:1.72; }
+    .kicker { margin:0 0 14px; color:#d8a9c0; font-size:.78rem; font-weight:800; letter-spacing:.18em; text-transform:uppercase; }
+    h1,h2,h3 { font-family:Georgia,"Times New Roman",serif; line-height:1.15; color:var(--text); }
+    h1 { max-width:760px; margin:0; font-size:clamp(2.5rem,7vw,4.7rem); font-weight:500; }
+    .lede { max-width:760px; margin:24px 0 0; color:var(--muted); font-size:1.08rem; }
+    .meta { margin-top:16px; color:var(--faint); font-size:.86rem; }
+    .actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:30px; }
+    .button { display:inline-flex; min-height:46px; align-items:center; justify-content:center; border-radius:12px; padding:0 19px; text-decoration:none; font-weight:800; font-size:.92rem; }
+    .button-primary { background:var(--accent); color:white; }
+    .button-secondary { border:1px solid var(--border); background:var(--panel); color:var(--text); }
+    .notice { margin-top:38px; border:1px solid rgba(215,137,137,.35); background:rgba(215,137,137,.07); border-radius:18px; padding:20px 22px; color:var(--muted); }
+    .notice strong { color:#f0c3c3; }
+    .section { margin-top:52px; }
+    .section h2 { margin:0 0 16px; font-size:1.65rem; }
+    .section p { color:var(--muted); }
+    .steps { display:grid; gap:14px; margin:22px 0 0; padding:0; list-style:none; counter-reset:steps; }
+    .steps li { counter-increment:steps; display:grid; grid-template-columns:42px 1fr; gap:14px; align-items:start; border:1px solid var(--border); background:var(--panel); border-radius:16px; padding:18px; color:var(--muted); }
+    .steps li::before { content:counter(steps); display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:#332034; color:#f6dce9; font-weight:800; }
+    .steps strong { display:block; margin-bottom:4px; color:var(--text); }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:20px; }
+    .card { border:1px solid var(--border); background:var(--panel); border-radius:18px; padding:20px; }
+    .card h3 { margin:0 0 10px; font-size:1.1rem; }
+    .card p,.card li { color:var(--muted); font-size:.95rem; }
+    .card ul { margin:0; padding-left:1.25rem; }
+    .card li + li { margin-top:7px; }
+    .request { margin-top:54px; border:1px solid #64435d; background:linear-gradient(145deg,#211522,#180e1b); border-radius:22px; padding:28px; }
+    .request h2 { margin:0; font-size:1.8rem; }
+    .request p { color:var(--muted); }
+    footer { max-width:920px; margin:0 auto; padding:0 24px 42px; color:var(--faint); font-size:.82rem; }
+    footer nav { display:flex; flex-wrap:wrap; gap:16px; margin-bottom:12px; }
+    @media (max-width:680px) {
+      header { align-items:flex-start; }
+      main { padding-top:46px; }
+      .grid { grid-template-columns:1fr; }
+      .actions .button { width:100%; }
+    }
   </style>
 </head>
 <body>
-<main>
-  <p class="meta">Inkbound · Inky Dame Interactive</p>
-  <h1>Delete your Inkbound account</h1>
-  <p class="meta">Public account-deletion request page</p>
+  <header>
+    <a class="brand" href="/" aria-label="Inkbound home">
+      <img src="/assets/branding/pwa/icon-192.png" alt="" width="38" height="38" />
+      <span>Inkbound</span>
+    </a>
+    <a class="home-link" href="/">Return to Inkbound</a>
+  </header>
 
-  <div class="card">
-    <h2>Fastest option: delete inside Inkbound</h2>
-    <p>Sign in to the Inkbound account you want to remove, open <strong>Settings → Account</strong>, and choose <strong>Delete account</strong>. Inkbound requires fresh authentication and an exact confirmation phrase so an account cannot be deleted accidentally.</p>
-  </div>
+  <main>
+    <p class="kicker">Inkbound · Inky Dame Interactive</p>
+    <h1>Delete your Inkbound account and data</h1>
+    <p class="lede">
+      Inkbound gives you direct control over permanent account deletion. You can delete your account from inside the app, or contact Inkbound Support if you cannot access your account.
+    </p>
+    <p class="meta">Last updated August 20, 2026</p>
 
-  <h2>Request deletion without opening the app</h2>
-  <p>If you cannot access Inkbound, email the support address below from the email address associated with your Inkbound account. Use the subject <strong>Inkbound account deletion request</strong>. We may ask you to verify ownership before deletion so another person cannot erase your account.</p>
-  <a class="button" href="mailto:inkbound@inkydameinteractive.com?subject=Inkbound%20account%20deletion%20request">Request account deletion</a>
+    <div class="actions">
+      <a class="button button-primary" href="/app">Open Inkbound</a>
+      <a class="button button-secondary" href="mailto:inkbound_support@inkydameinteractive.com?subject=Inkbound%20Account%20Deletion%20Request">Request deletion by email</a>
+    </div>
 
-  <h2>What deletion removes</h2>
-  <p>Account deletion is intended to remove your Inkbound authentication account and private Inkbound account data, including your library, sessions, profile, reader-authored memories and account media stored under your user account. Administrative records are minimized or removed as appropriate for the deletion workflow.</p>
+    <div class="notice">
+      <strong>Account deletion is permanent.</strong> Once deletion finishes, your Inkbound login and the Inkbound account data associated with it cannot be restored through the app. If you want a copy of your library first, use Inkbound's Complete JSON backup or CSV export before deleting your account.
+    </div>
 
-  <h2>Subscriptions</h2>
-  <p>Deleting an Inkbound account does not automatically cancel a subscription owned by an external payment provider or app store. If you have a paid subscription, manage or cancel it through the provider that billed you. Inkbound does not require you to keep your personal account or reading data merely because billing remains active elsewhere.</p>
+    <section class="section" aria-labelledby="delete-in-app">
+      <h2 id="delete-in-app">Delete your account from Inkbound</h2>
+      <ol class="steps">
+        <li><div><strong>Sign in to the Inkbound account you want to delete.</strong> Account deletion is available only to the authenticated account owner.</div></li>
+        <li><div><strong>Open Settings.</strong> Go to the <em>Device &amp; account data</em> section and choose <em>Delete account &amp; data</em>.</div></li>
+        <li><div><strong>Review the permanent-deletion warning.</strong> If you have a paid subscription, review the separate subscription notice before continuing.</div></li>
+        <li><div><strong>Complete the confirmations and verify your account again.</strong> Inkbound requires fresh account verification for security and the exact confirmation phrase shown in the app.</div></li>
+        <li><div><strong>Confirm deletion.</strong> Inkbound sends the request to its authenticated deletion service and permanently removes the live account data associated with your user ID.</div></li>
+      </ol>
+    </section>
 
-  <h2>Questions</h2>
-  <p>Contact <a href="mailto:inkbound@inkydameinteractive.com">inkbound@inkydameinteractive.com</a>.</p>
-  <p><a href="/">Return to Inkbound</a> · <a href="/privacy.html">Privacy Policy</a> · <a href="/terms.html">Terms of Service</a></p>
-</main>
+    <section class="section" aria-labelledby="deleted-data">
+      <h2 id="deleted-data">What Inkbound deletes</h2>
+      <p>The current Inkbound deletion service removes the account's active Inkbound records rather than simply disabling the login.</p>
+      <div class="grid">
+        <article class="card">
+          <h3>Account and identity records</h3>
+          <ul>
+            <li>Your Firebase Authentication account and Inkbound login.</li>
+            <li>Your Inkbound user-directory and profile record.</li>
+            <li>Your Inkbound entitlement and access record.</li>
+            <li>Inkbound administrative and audit records associated with your user ID where applicable.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Your reading archive</h3>
+          <ul>
+            <li>Your cloud library and user-owned book records.</li>
+            <li>Reading sessions, progress, reading history, and related derived account data.</li>
+            <li>Collections, tags, goals, preferences, memories, notes, and other records stored beneath your Inkbound user account.</li>
+            <li>Uploaded account media stored under your Inkbound user folder.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="retention">
+      <h2 id="retention">Retention after deletion</h2>
+      <p>
+        Inkbound does not maintain a separate active-user retention period after the account-deletion service completes. The live Inkbound account records described above are removed as part of the deletion process.
+      </p>
+      <p>
+        Limited information may remain temporarily in infrastructure backups, security or operational logs, or records that must be preserved to meet a legal obligation. Inkbound does not use those residual records to recreate a deleted account. Where retention is required by law, only the information that must be retained is kept for the period required by that law. Infrastructure-provider backup and log lifetimes are governed by the applicable Firebase and Google Cloud service configuration and policies rather than a separate Inkbound user-retention period.
+      </p>
+      <p>
+        Payment, transaction, invoice, or subscription records held by Google Play, an app store, or another billing provider are controlled by that provider and are not deleted by Inkbound's account-deletion function.
+      </p>
+    </section>
+
+    <section class="section" aria-labelledby="subscriptions">
+      <h2 id="subscriptions">Subscriptions are managed separately</h2>
+      <p>
+        Deleting an Inkbound account does not automatically cancel a paid subscription managed by Google Play, an app store, or another external billing provider. If you have a paid subscription, cancel it with the provider that manages the subscription so billing does not continue after your Inkbound account is removed.
+      </p>
+    </section>
+
+    <section class="request" aria-labelledby="request-support">
+      <h2 id="request-support">Can't access your account?</h2>
+      <p>
+        Email Inkbound Support from the email address associated with your Inkbound account and request permanent account deletion. We may need to verify account ownership before processing the request. Do not send passwords or payment-card information by email.
+      </p>
+      <div class="actions">
+        <a class="button button-primary" href="mailto:inkbound_support@inkydameinteractive.com?subject=Inkbound%20Account%20Deletion%20Request&body=Please%20delete%20my%20Inkbound%20account.%0A%0AAccount%20email%3A%20%0A%0AI%20understand%20that%20account%20deletion%20is%20permanent.">Email Inkbound Support</a>
+        <a class="button button-secondary" href="/privacy.html">Read the Privacy Policy</a>
+      </div>
+      <p><strong>Support:</strong> <a href="mailto:inkbound_support@inkydameinteractive.com">inkbound_support@inkydameinteractive.com</a></p>
+    </section>
+  </main>
+
+  <footer>
+    <nav aria-label="Legal and support">
+      <a href="/privacy.html">Privacy</a>
+      <a href="/terms.html">Terms</a>
+      <a href="/support.html">Support</a>
+    </nav>
+    <div>Inkbound is developed by Inky Dame Interactive. © 2026 Inky Dame Interactive.</div>
+  </footer>
 </body>
 </html>
