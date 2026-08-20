@@ -82,7 +82,22 @@ export const bootstrapOwner = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, asy
 
 export const syncUserDirectory = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request); const email = normalizeEmail(auth.token.email);
-  await db.doc(`userDirectory/${auth.uid}`).set({ uid: auth.uid, email, displayName: typeof auth.token.name === 'string' ? auth.token.name : '', photoUrl: typeof auth.token.picture === 'string' ? auth.token.picture : '', emailVerified: auth.token.email_verified === true, lastSeenAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  const [profileSnapshot, existingDirectorySnapshot] = await Promise.all([
+    db.doc(`users/${auth.uid}/profile/current`).get(),
+    db.doc(`userDirectory/${auth.uid}`).get(),
+  ]);
+  const profileContainer = profileSnapshot.data() ?? {};
+  const profile = profileContainer.data && typeof profileContainer.data === 'object' && !Array.isArray(profileContainer.data)
+    ? profileContainer.data as Record<string, unknown>
+    : profileContainer;
+  const existingDirectory = existingDirectorySnapshot.data() ?? {};
+  const profileName = typeof profile.displayName === 'string' ? profile.displayName.trim() : '';
+  const authName = typeof auth.token.name === 'string' ? auth.token.name.trim() : '';
+  const existingName = typeof existingDirectory.displayName === 'string' ? existingDirectory.displayName.trim() : '';
+  const profilePhoto = typeof profile.avatarImage === 'string' ? profile.avatarImage.trim() : '';
+  const authPhoto = typeof auth.token.picture === 'string' ? auth.token.picture.trim() : '';
+  const existingPhoto = typeof existingDirectory.photoUrl === 'string' ? existingDirectory.photoUrl.trim() : '';
+  await db.doc(`userDirectory/${auth.uid}`).set({ uid: auth.uid, email, displayName: profileName || authName || existingName, photoUrl: profilePhoto || authPhoto || existingPhoto, emailVerified: auth.token.email_verified === true, lastSeenAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   const entitlementRef = db.doc(`entitlements/${auth.uid}`); const entitlement = await entitlementRef.get(); const seedOwnerVipInDev = IS_FUNCTIONS_EMULATOR && OWNER_EMAILS.has(email);
   if (!entitlement.exists) await entitlementRef.set({ basePlan: seedOwnerVipInDev ? 'premium' : 'free', subscriptionStatus: 'none', vipEnabled: seedOwnerVipInDev, effectiveSource: (seedOwnerVipInDev ? 'vip' : 'free') satisfies EntitlementSource, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   else if (seedOwnerVipInDev && entitlement.get('vipEnabled') !== true) await entitlementRef.set({ basePlan: 'premium', vipEnabled: true, effectiveSource: 'vip' satisfies EntitlementSource, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
@@ -131,8 +146,14 @@ export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
   const courtesyIso = courtesyPremiumUntil.toDate().toISOString(); await writeAudit({ action: 'add_courtesy_time', targetUserId, targetEmail, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { days, courtesyPremiumUntil: courtesyIso } }); return { success: true, courtesyPremiumUntil: courtesyIso };
 });
 
-export { getAdminDashboard, getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
+export { getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
 export { listAdminRecoveryPoints, restoreAdminRecoveryPoint } from './adminRecovery.js';
 export { searchHardcoverBooks } from './bookSearch.js';
 export { sendVerificationEmail } from './sendVerificationEmail.js';
 export { sendPasswordResetEmail } from './sendPasswordResetEmail.js';
+export {
+  cleanupInkboundAfterAuthDelete,
+  getAdminDashboard,
+  reconcileReaderDirectory,
+  syncReaderDirectoryFromProfile,
+} from './readerDirectoryMaintenance.js';
