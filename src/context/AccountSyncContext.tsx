@@ -5,11 +5,11 @@ import {
   createUserWithEmailAndPassword,
   linkWithCredential,
   onAuthStateChanged,
-  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
 import { synchronizePhotoMemories } from '../features/memories/photoMemoryCloudSync';
 import { clearPhotoMemoriesFromDevice } from '../features/memories/photoMemoryStore';
 import { PHOTO_MEMORY_SYNC_QUEUE_KEY } from '../features/memories/photoMemorySyncQueue';
@@ -24,7 +24,7 @@ import {
   getAuxiliaryPendingKey,
 } from '../features/sync/auxiliaryAccountSyncConfig';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
-import { auth, isFirebaseConfigured } from '../lib/firebase';
+import { auth, functions, isFirebaseConfigured } from '../lib/firebase';
 import {
   prepareRuntimeAuthPersistence,
   signInRuntimeWithGoogle,
@@ -110,6 +110,15 @@ function friendlyAuthMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+async function requestBrandedVerificationEmail(): Promise<void> {
+  if (!functions) throw new Error('Inkbound email delivery is not configured yet.');
+  const sendVerificationEmail = httpsCallable<undefined, { success: boolean; alreadyVerified: boolean }>(
+    functions,
+    'sendVerificationEmail',
+  );
+  await sendVerificationEmail();
+}
+
 export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null);
   const [isAuthReady, setIsAuthReady] = useState(() => !auth || Boolean(auth.currentUser));
@@ -181,8 +190,8 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setStatus('working');
       setMessage('Creating your Inkbound account...');
       await prepareRuntimeAuthPersistence(auth);
-      const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      await sendEmailVerification(credential.user);
+      await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await requestBrandedVerificationEmail();
       setStatus('success');
       setMessage('Account created. Check your inbox to verify your email. Your reading archive will follow this account across devices.');
     } catch (error) {
@@ -216,7 +225,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setMessage('Adding email/password sign-in to this Inkbound account...');
       const credential = EmailAuthProvider.credential(email.trim(), password);
       const result = await linkWithCredential(auth.currentUser, credential);
-      if (!result.user.emailVerified) await sendEmailVerification(result.user);
+      if (!result.user.emailVerified) await requestBrandedVerificationEmail();
       setUser({ ...result.user } as User);
       setStatus('success');
       setMessage('Email/password sign-in added to this same Inkbound account. Check your inbox to verify the email.');
@@ -230,7 +239,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
     if (!auth?.currentUser) return;
     try {
       setStatus('working');
-      await sendEmailVerification(auth.currentUser);
+      await requestBrandedVerificationEmail();
       setStatus('success');
       setMessage('Verification email sent.');
     } catch (error) {
