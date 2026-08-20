@@ -1,5 +1,12 @@
-const SHELL_CACHE = 'inkbound-shell-v1';
-const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/assets/lumis/lumis-companion.svg'];
+const SHELL_CACHE = 'inkbound-shell-v2';
+const APP_SHELL = [
+  '/',
+  '/app',
+  '/index.html',
+  '/manifest.webmanifest',
+  '/assets/branding/pwa/icon-192.png',
+  '/assets/branding/pwa/icon-512.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -29,13 +36,16 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
+          if (response.ok && url.pathname === '/app') {
             const copy = response.clone();
-            void caches.open(SHELL_CACHE).then((cache) => cache.put('/index.html', copy));
+            void caches.open(SHELL_CACHE).then((cache) => cache.put('/app', copy));
           }
           return response;
         })
-        .catch(async () => (await caches.match('/index.html')) || Response.error()),
+        .catch(async () => {
+          if (url.pathname === '/app') return (await caches.match('/app')) || (await caches.match('/index.html')) || Response.error();
+          return (await caches.match(request)) || (await caches.match('/')) || Response.error();
+        }),
     );
     return;
   }
