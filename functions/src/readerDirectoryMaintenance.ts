@@ -1,3 +1,4 @@
+import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
@@ -6,9 +7,10 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 
-const db = getFirestore();
-const auth = getAuth();
-const bucket = getStorage().bucket();
+const adminApp = getApps()[0] ?? initializeApp();
+const db = getFirestore(adminApp);
+const auth = getAuth(adminApp);
+const bucket = getStorage(adminApp).bucket();
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
@@ -144,7 +146,6 @@ async function reconcileDirectory() {
   return { authUsers, staleUids };
 }
 
-/** Firebase Auth is the canonical account list for the Administration reader list. */
 export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const input = request.data as { query?: unknown } | undefined;
@@ -169,10 +170,7 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
       const email = text(user.email).toLowerCase();
       const displayName = text(record.displayName) || text(user.displayName);
       const photoUrl = text(record.photoUrl) || text(user.photoURL);
-      const matches = !query
-        || email.includes(query)
-        || displayName.toLowerCase().includes(query)
-        || user.uid.toLowerCase().includes(query);
+      const matches = !query || email.includes(query) || displayName.toLowerCase().includes(query) || user.uid.toLowerCase().includes(query);
       if (!matches) return null;
 
       return {
@@ -190,11 +188,7 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
       };
     })
     .filter((user): user is NonNullable<typeof user> => user !== null)
-    .sort((a, b) => {
-      const aName = a.displayName || a.email;
-      const bName = b.displayName || b.email;
-      return aName.localeCompare(bName);
-    });
+    .sort((a, b) => (a.displayName || a.email).localeCompare(b.displayName || b.email));
 
   const activeEntitlements = entitlementsSnapshot.docs.filter((document) => authUidSet.has(document.id));
   const now = Date.now();
@@ -213,50 +207,26 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
 
   const audit = auditSnapshot.docs.map((document) => {
     const data = document.data();
-    return {
-      id: document.id,
-      action: typeof data.action === 'string' ? data.action : 'unknown',
-      targetEmail: typeof data.targetEmail === 'string' ? data.targetEmail : '',
-      performedByEmail: typeof data.performedByEmail === 'string' ? data.performedByEmail : '',
-      reason: typeof data.reason === 'string' ? data.reason : '',
-      createdAt: timestampToIso(data.createdAt),
-    };
+    return { id: document.id, action: typeof data.action === 'string' ? data.action : 'unknown', targetEmail: typeof data.targetEmail === 'string' ? data.targetEmail : '', performedByEmail: typeof data.performedByEmail === 'string' ? data.performedByEmail : '', reason: typeof data.reason === 'string' ? data.reason : '', createdAt: timestampToIso(data.createdAt) };
   });
 
-  const admins = adminsSnapshot.docs
-    .filter((document) => authUidSet.has(document.id))
-    .map((document) => {
-      const data = document.data();
-      return {
-        uid: document.id,
-        email: typeof data.email === 'string' ? data.email : '',
-        role: (typeof data.role === 'string' ? data.role : 'viewer') as AdminRole,
-        enabled: data.enabled === true,
-        updatedAt: timestampToIso(data.updatedAt),
-      };
-    });
+  const admins = adminsSnapshot.docs.filter((document) => authUidSet.has(document.id)).map((document) => {
+    const data = document.data();
+    return { uid: document.id, email: typeof data.email === 'string' ? data.email : '', role: (typeof data.role === 'string' ? data.role : 'viewer') as AdminRole, enabled: data.enabled === true, updatedAt: timestampToIso(data.updatedAt) };
+  });
 
   return { role: admin.role, totals, users, audit, admins };
 });
 
-/** Remove all Inkbound data when a Firebase Auth account is deleted anywhere. */
 export const cleanupInkboundAfterAuthDelete = authV1.user().onDelete(async (user) => {
   await removeInkboundDataForUid(user.uid);
 });
 
-/** Keep reader-entered profile name/photo reflected in the derived admin directory. */
-export const syncReaderDirectoryFromProfile = onDocumentWritten(
-  'users/{uid}/profile/current',
-  async (event) => {
-    await upsertCanonicalDirectoryForUid(event.params.uid);
-  },
-);
+export const syncReaderDirectoryFromProfile = onDocumentWritten('users/{uid}/profile/current', async (event) => {
+  await upsertCanonicalDirectoryForUid(event.params.uid);
+});
 
-/** Hourly safety net for any historic or missed Auth deletions/directory drift. */
 export const reconcileReaderDirectory = onSchedule('every 1 hours', async () => {
   const { authUsers, staleUids } = await reconcileDirectory();
-  console.info('Inkbound reader directory reconciliation complete.', {
-    authUsers: authUsers.length,
-    staleUsersRemoved: staleUids.size,
-  });
+  console.info('Inkbound reader directory reconciliation complete.', { authUsers: authUsers.length, staleUsersRemoved: staleUids.size });
 });
