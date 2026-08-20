@@ -10,6 +10,7 @@ const requiredFiles = [
   'delete-account.html',
   'support.html',
   'manifest.webmanifest',
+  'robots.txt',
   'sw.js',
 ];
 
@@ -23,6 +24,7 @@ if (missing.length > 0) {
 const manifest = fs.readFileSync(path.join(dist, 'manifest.webmanifest'), 'utf8');
 const index = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
 const serviceWorker = fs.readFileSync(path.join(dist, 'sw.js'), 'utf8');
+const robots = fs.readFileSync(path.join(dist, 'robots.txt'), 'utf8');
 const firebaseBootstrapPath = path.join(root, 'src', 'lib', 'firebase.ts');
 const firebaseBootstrap = fs.readFileSync(firebaseBootstrapPath, 'utf8');
 
@@ -32,11 +34,25 @@ const checks = [
     message: 'manifest.webmanifest must declare display: standalone',
   },
   {
+    ok: /"start_url"\s*:\s*"\/app"/.test(manifest),
+    message: 'manifest.webmanifest must launch the web application at /app',
+  },
+  {
+    ok: manifest.includes('/assets/branding/pwa/icon-192.png')
+      && manifest.includes('/assets/branding/pwa/icon-512.png'),
+    message: 'manifest.webmanifest must use the production Inkbound PWA icons',
+  },
+  {
     ok: /rel=["']manifest["']/.test(index),
     message: 'index.html must link the web app manifest',
   },
   {
-    ok: serviceWorker.includes('inkbound-shell-v1'),
+    ok: /name=["']description["']/.test(index)
+      && /property=["']og:title["']/.test(index),
+    message: 'index.html must include search and social-sharing metadata',
+  },
+  {
+    ok: serviceWorker.includes('inkbound-shell-v2'),
     message: 'sw.js must contain the current Inkbound shell cache identifier',
   },
   {
@@ -46,6 +62,10 @@ const checks = [
   {
     ok: serviceWorker.includes("url.pathname.startsWith('/assets/')"),
     message: 'sw.js must retain hashed asset caching behavior',
+  },
+  {
+    ok: robots.includes('Disallow: /app'),
+    message: 'robots.txt must keep the private application surface out of search results',
   },
   {
     ok: firebaseBootstrap.includes('initializeAppCheck(')
