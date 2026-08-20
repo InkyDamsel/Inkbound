@@ -8,6 +8,7 @@ const ENFORCE_APP_CHECK = !IS_FUNCTIONS_EMULATOR;
 
 const SENDER = 'Inkbound <inkbound@inkydameinteractive.com>';
 const REPLY_TO = 'inkbound_support@inkydameinteractive.com';
+const APP_RETURN_URL = 'https://inkbound.inkydameinteractive.com/app';
 
 export const sendVerificationEmail = onCall(
   {
@@ -31,43 +32,80 @@ export const sendVerificationEmail = onCall(
       return { success: true, alreadyVerified: true };
     }
 
-    const verificationLink = await auth.generateEmailVerificationLink(user.email, {
-      url: 'https://inkbound.inkydameinteractive.com/app',
-      handleCodeInApp: false,
-    });
+    // Prefer returning readers to the live Inkbound app after verification. If
+    // Firebase Auth has not yet allow-listed that continue URL, fall back to the
+    // standard Firebase action handler so verification email delivery still works.
+    let verificationLink: string;
+    try {
+      verificationLink = await auth.generateEmailVerificationLink(user.email, {
+        url: APP_RETURN_URL,
+        handleCodeInApp: false,
+      });
+    } catch (error) {
+      console.warn('Inkbound verification continue URL was rejected; using the default Firebase action handler.', {
+        uid,
+        code: firebaseErrorCode(error),
+      });
+      try {
+        verificationLink = await auth.generateEmailVerificationLink(user.email);
+      } catch (fallbackError) {
+        console.error('Firebase could not generate an Inkbound verification link.', {
+          uid,
+          code: firebaseErrorCode(fallbackError),
+        });
+        throw new HttpsError(
+          'internal',
+          `Inkbound could not generate the verification link (${firebaseErrorCode(fallbackError) || 'unknown Firebase Auth error'}).`,
+        );
+      }
+    }
 
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${resendApiKey.value()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: SENDER,
-        to: [user.email],
-        reply_to: REPLY_TO,
-        subject: 'Verify your email for Inkbound',
-        html: buildVerificationEmail({
-          verificationLink,
-          email: user.email,
-          displayName: user.displayName,
+    let response: Response;
+    try {
+      response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey.value()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: SENDER,
+          to: [user.email],
+          reply_to: REPLY_TO,
+          subject: 'Verify your email for Inkbound',
+          html: buildVerificationEmail({
+            verificationLink,
+            email: user.email,
+            displayName: user.displayName,
+          }),
+          text: buildVerificationEmailText({
+            verificationLink,
+            displayName: user.displayName,
+          }),
         }),
-        text: buildVerificationEmailText({
-          verificationLink,
-          displayName: user.displayName,
-        }),
-      }),
-    });
+      });
+    } catch (error) {
+      console.error('Inkbound could not reach Resend.', { uid, error });
+      throw new HttpsError('unavailable', 'Inkbound could not reach the email delivery service. Please try again.');
+    }
 
-    const payload = (await response.json().catch(() => null)) as { id?: string; message?: string } | null;
+    const payload = (await response.json().catch(() => null)) as {
+      id?: string;
+      message?: string;
+      name?: string;
+    } | null;
 
     if (!response.ok) {
+      const providerMessage = sanitizeProviderMessage(payload?.message || payload?.name || 'No provider message');
       console.error('Resend verification email failed', {
         uid,
         status: response.status,
-        message: payload?.message,
+        message: providerMessage,
       });
-      throw new HttpsError('internal', 'The verification email could not be sent.');
+      throw new HttpsError(
+        'failed-precondition',
+        `Inkbound email delivery was rejected (${response.status}): ${providerMessage}`,
+      );
     }
 
     console.info('Verification email sent', {
@@ -136,6 +174,15 @@ function buildVerificationEmailText({
 }): string {
   const greetingName = displayName?.trim() || 'Reader';
   return `Hello ${greetingName},\n\nOne quick step before your next chapter.\n\nVerify your email to finish creating your Inkbound account:\n\n${verificationLink}\n\nIf you did not create an Inkbound account, you can safely ignore this message.\n\nInkbound\nInky Dame Interactive`;
+}
+
+function firebaseErrorCode(error: unknown): string {
+  if (typeof error !== 'object' || !error || !('code' in error)) return '';
+  return String((error as { code?: unknown }).code ?? '').slice(0, 120);
+}
+
+function sanitizeProviderMessage(message: string): string {
+  return message.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 180) || 'Unknown email provider error';
 }
 
 function escapeHtml(value: string): string {
