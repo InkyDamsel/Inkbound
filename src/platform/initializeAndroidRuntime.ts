@@ -50,34 +50,10 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
   });
 };
 
-const isCredentialManagerNoCredentialError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  const normalized = message.toLowerCase();
-  return normalized.includes('no credentials available')
-    || normalized.includes('no credential available')
-    || normalized.includes('nocredentialexception');
-};
-
-const requestNativeGoogleCredential = async () => {
-  try {
-    return await FirebaseAuthentication.signInWithGoogle({
-      skipNativeAuth: true,
-      useCredentialManager: true,
-    });
-  } catch (error) {
-    if (!isCredentialManagerNoCredentialError(error)) throw error;
-
-    // Credential Manager can report NoCredentialException/"No credentials
-    // available" on otherwise valid Android devices (including some API 36
-    // combinations). This explicit user-triggered sign-in may safely retry using
-    // the plugin's non-Credential-Manager Google flow instead of locking the
-    // reader out of an account that is available on the device.
-    return FirebaseAuthentication.signInWithGoogle({
-      skipNativeAuth: true,
-      useCredentialManager: false,
-    });
-  }
-};
+const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInWithGoogle({
+  skipNativeAuth: true,
+  useCredentialManager: false,
+});
 
 /**
  * Installs Android-native service adapters while preserving Inkbound's existing
