@@ -1,5 +1,23 @@
 apply plugin: 'com.android.application'
 
+def releaseRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.toLowerCase().contains('release')
+}
+
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+def hasReleaseSigningConfig = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].every { key ->
+    keystoreProperties[key]?.toString()?.trim()
+}
+
+if (releaseRequested && !hasReleaseSigningConfig) {
+    throw new GradleException('Inkbound release builds require android/keystore.properties with storeFile, storePassword, keyAlias, and keyPassword. Use the same upload key that is registered in Google Play Console.')
+}
+
 android {
     namespace = "com.inkydameinteractive.inkbound"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,9 +34,20 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasReleaseSigningConfig) {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
             // AGP 8.13 no longer supports the legacy proguard-android.txt default.
             // Keep the optimized Android baseline even while minification is off,
             // so enabling R8 later does not reintroduce a deprecated configuration.
@@ -58,9 +87,6 @@ if (hasFirebaseAndroidConfig) {
     // Debug/IDE work may intentionally begin before Firebase Android credentials
     // are installed, but never allow a Play/release artifact to be produced in
     // that state.
-    def releaseRequested = gradle.startParameter.taskNames.any { taskName ->
-        taskName.toLowerCase().contains('release')
-    }
     if (releaseRequested) {
         throw new GradleException('Inkbound release builds require android/app/google-services.json. Download it from the Firebase Android app configuration before building an AAB/APK.')
     }
