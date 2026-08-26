@@ -54,9 +54,7 @@ import {
 } from './features/import/libraryEnrichment';
 import {
   appendImportHistory,
-  consumeForegroundImportRetryRequest,
   isImportEnrichmentPaused,
-  requestForegroundImportRetry,
   setImportEnrichmentPaused,
   writeImportEnrichmentRetryProgress,
   writeImportHistory,
@@ -78,6 +76,7 @@ const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
 const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
 const MAINTENANCE_CHECK_INTERVAL_MS = 60 * 1000;
 let isImportQueueProcessing = false;
+let foregroundImportRetryPending = false;
 
 interface SessionMilestoneNotice {
   date: string;
@@ -265,21 +264,31 @@ export default function App() {
     window.setTimeout(() => setSessionMilestone((current) => current?.date === notice.date ? null : current), 7000);
   };
 
-  const processImportEnrichmentQueue = async () => {
-    const retryRequest = consumeForegroundImportRetryRequest();
-    const forceRetry = Boolean(retryRequest);
+  const processImportEnrichmentQueue = async (foregroundTargetBookIds?: string[]) => {
+    const forceRetry = Boolean(foregroundTargetBookIds?.length);
 
-    if (isImportQueueProcessing) {
-      if (retryRequest) requestForegroundImportRetry(retryRequest.targetBookIds);
+    if (forceRetry) {
+      const requestedCount = foregroundTargetBookIds!.length;
+      writeImportEnrichmentRetryProgress({
+        status: 'queued', completed: 0, total: requestedCount, matched: 0, covers: 0, summaries: 0,
+        message: isImportQueueProcessing ? 'Finishing the current background metadata check, then this retry will start automatically.' : undefined,
+        updatedAt: new Date().toISOString(),
+      });
+      foregroundImportRetryPending = true;
+      while (isImportQueueProcessing) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+      }
+      foregroundImportRetryPending = false;
+    } else if (isImportQueueProcessing || foregroundImportRetryPending) {
       return;
     }
+
     if (!navigator.onLine || isReadingTimerOpen()) {
-      if (retryRequest) {
-        requestForegroundImportRetry(retryRequest.targetBookIds);
+      if (forceRetry) {
         writeImportEnrichmentRetryProgress({
           status: 'error',
           completed: 0,
-          total: retryRequest.targetBookIds.length,
+          total: foregroundTargetBookIds!.length,
           matched: 0,
           covers: 0,
           summaries: 0,
@@ -293,7 +302,7 @@ export default function App() {
 
     const initialQueue = readImportEnrichmentQueue();
     if (initialQueue.length === 0) {
-      if (retryRequest) {
+      if (forceRetry) {
         writeImportEnrichmentRetryProgress({
           status: 'complete', completed: 0, total: 0, matched: 0, covers: 0, summaries: 0,
           message: 'There are no missing book details left in the retry queue.', updatedAt: new Date().toISOString(),
@@ -302,7 +311,7 @@ export default function App() {
       return;
     }
 
-    const targetIds = retryRequest ? new Set(retryRequest.targetBookIds) : null;
+    const targetIds = forceRetry ? new Set(foregroundTargetBookIds) : null;
     const untouchedQueue = targetIds ? initialQueue.filter((item) => !targetIds.has(item.targetBookId)) : [];
     let pending = targetIds ? initialQueue.filter((item) => targetIds.has(item.targetBookId)) : [...initialQueue];
     if (forceRetry && pending.length === 0) {
@@ -327,6 +336,7 @@ export default function App() {
     if (forceRetry) {
       writeImportEnrichmentRetryProgress({
         status: 'running', completed: 0, total: retryTotal, matched: 0, covers: 0, summaries: 0,
+        message: undefined,
         updatedAt: new Date().toISOString(),
       });
     }
@@ -414,6 +424,7 @@ export default function App() {
       showToast('Book details are safely queued and will resume when Inkbound can reach its metadata sources.');
     } finally {
       isImportQueueProcessing = false;
+      if (forceRetry) foregroundImportRetryPending = false;
     }
   };
 
@@ -797,7 +808,7 @@ export default function App() {
           {activeTab === 'challenges' && <ReadingChallengesScreen books={books} sessions={sessions} />}
           {activeTab === 'achievements' && <AchievementsScreen books={books} sessions={sessions} />}
           {activeTab === 'collections' && <CollectionsScreen books={books} onUpdateBook={handleUpdateBook} onSelectBook={setSelectedBookForDetails} />}
-          {activeTab === 'import-history' && <ImportHistoryScreen books={books} onResumeEnrichment={() => void processImportEnrichmentQueue()} />}
+          {activeTab === 'import-history' && <ImportHistoryScreen books={books} onResumeEnrichment={() => void processImportEnrichmentQueue()} onRetryEnrichment={(targetBookIds) => processImportEnrichmentQueue(targetBookIds)} />}
           {activeTab === 'timeline' && <ReadingTimelineScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'memories' && <ReadingMemoriesScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'time-capsules' && <ReadingTimeCapsulesScreen books={books} onSelectBook={setSelectedBookForDetails} />}
