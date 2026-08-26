@@ -553,7 +553,7 @@ export default function App() {
       const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount;
       const nextCompleted = isAudiobook ? nextMinutes : nextPages;
       const progressPercentage = nextTotal && nextTotal > 0
-        ? Math.min(100, Math.round((nextCompleted / nextTotal!) * 100))
+        ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100))
         : book.progressPercentage;
       const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal!);
       const status = reachedEnd ? 'finished' : book.status === 'finished' ? 'currently-reading' : book.status;
@@ -840,7 +840,7 @@ export default function App() {
           {activeTab === 'wrapped' && <MonthlyWrappedScreen books={books} sessions={sessions} />}
           {activeTab === 'yearbook' && <YearInBooksScreen books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} />}
           {activeTab === 'stats' && <StatisticsScreen books={books} sessions={sessions} />}
-          {activeTab === 'import' && <ImportCenterScreen books={books} onExecuteImport={handleExecuteImport} onUndoLastImport={handleUndoLastBatch} />}
+          {activeTab === 'import' && <ImportCenterScreen books={books} onExecuteImport={handleExecuteImport} onUndoLastImport={handleUndoLastBatch} onRetryEnrichment={(targetBookIds) => processImportEnrichmentQueue(targetBookIds)} />}
           {activeTab === 'settings' && <SettingsScreen books={books} sessions={sessions} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} onResetData={handleResetData} />}
           {activeTab === 'profile' && <ProfileScreen books={books} sessions={sessions} />}
           {activeTab === 'admin' && <AdminScreen />}
