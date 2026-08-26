@@ -8,6 +8,9 @@ import { readImportMetadataPending } from './importVerificationJob';
 
 export const IMPORT_HISTORY_STORAGE_KEY = 'inkbound_import_history_v1';
 export const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v1';
+// Kept only so older recovery snapshots containing this retired key can still
+// be restored/cleared safely. Foreground retries no longer use this handoff.
+export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = 'inkbound_import_enrichment_retry_request_v1';
 export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = 'inkbound_import_enrichment_retry_progress_v1';
 
 export interface ImportHistoryItem {
