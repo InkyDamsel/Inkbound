@@ -116,19 +116,24 @@ function normalizeFields(value: unknown): CatalogFields {
     throw new HttpsError('invalid-argument', 'Series number is invalid.');
   }
 
+  const subtitle = optionalString(input.subtitle, 300);
+  const seriesName = optionalString(input.seriesName, 200);
+  const language = optionalString(input.language, 80);
+  const format = optionalString(input.format, 80);
+
   return {
     title,
     author,
-    ...(optionalString(input.subtitle, 300) ? { subtitle: optionalString(input.subtitle, 300) } : {}),
+    ...(subtitle ? { subtitle } : {}),
     ...(isbn10 ? { isbn10 } : {}),
     ...(isbn13 ? { isbn13 } : {}),
-    ...(optionalString(input.seriesName, 200) ? { seriesName: optionalString(input.seriesName, 200) } : {}),
+    ...(seriesName ? { seriesName } : {}),
     ...(seriesNumberValue !== undefined ? { seriesNumber: seriesNumberValue } : {}),
     ...(publisher ? { publisher } : {}),
     ...(publicationDate ? { publicationDate } : {}),
     ...(pageCountValue !== undefined ? { pageCount: pageCountValue } : {}),
-    ...(optionalString(input.language, 80) ? { language: optionalString(input.language, 80) } : {}),
-    ...(optionalString(input.format, 80) ? { format: optionalString(input.format, 80) } : {}),
+    ...(language ? { language } : {}),
+    ...(format ? { format } : {}),
     ...(externalEditionId ? { externalEditionId } : {}),
   };
 }
@@ -148,9 +153,14 @@ function timestampToIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
+function hashContributor(uid: string): string {
+  return createHash('sha256').update(uid).digest('hex');
+}
+
 async function enforceRateLimit(uid: string) {
   const db = getFirestore();
-  const ref = db.doc(`metadataContributionRateLimits/${uid}`);
+  const contributorHash = hashContributor(uid);
+  const ref = db.doc(`metadataContributionRateLimits/${contributorHash}`);
   const today = new Date().toISOString().slice(0, 10);
   await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
@@ -182,8 +192,8 @@ export const submitMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_
 
   const key = catalogKey(fields);
   const fingerprint = createHash('sha256').update(JSON.stringify(fields)).digest('hex');
-  const contributorHash = createHash('sha256').update(auth.uid).digest('hex');
-  const contributionId = createHash('sha256').update(`${auth.uid}|${key}|${fingerprint}`).digest('hex');
+  const contributorHash = hashContributor(auth.uid);
+  const contributionId = createHash('sha256').update(`${contributorHash}|${key}|${fingerprint}`).digest('hex');
   const db = getFirestore();
   const ref = db.doc(`catalogContributions/${contributionId}`);
   const existing = await ref.get();
@@ -195,7 +205,6 @@ export const submitMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_
     source: 'manual-reader',
     sourceBookId,
     contributorHash,
-    submittedBy: auth.uid,
     status: 'pending' satisfies ContributionStatus,
     updatedAt: FieldValue.serverTimestamp(),
     ...(existing.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
