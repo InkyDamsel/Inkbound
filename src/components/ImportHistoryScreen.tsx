@@ -24,6 +24,11 @@ interface ImportHistoryScreenProps {
 
 type RetryRuntimeWindow = Window & { __inkboundImportRetryRunning?: boolean };
 
+interface PendingRetry {
+  entry: ImportHistoryEntry;
+  targetBookIds: string[];
+}
+
 async function exportUnresolved(entry: ImportHistoryEntry, books: UserBookRecord[]) {
   const byId = new Map(books.map((book) => [book.id, book]));
   const rows = entry.items.filter((item) => !isImportHistoryItemMatched(item, byId.get(item.targetBookId)));
@@ -48,6 +53,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
   const [paused, setPaused] = useState(() => isImportEnrichmentPaused());
   const [retryProgress, setRetryProgress] = useState<ImportEnrichmentRetryProgress | null>(() => readImportEnrichmentRetryProgress());
   const [showRetryWarning, setShowRetryWarning] = useState(false);
+  const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
   const history = useMemo(() => ensureImportHistoryForExistingLibrary(books), [books, historyVersion]);
   const selectedEntry = history.find((entry) => entry.id === selectedEntryId) ?? history[0] ?? null;
   const queuedBookIds = useMemo(
@@ -79,7 +85,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
       if (finalProgress) setRetryProgress(finalProgress);
       setHistoryVersion((value) => value + 1);
     });
-  }, []);
+  }, [onRetryEnrichment]);
 
   useEffect(() => {
     if (!retryProgress || (retryProgress.status !== 'queued' && retryProgress.status !== 'running')) return;
@@ -116,12 +122,31 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
   };
 
   const retryEntry = (entry: ImportHistoryEntry, ids?: string[]) => {
-    const requestedIds = retryImportHistoryItems(entry, ids ?? entry.items.map((item) => item.targetBookId));
-    if (requestedIds.length === 0) return;
+    const allowed = ids ? new Set(ids) : null;
+    const targetBookIds = entry.items
+      .map((item) => item.targetBookId)
+      .filter((id) => !allowed || allowed.has(id));
+    if (targetBookIds.length === 0) return;
+
+    setPendingRetry({ entry, targetBookIds });
+    setShowRetryWarning(true);
+  };
+
+  const startPendingRetry = () => {
+    if (!pendingRetry) {
+      setShowRetryWarning(false);
+      return;
+    }
+
+    const requestedIds = retryImportHistoryItems(pendingRetry.entry, pendingRetry.targetBookIds);
+    setPendingRetry(null);
+    if (requestedIds.length === 0) {
+      setShowRetryWarning(false);
+      return;
+    }
 
     setImportEnrichmentPaused(false);
     setPaused(false);
-    setShowRetryWarning(true);
     setRetryProgress({
       status: 'queued',
       completed: 0,
@@ -143,24 +168,46 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     });
   };
 
+  const dismissRetryWarning = () => {
+    if (pendingRetry) {
+      setPendingRetry(null);
+      setShowRetryWarning(false);
+      return;
+    }
+    setShowRetryWarning(false);
+  };
+
   return (
     <div className="space-y-7 pb-24">
-      {showRetryWarning && retryRunning && (
+      {showRetryWarning && (pendingRetry || retryRunning) && (
         <div className="fixed inset-0 z-[220] grid place-items-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-labelledby="metadata-retry-warning-title">
           <section className="w-full max-w-lg rounded-3xl border border-[var(--ink-gold)]/40 bg-[var(--ink-surface-raised)] p-6 shadow-2xl sm:p-7">
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-1 h-6 w-6 shrink-0 text-[var(--ink-gold)]" />
-              <div className="min-w-0">
-                <h2 id="metadata-retry-warning-title" className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Metadata retry is running</h2>
+              <div className="min-w-0 flex-1">
+                <h2 id="metadata-retry-warning-title" className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">
+                  {pendingRetry ? 'Retry missing book details?' : 'Metadata retry is running'}
+                </h2>
                 <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
-                  You can move to other screens inside Inkbound while this runs. For the fastest completion, keep this browser tab open and avoid refreshing, closing the tab, signing out, or switching accounts.
+                  Inkbound will check your unresolved books for trusted covers, summaries, and edition details. You can move to other screens inside Inkbound while this runs.
                 </p>
                 <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
-                  If the page is refreshed or closed, your imported books and completed matches stay safe. Inkbound saves the remaining retry queue and will resume the unfinished books when you return to Import History.
+                  Avoid refreshing, closing the tab or app, signing out, or switching accounts until the retry finishes. Your library and completed matches are saved as the retry progresses, and unfinished books remain queued for recovery.
                 </p>
-                <button type="button" onClick={() => setShowRetryWarning(false)} className="quiet-shelf-primary-action mt-5 min-h-11 justify-center">
-                  I understand — keep retrying
-                </button>
+                {pendingRetry ? (
+                  <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <button type="button" onClick={dismissRetryWarning} className="quiet-shelf-secondary-action min-h-11 justify-center">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={startPendingRetry} className="quiet-shelf-primary-action min-h-11 justify-center">
+                      Start Retry
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={dismissRetryWarning} className="quiet-shelf-primary-action mt-5 min-h-11 justify-center">
+                    I understand — keep retrying
+                  </button>
+                )}
               </div>
             </div>
           </section>
