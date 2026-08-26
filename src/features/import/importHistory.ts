@@ -12,6 +12,7 @@ export const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v
 // be restored/cleared safely. Foreground retries no longer use this handoff.
 export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = 'inkbound_import_enrichment_retry_request_v1';
 export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = 'inkbound_import_enrichment_retry_progress_v1';
+export const IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY = 'inkbound_import_enrichment_active_retry_v1';
 
 export interface ImportHistoryItem {
   recordId: string;
@@ -47,6 +48,12 @@ export interface ImportEnrichmentRetryProgress {
   summaries: number;
   message?: string;
   updatedAt: string;
+}
+
+export interface ImportEnrichmentActiveRetry {
+  entryId: string;
+  targetBookIds: string[];
+  startedAt: string;
 }
 
 function makeTargetBookId(recordId: string) {
@@ -292,13 +299,47 @@ export function readImportEnrichmentRetryProgress(): ImportEnrichmentRetryProgre
   }
 }
 
+export function readImportEnrichmentActiveRetry(): ImportEnrichmentActiveRetry | null {
+  try {
+    const stored = localStorage.getItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as Partial<ImportEnrichmentActiveRetry>;
+    if (!parsed || typeof parsed.entryId !== 'string' || !Array.isArray(parsed.targetBookIds)) return null;
+    const targetBookIds = parsed.targetBookIds.filter((value): value is string => typeof value === 'string' && value.length > 0);
+    if (targetBookIds.length === 0) return null;
+    return {
+      entryId: parsed.entryId,
+      targetBookIds,
+      startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeImportEnrichmentActiveRetry(retry: ImportEnrichmentActiveRetry | null) {
+  try {
+    if (!retry) {
+      localStorage.removeItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
+      return;
+    }
+    localStorage.setItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY, JSON.stringify(retry));
+  } catch {
+    // Recovery metadata is best-effort; the enrichment queue itself remains durable.
+  }
+}
+
 export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRetryProgress | null) {
   try {
     if (!progress) {
       localStorage.removeItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
+      writeImportEnrichmentActiveRetry(null);
       return;
     }
     localStorage.setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(progress));
+    if (progress.status === 'complete' || progress.status === 'error') {
+      writeImportEnrichmentActiveRetry(null);
+    }
   } catch {
     // Foreground progress is convenience state only.
   }
@@ -320,5 +361,12 @@ export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds
     requestedIds.push(item.targetBookId);
   });
   writeImportEnrichmentQueue([...byBookId.values()]);
+  if (requestedIds.length > 0) {
+    writeImportEnrichmentActiveRetry({
+      entryId: entry.id,
+      targetBookIds: requestedIds,
+      startedAt: new Date().toISOString(),
+    });
+  }
   return requestedIds;
 }
