@@ -6,11 +6,12 @@ import { searchGoogleBooks } from '../book-search/data/googleBooksApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 
 export const IMPORT_ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v3';
-export const IMPORT_ENRICHMENT_CONCURRENCY = 3;
-export const IMPORT_ENRICHMENT_BATCH_SIZE = 12;
+export const IMPORT_ENRICHMENT_CONCURRENCY = 2;
+export const IMPORT_ENRICHMENT_BATCH_SIZE = 3;
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
+const IMPORT_SEARCH_TIMEOUT_MS = 10000;
 const importSearchCache = new Map<string, Promise<BookSearchWorkGroup[]>>();
 
 export interface ImportEnrichmentQueueItem extends ImportRecordItem {
@@ -123,7 +124,7 @@ function authorSearchVariants(value?: string): string[] {
   const initials = parts.length > 1
     ? `${parts.slice(0, -1).map((part) => part[0]).filter(Boolean).join(' ')} ${surname}`.trim()
     : '';
-  return [...new Set([raw, noMiddle, initials, surname].filter(Boolean))];
+  return [...new Set([raw, noMiddle, initials].filter(Boolean))];
 }
 
 function authorMatches(importAuthor?: string, candidateAuthor?: string): boolean {
@@ -256,10 +257,16 @@ async function searchImportedBookMetadata(query: string): Promise<BookSearchWork
   const cached = importSearchCache.get(normalizedQuery);
   if (cached) return cached;
 
-  const request = searchGoogleBooks(query)
-    .then((response) => {
-      if (response.groups.length === 0) importSearchCache.delete(normalizedQuery);
-      return response.groups;
+  const catalogRequest = searchGoogleBooks(query).then((response) => response.groups);
+  const request = Promise.race([
+    catalogRequest,
+    new Promise<BookSearchWorkGroup[]>((resolve) => {
+      window.setTimeout(() => resolve([]), IMPORT_SEARCH_TIMEOUT_MS);
+    }),
+  ])
+    .then((groups) => {
+      if (groups.length === 0) importSearchCache.delete(normalizedQuery);
+      return groups;
     })
     .catch((error) => {
       importSearchCache.delete(normalizedQuery);
@@ -328,21 +335,21 @@ function importSearchQueries(item: ImportRecordItem): string[] {
   const authors = authorSearchVariants(item.author);
   const attempts = 'attempts' in item && typeof item.attempts === 'number' ? item.attempts : 0;
   const queries: string[] = [];
+  const fullTitle = titles[0];
+  const cleanedTitle = titles[1] || titles[0];
+  const shortTitle = titles[2] || cleanedTitle;
+  const normalizedTitle = titles[3] || shortTitle;
+  const primaryAuthor = authors[0];
+  const alternateAuthor = authors[1] || authors[2];
 
-  if (titles[0] && authors[0]) queries.push(`${titles[0]} ${authors[0]}`);
-  if (titles[1] && authors[0]) queries.push(`${titles[1]} ${authors[0]}`);
-  if (titles[2] && authors[0]) queries.push(`${titles[2]} ${authors[0]}`);
-  titles.forEach((title) => queries.push(title));
+  if (fullTitle && primaryAuthor) queries.push(`${fullTitle} ${primaryAuthor}`);
+  if (cleanedTitle && primaryAuthor) queries.push(`${cleanedTitle} ${primaryAuthor}`);
+  if (shortTitle && primaryAuthor) queries.push(`${shortTitle} ${primaryAuthor}`);
+  if (attempts > 0 && shortTitle && alternateAuthor) queries.push(`${shortTitle} ${alternateAuthor}`);
+  if (attempts > 1 && normalizedTitle && primaryAuthor) queries.push(`${normalizedTitle} ${primaryAuthor}`);
+  if (attempts > 1 && shortTitle) queries.push(shortTitle);
 
-  if (attempts > 0) {
-    const shortTitle = titles[2] || titles[1] || titles[0];
-    authors.slice(1).forEach((author) => {
-      if (shortTitle) queries.push(`${shortTitle} ${author}`);
-    });
-  }
-  if (attempts > 1) authors.forEach((author) => queries.push(author));
-
-  return [...new Set(queries.map((query) => query.trim()).filter(Boolean))].slice(0, attempts > 1 ? 12 : 8);
+  return [...new Set(queries.map((query) => query.trim()).filter(Boolean))].slice(0, 6);
 }
 
 async function findBestImportedMetadata(
