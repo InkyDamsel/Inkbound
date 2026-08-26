@@ -18,7 +18,7 @@ import {
 interface ImportHistoryScreenProps {
   books: UserBookRecord[];
   onResumeEnrichment: () => void;
-  onRetryEnrichment: (targetBookIds: string[]) => Promise<void>;
+  onRetryEnrichment?: (targetBookIds: string[]) => Promise<void>;
 }
 
 async function exportUnresolved(entry: ImportHistoryEntry, books: UserBookRecord[]) {
@@ -102,7 +102,11 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     });
     setHistoryVersion((value) => value + 1);
 
-    void onRetryEnrichment(requestedIds).finally(() => {
+    const runRetry = onRetryEnrichment
+      ? onRetryEnrichment(requestedIds)
+      : Promise.resolve().then(() => onResumeEnrichment());
+
+    void runRetry.finally(() => {
       const finalProgress = readImportEnrichmentRetryProgress();
       if (finalProgress) setRetryProgress(finalProgress);
       setHistoryVersion((value) => value + 1);
