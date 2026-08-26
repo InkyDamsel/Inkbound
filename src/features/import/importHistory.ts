@@ -8,11 +8,7 @@ import { readImportMetadataPending } from './importVerificationJob';
 
 export const IMPORT_HISTORY_STORAGE_KEY = 'inkbound_import_history_v1';
 export const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v1';
-export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = 'inkbound_import_enrichment_retry_request_v1';
 export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = 'inkbound_import_enrichment_retry_progress_v1';
-
-let foregroundRetryKickTimer: number | null = null;
-let foregroundRetryKickStartedAt = 0;
 
 export interface ImportHistoryItem {
   recordId: string;
@@ -48,11 +44,6 @@ export interface ImportEnrichmentRetryProgress {
   summaries: number;
   message?: string;
   updatedAt: string;
-}
-
-interface ImportEnrichmentRetryRequest {
-  targetBookIds: string[];
-  requestedAt: string;
 }
 
 function makeTargetBookId(recordId: string) {
@@ -310,76 +301,12 @@ export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRet
   }
 }
 
-function stopForegroundRetryKicker() {
-  if (typeof window === 'undefined' || foregroundRetryKickTimer === null) return;
-  window.clearInterval(foregroundRetryKickTimer);
-  foregroundRetryKickTimer = null;
-  foregroundRetryKickStartedAt = 0;
-}
-
-function kickForegroundRetryWorker() {
-  if (typeof window === 'undefined') return;
-  if (foregroundRetryKickTimer !== null) return;
-
-  foregroundRetryKickStartedAt = Date.now();
-  const kick = () => {
-    const progress = readImportEnrichmentRetryProgress();
-    const expired = Date.now() - foregroundRetryKickStartedAt > 30000;
-    if (!progress || progress.status !== 'queued' || expired) {
-      stopForegroundRetryKicker();
-      return;
-    }
-
-    // App.tsx already listens for focus to resume enrichment. Keep nudging a
-    // queued foreground request until any tiny background batch releases the
-    // shared worker lock. Once the foreground retry reaches `running`, this
-    // interval stops itself and no more synthetic focus events are dispatched.
-    window.dispatchEvent(new Event('focus'));
-  };
-
-  kick();
-  foregroundRetryKickTimer = window.setInterval(kick, 1000);
-}
-
-export function requestForegroundImportRetry(targetBookIds: string[]) {
-  const uniqueIds = [...new Set(targetBookIds.filter(Boolean))];
-  if (uniqueIds.length === 0) return;
-  const requestedAt = new Date().toISOString();
-  const request: ImportEnrichmentRetryRequest = { targetBookIds: uniqueIds, requestedAt };
-  try {
-    localStorage.setItem(IMPORT_ENRICHMENT_RETRY_REQUEST_KEY, JSON.stringify(request));
-  } catch {
-    // The queue itself still retains the retry work.
-  }
-  writeImportEnrichmentRetryProgress({
-    status: 'queued',
-    completed: 0,
-    total: uniqueIds.length,
-    matched: 0,
-    covers: 0,
-    summaries: 0,
-    updatedAt: requestedAt,
-  });
-  kickForegroundRetryWorker();
-}
-
-export function consumeForegroundImportRetryRequest(): ImportEnrichmentRetryRequest | null {
-  try {
-    const stored = localStorage.getItem(IMPORT_ENRICHMENT_RETRY_REQUEST_KEY);
-    if (!stored) return null;
-    localStorage.removeItem(IMPORT_ENRICHMENT_RETRY_REQUEST_KEY);
-    const parsed = JSON.parse(stored) as Partial<ImportEnrichmentRetryRequest>;
-    if (!Array.isArray(parsed.targetBookIds) || parsed.targetBookIds.length === 0) return null;
-    return {
-      targetBookIds: parsed.targetBookIds.filter((id): id is string => typeof id === 'string' && id.length > 0),
-      requestedAt: typeof parsed.requestedAt === 'string' ? parsed.requestedAt : new Date().toISOString(),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds?: string[]) {
+/**
+ * Rebuilds the retry queue from import history and returns the exact book IDs
+ * requested by the user. Starting the foreground worker is intentionally left
+ * to App.tsx so web and Android both use the same direct, deterministic path.
+ */
+export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds?: string[]): string[] {
   const allowed = targetBookIds ? new Set(targetBookIds) : null;
   const existing = readImportEnrichmentQueue();
   const byBookId = new Map(existing.map((item) => [item.targetBookId, item]));
@@ -390,5 +317,5 @@ export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds
     requestedIds.push(item.targetBookId);
   });
   writeImportEnrichmentQueue([...byBookId.values()]);
-  requestForegroundImportRetry(requestedIds);
+  return requestedIds;
 }
