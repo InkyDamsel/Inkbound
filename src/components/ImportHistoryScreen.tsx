@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Download, FileClock, Loader2, Pause, Play, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, FileClock, Loader2, Pause, Play, RefreshCw, Search } from 'lucide-react';
 import type { UserBookRecord } from '../types';
 import { exportRuntimeTextFile } from '../platform/runtimeExport';
 import { readImportEnrichmentQueue } from '../features/import/libraryEnrichment';
@@ -8,6 +8,7 @@ import {
   getImportHistoryProgress,
   isImportEnrichmentPaused,
   isImportHistoryItemMatched,
+  readImportEnrichmentActiveRetry,
   readImportEnrichmentRetryProgress,
   retryImportHistoryItems,
   setImportEnrichmentPaused,
@@ -20,6 +21,8 @@ interface ImportHistoryScreenProps {
   onResumeEnrichment: () => void;
   onRetryEnrichment: (targetBookIds: string[]) => Promise<void>;
 }
+
+type RetryRuntimeWindow = Window & { __inkboundImportRetryRunning?: boolean };
 
 async function exportUnresolved(entry: ImportHistoryEntry, books: UserBookRecord[]) {
   const byId = new Map(books.map((book) => [book.id, book]));
@@ -43,13 +46,40 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
   const [query, setQuery] = useState('');
   const [showOnlyUnresolved, setShowOnlyUnresolved] = useState(false);
   const [paused, setPaused] = useState(() => isImportEnrichmentPaused());
-  const [retryProgress, setRetryProgress] = useState<ImportEnrichmentRetryProgress | null>(null);
+  const [retryProgress, setRetryProgress] = useState<ImportEnrichmentRetryProgress | null>(() => readImportEnrichmentRetryProgress());
+  const [showRetryWarning, setShowRetryWarning] = useState(false);
   const history = useMemo(() => ensureImportHistoryForExistingLibrary(books), [books, historyVersion]);
   const selectedEntry = history.find((entry) => entry.id === selectedEntryId) ?? history[0] ?? null;
   const queuedBookIds = useMemo(
     () => new Set(readImportEnrichmentQueue().map((item) => item.targetBookId)),
     [books, historyVersion, retryProgress?.completed],
   );
+  const retryRunning = retryProgress?.status === 'queued' || retryProgress?.status === 'running';
+  const retryPercent = retryProgress?.total
+    ? Math.min(100, Math.round((retryProgress.completed / retryProgress.total) * 100))
+    : 0;
+
+  useEffect(() => {
+    const progress = readImportEnrichmentRetryProgress();
+    const activeRetry = readImportEnrichmentActiveRetry();
+    if (!progress || !activeRetry || (progress.status !== 'queued' && progress.status !== 'running')) return;
+
+    setRetryProgress(progress);
+    setImportEnrichmentPaused(false);
+    setPaused(false);
+    setShowRetryWarning(true);
+
+    const runtimeWindow = window as RetryRuntimeWindow;
+    if (runtimeWindow.__inkboundImportRetryRunning) return;
+
+    runtimeWindow.__inkboundImportRetryRunning = true;
+    void onRetryEnrichment(activeRetry.targetBookIds).finally(() => {
+      runtimeWindow.__inkboundImportRetryRunning = false;
+      const finalProgress = readImportEnrichmentRetryProgress();
+      if (finalProgress) setRetryProgress(finalProgress);
+      setHistoryVersion((value) => value + 1);
+    });
+  }, []);
 
   useEffect(() => {
     if (!retryProgress || (retryProgress.status !== 'queued' && retryProgress.status !== 'running')) return;
@@ -91,6 +121,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
 
     setImportEnrichmentPaused(false);
     setPaused(false);
+    setShowRetryWarning(true);
     setRetryProgress({
       status: 'queued',
       completed: 0,
@@ -102,20 +133,40 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     });
     setHistoryVersion((value) => value + 1);
 
+    const runtimeWindow = window as RetryRuntimeWindow;
+    runtimeWindow.__inkboundImportRetryRunning = true;
     void onRetryEnrichment(requestedIds).finally(() => {
+      runtimeWindow.__inkboundImportRetryRunning = false;
       const finalProgress = readImportEnrichmentRetryProgress();
       if (finalProgress) setRetryProgress(finalProgress);
       setHistoryVersion((value) => value + 1);
     });
   };
 
-  const retryRunning = retryProgress?.status === 'queued' || retryProgress?.status === 'running';
-  const retryPercent = retryProgress?.total
-    ? Math.min(100, Math.round((retryProgress.completed / retryProgress.total) * 100))
-    : 0;
-
   return (
     <div className="space-y-7 pb-24">
+      {showRetryWarning && retryRunning && (
+        <div className="fixed inset-0 z-[220] grid place-items-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-labelledby="metadata-retry-warning-title">
+          <section className="w-full max-w-lg rounded-3xl border border-[var(--ink-gold)]/40 bg-[var(--ink-surface-raised)] p-6 shadow-2xl sm:p-7">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-1 h-6 w-6 shrink-0 text-[var(--ink-gold)]" />
+              <div className="min-w-0">
+                <h2 id="metadata-retry-warning-title" className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Metadata retry is running</h2>
+                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
+                  You can move to other screens inside Inkbound while this runs. For the fastest completion, keep this browser tab open and avoid refreshing, closing the tab, signing out, or switching accounts.
+                </p>
+                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
+                  If the page is refreshed or closed, your imported books and completed matches stay safe. Inkbound saves the remaining retry queue and will resume the unfinished books when you return to Import History.
+                </p>
+                <button type="button" onClick={() => setShowRetryWarning(false)} className="quiet-shelf-primary-action mt-5 min-h-11 justify-center">
+                  I understand — keep retrying
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="inkbound-kicker">Import Center</p>
@@ -140,7 +191,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
               </p>
               <p className="mt-1 break-words text-xs text-[var(--ink-muted)]">
                 {retryProgress.message ?? (retryRunning
-                  ? `${retryProgress.completed.toLocaleString()} of ${retryProgress.total.toLocaleString()} books checked. Leave Inkbound open while this retry is running; unfinished work remains queued if the app is suspended.`
+                  ? `${retryProgress.completed.toLocaleString()} of ${retryProgress.total.toLocaleString()} books checked. You may use other Inkbound screens. Refreshing or closing pauses the active worker, but the remaining queue is saved and can resume when you return to Import History.`
                   : `${retryProgress.matched.toLocaleString()} matched · ${retryProgress.covers.toLocaleString()} covers · ${retryProgress.summaries.toLocaleString()} summaries found during this retry.`)}
               </p>
             </div>
