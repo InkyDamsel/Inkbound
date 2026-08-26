@@ -82,14 +82,48 @@ function normalizeImportDate(value?: string): string | undefined {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
 }
 
-function normalizeTitleCore(value?: string): string {
+function stripImportTitleNoise(value?: string): string {
   if (!value) return '';
+  return value
+    .replace(/\([^)]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+|kindle|audible|ebook|audiobook|edition|boxed?\s*set|collection)[^)]*\)/gi, ' ')
+    .replace(/\[[^\]]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+|kindle|audible|ebook|audiobook|edition|boxed?\s*set|collection)[^\]]*\]/gi, ' ')
+    .replace(/\b(?:kindle|audible|ebook|e-book|audiobook|audio book)\s+edition\b/gi, ' ')
+    .replace(/\b(?:book|volume|vol\.?|part)\s*#?\s*\d+(?:\.\d+)?\b/gi, ' ')
+    .replace(/\b(?:boxed?\s*set|omnibus|complete\s+series|collection)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeTitleCore(value?: string): string {
+  const cleaned = stripImportTitleNoise(value);
+  if (!cleaned) return '';
   return normalizeText(
-    value
-      .replace(/\([^)]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+)[^)]*\)/gi, ' ')
-      .replace(/\[[^\]]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+)[^\]]*\]/gi, ' ')
+    cleaned
       .replace(/\s*[:\-–—]\s*[^:–—-]*(?:#\s*\d+|book\s*\d+|series|volume\s*\d+|vol\.?\s*\d+).*$/gi, ' '),
   );
+}
+
+function titleSearchVariants(value?: string): string[] {
+  const raw = value?.trim() ?? '';
+  if (!raw) return [];
+  const cleaned = stripImportTitleNoise(raw);
+  const beforeSubtitle = cleaned.split(/\s*[:–—]\s*/)[0]?.trim() ?? '';
+  const normalizedCore = normalizeTitleCore(raw);
+  return [...new Set([raw, cleaned, beforeSubtitle, normalizedCore].filter(Boolean))];
+}
+
+function authorSearchVariants(value?: string): string[] {
+  const raw = value?.trim() ?? '';
+  const normalized = normalizeText(raw);
+  if (!raw || !normalized || normalized === 'unknown author') return [];
+  const parts = raw.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  const surname = parts.at(-1) ?? '';
+  const first = parts[0] ?? '';
+  const noMiddle = parts.length > 2 ? `${first} ${surname}` : raw;
+  const initials = parts.length > 1
+    ? `${parts.slice(0, -1).map((part) => part[0]).filter(Boolean).join(' ')} ${surname}`.trim()
+    : '';
+  return [...new Set([raw, noMiddle, initials, surname].filter(Boolean))];
 }
 
 function authorMatches(importAuthor?: string, candidateAuthor?: string): boolean {
@@ -106,6 +140,19 @@ function authorMatches(importAuthor?: string, candidateAuthor?: string): boolean
   const wantedFirst = wantedParts[0];
   const candidateFirst = candidateParts[0];
   return Boolean(wantedFirst && candidateFirst && wantedFirst[0] === candidateFirst[0]);
+}
+
+function authorSimilarity(importAuthor?: string, candidateAuthor?: string): number {
+  const wanted = normalizeText(importAuthor);
+  const candidate = normalizeText(candidateAuthor);
+  if (!wanted || !candidate || wanted === 'unknown author' || candidate === 'unknown author') return 0;
+  if (wanted === candidate) return 1;
+  if (wanted.includes(candidate) || candidate.includes(wanted)) return 0.94;
+  if (authorMatches(importAuthor, candidateAuthor)) return 0.86;
+  const wantedParts = wanted.split(' ').filter(Boolean);
+  const candidateParts = candidate.split(' ').filter(Boolean);
+  if (wantedParts.at(-1) && wantedParts.at(-1) === candidateParts.at(-1)) return 0.55;
+  return 0;
 }
 
 function titleSimilarity(importTitle?: string, candidateTitle?: string): number {
@@ -211,9 +258,6 @@ async function searchImportedBookMetadata(query: string): Promise<BookSearchWork
 
   const request = searchGoogleBooks(query)
     .then((response) => {
-      // Empty catalog responses are not durable facts. They may be caused by a
-      // temporary provider cooldown/outage, so never poison future retries by
-      // caching an empty answer for the rest of the app session.
       if (response.groups.length === 0) importSearchCache.delete(normalizedQuery);
       return response.groups;
     })
@@ -232,11 +276,17 @@ function groupHasExactIsbn(work: BookSearchWorkGroup, requestedIsbn: string): bo
   );
 }
 
-function isVerifiedWork(item: ImportRecordItem, work: BookSearchWorkGroup): boolean {
+function workMatchScore(item: ImportRecordItem, work: BookSearchWorkGroup): number {
   const requestedIsbn = compactIsbn(item.isbn);
-  if (requestedIsbn && groupHasExactIsbn(work, requestedIsbn)) return true;
-  if (!work.authors.some((author) => authorMatches(item.author, author))) return false;
-  return titleSimilarity(item.title, work.title) >= 0.76;
+  if (requestedIsbn && groupHasExactIsbn(work, requestedIsbn)) return 1;
+
+  const titleScore = titleSimilarity(item.title, work.title);
+  const bestAuthorScore = Math.max(0, ...work.authors.map((author) => authorSimilarity(item.author, author)));
+  if (bestAuthorScore < 0.55 || titleScore < 0.68) return 0;
+
+  const coverBonus = work.editions.some((edition) => edition.coverUrl) ? 0.015 : 0;
+  const formatBonus = work.editions.some((edition) => edition.format === item.format) ? 0.015 : 0;
+  return Math.min(0.99, (titleScore * 0.72) + (bestAuthorScore * 0.25) + coverBonus + formatBonus);
 }
 
 function chooseImportedEdition(
@@ -244,17 +294,12 @@ function chooseImportedEdition(
   groups: BookSearchWorkGroup[],
 ): { work?: BookSearchWorkGroup; edition?: BookSearchEdition; coverEdition?: BookSearchEdition } {
   const requestedIsbn = compactIsbn(item.isbn);
-  const verifiedGroups = groups
-    .filter((work) => isVerifiedWork(item, work))
-    .sort((a, b) => {
-      const aExact = requestedIsbn && groupHasExactIsbn(a, requestedIsbn) ? 1 : 0;
-      const bExact = requestedIsbn && groupHasExactIsbn(b, requestedIsbn) ? 1 : 0;
-      if (aExact !== bExact) return bExact - aExact;
-      const coverDifference = Number(b.editions.some((edition) => edition.coverUrl)) - Number(a.editions.some((edition) => edition.coverUrl));
-      if (coverDifference !== 0) return coverDifference;
-      return titleSimilarity(item.title, b.title) - titleSimilarity(item.title, a.title);
-    });
+  const scoredGroups = groups
+    .map((work) => ({ work, score: workMatchScore(item, work) }))
+    .filter(({ score }) => score >= 0.78)
+    .sort((a, b) => b.score - a.score);
 
+  const verifiedGroups = scoredGroups.map(({ work }) => work);
   const exactIsbnCandidates = requestedIsbn
     ? verifiedGroups.flatMap((work) => work.editions
       .filter((edition) => compactIsbn(edition.isbn13) === requestedIsbn || compactIsbn(edition.isbn10) === requestedIsbn)
@@ -278,6 +323,28 @@ function chooseImportedEdition(
   return { work: selected.work, edition: selected.edition, coverEdition };
 }
 
+function importSearchQueries(item: ImportRecordItem): string[] {
+  const titles = titleSearchVariants(item.title);
+  const authors = authorSearchVariants(item.author);
+  const attempts = 'attempts' in item && typeof item.attempts === 'number' ? item.attempts : 0;
+  const queries: string[] = [];
+
+  if (titles[0] && authors[0]) queries.push(`${titles[0]} ${authors[0]}`);
+  if (titles[1] && authors[0]) queries.push(`${titles[1]} ${authors[0]}`);
+  if (titles[2] && authors[0]) queries.push(`${titles[2]} ${authors[0]}`);
+  titles.forEach((title) => queries.push(title));
+
+  if (attempts > 0) {
+    const shortTitle = titles[2] || titles[1] || titles[0];
+    authors.slice(1).forEach((author) => {
+      if (shortTitle) queries.push(`${shortTitle} ${author}`);
+    });
+  }
+  if (attempts > 1) authors.forEach((author) => queries.push(author));
+
+  return [...new Set(queries.map((query) => query.trim()).filter(Boolean))].slice(0, attempts > 1 ? 12 : 8);
+}
+
 async function findBestImportedMetadata(
   item: ImportRecordItem,
 ): Promise<{ work?: BookSearchWorkGroup; edition?: BookSearchEdition; coverEdition?: BookSearchEdition }> {
@@ -291,15 +358,11 @@ async function findBestImportedMetadata(
   const author = item.author.trim();
   if (!title || !author || normalizeText(author) === 'unknown author') return {};
 
-  const queries = [
-    `${title} ${author}`,
-    title,
-    normalizeTitleCore(title),
-    author,
-  ].filter((value, index, values) => value && values.indexOf(value) === index);
-
-  for (const query of queries) {
-    const match = chooseImportedEdition(item, await searchImportedBookMetadata(query));
+  const seenGroups = new Map<string, BookSearchWorkGroup>();
+  for (const query of importSearchQueries(item)) {
+    const groups = await searchImportedBookMetadata(query);
+    groups.forEach((group) => seenGroups.set(group.key, group));
+    const match = chooseImportedEdition(item, [...seenGroups.values()]);
     if (match.work && match.edition) return match;
   }
   return {};
@@ -381,8 +444,6 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
     ownership: 'owned',
     progressPages: 0,
     progressMinutes: 0,
-    // Finished is valid even when the export has no trustworthy edition total.
-    // Do not invent 100%; enrichment can reconcile to a real endpoint later.
     progressPercentage: 0,
     rating: item.rating,
     review: item.review,
