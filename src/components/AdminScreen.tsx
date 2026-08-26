@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { AdminDataSafetyPanel } from './admin/AdminDataSafetyPanel';
+import { AdminCatalogContributionsPanel } from './admin/AdminCatalogContributionsPanel';
 
 interface AdminUser {
   uid: string;
@@ -227,7 +228,7 @@ export const AdminScreen: React.FC = () => {
   return (
     <div className="space-y-6 pb-20">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--ink-mauve)]">Owner tools</p><h1 className="font-serif text-4xl text-[var(--ink-ivory)]">Administration</h1><p className="mt-2 text-[var(--ink-muted)]">Manage complimentary access, protected account actions, and reader data requests.</p></div>
+        <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--ink-mauve)]">Owner tools</p><h1 className="font-serif text-4xl text-[var(--ink-ivory)]">Administration</h1><p className="mt-2 text-[var(--ink-muted)]">Manage complimentary access, protected account actions, reader data requests, and catalog metadata review.</p></div>
         <button type="button" onClick={() => void loadDashboard(query)} className="quiet-shelf-secondary-action justify-center"><RefreshCw className={loading ? 'animate-spin' : ''} />{loading ? 'Refreshing…' : 'Refresh'}</button>
       </header>
 
@@ -275,6 +276,8 @@ export const AdminScreen: React.FC = () => {
         targetUserId={selectedUser?.uid ?? null}
         targetLabel={selectedUser?.displayName || selectedUser?.email || ''}
       />
+
+      <AdminCatalogContributionsPanel />
 
       <section className="inkbound-panel p-5"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Recent admin activity</h2><div className="mt-4 divide-y divide-[var(--ink-border-subtle)]">{data?.audit.length ? data.audit.map((entry) => <article key={entry.id} className="grid gap-1 py-3 md:grid-cols-[180px_1fr_1fr]"><span className="text-sm text-[var(--ink-muted)]">{formatDate(entry.createdAt)}</span><strong className="text-sm text-[var(--ink-ivory)]">{entry.action.replaceAll('_', ' ')} · {entry.targetEmail || 'Unknown reader'}</strong><span className="text-sm text-[var(--ink-muted)]">{entry.reason}</span></article>) : <p className="py-6 text-[var(--ink-muted)]">No admin activity yet.</p>}</div></section>
 
