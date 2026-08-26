@@ -11,6 +11,9 @@ export const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v
 export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = 'inkbound_import_enrichment_retry_request_v1';
 export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = 'inkbound_import_enrichment_retry_progress_v1';
 
+let foregroundRetryKickTimer: number | null = null;
+let foregroundRetryKickStartedAt = 0;
+
 export interface ImportHistoryItem {
   recordId: string;
   targetBookId: string;
@@ -307,14 +310,35 @@ export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRet
   }
 }
 
+function stopForegroundRetryKicker() {
+  if (typeof window === 'undefined' || foregroundRetryKickTimer === null) return;
+  window.clearInterval(foregroundRetryKickTimer);
+  foregroundRetryKickTimer = null;
+  foregroundRetryKickStartedAt = 0;
+}
+
 function kickForegroundRetryWorker() {
   if (typeof window === 'undefined') return;
-  // App.tsx already listens for focus to resume queued enrichment work. A retry
-  // can be requested while a tiny background batch still owns the worker lock,
-  // so kick the existing listener again after that lock has had time to clear.
-  [0, 1000, 4000, 10000].forEach((delay) => {
-    window.setTimeout(() => window.dispatchEvent(new Event('focus')), delay);
-  });
+  if (foregroundRetryKickTimer !== null) return;
+
+  foregroundRetryKickStartedAt = Date.now();
+  const kick = () => {
+    const progress = readImportEnrichmentRetryProgress();
+    const expired = Date.now() - foregroundRetryKickStartedAt > 30000;
+    if (!progress || progress.status !== 'queued' || expired) {
+      stopForegroundRetryKicker();
+      return;
+    }
+
+    // App.tsx already listens for focus to resume enrichment. Keep nudging a
+    // queued foreground request until any tiny background batch releases the
+    // shared worker lock. Once the foreground retry reaches `running`, this
+    // interval stops itself and no more synthetic focus events are dispatched.
+    window.dispatchEvent(new Event('focus'));
+  };
+
+  kick();
+  foregroundRetryKickTimer = window.setInterval(kick, 1000);
 }
 
 export function requestForegroundImportRetry(targetBookIds: string[]) {
