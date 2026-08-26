@@ -35,7 +35,7 @@ const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
 const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
 const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
-const BRIDGE_VERSION = '5';
+const BRIDGE_VERSION = '6';
 const LOCAL_CHANGE_POLL_MS = 1500;
 const INITIAL_UPLOAD_BATCH_SIZE = 100;
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
@@ -152,19 +152,60 @@ async function prepareCloudProfile(uid: string, profile: ReaderProfile): Promise
   return { ...profile, avatarImage, bannerImage };
 }
 
-function captureAgainstBaseline<T extends { id: string }>(
-  items: T[], baseline: Record<string, string>, mutations: Record<string, RecordMutation<T>>,
+function reconcileHydrationChanges<T extends { id: string }>(
+  localItems: T[],
+  cloudItems: T[],
+  baseline: Record<string, string>,
+  mutations: Record<string, RecordMutation<T>>,
+  shouldPreferCloud?: (local: T, cloud: T) => boolean,
 ) {
-  const localIds = new Set(items.map((item) => item.id));
+  const localById = new Map(localItems.map((item) => [item.id, item]));
+  const cloudById = new Map(cloudItems.map((item) => [item.id, item]));
   const now = new Date().toISOString();
-  items.forEach((item) => {
-    const fingerprint = stable(item);
-    if (baseline[item.id] !== undefined && baseline[item.id] !== fingerprint && !mutations[item.id]) {
+
+  // Pending mutations created by an older bridge can contain a stale local copy.
+  // Never allow a known-monotonic cloud improvement to be downgraded by that copy.
+  Object.entries(mutations).forEach(([id, mutation]) => {
+    if (mutation.operation !== 'upsert' || !mutation.data) return;
+    const cloud = cloudById.get(id);
+    if (cloud && shouldPreferCloud?.(mutation.data, cloud)) delete mutations[id];
+  });
+
+  localItems.forEach((item) => {
+    if (mutations[item.id]) return;
+    const cloud = cloudById.get(item.id);
+    const baselineFingerprint = baseline[item.id];
+
+    if (!cloud) {
+      if (shouldPromoteLocalRecordMissingFromCloud({
+        hasCloudRecord: false,
+        baselineFingerprint,
+        hasPendingMutation: false,
+      })) mutations[item.id] = { operation: 'upsert', data: item, clientUpdatedAt: now };
+      return;
+    }
+
+    if (shouldPreferCloud?.(item, cloud)) return;
+
+    const cloudFingerprint = stable(cloud);
+    const localFingerprint = stable(item);
+    // A local value is safe to promote only when the cloud is still exactly the
+    // baseline this device last saw. If both sides changed, the server wins at
+    // hydration time instead of treating a stale device cache as a fresh edit.
+    if (baselineFingerprint !== undefined
+      && cloudFingerprint === baselineFingerprint
+      && localFingerprint !== baselineFingerprint) {
       mutations[item.id] = { operation: 'upsert', data: item, clientUpdatedAt: now };
     }
   });
-  Object.keys(baseline).forEach((id) => {
-    if (!localIds.has(id) && !mutations[id]) mutations[id] = { operation: 'delete', clientUpdatedAt: now };
+
+  Object.entries(baseline).forEach(([id, baselineFingerprint]) => {
+    if (mutations[id] || localById.has(id)) return;
+    const cloud = cloudById.get(id);
+    if (!cloud) return;
+    if (stable(cloud) === baselineFingerprint) {
+      mutations[id] = { operation: 'delete', clientUpdatedAt: now };
+    }
   });
 }
 
@@ -295,15 +336,6 @@ export const CloudPersistenceBridge: React.FC = () => {
       const baseline = readBaseline(uid);
       const pending = readPending(uid);
 
-      if (sameAccount && !intentionalClear) {
-        captureAgainstBaseline(localBooks, baseline.books, pending.books);
-        captureAgainstBaseline(localSessions, baseline.sessions, pending.sessions);
-        const profileFingerprintValue = stable(localProfile);
-        if (baseline.profile && Object.keys(localProfile).length && profileFingerprintValue !== baseline.profile && !pending.profile) {
-          pending.profile = { data: localProfile, clientUpdatedAt: new Date().toISOString() };
-        }
-      }
-
       const booksRef = collection(db!, 'users', uid, 'books');
       const sessionsRef = collection(db!, 'users', uid, 'sessions');
       const profileRef = doc(db!, 'users', uid, 'profile', 'current');
@@ -316,31 +348,23 @@ export const CloudPersistenceBridge: React.FC = () => {
 
       const cloudBooks = bookSnapshot ? bookSnapshot.docs.map((item) => (item.data() as CloudRecord<UserBookRecord>).data).filter(Boolean) : localBooks;
       const cloudSessions = sessionSnapshot ? sessionSnapshot.docs.map((item) => (item.data() as CloudRecord<ReadingSession>).data).filter(Boolean) : localSessions;
+
+      if (sameAccount && !intentionalClear && bookSnapshot && sessionSnapshot) {
+        reconcileHydrationChanges(
+          localBooks,
+          cloudBooks,
+          baseline.books,
+          pending.books,
+          (localBook, cloudBook) => cloudBook.importMetadataVerified === true && localBook.importMetadataVerified !== true,
+        );
+        reconcileHydrationChanges(localSessions, cloudSessions, baseline.sessions, pending.sessions);
+      }
+
       const nextBaseline: SyncBaseline = {
         books: Object.fromEntries(cloudBooks.map((book) => [book.id, stable(book)])),
         sessions: Object.fromEntries(cloudSessions.map((session) => [session.id, stable(session)])),
         profile: baseline.profile,
       };
-
-      if (sameAccount && !intentionalClear && bookSnapshot && sessionSnapshot) {
-        const cloudBookIds = new Set(cloudBooks.map((book) => book.id));
-        const cloudSessionIds = new Set(cloudSessions.map((session) => session.id));
-        const now = new Date().toISOString();
-        localBooks.forEach((book) => {
-          if (shouldPromoteLocalRecordMissingFromCloud({
-            hasCloudRecord: cloudBookIds.has(book.id),
-            baselineFingerprint: baseline.books[book.id],
-            hasPendingMutation: Boolean(pending.books[book.id]),
-          })) pending.books[book.id] = { operation: 'upsert', data: book, clientUpdatedAt: now };
-        });
-        localSessions.forEach((session) => {
-          if (shouldPromoteLocalRecordMissingFromCloud({
-            hasCloudRecord: cloudSessionIds.has(session.id),
-            baselineFingerprint: baseline.sessions[session.id],
-            hasPendingMutation: Boolean(pending.sessions[session.id]),
-          })) pending.sessions[session.id] = { operation: 'upsert', data: session, clientUpdatedAt: now };
-        });
-      }
 
       localBooks = applyPending(cloudBooks, pending.books);
       localSessions = applyPending(cloudSessions, pending.sessions);
