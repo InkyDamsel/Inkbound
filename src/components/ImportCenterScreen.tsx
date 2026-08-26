@@ -34,6 +34,7 @@ interface ImportCenterScreenProps {
   books: UserBookRecord[];
   onExecuteImport: (importedItems: ImportRecordItem[]) => Promise<ImportRecordItem[] | void> | ImportRecordItem[] | void;
   onUndoLastImport?: () => void;
+  onRetryEnrichment: (targetBookIds: string[]) => Promise<void>;
 }
 
 export const IMPORT_SOURCES: ImportSourceInfo[] = [
@@ -198,6 +199,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   books,
   onExecuteImport,
   onUndoLastImport,
+  onRetryEnrichment,
 }) => {
   const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
   const isPremium = userPlan === 'premium';
@@ -395,7 +397,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
       </div>
 
       {centerView === 'history' ? (
-        <ImportHistoryScreen books={books} onResumeEnrichment={resumeHistoryEnrichment} />
+        <ImportHistoryScreen books={books} onResumeEnrichment={resumeHistoryEnrichment} onRetryEnrichment={onRetryEnrichment} />
       ) : (
         <>
           <div className="flex items-start gap-3 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4 text-xs text-stone-300">
