@@ -7,11 +7,12 @@ import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/mode
 
 export const IMPORT_ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v3';
 export const IMPORT_ENRICHMENT_CONCURRENCY = 2;
-export const IMPORT_ENRICHMENT_BATCH_SIZE = 3;
+export const IMPORT_ENRICHMENT_BATCH_SIZE = 1;
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
 const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
-const IMPORT_SEARCH_TIMEOUT_MS = 10000;
+const IMPORT_SEARCH_TIMEOUT_MS = 3000;
+const IMPORT_BOOK_TIMEOUT_MS = 9000;
 const importSearchCache = new Map<string, Promise<BookSearchWorkGroup[]>>();
 
 export interface ImportEnrichmentQueueItem extends ImportRecordItem {
@@ -349,7 +350,7 @@ function importSearchQueries(item: ImportRecordItem): string[] {
   if (attempts > 1 && normalizedTitle && primaryAuthor) queries.push(`${normalizedTitle} ${primaryAuthor}`);
   if (attempts > 1 && shortTitle) queries.push(shortTitle);
 
-  return [...new Set(queries.map((query) => query.trim()).filter(Boolean))].slice(0, 6);
+  return [...new Set(queries.map((query) => query.trim()).filter(Boolean))].slice(0, 4);
 }
 
 async function findBestImportedMetadata(
@@ -375,9 +376,20 @@ async function findBestImportedMetadata(
   return {};
 }
 
+async function findBestImportedMetadataWithTimeout(
+  item: ImportRecordItem,
+): Promise<{ work?: BookSearchWorkGroup; edition?: BookSearchEdition; coverEdition?: BookSearchEdition }> {
+  return Promise.race([
+    findBestImportedMetadata(item),
+    new Promise<{}>((resolve) => {
+      window.setTimeout(() => resolve({}), IMPORT_BOOK_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 async function canVerifyImportedBook(item: ImportRecordItem): Promise<boolean> {
   try {
-    const match = await findBestImportedMetadata(item);
+    const match = await findBestImportedMetadataWithTimeout(item);
     return Boolean(match.work && match.edition);
   } catch {
     return false;
@@ -469,7 +481,7 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
 
 async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<ImportEnrichmentResult> {
   try {
-    const { work, edition, coverEdition } = await findBestImportedMetadata(item);
+    const { work, edition, coverEdition } = await findBestImportedMetadataWithTimeout(item);
     if (!work || !edition) {
       return { item, foundCover: false, foundSummary: false, success: false };
     }
