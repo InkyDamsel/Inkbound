@@ -75,7 +75,10 @@ const DAILY_GOAL_STORAGE_KEY = 'inkbound_daily_goal_minutes';
 const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
 const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
 const MAINTENANCE_CHECK_INTERVAL_MS = 60 * 1000;
+const IMPORT_QUEUE_LOCK_LEASE_MS = 12 * 1000;
 let isImportQueueProcessing = false;
+let importQueueProcessingStartedAt = 0;
+let importQueueRunId = 0;
 let foregroundImportRetryPending = false;
 
 interface SessionMilestoneNotice {
@@ -276,6 +279,13 @@ export default function App() {
       });
       foregroundImportRetryPending = true;
       while (isImportQueueProcessing) {
+        const lockAge = importQueueProcessingStartedAt ? Date.now() - importQueueProcessingStartedAt : IMPORT_QUEUE_LOCK_LEASE_MS + 1;
+        if (lockAge > IMPORT_QUEUE_LOCK_LEASE_MS) {
+          importQueueRunId += 1;
+          isImportQueueProcessing = false;
+          importQueueProcessingStartedAt = 0;
+          break;
+        }
         await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
       }
       foregroundImportRetryPending = false;
@@ -326,6 +336,8 @@ export default function App() {
     if (!forceRetry && !canRunDaytimeMaintenance()) return;
 
     isImportQueueProcessing = true;
+    importQueueProcessingStartedAt = Date.now();
+    const runId = ++importQueueRunId;
     const retryItems: ImportEnrichmentQueueItem[] = [];
     let updatedCount = 0;
     let coverCount = 0;
@@ -343,6 +355,7 @@ export default function App() {
 
     try {
       while (pending.length > 0 && navigator.onLine) {
+        if (runId !== importQueueRunId) return;
         if (isReadingTimerOpen() || (!forceRetry && isImportEnrichmentPaused())) break;
         if (!forceRetry && processedBatchCount >= 1) break;
         const batchSize = forceRetry ? IMPORT_ENRICHMENT_BATCH_SIZE : DAYTIME_MAINTENANCE_BATCH_SIZE;
@@ -350,6 +363,7 @@ export default function App() {
         pending = pending.slice(batch.length);
         processedBatchCount += 1;
         const results = await enrichImportedBooks(batch);
+        if (runId !== importQueueRunId) return;
         const successful = results.filter((result) => result.success && result.enriched);
         const enrichedById = new Map(successful.map((result) => [result.item.targetBookId, result.enriched!]));
         if (enrichedById.size > 0) {
@@ -382,6 +396,7 @@ export default function App() {
         await new Promise<void>((resolve) => window.setTimeout(resolve, forceRetry ? 250 : 750));
       }
 
+      if (runId !== importQueueRunId) return;
       writeImportEnrichmentQueue([...retryItems, ...pending, ...untouchedQueue]);
       if (!forceRetry && processedBatchCount > 0) markDaytimeMaintenanceRun();
 
@@ -407,6 +422,7 @@ export default function App() {
         showToast('Inkbound kept the remaining books queued and will retry their details later.');
       }
     } catch {
+      if (runId !== importQueueRunId) return;
       writeImportEnrichmentQueue([...retryItems, ...pending, ...untouchedQueue]);
       if (!forceRetry && processedBatchCount > 0) markDaytimeMaintenanceRun();
       if (forceRetry) {
@@ -423,7 +439,10 @@ export default function App() {
       }
       showToast('Book details are safely queued and will resume when Inkbound can reach its metadata sources.');
     } finally {
-      isImportQueueProcessing = false;
+      if (runId === importQueueRunId) {
+        isImportQueueProcessing = false;
+        importQueueProcessingStartedAt = 0;
+      }
       if (forceRetry) foregroundImportRetryPending = false;
     }
   };
@@ -534,7 +553,7 @@ export default function App() {
       const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount;
       const nextCompleted = isAudiobook ? nextMinutes : nextPages;
       const progressPercentage = nextTotal && nextTotal > 0
-        ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100))
+        ? Math.min(100, Math.round((nextCompleted / nextTotal!) * 100))
         : book.progressPercentage;
       const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal!);
       const status = reachedEnd ? 'finished' : book.status === 'finished' ? 'currently-reading' : book.status;
