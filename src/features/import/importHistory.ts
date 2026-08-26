@@ -307,6 +307,16 @@ export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRet
   }
 }
 
+function kickForegroundRetryWorker() {
+  if (typeof window === 'undefined') return;
+  // App.tsx already listens for focus to resume queued enrichment work. A retry
+  // can be requested while a tiny background batch still owns the worker lock,
+  // so kick the existing listener again after that lock has had time to clear.
+  [0, 1000, 4000, 10000].forEach((delay) => {
+    window.setTimeout(() => window.dispatchEvent(new Event('focus')), delay);
+  });
+}
+
 export function requestForegroundImportRetry(targetBookIds: string[]) {
   const uniqueIds = [...new Set(targetBookIds.filter(Boolean))];
   if (uniqueIds.length === 0) return;
@@ -326,6 +336,7 @@ export function requestForegroundImportRetry(targetBookIds: string[]) {
     summaries: 0,
     updatedAt: requestedAt,
   });
+  kickForegroundRetryWorker();
 }
 
 export function consumeForegroundImportRetryRequest(): ImportEnrichmentRetryRequest | null {
