@@ -20,6 +20,20 @@ export interface BeforeSignOutDetail {
   waitUntil: (promise: Promise<unknown>) => void;
 }
 
+type InkboundWindow = Window & {
+  __inkboundLocalStorageSignalsInstalled?: boolean;
+};
+
+const CLOUD_SYNCED_STORAGE_KEYS = new Set<CloudSyncedStorageKey>([
+  'inkbound_books',
+  'inkbound_sessions',
+  'inkbound_reader_profile',
+]);
+
+function isCloudSyncedStorageKey(key: string): key is CloudSyncedStorageKey {
+  return CLOUD_SYNCED_STORAGE_KEYS.has(key as CloudSyncedStorageKey);
+}
+
 // Runtime-only revision. It resets on a full page load, which is intentional:
 // signed-in screens should wait for the current session's cloud hydration before
 // revealing cached records from a previous session/device state.
@@ -46,6 +60,39 @@ export const notifyLocalDataChanged = (keys: CloudSyncedStorageKey[]) => {
     }),
   );
 };
+
+function installLocalStorageSyncSignals() {
+  if (typeof window === 'undefined') return;
+
+  const runtimeWindow = window as InkboundWindow;
+  if (runtimeWindow.__inkboundLocalStorageSignalsInstalled) return;
+
+  const storagePrototype = Object.getPrototypeOf(window.localStorage) as Storage;
+  const originalSetItem = storagePrototype.setItem;
+  const originalRemoveItem = storagePrototype.removeItem;
+
+  storagePrototype.setItem = function setItem(key: string, value: string) {
+    originalSetItem.call(this, key, value);
+    if (this === window.localStorage && isCloudSyncedStorageKey(key)) {
+      notifyLocalDataChanged([key]);
+    }
+  };
+
+  storagePrototype.removeItem = function removeItem(key: string) {
+    originalRemoveItem.call(this, key);
+    if (this === window.localStorage && isCloudSyncedStorageKey(key)) {
+      notifyLocalDataChanged([key]);
+    }
+  };
+
+  runtimeWindow.__inkboundLocalStorageSignalsInstalled = true;
+}
+
+// CloudPersistenceBridge already knows how to turn this signal into a durable
+// pending mutation and flush it to Firestore. Install the signal at the storage
+// boundary so important book/session/profile writes cannot sit uncaptured until
+// the polling interval while a cloud snapshot races them and restores stale data.
+installLocalStorageSyncSignals();
 
 // Give the persistence bridge a bounded opportunity to flush queued mutations
 // while Firebase authentication is still valid. This is especially important
