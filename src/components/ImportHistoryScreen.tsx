@@ -18,6 +18,7 @@ import {
 interface ImportHistoryScreenProps {
   books: UserBookRecord[];
   onResumeEnrichment: () => void;
+  onRetryEnrichment: (targetBookIds: string[]) => Promise<void>;
 }
 
 async function exportUnresolved(entry: ImportHistoryEntry, books: UserBookRecord[]) {
@@ -36,7 +37,7 @@ async function exportUnresolved(entry: ImportHistoryEntry, books: UserBookRecord
   });
 }
 
-export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books, onResumeEnrichment }) => {
+export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books, onResumeEnrichment, onRetryEnrichment }) => {
   const [historyVersion, setHistoryVersion] = useState(0);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -85,22 +86,27 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
   };
 
   const retryEntry = (entry: ImportHistoryEntry, ids?: string[]) => {
-    const targetIds = ids ?? entry.items.map((item) => item.targetBookId);
-    if (targetIds.length === 0) return;
-    retryImportHistoryItems(entry, targetIds);
+    const requestedIds = retryImportHistoryItems(entry, ids ?? entry.items.map((item) => item.targetBookId));
+    if (requestedIds.length === 0) return;
+
     setImportEnrichmentPaused(false);
     setPaused(false);
-    setRetryProgress(readImportEnrichmentRetryProgress() ?? {
+    setRetryProgress({
       status: 'queued',
       completed: 0,
-      total: targetIds.length,
+      total: requestedIds.length,
       matched: 0,
       covers: 0,
       summaries: 0,
       updatedAt: new Date().toISOString(),
     });
     setHistoryVersion((value) => value + 1);
-    onResumeEnrichment();
+
+    void onRetryEnrichment(requestedIds).finally(() => {
+      const finalProgress = readImportEnrichmentRetryProgress();
+      if (finalProgress) setRetryProgress(finalProgress);
+      setHistoryVersion((value) => value + 1);
+    });
   };
 
   const retryRunning = retryProgress?.status === 'queued' || retryProgress?.status === 'running';
