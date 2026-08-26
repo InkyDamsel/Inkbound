@@ -6,6 +6,7 @@ import { PublicWebsite } from './components/PublicWebsite.tsx';
 import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
+import { readImportEnrichmentRetryProgress } from './features/import/importHistory.ts';
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
 import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.tsx';
@@ -60,6 +61,18 @@ if (!isPublicWebsite) {
   // Clean up metadata that was attached by the old permissive import matcher before
   // App reads the library from browser storage. Verified metadata is never touched.
   purgeUnverifiedLegacyImportMetadata();
+}
+
+// A foreground metadata retry survives normal in-app navigation, but a browser
+// refresh/tab close interrupts the active JavaScript worker. Warn only for a real
+// page unload; moving between Inkbound screens remains safe and uninterrupted.
+if (!isPublicWebsite && !isNativeRuntime()) {
+  window.addEventListener('beforeunload', (event) => {
+    const retry = readImportEnrichmentRetryProgress();
+    if (!retry || (retry.status !== 'queued' && retry.status !== 'running')) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 }
 
 // Android initializes Play Integrity, Google-native auth plumbing, and native
