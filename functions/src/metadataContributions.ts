@@ -5,7 +5,11 @@ import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https
 
 const catalogAdminApp = getApps()[0] ?? initializeApp();
 const db = getFirestore(catalogAdminApp);
-const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
+// Phase 1/2 beta catalog callables require Firebase Authentication and server-side
+// authorization/rate limits. App Check is intentionally not enforced here yet so
+// catalog review is not blocked by client-attestation differences across web and
+// Android beta runtimes. Re-enable it after the contribution pipeline is proven.
+const ENFORCE_APP_CHECK = false;
 const MAX_DAILY_CONTRIBUTIONS = 100;
 const MIN_SUBMISSION_INTERVAL_MS = 3_000;
 
