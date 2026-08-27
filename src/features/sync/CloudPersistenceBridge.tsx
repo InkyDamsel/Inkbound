@@ -35,7 +35,7 @@ const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
 const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
 const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
-const BRIDGE_VERSION = '6';
+const BRIDGE_VERSION = '7';
 const LOCAL_CHANGE_POLL_MS = 1500;
 const INITIAL_UPLOAD_BATCH_SIZE = 100;
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
@@ -163,8 +163,6 @@ function reconcileHydrationChanges<T extends { id: string }>(
   const cloudById = new Map(cloudItems.map((item) => [item.id, item]));
   const now = new Date().toISOString();
 
-  // Pending mutations created by an older bridge can contain a stale local copy.
-  // Never allow a known-monotonic cloud improvement to be downgraded by that copy.
   Object.entries(mutations).forEach(([id, mutation]) => {
     if (mutation.operation !== 'upsert' || !mutation.data) return;
     const cloud = cloudById.get(id);
@@ -189,9 +187,6 @@ function reconcileHydrationChanges<T extends { id: string }>(
 
     const cloudFingerprint = stable(cloud);
     const localFingerprint = stable(item);
-    // A local value is safe to promote only when the cloud is still exactly the
-    // baseline this device last saw. If both sides changed, the server wins at
-    // hydration time instead of treating a stale device cache as a fresh edit.
     if (baselineFingerprint !== undefined
       && cloudFingerprint === baselineFingerprint
       && localFingerprint !== baselineFingerprint) {
@@ -395,15 +390,32 @@ export const CloudPersistenceBridge: React.FC = () => {
         baselineSelector: (state: SyncBaseline) => Record<string, string>,
       ) => onSnapshot(collection(db!, 'users', uid, name), (snapshot) => {
         if (!hydrated.current) return;
-        const currentPending = pendingSelector(readPending(uid));
+        const pendingState = readPending(uid);
+        const currentPending = pendingSelector(pendingState);
         const currentBaseline = readBaseline(uid);
         const baselineCollection = baselineSelector(currentBaseline);
         let current = safeParse<T[]>(storageKey, []);
         let changed = false;
         let baselineChanged = false;
+        let pendingChanged = false;
+
         snapshot.docChanges().forEach((change) => {
           const id = change.doc.id;
-          if (currentPending[id]) return;
+          const envelope = change.type === 'removed' ? undefined : change.doc.data() as CloudRecord<T>;
+          const localMutation = currentPending[id];
+
+          if (localMutation) {
+            const cloudClientUpdatedAt = envelope?.clientUpdatedAt;
+            const cloudIsNewer = Boolean(cloudClientUpdatedAt && cloudClientUpdatedAt > localMutation.clientUpdatedAt);
+            if (!cloudIsNewer) return;
+
+            // Another device wrote this record after the local pending mutation.
+            // Drop the stale pending copy before applying the cloud value so an
+            // old tab/device cannot immediately overwrite the newer edit again.
+            delete currentPending[id];
+            pendingChanged = true;
+          }
+
           if (change.type === 'removed') {
             const next = current.filter((item) => item.id !== id);
             changed ||= next.length !== current.length;
@@ -412,7 +424,8 @@ export const CloudPersistenceBridge: React.FC = () => {
             if (baselineCollection[id] !== undefined) { delete baselineCollection[id]; baselineChanged = true; }
             return;
           }
-          const record = (change.doc.data() as CloudRecord<T>).data;
+
+          const record = envelope?.data;
           if (!record) return;
           const serialized = stable(record);
           const index = current.findIndex((item) => item.id === record.id);
@@ -422,6 +435,8 @@ export const CloudPersistenceBridge: React.FC = () => {
           fingerprints.current.set(record.id, serialized);
           if (baselineCollection[record.id] !== serialized) { baselineCollection[record.id] = serialized; baselineChanged = true; }
         });
+
+        if (pendingChanged) writePending(uid, pendingState);
         if (baselineChanged) writeBaseline(uid, currentBaseline);
         if (changed) { localStorage.setItem(storageKey, stable(current)); notifyCloudDataUpdated([storageKey]); }
       }, () => undefined);
