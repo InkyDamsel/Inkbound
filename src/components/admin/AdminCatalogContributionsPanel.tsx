@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Database, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, Database, Loader2, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
 import {
   getCatalogContributions,
+  getCatalogPromotionStatuses,
+  promoteCatalogContribution,
   reviewCatalogContribution,
   type CatalogContribution,
+  type CatalogPromotionStatus,
 } from '../../features/catalog/metadataContributions';
 
 type ReviewStatus = 'pending' | 'approved' | 'rejected';
@@ -20,8 +23,10 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
   const [filter, setFilter] = useState<ReviewStatus>('pending');
   const [items, setItems] = useState<CatalogContribution[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [promotionStatuses, setPromotionStatuses] = useState<Record<string, CatalogPromotionStatus>>({});
   const [loading, setLoading] = useState(false);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [promotingId, setPromotingId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
 
   const load = async (nextFilter = filter) => {
@@ -30,6 +35,11 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
     try {
       const next = await getCatalogContributions(nextFilter);
       setItems(next);
+      if (nextFilter === 'approved' && next.length > 0) {
+        setPromotionStatuses(await getCatalogPromotionStatuses(next.map((item) => item.id)));
+      } else {
+        setPromotionStatuses({});
+      }
       setStatus(`${next.length} ${nextFilter} catalog contribution${next.length === 1 ? '' : 's'} loaded.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Catalog contributions could not be loaded.');
@@ -59,12 +69,29 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
         return next;
       });
       setStatus(decision === 'approved'
-        ? 'Contribution approved for future catalog promotion. It is not live catalog data yet.'
+        ? 'Contribution approved. Open the Approved tab when you are ready to promote it to the Trusted Catalog.'
         : 'Contribution rejected and retained in review history.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'The contribution could not be reviewed.');
     } finally {
       setReviewingId(null);
+    }
+  };
+
+  const promote = async (item: CatalogContribution) => {
+    setPromotingId(item.id);
+    setStatus('');
+    try {
+      const result = await promoteCatalogContribution(item.id);
+      setPromotionStatuses((current) => ({
+        ...current,
+        [item.id]: { promoted: true, catalogId: result.catalogId, promotedAt: new Date().toISOString() },
+      }));
+      setStatus(`${item.fields.title} is now live in the Inkbound Trusted Catalog and can be used by metadata searches.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'The approved contribution could not be promoted.');
+    } finally {
+      setPromotingId(null);
     }
   };
 
@@ -79,7 +106,7 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
             <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Catalog contribution review</h2>
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ink-muted)]">
-            Review reader-submitted catalog-safe metadata. Approval only marks a contribution as trusted for a future catalog promotion step; it does not change anyone else’s library yet.
+            Review reader-submitted catalog-safe metadata. Approval verifies the contribution; promotion is a separate owner-only step that makes the record available to Inkbound metadata searches.
           </p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">
@@ -110,12 +137,16 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
           <p className="rounded-2xl border border-dashed border-[var(--ink-border)] p-6 text-center text-sm text-[var(--ink-muted)]">No {filter} catalog contributions.</p>
         ) : items.map((item) => {
           const fields = item.fields;
-          const busy = reviewingId === item.id;
+          const busy = reviewingId === item.id || promotingId === item.id;
+          const promotion = promotionStatuses[item.id];
           return (
             <article key={item.id} className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 sm:p-5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <strong className="block break-words font-serif text-xl text-[var(--ink-ivory)]">{fields.title}</strong>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong className="block break-words font-serif text-xl text-[var(--ink-ivory)]">{fields.title}</strong>
+                    {promotion?.promoted && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-300/5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-200"><ShieldCheck className="h-3.5 w-3.5" />Trusted Catalog</span>}
+                  </div>
                   <span className="text-sm text-[var(--ink-muted)]">{fields.author}</span>
                   <p className="mt-2 break-all text-[11px] text-[var(--ink-muted)]">{item.catalogKey}</p>
                 </div>
@@ -147,12 +178,23 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
                   />
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
                     <button type="button" disabled={busy} onClick={() => void review(item, 'rejected')} className="quiet-shelf-secondary-action justify-center disabled:opacity-40"><XCircle className="h-4 w-4" />Reject</button>
-                    <button type="button" disabled={busy} onClick={() => void review(item, 'approved')} className="quiet-shelf-primary-action justify-center disabled:opacity-40">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Approve</button>
+                    <button type="button" disabled={busy} onClick={() => void review(item, 'approved')} className="quiet-shelf-primary-action justify-center disabled:opacity-40">{reviewingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Approve</button>
                   </div>
                 </div>
               ) : (
-                <div className="mt-4 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-3 text-xs text-[var(--ink-muted)]">
-                  Reviewed {formatDate(item.reviewedAt)}{item.reviewedByEmail ? ` by ${item.reviewedByEmail}` : ''}{item.reviewNote ? ` — ${item.reviewNote}` : ''}
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-3 text-xs text-[var(--ink-muted)]">
+                    Reviewed {formatDate(item.reviewedAt)}{item.reviewedByEmail ? ` by ${item.reviewedByEmail}` : ''}{item.reviewNote ? ` — ${item.reviewNote}` : ''}
+                  </div>
+                  {filter === 'approved' && (
+                    promotion?.promoted ? (
+                      <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100">Promoted to the Trusted Catalog {promotion.promotedAt ? `on ${formatDate(promotion.promotedAt)}` : ''}. This record can now assist Inkbound metadata searches.</div>
+                    ) : (
+                      <div className="flex justify-end">
+                        <button type="button" disabled={busy} onClick={() => void promote(item)} className="quiet-shelf-primary-action justify-center disabled:opacity-40">{promotingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Promote to Trusted Catalog</button>
+                      </div>
+                    )
+                  )}
                 </div>
               )}
             </article>
