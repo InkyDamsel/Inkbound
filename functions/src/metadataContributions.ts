@@ -20,6 +20,7 @@ interface CatalogFields {
   author: string;
   isbn10?: string;
   isbn13?: string;
+  asin?: string;
   seriesName?: string;
   seriesNumber?: number;
   publisher?: string;
@@ -61,6 +62,10 @@ function normalizeIsbn(value: unknown): string {
   return typeof value === 'string' ? value.replace(/[^0-9X]/gi, '').toUpperCase() : '';
 }
 
+function normalizeAsin(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/[^A-Z0-9]/gi, '').toUpperCase() : '';
+}
+
 function normalizeIdentity(value: unknown): string {
   return typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() : '';
 }
@@ -77,6 +82,10 @@ function validIsbn13(value: string): boolean {
   return (10 - (total % 10)) % 10 === Number(value[12]);
 }
 
+function validAsin(value: string): boolean {
+  return /^[A-Z0-9]{10}$/.test(value);
+}
+
 function normalizeDate(value: unknown): string | undefined {
   const raw = optionalString(value, 32);
   if (!raw) return undefined;
@@ -90,14 +99,16 @@ function normalizeFields(value: unknown): CatalogFields {
   const author = requiredString(input.author, 'Author', 300);
   const isbn10 = normalizeIsbn(input.isbn10) || undefined;
   const isbn13 = normalizeIsbn(input.isbn13) || undefined;
+  const asin = normalizeAsin(input.asin) || undefined;
   if (isbn10 && !validIsbn10(isbn10)) throw new HttpsError('invalid-argument', 'ISBN-10 is invalid.');
   if (isbn13 && !validIsbn13(isbn13)) throw new HttpsError('invalid-argument', 'ISBN-13 is invalid.');
+  if (asin && !validAsin(asin)) throw new HttpsError('invalid-argument', 'ASIN must be exactly 10 letters or numbers.');
 
   const publisher = optionalString(input.publisher, 200);
   const publicationDate = normalizeDate(input.publicationDate);
   const externalEditionId = optionalString(input.externalEditionId, 200);
-  if (!isbn10 && !isbn13 && !externalEditionId && !(publisher && publicationDate)) {
-    throw new HttpsError('failed-precondition', 'Add an ISBN, an edition identifier, or both publisher and publication date before contributing catalog metadata.');
+  if (!isbn10 && !isbn13 && !asin && !externalEditionId && !(publisher && publicationDate)) {
+    throw new HttpsError('failed-precondition', 'Add an ISBN, ASIN, edition identifier, or both publisher and publication date before contributing catalog metadata.');
   }
 
   const pageCount = input.pageCount === undefined || input.pageCount === null || input.pageCount === '' ? undefined : Number(input.pageCount);
@@ -111,7 +122,7 @@ function normalizeFields(value: unknown): CatalogFields {
   const format = optionalString(input.format, 80);
   return {
     title, author,
-    ...(subtitle ? { subtitle } : {}), ...(isbn10 ? { isbn10 } : {}), ...(isbn13 ? { isbn13 } : {}),
+    ...(subtitle ? { subtitle } : {}), ...(isbn10 ? { isbn10 } : {}), ...(isbn13 ? { isbn13 } : {}), ...(asin ? { asin } : {}),
     ...(seriesName ? { seriesName } : {}), ...(seriesNumber !== undefined ? { seriesNumber } : {}),
     ...(publisher ? { publisher } : {}), ...(publicationDate ? { publicationDate } : {}),
     ...(pageCount !== undefined ? { pageCount } : {}), ...(language ? { language } : {}),
@@ -122,6 +133,7 @@ function normalizeFields(value: unknown): CatalogFields {
 function catalogKey(fields: CatalogFields): string {
   if (fields.isbn13) return `isbn13:${fields.isbn13}`;
   if (fields.isbn10) return `isbn10:${fields.isbn10}`;
+  if (fields.asin) return `asin:${fields.asin}`;
   if (fields.externalEditionId) return `edition:${normalizeIdentity(fields.externalEditionId)}`;
   return `work:${normalizeIdentity(fields.title)}::${normalizeIdentity(fields.author)}::${normalizeIdentity(fields.publisher)}::${fields.publicationDate ?? ''}`;
 }
@@ -165,7 +177,7 @@ function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
       source: 'inkbound-catalog', externalEditionId: id, title: fields.title, subtitle: fields.subtitle,
       authors: [fields.author], genres: [], publisher: fields.publisher, publicationDate: fields.publicationDate,
       publicationYear: publicationYear(fields.publicationDate), language: fields.language, format: fields.format ?? 'ebook',
-      isbn10: fields.isbn10, isbn13: fields.isbn13, pageCount: fields.pageCount,
+      isbn10: fields.isbn10, isbn13: fields.isbn13, asin: fields.asin, pageCount: fields.pageCount,
       editionName: 'Inkbound verified edition', specialFeatures: [],
     }],
   };
@@ -173,6 +185,7 @@ function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
 
 async function searchTrustedCatalog(data: Record<string, unknown>) {
   const isbn = normalizeIsbn(data.isbn);
+  const asin = normalizeAsin(data.asin);
   const title = normalizeIdentity(data.title);
   const author = normalizeIdentity(data.author);
   const matches = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
@@ -181,6 +194,10 @@ async function searchTrustedCatalog(data: Record<string, unknown>) {
     snapshot.docs.forEach((doc) => matches.set(doc.id, doc));
   } else if (isbn.length === 10) {
     const snapshot = await db.collection('trustedCatalogEditions').where('isbn10', '==', isbn).limit(10).get();
+    snapshot.docs.forEach((doc) => matches.set(doc.id, doc));
+  }
+  if (matches.size === 0 && asin.length === 10) {
+    const snapshot = await db.collection('trustedCatalogEditions').where('asin', '==', asin).limit(10).get();
     snapshot.docs.forEach((doc) => matches.set(doc.id, doc));
   }
   if (matches.size === 0 && title) {
@@ -283,7 +300,8 @@ export const reviewMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_
       await db.runTransaction(async (transaction) => {
         transaction.set(db.doc(`trustedCatalogEditions/${catalogId}`), {
           catalogKey: key, fields, normalizedTitle: normalizeIdentity(fields.title), normalizedAuthor: normalizeIdentity(fields.author),
-          isbn10: normalizeIsbn(fields.isbn10) || null, isbn13: normalizeIsbn(fields.isbn13) || null, active: true,
+          isbn10: normalizeIsbn(fields.isbn10) || null, isbn13: normalizeIsbn(fields.isbn13) || null,
+          asin: normalizeAsin(fields.asin) || null, active: true,
           sourceContributionId: contributionId, promotedAt: FieldValue.serverTimestamp(), promotedBy: auth.uid,
           promotedByEmail: admin.email, updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
