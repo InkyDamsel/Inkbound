@@ -144,10 +144,22 @@ export async function getCatalogPromotionStatuses(contributionIds: string[]) {
 
 export async function searchInkboundTrustedCatalog(input: { isbn?: string; title?: string; author?: string }): Promise<BookSearchResponse> {
   if (!functions) return { groups: [], totalItems: 0 };
-  const callable = httpsCallable<typeof input & { action: 'searchTrustedCatalog' }, BookSearchResponse>(functions, 'getMetadataContributions');
+  const callable = httpsCallable<{ action: 'searchTrustedCatalog'; isbn?: string; title?: string; author?: string }, BookSearchResponse>(functions, 'getMetadataContributions');
   try {
-    const response = await callable({ action: 'searchTrustedCatalog', ...input });
-    return response.data ?? { groups: [], totalItems: 0 };
+    if (input.isbn) {
+      const response = await callable({ action: 'searchTrustedCatalog', ...input });
+      return response.data ?? { groups: [], totalItems: 0 };
+    }
+
+    const rawTitle = input.title?.trim() ?? '';
+    if (!rawTitle) return { groups: [], totalItems: 0 };
+    const words = rawTitle.split(/\s+/).filter(Boolean);
+    const variants = [...new Set(Array.from({ length: Math.min(5, words.length) }, (_, index) => words.slice(0, words.length - index).join(' ')).filter(Boolean))];
+    for (const title of variants) {
+      const response = await callable({ action: 'searchTrustedCatalog', title, author: input.author });
+      if ((response.data?.groups?.length ?? 0) > 0) return response.data;
+    }
+    return { groups: [], totalItems: 0 };
   } catch (error) {
     console.warn('Inkbound Trusted Catalog lookup unavailable; continuing with external catalogs.', error);
     return { groups: [], totalItems: 0 };
