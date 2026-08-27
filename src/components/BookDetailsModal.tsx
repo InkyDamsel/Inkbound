@@ -5,6 +5,6 @@ import { CatalogContributionLauncher } from './catalog/CatalogContributionLaunch
 export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsModalCore>> = (props) => (
   <>
     <BookDetailsModalCore {...props} />
-    {props.book && <CatalogContributionLauncher book={props.book} />}
+    {props.book && <CatalogContributionLauncher book={props.book} onUpdateBook={props.onUpdateBook} />}
   </>
 );
