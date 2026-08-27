@@ -134,18 +134,15 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       const runtimeStorage = getRuntimeStorage();
       runtimeStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(updatedBooks));
 
-      // Selecting a stored cover is an explicit user choice. Remove the book
-      // from automatic enrichment immediately so metadata repair cannot replace it.
       writeImportEnrichmentQueue(
         readImportEnrichmentQueue().filter((item) => item.targetBookId !== selectedBook.id),
       );
 
-      // App.tsx reloads the canonical library from this event. The storage write
-      // is also observed by CloudPersistenceBridge and synced to the account.
       notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
 
       setRestoredMessage(`Using this manual cover for “${selectedBook.work.title}”.`);
       setSelectedBookId('');
+      setBookQuery('');
     } catch (caught) {
       console.error('Inkbound manual cover assignment failed.', caught);
       setError('Inkbound could not attach that cover. Nothing was deleted; try again.');
@@ -275,25 +272,37 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
                 type="search"
                 value={bookQuery}
                 onChange={(event) => setBookQuery(event.target.value)}
-                placeholder="Find a book"
+                placeholder="Find a book by title or author"
                 className="min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] pl-10 pr-3 text-sm text-[var(--ink-ivory)] outline-none"
               />
             </label>
 
-            <label className="mt-3 block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]" htmlFor="manual-cover-library-book">
-              Use on book
-            </label>
-            <select
-              id="manual-cover-library-book"
-              value={selectedBookId}
-              onChange={(event) => setSelectedBookId(event.target.value)}
-              className="mt-2 min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] px-3 text-sm text-[var(--ink-ivory)] outline-none"
-            >
-              <option value="">Choose a book…</option>
-              {visibleBooks.map((book) => (
-                <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>
-              ))}
-            </select>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Choose a book</span>
+              <span className="text-[11px] text-[var(--ink-muted)]">{visibleBooks.length.toLocaleString()} of {books.length.toLocaleString()}</span>
+            </div>
+            <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] p-1">
+              {visibleBooks.map((book) => {
+                const isSelected = selectedBookId === book.id;
+                const edition = activeEditionFor(book);
+                return (
+                  <button
+                    key={book.id}
+                    type="button"
+                    onClick={() => setSelectedBookId(book.id)}
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isSelected ? 'bg-[var(--ink-gold)]/15 text-[var(--ink-gold)]' : 'text-[var(--ink-ivory)] hover:bg-[var(--ink-surface-raised)]'}`}
+                  >
+                    <span className="block break-words font-semibold">{book.work.title}</span>
+                    <span className="mt-0.5 block break-words text-xs text-[var(--ink-muted)]">
+                      {book.work.author}{edition?.coverUrl ? ' · has cover' : ' · missing cover'}
+                    </span>
+                  </button>
+                );
+              })}
+              {visibleBooks.length === 0 && (
+                <p className="p-4 text-center text-xs text-[var(--ink-muted)]">No books match that search.</p>
+              )}
+            </div>
 
             {selectedBook && selectedBookEdition?.coverUrl && (
               <p className="mt-3 rounded-xl border border-amber-500/25 bg-amber-950/15 p-3 text-xs leading-5 text-amber-200">
