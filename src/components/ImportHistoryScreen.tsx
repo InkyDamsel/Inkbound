@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, FileClock, Loader2, Pause, Play, RefreshCw, Search } from 'lucide-react';
 import type { UserBookRecord } from '../types';
 import { exportRuntimeTextFile } from '../platform/runtimeExport';
@@ -54,6 +54,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
   const [retryProgress, setRetryProgress] = useState<ImportEnrichmentRetryProgress | null>(() => readImportEnrichmentRetryProgress());
   const [showRetryWarning, setShowRetryWarning] = useState(false);
   const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
+  const retryEnrichmentRef = useRef(onRetryEnrichment);
   const history = useMemo(() => ensureImportHistoryForExistingLibrary(books), [books, historyVersion]);
   const selectedEntry = history.find((entry) => entry.id === selectedEntryId) ?? history[0] ?? null;
   const queuedBookIds = useMemo(
@@ -66,6 +67,10 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     : 0;
 
   useEffect(() => {
+    retryEnrichmentRef.current = onRetryEnrichment;
+  }, [onRetryEnrichment]);
+
+  useEffect(() => {
     const progress = readImportEnrichmentRetryProgress();
     const activeRetry = readImportEnrichmentActiveRetry();
     if (!progress || !activeRetry || (progress.status !== 'queued' && progress.status !== 'running')) return;
@@ -73,19 +78,18 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     setRetryProgress(progress);
     setImportEnrichmentPaused(false);
     setPaused(false);
-    setShowRetryWarning(true);
 
     const runtimeWindow = window as RetryRuntimeWindow;
     if (runtimeWindow.__inkboundImportRetryRunning) return;
 
     runtimeWindow.__inkboundImportRetryRunning = true;
-    void onRetryEnrichment(activeRetry.targetBookIds).finally(() => {
+    void retryEnrichmentRef.current(activeRetry.targetBookIds).finally(() => {
       runtimeWindow.__inkboundImportRetryRunning = false;
       const finalProgress = readImportEnrichmentRetryProgress();
       if (finalProgress) setRetryProgress(finalProgress);
       setHistoryVersion((value) => value + 1);
     });
-  }, [onRetryEnrichment]);
+  }, []);
 
   useEffect(() => {
     if (!retryProgress || (retryProgress.status !== 'queued' && retryProgress.status !== 'running')) return;
