@@ -81,6 +81,24 @@ function isValidHistoryEntry(value: unknown): value is ImportHistoryEntry {
     && Array.isArray(entry.items);
 }
 
+function readCurrentLibrary(): UserBookRecord[] {
+  try {
+    const stored = localStorage.getItem('inkbound_books') ?? localStorage.getItem('bookhaven_books');
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as unknown;
+    return Array.isArray(parsed) ? parsed as UserBookRecord[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function hasManualActiveEdition(book?: UserBookRecord): boolean {
+  if (!book) return false;
+  const editions = Array.isArray(book.editions) ? book.editions : [];
+  const activeEdition = editions.find((edition) => edition.id === book.activeEditionId) ?? editions[0];
+  return activeEdition?.externalSource === 'manual';
+}
+
 export function readImportHistory(): ImportHistoryEntry[] {
   try {
     const stored = localStorage.getItem(IMPORT_HISTORY_STORAGE_KEY);
@@ -347,19 +365,29 @@ export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRet
 
 /**
  * Rebuilds the retry queue from import history and returns the exact book IDs
- * requested by the user. Starting the foreground worker is intentionally left
- * to App.tsx so web and Android both use the same direct, deterministic path.
+ * requested by the user. Books whose active edition has been manually edited
+ * are intentionally excluded: user-authored edition data always wins over
+ * automatic metadata repair.
  */
 export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds?: string[]): string[] {
   const allowed = targetBookIds ? new Set(targetBookIds) : null;
   const existing = readImportEnrichmentQueue();
   const byBookId = new Map(existing.map((item) => [item.targetBookId, item]));
+  const currentBooksById = new Map(readCurrentLibrary().map((book) => [book.id, book]));
   const requestedIds: string[] = [];
+
   (Array.isArray(entry.items) ? entry.items : []).forEach((item) => {
     if (allowed && !allowed.has(item.targetBookId)) return;
+
+    if (hasManualActiveEdition(currentBooksById.get(item.targetBookId))) {
+      byBookId.delete(item.targetBookId);
+      return;
+    }
+
     byBookId.set(item.targetBookId, historyItemToQueueItem(item));
     requestedIds.push(item.targetBookId);
   });
+
   writeImportEnrichmentQueue([...byBookId.values()]);
   if (requestedIds.length > 0) {
     writeImportEnrichmentActiveRetry({
