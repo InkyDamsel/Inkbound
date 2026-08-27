@@ -33,6 +33,19 @@ const emptySnapshot = (): ImportVerificationJobSnapshot => ({
   unmatched: [],
 });
 
+function normalizeImportedIsbn(value?: string): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  const spreadsheetWrapped = trimmed.match(/^=\s*["']([^"']+)["']$/);
+  const candidate = spreadsheetWrapped?.[1] ?? trimmed;
+  const normalized = candidate.replace(/[^0-9X]/gi, '').toUpperCase();
+  return normalized || undefined;
+}
+
+function normalizeImportRecord(record: ImportRecordItem): ImportRecordItem {
+  return { ...record, isbn: normalizeImportedIsbn(record.isbn) };
+}
+
 function clearCompletedUiState() {
   try {
     localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
@@ -103,7 +116,7 @@ export function readImportMetadataPending(): ImportRecordItem[] {
     const stored = localStorage.getItem(METADATA_PENDING_STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored) as unknown;
-    return Array.isArray(parsed) ? (parsed as ImportRecordItem[]) : [];
+    return Array.isArray(parsed) ? (parsed as ImportRecordItem[]).map(normalizeImportRecord) : [];
   } catch {
     return [];
   }
@@ -156,14 +169,17 @@ export function startImportVerificationJob(
 ): Promise<void> {
   if (activePromise) return activePromise;
 
+  const normalizedItems = items.map(normalizeImportRecord);
+  const normalizedPreDetectedDuplicates = preDetectedDuplicates.map(normalizeImportRecord);
+
   emit({
     status: 'running',
     completed: 0,
-    total: items.length,
+    total: normalizedItems.length,
     importedCount: 0,
     matchedCount: 0,
     metadataPendingCount: 0,
-    duplicates: preDetectedDuplicates,
+    duplicates: normalizedPreDetectedDuplicates,
     unmatched: [],
   });
 
@@ -171,7 +187,7 @@ export function startImportVerificationJob(
 
   activePromise = (async () => {
     try {
-      const verification = await verifyImportRecords(items, (completed, total) => {
+      const verification = await verifyImportRecords(normalizedItems, (completed, total) => {
         emit({
           ...snapshot,
           status: 'running',
@@ -181,18 +197,18 @@ export function startImportVerificationJob(
       }, librarySnapshot);
 
       const verifiedRecords = verification.verified.map((record) => ({
-        ...record,
+        ...normalizeImportRecord(record),
         importMetadataVerified: true,
       }));
       const unmatchedRecords = verification.unmatched.map((record) => ({
-        ...record,
+        ...normalizeImportRecord(record),
         importMetadataVerified: false,
       }));
       const recordsToImport = [...verifiedRecords, ...unmatchedRecords];
       const executionResult = recordsToImport.length > 0
         ? await executeImport(recordsToImport)
         : [];
-      const importedRecords = Array.isArray(executionResult) ? executionResult : recordsToImport;
+      const importedRecords = Array.isArray(executionResult) ? executionResult.map(normalizeImportRecord) : recordsToImport;
       const importedIds = new Set(importedRecords.map((record) => record.id));
       const acceptedVerified = verifiedRecords.filter((record) => importedIds.has(record.id));
       const acceptedUnmatched = unmatchedRecords.filter((record) => importedIds.has(record.id));
@@ -202,14 +218,14 @@ export function startImportVerificationJob(
 
       persistMetadataPending(acceptedUnmatched);
 
-      const duplicateMap = new Map(preDetectedDuplicates.map((record) => [record.id, record]));
-      verification.duplicates.forEach((record) => duplicateMap.set(record.id, record));
+      const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
+      verification.duplicates.map(normalizeImportRecord).forEach((record) => duplicateMap.set(record.id, record));
       writeRejected.forEach((record) => duplicateMap.set(record.id, record));
 
       emit({
         status: 'complete',
-        completed: items.length,
-        total: items.length,
+        completed: normalizedItems.length,
+        total: normalizedItems.length,
         importedCount: importedRecords.length,
         matchedCount: acceptedVerified.length,
         metadataPendingCount: acceptedUnmatched.length,
