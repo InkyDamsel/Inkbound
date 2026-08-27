@@ -78,6 +78,31 @@ function monthLabel(value: string) {
   });
 }
 
+function isImportedBook(book: UserBookRecord): boolean {
+  return Boolean(
+    book.sourceOfImport?.toLowerCase().includes('import')
+    || book.privateTags?.includes('imported')
+    || book.id.startsWith('book-import-'),
+  );
+}
+
+function hasTrustworthyFinishedDate(book: UserBookRecord): boolean {
+  const finished = canonicalDateKey(book.dateFinished);
+  if (!finished) return false;
+  if (!isImportedBook(book)) return true;
+
+  if (book.importFinishedDateProvided === true) return true;
+  if (book.importFinishedDateProvided === false) return false;
+
+  // Legacy imports did not record whether a finished date came from the export.
+  // Older builds could stamp the import/add date into finished books when the CSV
+  // omitted Date Read. Treat an identical added/finished date as unknown instead
+  // of inventing reading history. If the reader later edits the finish date, it
+  // naturally becomes trustworthy because it no longer matches the import date.
+  const added = canonicalDateKey(book.dateAdded);
+  return !added || finished !== added;
+}
+
 export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProps> = ({
   books,
   onSelectBook,
@@ -85,7 +110,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
   const finishedBooks = useMemo(
     () =>
       books
-        .filter((book) => book.status === 'finished' && canonicalDateKey(book.dateFinished))
+        .filter((book) => book.status === 'finished' && hasTrustworthyFinishedDate(book))
         .sort((a, b) => (canonicalDateKey(a.dateFinished) ?? '').localeCompare(canonicalDateKey(b.dateFinished) ?? '')),
     [books],
   );
