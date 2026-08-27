@@ -113,7 +113,6 @@ function readGoogleBooksCache(query: string): GoogleBooksCatalogPayload | undefi
     googleBooksCache.delete(key);
     return undefined;
   }
-  // Refresh insertion order so actively used searches survive bounded eviction.
   googleBooksCache.delete(key);
   googleBooksCache.set(key, cached);
   return cached.payload;
@@ -270,6 +269,10 @@ async function hardcoverCatalog(query: string) {
  * Authenticated catalog gateway used by Inkbound's protected third-party search
  * integrations. The existing export name is retained for compatibility; Android
  * may request provider='google-books' so the Google API key stays off the WebView.
+ *
+ * Hardcover is supplemental metadata. Its upstream availability or credentials
+ * must never turn an otherwise successful Inkbound book search into a failed
+ * client request. Google Books remains the authoritative protected transport.
  */
 export const searchHardcoverBooks = onCall(
   { secrets: [HARDCOVER_API_TOKEN, GOOGLE_BOOKS_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
@@ -284,7 +287,12 @@ export const searchHardcoverBooks = onCall(
         ? await googleBooksCatalog(query)
         : await hardcoverCatalog(query);
     } catch (error) {
-      console.error(`${provider} search failed`, error);
+      if (provider === 'hardcover') {
+        console.warn('Optional Hardcover catalog supplement unavailable.', error);
+        return { groups: [], totalItems: 0 };
+      }
+
+      console.error('google-books search failed', error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError('unavailable', error instanceof Error ? error.message : 'Protected book search failed.');
     }
