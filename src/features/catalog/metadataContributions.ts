@@ -122,9 +122,9 @@ export async function reviewCatalogContribution(input: { contributionId: string;
 
 export async function promoteCatalogContribution(contributionId: string) {
   if (!functions) throw new Error('Trusted catalog service is unavailable in this Inkbound runtime.');
-  const callable = httpsCallable<{ contributionId: string }, { success: boolean; catalogId: string }>(functions, 'promoteMetadataContribution');
+  const callable = httpsCallable<{ contributionId: string; decision: 'promoted' }, { success: boolean; status: 'promoted'; catalogId: string }>(functions, 'reviewMetadataContribution');
   try {
-    const response = await callable({ contributionId });
+    const response = await callable({ contributionId, decision: 'promoted' });
     return response.data;
   } catch (error) {
     throw new Error(catalogServiceMessage(error, 'Inkbound could not promote this approved record to the Trusted Catalog.'));
@@ -133,9 +133,9 @@ export async function promoteCatalogContribution(contributionId: string) {
 
 export async function getCatalogPromotionStatuses(contributionIds: string[]) {
   if (!functions || contributionIds.length === 0) return {} as Record<string, CatalogPromotionStatus>;
-  const callable = httpsCallable<{ contributionIds: string[] }, { statuses: Record<string, CatalogPromotionStatus> }>(functions, 'getCatalogPromotionStatuses');
+  const callable = httpsCallable<{ action: 'promotionStatuses'; contributionIds: string[] }, { statuses: Record<string, CatalogPromotionStatus> }>(functions, 'getMetadataContributions');
   try {
-    const response = await callable({ contributionIds: contributionIds.slice(0, 100) });
+    const response = await callable({ action: 'promotionStatuses', contributionIds: contributionIds.slice(0, 100) });
     return response.data.statuses ?? {};
   } catch (error) {
     throw new Error(catalogServiceMessage(error, 'Inkbound could not load Trusted Catalog promotion status.'));
@@ -144,9 +144,9 @@ export async function getCatalogPromotionStatuses(contributionIds: string[]) {
 
 export async function searchInkboundTrustedCatalog(input: { isbn?: string; title?: string; author?: string }): Promise<BookSearchResponse> {
   if (!functions) return { groups: [], totalItems: 0 };
-  const callable = httpsCallable<typeof input, BookSearchResponse>(functions, 'searchTrustedCatalog');
+  const callable = httpsCallable<typeof input & { action: 'searchTrustedCatalog' }, BookSearchResponse>(functions, 'getMetadataContributions');
   try {
-    const response = await callable(input);
+    const response = await callable({ action: 'searchTrustedCatalog', ...input });
     return response.data ?? { groups: [], totalItems: 0 };
   } catch (error) {
     console.warn('Inkbound Trusted Catalog lookup unavailable; continuing with external catalogs.', error);
