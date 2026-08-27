@@ -90,6 +90,9 @@ export interface UserBookRecord {
   // distinguish verified matches from legacy guesses that need review.
   importMetadataVerified?: boolean;
   importMetadataReviewNeeded?: boolean;
+  // True only when the source export explicitly supplied a finished/read date.
+  // False means the book was imported as finished without a trustworthy historical date.
+  importFinishedDateProvided?: boolean;
   dateAdded: string;
   dateStarted?: string;
   dateFinished?: string;
