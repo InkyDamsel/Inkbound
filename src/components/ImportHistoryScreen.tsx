@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Download, FileClock, Loader2, Pause, Play,
 import type { UserBookRecord } from '../types';
 import { exportRuntimeTextFile } from '../platform/runtimeExport';
 import { readImportEnrichmentQueue } from '../features/import/libraryEnrichment';
+import { ManualCoverRecoveryPanel } from './ManualCoverRecoveryPanel';
 import {
   ensureImportHistoryForExistingLibrary,
   getImportHistoryProgress,
@@ -231,6 +232,8 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
           {paused ? 'Resume Detail Updates' : 'Pause Detail Updates'}
         </button>
       </header>
+
+      <ManualCoverRecoveryPanel books={books} />
 
       {retryProgress && (
         <section className={`rounded-2xl border p-4 ${retryProgress.status === 'error' ? 'border-rose-500/35 bg-rose-950/20' : retryProgress.status === 'complete' ? 'border-emerald-500/30 bg-emerald-950/15' : 'border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/10'}`} role="status" aria-live="polite">
