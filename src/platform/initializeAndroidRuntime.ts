@@ -52,7 +52,7 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
 
 const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInWithGoogle({
   skipNativeAuth: true,
-  useCredentialManager: false,
+  useCredentialManager: true,
 });
 
 /**
