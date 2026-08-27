@@ -4,7 +4,7 @@ import { getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
 import type { UserBookRecord } from '../types';
 import { auth, storage } from '../lib/firebase';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
-import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
 import { readImportEnrichmentQueue, writeImportEnrichmentQueue } from '../features/import/libraryEnrichment';
 
 interface StoredManualCover {
@@ -138,6 +138,9 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
         readImportEnrichmentQueue().filter((item) => item.targetBookId !== selectedBook.id),
       );
 
+      // Treat the cover assignment as a canonical local edit and flush it now.
+      // The cloud-data event separately refreshes the currently mounted UI.
+      notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
       notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
 
       setRestoredMessage(`Using this manual cover for “${selectedBook.work.title}”.`);
