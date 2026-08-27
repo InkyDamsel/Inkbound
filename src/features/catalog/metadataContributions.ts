@@ -32,14 +32,17 @@ export interface CatalogContribution {
   reviewNote: string;
 }
 
+const normalizeIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() || undefined;
+
 export function buildCatalogContributionFields(book: UserBookRecord): CatalogContributionFields | null {
   const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
   const title = book.work.title?.trim();
   const author = book.work.author?.trim();
   if (!edition || !title || !author) return null;
 
-  const isbn10 = edition.isbn10?.trim();
-  const isbn13 = edition.isbn13?.trim();
+  const genericIsbn = normalizeIsbn(edition.isbn);
+  const isbn10 = normalizeIsbn(edition.isbn10) ?? (genericIsbn?.length === 10 ? genericIsbn : undefined);
+  const isbn13 = normalizeIsbn(edition.isbn13) ?? (genericIsbn?.length === 13 ? genericIsbn : undefined);
   const publisher = edition.publisher?.trim();
   const publicationDate = edition.publicationDate?.trim();
   const externalEditionId = edition.externalEditionId?.trim();
