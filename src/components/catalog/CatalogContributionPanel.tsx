@@ -5,6 +5,7 @@ import { buildCatalogContributionFields, submitCatalogContribution } from '../..
 
 interface CatalogContributionPanelProps {
   book: UserBookRecord;
+  onUpdateBook: (updatedBook: UserBookRecord) => void;
 }
 
 function contributionErrorMessage(error: unknown): string {
@@ -24,24 +25,38 @@ function contributionErrorMessage(error: unknown): string {
 
 const cleanAsin = (value: string) => value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 10);
 
-export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> = ({ book }) => {
+export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> = ({ book, onUpdateBook }) => {
   const activeEdition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
   const [asin, setAsin] = useState(activeEdition?.asin ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState('');
   const [submitFailed, setSubmitFailed] = useState(false);
 
+  const normalizedAsin = cleanAsin(asin);
+  const asinIsValid = !asin || normalizedAsin.length === 10;
+
   const contributionBook = useMemo<UserBookRecord>(() => {
-    const normalizedAsin = cleanAsin(asin);
     if (!activeEdition || !normalizedAsin) return book;
     return {
       ...book,
       editions: book.editions.map((edition) => edition.id === activeEdition.id ? { ...edition, asin: normalizedAsin } : edition),
     };
-  }, [activeEdition, asin, book]);
+  }, [activeEdition, book, normalizedAsin]);
 
   const fields = useMemo(() => buildCatalogContributionFields(contributionBook), [contributionBook]);
-  const asinIsValid = !asin || cleanAsin(asin).length === 10;
+
+  const saveAsinToEdition = () => {
+    if (!activeEdition || !asinIsValid) return false;
+    const currentAsin = activeEdition.asin ?? '';
+    if (currentAsin === normalizedAsin) return true;
+    onUpdateBook({
+      ...book,
+      editions: book.editions.map((edition) => edition.id === activeEdition.id
+        ? { ...edition, asin: normalizedAsin || undefined, externalSource: 'manual' as const }
+        : edition),
+    });
+    return true;
+  };
 
   const submit = async () => {
     if (!fields || submitting || !asinIsValid) return;
@@ -49,8 +64,9 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
     setStatus('');
     setSubmitFailed(false);
     try {
+      saveAsinToEdition();
       await submitCatalogContribution(contributionBook);
-      setStatus('Submitted for owner review. Your private notes, ratings, reviews, reading progress, tags, and collections were not shared.');
+      setStatus('Submitted for owner review. The ASIN was saved to this edition, and your private notes, ratings, reviews, reading progress, tags, and collections were not shared.');
     } catch (error) {
       setSubmitFailed(true);
       setStatus(contributionErrorMessage(error));
@@ -74,6 +90,7 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
             <input
               value={asin}
               onChange={(event) => setAsin(cleanAsin(event.target.value))}
+              onBlur={saveAsinToEdition}
               placeholder="B0H8DJVYYP"
               autoCapitalize="characters"
               maxLength={10}
@@ -81,6 +98,7 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
             />
           </label>
           {!asinIsValid && <p className="mt-2 text-xs text-amber-200">ASINs must be exactly 10 letters or numbers.</p>}
+          {asinIsValid && normalizedAsin && <p className="mt-2 text-xs text-[var(--ink-muted)]">This ASIN is saved to the active edition and can be used as its strong catalog identifier.</p>}
 
           {fields ? (
             <>
