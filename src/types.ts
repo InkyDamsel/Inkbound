@@ -93,4 +93,65 @@ export interface UserBookRecord {
   dateAdded: string;
   dateStarted?: string;
   dateFinished?: string;
+  lastSessionDate?: string;
+  rereadCount?: number;
+}
+
+export interface ReadingSession {
+  id: string;
+  bookId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  startPage?: number;
+  endPage?: number;
+  pagesRead?: number;
+  startTimestampSec?: number;
+  endTimestampSec?: number;
+  minutesListened?: number;
+  listeningSpeed?: number;
+  notes?: string;
+  mood?: string;
+  location?: string;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  description?: string;
+  color: string;
+  iconName?: string;
+}
+
+export interface ImportSourceInfo {
+  id: string;
+  name: string;
+  description: string;
+  badge: string;
+  method: 'CSV File' | 'JSON File' | 'CSV / JSON' | 'CSV/JSON File' | 'Direct Sync' | 'Export File';
+  supported: boolean;
+}
+
+export interface ImportRecordItem {
+  id: string;
+  title: string;
+  author: string;
+  isbn?: string;
+  format: Format;
+  status: ReadingStatus;
+  rating?: number;
+  dateRead?: string;
+  dateAdded: string;
+  review?: string;
+  matchedBookId?: string;
+  matchTitle?: string;
+  matchAuthor?: string;
+  confidence: number;
+  duplicateAction: 'skip' | 'merge' | 'keep_both' | 'replace';
+  coverGradient: string;
+  // Verification is determined before the selected records are written into the
+  // library. Carrying it with the import record keeps Import Center and Import
+  // History on the same accounting source instead of recomputing different totals.
+  importMetadataVerified?: boolean;
 }
