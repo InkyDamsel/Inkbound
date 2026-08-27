@@ -22,19 +22,34 @@ function contributionErrorMessage(error: unknown): string {
   return 'Inkbound could not save this catalog contribution. Please try again. If it continues, close this window and reopen the book before retrying.';
 }
 
+const cleanAsin = (value: string) => value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 10);
+
 export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> = ({ book }) => {
+  const activeEdition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+  const [asin, setAsin] = useState(activeEdition?.asin ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState('');
   const [submitFailed, setSubmitFailed] = useState(false);
-  const fields = useMemo(() => buildCatalogContributionFields(book), [book]);
+
+  const contributionBook = useMemo<UserBookRecord>(() => {
+    const normalizedAsin = cleanAsin(asin);
+    if (!activeEdition || !normalizedAsin) return book;
+    return {
+      ...book,
+      editions: book.editions.map((edition) => edition.id === activeEdition.id ? { ...edition, asin: normalizedAsin } : edition),
+    };
+  }, [activeEdition, asin, book]);
+
+  const fields = useMemo(() => buildCatalogContributionFields(contributionBook), [contributionBook]);
+  const asinIsValid = !asin || cleanAsin(asin).length === 10;
 
   const submit = async () => {
-    if (!fields || submitting) return;
+    if (!fields || submitting || !asinIsValid) return;
     setSubmitting(true);
     setStatus('');
     setSubmitFailed(false);
     try {
-      await submitCatalogContribution(book);
+      await submitCatalogContribution(contributionBook);
       setStatus('Submitted for owner review. Your private notes, ratings, reviews, reading progress, tags, and collections were not shared.');
     } catch (error) {
       setSubmitFailed(true);
@@ -54,6 +69,19 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
             Share only this book’s catalog-safe edition details for owner review. Personal reading data is never included.
           </p>
 
+          <label className="mt-4 block text-xs font-semibold text-[var(--ink-ivory)]">
+            Amazon ASIN <span className="font-normal text-[var(--ink-muted)]">(optional — useful for Kindle editions without an ISBN)</span>
+            <input
+              value={asin}
+              onChange={(event) => setAsin(cleanAsin(event.target.value))}
+              placeholder="B0H8DJVYYP"
+              autoCapitalize="characters"
+              maxLength={10}
+              className="inkbound-select mt-2 w-full"
+            />
+          </label>
+          {!asinIsValid && <p className="mt-2 text-xs text-amber-200">ASINs must be exactly 10 letters or numbers.</p>}
+
           {fields ? (
             <>
               <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-[var(--ink-muted)]">
@@ -61,19 +89,20 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
                 <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.author}</span>
                 {fields.isbn13 && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">ISBN-13 {fields.isbn13}</span>}
                 {!fields.isbn13 && fields.isbn10 && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">ISBN-10 {fields.isbn10}</span>}
+                {fields.asin && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">ASIN {fields.asin}</span>}
                 {fields.publisher && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.publisher}</span>}
                 {fields.publicationDate && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.publicationDate}</span>}
                 {fields.pageCount && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.pageCount} pages</span>}
                 {fields.format && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.format}</span>}
               </div>
-              <button type="button" onClick={() => void submit()} disabled={submitting} className="quiet-shelf-secondary-action mt-4 justify-center disabled:opacity-40">
+              <button type="button" onClick={() => void submit()} disabled={submitting || !asinIsValid} className="quiet-shelf-secondary-action mt-4 justify-center disabled:opacity-40">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 {submitting ? 'Submitting…' : 'Share edition details for review'}
               </button>
             </>
           ) : (
             <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-xs leading-5 text-amber-200">
-              Add an ISBN, an edition identifier, or both publisher and publication date before sharing this edition with the catalog.
+              Add an ISBN, ASIN, edition identifier, or both publisher and publication date before sharing this edition with the catalog.
             </p>
           )}
 
