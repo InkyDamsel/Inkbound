@@ -17,6 +17,7 @@ export interface BookSearchEdition {
   format: Format;
   isbn10?: string;
   isbn13?: string;
+  asin?: string;
   pageCount?: number;
   coverUrl?: string;
   editionName?: string;
