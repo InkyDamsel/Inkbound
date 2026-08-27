@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
+import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
@@ -182,7 +183,22 @@ const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWork
     if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
     existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
     group.editions.forEach((edition) => {
-      if (!existing.editions.some((candidate) => sameEdition(candidate, edition))) existing.editions.push(edition);
+      const duplicateIndex = existing.editions.findIndex((candidate) => sameEdition(candidate, edition));
+      if (duplicateIndex < 0) {
+        existing.editions.push(edition);
+        return;
+      }
+      const current = existing.editions[duplicateIndex];
+      if (current.source === 'inkbound-catalog') {
+        existing.editions[duplicateIndex] = {
+          ...edition,
+          ...current,
+          coverUrl: current.coverUrl || edition.coverUrl,
+          publisherSummary: current.publisherSummary || edition.publisherSummary,
+          binding: current.binding || edition.binding,
+          specialFeatures: current.specialFeatures.length ? current.specialFeatures : edition.specialFeatures,
+        };
+      }
     });
   };
 
@@ -190,6 +206,14 @@ const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWork
   supplements.flat().forEach(add);
   return order.map((key) => merged.get(key)).filter((group): group is BookSearchWorkGroup => Boolean(group)).slice(0, 50);
 };
+
+async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchResponse> {
+  const compact = compactIsbn(query);
+  if (/^(?:97[89])?\d{9}[\dX]$/i.test(compact)) {
+    return searchInkboundTrustedCatalog({ isbn: compact });
+  }
+  return searchInkboundTrustedCatalog({ title: query.trim() });
+}
 
 async function requestProtectedGoogleBooks(query: string, signal?: AbortSignal): Promise<GoogleVolumesResponse> {
   if (!functions || !auth?.currentUser) {
@@ -277,10 +301,6 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (!trimmed) return { groups: [], totalItems: 0 };
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  // Owner tools must be completely isolated from background enrichment. Pause
-  // the in-flight promise instead of returning an empty result so the caller
-  // cannot churn through the rest of a large retry queue while Administration
-  // is open. The same promise resumes after the user leaves Administration.
   await waitUntilAdministrationInactive(signal);
 
   const cacheKey = normalizeText(trimmed);
@@ -288,10 +308,8 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (cached && cached.expiresAt > Date.now()) return cached.response;
   if (cached) searchCache.delete(cacheKey);
 
-  // Provider cooldowns are intentionally isolated. A Google Books or Hardcover
-  // outage must never suppress Open Library or turn a temporary provider error
-  // into a false "no metadata exists" result for an entire import queue.
-  const [google, hardcover, openLibrary] = await Promise.all([
+  const [trusted, google, hardcover, openLibrary] = await Promise.all([
+    searchTrustedCatalogBaseline(trimmed),
     searchGoogleBaseline(trimmed, signal),
     searchHardcoverWithBackoff(trimmed),
     searchOpenLibraryWithAuthorFallback(trimmed, signal),
@@ -301,13 +319,20 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
 
   console.info('[Inkbound search]', {
     query: trimmed,
+    trusted: trusted.groups.length,
     google: google.groups.length,
     hardcover: hardcover.groups.length,
     openLibrary: openLibrary.groups.length,
   });
 
-  const primary = google.groups.length > 0 ? google.groups : openLibrary.groups.length > 0 ? openLibrary.groups : hardcover.groups;
-  const groups = mergeGroups(primary, [google.groups, hardcover.groups, openLibrary.groups]);
+  const primary = trusted.groups.length > 0
+    ? trusted.groups
+    : google.groups.length > 0
+      ? google.groups
+      : openLibrary.groups.length > 0
+        ? openLibrary.groups
+        : hardcover.groups;
+  const groups = mergeGroups(primary, [trusted.groups, google.groups, hardcover.groups, openLibrary.groups]);
   const response: BookSearchResponse = { groups, totalItems: groups.length };
 
   if (groups.length > 0) {
