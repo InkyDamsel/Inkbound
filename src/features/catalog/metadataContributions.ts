@@ -9,6 +9,7 @@ export interface CatalogContributionFields {
   author: string;
   isbn10?: string;
   isbn13?: string;
+  asin?: string;
   seriesName?: string;
   seriesNumber?: number;
   publisher?: string;
@@ -40,6 +41,7 @@ export interface CatalogPromotionStatus {
 }
 
 const normalizeIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() || undefined;
+const normalizeAsin = (value?: string) => value?.replace(/[^A-Z0-9]/gi, '').toUpperCase() || undefined;
 
 function catalogServiceMessage(error: unknown, fallback: string): string {
   if (!error || typeof error !== 'object') return fallback;
@@ -63,10 +65,11 @@ export function buildCatalogContributionFields(book: UserBookRecord): CatalogCon
   const genericIsbn = normalizeIsbn(edition.isbn);
   const isbn10 = normalizeIsbn(edition.isbn10) ?? (genericIsbn?.length === 10 ? genericIsbn : undefined);
   const isbn13 = normalizeIsbn(edition.isbn13) ?? (genericIsbn?.length === 13 ? genericIsbn : undefined);
+  const asin = normalizeAsin(edition.asin);
   const publisher = edition.publisher?.trim();
   const publicationDate = edition.publicationDate?.trim();
   const externalEditionId = edition.externalEditionId?.trim();
-  if (!isbn10 && !isbn13 && !externalEditionId && !(publisher && publicationDate)) return null;
+  if (!isbn10 && !isbn13 && !asin && !externalEditionId && !(publisher && publicationDate)) return null;
 
   return {
     title,
@@ -74,6 +77,7 @@ export function buildCatalogContributionFields(book: UserBookRecord): CatalogCon
     author,
     ...(isbn10 ? { isbn10 } : {}),
     ...(isbn13 ? { isbn13 } : {}),
+    ...(asin ? { asin } : {}),
     ...(book.work.seriesName?.trim() ? { seriesName: book.work.seriesName.trim() } : {}),
     ...(typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder) ? { seriesNumber: book.work.seriesOrder } : {}),
     ...(publisher ? { publisher } : {}),
@@ -88,7 +92,7 @@ export function buildCatalogContributionFields(book: UserBookRecord): CatalogCon
 export async function submitCatalogContribution(book: UserBookRecord) {
   if (!functions) throw new Error('Catalog contribution service is unavailable in this Inkbound runtime.');
   const fields = buildCatalogContributionFields(book);
-  if (!fields) throw new Error('Add an ISBN, an edition identifier, or both publisher and publication date before sharing catalog details.');
+  if (!fields) throw new Error('Add an ISBN, ASIN, edition identifier, or both publisher and publication date before sharing catalog details.');
   const callable = httpsCallable<{ sourceBookId: string; fields: CatalogContributionFields }, { success: boolean; contributionId: string; status: 'pending' }>(functions, 'submitMetadataContribution');
   try {
     const response = await callable({ sourceBookId: book.id, fields });
@@ -142,11 +146,11 @@ export async function getCatalogPromotionStatuses(contributionIds: string[]) {
   }
 }
 
-export async function searchInkboundTrustedCatalog(input: { isbn?: string; title?: string; author?: string }): Promise<BookSearchResponse> {
+export async function searchInkboundTrustedCatalog(input: { isbn?: string; asin?: string; title?: string; author?: string }): Promise<BookSearchResponse> {
   if (!functions) return { groups: [], totalItems: 0 };
-  const callable = httpsCallable<{ action: 'searchTrustedCatalog'; isbn?: string; title?: string; author?: string }, BookSearchResponse>(functions, 'getMetadataContributions');
+  const callable = httpsCallable<{ action: 'searchTrustedCatalog'; isbn?: string; asin?: string; title?: string; author?: string }, BookSearchResponse>(functions, 'getMetadataContributions');
   try {
-    if (input.isbn) {
+    if (input.isbn || input.asin) {
       const response = await callable({ action: 'searchTrustedCatalog', ...input });
       return response.data ?? { groups: [], totalItems: 0 };
     }
