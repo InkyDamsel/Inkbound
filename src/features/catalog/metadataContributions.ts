@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 import type { UserBookRecord } from '../../types';
+import type { BookSearchResponse } from '../book-search/model/bookSearch';
 
 export interface CatalogContributionFields {
   title: string;
@@ -30,6 +31,12 @@ export interface CatalogContribution {
   reviewedAt: string | null;
   reviewedByEmail: string;
   reviewNote: string;
+}
+
+export interface CatalogPromotionStatus {
+  promoted: boolean;
+  catalogId: string;
+  promotedAt: string | null;
 }
 
 const normalizeIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() || undefined;
@@ -110,5 +117,39 @@ export async function reviewCatalogContribution(input: { contributionId: string;
     return response.data;
   } catch (error) {
     throw new Error(catalogServiceMessage(error, 'Inkbound could not update this catalog review. Please refresh Administration and try again.'));
+  }
+}
+
+export async function promoteCatalogContribution(contributionId: string) {
+  if (!functions) throw new Error('Trusted catalog service is unavailable in this Inkbound runtime.');
+  const callable = httpsCallable<{ contributionId: string }, { success: boolean; catalogId: string }>(functions, 'promoteMetadataContribution');
+  try {
+    const response = await callable({ contributionId });
+    return response.data;
+  } catch (error) {
+    throw new Error(catalogServiceMessage(error, 'Inkbound could not promote this approved record to the Trusted Catalog.'));
+  }
+}
+
+export async function getCatalogPromotionStatuses(contributionIds: string[]) {
+  if (!functions || contributionIds.length === 0) return {} as Record<string, CatalogPromotionStatus>;
+  const callable = httpsCallable<{ contributionIds: string[] }, { statuses: Record<string, CatalogPromotionStatus> }>(functions, 'getCatalogPromotionStatuses');
+  try {
+    const response = await callable({ contributionIds: contributionIds.slice(0, 100) });
+    return response.data.statuses ?? {};
+  } catch (error) {
+    throw new Error(catalogServiceMessage(error, 'Inkbound could not load Trusted Catalog promotion status.'));
+  }
+}
+
+export async function searchInkboundTrustedCatalog(input: { isbn?: string; title?: string; author?: string }): Promise<BookSearchResponse> {
+  if (!functions) return { groups: [], totalItems: 0 };
+  const callable = httpsCallable<typeof input, BookSearchResponse>(functions, 'searchTrustedCatalog');
+  try {
+    const response = await callable(input);
+    return response.data ?? { groups: [], totalItems: 0 };
+  } catch (error) {
+    console.warn('Inkbound Trusted Catalog lookup unavailable; continuing with external catalogs.', error);
+    return { groups: [], totalItems: 0 };
   }
 }
