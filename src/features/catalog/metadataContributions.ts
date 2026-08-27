@@ -34,6 +34,19 @@ export interface CatalogContribution {
 
 const normalizeIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() || undefined;
 
+function catalogServiceMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object') return fallback;
+  const record = error as { code?: unknown; message?: unknown; details?: unknown };
+  const code = typeof record.code === 'string' ? record.code : '';
+  const message = typeof record.message === 'string' ? record.message.trim() : '';
+  if (message && message.toLowerCase() !== 'internal') return message;
+  if (code.endsWith('/unauthenticated')) return 'Sign in again before using the catalog contribution service.';
+  if (code.endsWith('/permission-denied')) return 'This account does not have permission to use that catalog action.';
+  if (code.endsWith('/resource-exhausted')) return 'Please wait a moment before submitting another catalog contribution.';
+  if (code.endsWith('/failed-precondition')) return 'This edition needs a little more identifying information before it can be shared.';
+  return fallback;
+}
+
 export function buildCatalogContributionFields(book: UserBookRecord): CatalogContributionFields | null {
   const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
   const title = book.work.title?.trim();
@@ -70,20 +83,32 @@ export async function submitCatalogContribution(book: UserBookRecord) {
   const fields = buildCatalogContributionFields(book);
   if (!fields) throw new Error('Add an ISBN, an edition identifier, or both publisher and publication date before sharing catalog details.');
   const callable = httpsCallable<{ sourceBookId: string; fields: CatalogContributionFields }, { success: boolean; contributionId: string; status: 'pending' }>(functions, 'submitMetadataContribution');
-  const response = await callable({ sourceBookId: book.id, fields });
-  return response.data;
+  try {
+    const response = await callable({ sourceBookId: book.id, fields });
+    return response.data;
+  } catch (error) {
+    throw new Error(catalogServiceMessage(error, 'Inkbound could not save this catalog contribution. Please try again after reopening the book.'));
+  }
 }
 
 export async function getCatalogContributions(status: 'pending' | 'approved' | 'rejected') {
   if (!functions) throw new Error('Catalog review service is unavailable in this Inkbound runtime.');
   const callable = httpsCallable<{ status: string }, { status: string; contributions: CatalogContribution[] }>(functions, 'getMetadataContributions');
-  const response = await callable({ status });
-  return response.data.contributions ?? [];
+  try {
+    const response = await callable({ status });
+    return response.data.contributions ?? [];
+  } catch (error) {
+    throw new Error(catalogServiceMessage(error, 'Inkbound could not load the catalog review queue. Please refresh Administration and try again.'));
+  }
 }
 
 export async function reviewCatalogContribution(input: { contributionId: string; decision: 'approved' | 'rejected'; reviewNote?: string }) {
   if (!functions) throw new Error('Catalog review service is unavailable in this Inkbound runtime.');
   const callable = httpsCallable<typeof input, { success: boolean; status: 'approved' | 'rejected' }>(functions, 'reviewMetadataContribution');
-  const response = await callable(input);
-  return response.data;
+  try {
+    const response = await callable(input);
+    return response.data;
+  } catch (error) {
+    throw new Error(catalogServiceMessage(error, 'Inkbound could not update this catalog review. Please refresh Administration and try again.'));
+  }
 }
