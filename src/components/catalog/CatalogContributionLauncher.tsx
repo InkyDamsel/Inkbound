@@ -5,9 +5,10 @@ import { CatalogContributionPanel } from './CatalogContributionPanel';
 
 interface CatalogContributionLauncherProps {
   book: UserBookRecord;
+  onUpdateBook: (updatedBook: UserBookRecord) => void;
 }
 
-export const CatalogContributionLauncher: React.FC<CatalogContributionLauncherProps> = ({ book }) => {
+export const CatalogContributionLauncher: React.FC<CatalogContributionLauncherProps> = ({ book, onUpdateBook }) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -26,7 +27,7 @@ export const CatalogContributionLauncher: React.FC<CatalogContributionLauncherPr
           <section className="relative w-full max-w-xl rounded-3xl border border-[var(--ink-border)] bg-[#17101b] p-5 shadow-2xl sm:p-6" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Share catalog details">
             <button type="button" onClick={() => setOpen(false)} className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)]" aria-label="Close catalog contribution"><X className="h-5 w-5" /></button>
             <div className="pr-10">
-              <CatalogContributionPanel book={book} />
+              <CatalogContributionPanel book={book} onUpdateBook={onUpdateBook} />
             </div>
           </section>
         </div>
