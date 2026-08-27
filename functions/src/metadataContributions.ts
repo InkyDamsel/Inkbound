@@ -157,18 +157,25 @@ function hashContributor(uid: string): string {
   return createHash('sha256').update(uid).digest('hex');
 }
 
+function rethrowContributionError(error: unknown): never {
+  if (error instanceof HttpsError) throw error;
+  console.error('Catalog contribution service failed.', error);
+  throw new HttpsError('internal', 'Inkbound could not save this catalog contribution. Please try again.');
+}
+
 async function enforceRateLimit(uid: string) {
   const db = getFirestore();
   const contributorHash = hashContributor(uid);
   const ref = db.doc(`metadataContributionRateLimits/${contributorHash}`);
   const today = new Date().toISOString().slice(0, 10);
+  const now = Timestamp.now();
   await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     const data = snapshot.data() ?? {};
     const dateKey = typeof data.dateKey === 'string' ? data.dateKey : '';
     const count = dateKey === today && typeof data.count === 'number' ? data.count : 0;
     const lastSubmittedAt = data.lastSubmittedAt instanceof Timestamp ? data.lastSubmittedAt.toMillis() : 0;
-    if (Date.now() - lastSubmittedAt < MIN_SUBMISSION_INTERVAL_MS) {
+    if (now.toMillis() - lastSubmittedAt < MIN_SUBMISSION_INTERVAL_MS) {
       throw new HttpsError('resource-exhausted', 'Please wait a moment before submitting another catalog correction.');
     }
     if (count >= MAX_DAILY_CONTRIBUTIONS) {
@@ -177,111 +184,124 @@ async function enforceRateLimit(uid: string) {
     transaction.set(ref, {
       dateKey: today,
       count: count + 1,
-      lastSubmittedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      lastSubmittedAt: now,
+      updatedAt: now,
     }, { merge: true });
   });
 }
 
 export const submitMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
-  const auth = requireAuthenticated(request);
-  const data = request.data && typeof request.data === 'object' ? request.data as Record<string, unknown> : {};
-  const sourceBookId = requiredString(data.sourceBookId, 'sourceBookId', 180);
-  const fields = normalizeFields(data.fields);
-  await enforceRateLimit(auth.uid);
+  try {
+    const auth = requireAuthenticated(request);
+    const data = request.data && typeof request.data === 'object' ? request.data as Record<string, unknown> : {};
+    const sourceBookId = requiredString(data.sourceBookId, 'sourceBookId', 180);
+    const fields = normalizeFields(data.fields);
+    await enforceRateLimit(auth.uid);
 
-  const key = catalogKey(fields);
-  const fingerprint = createHash('sha256').update(JSON.stringify(fields)).digest('hex');
-  const contributorHash = hashContributor(auth.uid);
-  const contributionId = createHash('sha256').update(`${contributorHash}|${key}|${fingerprint}`).digest('hex');
-  const db = getFirestore();
-  const ref = db.doc(`catalogContributions/${contributionId}`);
-  const existing = await ref.get();
+    const key = catalogKey(fields);
+    const fingerprint = createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+    const contributorHash = hashContributor(auth.uid);
+    const contributionId = createHash('sha256').update(`${contributorHash}|${key}|${fingerprint}`).digest('hex');
+    const db = getFirestore();
+    const ref = db.doc(`catalogContributions/${contributionId}`);
+    const existing = await ref.get();
 
-  await ref.set({
-    catalogKey: key,
-    fingerprint,
-    fields,
-    source: 'manual-reader',
-    sourceBookId,
-    contributorHash,
-    status: 'pending' satisfies ContributionStatus,
-    updatedAt: FieldValue.serverTimestamp(),
-    ...(existing.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
-    reviewedAt: FieldValue.delete(),
-    reviewedBy: FieldValue.delete(),
-    reviewedByEmail: FieldValue.delete(),
-    reviewNote: FieldValue.delete(),
-  }, { merge: true });
+    const contributionRecord: Record<string, unknown> = {
+      catalogKey: key,
+      fingerprint,
+      fields,
+      source: 'manual-reader',
+      sourceBookId,
+      contributorHash,
+      status: 'pending' satisfies ContributionStatus,
+      reviewedAt: null,
+      reviewedBy: null,
+      reviewedByEmail: null,
+      reviewNote: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (!existing.exists) contributionRecord.createdAt = FieldValue.serverTimestamp();
 
-  return { success: true, contributionId, status: 'pending' as const };
+    await ref.set(contributionRecord, { merge: true });
+    return { success: true, contributionId, status: 'pending' as const };
+  } catch (error) {
+    rethrowContributionError(error);
+  }
 });
 
 export const getMetadataContributions = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
-  await requireOwner(request);
-  const data = request.data && typeof request.data === 'object' ? request.data as Record<string, unknown> : {};
-  const requestedStatus = typeof data.status === 'string' ? data.status : 'pending';
-  const status: ContributionStatus = requestedStatus === 'approved' || requestedStatus === 'rejected' ? requestedStatus : 'pending';
-  const snapshot = await getFirestore().collection('catalogContributions').where('status', '==', status).limit(100).get();
-  const contributions = snapshot.docs.map((document) => {
-    const record = document.data();
-    return {
-      id: document.id,
-      catalogKey: typeof record.catalogKey === 'string' ? record.catalogKey : '',
-      fields: record.fields ?? {},
-      source: typeof record.source === 'string' ? record.source : 'manual-reader',
-      status: record.status as ContributionStatus,
-      contributorHash: typeof record.contributorHash === 'string' ? record.contributorHash.slice(0, 12) : '',
-      createdAt: timestampToIso(record.createdAt),
-      updatedAt: timestampToIso(record.updatedAt),
-      reviewedAt: timestampToIso(record.reviewedAt),
-      reviewedByEmail: typeof record.reviewedByEmail === 'string' ? record.reviewedByEmail : '',
-      reviewNote: typeof record.reviewNote === 'string' ? record.reviewNote : '',
-    };
-  });
-  contributions.sort((a, b) => (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? ''));
-  return { status, contributions };
+  try {
+    await requireOwner(request);
+    const data = request.data && typeof request.data === 'object' ? request.data as Record<string, unknown> : {};
+    const requestedStatus = typeof data.status === 'string' ? data.status : 'pending';
+    const status: ContributionStatus = requestedStatus === 'approved' || requestedStatus === 'rejected' ? requestedStatus : 'pending';
+    const snapshot = await getFirestore().collection('catalogContributions').where('status', '==', status).limit(100).get();
+    const contributions = snapshot.docs.map((document) => {
+      const record = document.data();
+      return {
+        id: document.id,
+        catalogKey: typeof record.catalogKey === 'string' ? record.catalogKey : '',
+        fields: record.fields ?? {},
+        source: typeof record.source === 'string' ? record.source : 'manual-reader',
+        status: record.status as ContributionStatus,
+        contributorHash: typeof record.contributorHash === 'string' ? record.contributorHash.slice(0, 12) : '',
+        createdAt: timestampToIso(record.createdAt),
+        updatedAt: timestampToIso(record.updatedAt),
+        reviewedAt: timestampToIso(record.reviewedAt),
+        reviewedByEmail: typeof record.reviewedByEmail === 'string' ? record.reviewedByEmail : '',
+        reviewNote: typeof record.reviewNote === 'string' ? record.reviewNote : '',
+      };
+    });
+    contributions.sort((a, b) => (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? ''));
+    return { status, contributions };
+  } catch (error) {
+    rethrowContributionError(error);
+  }
 });
 
 export const reviewMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
-  const { auth, admin } = await requireOwner(request);
-  const data = request.data && typeof request.data === 'object' ? request.data as Record<string, unknown> : {};
-  const contributionId = requiredString(data.contributionId, 'contributionId', 128);
-  const decision = data.decision as ReviewDecision | undefined;
-  if (decision !== 'approved' && decision !== 'rejected') {
-    throw new HttpsError('invalid-argument', 'Choose approve or reject.');
+  try {
+    const { auth, admin } = await requireOwner(request);
+    const data = request.data && typeof request.data === 'object' ? request.data as Record<string, unknown> : {};
+    const contributionId = requiredString(data.contributionId, 'contributionId', 128);
+    const decision = data.decision as ReviewDecision | undefined;
+    if (decision !== 'approved' && decision !== 'rejected') {
+      throw new HttpsError('invalid-argument', 'Choose approve or reject.');
+    }
+    const reviewNote = optionalString(data.reviewNote, 1000) ?? '';
+    if (decision === 'rejected' && !reviewNote) {
+      throw new HttpsError('invalid-argument', 'Add a review note before rejecting a contribution.');
+    }
+
+    const db = getFirestore();
+    const ref = db.doc(`catalogContributions/${contributionId}`);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) throw new HttpsError('not-found', 'That catalog contribution no longer exists.');
+    const previous = snapshot.data() ?? {};
+
+    await ref.set({
+      status: decision,
+      reviewedAt: FieldValue.serverTimestamp(),
+      reviewedBy: auth.uid,
+      reviewedByEmail: admin.email,
+      reviewNote,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    await db.collection('adminAudit').add({
+      action: decision === 'approved' ? 'approve_metadata_contribution' : 'reject_metadata_contribution',
+      targetUserId: 'catalog',
+      targetEmail: '',
+      performedBy: auth.uid,
+      performedByEmail: admin.email,
+      reason: reviewNote || 'Approved for future catalog promotion.',
+      previousValue: { status: previous.status ?? 'pending' },
+      newValue: { status: decision, contributionId },
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    return { success: true, status: decision };
+  } catch (error) {
+    rethrowContributionError(error);
   }
-  const reviewNote = optionalString(data.reviewNote, 1000) ?? '';
-  if (decision === 'rejected' && !reviewNote) {
-    throw new HttpsError('invalid-argument', 'Add a review note before rejecting a contribution.');
-  }
-
-  const db = getFirestore();
-  const ref = db.doc(`catalogContributions/${contributionId}`);
-  const snapshot = await ref.get();
-  if (!snapshot.exists) throw new HttpsError('not-found', 'That catalog contribution no longer exists.');
-  const previous = snapshot.data() ?? {};
-
-  await ref.set({
-    status: decision,
-    reviewedAt: FieldValue.serverTimestamp(),
-    reviewedBy: auth.uid,
-    reviewedByEmail: admin.email,
-    reviewNote,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
-
-  await db.collection('adminAudit').add({
-    action: decision === 'approved' ? 'approve_metadata_contribution' : 'reject_metadata_contribution',
-    targetUserId: 'catalog',
-    targetEmail: '',
-    performedBy: auth.uid,
-    performedByEmail: admin.email,
-    reason: reviewNote || 'Approved for future catalog promotion.',
-    previousValue: { status: previous.status ?? 'pending' },
-    newValue: { status: decision, contributionId },
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
-  return { success: true, status: decision };
 });
