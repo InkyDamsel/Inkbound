@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, Database, Loader2, Send } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Database, Loader2, Send } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
 import { buildCatalogContributionFields, submitCatalogContribution } from '../../features/catalog/metadataContributions';
 
@@ -7,20 +7,38 @@ interface CatalogContributionPanelProps {
   book: UserBookRecord;
 }
 
+function contributionErrorMessage(error: unknown): string {
+  if (!error || typeof error !== 'object') return 'Inkbound could not submit these catalog details. Please try again.';
+  const record = error as { code?: unknown; message?: unknown };
+  const code = typeof record.code === 'string' ? record.code.toLowerCase() : '';
+  const message = typeof record.message === 'string' ? record.message.trim() : '';
+
+  if (message && message.toLowerCase() !== 'internal' && !message.toLowerCase().endsWith('/internal')) return message;
+  if (code.includes('resource-exhausted')) return 'Please wait a moment before submitting another catalog correction.';
+  if (code.includes('unauthenticated')) return 'Please sign in again before sharing catalog details.';
+  if (code.includes('permission-denied')) return 'Inkbound could not verify this contribution request. Please reload the app and try again.';
+  if (code.includes('failed-precondition')) return 'This edition needs a stronger identifier before it can be shared for review.';
+  if (code.includes('invalid-argument')) return 'One or more edition details need to be corrected before they can be shared.';
+  return 'Inkbound could not save this catalog contribution. Please try again. If it continues, close this window and reopen the book before retrying.';
+}
+
 export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> = ({ book }) => {
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState('');
+  const [submitFailed, setSubmitFailed] = useState(false);
   const fields = useMemo(() => buildCatalogContributionFields(book), [book]);
 
   const submit = async () => {
     if (!fields || submitting) return;
     setSubmitting(true);
     setStatus('');
+    setSubmitFailed(false);
     try {
       await submitCatalogContribution(book);
       setStatus('Submitted for owner review. Your private notes, ratings, reviews, reading progress, tags, and collections were not shared.');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Inkbound could not submit these catalog details.');
+      setSubmitFailed(true);
+      setStatus(contributionErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -60,10 +78,12 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
           )}
 
           {status && (
-            <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-[var(--ink-muted)]" role="status">
-              {status.startsWith('Submitted') && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />}
+            <div className={`mt-3 flex items-start gap-2 rounded-xl border p-3 text-xs leading-5 ${submitFailed ? 'border-amber-300/20 bg-amber-300/5 text-amber-100' : 'border-emerald-300/20 bg-emerald-300/5 text-[var(--ink-muted)]'}`} role="status">
+              {submitFailed
+                ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />}
               <span>{status}</span>
-            </p>
+            </div>
           )}
         </div>
       </div>
