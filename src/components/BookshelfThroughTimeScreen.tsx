@@ -28,12 +28,51 @@ const themeClasses: Record<ShelfTheme, string> = {
   'midnight-study': 'from-[#171825] via-[#26283a] to-[#101119]',
 };
 
-function monthKey(date: string) {
-  return date.slice(0, 7);
+function validLocalDate(year: number, month: number, day: number): Date | null {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  if (year < 1000 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+function parseFinishedDate(value?: string): Date | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:$|[T\s])/);
+  if (isoMatch) {
+    return validLocalDate(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
+  }
+
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:$|[T\s])/);
+  if (slashMatch) {
+    return validLocalDate(Number(slashMatch[3]), Number(slashMatch[1]), Number(slashMatch[2]));
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function canonicalDateKey(value?: string): string | null {
+  const date = parseFinishedDate(value);
+  if (!date) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function monthKey(value?: string): string | null {
+  return canonicalDateKey(value)?.slice(0, 7) ?? null;
 }
 
 function monthLabel(value: string) {
-  return new Date(`${value}-01T12:00:00`).toLocaleDateString(undefined, {
+  const match = value.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return 'Reading Shelf';
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return 'Reading Shelf';
+  return new Date(year, month - 1, 1, 12, 0, 0, 0).toLocaleDateString(undefined, {
     month: 'long',
     year: 'numeric',
   });
@@ -46,13 +85,19 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
   const finishedBooks = useMemo(
     () =>
       books
-        .filter((book) => book.status === 'finished' && book.dateFinished)
-        .sort((a, b) => String(a.dateFinished).localeCompare(String(b.dateFinished))),
+        .filter((book) => book.status === 'finished' && canonicalDateKey(book.dateFinished))
+        .sort((a, b) => (canonicalDateKey(a.dateFinished) ?? '').localeCompare(canonicalDateKey(b.dateFinished) ?? '')),
     [books],
   );
 
   const availableMonths = useMemo(() => {
-    const months = Array.from(new Set(finishedBooks.map((book) => monthKey(String(book.dateFinished))))).sort();
+    const months = Array.from(
+      new Set(
+        finishedBooks
+          .map((book) => monthKey(book.dateFinished))
+          .filter((month): month is string => Boolean(month)),
+      ),
+    ).sort();
     const currentMonth = localDateKey().slice(0, 7);
     return months.length > 0 ? months : [currentMonth];
   }, [finishedBooks]);
@@ -67,9 +112,13 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
   const selectedMonth = availableMonths.includes(preferences.month)
     ? preferences.month
     : availableMonths[availableMonths.length - 1];
-  const selectedIndex = availableMonths.indexOf(selectedMonth);
-  const shelfBooks = finishedBooks.filter((book) => String(book.dateFinished) <= `${selectedMonth}-31`);
-  const booksFinishedThisMonth = finishedBooks.filter((book) => monthKey(String(book.dateFinished)) === selectedMonth);
+  const selectedIndex = Math.max(0, availableMonths.indexOf(selectedMonth));
+  const selectedMonthEnd = `${selectedMonth}-31`;
+  const shelfBooks = finishedBooks.filter((book) => {
+    const dateKey = canonicalDateKey(book.dateFinished);
+    return Boolean(dateKey && dateKey <= selectedMonthEnd);
+  });
+  const booksFinishedThisMonth = finishedBooks.filter((book) => monthKey(book.dateFinished) === selectedMonth);
   const shelfRowCount = Math.max(MINIMUM_SHELF_ROWS, Math.ceil(shelfBooks.length / BOOKS_PER_SHELF));
   const totalPages = shelfBooks.reduce((sum, book) => {
     const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
@@ -126,7 +175,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                   <div className="overflow-x-auto overflow-y-hidden overscroll-x-contain px-1 pb-1 sm:px-2">
                     <div className="flex min-h-32 min-w-max items-end gap-2 sm:gap-3">
                       {shelfSlice.map((book, index) => {
-                        const isNewThisMonth = monthKey(String(book.dateFinished)) === selectedMonth;
+                        const isNewThisMonth = monthKey(book.dateFinished) === selectedMonth;
                         const height = 82 + ((book.work.title.length + index * 11) % 38);
                         const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
                         const coverUrl = edition?.coverUrl;
