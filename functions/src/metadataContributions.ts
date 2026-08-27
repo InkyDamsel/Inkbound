@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
+import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
+const catalogAdminApp = getApps()[0] ?? initializeApp();
+const db = getFirestore(catalogAdminApp);
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const MAX_DAILY_CONTRIBUTIONS = 100;
 const MIN_SUBMISSION_INTERVAL_MS = 3_000;
@@ -39,7 +42,7 @@ function requireAuthenticated(request: CallableRequest<unknown>) {
 
 async function requireOwner(request: CallableRequest<unknown>) {
   const auth = requireAuthenticated(request);
-  const snapshot = await getFirestore().doc(`admins/${auth.uid}`).get();
+  const snapshot = await db.doc(`admins/${auth.uid}`).get();
   const record = snapshot.data() as AdminRecord | undefined;
   if (!record?.enabled || record.role !== 'owner') {
     throw new HttpsError('permission-denied', 'Owner access is required.');
@@ -157,14 +160,13 @@ function hashContributor(uid: string): string {
   return createHash('sha256').update(uid).digest('hex');
 }
 
-function rethrowContributionError(error: unknown): never {
+function rethrowContributionError(error: unknown, fallbackMessage: string): never {
   if (error instanceof HttpsError) throw error;
   console.error('Catalog contribution service failed.', error);
-  throw new HttpsError('internal', 'Inkbound could not save this catalog contribution. Please try again.');
+  throw new HttpsError('internal', fallbackMessage);
 }
 
 async function enforceRateLimit(uid: string) {
-  const db = getFirestore();
   const contributorHash = hashContributor(uid);
   const ref = db.doc(`metadataContributionRateLimits/${contributorHash}`);
   const today = new Date().toISOString().slice(0, 10);
@@ -202,7 +204,6 @@ export const submitMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_
     const fingerprint = createHash('sha256').update(JSON.stringify(fields)).digest('hex');
     const contributorHash = hashContributor(auth.uid);
     const contributionId = createHash('sha256').update(`${contributorHash}|${key}|${fingerprint}`).digest('hex');
-    const db = getFirestore();
     const ref = db.doc(`catalogContributions/${contributionId}`);
     const existing = await ref.get();
 
@@ -225,7 +226,7 @@ export const submitMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_
     await ref.set(contributionRecord, { merge: true });
     return { success: true, contributionId, status: 'pending' as const };
   } catch (error) {
-    rethrowContributionError(error);
+    rethrowContributionError(error, 'Inkbound could not save this catalog contribution. The catalog service could not reach its database.');
   }
 });
 
@@ -235,7 +236,7 @@ export const getMetadataContributions = onCall({ enforceAppCheck: ENFORCE_APP_CH
     const data = request.data && typeof request.data === 'object' ? request.data as Record<string, unknown> : {};
     const requestedStatus = typeof data.status === 'string' ? data.status : 'pending';
     const status: ContributionStatus = requestedStatus === 'approved' || requestedStatus === 'rejected' ? requestedStatus : 'pending';
-    const snapshot = await getFirestore().collection('catalogContributions').where('status', '==', status).limit(100).get();
+    const snapshot = await db.collection('catalogContributions').where('status', '==', status).limit(100).get();
     const contributions = snapshot.docs.map((document) => {
       const record = document.data();
       return {
@@ -255,7 +256,7 @@ export const getMetadataContributions = onCall({ enforceAppCheck: ENFORCE_APP_CH
     contributions.sort((a, b) => (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? ''));
     return { status, contributions };
   } catch (error) {
-    rethrowContributionError(error);
+    rethrowContributionError(error, 'Inkbound could not load the catalog review queue. The catalog service could not reach its database.');
   }
 });
 
@@ -273,7 +274,6 @@ export const reviewMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_
       throw new HttpsError('invalid-argument', 'Add a review note before rejecting a contribution.');
     }
 
-    const db = getFirestore();
     const ref = db.doc(`catalogContributions/${contributionId}`);
     const snapshot = await ref.get();
     if (!snapshot.exists) throw new HttpsError('not-found', 'That catalog contribution no longer exists.');
@@ -302,6 +302,6 @@ export const reviewMetadataContribution = onCall({ enforceAppCheck: ENFORCE_APP_
 
     return { success: true, status: decision };
   } catch (error) {
-    rethrowContributionError(error);
+    rethrowContributionError(error, 'Inkbound could not update this catalog contribution. The catalog service could not reach its database.');
   }
 });
