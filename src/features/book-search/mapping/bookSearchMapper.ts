@@ -30,6 +30,7 @@ const localDateKey = (value = new Date()): string => {
 };
 
 const providerLabel = (source: BookSearchEdition['source']): string => {
+  if (source === 'inkbound-catalog') return 'Inkbound Trusted Catalog';
   if (source === 'open-library') return 'Open Library';
   if (source === 'hardcover') return 'Hardcover';
   return 'Google Books';
@@ -79,6 +80,7 @@ export function createBookFromSearchEdition({
         isbn: edition.isbn13 ?? edition.isbn10,
         isbn10: edition.isbn10,
         isbn13: edition.isbn13,
+        asin: edition.asin,
         pageCount: edition.pageCount,
         publisher: edition.publisher,
         publicationDate: edition.publicationDate,
