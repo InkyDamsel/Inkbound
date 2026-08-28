@@ -160,7 +160,10 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
  * cloud records directly so the Administration UI can diagnose persistence and
  * import integrity without mounting another client-side source of truth.
  */
-export const getAdminDataIntegrity = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+export const getAdminDataIntegrity = onCall({
+  enforceAppCheck: ENFORCE_APP_CHECK,
+  memory: '512MiB',
+}, async (request) => {
   await requireAdmin(request, ['owner']);
   const input = request.data as { targetUserId?: unknown } | undefined;
   const targetUserId = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
