@@ -3,6 +3,7 @@ import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https
 
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const RECOVERY_COLLECTION = 'recoverySnapshots';
+const MANUAL_COVER_LEDGER_COLLECTION = 'manualCoverAssignments';
 const MAX_RECOVERY_POINTS = 12;
 const WRITE_BATCH_SIZE = 350;
 
@@ -26,6 +27,12 @@ interface RecoveryPointSummary {
   runtimeStateCount: number;
 }
 
+interface ManualCoverLedgerEntry {
+  bookId?: unknown;
+  editionId?: unknown;
+  coverUrl?: unknown;
+}
+
 async function requireOwner(request: CallableRequest<unknown>) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
   const db = getFirestore();
@@ -46,6 +53,13 @@ function requireString(value: unknown, field: string, maxLength = 500): string {
 
 function timestampToIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
+}
+
+function unwrapEnvelope(value: FirebaseFirestore.DocumentData): Record<string, unknown> {
+  if (value && typeof value === 'object' && 'data' in value && value.data && typeof value.data === 'object') {
+    return value.data as Record<string, unknown>;
+  }
+  return value as Record<string, unknown>;
 }
 
 async function commitTasks(tasks: Array<(batch: FirebaseFirestore.WriteBatch) => void>) {
@@ -150,6 +164,61 @@ async function replaceCollection(
   await commitTasks(tasks);
 }
 
+async function reapplyManualCoverLedger(targetUserId: string): Promise<number> {
+  const db = getFirestore();
+  const userRef = db.doc(`users/${targetUserId}`);
+  const ledger = await userRef.collection(MANUAL_COVER_LEDGER_COLLECTION).get();
+  if (ledger.empty) return 0;
+
+  const tasks: Array<(batch: FirebaseFirestore.WriteBatch) => void> = [];
+  const clientUpdatedAt = new Date().toISOString();
+  let reapplied = 0;
+
+  for (const ledgerDocument of ledger.docs) {
+    const entry = ledgerDocument.data() as ManualCoverLedgerEntry;
+    const bookId = typeof entry.bookId === 'string' && entry.bookId ? entry.bookId : ledgerDocument.id;
+    const editionId = typeof entry.editionId === 'string' ? entry.editionId : '';
+    const coverUrl = typeof entry.coverUrl === 'string' ? entry.coverUrl.trim() : '';
+    if (!bookId || !coverUrl) continue;
+
+    const bookRef = userRef.collection('books').doc(bookId);
+    const bookSnapshot = await bookRef.get();
+    if (!bookSnapshot.exists) continue;
+
+    const book = unwrapEnvelope(bookSnapshot.data() ?? {});
+    const editions = Array.isArray(book.editions)
+      ? book.editions.filter((edition): edition is Record<string, unknown> => Boolean(edition) && typeof edition === 'object' && !Array.isArray(edition))
+      : [];
+    if (editions.length === 0) continue;
+
+    const activeEditionId = typeof book.activeEditionId === 'string' ? book.activeEditionId : '';
+    let targetIndex = editionId ? editions.findIndex((edition) => edition.id === editionId) : -1;
+    if (targetIndex < 0 && activeEditionId) targetIndex = editions.findIndex((edition) => edition.id === activeEditionId);
+    if (targetIndex < 0) targetIndex = 0;
+
+    const nextEditions = editions.map((edition, index) => index === targetIndex
+      ? { ...edition, coverUrl, externalSource: 'manual' }
+      : edition);
+    const nextBook = {
+      ...book,
+      activeEditionId: typeof nextEditions[targetIndex]?.id === 'string'
+        ? nextEditions[targetIndex].id
+        : book.activeEditionId,
+      editions: nextEditions,
+    };
+
+    tasks.push((batch) => batch.set(bookRef, {
+      data: nextBook,
+      updatedAt: FieldValue.serverTimestamp(),
+      clientUpdatedAt,
+    }));
+    reapplied += 1;
+  }
+
+  await commitTasks(tasks);
+  return reapplied;
+}
+
 export const listAdminRecoveryPoints = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   await requireOwner(request);
   const input = request.data as Record<string, unknown> | undefined;
@@ -176,6 +245,8 @@ export const restoreAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
   if (!root.exists) throw new HttpsError('not-found', 'That recovery point no longer exists.');
 
   // Preserve the cloud state being replaced first so an admin restore is reversible.
+  // Manual cover assignments live in an independent ledger and are intentionally
+  // not rolled back with an older library snapshot.
   const beforeRestoreSnapshotId = await createCloudSafetyPoint(targetUserId, 'Before admin recovery restore');
 
   const [books, sessions, profile, auxiliary, photoMemories] = await Promise.all([
@@ -200,6 +271,8 @@ export const restoreAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
     await profileRef.delete();
   }
 
+  const manualCoversReapplied = await reapplyManualCoverLedger(targetUserId);
+
   await db.collection('adminAudit').add({
     action: 'restore_reader_recovery_point',
     targetUserId,
@@ -208,7 +281,7 @@ export const restoreAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
     performedByEmail: admin.email,
     reason,
     previousValue: { safetySnapshotId: beforeRestoreSnapshotId },
-    newValue: { restoredSnapshotId: snapshotId },
+    newValue: { restoredSnapshotId: snapshotId, manualCoversReapplied },
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -216,5 +289,6 @@ export const restoreAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
     success: true,
     restoredSnapshotId: snapshotId,
     safetySnapshotId: beforeRestoreSnapshotId,
+    manualCoversReapplied,
   };
 });
