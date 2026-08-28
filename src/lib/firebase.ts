@@ -46,17 +46,9 @@ export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length =
 
 const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
 
-// Emulator routing must be explicit. A normal `npm run dev` session is also how
-// we perform browser beta verification, so silently redirecting Auth to :9099
-// makes Google sign-in fail whenever the local emulator suite is not running.
-// Set VITE_FIREBASE_MODE=emulator only for an intentional emulator session.
 export const useFirebaseEmulators = import.meta.env.DEV && requestedFirebaseMode === 'emulator';
 export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
 
-// In development, production writes require explicit intent. Either the dedicated
-// write flag or VITE_FIREBASE_MODE=production is sufficient. This keeps an ordinary
-// blank-mode DEV session read-only, while making intentional live-cloud beta tests
-// fully writable instead of allowing local-only changes that disappear on rehydrate.
 const explicitProductionMode = import.meta.env.DEV && requestedFirebaseMode === 'production';
 export const allowProductionFirebaseWrites =
   useFirebaseEmulators ||
@@ -72,15 +64,14 @@ let db: Firestore | null = null;
 let functions: Functions | null = null;
 let storage: FirebaseStorage | null = null;
 
-/**
- * Firebase App Check debug mode is safe only in a development build. It lets a
- * localhost browser call App Check-protected production Functions without
- * weakening enforcement for actual beta/production clients.
- *
- * Firebase prints the generated debug token in the browser console the first
- * time this runs. Register that token once in Firebase Console -> App Check ->
- * your web app -> Manage debug tokens. Never copy the token into source control.
- */
+function isIosBrowserRuntime(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const userAgent = navigator.userAgent ?? '';
+  const platform = navigator.platform ?? '';
+  return /iPad|iPhone|iPod/i.test(userAgent)
+    || (platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 function enableWebAppCheckDebugMode() {
   if (!import.meta.env.DEV || useFirebaseEmulators || isNativeRuntime()) return;
   const debugGlobal = globalThis as typeof globalThis & {
@@ -91,12 +82,6 @@ function enableWebAppCheckDebugMode() {
   }
 }
 
-/**
- * Android App Check is intentionally initialized only after the native Play
- * Integrity adapter is registered. initializeAppCheck may immediately ask its
- * provider for a token when auto-refresh is enabled, so doing this at module
- * evaluation time would race the native bootstrap.
- */
 export function initializeNativeFirebaseAppCheck(): AppCheck | null {
   if (!app || useFirebaseEmulators || !isNativeRuntime()) return appCheck;
   if (appCheck) return appCheck;
@@ -113,9 +98,6 @@ export function initializeNativeFirebaseAppCheck(): AppCheck | null {
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-  // Local live-cloud testing still honors App Check. DEV uses Firebase's debug
-  // provider token, while deployed web builds use reCAPTCHA Enterprise and the
-  // Android beta uses Play Integrity through initializeNativeFirebaseAppCheck().
   enableWebAppCheckDebugMode();
 
   if (!useFirebaseEmulators && !isNativeRuntime() && appCheckSiteKey) {
@@ -127,16 +109,19 @@ if (isFirebaseConfigured) {
 
   auth = getAuth(app);
 
-  // Inkbound already owns durable offline state and its pending-sync queue.
-  // Keeping a second persistent Firestore cache created a competing source of
-  // truth on Safari/iPadOS: a server failure could hydrate the account from an
-  // old IndexedDB snapshot even after sign-out/sign-in. Firestore now keeps only
-  // an in-memory transport cache while Inkbound's own storage remains canonical.
-  // This also makes a fresh/private browser session incapable of resurrecting a
-  // stale Firestore account snapshot from a prior session.
+  // Inkbound owns durable local state, so Firestore only needs an in-memory
+  // transport cache. iPadOS browsers (including Chrome, which uses WebKit on
+  // iPadOS) additionally use long-polling. This avoids WebChannel connections
+  // that can remain open without delivering fresh snapshots on some WebKit and
+  // network combinations. Desktop browsers retain Firebase's normal transport.
+  const forceIosLongPolling = !isNativeRuntime() && isIosBrowserRuntime();
   readDb = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
     localCache: memoryLocalCache(),
+    ...(forceIosLongPolling ? {
+      experimentalForceLongPolling: true,
+      experimentalLongPollingOptions: { timeoutSeconds: 30 },
+    } : {}),
   });
 
   functions = getFunctions(app);
