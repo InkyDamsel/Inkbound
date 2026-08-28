@@ -140,6 +140,29 @@ function mergeServerRecords<T extends { id: string }>(
   return [...merged.values()];
 }
 
+function compactProfileForRuntime(profile: Record<string, unknown>): Record<string, unknown> {
+  const compact = { ...profile };
+
+  // Older builds briefly kept full base64 profile images in the profile object.
+  // Media now belongs in IndexedDB/Firebase Storage, so keeping those legacy
+  // blobs in localStorage can exhaust the browser quota on large libraries.
+  // Never mutate the cloud record here; this is only the lightweight device cache.
+  delete compact.avatarImageData;
+  delete compact.bannerImageData;
+  delete compact.avatarMediaKey;
+  delete compact.bannerMediaKey;
+
+  return compact;
+}
+
+function isBrowserStorageQuotaError(error: unknown): boolean {
+  if (!(error instanceof DOMException)) return false;
+  return error.name === 'QuotaExceededError'
+    || error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    || error.code === 22
+    || error.code === 1014;
+}
+
 function errorMessage(error: unknown): string {
   const code = typeof error === 'object' && error && 'code' in error
     ? String((error as { code?: unknown }).code ?? '')
@@ -221,7 +244,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
         if (!pending.profile && profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<Record<string, unknown>>).data;
           if (cloudProfile) {
-            const serialized = JSON.stringify(cloudProfile);
+            const serialized = JSON.stringify(compactProfileForRuntime(cloudProfile));
             if (storage.getItem(PROFILE_KEY) !== serialized) {
               storage.setItem(PROFILE_KEY, serialized);
               changedKeys.push(PROFILE_KEY);
@@ -243,7 +266,9 @@ export const CloudServerRefreshBridge: React.FC = () => {
         publishCloudSyncHealth({
           status: 'error',
           lastSuccessfulSyncAt: getRuntimeStorage().getItem(LAST_SYNC_STORAGE_KEY),
-          message: `Cloud sync could not reach Firebase: ${errorMessage(error)}`,
+          message: isBrowserStorageQuotaError(error)
+            ? 'Inkbound reached this browser\'s local cache limit while refreshing account data. Your cloud library is still safe; refresh after updating Inkbound so the smaller profile cache can be used.'
+            : `Cloud sync could not reach Firebase: ${errorMessage(error)}`,
         });
       } finally {
         running.current = false;
