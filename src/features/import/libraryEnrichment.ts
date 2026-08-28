@@ -320,15 +320,24 @@ function chooseImportedEdition(
   selected ??= exactIsbnCandidates.find(({ edition }) => edition.format === item.format);
   selected ??= exactIsbnCandidates[0];
   selected ??= workCandidates.find(({ edition }) => edition.format === item.format && Boolean(edition.coverUrl));
-  selected ??= workCandidates.find(({ edition }) => Boolean(edition.coverUrl));
   selected ??= workCandidates.find(({ edition }) => edition.format === item.format);
+  selected ??= workCandidates.find(({ edition }) => Boolean(edition.coverUrl));
   selected ??= workCandidates[0];
   if (!selected) return {};
 
   const coverEdition = selected.edition.coverUrl
     ? selected.edition
-    : selected.work.editions.find((edition) => Boolean(edition.coverUrl));
+    : selected.work.editions.find((edition) => edition.format === item.format && Boolean(edition.coverUrl))
+      ?? selected.work.editions.find((edition) => Boolean(edition.coverUrl));
   return { work: selected.work, edition: selected.edition, coverEdition };
+}
+
+function formatSearchTerms(item: ImportRecordItem): string[] {
+  if (item.format === 'ebook') return ['ebook', 'kindle'];
+  if (item.format === 'audiobook') return ['audiobook', 'audible'];
+  if (item.format === 'paperback') return ['paperback'];
+  if (item.format === 'hardcover') return ['hardcover'];
+  return [];
 }
 
 function importSearchQueries(item: ImportRecordItem): string[] {
@@ -342,6 +351,19 @@ function importSearchQueries(item: ImportRecordItem): string[] {
   const normalizedTitle = titles[3] || shortTitle;
   const primaryAuthor = authors[0];
   const alternateAuthor = authors[1] || authors[2];
+  const formatTerms = formatSearchTerms(item);
+  const hasIsbn = Boolean(compactIsbn(item.isbn));
+
+  // When Goodreads or another source provides no ISBN, search the requested
+  // edition format explicitly before the generic title/author fallback. This is
+  // especially important for Kindle/ebook and audiobook releases that may never
+  // have an ISBN but still exist in our metadata sources.
+  if (!hasIsbn && fullTitle && primaryAuthor) {
+    formatTerms.forEach((term) => queries.push(`${fullTitle} ${primaryAuthor} ${term}`));
+  }
+  if (!hasIsbn && cleanedTitle && primaryAuthor && cleanedTitle !== fullTitle) {
+    formatTerms.forEach((term) => queries.push(`${cleanedTitle} ${primaryAuthor} ${term}`));
+  }
 
   if (fullTitle && primaryAuthor) queries.push(`${fullTitle} ${primaryAuthor}`);
   if (cleanedTitle && primaryAuthor) queries.push(`${cleanedTitle} ${primaryAuthor}`);
@@ -350,7 +372,10 @@ function importSearchQueries(item: ImportRecordItem): string[] {
   if (attempts > 1 && normalizedTitle && primaryAuthor) queries.push(`${normalizedTitle} ${primaryAuthor}`);
   if (attempts > 1 && shortTitle) queries.push(shortTitle);
 
-  return [...new Set(queries.map((query) => query.trim()).filter(Boolean))].slice(0, 4);
+  // Keep the normal fast path bounded, but allow one extra format-aware query
+  // when there is no ISBN so ebook/audiobook imports get a fair lookup chance.
+  const maxQueries = !hasIsbn && formatTerms.length > 0 ? 5 : 4;
+  return [...new Set(queries.map((query) => query.trim()).filter(Boolean))].slice(0, maxQueries);
 }
 
 async function findBestImportedMetadata(
