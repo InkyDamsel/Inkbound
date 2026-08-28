@@ -15,6 +15,7 @@ import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBounda
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
 import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
+import { ManualCoverLedgerBridge } from './features/sync/ManualCoverLedgerBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
@@ -52,21 +53,11 @@ if (!rootElement) {
 
 const isPublicWebsite = !isNativeRuntime() && window.location.pathname === '/';
 
-// Public marketing pages never touch account-bound browser storage. The full
-// Inkbound application remains at /app on the web and at / inside Capacitor.
 if (!isPublicWebsite) {
-  // Keep localhost DEV data and intentional live-cloud verification data separate.
-  // This runs before App reads books, sessions, import history, or profile caches.
   isolateDevelopmentBrowserStorage();
-
-  // Clean up metadata that was attached by the old permissive import matcher before
-  // App reads the library from browser storage. Verified metadata is never touched.
   purgeUnverifiedLegacyImportMetadata();
 }
 
-// A foreground metadata retry survives normal in-app navigation, but a browser
-// refresh/tab close interrupts the active JavaScript worker. Warn only for a real
-// page unload; moving between Inkbound screens remains safe and uninterrupted.
 if (!isPublicWebsite && !isNativeRuntime()) {
   window.addEventListener('beforeunload', (event) => {
     const retry = readImportEnrichmentRetryProgress();
@@ -76,9 +67,6 @@ if (!isPublicWebsite && !isNativeRuntime()) {
   });
 }
 
-// Android initializes Play Integrity, Google-native auth plumbing, and native
-// lifecycle adapters before any account/security providers can make protected
-// Firebase requests. NativeRuntimeGate remains closed until this succeeds.
 if (isAndroidRuntime()) {
   void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
 }
@@ -135,14 +123,13 @@ const InkboundApplication = () => (
             <SecurityBootstrap />
             <CloudPersistenceBridge />
             <CloudServerRefreshBridge />
+            <ManualCoverLedgerBridge />
             <AuxiliaryAccountSyncBridge />
             <ReadOnlyCloudHydrationBridge />
             <PhotoMemoryAutoSyncBridge />
             <LegacyBookCoverMigrationBridge />
             <ThemePersistenceBridge />
             <CloudDataRefreshBoundary>
-              {/* Recovery snapshots are created automatically for every signed-in reader,
-                  but restore controls are intentionally admin-only. */}
               <RecoverySafetyBridge />
               <App />
             </CloudDataRefreshBoundary>
@@ -162,9 +149,6 @@ createRoot(rootElement).render(
   </StrictMode>,
 );
 
-// PWA caching is web-only. Capacitor Android already packages the production
-// bundle inside the native app; registering the service worker in its WebView
-// would create a second cache that can serve stale assets after an app update.
 if (import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
