@@ -13,6 +13,7 @@ import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.t
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
+import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
@@ -133,6 +134,7 @@ const InkboundApplication = () => (
           <AuthSessionGate>
             <SecurityBootstrap />
             <CloudPersistenceBridge />
+            <CloudServerRefreshBridge />
             <AuxiliaryAccountSyncBridge />
             <ReadOnlyCloudHydrationBridge />
             <PhotoMemoryAutoSyncBridge />
