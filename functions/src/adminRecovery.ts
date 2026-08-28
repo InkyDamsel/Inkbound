@@ -1,5 +1,6 @@
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
+import { reapplyProtectedBookDetails } from './protectedBookDetails.js';
 
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const RECOVERY_COLLECTION = 'recoverySnapshots';
@@ -245,8 +246,8 @@ export const restoreAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
   if (!root.exists) throw new HttpsError('not-found', 'That recovery point no longer exists.');
 
   // Preserve the cloud state being replaced first so an admin restore is reversible.
-  // Manual cover assignments live in an independent ledger and are intentionally
-  // not rolled back with an older library snapshot.
+  // Manual covers and protected reader book details live in independent ledgers
+  // and are intentionally not rolled back with an older library snapshot.
   const beforeRestoreSnapshotId = await createCloudSafetyPoint(targetUserId, 'Before admin recovery restore');
 
   const [books, sessions, profile, auxiliary, photoMemories] = await Promise.all([
@@ -271,6 +272,7 @@ export const restoreAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
     await profileRef.delete();
   }
 
+  const protectedDetailsReapplied = await reapplyProtectedBookDetails(targetUserId);
   const manualCoversReapplied = await reapplyManualCoverLedger(targetUserId);
 
   await db.collection('adminAudit').add({
@@ -281,7 +283,11 @@ export const restoreAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
     performedByEmail: admin.email,
     reason,
     previousValue: { safetySnapshotId: beforeRestoreSnapshotId },
-    newValue: { restoredSnapshotId: snapshotId, manualCoversReapplied },
+    newValue: {
+      restoredSnapshotId: snapshotId,
+      protectedDetailsReapplied,
+      manualCoversReapplied,
+    },
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -289,6 +295,7 @@ export const restoreAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
     success: true,
     restoredSnapshotId: snapshotId,
     safetySnapshotId: beforeRestoreSnapshotId,
+    protectedDetailsReapplied,
     manualCoversReapplied,
   };
 });
