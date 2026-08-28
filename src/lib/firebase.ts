@@ -11,8 +11,6 @@ import {
   connectFirestoreEmulator,
   initializeFirestore,
   memoryLocalCache,
-  persistentLocalCache,
-  persistentMultipleTabManager,
 } from 'firebase/firestore';
 import { Functions, connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 import { FirebaseStorage, connectStorageEmulator, getStorage } from 'firebase/storage';
@@ -129,13 +127,16 @@ if (isFirebaseConfigured) {
 
   auth = getAuth(app);
 
+  // Inkbound already owns durable offline state and its pending-sync queue.
+  // Keeping a second persistent Firestore cache created a competing source of
+  // truth on Safari/iPadOS: a server failure could hydrate the account from an
+  // old IndexedDB snapshot even after sign-out/sign-in. Firestore now keeps only
+  // an in-memory transport cache while Inkbound's own storage remains canonical.
+  // This also makes a fresh/private browser session incapable of resurrecting a
+  // stale Firestore account snapshot from a prior session.
   readDb = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
-    localCache: useFirebaseEmulators
-      ? memoryLocalCache()
-      : persistentLocalCache({
-          tabManager: persistentMultipleTabManager(),
-        }),
+    localCache: memoryLocalCache(),
   });
 
   functions = getFunctions(app);
