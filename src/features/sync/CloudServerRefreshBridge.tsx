@@ -5,7 +5,7 @@ import {
   getDocFromServer,
   getDocsFromServer,
 } from 'firebase/firestore';
-import type { ReadingSession, UserBookRecord } from '../../types';
+import type { Edition, ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
@@ -48,6 +48,86 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+function preferText(serverValue: string | undefined, localValue: string | undefined) {
+  return serverValue?.trim() ? serverValue : localValue;
+}
+
+function preferArray<T>(serverValue: T[] | undefined, localValue: T[] | undefined) {
+  return serverValue?.length ? serverValue : localValue;
+}
+
+function mergeEditionPreservingLocalMetadata(local: Edition | undefined, server: Edition): Edition {
+  if (!local) return server;
+  if (local.externalSource === 'manual' && server.externalSource !== 'manual') return local;
+
+  return {
+    ...server,
+    isbn: preferText(server.isbn, local.isbn),
+    isbn10: preferText(server.isbn10, local.isbn10),
+    isbn13: preferText(server.isbn13, local.isbn13),
+    asin: preferText(server.asin, local.asin),
+    pageCount: server.pageCount ?? local.pageCount,
+    audiobookDurationMins: server.audiobookDurationMins ?? local.audiobookDurationMins,
+    narrator: preferText(server.narrator, local.narrator),
+    publisher: preferText(server.publisher, local.publisher),
+    publicationDate: preferText(server.publicationDate, local.publicationDate),
+    coverUrl: preferText(server.coverUrl, local.coverUrl),
+    language: preferText(server.language, local.language),
+    editionName: preferText(server.editionName, local.editionName),
+    binding: preferText(server.binding, local.binding),
+    specialFeatures: preferArray(server.specialFeatures, local.specialFeatures),
+    externalEditionId: preferText(server.externalEditionId, local.externalEditionId),
+  };
+}
+
+function mergeBookPreservingLocalMetadata(local: UserBookRecord | undefined, server: UserBookRecord): UserBookRecord {
+  if (!local) return server;
+
+  const localEditions = new Map(local.editions.map((edition) => [edition.id, edition]));
+  const mergedEditions = server.editions.map((edition) => mergeEditionPreservingLocalMetadata(localEditions.get(edition.id), edition));
+  const serverEditionIds = new Set(server.editions.map((edition) => edition.id));
+  local.editions.forEach((edition) => {
+    if (!serverEditionIds.has(edition.id) && edition.externalSource === 'manual') mergedEditions.push(edition);
+  });
+
+  return {
+    ...server,
+    work: {
+      ...server.work,
+      subtitle: preferText(server.work.subtitle, local.work.subtitle),
+      summary: preferText(server.work.summary, local.work.summary) ?? '',
+      publisherSummary: preferText(server.work.publisherSummary, local.work.publisherSummary),
+      personalSummary: preferText(server.work.personalSummary, local.work.personalSummary),
+      seriesName: preferText(server.work.seriesName, local.work.seriesName),
+      seriesOrder: server.work.seriesOrder ?? local.work.seriesOrder,
+      genres: preferArray(server.work.genres, local.work.genres) ?? [],
+      tropes: preferArray(server.work.tropes, local.work.tropes),
+      contentWarnings: preferArray(server.work.contentWarnings, local.work.contentWarnings),
+      publicationYear: server.work.publicationYear || local.work.publicationYear,
+      originalLanguage: preferText(server.work.originalLanguage, local.work.originalLanguage),
+      externalWorkId: preferText(server.work.externalWorkId, local.work.externalWorkId),
+    },
+    editions: mergedEditions,
+    activeEditionId: mergedEditions.some((edition) => edition.id === server.activeEditionId)
+      ? server.activeEditionId
+      : local.activeEditionId,
+    importMetadataVerified: server.importMetadataVerified || local.importMetadataVerified,
+  };
+}
+
+function mergeServerBooks(
+  current: UserBookRecord[],
+  server: UserBookRecord[],
+  pending: Record<string, PendingMutation<UserBookRecord>>,
+): UserBookRecord[] {
+  const merged = new Map(current.map((item) => [item.id, item]));
+  server.forEach((item) => {
+    if (pending[item.id]) return;
+    merged.set(item.id, mergeBookPreservingLocalMetadata(merged.get(item.id), item));
+  });
+  return [...merged.values()];
+}
+
 function mergeServerRecords<T extends { id: string }>(
   current: T[],
   server: T[],
@@ -69,11 +149,10 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * A server-authoritative fallback for browsers whose long-lived Firestore
- * listener becomes unreliable. It performs explicit server reads on sign-in,
- * foreground/resume, manual retry, and a modest interval. Existing local
- * pending mutations always win until CloudPersistenceBridge flushes them, so
- * this repair path cannot overwrite offline edits that have not synced yet.
+ * A server refresh fallback for browsers whose long-lived Firestore listener is
+ * unreliable. Server records update normal account state, but book metadata is
+ * merged conservatively so a stale cloud copy cannot erase a richer local
+ * edition, summary, cover, series match, ISBN, page count, or manual edit.
  */
 export const CloudServerRefreshBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -123,7 +202,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
 
         const currentBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const currentSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
-        const nextBooks = mergeServerRecords(currentBooks, serverBooks, pending.books ?? {});
+        const nextBooks = mergeServerBooks(currentBooks, serverBooks, pending.books ?? {});
         const nextSessions = mergeServerRecords(currentSessions, serverSessions, pending.sessions ?? {});
 
         const changedKeys: Array<'inkbound_books' | 'inkbound_sessions' | 'inkbound_reader_profile'> = [];
