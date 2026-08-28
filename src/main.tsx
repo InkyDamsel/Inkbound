@@ -16,6 +16,7 @@ import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.t
 import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
 import { ManualCoverLedgerBridge } from './features/sync/ManualCoverLedgerBridge.tsx';
+import { ProtectedBookDetailsLedgerBridge } from './features/sync/ProtectedBookDetailsLedgerBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
@@ -124,6 +125,7 @@ const InkboundApplication = () => (
             <CloudPersistenceBridge />
             <CloudServerRefreshBridge />
             <ManualCoverLedgerBridge />
+            <ProtectedBookDetailsLedgerBridge />
             <AuxiliaryAccountSyncBridge />
             <ReadOnlyCloudHydrationBridge />
             <PhotoMemoryAutoSyncBridge />
