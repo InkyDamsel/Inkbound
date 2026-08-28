@@ -1,9 +1,15 @@
-import React, { FormEvent, useMemo, useState } from 'react';
-import { Cloud, KeyRound, LogOut, Mail, ShieldCheck } from 'lucide-react';
+import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import {
+  getCloudSyncHealth,
+  INKBOUND_CLOUD_SYNC_HEALTH_EVENT,
+  requestCloudRefresh,
+  type CloudSyncHealth,
+} from '../../features/sync/cloudSyncHealth';
 
 const formatLastSync = (value: string | null) => {
-  if (!value) return 'Automatic sync will begin after sign-in';
+  if (!value) return 'No successful cloud sync recorded on this device yet';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Previously synchronized' : date.toLocaleString();
 };
@@ -16,6 +22,15 @@ export const AccountSyncCard: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [linkPassword, setLinkPassword] = useState('');
+  const [cloudHealth, setCloudHealth] = useState<CloudSyncHealth>(() => getCloudSyncHealth());
+
+  useEffect(() => {
+    const handleHealth = (event: Event) => {
+      setCloudHealth((event as CustomEvent<CloudSyncHealth>).detail);
+    };
+    window.addEventListener(INKBOUND_CLOUD_SYNC_HEALTH_EVENT, handleHealth);
+    return () => window.removeEventListener(INKBOUND_CLOUD_SYNC_HEALTH_EVENT, handleHealth);
+  }, []);
 
   const hasPasswordProvider = useMemo(
     () => sync.user?.providerData.some((provider) => provider.providerId === 'password') ?? false,
@@ -71,18 +86,10 @@ export const AccountSyncCard: React.FC = () => {
             </div>
 
             <div className="mb-4 grid grid-cols-2 rounded-xl bg-[var(--ink-page)] p-1">
-              <button
-                type="button"
-                onClick={() => setAuthMode('signin')}
-                className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'signin' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}
-              >
+              <button type="button" onClick={() => setAuthMode('signin')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'signin' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
                 Sign in
               </button>
-              <button
-                type="button"
-                onClick={() => setAuthMode('create')}
-                className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'create' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}
-              >
+              <button type="button" onClick={() => setAuthMode('create')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'create' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
                 Create account
               </button>
             </div>
@@ -90,47 +97,20 @@ export const AccountSyncCard: React.FC = () => {
             <form className="space-y-3" onSubmit={submitEmailAuth}>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-muted)]">Email</span>
-                <input
-                  type="email"
-                  inputMode="email"
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="reader@example.com"
-                  className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]"
-                  required
-                />
+                <input type="email" inputMode="email" autoCapitalize="none" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="reader@example.com" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-muted)]">Password</span>
-                <input
-                  type="password"
-                  autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  minLength={6}
-                  className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]"
-                  required
-                />
+                <input type="password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
               </label>
-              <button
-                type="submit"
-                disabled={!sync.isConfigured || isWorking}
-                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink-gold)] px-4 text-sm font-bold text-[#20170d] disabled:cursor-not-allowed disabled:opacity-50"
-              >
+              <button type="submit" disabled={!sync.isConfigured || isWorking} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink-gold)] px-4 text-sm font-bold text-[#20170d] disabled:cursor-not-allowed disabled:opacity-50">
                 <Mail className="h-4 w-4" />
                 {isWorking ? 'Please wait...' : authMode === 'signin' ? 'Sign in with email' : 'Create Inkbound account'}
               </button>
             </form>
 
             {authMode === 'signin' && (
-              <button
-                type="button"
-                onClick={() => email.trim() && void sync.sendPasswordReset(email)}
-                disabled={!email.trim() || isWorking}
-                className="mt-3 min-h-11 px-1 text-xs font-semibold text-[var(--ink-muted)] underline decoration-[var(--ink-border)] underline-offset-4 disabled:opacity-40"
-              >
+              <button type="button" onClick={() => email.trim() && void sync.sendPasswordReset(email)} disabled={!email.trim() || isWorking} className="mt-3 min-h-11 px-1 text-xs font-semibold text-[var(--ink-muted)] underline decoration-[var(--ink-border)] underline-offset-4 disabled:opacity-40">
                 Forgot password?
               </button>
             )}
@@ -160,16 +140,11 @@ export const AccountSyncCard: React.FC = () => {
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-[var(--ink-ivory)]">{sync.user.displayName || 'Connected reader'}</p>
                 <p className="break-all text-xs text-[var(--ink-muted)]">{sync.user.email || 'Inkbound account connected'}</p>
-                <p className="mt-1 break-words text-[11px] text-[var(--ink-faint)]">Signed in persistently · {formatLastSync(sync.lastSyncedAt)}</p>
+                <p className="mt-1 break-words text-[11px] text-[var(--ink-faint)]">Signed in persistently · {formatLastSync(cloudHealth.lastSuccessfulSyncAt ?? sync.lastSyncedAt)}</p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void sync.signOutAccount()}
-              disabled={isWorking}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--ink-border)] px-4 text-xs font-semibold text-[var(--ink-muted)] disabled:opacity-50"
-            >
+            <button type="button" onClick={() => void sync.signOutAccount()} disabled={isWorking} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--ink-border)] px-4 text-xs font-semibold text-[var(--ink-muted)] disabled:opacity-50">
               <LogOut className="h-4 w-4" /> Sign out
             </button>
           </div>
@@ -180,34 +155,13 @@ export const AccountSyncCard: React.FC = () => {
                 <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-[var(--ink-ivory)]">Add email/password sign-in</p>
-                  <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                    Add a password to this existing account so you can sign in with either Google or email without creating a second library.
-                  </p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Add a password to this existing account so you can sign in with either Google or email without creating a second library.</p>
                   {!showLinkForm ? (
-                    <button type="button" onClick={() => setShowLinkForm(true)} className="mt-3 min-h-11 rounded-xl border border-[var(--ink-border)] px-4 py-2 text-xs font-semibold text-[var(--ink-ivory)]">
-                      Add email login
-                    </button>
+                    <button type="button" onClick={() => setShowLinkForm(true)} className="mt-3 min-h-11 rounded-xl border border-[var(--ink-border)] px-4 py-2 text-xs font-semibold text-[var(--ink-ivory)]">Add email login</button>
                   ) : (
-                    <form
-                      className="mt-3 flex min-w-0 flex-col gap-2 sm:flex-row"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        if (sync.user?.email && linkPassword) void sync.linkEmailPassword(sync.user.email, linkPassword);
-                      }}
-                    >
-                      <input
-                        type="password"
-                        value={linkPassword}
-                        onChange={(event) => setLinkPassword(event.target.value)}
-                        minLength={6}
-                        autoComplete="new-password"
-                        placeholder="Choose a password"
-                        className="min-h-12 min-w-0 flex-1 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]"
-                        required
-                      />
-                      <button type="submit" disabled={isWorking} className="min-h-12 shrink-0 rounded-xl bg-[var(--ink-gold)] px-4 text-xs font-bold text-[#20170d] disabled:opacity-50">
-                        Link login
-                      </button>
+                    <form className="mt-3 flex min-w-0 flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); if (sync.user?.email && linkPassword) void sync.linkEmailPassword(sync.user.email, linkPassword); }}>
+                      <input type="password" value={linkPassword} onChange={(event) => setLinkPassword(event.target.value)} minLength={6} autoComplete="new-password" placeholder="Choose a password" className="min-h-12 min-w-0 flex-1 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
+                      <button type="submit" disabled={isWorking} className="min-h-12 shrink-0 rounded-xl bg-[var(--ink-gold)] px-4 text-xs font-bold text-[#20170d] disabled:opacity-50">Link login</button>
                     </form>
                   )}
                 </div>
@@ -218,25 +172,25 @@ export const AccountSyncCard: React.FC = () => {
           {!sync.user.emailVerified && sync.user.providerData.some((provider) => provider.providerId === 'password') && (
             <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4 text-xs text-[var(--ink-muted)]">
               Your email has not been verified yet.{' '}
-              <button type="button" onClick={() => void sync.resendVerificationEmail()} disabled={isWorking} className="min-h-11 font-semibold text-[var(--ink-ivory)] underline underline-offset-4">
-                Resend verification email
-              </button>
+              <button type="button" onClick={() => void sync.resendVerificationEmail()} disabled={isWorking} className="min-h-11 font-semibold text-[var(--ink-ivory)] underline underline-offset-4">Resend verification email</button>
             </div>
           )}
 
-          <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-950/15 p-4">
-            <Cloud className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-[var(--ink-ivory)]">Automatic synchronization is active</p>
-              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                Books and sessions synchronize as separate cloud records. Profile images and Photo Memories are stored securely. Offline changes remain on this device and synchronize automatically after the connection returns or Inkbound resumes.
+          <div className={`flex items-start gap-3 rounded-2xl border p-4 ${cloudHealth.status === 'error' ? 'border-rose-500/30 bg-rose-950/15' : cloudHealth.status === 'checking' ? 'border-amber-500/25 bg-amber-950/10' : 'border-emerald-500/25 bg-emerald-950/15'}`}>
+            <Cloud className={`mt-0.5 h-5 w-5 shrink-0 ${cloudHealth.status === 'error' ? 'text-rose-300' : cloudHealth.status === 'checking' ? 'text-amber-300' : 'text-emerald-300'}`} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-[var(--ink-ivory)]">
+                {cloudHealth.status === 'error' ? 'Cloud synchronization needs attention' : cloudHealth.status === 'checking' ? 'Checking cloud synchronization…' : cloudHealth.status === 'healthy' ? 'Cloud synchronization verified' : 'Cloud synchronization is starting'}
               </p>
+              <p className="mt-1 break-words text-xs leading-5 text-[var(--ink-muted)]">{cloudHealth.message}</p>
+              <button type="button" onClick={requestCloudRefresh} disabled={cloudHealth.status === 'checking'} className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--ink-border)] px-3 text-xs font-semibold text-[var(--ink-ivory)] disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 ${cloudHealth.status === 'checking' ? 'animate-spin' : ''}`} />
+                Retry cloud sync
+              </button>
             </div>
           </div>
 
-          <p className="text-xs text-[var(--ink-faint)]">
-            Signing into another device restores the cloud library and Photo Memories for this account before that device reconciles its local changes.
-          </p>
+          <p className="text-xs text-[var(--ink-faint)]">Signing into another device restores the cloud library and Photo Memories for this account before that device reconciles its local changes.</p>
         </div>
       )}
 
