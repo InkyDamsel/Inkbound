@@ -29,6 +29,7 @@ const CLOUD_SYNCED_STORAGE_KEYS = new Set<CloudSyncedStorageKey>([
   'inkbound_sessions',
   'inkbound_reader_profile',
 ]);
+const LOCAL_DATA_SIGNAL_DEBOUNCE_MS = 1000;
 
 function isCloudSyncedStorageKey(key: string): key is CloudSyncedStorageKey {
   return CLOUD_SYNCED_STORAGE_KEYS.has(key as CloudSyncedStorageKey);
@@ -38,6 +39,8 @@ function isCloudSyncedStorageKey(key: string): key is CloudSyncedStorageKey {
 // signed-in screens should wait for the current session's cloud hydration before
 // revealing cached records from a previous session/device state.
 let cloudDataRevision = 0;
+let pendingLocalDataKeys = new Set<CloudSyncedStorageKey>();
+let localDataSignalTimer: number | undefined;
 
 export const getCloudDataRevision = () => cloudDataRevision;
 
@@ -50,15 +53,24 @@ export const notifyCloudDataUpdated = (keys: CloudSyncedStorageKey[]) => {
   );
 };
 
-// Local writes in the same browser tab do not emit the native storage event.
-// Components use this signal so the sync bridge can capture important changes
-// immediately instead of waiting for its background polling interval.
+// Collapse bursts of local mutations into one sync signal. Imports, batch edits,
+// and React persistence effects can otherwise trigger many overlapping Firestore
+// flushes for the same logical change.
 export const notifyLocalDataChanged = (keys: CloudSyncedStorageKey[]) => {
-  window.dispatchEvent(
-    new CustomEvent<LocalDataChangedDetail>(INKBOUND_LOCAL_DATA_CHANGED_EVENT, {
-      detail: { keys },
-    }),
-  );
+  keys.forEach((key) => pendingLocalDataKeys.add(key));
+  if (localDataSignalTimer !== undefined) window.clearTimeout(localDataSignalTimer);
+
+  localDataSignalTimer = window.setTimeout(() => {
+    localDataSignalTimer = undefined;
+    if (!pendingLocalDataKeys.size) return;
+    const changedKeys = [...pendingLocalDataKeys];
+    pendingLocalDataKeys = new Set<CloudSyncedStorageKey>();
+    window.dispatchEvent(
+      new CustomEvent<LocalDataChangedDetail>(INKBOUND_LOCAL_DATA_CHANGED_EVENT, {
+        detail: { keys: changedKeys },
+      }),
+    );
+  }, LOCAL_DATA_SIGNAL_DEBOUNCE_MS);
 };
 
 function installLocalStorageSyncSignals() {
@@ -72,26 +84,30 @@ function installLocalStorageSyncSignals() {
   const originalRemoveItem = storagePrototype.removeItem;
 
   storagePrototype.setItem = function setItem(key: string, value: string) {
+    const shouldSignal = this === window.localStorage && isCloudSyncedStorageKey(key);
+    const previousValue = shouldSignal ? this.getItem(key) : null;
+
+    // Do not rewrite or re-signal cloud-synced values that are byte-for-byte
+    // identical. This is common when React effects persist an already-saved value.
+    if (shouldSignal && previousValue === value) return;
+
     originalSetItem.call(this, key, value);
-    if (this === window.localStorage && isCloudSyncedStorageKey(key)) {
-      notifyLocalDataChanged([key]);
-    }
+    if (shouldSignal) notifyLocalDataChanged([key]);
   };
 
   storagePrototype.removeItem = function removeItem(key: string) {
+    const shouldSignal = this === window.localStorage && isCloudSyncedStorageKey(key);
+    const hadValue = shouldSignal ? this.getItem(key) !== null : false;
     originalRemoveItem.call(this, key);
-    if (this === window.localStorage && isCloudSyncedStorageKey(key)) {
-      notifyLocalDataChanged([key]);
-    }
+    if (shouldSignal && hadValue) notifyLocalDataChanged([key]);
   };
 
   runtimeWindow.__inkboundLocalStorageSignalsInstalled = true;
 }
 
-// CloudPersistenceBridge already knows how to turn this signal into a durable
-// pending mutation and flush it to Firestore. Install the signal at the storage
-// boundary so important book/session/profile writes cannot sit uncaptured until
-// the polling interval while a cloud snapshot races them and restores stale data.
+// CloudPersistenceBridge turns this signal into a durable pending mutation and
+// flushes it to Firestore. Install the signal at the storage boundary so local
+// changes are captured without continuously polling Firestore-bound state.
 installLocalStorageSyncSignals();
 
 // Give the persistence bridge a bounded opportunity to flush queued mutations
