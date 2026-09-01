@@ -1,6 +1,5 @@
 package com.inkydameinteractive.inkbound;
 
-import android.graphics.Color;
 import android.os.Bundle;
 
 import androidx.core.view.WindowCompat;
@@ -10,8 +9,11 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private void applyInkboundSystemBars() {
-        getWindow().setStatusBarColor(Color.rgb(11, 8, 16));
-        getWindow().setNavigationBarColor(Color.rgb(11, 8, 16));
+        // Android 15 enforces edge-to-edge for apps targeting API 35. Avoid the
+        // deprecated status/navigation bar color APIs and let Inkbound's WebView
+        // draw behind the transparent system bars instead.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(
             getWindow(),
             getWindow().getDecorView()
