@@ -21,6 +21,12 @@ import { useUserPlan } from '../context/UserPlanContext';
 import { analyzeImportDuplicates } from '../features/import/libraryEnrichment';
 import { readXlsxRecords } from '../features/import/spreadsheetImport';
 import {
+  detectImportColumnMapping,
+  ImportColumnMapping,
+  ImportFieldKey,
+  mappedValue,
+} from '../features/import/columnMapping';
+import {
   getImportVerificationSnapshot,
   readImportMetadataPending,
   resetImportVerificationJob,
@@ -28,6 +34,7 @@ import {
   subscribeToImportVerification,
 } from '../features/import/importVerificationJob';
 import { ImportAnalysisSummaryGrid } from './import/ImportAnalysisSummaryGrid';
+import { ImportColumnMappingPanel } from './import/ImportColumnMappingPanel';
 import { ImportSourceGrid } from './import/ImportSourceGrid';
 import { ImportHistoryScreen } from './ImportHistoryScreen';
 
@@ -68,7 +75,7 @@ const sourceInstructions: Record<string, string[]> = {
   generic_csv: [
     'Export your library from the original reading app or book tracker.',
     'Download the export as CSV, Excel (.xlsx), or JSON. You do not need to convert an Excel-only export first.',
-    'Inkbound will read the first worksheet and automatically match common book columns such as title, author, ISBN, status, rating, and dates.',
+    'Inkbound will guess the book columns first, then let you correct any column mapping before import.',
   ],
 };
 
@@ -112,22 +119,13 @@ function parseCsv(text: string): Record<string, string>[] {
   if (row.some((cell) => cell.trim())) rows.push(row);
   if (rows.length < 2) return [];
 
-  const headers = rows[0].map((header) => header.trim());
+  const headers = rows[0].map((header, index) => header.trim() || `Column ${index + 1}`);
   return rows.slice(1).map((cells) =>
     headers.reduce<Record<string, string>>((record, header, index) => {
       record[header] = cells[index]?.trim() ?? '';
       return record;
     }, {}),
   );
-}
-
-function firstValue(record: Record<string, unknown>, keys: string[]): string {
-  const entries = Object.entries(record);
-  for (const key of keys) {
-    const match = entries.find(([entryKey]) => entryKey.toLowerCase().trim() === key.toLowerCase().trim());
-    if (match && match[1] !== undefined && match[1] !== null) return String(match[1]).trim();
-  }
-  return '';
 }
 
 function normalizeFormat(value: string): Format {
@@ -149,55 +147,49 @@ function normalizeStatus(value: string): ReadingStatus {
   return 'tbr';
 }
 
-function mapRecord(record: Record<string, unknown>, index: number): ImportRecordItem | null {
-  const title = firstValue(record, ['Title', 'Book Title', 'Book', 'Book Name', 'Name', 'title']);
+function mapRecord(record: Record<string, unknown>, index: number, mapping: ImportColumnMapping): ImportRecordItem | null {
+  const title = mappedValue(record, mapping, 'title');
   if (!title) return null;
 
-  const author = firstValue(record, ['Author', 'Author Name', 'Authors', 'Writer', 'Book Author', 'author']) || 'Unknown Author';
-  const isbn = firstValue(record, ['ISBN13', 'ISBN 13', 'ISBN-13', 'ISBN', 'isbn13', 'isbn', 'isbn_13', 'ISBN10', 'ISBN 10', 'ISBN-10', 'isbn_10']);
-  const ratingValue = Number(firstValue(record, ['My Rating', 'Rating', 'Stars', 'Star Rating', 'rating', 'star_rating']));
+  const author = mappedValue(record, mapping, 'author') || 'Unknown Author';
+  const isbn = mappedValue(record, mapping, 'isbn');
+  const ratingValue = Number(mappedValue(record, mapping, 'rating'));
 
   return {
-    id: `import-${Date.now()}-${index}`,
+    id: `import-${index}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`,
     title,
     author,
     isbn: isbn || undefined,
-    format: normalizeFormat(firstValue(record, ['Binding', 'Format', 'Book Format', 'Media Type', 'Edition Format', 'format', 'media_type', 'book_format'])),
-    status: normalizeStatus(firstValue(record, ['Exclusive Shelf', 'Status', 'Reading Status', 'Shelf', 'Bookshelf', 'status', 'shelf', 'read_status'])),
+    format: normalizeFormat(mappedValue(record, mapping, 'format')),
+    status: normalizeStatus(mappedValue(record, mapping, 'status')),
     rating: Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue : undefined,
-    dateRead: firstValue(record, ['Date Read', 'Finished Date', 'Date Finished', 'Completed Date', 'Read Date', 'dateRead', 'date_finished', 'finished_at']) || undefined,
-    dateAdded: firstValue(record, ['Date Added', 'Added Date', 'Created Date', 'dateAdded', 'created_at', 'added_at']) || new Date().toISOString().split('T')[0],
-    review: firstValue(record, ['My Review', 'Review', 'Notes', 'Comments', 'Thoughts', 'review', 'notes']) || undefined,
+    dateRead: mappedValue(record, mapping, 'dateRead') || undefined,
+    dateAdded: mappedValue(record, mapping, 'dateAdded') || new Date().toISOString().split('T')[0],
+    review: mappedValue(record, mapping, 'review') || undefined,
     confidence: 100,
     duplicateAction: 'skip',
     coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
   };
 }
 
-async function readImportFile(file: File): Promise<ImportRecordItem[]> {
+async function readRawImportFile(file: File): Promise<Record<string, unknown>[]> {
   const extension = file.name.split('.').pop()?.toLowerCase();
-  let rawRecords: Record<string, unknown>[];
+  if (extension === 'xlsx') return readXlsxRecords(file);
 
-  if (extension === 'xlsx') {
-    rawRecords = await readXlsxRecords(file);
-  } else {
-    const text = await file.text();
-    if (extension === 'json' || file.type.includes('json')) {
-      const parsed: unknown = JSON.parse(text);
-      const array = Array.isArray(parsed)
-        ? parsed
-        : parsed && typeof parsed === 'object'
-          ? Object.values(parsed as Record<string, unknown>).find(Array.isArray) ?? []
-          : [];
-      rawRecords = (array as unknown[]).filter(
-        (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
-      );
-    } else {
-      rawRecords = parseCsv(text);
-    }
+  const text = await file.text();
+  if (extension === 'json' || file.type.includes('json')) {
+    const parsed: unknown = JSON.parse(text);
+    const array = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === 'object'
+        ? Object.values(parsed as Record<string, unknown>).find(Array.isArray) ?? []
+        : [];
+    return (array as unknown[]).filter(
+      (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
+    );
   }
 
-  return rawRecords.map(mapRecord).filter((item): item is ImportRecordItem => Boolean(item));
+  return parseCsv(text);
 }
 
 export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
@@ -215,6 +207,9 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   const [centerView, setCenterView] = useState<ImportCenterView>(() => readImportCenterView());
   const [currentStep, setCurrentStep] = useState(initialJob.status === 'running' ? 4 : initialJob.status === 'complete' ? 5 : 1);
   const [selectedSource, setSelectedSource] = useState<ImportSourceInfo>(IMPORT_SOURCES[0]);
+  const [rawRecords, setRawRecords] = useState<Record<string, unknown>[]>([]);
+  const [fileHeaders, setFileHeaders] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<ImportColumnMapping>({});
   const [importRecords, setImportRecords] = useState<ImportRecordItem[]>([]);
   const [duplicateRecords, setDuplicateRecords] = useState<ImportRecordItem[]>(initialJob.duplicates);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -266,11 +261,29 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   );
 
   const maximumSelection = isPremium ? newRecords.length : remainingFreeSlots;
-  const allEligibleSelected =
-    newRecords.length > 0 && selectedIds.length === Math.min(newRecords.length, maximumSelection);
+  const allEligibleSelected = newRecords.length > 0 && selectedIds.length === Math.min(newRecords.length, maximumSelection);
+  const mappingReady = Boolean(columnMapping.title) && importRecords.length > 0;
 
   const goNext = () => setCurrentStep((step) => Math.min(5, step + 1));
   const goBack = () => setCurrentStep((step) => Math.max(1, step - 1));
+
+  const applyMapping = (records: Record<string, unknown>[], mapping: ImportColumnMapping) => {
+    const mappedRecords = records.map((record, index) => mapRecord(record, index, mapping)).filter((item): item is ImportRecordItem => Boolean(item));
+    const duplicateAnalysis = analyzeImportDuplicates(mappedRecords, books);
+    setImportRecords(mappedRecords);
+    setDuplicateRecords(duplicateAnalysis.duplicates);
+    const initialLimit = isPremium ? duplicateAnalysis.unique.length : remainingFreeSlots;
+    setSelectedIds(duplicateAnalysis.unique.slice(0, initialLimit).map((record) => record.id));
+  };
+
+  const updateColumnMapping = (field: ImportFieldKey, header: string) => {
+    const next = { ...columnMapping };
+    if (header) next[field] = header;
+    else delete next[field];
+    setColumnMapping(next);
+    applyMapping(rawRecords, next);
+    setFileError(null);
+  };
 
   const processFile = async (file?: File) => {
     if (!file) return;
@@ -289,15 +302,20 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     setMetadataPendingCount(0);
     setHasUndone(false);
     try {
-      const records = await readImportFile(file);
-      if (records.length === 0) throw new Error('No recognizable book records were found. Make sure the first row contains column names and that the file includes a title or book-name column.');
-      const duplicateAnalysis = analyzeImportDuplicates(records, books);
-      setImportRecords(records);
-      setDuplicateRecords(duplicateAnalysis.duplicates);
+      const records = await readRawImportFile(file);
+      if (records.length === 0) throw new Error('No library rows were found in this file.');
+      const headers = Array.from(new Set(records.flatMap((record) => Object.keys(record))));
+      if (headers.length === 0) throw new Error('No column names were found in this file.');
+      const detectedMapping = detectImportColumnMapping(headers);
+      setRawRecords(records);
+      setFileHeaders(headers);
+      setColumnMapping(detectedMapping);
       setSelectedFileName(file.name);
-      const initialLimit = isPremium ? duplicateAnalysis.unique.length : remainingFreeSlots;
-      setSelectedIds(duplicateAnalysis.unique.slice(0, initialLimit).map((record) => record.id));
+      applyMapping(records, detectedMapping);
     } catch (error) {
+      setRawRecords([]);
+      setFileHeaders([]);
+      setColumnMapping({});
       setImportRecords([]);
       setDuplicateRecords([]);
       setSelectedIds([]);
@@ -385,20 +403,14 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   return (
     <div className="space-y-6 pb-20">
       <header>
-        <span className="rounded border border-[#c5a059]/30 bg-[#c5a059]/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#e5c158]">
-          Library Migration
-        </span>
+        <span className="rounded border border-[#c5a059]/30 bg-[#c5a059]/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#e5c158]">Library Migration</span>
         <h1 className="mt-2 font-serif text-3xl font-bold text-[#f4efe6]">Import Center</h1>
         <p className="mt-1 text-sm text-stone-400">Import a library or review the history and optional book-detail updates from previous imports.</p>
       </header>
 
       <div className="grid grid-cols-2 gap-1 rounded-2xl border border-[#3d2448] bg-[#120817] p-1" role="tablist" aria-label="Import Center views">
-        <button type="button" role="tab" aria-selected={centerView === 'import'} onClick={() => switchCenterView('import')} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition ${centerView === 'import' ? 'bg-[#c5a059] text-[#120817]' : 'text-stone-400 hover:bg-[#1c0f24] hover:text-[#f4efe6]'}`}>
-          <Upload className="h-4 w-4" /> Import Books
-        </button>
-        <button type="button" role="tab" aria-selected={centerView === 'history'} onClick={() => switchCenterView('history')} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition ${centerView === 'history' ? 'bg-[#c5a059] text-[#120817]' : 'text-stone-400 hover:bg-[#1c0f24] hover:text-[#f4efe6]'}`}>
-          <FileClock className="h-4 w-4" /> History
-        </button>
+        <button type="button" role="tab" aria-selected={centerView === 'import'} onClick={() => switchCenterView('import')} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition ${centerView === 'import' ? 'bg-[#c5a059] text-[#120817]' : 'text-stone-400 hover:bg-[#1c0f24] hover:text-[#f4efe6]'}`}><Upload className="h-4 w-4" /> Import Books</button>
+        <button type="button" role="tab" aria-selected={centerView === 'history'} onClick={() => switchCenterView('history')} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition ${centerView === 'history' ? 'bg-[#c5a059] text-[#120817]' : 'text-stone-400 hover:bg-[#1c0f24] hover:text-[#f4efe6]'}`}><FileClock className="h-4 w-4" /> History</button>
       </div>
 
       {centerView === 'history' ? (
@@ -407,10 +419,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
         <>
           <div className="flex items-start gap-3 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4 text-xs text-stone-300">
             <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-[#c5a059]" />
-            <div>
-              <p className="font-bold text-[#f4efe6]">Your export is the source of truth</p>
-              <p className="mt-1 text-stone-400">Inkbound imports your selected non-duplicate books using the title, author, shelf, rating, dates, review, and ISBN from your export. External book sources are only used to verify optional covers, summaries, and edition details.</p>
-            </div>
+            <div><p className="font-bold text-[#f4efe6]">Your export is the source of truth</p><p className="mt-1 text-stone-400">Inkbound imports your selected non-duplicate books using the title, author, shelf, rating, dates, review, and ISBN from your export. External book sources are only used to verify optional covers, summaries, and edition details.</p></div>
           </div>
 
           <div className="overflow-x-auto rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-3">
@@ -421,9 +430,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
                 const complete = step < currentStep;
                 return (
                   <div key={label} className={`flex items-center gap-2 text-xs font-semibold ${active ? 'text-[#e5c158]' : complete ? 'text-emerald-400' : 'text-stone-500'}`}>
-                    <span className={`grid h-7 w-7 place-items-center rounded-full ${active ? 'bg-[#c5a059] text-[#120817]' : complete ? 'bg-emerald-950 text-emerald-300' : 'bg-[#25132f] text-stone-500'}`}>
-                      {complete ? '✓' : step}
-                    </span>
+                    <span className={`grid h-7 w-7 place-items-center rounded-full ${active ? 'bg-[#c5a059] text-[#120817]' : complete ? 'bg-emerald-950 text-emerald-300' : 'bg-[#25132f] text-stone-500'}`}>{complete ? '✓' : step}</span>
                     <span>{label}</span>
                   </div>
                 );
@@ -435,56 +442,34 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
             <section className="space-y-4">
               <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose an import source</h2>
               <ImportSourceGrid sources={IMPORT_SOURCES} selectedSourceId={selectedSource.id} onSelectSource={setSelectedSource} />
-              <div className="flex justify-end">
-                <button type="button" onClick={goNext} className="quiet-shelf-primary-action min-h-11">
-                  Continue with {selectedSource.name}<ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
+              <div className="flex justify-end"><button type="button" onClick={goNext} className="quiet-shelf-primary-action min-h-11">Continue with {selectedSource.name}<ArrowRight className="h-4 w-4" /></button></div>
             </section>
           )}
 
           {currentStep === 2 && (
             <section className="space-y-5">
-              <div>
-                <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Upload {selectedSource.name} export</h2>
-                <p className="mt-1 text-sm text-stone-400">Choose the file you downloaded from {selectedSource.name}.</p>
-              </div>
+              <div><h2 className="font-serif text-xl font-bold text-[#f4efe6]">Upload {selectedSource.name} export</h2><p className="mt-1 text-sm text-stone-400">Choose the file you downloaded from {selectedSource.name}.</p></div>
 
               <section className="rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-5">
-                <div className="flex items-start gap-3">
-                  <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" />
-                  <div>
-                    <h3 className="font-bold text-[#f4efe6]">How to find your export file</h3>
-                    <ol className="mt-3 space-y-2 text-sm text-stone-400">
-                      {sourceInstructions[selectedSource.id].map((instruction, index) => (
-                        <li key={instruction} className="flex gap-3">
-                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15 text-xs font-bold text-[#e5c158]">{index + 1}</span>
-                          <span>{instruction}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                </div>
+                <div className="flex items-start gap-3"><HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" /><div><h3 className="font-bold text-[#f4efe6]">How to find your export file</h3><ol className="mt-3 space-y-2 text-sm text-stone-400">{sourceInstructions[selectedSource.id].map((instruction, index) => (<li key={instruction} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15 text-xs font-bold text-[#e5c158]">{index + 1}</span><span>{instruction}</span></li>))}</ol></div></div>
               </section>
 
               <div onDragOver={(event) => event.preventDefault()} onDrop={onDrop} className="rounded-2xl border border-dashed border-[#c5a059] bg-[#1c0f24] p-8 text-center sm:p-12">
                 <Upload className="mx-auto h-12 w-12 text-[#c5a059]" />
                 <p className="mt-3 font-serif text-lg font-bold text-[#f4efe6]">Drag and drop your CSV, Excel, or JSON file</p>
                 <p className="mt-1 text-xs text-stone-400">Excel .xlsx files are read directly — no conversion required.</p>
-                <label className="quiet-shelf-primary-action mt-5 inline-flex min-h-11 cursor-pointer">
-                  <FileSpreadsheet className="h-4 w-4" />
-                  {isReadingFile ? 'Reading file…' : 'Choose Export File'}
-                  <input type="file" accept=".csv,.xlsx,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onFileInput} className="sr-only" disabled={isReadingFile} />
-                </label>
+                <label className="quiet-shelf-primary-action mt-5 inline-flex min-h-11 cursor-pointer"><FileSpreadsheet className="h-4 w-4" />{isReadingFile ? 'Reading file…' : 'Choose Export File'}<input type="file" accept=".csv,.xlsx,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onFileInput} className="sr-only" disabled={isReadingFile} /></label>
                 {selectedFileName && <p className="mt-4 text-sm font-semibold text-emerald-300">Ready: {selectedFileName}</p>}
                 {fileError && <p className="mx-auto mt-4 max-w-xl rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-300">{fileError}</p>}
               </div>
 
+              {rawRecords.length > 0 && (
+                <ImportColumnMappingPanel headers={fileHeaders} mapping={columnMapping} rowCount={rawRecords.length} onChange={updateColumnMapping} />
+              )}
+
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11"><ArrowLeft className="h-4 w-4" /> Back</button>
-                <button type="button" onClick={goNext} disabled={importRecords.length === 0} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">
-                  Analyze {importRecords.length > 0 ? `${importRecords.length} Books` : 'File'}<ArrowRight className="h-4 w-4" />
-                </button>
+                <button type="button" onClick={goNext} disabled={!mappingReady} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">Analyze {importRecords.length > 0 ? `${importRecords.length} Books` : 'File'}<ArrowRight className="h-4 w-4" /></button>
               </div>
             </section>
           )}
@@ -495,57 +480,27 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
               <ImportAnalysisSummaryGrid importRecordCount={importRecords.length} currentBookCount={currentBookCount} freeBookLimit={freeBookLimit} remainingFreeSlots={remainingFreeSlots} isPremium={isPremium} />
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4">
-                  <p className="text-xs font-bold uppercase tracking-wider text-stone-500">Found in file</p>
-                  <p className="mt-2 font-serif text-3xl text-[#f4efe6]">{importRecords.length.toLocaleString()}</p>
-                </div>
-                <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/15 p-4">
-                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-400/80">New books</p>
-                  <p className="mt-2 font-serif text-3xl text-emerald-200">{newRecords.length.toLocaleString()}</p>
-                </div>
-                <div className="rounded-2xl border border-amber-500/25 bg-amber-950/15 p-4">
-                  <p className="text-xs font-bold uppercase tracking-wider text-amber-400/80">Duplicates skipped</p>
-                  <p className="mt-2 font-serif text-3xl text-amber-200">{duplicateRecords.length.toLocaleString()}</p>
-                </div>
+                <div className="rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4"><p className="text-xs font-bold uppercase tracking-wider text-stone-500">Found in file</p><p className="mt-2 font-serif text-3xl text-[#f4efe6]">{importRecords.length.toLocaleString()}</p></div>
+                <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/15 p-4"><p className="text-xs font-bold uppercase tracking-wider text-emerald-400/80">New books</p><p className="mt-2 font-serif text-3xl text-emerald-200">{newRecords.length.toLocaleString()}</p></div>
+                <div className="rounded-2xl border border-amber-500/25 bg-amber-950/15 p-4"><p className="text-xs font-bold uppercase tracking-wider text-amber-400/80">Duplicates skipped</p><p className="mt-2 font-serif text-3xl text-amber-200">{duplicateRecords.length.toLocaleString()}</p></div>
               </div>
 
               {duplicateRecords.length > 0 && (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-sm text-stone-300">
-                  <CopyCheck className="h-5 w-5 shrink-0 text-amber-300" />
-                  <div>
-                    <p className="font-bold text-amber-200">Duplicates will not be added again</p>
-                    <p className="mt-1 text-xs leading-5 text-stone-400">Inkbound matched {duplicateRecords.length.toLocaleString()} {duplicateRecords.length === 1 ? 'book' : 'books'} by ISBN or exact title + author, including repeats already in your library and repeats inside this file.</p>
-                  </div>
-                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-sm text-stone-300"><CopyCheck className="h-5 w-5 shrink-0 text-amber-300" /><div><p className="font-bold text-amber-200">Duplicates will not be added again</p><p className="mt-1 text-xs leading-5 text-stone-400">Inkbound matched {duplicateRecords.length.toLocaleString()} {duplicateRecords.length === 1 ? 'book' : 'books'} by ISBN or exact title + author, including repeats already in your library and repeats inside this file.</p></div></div>
               )}
 
               {isPremium ? (
-                <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-emerald-200">
-                  <CheckCircle2 className="h-5 w-5 shrink-0" />
-                  <div><p className="font-bold">Premium unlimited import</p><p className="mt-1 text-emerald-100/70">All {newRecords.length.toLocaleString()} new books are ready to import.</p></div>
-                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-emerald-200"><CheckCircle2 className="h-5 w-5 shrink-0" /><div><p className="font-bold">Premium unlimited import</p><p className="mt-1 text-emerald-100/70">All {newRecords.length.toLocaleString()} new books are ready to import.</p></div></div>
               ) : newRecords.length > remainingFreeSlots ? (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-stone-300">
-                  <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
-                  <div><p className="font-bold text-amber-300">Choose up to {remainingFreeSlots} books</p><p className="mt-1">Upgrade to Premium to import the entire file.</p></div>
-                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-stone-300"><AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" /><div><p className="font-bold text-amber-300">Choose up to {remainingFreeSlots} books</p><p className="mt-1">Upgrade to Premium to import the entire file.</p></div></div>
               ) : null}
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11"><ArrowLeft className="h-4 w-4" /> Back</button>
-                <button type="button" onClick={goNext} disabled={newRecords.length === 0} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">Choose Books<ArrowRight className="h-4 w-4" /></button>
-              </div>
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11"><ArrowLeft className="h-4 w-4" /> Back</button><button type="button" onClick={goNext} disabled={newRecords.length === 0} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">Choose Books<ArrowRight className="h-4 w-4" /></button></div>
             </section>
           )}
 
           {currentStep === 4 && (
             <section className="space-y-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose books to import</h2>
-                  <p className="mt-1 text-sm text-stone-400" aria-live="polite"><strong className="text-[#f4efe6]">{selectedIds.length.toLocaleString()}</strong> of {newRecords.length.toLocaleString()} new books selected{duplicateRecords.length > 0 && ` · ${duplicateRecords.length.toLocaleString()} duplicates already skipped`}{!isPremium && ` · ${remainingFreeSlots.toLocaleString()} slots available`}.</p>
-                </div>
-                {!isPremium && <button type="button" onClick={() => openUpgradeModal('Import every book with Inkbound Premium.')} className="text-xs font-bold text-[#e5c158] hover:underline">Upgrade for unlimited imports</button>}
-              </div>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose books to import</h2><p className="mt-1 text-sm text-stone-400" aria-live="polite"><strong className="text-[#f4efe6]">{selectedIds.length.toLocaleString()}</strong> of {newRecords.length.toLocaleString()} new books selected{duplicateRecords.length > 0 && ` · ${duplicateRecords.length.toLocaleString()} duplicates already skipped`}{!isPremium && ` · ${remainingFreeSlots.toLocaleString()} slots available`}.</p></div>{!isPremium && <button type="button" onClick={() => openUpgradeModal('Import every book with Inkbound Premium.')} className="text-xs font-bold text-[#e5c158] hover:underline">Upgrade for unlimited imports</button>}</div>
 
               <div className="flex flex-wrap gap-2 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-3">
                 <button type="button" onClick={selectAllEligible} disabled={allEligibleSelected || maximumSelection === 0 || isImporting} className="quiet-shelf-secondary-action min-h-10 px-4 disabled:opacity-40">{isPremium ? 'Select All New' : `Select Up to ${remainingFreeSlots}`}</button>
@@ -555,104 +510,28 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
                 <button type="button" onClick={() => selectByStatus('finished')} disabled={isImporting} className="quiet-shelf-secondary-action min-h-10 px-4">Select Read</button>
               </div>
 
-              <div className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-950/20 p-4 text-sm text-stone-300">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-                <div>
-                  <p className="font-bold text-amber-200">Keep Inkbound open while metadata checking runs</p>
-                  <p className="mt-1 text-xs leading-5 text-stone-400">Your selected books will be imported from the export. Inkbound is only checking which covers and summaries can be trusted. You can move to other Inkbound pages, but do not close or refresh until this step finishes.</p>
-                </div>
-              </div>
+              <div className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-950/20 p-4 text-sm text-stone-300"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" /><div><p className="font-bold text-amber-200">Keep Inkbound open while metadata checking runs</p><p className="mt-1 text-xs leading-5 text-stone-400">Your selected books will be imported from the export. Inkbound is only checking which covers and summaries can be trusted. You can move to other Inkbound pages, but do not close or refresh until this step finishes.</p></div></div>
 
               {importError && <div role="alert" className="rounded-xl border border-rose-500/35 bg-rose-950/25 p-4 text-sm text-rose-200">{importError}</div>}
               {isImporting && (
-                <div className="rounded-xl border border-[#c5a059]/35 bg-[#c5a059]/10 p-4 text-sm text-[#f4efe6]" role="status">
-                  <div className="flex items-center gap-3">
-                    <Loader2 className="h-5 w-5 animate-spin text-[#e5c158]" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold">Checking optional metadata…</p>
-                      <p className="mt-1 text-xs text-stone-400">Books that cannot be matched will still be imported safely with placeholders and queued for later enrichment.</p>
-                    </div>
-                    <span className="text-xs font-bold text-[#e5c158]">{verificationProgress.completed.toLocaleString()} / {verificationProgress.total.toLocaleString()}</span>
-                  </div>
-                  {verificationProgress.total > 0 && (
-                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/25">
-                      <div className="h-full rounded-full bg-[#c5a059] transition-[width]" style={{ width: `${Math.round((verificationProgress.completed / verificationProgress.total) * 100)}%` }} />
-                    </div>
-                  )}
-                </div>
+                <div className="rounded-xl border border-[#c5a059]/35 bg-[#c5a059]/10 p-4 text-sm text-[#f4efe6]" role="status"><div className="flex items-center gap-3"><Loader2 className="h-5 w-5 animate-spin text-[#e5c158]" /><div className="min-w-0 flex-1"><p className="font-bold">Checking optional metadata…</p><p className="mt-1 text-xs text-stone-400">Books that cannot be matched will still be imported safely with placeholders and queued for later enrichment.</p></div><span className="text-xs font-bold text-[#e5c158]">{verificationProgress.completed.toLocaleString()} / {verificationProgress.total.toLocaleString()}</span></div>{verificationProgress.total > 0 && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/25"><div className="h-full rounded-full bg-[#c5a059] transition-[width]" style={{ width: `${Math.round((verificationProgress.completed / verificationProgress.total) * 100)}%` }} /></div>}</div>
               )}
 
               {newRecords.length > 0 && (
-                <div className="space-y-2">
-                  {newRecords.map((record) => {
-                    const selected = selectedIds.includes(record.id);
-                    return (
-                      <button key={record.id} type="button" onClick={() => toggleSelection(record.id)} disabled={isImporting} aria-pressed={selected} className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition disabled:cursor-wait ${selected ? 'border-[#c5a059] bg-[#c5a059]/10' : 'border-[#3d2448] bg-[#1c0f24]'}`}>
-                        <span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${selected ? 'border-[#c5a059] bg-[#c5a059] text-[#120817]' : 'border-stone-600 bg-[#120817]'}`}>{selected && <Check className="h-3.5 w-3.5" />}</span>
-                        <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#f4efe6]">{record.title}</strong><small className="block truncate text-stone-400">{record.author}</small></span>
-                        <span className="text-[10px] font-bold uppercase text-[#e5c158]">{record.format}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <div className="space-y-2">{newRecords.map((record) => { const selected = selectedIds.includes(record.id); return (<button key={record.id} type="button" onClick={() => toggleSelection(record.id)} disabled={isImporting} aria-pressed={selected} className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left transition disabled:cursor-wait ${selected ? 'border-[#c5a059] bg-[#c5a059]/10' : 'border-[#3d2448] bg-[#1c0f24]'}`}><span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${selected ? 'border-[#c5a059] bg-[#c5a059] text-[#120817]' : 'border-stone-600 bg-[#120817]'}`}>{selected && <Check className="h-3.5 w-3.5" />}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#f4efe6]">{record.title}</strong><small className="block truncate text-stone-400">{record.author}</small></span><span className="text-[10px] font-bold uppercase text-[#e5c158]">{record.format}</span></button>); })}</div>
               )}
 
-              <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-[#3d2448] bg-[#0d0910]/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-                <button type="button" onClick={goBack} disabled={isImporting} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">Back</button>
-                <button type="button" onClick={executeImport} disabled={selectedRecords.length === 0 || isImporting} className="quiet-shelf-primary-action min-h-11 disabled:cursor-not-allowed disabled:opacity-50">
-                  {isImporting ? <><Loader2 className="h-4 w-4 animate-spin" /> Checking metadata…</> : `Import ${selectedRecords.length.toLocaleString()} Books`}
-                </button>
-              </div>
+              <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-[#3d2448] bg-[#0d0910]/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} disabled={isImporting} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">Back</button><button type="button" onClick={executeImport} disabled={selectedRecords.length === 0 || isImporting} className="quiet-shelf-primary-action min-h-11 disabled:cursor-not-allowed disabled:opacity-50">{isImporting ? <><Loader2 className="h-4 w-4 animate-spin" /> Checking metadata…</> : `Import ${selectedRecords.length.toLocaleString()} Books`}</button></div>
             </section>
           )}
 
           {currentStep === 5 && (
             <section className="space-y-5">
-              <div className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center sm:p-10">
-                <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />
-                <h2 className="mt-4 font-serif text-3xl font-bold text-[#f4efe6]">Import complete</h2>
-                <p className="mx-auto mt-2 max-w-lg text-sm text-stone-400">
-                  {importedCount.toLocaleString()} {importedCount === 1 ? 'book was' : 'books were'} added from your export. Metadata matching does not block library imports.
-                </p>
-                <div className="mx-auto mt-5 flex max-w-3xl flex-wrap justify-center gap-2 text-xs">
-                  <span className="rounded-full border border-emerald-500/25 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">{importedCount.toLocaleString()} imported</span>
-                  <span className="rounded-full border border-sky-500/25 bg-sky-950/25 px-3 py-1.5 text-sky-200">{matchedCount.toLocaleString()} metadata matched now</span>
-                  <span className="rounded-full border border-[#c5a059]/25 bg-[#c5a059]/10 px-3 py-1.5 text-[#e5c158]">{metadataPendingCount.toLocaleString()} metadata queued</span>
-                  <span className="rounded-full border border-amber-500/25 bg-amber-950/30 px-3 py-1.5 text-amber-200">{duplicateRecords.length.toLocaleString()} duplicates skipped</span>
-                </div>
-                {importedCount > 0 && !hasUndone ? (
-                  <button type="button" onClick={undoImport} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-500/30 px-4 text-xs font-bold text-rose-300"><RotateCcw className="h-4 w-4" /> Undo This Import</button>
-                ) : hasUndone ? <p className="mt-5 text-xs font-bold text-rose-300">The import was undone.</p> : null}
-              </div>
+              <div className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center sm:p-10"><CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" /><h2 className="mt-4 font-serif text-3xl font-bold text-[#f4efe6]">Import complete</h2><p className="mx-auto mt-2 max-w-lg text-sm text-stone-400">{importedCount.toLocaleString()} {importedCount === 1 ? 'book was' : 'books were'} added from your export. Metadata matching does not block library imports.</p><div className="mx-auto mt-5 flex max-w-3xl flex-wrap justify-center gap-2 text-xs"><span className="rounded-full border border-emerald-500/25 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">{importedCount.toLocaleString()} imported</span><span className="rounded-full border border-sky-500/25 bg-sky-950/25 px-3 py-1.5 text-sky-200">{matchedCount.toLocaleString()} metadata matched now</span><span className="rounded-full border border-[#c5a059]/25 bg-[#c5a059]/10 px-3 py-1.5 text-[#e5c158]">{metadataPendingCount.toLocaleString()} metadata queued</span><span className="rounded-full border border-amber-500/25 bg-amber-950/30 px-3 py-1.5 text-amber-200">{duplicateRecords.length.toLocaleString()} duplicates skipped</span></div>{importedCount > 0 && !hasUndone ? (<button type="button" onClick={undoImport} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-500/30 px-4 text-xs font-bold text-rose-300"><RotateCcw className="h-4 w-4" /> Undo This Import</button>) : hasUndone ? <p className="mt-5 text-xs font-bold text-rose-300">The import was undone.</p> : null}</div>
 
-              {duplicateRecords.length > 0 && (
-                <section className="rounded-3xl border border-amber-500/25 bg-amber-950/10 p-5 sm:p-6">
-                  <div className="flex items-start gap-3">
-                    <CopyCheck className="mt-0.5 h-6 w-6 shrink-0 text-amber-300" />
-                    <div>
-                      <h3 className="font-serif text-2xl text-[#f4efe6]">{duplicateRecords.length.toLocaleString()} duplicates skipped</h3>
-                      <p className="mt-1 text-sm leading-6 text-stone-400">These books already existed in Inkbound or appeared more than once in the uploaded file, so no extra copies were created.</p>
-                    </div>
-                  </div>
-                </section>
-              )}
+              {duplicateRecords.length > 0 && (<section className="rounded-3xl border border-amber-500/25 bg-amber-950/10 p-5 sm:p-6"><div className="flex items-start gap-3"><CopyCheck className="mt-0.5 h-6 w-6 shrink-0 text-amber-300" /><div><h3 className="font-serif text-2xl text-[#f4efe6]">{duplicateRecords.length.toLocaleString()} duplicates skipped</h3><p className="mt-1 text-sm leading-6 text-stone-400">These books already existed in Inkbound or appeared more than once in the uploaded file, so no extra copies were created.</p></div></div></section>)}
 
-              {metadataPendingCount > 0 && (
-                <section className="rounded-3xl border border-[#c5a059]/30 bg-[#c5a059]/10 p-5 sm:p-6">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex items-start gap-3">
-                      <SearchCheck className="mt-0.5 h-6 w-6 shrink-0 text-[#e5c158]" />
-                      <div>
-                        <h3 className="font-serif text-2xl text-[#f4efe6]">{metadataPendingCount.toLocaleString()} {metadataPendingCount === 1 ? 'book is' : 'books are'} awaiting metadata</h3>
-                        <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-400">These books are already in your Inkbound library using the data from your export. Inkbound did not trust an external cover or summary yet, so those details will continue through the background enrichment queue instead of blocking your import.</p>
-                      </div>
-                    </div>
-                    <button type="button" onClick={downloadMetadataPending} className="quiet-shelf-secondary-action min-h-10 shrink-0 px-4">
-                      <Download className="h-4 w-4" /> Download List
-                    </button>
-                  </div>
-                </section>
-              )}
+              {metadataPendingCount > 0 && (<section className="rounded-3xl border border-[#c5a059]/30 bg-[#c5a059]/10 p-5 sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="flex items-start gap-3"><SearchCheck className="mt-0.5 h-6 w-6 shrink-0 text-[#e5c158]" /><div><h3 className="font-serif text-2xl text-[#f4efe6]">{metadataPendingCount.toLocaleString()} {metadataPendingCount === 1 ? 'book is' : 'books are'} awaiting metadata</h3><p className="mt-1 max-w-3xl text-sm leading-6 text-stone-400">These books are already in your Inkbound library using the data from your export. Inkbound did not trust an external cover or summary yet, so those details will continue through the background enrichment queue instead of blocking your import.</p></div></div><button type="button" onClick={downloadMetadataPending} className="quiet-shelf-secondary-action min-h-10 shrink-0 px-4"><Download className="h-4 w-4" /> Download List</button></div></section>)}
             </section>
           )}
         </>
