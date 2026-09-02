@@ -19,6 +19,7 @@ import {
 import { Format, ImportRecordItem, ImportSourceInfo, ReadingStatus, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { analyzeImportDuplicates } from '../features/import/libraryEnrichment';
+import { readXlsxRecords } from '../features/import/spreadsheetImport';
 import {
   getImportVerificationSnapshot,
   readImportMetadataPending,
@@ -41,7 +42,7 @@ export const IMPORT_SOURCES: ImportSourceInfo[] = [
   { id: 'goodreads', name: 'Goodreads', description: 'Import a Goodreads library CSV export.', badge: 'CSV Export', method: 'CSV File', supported: true },
   { id: 'storygraph', name: 'StoryGraph', description: 'Import StoryGraph books, tags, and moods.', badge: 'CSV Export', method: 'CSV File', supported: true },
   { id: 'hardcover', name: 'Hardcover', description: 'Import your Hardcover library export.', badge: 'CSV Export', method: 'CSV File', supported: true },
-  { id: 'generic_csv', name: 'Custom File', description: 'Import a CSV or JSON file from another reading service.', badge: 'Any Export', method: 'CSV / JSON', supported: true },
+  { id: 'generic_csv', name: 'Custom File', description: 'Import a CSV, Excel, or JSON library export from another reading service.', badge: 'Any Export', method: 'CSV / XLSX / JSON', supported: true },
 ];
 
 const steps = ['Select Source', 'Upload File', 'Analyze', 'Select Books', 'Complete'];
@@ -65,9 +66,9 @@ const sourceInstructions: Record<string, string[]> = {
     'Download the CSV file to your device.',
   ],
   generic_csv: [
-    'Export your library from the original reading app.',
-    'Choose CSV or JSON when the service offers a format choice.',
-    'Save the export file somewhere easy to find, such as Downloads.',
+    'Export your library from the original reading app or book tracker.',
+    'Download the export as CSV, Excel (.xlsx), or JSON. You do not need to convert an Excel-only export first.',
+    'Inkbound will read the first worksheet and automatically match common book columns such as title, author, ISBN, status, rating, and dates.',
   ],
 };
 
@@ -123,7 +124,7 @@ function parseCsv(text: string): Record<string, string>[] {
 function firstValue(record: Record<string, unknown>, keys: string[]): string {
   const entries = Object.entries(record);
   for (const key of keys) {
-    const match = entries.find(([entryKey]) => entryKey.toLowerCase() === key.toLowerCase());
+    const match = entries.find(([entryKey]) => entryKey.toLowerCase().trim() === key.toLowerCase().trim());
     if (match && match[1] !== undefined && match[1] !== null) return String(match[1]).trim();
   }
   return '';
@@ -132,41 +133,41 @@ function firstValue(record: Record<string, unknown>, keys: string[]): string {
 function normalizeFormat(value: string): Format {
   const normalized = value.toLowerCase();
   if (normalized.includes('audio')) return 'audiobook';
-  if (normalized.includes('ebook') || normalized.includes('kindle') || normalized.includes('digital')) return 'ebook';
-  if (normalized.includes('paper')) return 'paperback';
+  if (normalized.includes('ebook') || normalized.includes('e-book') || normalized.includes('kindle') || normalized.includes('digital')) return 'ebook';
+  if (normalized.includes('paper') || normalized.includes('softcover')) return 'paperback';
   return 'hardcover';
 }
 
 function normalizeStatus(value: string): ReadingStatus {
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'to-read' || normalized === 'tbr' || normalized.includes('want to read')) return 'tbr';
-  if (normalized === 'currently-reading' || normalized === 'currently reading' || normalized === 'reading') return 'currently-reading';
-  if (normalized === 'read' || normalized === 'finished' || normalized === 'finish') return 'finished';
-  if (normalized.includes('dnf') || normalized.includes('did not finish')) return 'dnf';
-  if (normalized.includes('pause')) return 'paused';
+  if (normalized === 'to-read' || normalized === 'to read' || normalized === 'tbr' || normalized.includes('want to read')) return 'tbr';
+  if (normalized === 'currently-reading' || normalized === 'currently reading' || normalized === 'reading' || normalized === 'in progress') return 'currently-reading';
+  if (normalized === 'read' || normalized === 'finished' || normalized === 'finish' || normalized === 'completed') return 'finished';
+  if (normalized.includes('dnf') || normalized.includes('did not finish') || normalized.includes('abandoned')) return 'dnf';
+  if (normalized.includes('pause') || normalized.includes('on hold')) return 'paused';
   if (normalized.includes('wish')) return 'wishlist';
   return 'tbr';
 }
 
 function mapRecord(record: Record<string, unknown>, index: number): ImportRecordItem | null {
-  const title = firstValue(record, ['Title', 'Book Title', 'title', 'name']);
+  const title = firstValue(record, ['Title', 'Book Title', 'Book', 'Book Name', 'Name', 'title']);
   if (!title) return null;
 
-  const author = firstValue(record, ['Author', 'Author Name', 'author', 'authors']) || 'Unknown Author';
-  const isbn = firstValue(record, ['ISBN13', 'ISBN', 'isbn13', 'isbn', 'isbn_13', 'isbn_10']);
-  const ratingValue = Number(firstValue(record, ['My Rating', 'Rating', 'rating', 'star_rating']));
+  const author = firstValue(record, ['Author', 'Author Name', 'Authors', 'Writer', 'Book Author', 'author']) || 'Unknown Author';
+  const isbn = firstValue(record, ['ISBN13', 'ISBN 13', 'ISBN-13', 'ISBN', 'isbn13', 'isbn', 'isbn_13', 'ISBN10', 'ISBN 10', 'ISBN-10', 'isbn_10']);
+  const ratingValue = Number(firstValue(record, ['My Rating', 'Rating', 'Stars', 'Star Rating', 'rating', 'star_rating']));
 
   return {
     id: `import-${Date.now()}-${index}`,
     title,
     author,
     isbn: isbn || undefined,
-    format: normalizeFormat(firstValue(record, ['Binding', 'Format', 'format', 'media_type', 'book_format'])),
-    status: normalizeStatus(firstValue(record, ['Exclusive Shelf', 'Status', 'status', 'shelf', 'read_status'])),
+    format: normalizeFormat(firstValue(record, ['Binding', 'Format', 'Book Format', 'Media Type', 'Edition Format', 'format', 'media_type', 'book_format'])),
+    status: normalizeStatus(firstValue(record, ['Exclusive Shelf', 'Status', 'Reading Status', 'Shelf', 'Bookshelf', 'status', 'shelf', 'read_status'])),
     rating: Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue : undefined,
-    dateRead: firstValue(record, ['Date Read', 'dateRead', 'date_finished', 'finished_at']) || undefined,
-    dateAdded: firstValue(record, ['Date Added', 'dateAdded', 'created_at', 'added_at']) || new Date().toISOString().split('T')[0],
-    review: firstValue(record, ['My Review', 'Review', 'review', 'notes']) || undefined,
+    dateRead: firstValue(record, ['Date Read', 'Finished Date', 'Date Finished', 'Completed Date', 'Read Date', 'dateRead', 'date_finished', 'finished_at']) || undefined,
+    dateAdded: firstValue(record, ['Date Added', 'Added Date', 'Created Date', 'dateAdded', 'created_at', 'added_at']) || new Date().toISOString().split('T')[0],
+    review: firstValue(record, ['My Review', 'Review', 'Notes', 'Comments', 'Thoughts', 'review', 'notes']) || undefined,
     confidence: 100,
     duplicateAction: 'skip',
     coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
@@ -174,22 +175,26 @@ function mapRecord(record: Record<string, unknown>, index: number): ImportRecord
 }
 
 async function readImportFile(file: File): Promise<ImportRecordItem[]> {
-  const text = await file.text();
   const extension = file.name.split('.').pop()?.toLowerCase();
   let rawRecords: Record<string, unknown>[];
 
-  if (extension === 'json' || file.type.includes('json')) {
-    const parsed: unknown = JSON.parse(text);
-    const array = Array.isArray(parsed)
-      ? parsed
-      : parsed && typeof parsed === 'object'
-        ? Object.values(parsed as Record<string, unknown>).find(Array.isArray) ?? []
-        : [];
-    rawRecords = (array as unknown[]).filter(
-      (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
-    );
+  if (extension === 'xlsx') {
+    rawRecords = await readXlsxRecords(file);
   } else {
-    rawRecords = parseCsv(text);
+    const text = await file.text();
+    if (extension === 'json' || file.type.includes('json')) {
+      const parsed: unknown = JSON.parse(text);
+      const array = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === 'object'
+          ? Object.values(parsed as Record<string, unknown>).find(Array.isArray) ?? []
+          : [];
+      rawRecords = (array as unknown[]).filter(
+        (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
+      );
+    } else {
+      rawRecords = parseCsv(text);
+    }
   }
 
   return rawRecords.map(mapRecord).filter((item): item is ImportRecordItem => Boolean(item));
@@ -271,8 +276,8 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     if (!file) return;
     resetImportVerificationJob();
     const extension = file.name.split('.').pop()?.toLowerCase();
-    if (!['csv', 'json'].includes(extension ?? '')) {
-      setFileError('Choose a CSV or JSON export file.');
+    if (!['csv', 'xlsx', 'json'].includes(extension ?? '')) {
+      setFileError('Choose a CSV, Excel (.xlsx), or JSON export file.');
       return;
     }
 
@@ -285,7 +290,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     setHasUndone(false);
     try {
       const records = await readImportFile(file);
-      if (records.length === 0) throw new Error('No recognizable book records were found in this file.');
+      if (records.length === 0) throw new Error('No recognizable book records were found. Make sure the first row contains column names and that the file includes a title or book-name column.');
       const duplicateAnalysis = analyzeImportDuplicates(records, books);
       setImportRecords(records);
       setDuplicateRecords(duplicateAnalysis.duplicates);
@@ -464,12 +469,12 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
 
               <div onDragOver={(event) => event.preventDefault()} onDrop={onDrop} className="rounded-2xl border border-dashed border-[#c5a059] bg-[#1c0f24] p-8 text-center sm:p-12">
                 <Upload className="mx-auto h-12 w-12 text-[#c5a059]" />
-                <p className="mt-3 font-serif text-lg font-bold text-[#f4efe6]">Drag and drop your CSV or JSON file</p>
-                <p className="mt-1 text-xs text-stone-400">or choose it from your device</p>
+                <p className="mt-3 font-serif text-lg font-bold text-[#f4efe6]">Drag and drop your CSV, Excel, or JSON file</p>
+                <p className="mt-1 text-xs text-stone-400">Excel .xlsx files are read directly — no conversion required.</p>
                 <label className="quiet-shelf-primary-action mt-5 inline-flex min-h-11 cursor-pointer">
                   <FileSpreadsheet className="h-4 w-4" />
                   {isReadingFile ? 'Reading file…' : 'Choose Export File'}
-                  <input type="file" accept=".csv,.json,text/csv,application/json" onChange={onFileInput} className="sr-only" disabled={isReadingFile} />
+                  <input type="file" accept=".csv,.xlsx,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onFileInput} className="sr-only" disabled={isReadingFile} />
                 </label>
                 {selectedFileName && <p className="mt-4 text-sm font-semibold text-emerald-300">Ready: {selectedFileName}</p>}
                 {fileError && <p className="mx-auto mt-4 max-w-xl rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-300">{fileError}</p>}
