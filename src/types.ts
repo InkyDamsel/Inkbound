@@ -132,7 +132,7 @@ export interface ImportSourceInfo {
   name: string;
   description: string;
   badge: string;
-  method: 'CSV File' | 'JSON File' | 'CSV / JSON' | 'CSV/JSON File' | 'Direct Sync' | 'Export File';
+  method: 'CSV File' | 'JSON File' | 'CSV / JSON' | 'CSV/JSON File' | 'CSV / XLSX / JSON' | 'Direct Sync' | 'Export File';
   supported: boolean;
 }
 
