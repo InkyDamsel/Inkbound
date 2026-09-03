@@ -5,12 +5,15 @@ import {
   getDocFromServer,
   getDocsFromServer,
 } from 'firebase/firestore';
-import type { Edition, ReadingSession, UserBookRecord } from '../../types';
+import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
-import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
-import { notifyCloudDataUpdated } from './cloudSyncEvents';
+import {
+  INKBOUND_CLOUD_DATA_EVENT,
+  notifyCloudDataUpdated,
+  type CloudDataUpdatedDetail,
+} from './cloudSyncEvents';
 import {
   INKBOUND_FORCE_CLOUD_REFRESH_EVENT,
   publishCloudSyncHealth,
@@ -20,11 +23,13 @@ const BOOKS_KEY = 'inkbound_books';
 const SESSIONS_KEY = 'inkbound_sessions';
 const PROFILE_KEY = 'inkbound_reader_profile';
 const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
-const REFRESH_INTERVAL_MS = 30_000;
+const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v1';
+const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = 'inkbound_import_enrichment_retry_progress_v1';
+const IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY = 'inkbound_import_enrichment_active_retry_v1';
+const CATASTROPHIC_EMPTY_LIBRARY_MIN_BOOKS = 20;
 
 interface CloudRecord<T> {
   data: T;
-  clientUpdatedAt?: string;
 }
 
 interface PendingMutation<T> {
@@ -39,6 +44,16 @@ interface PendingSyncState {
   profile?: { data: Record<string, unknown>; clientUpdatedAt: string };
 }
 
+interface RetryProgress {
+  status?: string;
+  completed?: number;
+  total?: number;
+  matched?: number;
+  covers?: number;
+  summaries?: number;
+  updatedAt?: string;
+}
+
 function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = getRuntimeStorage().getItem(key);
@@ -48,138 +63,65 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-function preferText(serverValue: string | undefined, localValue: string | undefined) {
-  return serverValue?.trim() ? serverValue : localValue;
+function writeJson(key: string, value: unknown) {
+  getRuntimeStorage().setItem(key, JSON.stringify(value));
 }
 
-function preferArray<T>(serverValue: T[] | undefined, localValue: T[] | undefined) {
-  return serverValue?.length ? serverValue : localValue;
-}
-
-function mergeEditionPreservingLocalMetadata(local: Edition | undefined, server: Edition): Edition {
-  if (!local) return server;
-  if (local.externalSource === 'manual' && server.externalSource !== 'manual') return local;
-
-  return {
-    ...server,
-    isbn: preferText(server.isbn, local.isbn),
-    isbn10: preferText(server.isbn10, local.isbn10),
-    isbn13: preferText(server.isbn13, local.isbn13),
-    asin: preferText(server.asin, local.asin),
-    pageCount: server.pageCount ?? local.pageCount,
-    audiobookDurationMins: server.audiobookDurationMins ?? local.audiobookDurationMins,
-    narrator: preferText(server.narrator, local.narrator),
-    publisher: preferText(server.publisher, local.publisher),
-    publicationDate: preferText(server.publicationDate, local.publicationDate),
-    coverUrl: preferText(server.coverUrl, local.coverUrl),
-    language: preferText(server.language, local.language),
-    editionName: preferText(server.editionName, local.editionName),
-    binding: preferText(server.binding, local.binding),
-    specialFeatures: preferArray(server.specialFeatures, local.specialFeatures),
-    externalEditionId: preferText(server.externalEditionId, local.externalEditionId),
-  };
-}
-
-function mergeBookPreservingLocalMetadata(local: UserBookRecord | undefined, server: UserBookRecord): UserBookRecord {
-  if (!local) return server;
-
-  const localEditions = new Map(local.editions.map((edition) => [edition.id, edition]));
-  const mergedEditions = server.editions.map((edition) => mergeEditionPreservingLocalMetadata(localEditions.get(edition.id), edition));
-  const serverEditionIds = new Set(server.editions.map((edition) => edition.id));
-  local.editions.forEach((edition) => {
-    if (!serverEditionIds.has(edition.id) && edition.externalSource === 'manual') mergedEditions.push(edition);
-  });
-
-  return {
-    ...server,
-    work: {
-      ...server.work,
-      subtitle: preferText(server.work.subtitle, local.work.subtitle),
-      summary: preferText(server.work.summary, local.work.summary) ?? '',
-      publisherSummary: preferText(server.work.publisherSummary, local.work.publisherSummary),
-      personalSummary: preferText(server.work.personalSummary, local.work.personalSummary),
-      seriesName: preferText(server.work.seriesName, local.work.seriesName),
-      seriesOrder: server.work.seriesOrder ?? local.work.seriesOrder,
-      genres: preferArray(server.work.genres, local.work.genres) ?? [],
-      tropes: preferArray(server.work.tropes, local.work.tropes),
-      contentWarnings: preferArray(server.work.contentWarnings, local.work.contentWarnings),
-      publicationYear: server.work.publicationYear || local.work.publicationYear,
-      originalLanguage: preferText(server.work.originalLanguage, local.work.originalLanguage),
-      externalWorkId: preferText(server.work.externalWorkId, local.work.externalWorkId),
-    },
-    editions: mergedEditions,
-    activeEditionId: mergedEditions.some((edition) => edition.id === server.activeEditionId)
-      ? server.activeEditionId
-      : local.activeEditionId,
-    importMetadataVerified: server.importMetadataVerified || local.importMetadataVerified,
-  };
-}
-
-function mergeServerBooks(
-  current: UserBookRecord[],
-  server: UserBookRecord[],
-  pending: Record<string, PendingMutation<UserBookRecord>>,
-): UserBookRecord[] {
+function mergeMissingById<T extends { id: string }>(current: T[], server: T[], pending: Record<string, PendingMutation<T>>): T[] {
   const merged = new Map(current.map((item) => [item.id, item]));
   server.forEach((item) => {
-    if (pending[item.id]) return;
-    merged.set(item.id, mergeBookPreservingLocalMetadata(merged.get(item.id), item));
-  });
-  return [...merged.values()];
-}
-
-function mergeServerRecords<T extends { id: string }>(
-  current: T[],
-  server: T[],
-  pending: Record<string, PendingMutation<T>>,
-): T[] {
-  const merged = new Map(current.map((item) => [item.id, item]));
-  server.forEach((item) => {
-    if (!pending[item.id]) merged.set(item.id, item);
+    if (!pending[item.id] && !merged.has(item.id)) merged.set(item.id, item);
   });
   return [...merged.values()];
 }
 
 function compactProfileForRuntime(profile: Record<string, unknown>): Record<string, unknown> {
   const compact = { ...profile };
-
-  // Older builds briefly kept full base64 profile images in the profile object.
-  // Media now belongs in IndexedDB/Firebase Storage, so keeping those legacy
-  // blobs in localStorage can exhaust the browser quota on large libraries.
-  // Never mutate the cloud record here; this is only the lightweight device cache.
   delete compact.avatarImageData;
   delete compact.bannerImageData;
   delete compact.avatarMediaKey;
   delete compact.bannerMediaKey;
-
   return compact;
 }
 
-function isBrowserStorageQuotaError(error: unknown): boolean {
-  if (!(error instanceof DOMException)) return false;
-  return error.name === 'QuotaExceededError'
-    || error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
-    || error.code === 22
-    || error.code === 1014;
+function pauseAutomaticMetadataWork() {
+  const storage = getRuntimeStorage();
+  storage.setItem(IMPORT_ENRICHMENT_PAUSED_KEY, 'true');
+  storage.removeItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
+
+  const progress = readJson<RetryProgress | null>(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, null);
+  if (!progress || (progress.status !== 'queued' && progress.status !== 'running')) return;
+
+  writeJson(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, {
+    status: 'error',
+    completed: progress.completed ?? 0,
+    total: progress.total ?? 0,
+    matched: progress.matched ?? 0,
+    covers: progress.covers ?? 0,
+    summaries: progress.summaries ?? 0,
+    message: 'Automatic missing-detail retries were paused to prevent background usage charges. Start a retry manually when you want Inkbound to check those books.',
+    updatedAt: new Date().toISOString(),
+  });
 }
 
-function errorMessage(error: unknown): string {
-  const code = typeof error === 'object' && error && 'code' in error
-    ? String((error as { code?: unknown }).code ?? '')
-    : '';
-  const message = error instanceof Error ? error.message : String(error ?? 'Unknown cloud error');
-  return [code, message].filter(Boolean).join(': ');
-}
+// Run before App renders. Metadata repair may still be started explicitly by the
+// user, but it must never silently resume a large retry after a refresh/reopen.
+pauseAutomaticMetadataWork();
 
 /**
- * A server refresh fallback for browsers whose long-lived Firestore listener is
- * unreliable. Server records update normal account state, but book metadata is
- * merged conservatively so a stale cloud copy cannot erase a richer local
- * edition, summary, cover, series match, ISBN, page count, or manual edit.
+ * Cost-safe cloud companion.
+ *
+ * CloudPersistenceBridge remains the normal event-driven sync owner. This bridge
+ * intentionally does NOT poll Firestore, refresh on an interval, or refresh on
+ * every app resume. It only:
+ *   1. protects a known non-empty local library from a catastrophic empty replace,
+ *   2. performs a one-time server recovery when the device cache is already empty,
+ *   3. performs a full server refresh only after an explicit force-refresh event.
  */
 export const CloudServerRefreshBridge: React.FC = () => {
   const { user } = useAccountSync();
   const running = useRef(false);
+  const knownBooks = useRef<UserBookRecord[]>(readJson<UserBookRecord[]>(BOOKS_KEY, []));
 
   useEffect(() => {
     if (!user || !db) {
@@ -193,14 +135,96 @@ export const CloudServerRefreshBridge: React.FC = () => {
 
     const uid = user.uid;
     let disposed = false;
+    const storage = getRuntimeStorage();
+
+    const pendingState = () => readJson<PendingSyncState>(`inkbound_pending_sync_${uid}_v1`, {
+      books: {},
+      sessions: {},
+    });
+
+    const restoreCatastrophicEmptyLibrary = (event: Event) => {
+      const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
+      if (!(detail?.keys ?? []).includes(BOOKS_KEY)) return;
+
+      const current = readJson<UserBookRecord[]>(BOOKS_KEY, []);
+      if (current.length > 0) {
+        knownBooks.current = current;
+        return;
+      }
+
+      if (knownBooks.current.length < CATASTROPHIC_EMPTY_LIBRARY_MIN_BOOKS) return;
+      if (storage.getItem(`inkbound_local_clear_intent_${uid}`) === '1') return;
+
+      writeJson(BOOKS_KEY, knownBooks.current);
+      notifyCloudDataUpdated([BOOKS_KEY]);
+      publishCloudSyncHealth({
+        status: 'error',
+        lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+        message: `Inkbound blocked an unexpected empty-library replacement and kept ${knownBooks.current.length.toLocaleString()} locally cached books visible.`,
+      });
+    };
+
+    const recoverBooksIfLocalCacheIsEmpty = async () => {
+      if (running.current || disposed || !navigator.onLine) return;
+      const current = readJson<UserBookRecord[]>(BOOKS_KEY, []);
+      if (current.length > 0) {
+        knownBooks.current = current;
+        publishCloudSyncHealth({
+          status: 'healthy',
+          lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+          message: 'Cost-safe sync is active. Continuous Firebase polling is disabled.',
+        });
+        return;
+      }
+
+      running.current = true;
+      publishCloudSyncHealth({
+        status: 'checking',
+        lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+        message: 'Local library cache is empty. Checking the server once for recovery…',
+      });
+
+      try {
+        const snapshot = await getDocsFromServer(collection(db, 'users', uid, 'books'));
+        if (disposed) return;
+        const serverBooks = snapshot.docs
+          .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
+          .filter(Boolean);
+
+        if (serverBooks.length > 0) {
+          writeJson(BOOKS_KEY, serverBooks);
+          knownBooks.current = serverBooks;
+          notifyCloudDataUpdated([BOOKS_KEY]);
+        }
+
+        const syncedAt = new Date().toISOString();
+        storage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
+        publishCloudSyncHealth({
+          status: serverBooks.length > 0 ? 'healthy' : 'error',
+          lastSuccessfulSyncAt: syncedAt,
+          message: serverBooks.length > 0
+            ? `Recovered ${serverBooks.length.toLocaleString()} books from the server without enabling background polling.`
+            : 'The server also returned an empty library. Inkbound did not create or delete any records during this recovery check.',
+        });
+      } catch (error) {
+        console.error('Inkbound one-time library recovery failed.', error);
+        publishCloudSyncHealth({
+          status: 'error',
+          lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+          message: 'Inkbound could not complete the one-time cloud recovery check. Your local data was not cleared.',
+        });
+      } finally {
+        running.current = false;
+      }
+    };
 
     const refreshFromServer = async () => {
       if (running.current || disposed || !navigator.onLine) return;
       running.current = true;
       publishCloudSyncHealth({
         status: 'checking',
-        lastSuccessfulSyncAt: getRuntimeStorage().getItem(LAST_SYNC_STORAGE_KEY),
-        message: 'Checking the Inkbound cloud for newer account data…',
+        lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+        message: 'Running the cloud refresh you requested…',
       });
 
       try {
@@ -211,11 +235,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
         ]);
         if (disposed) return;
 
-        const pending = readJson<PendingSyncState>(`inkbound_pending_sync_${uid}_v1`, {
-          books: {},
-          sessions: {},
-        });
-
+        const pending = pendingState();
         const serverBooks = bookSnapshot.docs
           .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
           .filter(Boolean);
@@ -225,19 +245,17 @@ export const CloudServerRefreshBridge: React.FC = () => {
 
         const currentBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const currentSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
-        const nextBooks = mergeServerBooks(currentBooks, serverBooks, pending.books ?? {});
-        const nextSessions = mergeServerRecords(currentSessions, serverSessions, pending.sessions ?? {});
-
+        const nextBooks = mergeMissingById(currentBooks, serverBooks, pending.books ?? {});
+        const nextSessions = mergeMissingById(currentSessions, serverSessions, pending.sessions ?? {});
         const changedKeys: Array<'inkbound_books' | 'inkbound_sessions' | 'inkbound_reader_profile'> = [];
-        const storage = getRuntimeStorage();
-        const nextBooksJson = JSON.stringify(nextBooks);
-        const nextSessionsJson = JSON.stringify(nextSessions);
-        if (storage.getItem(BOOKS_KEY) !== nextBooksJson) {
-          storage.setItem(BOOKS_KEY, nextBooksJson);
+
+        if (JSON.stringify(currentBooks) !== JSON.stringify(nextBooks)) {
+          writeJson(BOOKS_KEY, nextBooks);
+          knownBooks.current = nextBooks;
           changedKeys.push(BOOKS_KEY);
         }
-        if (storage.getItem(SESSIONS_KEY) !== nextSessionsJson) {
-          storage.setItem(SESSIONS_KEY, nextSessionsJson);
+        if (JSON.stringify(currentSessions) !== JSON.stringify(nextSessions)) {
+          writeJson(SESSIONS_KEY, nextSessions);
           changedKeys.push(SESSIONS_KEY);
         }
 
@@ -253,39 +271,33 @@ export const CloudServerRefreshBridge: React.FC = () => {
         }
 
         if (changedKeys.length) notifyCloudDataUpdated(changedKeys);
-
         const syncedAt = new Date().toISOString();
         storage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
         publishCloudSyncHealth({
           status: 'healthy',
           lastSuccessfulSyncAt: syncedAt,
-          message: `Cloud sync is healthy. Verified ${serverBooks.length.toLocaleString()} books from the server.`,
+          message: `Manual cloud refresh finished. ${serverBooks.length.toLocaleString()} server books were checked without enabling recurring polling.`,
         });
       } catch (error) {
-        console.error('Inkbound authoritative cloud refresh failed.', error);
+        console.error('Inkbound manual cloud refresh failed.', error);
         publishCloudSyncHealth({
           status: 'error',
-          lastSuccessfulSyncAt: getRuntimeStorage().getItem(LAST_SYNC_STORAGE_KEY),
-          message: isBrowserStorageQuotaError(error)
-            ? 'Inkbound reached this browser\'s local cache limit while refreshing account data. Your cloud library is still safe; refresh after updating Inkbound so the smaller profile cache can be used.'
-            : `Cloud sync could not reach Firebase: ${errorMessage(error)}`,
+          lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+          message: 'The requested cloud refresh could not reach Firebase. Existing local data was left intact.',
         });
       } finally {
         running.current = false;
       }
     };
 
-    void refreshFromServer();
-    const interval = window.setInterval(() => void refreshFromServer(), REFRESH_INTERVAL_MS);
-    const unsubscribeResume = subscribeToRuntimeResume(() => void refreshFromServer());
-    const forceRefresh = () => void refreshFromServer();
-    window.addEventListener(INKBOUND_FORCE_CLOUD_REFRESH_EVENT, forceRefresh);
+    window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, restoreCatastrophicEmptyLibrary);
+    window.addEventListener(INKBOUND_FORCE_CLOUD_REFRESH_EVENT, refreshFromServer);
+    void recoverBooksIfLocalCacheIsEmpty();
 
     return () => {
       disposed = true;
-      window.clearInterval(interval);
-      unsubscribeResume();
-      window.removeEventListener(INKBOUND_FORCE_CLOUD_REFRESH_EVENT, forceRefresh);
+      window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, restoreCatastrophicEmptyLibrary);
+      window.removeEventListener(INKBOUND_FORCE_CLOUD_REFRESH_EVENT, refreshFromServer);
     };
   }, [user?.uid]);
 
