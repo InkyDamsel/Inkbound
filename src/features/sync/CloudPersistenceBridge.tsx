@@ -22,6 +22,7 @@ import {
   notifyCloudDataUpdated,
   type BeforeSignOutDetail,
   type CloudSyncedStorageKey,
+  type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 import { shouldPromoteLocalRecordMissingFromCloud } from './syncConflictPolicy';
 
@@ -35,8 +36,8 @@ const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
 const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
 const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
-const BRIDGE_VERSION = '7';
-const LOCAL_CHANGE_POLL_MS = 1500;
+const BRIDGE_VERSION = '8';
+const SYNC_FLUSH_DEBOUNCE_MS = 3000;
 const INITIAL_UPLOAD_BATCH_SIZE = 100;
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
 const INITIAL_SERVER_WAIT_MS = 8000;
@@ -235,29 +236,45 @@ async function runInBatches(tasks: Array<() => Promise<unknown>>) {
   }
 }
 
+function removeNoOpMutations<T>(mutations: Record<string, RecordMutation<T>>, baseline: Record<string, string>) {
+  Object.entries(mutations).forEach(([id, mutation]) => {
+    if (mutation.operation === 'delete') {
+      if (baseline[id] === undefined) delete mutations[id];
+      return;
+    }
+    if (mutation.data !== undefined && baseline[id] === stable(mutation.data)) delete mutations[id];
+  });
+}
+
 export const CloudPersistenceBridge: React.FC = () => {
   const sync = useAccountSync();
   const hydrated = useRef(false);
   const bookFingerprints = useRef(new Map<string, string>());
   const sessionFingerprints = useRef(new Map<string, string>());
   const profileFingerprint = useRef('');
-  const pollRunning = useRef(false);
 
   useEffect(() => {
     hydrated.current = false;
     bookFingerprints.current.clear();
     sessionFingerprints.current.clear();
     profileFingerprint.current = '';
-    pollRunning.current = false;
     if (!sync.user || !db) return undefined;
 
     const uid = sync.user.uid;
     let disposed = false;
+    let flushTimer: number | undefined;
+    let flushInFlight: Promise<void> | undefined;
+    let flushRequested = false;
     const unsubscribers: Array<() => void> = [];
 
-    const flushPending = async () => {
+    const performFlushPending = async () => {
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
+      removeNoOpMutations(pending.books, baseline.books);
+      removeNoOpMutations(pending.sessions, baseline.sessions);
+      if (pending.profile && baseline.profile === stable(pending.profile.data)) delete pending.profile;
+      writePending(uid, pending);
+
       const bookEntries = Object.entries(pending.books);
       const sessionEntries = Object.entries(pending.sessions);
       const tasks: Array<() => Promise<unknown>> = [];
@@ -307,18 +324,54 @@ export const CloudPersistenceBridge: React.FC = () => {
       writePending(uid, latest);
     };
 
-    const captureCurrentChanges = () => {
+    const flushPending = (): Promise<void> => {
+      flushRequested = true;
+      if (flushInFlight) return flushInFlight;
+
+      flushInFlight = (async () => {
+        while (flushRequested && !disposed) {
+          flushRequested = false;
+          await performFlushPending();
+        }
+      })().finally(() => {
+        flushInFlight = undefined;
+      });
+      return flushInFlight;
+    };
+
+    const captureCurrentChanges = (keys?: CloudSyncedStorageKey[]) => {
       if (!hydrated.current || disposed || localStorage.getItem(clearIntentKey(uid)) === '1') return;
+      const changedKeys = keys ? new Set(keys) : undefined;
       const pending = readPending(uid);
-      captureWorkingChanges(safeParse<UserBookRecord[]>(BOOKS_KEY, []), bookFingerprints, pending.books);
-      captureWorkingChanges(safeParse<ReadingSession[]>(SESSIONS_KEY, []), sessionFingerprints, pending.sessions);
-      const profile = safeParse<ReaderProfile>(PROFILE_KEY, {});
-      const fingerprint = stable(profile);
-      if (Object.keys(profile).length && fingerprint !== profileFingerprint.current) {
-        pending.profile = { data: profile, clientUpdatedAt: new Date().toISOString() };
-        profileFingerprint.current = fingerprint;
+      const baseline = readBaseline(uid);
+
+      if (!changedKeys || changedKeys.has(BOOKS_KEY)) {
+        captureWorkingChanges(safeParse<UserBookRecord[]>(BOOKS_KEY, []), bookFingerprints, pending.books);
+        removeNoOpMutations(pending.books, baseline.books);
+      }
+      if (!changedKeys || changedKeys.has(SESSIONS_KEY)) {
+        captureWorkingChanges(safeParse<ReadingSession[]>(SESSIONS_KEY, []), sessionFingerprints, pending.sessions);
+        removeNoOpMutations(pending.sessions, baseline.sessions);
+      }
+      if (!changedKeys || changedKeys.has(PROFILE_KEY)) {
+        const profile = safeParse<ReaderProfile>(PROFILE_KEY, {});
+        const fingerprint = stable(profile);
+        if (Object.keys(profile).length && fingerprint !== profileFingerprint.current) {
+          if (baseline.profile === fingerprint) delete pending.profile;
+          else pending.profile = { data: profile, clientUpdatedAt: new Date().toISOString() };
+          profileFingerprint.current = fingerprint;
+        }
       }
       writePending(uid, pending);
+    };
+
+    const scheduleFlush = () => {
+      if (disposed) return;
+      if (flushTimer !== undefined) window.clearTimeout(flushTimer);
+      flushTimer = window.setTimeout(() => {
+        flushTimer = undefined;
+        void flushPending().catch(() => undefined);
+      }, SYNC_FLUSH_DEBOUNCE_MS);
     };
 
     const initialize = async () => {
@@ -408,10 +461,6 @@ export const CloudPersistenceBridge: React.FC = () => {
             const cloudClientUpdatedAt = envelope?.clientUpdatedAt;
             const cloudIsNewer = Boolean(cloudClientUpdatedAt && cloudClientUpdatedAt > localMutation.clientUpdatedAt);
             if (!cloudIsNewer) return;
-
-            // Another device wrote this record after the local pending mutation.
-            // Drop the stale pending copy before applying the cloud value so an
-            // old tab/device cannot immediately overwrite the newer edit again.
             delete currentPending[id];
             pendingChanged = true;
           }
@@ -461,7 +510,7 @@ export const CloudPersistenceBridge: React.FC = () => {
       hydrated.current = true;
       localStorage.setItem(BRIDGE_VERSION_KEY, BRIDGE_VERSION);
       notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
-      try { await flushPending(); } catch { /* durable pending queue retries later */ }
+      try { await flushPending(); } catch { /* durable pending queue retries on the next local change/sign-out */ }
     };
 
     void initialize().catch(() => {
@@ -475,23 +524,20 @@ export const CloudPersistenceBridge: React.FC = () => {
       notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
     });
 
-    const poll = window.setInterval(async () => {
-      if (!hydrated.current || disposed || pollRunning.current) return;
-      pollRunning.current = true;
-      try { captureCurrentChanges(); await flushPending(); }
-      catch { /* offline/transient failures leave mutations queued */ }
-      finally { pollRunning.current = false; }
-    }, LOCAL_CHANGE_POLL_MS);
-
     const preserve = () => captureCurrentChanges();
-    const syncNow = () => {
+    const syncNow = (event: Event) => {
       if (!hydrated.current || disposed) return;
-      captureCurrentChanges();
-      void flushPending().catch(() => undefined);
+      const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
+      captureCurrentChanges(detail?.keys);
+      scheduleFlush();
     };
     const flushBeforeSignOut = (event: Event) => {
       const detail = (event as CustomEvent<BeforeSignOutDetail>).detail;
       if (detail?.uid !== uid) return;
+      if (flushTimer !== undefined) {
+        window.clearTimeout(flushTimer);
+        flushTimer = undefined;
+      }
       captureCurrentChanges();
       detail.waitUntil(flushPending());
     };
@@ -501,7 +547,9 @@ export const CloudPersistenceBridge: React.FC = () => {
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncNow);
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
     return () => {
-      preserve(); disposed = true; window.clearInterval(poll);
+      preserve();
+      disposed = true;
+      if (flushTimer !== undefined) window.clearTimeout(flushTimer);
       window.removeEventListener('pagehide', preserve);
       document.removeEventListener('visibilitychange', preserve);
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncNow);
