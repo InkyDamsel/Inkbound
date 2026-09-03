@@ -66,7 +66,7 @@ const navigationGroups: NavigationGroup[] = [
 ];
 
 const allNavigationItems = [homeItem, ...navigationGroups.flatMap((group) => group.items)];
-const mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 3)];
+const mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 2)];
 const mobilePrimaryIds = new Set(mobilePrimaryItems.map((item) => item.id));
 const defaultCollapsedGroups: Record<NavigationGroupId, boolean> = { reading: false, journal: false, insights: false, studio: false, account: false };
 
@@ -126,6 +126,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
     }
     navigate(item.id);
   };
+  const openMobilePlan = () => {
+    setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false);
+    if (userPlan === 'free') {
+      openUpgradeModal('Explore Inkbound Premium plans and features.');
+      return;
+    }
+    navigate('settings');
+  };
   const toggleGroup = (groupId: NavigationGroupId) => setCollapsedGroups((current) => ({ ...current, [groupId]: !current[groupId] }));
   const renderNavigationItem = (item: NavigationItem, mobile = false) => {
     const Icon = item.icon;
@@ -162,6 +170,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
 
     {isMobileMenuOpen && <div className="fixed inset-0 z-[120] flex items-end bg-black/70 px-[max(0.75rem,env(safe-area-inset-left))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm lg:hidden" onClick={() => setIsMobileMenuOpen(false)}><section className="inkbound-panel flex max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1.5rem)] w-full flex-col overflow-hidden rounded-3xl p-5" role="dialog" aria-modal="true" aria-label="More navigation options" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between border-b border-[var(--ink-border-subtle)] pb-4"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">More</h2><button type="button" className="quiet-shelf-icon-button h-11 w-11" onClick={() => setIsMobileMenuOpen(false)} aria-label="Close more navigation"><X /></button></div><div className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pr-1">{mobileNavigationGroups.map((group) => <section key={group.id}><h3 className="mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">{group.label}</h3><div className="grid gap-2">{group.items.map((item) => renderNavigationItem(item, true))}</div></section>)}<section><h3 className="mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">Profile</h3><button type="button" onClick={() => navigate('profile')} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] px-4 text-left text-sm font-semibold text-[var(--ink-muted)]"><UserRound className="h-5 w-5 text-[var(--ink-mauve)]" />Profile & account</button></section></div><div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--ink-border-subtle)] pt-4"><button type="button" onClick={() => { setIsMobileMenuOpen(false); onOpenTimer(); }} className="quiet-shelf-secondary-action justify-center"><Clock3 />Start Session</button><button type="button" onClick={() => { setIsMobileMenuOpen(false); onOpenAddBook(); }} className="quiet-shelf-primary-action justify-center"><Plus />Add Book</button></div></section></div>}
 
-    <nav className="quiet-shelf-mobile-nav" aria-label="Mobile navigation">{mobilePrimaryItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => navigateToItem(item)} className={activeTab === item.id ? 'is-active' : ''}><Icon /><span>{item.label}</span></button>; })}<button type="button" onClick={() => setIsMobileMenuOpen(true)} className={isMoreSectionActive || activeTab === 'profile' ? 'is-active' : ''}><MoreHorizontal /><span>More</span></button></nav>
+    <nav className="quiet-shelf-mobile-nav" aria-label="Mobile navigation">{mobilePrimaryItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => navigateToItem(item)} className={activeTab === item.id ? 'is-active' : ''}><Icon /><span>{item.label}</span></button>; })}<button type="button" onClick={openMobilePlan} className={userPlan === 'premium' && activeTab === 'settings' ? 'is-active' : ''} aria-label={userPlan === 'free' ? 'View Premium plans' : 'View subscription settings'}><Sparkles /><span>{userPlan === 'free' ? 'Premium' : 'Plan'}</span></button><button type="button" onClick={() => setIsMobileMenuOpen(true)} className={isMoreSectionActive || activeTab === 'profile' ? 'is-active' : ''}><MoreHorizontal /><span>More</span></button></nav>
   </>;
 };
