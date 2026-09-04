@@ -17,6 +17,7 @@ const managedPrefixes = [
 ];
 
 const cache = new Map<string, string>();
+const pendingWrites = new Set<Promise<void>>();
 let databasePromise: Promise<IDBDatabase | null> | null = null;
 let installed = false;
 let originalGetItem: Storage['getItem'] | null = null;
@@ -62,10 +63,16 @@ async function putLargeValue(key: string, value: string) {
     try {
       const transaction = database.transaction(STORE_NAME, 'readwrite');
       const request = transaction.objectStore(STORE_NAME).put(value, key);
-      request.onsuccess = () => resolve();
-      request.onerror = () => resolve();
-      transaction.onerror = () => resolve();
-      transaction.onabort = () => resolve();
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      request.onerror = finish;
+      transaction.oncomplete = finish;
+      transaction.onerror = finish;
+      transaction.onabort = finish;
     } catch {
       resolve();
     }
@@ -79,14 +86,25 @@ async function deleteLargeValue(key: string) {
     try {
       const transaction = database.transaction(STORE_NAME, 'readwrite');
       const request = transaction.objectStore(STORE_NAME).delete(key);
-      request.onsuccess = () => resolve();
-      request.onerror = () => resolve();
-      transaction.onerror = () => resolve();
-      transaction.onabort = () => resolve();
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      request.onerror = finish;
+      transaction.oncomplete = finish;
+      transaction.onerror = finish;
+      transaction.onabort = finish;
     } catch {
       resolve();
     }
   });
+}
+
+function trackWrite(promise: Promise<void>) {
+  pendingWrites.add(promise);
+  void promise.finally(() => pendingWrites.delete(promise));
 }
 
 async function readAllLargeValues(): Promise<Array<[string, string]>> {
@@ -139,7 +157,7 @@ function installStorageBridge() {
 
     const normalized = String(value);
     cache.set(key, normalized);
-    void putLargeValue(key, normalized);
+    trackWrite(putLargeValue(key, normalized));
 
     if (normalized.length > LOCAL_STORAGE_SOFT_LIMIT) {
       try { originalRemoveItem!.call(this, key); } catch { /* IndexedDB copy remains authoritative. */ }
@@ -156,14 +174,30 @@ function installStorageBridge() {
   Storage.prototype.removeItem = function removeItem(key: string): void {
     if (isWindowLocalStorage(this) && isManagedKey(key)) {
       cache.delete(key);
-      void deleteLargeValue(key);
+      trackWrite(deleteLargeValue(key));
     }
     originalRemoveItem!.call(this, key);
   };
+
+  window.addEventListener('beforeunload', (event) => {
+    if (pendingWrites.size === 0) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 }
 
 export function getLargeBrowserStorageKeys(): string[] {
   return [...cache.keys()];
+}
+
+export function hasPendingLargeBrowserStorageWrites(): boolean {
+  return pendingWrites.size > 0;
+}
+
+export async function flushLargeBrowserStorage(): Promise<void> {
+  while (pendingWrites.size > 0) {
+    await Promise.allSettled([...pendingWrites]);
+  }
 }
 
 export async function hydrateLargeBrowserStorage(): Promise<void> {
