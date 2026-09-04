@@ -296,13 +296,27 @@ function historyItemToQueueItem(item: ImportHistoryItem): ImportEnrichmentQueueI
   };
 }
 
+function normalizeRetryProgress(progress: ImportEnrichmentRetryProgress): ImportEnrichmentRetryProgress {
+  const stillMarkedActive = progress.status === 'queued' || progress.status === 'running';
+  const allRequestedBooksChecked = progress.total > 0 && progress.completed >= progress.total;
+  if (!stillMarkedActive || !allRequestedBooksChecked) return progress;
+
+  return {
+    ...progress,
+    status: 'complete',
+    completed: progress.total,
+    message: progress.message ?? `${progress.total.toLocaleString()} books were checked. Books that still could not be matched remain safely queued for a future manual retry.`,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function readImportEnrichmentRetryProgress(): ImportEnrichmentRetryProgress | null {
   try {
     const stored = localStorage.getItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
     if (!stored) return null;
     const parsed = JSON.parse(stored) as Partial<ImportEnrichmentRetryProgress>;
     if (!parsed || typeof parsed.status !== 'string' || typeof parsed.completed !== 'number' || typeof parsed.total !== 'number') return null;
-    return {
+    const progress = normalizeRetryProgress({
       status: parsed.status as ImportEnrichmentRetryProgress['status'],
       completed: parsed.completed,
       total: parsed.total,
@@ -311,7 +325,17 @@ export function readImportEnrichmentRetryProgress(): ImportEnrichmentRetryProgre
       summaries: parsed.summaries ?? 0,
       message: parsed.message,
       updatedAt: parsed.updatedAt ?? new Date().toISOString(),
-    };
+    });
+
+    // Self-heal older/stale retry state that reached 100% but never received its
+    // terminal write. This prevents a completed pass from appearing to run forever
+    // after navigation, refresh, or a worker hand-off race.
+    if (progress.status === 'complete' && (parsed.status === 'queued' || parsed.status === 'running')) {
+      localStorage.setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(progress));
+      writeImportEnrichmentActiveRetry(null);
+    }
+
+    return progress;
   } catch {
     return null;
   }
@@ -354,8 +378,10 @@ export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRet
       writeImportEnrichmentActiveRetry(null);
       return;
     }
-    localStorage.setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(progress));
-    if (progress.status === 'complete' || progress.status === 'error') {
+
+    const normalized = normalizeRetryProgress(progress);
+    localStorage.setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(normalized));
+    if (normalized.status === 'complete' || normalized.status === 'error') {
       writeImportEnrichmentActiveRetry(null);
     }
   } catch {
