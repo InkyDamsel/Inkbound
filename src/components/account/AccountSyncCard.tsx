@@ -9,7 +9,7 @@ import {
 } from '../../features/sync/cloudSyncHealth';
 
 const formatLastSync = (value: string | null) => {
-  if (!value) return 'No completed account update on this device yet';
+  if (!value) return 'This device has not finished its first update yet';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Updated previously' : date.toLocaleString();
 };
@@ -60,7 +60,7 @@ export const AccountSyncCard: React.FC = () => {
 
       {!sync.isConfigured && (
         <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-[var(--ink-muted)]">
-          Account syncing is temporarily unavailable in this version of Inkbound. Please try again after updating the app or contact support.
+          Keeping your library up to date across devices is temporarily unavailable in this version of Inkbound. Please update the app and try again, or contact support if it continues.
         </div>
       )}
 
@@ -122,7 +122,7 @@ export const AccountSyncCard: React.FC = () => {
               Books, reading sessions, and Photo Memories added on your phone, computer, tablet, or the web stay with the same Inkbound account and appear on your other devices.
             </p>
             <p className="mt-4 text-xs leading-5 text-[var(--ink-muted)]">
-              Already use Google? Keep using it. After signing in with Google, you can add an email/password login to the same account instead of creating a second library.
+              Already use Google? Keep using it. After signing in with Google, you can add an email login to the same account instead of creating a second library.
             </p>
           </div>
         </div>
@@ -154,14 +154,14 @@ export const AccountSyncCard: React.FC = () => {
               <div className="flex min-w-0 items-start gap-3">
                 <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-[var(--ink-ivory)]">Add email/password sign-in</p>
-                  <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Add a password to this existing account so you can sign in with either Google or email without creating a second library.</p>
+                  <p className="text-sm font-bold text-[var(--ink-ivory)]">Add email sign-in</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Add a password to this account so you can sign in with either Google or email without creating a second library.</p>
                   {!showLinkForm ? (
                     <button type="button" onClick={() => setShowLinkForm(true)} className="mt-3 min-h-11 rounded-xl border border-[var(--ink-border)] px-4 py-2 text-xs font-semibold text-[var(--ink-ivory)]">Add email login</button>
                   ) : (
                     <form className="mt-3 flex min-w-0 flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); if (sync.user?.email && linkPassword) void sync.linkEmailPassword(sync.user.email, linkPassword); }}>
                       <input type="password" value={linkPassword} onChange={(event) => setLinkPassword(event.target.value)} minLength={6} autoComplete="new-password" placeholder="Choose a password" className="min-h-12 min-w-0 flex-1 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
-                      <button type="submit" disabled={isWorking} className="min-h-12 shrink-0 rounded-xl bg-[var(--ink-gold)] px-4 text-xs font-bold text-[#20170d] disabled:opacity-50">Link login</button>
+                      <button type="submit" disabled={isWorking} className="min-h-12 shrink-0 rounded-xl bg-[var(--ink-gold)] px-4 text-xs font-bold text-[#20170d] disabled:opacity-50">Add email login</button>
                     </form>
                   )}
                 </div>
@@ -190,7 +190,7 @@ export const AccountSyncCard: React.FC = () => {
             </div>
           </div>
 
-          <p className="text-xs text-[var(--ink-faint)]">When you sign in on another device, Inkbound restores your saved library and Photo Memories before adding changes from that device.</p>
+          <p className="text-xs text-[var(--ink-faint)]">When you sign in on another device, Inkbound brings over your saved library and Photo Memories before adding anything new from that device.</p>
         </div>
       )}
 
