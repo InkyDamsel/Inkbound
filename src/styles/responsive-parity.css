@@ -83,6 +83,12 @@
     text-align: center;
   }
 
+  /* Page-level actions must stay visible in Android as well as web. */
+  .inkbound-main-content .quiet-shelf-primary-action,
+  .inkbound-main-content .quiet-shelf-secondary-action {
+    display: inline-flex;
+  }
+
   /* Toolbars keep every action available by wrapping instead of clipping. */
   .inkbound-app-shell main header.flex,
   .inkbound-app-shell main header > .flex,
@@ -139,6 +145,12 @@
   .inkbound-app-shell main button.quiet-shelf-secondary-action {
     flex-shrink: 1;
   }
+
+  /* Admin refresh/action rows should never push controls beyond the viewport. */
+  .inkbound-main-content header > .quiet-shelf-secondary-action,
+  .inkbound-main-content section > .quiet-shelf-secondary-action {
+    width: 100%;
+  }
 }
 
 @media (min-width: 768px) and (max-width: 1199px) {
@@ -155,8 +167,9 @@
 /* Landscape phones still use the same card/control styling. The navigation can
    compact itself, but page actions should wrap rather than be hidden. */
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  .inkbound-app-shell main .quiet-shelf-primary-action,
   .inkbound-app-shell main .quiet-shelf-secondary-action {
-    display: inline-flex;
+    display: inline-flex !important;
   }
 
   .inkbound-page-canvas {
