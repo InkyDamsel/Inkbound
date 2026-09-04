@@ -9,18 +9,18 @@ interface CatalogContributionPanelProps {
 }
 
 function contributionErrorMessage(error: unknown): string {
-  if (!error || typeof error !== 'object') return 'Inkbound could not submit these catalog details. Please try again.';
+  if (!error || typeof error !== 'object') return 'Inkbound could not submit these book details. Please try again.';
   const record = error as { code?: unknown; message?: unknown };
   const code = typeof record.code === 'string' ? record.code.toLowerCase() : '';
   const message = typeof record.message === 'string' ? record.message.trim() : '';
 
   if (message && message.toLowerCase() !== 'internal' && !message.toLowerCase().endsWith('/internal')) return message;
-  if (code.includes('resource-exhausted')) return 'Please wait a moment before submitting another catalog correction.';
-  if (code.includes('unauthenticated')) return 'Please sign in again before sharing catalog details.';
-  if (code.includes('permission-denied')) return 'Inkbound could not verify this contribution request. Please reload the app and try again.';
-  if (code.includes('failed-precondition')) return 'This edition needs a stronger identifier before it can be shared for review.';
-  if (code.includes('invalid-argument')) return 'One or more edition details need to be corrected before they can be shared.';
-  return 'Inkbound could not save this catalog contribution. Please try again. If it continues, close this window and reopen the book before retrying.';
+  if (code.includes('resource-exhausted')) return 'Please wait a moment before submitting another correction.';
+  if (code.includes('unauthenticated')) return 'Please sign in again before sharing book details.';
+  if (code.includes('permission-denied')) return 'Inkbound could not verify this request. Please reload the app and try again.';
+  if (code.includes('failed-precondition')) return 'Add an ISBN, ASIN, or publisher and publication date before sharing this edition.';
+  if (code.includes('invalid-argument')) return 'One or more book details need to be corrected before they can be shared.';
+  return 'Inkbound could not save these book details. Please try again. If it continues, close this window and reopen the book before retrying.';
 }
 
 const cleanAsin = (value: string) => value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 10);
@@ -66,7 +66,7 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
     try {
       saveAsinToEdition();
       await submitCatalogContribution(contributionBook);
-      setStatus('Submitted for owner review. The ASIN was saved to this edition, and your private notes, ratings, reviews, reading progress, tags, and collections were not shared.');
+      setStatus('Sent to Inkbound for review. The ASIN was saved to this edition, and your private notes, ratings, reviews, reading progress, tags, and collections were not shared.');
     } catch (error) {
       setSubmitFailed(true);
       setStatus(contributionErrorMessage(error));
@@ -80,9 +80,9 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
       <div className="flex items-start gap-3">
         <Database className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-[var(--ink-ivory)]">Help improve Inkbound’s catalog</h3>
+          <h3 className="font-semibold text-[var(--ink-ivory)]">Help improve Inkbound’s book details</h3>
           <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-            Share only this book’s catalog-safe edition details for owner review. Personal reading data is never included.
+            Share only this book’s basic edition details with Inkbound for review. Your personal reading data is never included.
           </p>
 
           <label className="mt-4 block text-xs font-semibold text-[var(--ink-ivory)]">
@@ -98,7 +98,7 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
             />
           </label>
           {!asinIsValid && <p className="mt-2 text-xs text-amber-200">ASINs must be exactly 10 letters or numbers.</p>}
-          {asinIsValid && normalizedAsin && <p className="mt-2 text-xs text-[var(--ink-muted)]">This ASIN is saved to the active edition and can be used as its strong catalog identifier.</p>}
+          {asinIsValid && normalizedAsin && <p className="mt-2 text-xs text-[var(--ink-muted)]">This ASIN is saved to the selected edition and helps Inkbound match the correct book.</p>}
 
           {fields ? (
             <>
@@ -115,12 +115,12 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
               </div>
               <button type="button" onClick={() => void submit()} disabled={submitting || !asinIsValid} className="quiet-shelf-secondary-action mt-4 justify-center disabled:opacity-40">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {submitting ? 'Submitting…' : 'Share edition details for review'}
+                {submitting ? 'Sending…' : 'Share edition details for review'}
               </button>
             </>
           ) : (
             <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-xs leading-5 text-amber-200">
-              Add an ISBN, ASIN, edition identifier, or both publisher and publication date before sharing this edition with the catalog.
+              Add an ISBN, ASIN, or publisher and publication date before sharing this edition.
             </p>
           )}
 
