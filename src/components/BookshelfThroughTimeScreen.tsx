@@ -16,6 +16,7 @@ interface ShelfPreferences {
   theme: ShelfTheme;
   showRatings: boolean;
   showStats: boolean;
+  highlightNew?: boolean;
 }
 
 const PREFERENCES_KEY = 'inkbound_bookshelf_through_time_preferences';
@@ -26,6 +27,12 @@ const themeClasses: Record<ShelfTheme, string> = {
   'quiet-library': 'from-stone-950 via-[#302923] to-[#171411]',
   'cozy-evening': 'from-[#3a241c] via-[#5a3929] to-[#211713]',
   'midnight-study': 'from-[#171825] via-[#26283a] to-[#101119]',
+};
+
+const shelfWoodClasses: Record<ShelfTheme, string> = {
+  'quiet-library': 'from-[#8a5b3f] via-[#68432f] to-[#4a3024]',
+  'cozy-evening': 'from-[#a76b43] via-[#7d4c31] to-[#543120]',
+  'midnight-study': 'from-[#5d493e] via-[#42352f] to-[#2d2726]',
 };
 
 function validLocalDate(year: number, month: number, day: number): Date | null {
@@ -94,13 +101,19 @@ function hasTrustworthyFinishedDate(book: UserBookRecord): boolean {
   if (book.importFinishedDateProvided === true) return true;
   if (book.importFinishedDateProvided === false) return false;
 
-  // Legacy imports did not record whether a finished date came from the export.
-  // Older builds could stamp the import/add date into finished books when the CSV
-  // omitted Date Read. Treat an identical added/finished date as unknown instead
-  // of inventing reading history. If the reader later edits the finish date, it
-  // naturally becomes trustworthy because it no longer matches the import date.
   const added = canonicalDateKey(book.dateAdded);
   return !added || finished !== added;
+}
+
+function getShelfBookDimensions(book: UserBookRecord, index: number) {
+  const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+  const pages = edition?.pageCount ?? 300;
+  const format = edition?.format;
+  const heightBase = format === 'hardcover' ? 102 : format === 'audiobook' ? 88 : format === 'ebook' ? 92 : 96;
+  const height = Math.max(82, Math.min(122, heightBase + ((book.work.title.length + index * 7) % 17) - 8));
+  const widthBase = format === 'hardcover' ? 62 : format === 'paperback' ? 57 : format === 'audiobook' ? 54 : 56;
+  const width = Math.max(50, Math.min(68, widthBase + Math.round((Math.min(700, pages) - 300) / 100)));
+  return { height, width };
 }
 
 export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProps> = ({
@@ -132,6 +145,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     theme: 'quiet-library',
     showRatings: true,
     showStats: true,
+    highlightNew: true,
   });
 
   const selectedMonth = availableMonths.includes(preferences.month)
@@ -149,6 +163,11 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
     return sum + (edition?.pageCount ?? 0);
   }, 0);
+  const ratedBooks = shelfBooks.filter((book) => typeof book.rating === 'number' && book.rating > 0);
+  const averageRating = ratedBooks.length
+    ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length
+    : 0;
+  const highlightNew = preferences.highlightNew !== false;
 
   const updatePreference = <K extends keyof ShelfPreferences>(key: K, value: ShelfPreferences[K]) => {
     setPreferences((current) => ({ ...current, [key]: value }));
@@ -181,30 +200,38 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
         </div>
       </header>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className={`relative min-h-[560px] min-w-0 overflow-hidden rounded-3xl bg-gradient-to-br ${themeClasses[preferences.theme]} p-4 shadow-2xl sm:p-8`}>
-          <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255,255,255,.13), transparent 42%)' }} />
-          <div className="relative z-10 flex min-w-0 items-start justify-between gap-4">
+          <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255,255,255,.13), transparent 42%), linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px)', backgroundSize: 'auto, 100% 28px' }} />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/[0.035] to-transparent" />
+
+          <div className="relative z-10 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <span className="block truncate text-xs uppercase tracking-[0.24em] text-white/60">{monthLabel(selectedMonth)}</span>
               <h3 className="mt-1 font-serif text-2xl text-white sm:text-3xl">Your Reading Shelf</h3>
+              <p className="mt-2 text-xs text-white/45">Every book here was finished on or before this shelf snapshot.</p>
             </div>
-            <Sparkles className="h-6 w-6 shrink-0 text-white/60" />
+            <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/15 px-3 py-2 text-xs text-white/60 backdrop-blur-sm">
+              <Sparkles className="h-4 w-4 text-[var(--ink-gold-bright)]" />
+              <span>{shelfBooks.length.toLocaleString()} books</span>
+            </div>
           </div>
 
-          <div className="relative z-10 mt-8 space-y-8">
+          <div className="relative z-10 mt-8 space-y-7">
             {Array.from({ length: shelfRowCount }, (_, shelfIndex) => {
               const shelfSlice = shelfBooks.slice(shelfIndex * BOOKS_PER_SHELF, shelfIndex * BOOKS_PER_SHELF + BOOKS_PER_SHELF);
               return (
                 <div key={shelfIndex} className="min-w-0">
                   <div className="overflow-x-auto overflow-y-hidden overscroll-x-contain px-1 pb-1 sm:px-2">
-                    <div className="flex min-h-32 min-w-max items-end gap-2 sm:gap-3">
+                    <div className="flex min-h-36 min-w-max items-end gap-2 sm:gap-3">
                       {shelfSlice.map((book, index) => {
                         const isNewThisMonth = monthKey(book.dateFinished) === selectedMonth;
-                        const height = 82 + ((book.work.title.length + index * 11) % 38);
+                        const { height, width } = getShelfBookDimensions(book, index);
                         const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
                         const coverUrl = edition?.coverUrl;
                         const fallbackGradient = edition?.coverGradient ?? 'from-[#76586d] to-[#30242d]';
+                        const spineWidth = Math.max(12, Math.round(width * 0.24));
+                        const faceWidth = width - spineWidth + 1;
 
                         return (
                           <button
@@ -213,28 +240,29 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                             onClick={() => onSelectBook(book)}
                             title={`${book.work.title} by ${book.work.author}`}
                             aria-label={`Open ${book.work.title} by ${book.work.author}`}
-                            className="group relative flex shrink-0 items-end transition-transform hover:-translate-y-2"
-                            style={{ height, width: 58 }}
+                            className={`group relative flex shrink-0 items-end transition-all duration-200 hover:-translate-y-2 focus-visible:-translate-y-2 ${isNewThisMonth && highlightNew ? 'drop-shadow-[0_0_10px_rgba(218,178,96,.28)]' : ''}`}
+                            style={{ height, width }}
                           >
                             <span
-                              className={`relative z-20 flex h-full w-4 shrink-0 items-center justify-center overflow-hidden rounded-l-sm border border-white/15 bg-gradient-to-b ${fallbackGradient} shadow-lg`}
+                              className={`relative z-20 flex h-full shrink-0 items-center justify-center overflow-hidden rounded-l-[3px] border border-white/15 bg-gradient-to-b ${fallbackGradient} shadow-lg`}
                               style={{
+                                width: spineWidth,
                                 backgroundImage: coverUrl
-                                  ? `linear-gradient(rgba(0,0,0,.28), rgba(0,0,0,.5)), url("${coverUrl}")`
+                                  ? `linear-gradient(rgba(0,0,0,.32), rgba(0,0,0,.5)), url("${coverUrl}")`
                                   : undefined,
                                 backgroundSize: coverUrl ? 'auto 100%' : undefined,
                                 backgroundPosition: coverUrl ? 'left center' : undefined,
                               }}
                               aria-hidden="true"
                             >
-                              <span className="line-clamp-3 -rotate-90 whitespace-nowrap text-[7px] font-semibold tracking-wide text-white drop-shadow-[0_1px_3px_rgba(0,0,0,.9)]">
-                                {book.work.title}
+                              <span className="max-w-[92px] -rotate-90 whitespace-nowrap text-[7px] font-semibold tracking-wide text-white drop-shadow-[0_1px_3px_rgba(0,0,0,.9)]">
+                                {book.work.title.length > 22 ? `${book.work.title.slice(0, 21)}…` : book.work.title}
                               </span>
                             </span>
 
                             <span
-                              className={`relative z-10 -ml-px block overflow-hidden rounded-r-sm border border-white/15 bg-gradient-to-b ${fallbackGradient} shadow-[5px_7px_14px_rgba(0,0,0,.42)] transition-transform duration-200 group-hover:translate-x-1 group-hover:-rotate-1`}
-                              style={{ height: Math.max(64, height - 4), width: 42 }}
+                              className={`relative z-10 -ml-px block overflow-hidden rounded-r-[3px] border border-white/15 bg-gradient-to-b ${fallbackGradient} shadow-[5px_7px_14px_rgba(0,0,0,.42)] transition-transform duration-200 group-hover:translate-x-1 group-hover:-rotate-1 group-focus-visible:translate-x-1`}
+                              style={{ height: Math.max(64, height - 4), width: faceWidth }}
                             >
                               {coverUrl ? (
                                 <img
@@ -252,32 +280,38 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                                 </span>
                               )}
                               <span className="pointer-events-none absolute inset-y-0 left-0 w-px bg-white/20" />
+                              <span className="pointer-events-none absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/10 to-transparent" />
                             </span>
 
                             {preferences.showRatings && book.rating && (
-                              <span className="absolute -bottom-1 right-0 z-30 rounded bg-black/70 px-1 text-[8px] font-bold text-amber-200 shadow">★ {book.rating}</span>
+                              <span className="absolute -bottom-1 right-0 z-30 rounded-md border border-white/10 bg-black/75 px-1.5 py-0.5 text-[8px] font-bold text-amber-200 shadow">★ {book.rating}</span>
                             )}
-                            {isNewThisMonth && <span className="absolute -top-2 right-0 z-30 h-3 w-3 rounded-full border-2 border-white/70 bg-[var(--ink-gold-bright)]" />}
+                            {isNewThisMonth && highlightNew && (
+                              <span className="absolute -top-2 right-0 z-30 inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/50 bg-[var(--ink-gold-bright)] text-[8px] font-black text-[#281b13] shadow-[0_0_12px_rgba(218,178,96,.55)]" title="Finished this month">+</span>
+                            )}
                           </button>
                         );
                       })}
                       {shelfSlice.length === 0 && (
                         <div className="flex h-24 w-[min(72vw,360px)] items-center justify-center rounded-2xl border border-dashed border-white/15 px-4 text-center text-sm text-white/35">Room for future stories</div>
                       )}
-                      {shelfIndex === 0 && shelfSlice.length > 0 && <div className="ml-auto hidden h-20 w-16 shrink-0 rounded-t-full bg-emerald-950/60 sm:block" aria-hidden="true" />}
                     </div>
                   </div>
-                  <div className="h-4 rounded-sm border-t border-white/15 bg-[#6a4430] shadow-[0_10px_18px_rgba(0,0,0,.45)]" />
+                  <div className="relative h-5">
+                    <div className={`absolute inset-x-0 top-0 h-3 rounded-sm border-t border-white/20 bg-gradient-to-b ${shelfWoodClasses[preferences.theme]} shadow-[0_10px_18px_rgba(0,0,0,.46)]`} />
+                    <div className="absolute inset-x-1 top-3 h-1.5 rounded-b-sm bg-black/30 blur-[1px]" />
+                  </div>
                 </div>
               );
             })}
           </div>
 
           {preferences.showStats && (
-            <div className="relative z-10 mt-8 grid grid-cols-1 gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-center backdrop-blur-sm min-[430px]:grid-cols-3">
+            <div className="relative z-10 mt-8 grid grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-center backdrop-blur-sm sm:grid-cols-4">
               <div><strong className="block font-serif text-2xl text-white">{shelfBooks.length}</strong><span className="text-xs text-white/55">Books on shelf</span></div>
-              <div><strong className="block font-serif text-2xl text-white">{booksFinishedThisMonth.length}</strong><span className="text-xs text-white/55">Added this month</span></div>
+              <div><strong className="block font-serif text-2xl text-white">{booksFinishedThisMonth.length}</strong><span className="text-xs text-white/55">Finished this month</span></div>
               <div><strong className="block font-serif text-2xl text-white">{totalPages.toLocaleString()}</strong><span className="text-xs text-white/55">Pages represented</span></div>
+              <div><strong className="block font-serif text-2xl text-white">{averageRating ? averageRating.toFixed(1) : '—'}</strong><span className="text-xs text-white/55">Average rating</span></div>
             </div>
           )}
         </div>
@@ -291,7 +325,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                 ['cozy-evening', 'Cozy Evening'],
                 ['midnight-study', 'Midnight Study'],
               ] as const).map(([value, label]) => (
-                <button key={value} type="button" onClick={() => updatePreference('theme', value)} className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 text-left text-sm font-semibold ${preferences.theme === value ? 'border-[var(--ink-gold)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)]'}`}>
+                <button key={value} type="button" onClick={() => updatePreference('theme', value)} className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 text-left text-sm font-semibold transition ${preferences.theme === value ? 'border-[var(--ink-gold)] bg-[rgba(197,160,89,.07)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]'}`}>
                   {label}{preferences.theme === value && <Sparkles className="h-4 w-4 text-[var(--ink-gold)]" />}
                 </button>
               ))}
@@ -300,12 +334,13 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
 
           <section className="inkbound-panel rounded-3xl p-5">
             <span className="inkbound-eyebrow">Display</span>
-            <label className="mt-4 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><Eye className="h-4 w-4 shrink-0" />Show ratings on spines</span><input type="checkbox" checked={preferences.showRatings} onChange={(event) => updatePreference('showRatings', event.target.checked)} /></label>
-            <label className="mt-4 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><BookOpen className="h-4 w-4 shrink-0" />Show shelf statistics</span><input type="checkbox" checked={preferences.showStats} onChange={(event) => updatePreference('showStats', event.target.checked)} /></label>
+            <label className="mt-4 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><Eye className="h-4 w-4 shrink-0" />Show ratings on books</span><input type="checkbox" checked={preferences.showRatings} onChange={(event) => updatePreference('showRatings', event.target.checked)} /></label>
+            <label className="mt-3 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><Sparkles className="h-4 w-4 shrink-0" />Highlight this month</span><input type="checkbox" checked={highlightNew} onChange={(event) => updatePreference('highlightNew', event.target.checked)} /></label>
+            <label className="mt-3 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><BookOpen className="h-4 w-4 shrink-0" />Show shelf statistics</span><input type="checkbox" checked={preferences.showStats} onChange={(event) => updatePreference('showStats', event.target.checked)} /></label>
           </section>
 
           <section className="inkbound-panel rounded-3xl p-5">
-            <div className="flex items-center gap-3"><CalendarDays className="h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div className="min-w-0"><strong className="block text-sm text-[var(--ink-ivory)]">Monthly growth</strong><span className="text-xs text-[var(--ink-muted)]">New books are marked on the shelf.</span></div></div>
+            <div className="flex items-start gap-3"><CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div className="min-w-0"><strong className="block text-sm text-[var(--ink-ivory)]">This shelf snapshot</strong><span className="mt-1 block text-xs leading-5 text-[var(--ink-muted)]">{booksFinishedThisMonth.length} {booksFinishedThisMonth.length === 1 ? 'book was' : 'books were'} added to your reading history in {monthLabel(selectedMonth)}.</span></div></div>
           </section>
         </aside>
       </div>
