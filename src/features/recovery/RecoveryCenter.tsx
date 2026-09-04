@@ -55,7 +55,7 @@ export const RecoveryCenter: React.FC = () => {
       setPoints(await listRecoveryPoints(user.uid));
       setDiagnosticRevision((current) => current + 1);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not load recovery points.');
+      setMessage(error instanceof Error ? error.message : 'Could not load safety copies.');
     } finally {
       setLoading(false);
     }
@@ -79,11 +79,11 @@ export const RecoveryCenter: React.FC = () => {
     setMessage('Creating a full safety copy...');
     try {
       await createRecoveryPoint(user.uid, 'Manual recovery point', { force: true });
-      setMessage('Recovery point created.');
+      setMessage('Safety copy created.');
       setPoints(await listRecoveryPoints(user.uid));
       setDiagnosticRevision((current) => current + 1);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not create a recovery point.');
+      setMessage(error instanceof Error ? error.message : 'Could not create a safety copy.');
     } finally {
       setLoading(false);
     }
@@ -92,7 +92,7 @@ export const RecoveryCenter: React.FC = () => {
   const restore = () => {
     if (!selected || confirmation.trim().toUpperCase() !== RESTORE_PHRASE) return;
     setLoading(true);
-    setMessage('Restarting Inkbound into protected recovery mode...');
+    setMessage('Preparing your restore and restarting Inkbound...');
     scheduleRecoveryRestore(user.uid, selected.id);
     window.location.reload();
   };
@@ -125,9 +125,8 @@ export const RecoveryCenter: React.FC = () => {
                   <ShieldCheck className="h-6 w-6 text-[var(--ink-mauve)]" /> My Recovery Center
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">
-                  These recovery points belong only to your signed-in Inkbound account. Inkbound keeps separate recovery points for your synced books, reading sessions, profile,
-                  collections, goals, memories, import state, and photo-memory metadata. Restoring a recovery point
-                  first saves the state you are replacing, so recovery itself can be reversed.
+                  These safety copies belong only to your Inkbound account. They can restore your books, reading sessions, profile,
+                  collections, goals, memories, and imports. Before Inkbound restores an older copy, it saves your current one so you can undo the restore if needed.
                 </p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="quiet-shelf-icon-button" aria-label="Close Recovery Center">
@@ -141,25 +140,25 @@ export const RecoveryCenter: React.FC = () => {
                   ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
                   : <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />}
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-[var(--ink-ivory)]">Current library integrity</p>
+                  <p className="font-semibold text-[var(--ink-ivory)]">Current library health</p>
                   <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                    {integrity.bookCount.toLocaleString()} books · {integrity.sessionCount.toLocaleString()} sessions · {integrity.activeCoverCount.toLocaleString()} active covers · {integrity.anyEditionCoverCount.toLocaleString()} books with a cover on any edition
+                    {integrity.bookCount.toLocaleString()} books · {integrity.sessionCount.toLocaleString()} sessions · {integrity.activeCoverCount.toLocaleString()} books with current covers · {integrity.anyEditionCoverCount.toLocaleString()} books with a saved cover
                   </p>
                   <div className="mt-3 grid gap-2 text-xs text-[var(--ink-muted)] sm:grid-cols-2">
                     <span>{integrity.importedBookCount.toLocaleString()} imported books</span>
-                    <span>{integrity.verifiedImportMetadataCount.toLocaleString()} metadata-verified imports</span>
-                    <span>{integrity.visibleSummaryCount.toLocaleString()} visible summaries</span>
+                    <span>{integrity.verifiedImportMetadataCount.toLocaleString()} imported books with confirmed details</span>
+                    <span>{integrity.visibleSummaryCount.toLocaleString()} books with summaries</span>
                     <span>{integrity.publisherSummaryCount.toLocaleString()} publisher summaries</span>
-                    <span>{integrity.missingActiveCoverCount.toLocaleString()} missing active covers</span>
-                    <span>{integrity.duplicateIdentityGroupCount.toLocaleString()} possible duplicate identity groups</span>
+                    <span>{integrity.missingActiveCoverCount.toLocaleString()} books missing a current cover</span>
+                    <span>{integrity.duplicateIdentityGroupCount.toLocaleString()} possible duplicate books</span>
                   </div>
                   {!integrity.healthy && (
                     <p className="mt-3 text-xs leading-5 text-amber-300">
-                      Structural warnings: {integrity.duplicateBookIdCount} duplicate book IDs, {integrity.duplicateSessionIdCount} duplicate session IDs, {integrity.missingActiveEditionCount} missing active editions, {integrity.orphanSessionCount} orphan sessions.
+                      Inkbound found a few items that may need repair: {integrity.duplicateBookIdCount} duplicate book records, {integrity.duplicateSessionIdCount} duplicate session records, {integrity.missingActiveEditionCount} books missing a selected edition, and {integrity.orphanSessionCount} reading sessions that are no longer linked to a book.
                     </p>
                   )}
                   <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">
-                    Cover counts here are the covers currently stored in your library. Import/retry messages such as “14 covers” report covers found during that run, not this total.
+                    These cover counts show what is currently in your library. A message such as “14 covers found” only describes that one detail check.
                   </p>
                 </div>
               </div>
@@ -167,7 +166,7 @@ export const RecoveryCenter: React.FC = () => {
 
             <div className="mt-5 flex flex-wrap gap-3">
               <button type="button" disabled={loading} onClick={() => void createManualPoint()} className="quiet-shelf-primary-action disabled:opacity-50">
-                <ShieldCheck className="h-4 w-4" /> Create recovery point now
+                <ShieldCheck className="h-4 w-4" /> Create safety copy now
               </button>
               <button type="button" disabled={loading} onClick={() => void refresh()} className="quiet-shelf-secondary-action disabled:opacity-50">
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -179,7 +178,7 @@ export const RecoveryCenter: React.FC = () => {
             <div className="mt-6 space-y-3">
               {points.length === 0 && !loading ? (
                 <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5 text-sm text-[var(--ink-muted)]">
-                  No recovery points yet. Create one now; Inkbound also keeps a daily safety baseline and creates a recovery point immediately before imports.
+                  No safety copies yet. Create one now; Inkbound also keeps a daily safety copy and saves another one immediately before imports.
                 </div>
               ) : points.map((point) => (
                 <article key={point.id} className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
@@ -187,7 +186,7 @@ export const RecoveryCenter: React.FC = () => {
                     <div>
                       <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink-ivory)]"><Clock3 className="h-4 w-4 text-[var(--ink-mauve)]" /> {formatRecoveryDate(point.createdAtClient)}</div>
                       <p className="mt-1 text-xs text-[var(--ink-muted)]">{point.reason}</p>
-                      <p className="mt-2 text-xs text-[var(--ink-muted)]">{point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} account records · {point.photoMemoryCount} photo-memory records · {point.runtimeStateCount} import-state records</p>
+                      <p className="mt-2 text-xs text-[var(--ink-muted)]">{point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} other account items · {point.photoMemoryCount} Photo Memories · {point.runtimeStateCount} import details</p>
                     </div>
                     <button type="button" disabled={loading} onClick={() => { setSelected(point); setConfirmation(''); }} className="quiet-shelf-secondary-action shrink-0 justify-center disabled:opacity-50"><RotateCcw className="h-4 w-4" /> Restore</button>
                   </div>
@@ -198,10 +197,10 @@ export const RecoveryCenter: React.FC = () => {
             {selected && (
               <div className="mt-6 rounded-2xl border border-amber-400/25 bg-amber-400/5 p-5">
                 <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Restore {formatRecoveryDate(selected.createdAtClient)}?</h3>
-                <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Inkbound will restart into protected recovery mode, save a new recovery point of your current cloud state, then replace the synced account records with this copy before normal sync starts. Type <strong className="text-[var(--ink-ivory)]">RESTORE</strong> to continue.</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Inkbound will first save a safety copy of your current account, then restore this older copy and restart. Type <strong className="text-[var(--ink-ivory)]">RESTORE</strong> to continue.</p>
                 <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} className="mt-4 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-3 text-[var(--ink-ivory)] outline-none" placeholder="RESTORE" autoComplete="off" />
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" disabled={loading || confirmation.trim().toUpperCase() !== RESTORE_PHRASE} onClick={restore} className="quiet-shelf-primary-action disabled:cursor-not-allowed disabled:opacity-45"><RotateCcw className="h-4 w-4" /> Restore this recovery point</button>
+                  <button type="button" disabled={loading || confirmation.trim().toUpperCase() !== RESTORE_PHRASE} onClick={restore} className="quiet-shelf-primary-action disabled:cursor-not-allowed disabled:opacity-45"><RotateCcw className="h-4 w-4" /> Restore this safety copy</button>
                   <button type="button" disabled={loading} onClick={() => setSelected(null)} className="quiet-shelf-secondary-action">Cancel</button>
                 </div>
               </div>
