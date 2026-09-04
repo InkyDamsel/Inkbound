@@ -396,15 +396,30 @@ export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRet
  * automatic metadata repair.
  */
 export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds?: string[]): string[] {
-  const allowed = targetBookIds ? new Set(targetBookIds) : null;
+  // Fast path for a bounded manual batch. These IDs already come from the durable
+  // enrichment queue shown on the History screen, so rebuilding and serializing a
+  // 40k+ item queue here only blocks the browser. The worker will read the durable
+  // queue once and process exactly these IDs.
+  if (targetBookIds?.length) {
+    const requestedIds = [...new Set(targetBookIds.filter(Boolean))];
+    if (requestedIds.length > 0) {
+      writeImportEnrichmentActiveRetry({
+        entryId: entry.id,
+        targetBookIds: requestedIds,
+        startedAt: new Date().toISOString(),
+      });
+    }
+    return requestedIds;
+  }
+
+  // Full rebuild remains available for repair/recovery flows that explicitly ask
+  // for the whole import. This path is not used by the 100-book manual detail pass.
   const existing = readImportEnrichmentQueue();
   const byBookId = new Map(existing.map((item) => [item.targetBookId, item]));
   const currentBooksById = new Map(readCurrentLibrary().map((book) => [book.id, book]));
   const requestedIds: string[] = [];
 
   (Array.isArray(entry.items) ? entry.items : []).forEach((item) => {
-    if (allowed && !allowed.has(item.targetBookId)) return;
-
     if (hasManualActiveEdition(currentBooksById.get(item.targetBookId))) {
       byBookId.delete(item.targetBookId);
       return;
