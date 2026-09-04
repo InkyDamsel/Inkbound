@@ -98,7 +98,7 @@ function mergeServerMetadataIntoBook(localBook: UserBookRecord, serverBook: User
       language: preferredText(localEdition.language, serverEdition.language),
       editionName: preferredText(localEdition.editionName, serverEdition.editionName),
       binding: preferredText(localEdition.binding, serverEdition.binding),
-      externalSource: preferredText(localEdition.externalSource, serverEdition.externalSource),
+      externalSource: localEdition.externalSource ?? serverEdition.externalSource,
       externalEditionId: preferredText(localEdition.externalEditionId, serverEdition.externalEditionId),
       pageCount: localEdition.pageCount || serverEdition.pageCount,
       specialFeatures: localEdition.specialFeatures?.length ? localEdition.specialFeatures : serverEdition.specialFeatures,
