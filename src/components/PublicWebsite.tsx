@@ -7,11 +7,11 @@ const features = [
   {
     icon: LibraryBig,
     title: 'A library that stays yours',
-    text: 'Track unlimited books, editions, ownership, status, collections, tags, ratings, and reading progress in one private reading archive.',
+    text: 'Track unlimited books, editions, ownership, status, collections, tags, ratings, and reading progress in one private reading home.',
   },
   {
     icon: Clock3,
-    title: 'Reading sessions as the source of truth',
+    title: 'Your reading sessions tell the story',
     text: 'Log reading time and progress, then let Inkbound turn those sessions into streaks, goals, timelines, and meaningful reading history.',
   },
   {
@@ -27,7 +27,7 @@ const features = [
 ];
 
 const premiumFeatures = [
-  'Batch editing for faster library maintenance',
+  'Batch editing for faster library cleanup',
   'Advanced reading insights and detailed reports',
   'Monthly Wrapped and Year in Books reflections',
   'Inkbound Studio creative exports and extra tools',
@@ -127,7 +127,7 @@ export const PublicWebsite: React.FC = () => {
             <p className="inkbound-public-kicker">Free at the core</p>
             <h2 id="premium-title">Your library is not the paywall.</h2>
             <p>
-              Every reader can keep an unlimited library and import books. Inkbound Premium is reserved for deeper analysis, faster maintenance, richer reflections, and extra creative tools.
+              Every reader can keep an unlimited library and import books. Inkbound Premium is reserved for deeper analysis, faster library organization, richer reflections, and extra creative tools.
             </p>
           </div>
           <div className="inkbound-public-premium-card">
@@ -141,7 +141,7 @@ export const PublicWebsite: React.FC = () => {
 
         <section className="inkbound-public-section inkbound-public-callout" aria-labelledby="callout-title">
           <div>
-            <p className="inkbound-public-kicker">One account, one reading archive</p>
+            <p className="inkbound-public-kicker">One account, all your reading</p>
             <h2 id="callout-title">Organize on desktop. Log wherever you read.</h2>
             <p>
               Use the larger web workspace for imports, cleanup, and library management, then continue with the same Inkbound account on Android. Your library and reading history follow the same Inkbound account across your devices.
