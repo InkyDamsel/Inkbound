@@ -1,0 +1,166 @@
+/* Shared responsive parity layer.
+   Inkbound should look like the same product at every viewport: the same
+   surfaces, typography, actions, and information. Narrow screens may stack or
+   wrap content, but they should not receive a different visual treatment. */
+
+.inkbound-app-shell {
+  --ink-card-radius: 1.4rem;
+  --ink-control-radius: 0.9rem;
+}
+
+.inkbound-page-canvas {
+  width: 100%;
+  max-width: 1780px;
+  margin-inline: auto;
+  padding-top: clamp(1rem, 2vw, 1.5rem);
+  padding-right: max(clamp(0.875rem, 2vw, 1.75rem), env(safe-area-inset-right));
+  padding-bottom: max(clamp(2.5rem, 4vw, 3rem), env(safe-area-inset-bottom));
+  padding-left: max(clamp(0.875rem, 2vw, 1.75rem), env(safe-area-inset-left));
+}
+
+.inkbound-app-shell .inkbound-panel {
+  border-radius: var(--ink-card-radius);
+}
+
+.inkbound-app-shell .quiet-shelf-primary-action,
+.inkbound-app-shell .quiet-shelf-secondary-action {
+  border-radius: 999px;
+}
+
+.inkbound-app-shell main img,
+.inkbound-app-shell main video,
+.inkbound-app-shell main canvas {
+  max-width: 100%;
+}
+
+.inkbound-app-shell main > *,
+.inkbound-app-shell main section,
+.inkbound-app-shell main article,
+.inkbound-app-shell main header,
+.inkbound-app-shell main form,
+.inkbound-app-shell main fieldset,
+.inkbound-app-shell main [class*='grid'],
+.inkbound-app-shell main [class*='flex'] {
+  min-width: 0;
+}
+
+.inkbound-app-shell main h1,
+.inkbound-app-shell main h2,
+.inkbound-app-shell main h3,
+.inkbound-app-shell main p,
+.inkbound-app-shell main strong,
+.inkbound-app-shell main span,
+.inkbound-app-shell main dd,
+.inkbound-app-shell main dt {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  /* Preserve the desktop visual language on phones. Only layout changes. */
+  .inkbound-app-shell {
+    --ink-card-radius: 1.4rem;
+    --ink-control-radius: 0.9rem;
+  }
+
+  .inkbound-page-canvas {
+    padding-top: 1rem;
+    padding-right: max(0.875rem, env(safe-area-inset-right));
+    padding-left: max(0.875rem, env(safe-area-inset-left));
+  }
+
+  /* Never let a desktop-sized action disappear beyond the phone viewport. */
+  .inkbound-app-shell .quiet-shelf-primary-action,
+  .inkbound-app-shell .quiet-shelf-secondary-action,
+  .inkbound-app-shell main button,
+  .inkbound-app-shell main [role='button'] {
+    max-width: 100%;
+  }
+
+  .inkbound-app-shell .quiet-shelf-primary-action,
+  .inkbound-app-shell .quiet-shelf-secondary-action {
+    min-width: 0 !important;
+    white-space: normal !important;
+    text-align: center;
+  }
+
+  /* Toolbars keep every action available by wrapping instead of clipping. */
+  .inkbound-app-shell main header.flex,
+  .inkbound-app-shell main header > .flex,
+  .inkbound-app-shell main .inkbound-panel > .flex,
+  .inkbound-app-shell main [class*='items-center'][class*='justify-between'] {
+    flex-wrap: wrap;
+  }
+
+  .inkbound-app-shell main form.flex {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .inkbound-app-shell main form.flex > label,
+  .inkbound-app-shell main form.flex > input,
+  .inkbound-app-shell main form.flex > select {
+    min-width: 0;
+    flex: 1 1 12rem;
+  }
+
+  .inkbound-app-shell main form.flex > button {
+    flex: 0 1 auto;
+  }
+
+  /* Cards keep the same shape and surface as web; they simply stack. */
+  .inkbound-app-shell main .rounded-2xl,
+  .inkbound-app-shell main .rounded-3xl {
+    border-radius: var(--ink-card-radius);
+  }
+
+  /* Wide information stays reachable without changing content. */
+  .inkbound-app-shell main table,
+  .inkbound-app-shell main [class*='overflow-x-auto'] {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+  }
+
+  .inkbound-app-shell main input,
+  .inkbound-app-shell main textarea,
+  .inkbound-app-shell main select {
+    max-width: 100%;
+  }
+
+  /* Dialogs use the same component styling and fit inside safe areas. */
+  .inkbound-app-shell [role='dialog'] {
+    width: min(100%, 48rem);
+    max-width: calc(100vw - max(1.5rem, env(safe-area-inset-left)) - max(1.5rem, env(safe-area-inset-right)));
+    margin-inline: auto;
+  }
+
+  /* Keep owner/admin actions reachable in the installed app. */
+  .inkbound-app-shell main button.quiet-shelf-primary-action,
+  .inkbound-app-shell main button.quiet-shelf-secondary-action {
+    flex-shrink: 1;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .inkbound-page-canvas {
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+  }
+
+  .inkbound-app-shell main [class*='justify-between'] {
+    column-gap: 1rem;
+  }
+}
+
+/* Landscape phones still use the same card/control styling. The navigation can
+   compact itself, but page actions should wrap rather than be hidden. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  .inkbound-app-shell main .quiet-shelf-secondary-action {
+    display: inline-flex;
+  }
+
+  .inkbound-page-canvas {
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+}
