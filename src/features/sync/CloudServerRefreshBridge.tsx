@@ -90,12 +90,34 @@ function pauseAutomaticMetadataWork() {
   storage.removeItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
 
   const progress = readJson<RetryProgress | null>(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, null);
-  if (!progress || (progress.status !== 'queued' && progress.status !== 'running')) return;
+  if (!progress) return;
+
+  const completed = progress.completed ?? 0;
+  const total = progress.total ?? 0;
+
+  // A retry that already checked every requested book is finished, even if an
+  // older build left its status as running/error during shutdown. Never relabel
+  // a 100% pass as "stopped" just because automatic background work is disabled.
+  if (total > 0 && completed >= total) {
+    writeJson(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, {
+      status: 'complete',
+      completed: total,
+      total,
+      matched: progress.matched ?? 0,
+      covers: progress.covers ?? 0,
+      summaries: progress.summaries ?? 0,
+      message: `${total.toLocaleString()} books were checked. Books that still could not be matched remain safely queued for a future manual retry.`,
+      updatedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  if (progress.status !== 'queued' && progress.status !== 'running') return;
 
   writeJson(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, {
     status: 'error',
-    completed: progress.completed ?? 0,
-    total: progress.total ?? 0,
+    completed,
+    total,
     matched: progress.matched ?? 0,
     covers: progress.covers ?? 0,
     summaries: progress.summaries ?? 0,
