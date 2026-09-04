@@ -36,7 +36,7 @@ const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
 const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
 const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
-const BRIDGE_VERSION = '8';
+const BRIDGE_VERSION = '9';
 const SYNC_FLUSH_DEBOUNCE_MS = 3000;
 const INITIAL_UPLOAD_BATCH_SIZE = 100;
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
@@ -151,6 +151,97 @@ async function prepareCloudProfile(uid: string, profile: ReaderProfile): Promise
     uploadProfileImage(uid, 'banner', profile.bannerImage),
   ]);
   return { ...profile, avatarImage, bannerImage };
+}
+
+function activeEdition(book: UserBookRecord) {
+  return book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+}
+
+function metadataRichness(book: UserBookRecord): number {
+  const edition = activeEdition(book);
+  let score = book.importMetadataVerified === true ? 8 : 0;
+  if (edition?.coverUrl) score += 5;
+  if (book.work.publisherSummary?.trim()) score += 3;
+  if (book.work.externalWorkId) score += 2;
+  if (edition?.isbn13 || edition?.isbn10 || edition?.isbn) score += 2;
+  if (edition?.pageCount) score += 1;
+  if (edition?.publisher) score += 1;
+  if (edition?.publicationDate) score += 1;
+  if (book.work.genres?.length) score += 1;
+  return score;
+}
+
+function mergeRicherLocalMetadata(localBook: UserBookRecord, cloudBook: UserBookRecord): UserBookRecord {
+  const localEdition = activeEdition(localBook);
+  const cloudEdition = activeEdition(cloudBook);
+  const mergedEdition = cloudEdition && localEdition
+    ? {
+        ...localEdition,
+        ...cloudEdition,
+        id: cloudEdition.id,
+        format: cloudEdition.format,
+        coverGradient: cloudEdition.coverGradient || localEdition.coverGradient,
+        coverUrl: cloudEdition.coverUrl || localEdition.coverUrl,
+        isbn: cloudEdition.isbn || localEdition.isbn,
+        isbn10: cloudEdition.isbn10 || localEdition.isbn10,
+        isbn13: cloudEdition.isbn13 || localEdition.isbn13,
+        pageCount: cloudEdition.pageCount || localEdition.pageCount,
+        publisher: cloudEdition.publisher || localEdition.publisher,
+        publicationDate: cloudEdition.publicationDate || localEdition.publicationDate,
+        language: cloudEdition.language || localEdition.language,
+        editionName: cloudEdition.editionName || localEdition.editionName,
+        binding: cloudEdition.binding || localEdition.binding,
+        specialFeatures: cloudEdition.specialFeatures?.length ? cloudEdition.specialFeatures : localEdition.specialFeatures,
+        externalSource: cloudEdition.externalSource || localEdition.externalSource,
+        externalEditionId: cloudEdition.externalEditionId || localEdition.externalEditionId,
+      }
+    : cloudEdition ?? localEdition;
+
+  const cloudSummary = cloudBook.work.publisherSummary?.trim();
+  const localSummary = localBook.work.publisherSummary?.trim();
+  const cloudVisibleSummary = cloudBook.work.summary?.trim();
+  const localVisibleSummary = localBook.work.summary?.trim();
+  const cloudSummaryMissing = !cloudVisibleSummary || cloudVisibleSummary.toLowerCase() === 'summary unavailable.';
+
+  return {
+    ...cloudBook,
+    work: {
+      ...cloudBook.work,
+      subtitle: cloudBook.work.subtitle || localBook.work.subtitle,
+      summary: cloudSummaryMissing ? (cloudSummary || localSummary || localVisibleSummary || cloudBook.work.summary) : cloudBook.work.summary,
+      publisherSummary: cloudSummary || localSummary || undefined,
+      genres: cloudBook.work.genres?.length ? cloudBook.work.genres : localBook.work.genres,
+      publicationYear: cloudBook.work.publicationYear || localBook.work.publicationYear,
+      originalLanguage: cloudBook.work.originalLanguage || localBook.work.originalLanguage,
+      externalWorkId: cloudBook.work.externalWorkId || localBook.work.externalWorkId,
+    },
+    editions: mergedEdition
+      ? cloudBook.editions.map((edition) => edition.id === cloudBook.activeEditionId ? mergedEdition : edition)
+      : cloudBook.editions,
+    importMetadataVerified: cloudBook.importMetadataVerified === true || localBook.importMetadataVerified === true,
+    importMetadataReviewNeeded: cloudBook.importMetadataReviewNeeded ?? localBook.importMetadataReviewNeeded,
+    sourceOfImport: cloudBook.sourceOfImport || localBook.sourceOfImport,
+  };
+}
+
+function protectRicherLocalBookMetadata(
+  localBooks: UserBookRecord[],
+  cloudBooks: UserBookRecord[],
+  mutations: Record<string, RecordMutation<UserBookRecord>>,
+) {
+  const cloudById = new Map(cloudBooks.map((book) => [book.id, book]));
+  const now = new Date().toISOString();
+
+  localBooks.forEach((localBook) => {
+    if (mutations[localBook.id]) return;
+    const cloudBook = cloudById.get(localBook.id);
+    if (!cloudBook) return;
+    if (metadataRichness(localBook) <= metadataRichness(cloudBook)) return;
+
+    const merged = mergeRicherLocalMetadata(localBook, cloudBook);
+    if (stable(merged) === stable(cloudBook)) return;
+    mutations[localBook.id] = { operation: 'upsert', data: merged, clientUpdatedAt: now };
+  });
 }
 
 function reconcileHydrationChanges<T extends { id: string }>(
@@ -398,6 +489,12 @@ export const CloudPersistenceBridge: React.FC = () => {
       const cloudSessions = sessionSnapshot ? sessionSnapshot.docs.map((item) => (item.data() as CloudRecord<ReadingSession>).data).filter(Boolean) : localSessions;
 
       if (sameAccount && !intentionalClear && bookSnapshot && sessionSnapshot) {
+        // Metadata enrichment can finish locally before Firestore has persisted every
+        // enriched book. Preserve richer covers/summaries/edition data by merging
+        // those fields onto the cloud record and queueing the merged record upward.
+        // User-owned reading state still comes from the cloud copy, so this recovery
+        // cannot roll back ratings, statuses, progress, notes, or other newer edits.
+        protectRicherLocalBookMetadata(localBooks, cloudBooks, pending.books);
         reconcileHydrationChanges(
           localBooks,
           cloudBooks,
