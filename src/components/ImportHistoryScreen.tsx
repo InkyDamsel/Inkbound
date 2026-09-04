@@ -36,6 +36,9 @@ function readCollapsedPreference(key: string): boolean {
 function persistCollapsedPreference(key: string, collapsed: boolean) {
   try { localStorage.setItem(key, collapsed ? '1' : '0'); } catch { /* device-only preference */ }
 }
+function countLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
+}
 
 async function exportUnresolved(entry: ImportHistoryEntry, books: UserBookRecord[]) {
   const byId = new Map(books.map((book) => [book.id, book]));
@@ -148,16 +151,16 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     <div className="space-y-7 pb-24">
       {pendingRetry && (
         <div className="fixed inset-0 z-[220] grid place-items-center bg-black/65 p-4" role="dialog" aria-modal="true">
-          <section className="w-full max-w-lg rounded-3xl border border-[var(--ink-gold)]/40 bg-[var(--ink-surface-raised)] p-6 shadow-2xl sm:p-7">
+          <section className="w-full max-w-lg rounded-3xl border border-[var(--ink-gold)]/40 bg-[var(--ink-surface-raised)] p-5 shadow-2xl sm:p-7">
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-1 h-6 w-6 shrink-0 text-[var(--ink-gold)]" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Continue adding book details?</h2>
                 <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">Inkbound will check these books for optional covers, summaries, and edition details. Your books are already safely imported and usable.</p>
-                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">To help keep very large libraries stable and prevent the app from being overwhelmed, each detail pass checks up to {DETAIL_PASS_LIMIT} books at a time. Books with ISBNs are checked first, and anything left stays safely queued for later.</p>
-                <div className="mt-5 flex justify-end gap-2">
-                  <button type="button" onClick={() => setPendingRetry(null)} className="quiet-shelf-secondary-action min-h-11 justify-center">Cancel</button>
-                  <button type="button" onClick={startPendingRetry} className="quiet-shelf-primary-action min-h-11 justify-center">Add Details to Next {pendingRetry.targetBookIds.length}</button>
+                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">To help keep very large libraries stable, each detail pass checks up to {DETAIL_PASS_LIMIT} books at a time. Books with ISBNs are checked first, and anything left stays safely queued for later.</p>
+                <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button type="button" onClick={() => setPendingRetry(null)} className="quiet-shelf-secondary-action w-full min-h-11 justify-center sm:w-auto">Cancel</button>
+                  <button type="button" onClick={startPendingRetry} className="quiet-shelf-primary-action w-full min-h-11 justify-center sm:w-auto">Add Details to Next {pendingRetry.targetBookIds.length}</button>
                 </div>
               </div>
             </div>
@@ -173,11 +176,11 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
 
       {selectedProgress && selectedProgress.unresolved > 0 && !retryProgress && (
         <section className="flex flex-col gap-4 rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="min-w-0">
             <p className="font-bold text-[var(--ink-ivory)]">Ready to add more book details</p>
             <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">{selectedProgress.unresolved.toLocaleString()} books are waiting for covers, summaries, or edition details. Your library is already safe and ready to use.</p>
           </div>
-          <button type="button" onClick={openNextDetailBatch} className="quiet-shelf-primary-action shrink-0 justify-center">
+          <button type="button" onClick={openNextDetailBatch} className="quiet-shelf-primary-action w-full shrink-0 justify-center sm:w-auto">
             <Play className="h-4 w-4" /> {selectedProgress.unresolved > DETAIL_PASS_LIMIT ? `Add Details to Next ${DETAIL_PASS_LIMIT}` : 'Add Missing Details'}
           </button>
         </section>
@@ -187,22 +190,25 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
         <section className={`rounded-2xl border p-4 ${retryPaused ? 'border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/10' : retryProgress.status === 'error' ? 'border-rose-500/35 bg-rose-950/20' : retryComplete ? 'border-emerald-500/30 bg-emerald-950/15' : 'border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/10'}`} role="status">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="flex min-w-0 flex-1 items-start gap-3">
-              {retryRunning ? <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-[var(--ink-gold)]" /> : <CheckCircle2 className={`mt-0.5 h-5 w-5 ${retryPaused ? 'text-[var(--ink-gold)]' : 'text-emerald-300'}`} />}
+              {retryRunning ? <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-[var(--ink-gold)]" /> : <CheckCircle2 className={`mt-0.5 h-5 w-5 shrink-0 ${retryPaused ? 'text-[var(--ink-gold)]' : 'text-emerald-300'}`} />}
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-[var(--ink-ivory)]">{retryRunning ? 'Adding book details' : retryPaused ? 'Detail updates paused' : retryComplete ? `${retryProgress.completed.toLocaleString()} books checked` : 'Book detail update needs attention'}</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                  {retryRunning
-                    ? `Checking book ${Math.min(retryProgress.completed + 1, retryProgress.total).toLocaleString()} of ${retryProgress.total.toLocaleString()}. You can keep using Inkbound while this runs.`
-                    : retryPaused
-                      ? 'Your library is ready to use. Inkbound will only add more covers and book details when you choose to continue.'
-                      : retryComplete
-                        ? `${retryProgress.matched.toLocaleString()} books updated · ${retryProgress.covers.toLocaleString()} covers found · ${retryProgress.summaries.toLocaleString()} summaries found${selectedProgress ? ` · ${selectedProgress.unresolved.toLocaleString()} books still waiting for details` : ''}.`
-                        : retryProgress.message ?? `${retryProgress.completed.toLocaleString()} of ${retryProgress.total.toLocaleString()} books checked.`}
-                </p>
+                <p className="font-bold text-[var(--ink-ivory)]">{retryRunning ? 'Adding book details' : retryPaused ? 'Detail updates paused' : retryComplete ? `Latest batch: ${countLabel(retryProgress.completed, 'book')} checked` : 'Book detail update needs attention'}</p>
+                {retryRunning ? (
+                  <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Checking book {Math.min(retryProgress.completed + 1, retryProgress.total).toLocaleString()} of {retryProgress.total.toLocaleString()}. You can keep using Inkbound while this runs.</p>
+                ) : retryPaused ? (
+                  <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Your library is ready to use. Inkbound will only add more covers and book details when you choose to continue.</p>
+                ) : retryComplete ? (
+                  <div className="mt-1 space-y-1 text-xs leading-5 text-[var(--ink-muted)]">
+                    <p>{countLabel(retryProgress.matched, 'book')} updated · {countLabel(retryProgress.covers, 'cover')} found · {countLabel(retryProgress.summaries, 'summary', 'summaries')} found.</p>
+                    {selectedProgress && <p>{countLabel(selectedProgress.unresolved, 'book')} still waiting for optional details.</p>}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">{retryProgress.message ?? `${retryProgress.completed.toLocaleString()} of ${retryProgress.total.toLocaleString()} books checked.`}</p>
+                )}
               </div>
             </div>
             {(retryPaused || retryComplete) && selectedProgress && selectedProgress.unresolved > 0 && (
-              <button type="button" onClick={openNextDetailBatch} className="quiet-shelf-primary-action shrink-0 justify-center">
+              <button type="button" onClick={openNextDetailBatch} className="quiet-shelf-primary-action w-full shrink-0 justify-center sm:w-auto">
                 <Play className="h-4 w-4" /> {retryPaused ? 'Continue Adding Details' : `Check Next ${Math.min(DETAIL_PASS_LIMIT, selectedProgress.unresolved)}`}
               </button>
             )}
@@ -213,25 +219,25 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
       )}
 
       <section className="overflow-hidden rounded-3xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
-        <button type="button" onClick={() => { const next = !importedLibraryCollapsed; setImportedLibraryCollapsed(next); persistCollapsedPreference(IMPORTED_LIBRARY_COLLAPSED_KEY, next); }} className="flex w-full items-center justify-between gap-4 p-5 text-left sm:px-7">
-          <div><p className="inkbound-kicker">Imported Library</p><h2 className="mt-1 font-serif text-xl font-bold text-[var(--ink-ivory)]">Existing Imported Library</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">{selectedEntry && selectedProgress ? `${selectedEntry.importedCount.toLocaleString()} imported · ${selectedProgress.matched.toLocaleString()} books updated · ${selectedProgress.unresolved.toLocaleString()} awaiting details` : `${books.length.toLocaleString()} books in library`}</p></div>
-          <span className="flex items-center gap-2 text-xs font-bold text-[var(--ink-gold)]">{importedLibraryCollapsed ? 'Expand' : 'Minimize'} {importedLibraryCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}</span>
+        <button type="button" onClick={() => { const next = !importedLibraryCollapsed; setImportedLibraryCollapsed(next); persistCollapsedPreference(IMPORTED_LIBRARY_COLLAPSED_KEY, next); }} className="flex w-full items-start justify-between gap-4 p-5 text-left sm:items-center sm:px-7">
+          <div className="min-w-0"><p className="inkbound-kicker">Imported Library</p><h2 className="mt-1 font-serif text-xl font-bold text-[var(--ink-ivory)]">Existing Imported Library</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">{selectedEntry && selectedProgress ? `${selectedEntry.importedCount.toLocaleString()} imported · ${selectedProgress.matched.toLocaleString()} books updated overall · ${selectedProgress.unresolved.toLocaleString()} awaiting details` : `${books.length.toLocaleString()} books in library`}</p></div>
+          <span className="flex shrink-0 items-center gap-2 text-xs font-bold text-[var(--ink-gold)]">{importedLibraryCollapsed ? 'Expand' : 'Minimize'} {importedLibraryCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}</span>
         </button>
 
-        {!importedLibraryCollapsed && <div className="border-t border-[var(--ink-border)] p-5 sm:p-7">
+        {!importedLibraryCollapsed && <div className="border-t border-[var(--ink-border)] p-4 sm:p-7">
           {!history.length ? <section className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center"><FileClock className="mx-auto h-10 w-10 text-[var(--ink-gold)]" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No recorded imports yet</h2></section> : (
             <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
-              <aside className="space-y-3">{history.map((entry) => { const progress = getImportHistoryProgress(entry, books); return <button key={entry.id} type="button" onClick={() => setSelectedEntryId(entry.id)} className={`w-full rounded-2xl border p-4 text-left ${selectedEntry?.id === entry.id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-raised)]' : 'border-[var(--ink-border)]'}`}><div className="flex justify-between gap-2"><div><p className="font-serif text-lg font-bold text-[var(--ink-ivory)]">{entry.sourceName}</p><p className="mt-1 text-xs text-[var(--ink-muted)]">{new Date(entry.createdAt).toLocaleString()}</p></div><span className="self-start rounded-full border border-[var(--ink-border)] px-2 py-1 text-[11px] text-[var(--ink-muted)]">{progress.matched}/{entry.importedCount} books updated</span></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--ink-surface)]"><div className="h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${entry.importedCount ? Math.round((progress.matched / entry.importedCount) * 100) : 0}%` }} /></div><p className="mt-3 text-xs text-[var(--ink-muted)]">{entry.importedCount.toLocaleString()} imported · {entry.duplicateCount.toLocaleString()} duplicates skipped · {progress.unresolved.toLocaleString()} awaiting details</p></button>; })}</aside>
+              <aside className="space-y-3">{history.map((entry) => { const progress = getImportHistoryProgress(entry, books); return <button key={entry.id} type="button" onClick={() => setSelectedEntryId(entry.id)} className={`w-full rounded-2xl border p-4 text-left ${selectedEntry?.id === entry.id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-raised)]' : 'border-[var(--ink-border)]'}`}><div className="flex flex-col gap-2 sm:flex-row sm:justify-between"><div className="min-w-0"><p className="font-serif text-lg font-bold text-[var(--ink-ivory)]">{entry.sourceName}</p><p className="mt-1 text-xs text-[var(--ink-muted)]">{new Date(entry.createdAt).toLocaleString()}</p></div><span className="self-start rounded-full border border-[var(--ink-border)] px-2 py-1 text-[11px] text-[var(--ink-muted)]">{progress.matched.toLocaleString()}/{entry.importedCount.toLocaleString()} books updated</span></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--ink-surface)]"><div className="h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${entry.importedCount ? Math.round((progress.matched / entry.importedCount) * 100) : 0}%` }} /></div><p className="mt-3 text-xs text-[var(--ink-muted)]">{entry.importedCount.toLocaleString()} imported · {entry.duplicateCount.toLocaleString()} duplicates skipped · {progress.unresolved.toLocaleString()} awaiting details</p></button>; })}</aside>
 
               {selectedEntry && (() => {
                 const progress = getImportHistoryProgress(selectedEntry, books);
                 const byId = new Map(books.map((book) => [book.id, book]));
                 const unresolvedIds = selectedEntry.items.filter((item) => !isImportHistoryItemMatched(item, byId.get(item.targetBookId))).map((item) => item.targetBookId);
-                return <section className="inkbound-panel min-w-0 rounded-3xl p-5 sm:p-7">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><p className="inkbound-kicker">Import Details</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">{selectedEntry.sourceName} · {new Date(selectedEntry.createdAt).toLocaleDateString()}</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">{selectedEntry.importedCount.toLocaleString()} books are already in your Inkbound library. Optional details can be added separately and never block access to your books.</p></div><button type="button" onClick={() => void exportUnresolved(selectedEntry, books)} disabled={!unresolvedIds.length} className="quiet-shelf-secondary-action justify-center disabled:opacity-40"><Download className="h-4 w-4" /> Save Missing List</button></div>
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[['Imported', selectedEntry.importedCount], ['Duplicates skipped', selectedEntry.duplicateCount], ['Books updated', progress.matched], ['Covers found', progress.covers], ['Awaiting details', progress.unresolved]].map(([label, value]) => <div key={String(label)} className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{label}</p><p className="mt-2 font-serif text-3xl font-bold text-[var(--ink-ivory)]">{Number(value).toLocaleString()}</p></div>)}</div>
-                  <div className="mt-6 flex flex-col gap-3 sm:flex-row"><label className="relative flex-1"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></label><button type="button" onClick={() => setShowOnlyUnresolved((current) => !current)} className="quiet-shelf-secondary-action justify-center">{showOnlyUnresolved ? 'Showing Missing Details' : 'Show Missing Details Only'}</button></div>
-                  <div className="mt-4 max-h-[min(520px,55dvh)] space-y-2 overflow-y-auto pr-1">{selectedItems.map((item) => { const book = byId.get(item.targetBookId); const edition = book?.editions.find((value) => value.id === book.activeEditionId) ?? book?.editions[0]; const matched = isImportHistoryItemMatched(item, book); const queued = queuedBookIds.has(item.targetBookId); return <article key={item.targetBookId} className="flex flex-col gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 sm:flex-row sm:items-center sm:justify-between"><div><strong className="block text-sm text-[var(--ink-ivory)]">{item.title}</strong><span className="text-xs text-[var(--ink-muted)]">{item.author}</span></div><div className="flex flex-wrap items-center gap-2 text-[11px]"><span className={`rounded-full px-2.5 py-1 font-bold ${matched ? 'bg-emerald-500/15 text-emerald-300' : queued ? 'bg-amber-500/15 text-amber-300' : 'bg-[var(--ink-surface)] text-[var(--ink-muted)]'}`}>{matched ? 'Details added' : queued ? 'Waiting for details' : 'Details not found yet'}</span><span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[var(--ink-muted)]">{edition?.coverUrl ? 'Cover ✓' : 'Cover —'}</span><span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[var(--ink-muted)]">{book?.work?.publisherSummary?.trim() ? 'Summary ✓' : 'Summary —'}</span>{!matched && <button type="button" disabled={retryRunning} onClick={() => requestDetailUpdate(selectedEntry, [item.targetBookId])} className="min-h-11 rounded-full border border-[var(--ink-gold)] px-3 font-bold text-[var(--ink-gold)] disabled:opacity-40">Add Details</button>}</div></article>; })}{!selectedItems.length && <p className="rounded-xl border border-dashed border-[var(--ink-border)] p-8 text-center text-sm text-[var(--ink-muted)]">No books match this filter.</p>}</div>
+                return <section className="inkbound-panel min-w-0 rounded-3xl p-4 sm:p-7">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0"><p className="inkbound-kicker">Import Details</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">{selectedEntry.sourceName} · {new Date(selectedEntry.createdAt).toLocaleDateString()}</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">{selectedEntry.importedCount.toLocaleString()} books are already in your Inkbound library. Optional details can be added separately and never block access to your books.</p></div><button type="button" onClick={() => void exportUnresolved(selectedEntry, books)} disabled={!unresolvedIds.length} className="quiet-shelf-secondary-action w-full justify-center disabled:opacity-40 sm:w-auto"><Download className="h-4 w-4" /> Save Missing List</button></div>
+                  <div className="mt-6 grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 lg:grid-cols-5">{[['Imported', selectedEntry.importedCount], ['Duplicates skipped', selectedEntry.duplicateCount], ['Books updated overall', progress.matched], ['Covers found overall', progress.covers], ['Awaiting details', progress.unresolved]].map(([label, value]) => <div key={String(label)} className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">{label}</p><p className="mt-2 font-serif text-3xl font-bold text-[var(--ink-ivory)]">{Number(value).toLocaleString()}</p></div>)}</div>
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row"><label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></label><button type="button" onClick={() => setShowOnlyUnresolved((current) => !current)} className="quiet-shelf-secondary-action w-full justify-center sm:w-auto">{showOnlyUnresolved ? 'Showing Missing Details' : 'Show Missing Details Only'}</button></div>
+                  <div className="mt-4 max-h-[min(520px,55dvh)] space-y-2 overflow-y-auto pr-1">{selectedItems.map((item) => { const book = byId.get(item.targetBookId); const edition = book?.editions.find((value) => value.id === book.activeEditionId) ?? book?.editions[0]; const matched = isImportHistoryItemMatched(item, book); const queued = queuedBookIds.has(item.targetBookId); return <article key={item.targetBookId} className="flex flex-col gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><strong className="block text-sm text-[var(--ink-ivory)]">{item.title}</strong><span className="text-xs text-[var(--ink-muted)]">{item.author}</span></div><div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]"><span className={`rounded-full px-2.5 py-1 font-bold ${matched ? 'bg-emerald-500/15 text-emerald-300' : queued ? 'bg-amber-500/15 text-amber-300' : 'bg-[var(--ink-surface)] text-[var(--ink-muted)]'}`}>{matched ? 'Details added' : queued ? 'Waiting for details' : 'Details not found yet'}</span><span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[var(--ink-muted)]">{edition?.coverUrl ? 'Cover ✓' : 'Cover —'}</span><span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[var(--ink-muted)]">{book?.work?.publisherSummary?.trim() ? 'Summary ✓' : 'Summary —'}</span>{!matched && <button type="button" disabled={retryRunning} onClick={() => requestDetailUpdate(selectedEntry, [item.targetBookId])} className="min-h-11 rounded-full border border-[var(--ink-gold)] px-3 font-bold text-[var(--ink-gold)] disabled:opacity-40">Add Details</button>}</div></article>; })}{!selectedItems.length && <p className="rounded-xl border border-dashed border-[var(--ink-border)] p-8 text-center text-sm text-[var(--ink-muted)]">No books match this filter.</p>}</div>
                 </section>;
               })()}
             </div>
@@ -240,7 +246,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
       </section>
 
       <section className="overflow-hidden rounded-3xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
-        <button type="button" onClick={() => { const next = !manualCoversCollapsed; setManualCoversCollapsed(next); persistCollapsedPreference(MANUAL_COVERS_COLLAPSED_KEY, next); }} className="flex w-full items-center justify-between gap-4 p-5 text-left sm:px-7"><div><p className="inkbound-kicker">Cover Recovery</p><h2 className="mt-1 font-serif text-xl font-bold text-[var(--ink-ivory)]">Manual Cover Library</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">Reuse saved covers without uploading them again.</p></div><span className="flex items-center gap-2 text-xs font-bold text-[var(--ink-gold)]">{manualCoversCollapsed ? 'Expand' : 'Minimize'} {manualCoversCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}</span></button>
+        <button type="button" onClick={() => { const next = !manualCoversCollapsed; setManualCoversCollapsed(next); persistCollapsedPreference(MANUAL_COVERS_COLLAPSED_KEY, next); }} className="flex w-full items-start justify-between gap-4 p-5 text-left sm:items-center sm:px-7"><div className="min-w-0"><p className="inkbound-kicker">Cover Recovery</p><h2 className="mt-1 font-serif text-xl font-bold text-[var(--ink-ivory)]">Manual Cover Library</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">Reuse saved covers without uploading them again.</p></div><span className="flex shrink-0 items-center gap-2 text-xs font-bold text-[var(--ink-gold)]">{manualCoversCollapsed ? 'Expand' : 'Minimize'} {manualCoversCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}</span></button>
         {!manualCoversCollapsed && <div className="border-t border-[var(--ink-border)] p-3 sm:p-5"><ManualCoverRecoveryPanel books={books} /></div>}
       </section>
     </div>
