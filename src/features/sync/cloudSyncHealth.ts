@@ -12,7 +12,7 @@ export interface CloudSyncHealth {
 let currentHealth: CloudSyncHealth = {
   status: 'idle',
   lastSuccessfulSyncAt: null,
-  message: 'Waiting for cloud synchronization.',
+  message: 'Waiting to update your library across devices.',
 };
 
 export function getCloudSyncHealth(): CloudSyncHealth {
