@@ -17,7 +17,7 @@ const features = [
   {
     icon: Layers3,
     title: 'Built for large libraries',
-    text: 'Import, organize, find duplicates, enrich book details, and manage many books without forcing you into a phone-only workflow.',
+    text: 'Import, organize, find duplicates, fill in missing book details, and manage many books without forcing you into a phone-only workflow.',
   },
   {
     icon: BarChart3,
@@ -30,7 +30,7 @@ const premiumFeatures = [
   'Batch editing for faster library maintenance',
   'Advanced reading insights and detailed reports',
   'Monthly Wrapped and Year in Books reflections',
-  'Inkbound Studio creative exports and power tools',
+  'Inkbound Studio creative exports and extra tools',
 ];
 
 export const PublicWebsite: React.FC = () => {
@@ -83,7 +83,7 @@ export const PublicWebsite: React.FC = () => {
             </div>
             <div className="inkbound-public-trust" aria-label="Product highlights">
               <span><Check className="h-4 w-4" /> Unlimited library</span>
-              <span><ShieldCheck className="h-4 w-4" /> Private account data</span>
+              <span><ShieldCheck className="h-4 w-4" /> Your data stays private</span>
               <span><BookOpen className="h-4 w-4" /> Web + Android</span>
             </div>
           </div>
@@ -109,7 +109,7 @@ export const PublicWebsite: React.FC = () => {
           <p className="inkbound-public-kicker">Made for readers who keep books</p>
           <h2 id="features-title">More than a list of titles.</h2>
           <p className="inkbound-public-section-intro">
-            Inkbound is designed around a canonical reading record, so changing a book, session, progress value, or edition can flow through the rest of your reading history instead of becoming another disconnected note.
+            Inkbound keeps your books, sessions, progress, and editions connected, so changes show up throughout your reading history instead of living in separate notes.
           </p>
           <div className="inkbound-public-feature-grid">
             {features.map(({ icon: Icon, title, text }) => (
@@ -127,7 +127,7 @@ export const PublicWebsite: React.FC = () => {
             <p className="inkbound-public-kicker">Free at the core</p>
             <h2 id="premium-title">Your library is not the paywall.</h2>
             <p>
-              Every reader can keep an unlimited library and import books. Inkbound Premium is reserved for deeper analysis, faster maintenance, richer reflections, and creative power tools.
+              Every reader can keep an unlimited library and import books. Inkbound Premium is reserved for deeper analysis, faster maintenance, richer reflections, and extra creative tools.
             </p>
           </div>
           <div className="inkbound-public-premium-card">
@@ -144,7 +144,7 @@ export const PublicWebsite: React.FC = () => {
             <p className="inkbound-public-kicker">One account, one reading archive</p>
             <h2 id="callout-title">Organize on desktop. Log wherever you read.</h2>
             <p>
-              Use the larger web workspace for imports, cleanup, and library management, then continue with the same Inkbound account on Android. Your account-backed reading archive is designed to follow you across devices.
+              Use the larger web workspace for imports, cleanup, and library management, then continue with the same Inkbound account on Android. Your library and reading history follow the same Inkbound account across your devices.
             </p>
           </div>
           <a className="inkbound-public-cta" href={APP_PATH}>Open the web app <ArrowRight className="h-5 w-5" /></a>
