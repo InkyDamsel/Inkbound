@@ -211,9 +211,9 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
   return (
     <section className="inkbound-panel p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-[var(--ink-mauve)]" />
+            <ShieldCheck className="h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
             <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Data safety & recovery</h2>
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ink-muted)]">
@@ -224,7 +224,7 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
           type="button"
           onClick={() => void runIntegrityCheckFromClick()}
           disabled={!targetUserId || loading || restoring}
-          className="quiet-shelf-secondary-action justify-center disabled:opacity-45"
+          className="quiet-shelf-secondary-action w-full shrink-0 justify-center disabled:opacity-45 md:w-auto"
         >
           <RefreshCw className={loading ? 'animate-spin' : ''} />
           {loading ? 'Inspecting…' : currentReport || currentError ? 'Run integrity check again' : 'Run integrity check'}
@@ -305,7 +305,7 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
                     <p className="mt-1 text-xs text-[var(--ink-muted)]">{point.reason}</p>
                     <p className="mt-2 text-xs text-[var(--ink-muted)]">{point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} account records · {point.photoMemoryCount} photo-memory records</p>
                   </div>
-                  <button type="button" disabled={restoring} onClick={() => { setSelectedRecoveryId(point.id); setRecoveryReason(''); setRecoveryConfirmation(''); setRecoveryStatus(''); }} className="quiet-shelf-secondary-action shrink-0 justify-center disabled:opacity-45"><RotateCcw className="h-4 w-4" /> Prepare restore</button>
+                  <button type="button" disabled={restoring} onClick={() => { setSelectedRecoveryId(point.id); setRecoveryReason(''); setRecoveryConfirmation(''); setRecoveryStatus(''); }} className="quiet-shelf-secondary-action w-full shrink-0 justify-center disabled:opacity-45 md:w-auto"><RotateCcw className="h-4 w-4" /> Prepare restore</button>
                 </article>
               ))}
             </div>
@@ -318,9 +318,9 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
                 <textarea id="admin-recovery-reason" name="adminRecoveryReason" value={recoveryReason} onChange={(event) => setRecoveryReason(event.target.value)} rows={3} disabled={restoring} placeholder="Required for the admin audit log" className="mt-2 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-3 text-sm text-[var(--ink-ivory)] outline-none disabled:opacity-45" />
                 <label className="mt-4 block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]" htmlFor="admin-recovery-confirmation">Type RESTORE</label>
                 <input id="admin-recovery-confirmation" name="adminRecoveryConfirmation" autoComplete="off" value={recoveryConfirmation} onChange={(event) => setRecoveryConfirmation(event.target.value)} disabled={restoring} placeholder="RESTORE" className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-3 text-[var(--ink-ivory)] outline-none disabled:opacity-45" />
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={() => void restoreSelectedRecovery()} disabled={restoring || !recoveryReason.trim() || recoveryConfirmation.trim().toUpperCase() !== 'RESTORE'} className="quiet-shelf-primary-action justify-center disabled:cursor-not-allowed disabled:opacity-45"><RotateCcw className={restoring ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{restoring ? 'Restoring reader…' : 'Restore reader data'}</button>
-                  <button type="button" disabled={restoring} onClick={() => setSelectedRecoveryId(null)} className="quiet-shelf-secondary-action justify-center disabled:opacity-45">Cancel</button>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                  <button type="button" onClick={() => void restoreSelectedRecovery()} disabled={restoring || !recoveryReason.trim() || recoveryConfirmation.trim().toUpperCase() !== 'RESTORE'} className="quiet-shelf-primary-action w-full justify-center disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto"><RotateCcw className={restoring ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{restoring ? 'Restoring reader…' : 'Restore reader data'}</button>
+                  <button type="button" disabled={restoring} onClick={() => setSelectedRecoveryId(null)} className="quiet-shelf-secondary-action w-full justify-center disabled:opacity-45 sm:w-auto">Cancel</button>
                 </div>
               </div>
             )}
