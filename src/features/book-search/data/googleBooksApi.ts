@@ -296,6 +296,13 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
   }
 }
 
+function cacheSearchResponse(cacheKey: string, response: BookSearchResponse): BookSearchResponse {
+  if (response.groups.length > 0) {
+    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
+  }
+  return response;
+}
+
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
@@ -308,36 +315,30 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (cached && cached.expiresAt > Date.now()) return cached.response;
   if (cached) searchCache.delete(cacheKey);
 
-  const [trusted, google, hardcover, openLibrary] = await Promise.all([
-    searchTrustedCatalogBaseline(trimmed),
-    searchGoogleBaseline(trimmed, signal),
-    searchHardcoverWithBackoff(trimmed),
-    searchOpenLibraryWithAuthorFallback(trimmed, signal),
-  ]);
+  const builtQuery = buildGoogleBooksQuery(trimmed);
+  const isIsbnLookup = /^isbn:/i.test(builtQuery);
 
-  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-
-  console.info('[Inkbound search]', {
-    query: trimmed,
-    trusted: trusted.groups.length,
-    google: google.groups.length,
-    hardcover: hardcover.groups.length,
-    openLibrary: openLibrary.groups.length,
-  });
-
-  const primary = trusted.groups.length > 0
-    ? trusted.groups
-    : google.groups.length > 0
-      ? google.groups
-      : openLibrary.groups.length > 0
-        ? openLibrary.groups
-        : hardcover.groups;
-  const groups = mergeGroups(primary, [trusted.groups, google.groups, hardcover.groups, openLibrary.groups]);
-  const response: BookSearchResponse = { groups, totalItems: groups.length };
-
-  if (groups.length > 0) {
-    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
+  // ISBN lookups are cheap and high-confidence in the trusted catalog, so try
+  // Inkbound first. Title/author searches go to Google first to avoid turning
+  // every imported book into several Firebase catalog calls.
+  if (isIsbnLookup) {
+    const trusted = await searchTrustedCatalogBaseline(trimmed);
+    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
   }
 
-  return response;
+  const google = await searchGoogleBaseline(trimmed, signal);
+  if (google.groups.length > 0) return cacheSearchResponse(cacheKey, google);
+
+  const openLibrary = await searchOpenLibraryWithAuthorFallback(trimmed, signal);
+  if (openLibrary.groups.length > 0) return cacheSearchResponse(cacheKey, openLibrary);
+
+  if (!isIsbnLookup) {
+    const trusted = await searchTrustedCatalogBaseline(trimmed);
+    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
+  }
+
+  const hardcover = await searchHardcoverWithBackoff(trimmed);
+  if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
+
+  return { groups: [], totalItems: 0 };
 }
