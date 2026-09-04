@@ -140,21 +140,21 @@ export const RecoveryCenter: React.FC = () => {
                   ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
                   : <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />}
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-[var(--ink-ivory)]">Current library health</p>
+                  <p className="font-semibold text-[var(--ink-ivory)]">Your library check</p>
                   <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
                     {integrity.bookCount.toLocaleString()} books · {integrity.sessionCount.toLocaleString()} sessions · {integrity.activeCoverCount.toLocaleString()} books with current covers · {integrity.anyEditionCoverCount.toLocaleString()} books with a saved cover
                   </p>
                   <div className="mt-3 grid gap-2 text-xs text-[var(--ink-muted)] sm:grid-cols-2">
                     <span>{integrity.importedBookCount.toLocaleString()} imported books</span>
-                    <span>{integrity.verifiedImportMetadataCount.toLocaleString()} imported books with confirmed details</span>
+                    <span>{integrity.verifiedImportMetadataCount.toLocaleString()} imported books with matched details</span>
                     <span>{integrity.visibleSummaryCount.toLocaleString()} books with summaries</span>
-                    <span>{integrity.publisherSummaryCount.toLocaleString()} publisher summaries</span>
+                    <span>{integrity.publisherSummaryCount.toLocaleString()} books with publisher descriptions</span>
                     <span>{integrity.missingActiveCoverCount.toLocaleString()} books missing a current cover</span>
                     <span>{integrity.duplicateIdentityGroupCount.toLocaleString()} possible duplicate books</span>
                   </div>
                   {!integrity.healthy && (
                     <p className="mt-3 text-xs leading-5 text-amber-300">
-                      Inkbound found a few items that may need repair: {integrity.duplicateBookIdCount} duplicate book records, {integrity.duplicateSessionIdCount} duplicate session records, {integrity.missingActiveEditionCount} books missing a selected edition, and {integrity.orphanSessionCount} reading sessions that are no longer linked to a book.
+                      Inkbound found a few items that may need repair: {integrity.duplicateBookIdCount} repeated book entries, {integrity.duplicateSessionIdCount} repeated reading sessions, {integrity.missingActiveEditionCount} books missing their current edition, and {integrity.orphanSessionCount} reading sessions that are no longer attached to a book.
                     </p>
                   )}
                   <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">
@@ -186,7 +186,7 @@ export const RecoveryCenter: React.FC = () => {
                     <div>
                       <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink-ivory)]"><Clock3 className="h-4 w-4 text-[var(--ink-mauve)]" /> {formatRecoveryDate(point.createdAtClient)}</div>
                       <p className="mt-1 text-xs text-[var(--ink-muted)]">{point.reason}</p>
-                      <p className="mt-2 text-xs text-[var(--ink-muted)]">{point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} other account items · {point.photoMemoryCount} Photo Memories · {point.runtimeStateCount} import details</p>
+                      <p className="mt-2 text-xs text-[var(--ink-muted)]">{point.bookCount} books · {point.sessionCount} sessions · {point.auxiliaryCount} saved account details · {point.photoMemoryCount} Photo Memories · {point.runtimeStateCount} import records</p>
                     </div>
                     <button type="button" disabled={loading} onClick={() => { setSelected(point); setConfirmation(''); }} className="quiet-shelf-secondary-action shrink-0 justify-center disabled:opacity-50"><RotateCcw className="h-4 w-4" /> Restore</button>
                   </div>
