@@ -152,10 +152,10 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
               <div>
                 <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Continue adding book details?</h2>
                 <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">Inkbound will check these books for optional covers, summaries, and edition details. Your books are already safely imported and usable.</p>
-                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">To protect very large libraries from runaway provider and Firebase usage, each manual detail pass checks at most {DETAIL_PASS_LIMIT} books. Books with ISBNs are checked first, and anything left stays safely queued for a later pass.</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">To help keep very large libraries stable and prevent the app from being overwhelmed, each detail pass checks up to {DETAIL_PASS_LIMIT} books at a time. Books with ISBNs are checked first, and anything left stays safely queued for later.</p>
                 <div className="mt-5 flex justify-end gap-2">
                   <button type="button" onClick={() => setPendingRetry(null)} className="quiet-shelf-secondary-action min-h-11 justify-center">Cancel</button>
-                  <button type="button" onClick={startPendingRetry} className="quiet-shelf-primary-action min-h-11 justify-center">Check Next {pendingRetry.targetBookIds.length}</button>
+                  <button type="button" onClick={startPendingRetry} className="quiet-shelf-primary-action min-h-11 justify-center">Add Details to Next {pendingRetry.targetBookIds.length}</button>
                 </div>
               </div>
             </div>
@@ -176,7 +176,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
             <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">{selectedProgress.unresolved.toLocaleString()} books are waiting for covers, summaries, or edition details. Large libraries can take a while; your imported books are already safe and ready to use.</p>
           </div>
           <button type="button" onClick={paused ? continueQueuedDetails : () => selectedEntry && requestDetailUpdate(selectedEntry)} className="quiet-shelf-primary-action shrink-0 justify-center">
-            <Play className="h-4 w-4" /> {paused ? 'Continue Adding Details' : selectedProgress.unresolved > DETAIL_PASS_LIMIT ? `Check Next ${DETAIL_PASS_LIMIT}` : 'Check Missing Details'}
+            <Play className="h-4 w-4" /> {paused ? 'Continue Adding Details' : selectedProgress.unresolved > DETAIL_PASS_LIMIT ? `Add Details to Next ${DETAIL_PASS_LIMIT}` : 'Add Missing Details'}
           </button>
         </section>
       )}
