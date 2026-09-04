@@ -19,13 +19,13 @@ export const UpgradeModal: React.FC = () => {
     { feature: 'Custom lists & collections', free: true, premium: true },
     { feature: 'Reading progress, notes & quotes', free: true, premium: true },
     { feature: 'Reading calendar & basic statistics', free: true, premium: true },
+    { feature: 'Inkbound Studio cards & exports', free: true, premium: true },
     { feature: 'Complete data export', free: true, premium: true },
     { feature: 'Batch library editing', free: false, premium: true },
     { feature: 'Advanced reading insights & filters', free: false, premium: true },
     { feature: 'Monthly Wrapped', free: false, premium: true },
     { feature: 'Year in Books', free: false, premium: true },
     { feature: 'Bookshelf Through Time', free: false, premium: true },
-    { feature: 'Inkbound Studio exports', free: false, premium: true },
     { feature: 'Deeper reading-history features', free: false, premium: true },
   ];
 
