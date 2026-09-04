@@ -30,7 +30,7 @@ const premiumFeatures = [
   'Batch editing for faster library cleanup',
   'Advanced reading insights and detailed reports',
   'Monthly Wrapped and Year in Books reflections',
-  'Inkbound Studio creative exports and extra tools',
+  'Bookshelf Through Time and deeper reading-history views',
 ];
 
 export const PublicWebsite: React.FC = () => {
@@ -127,7 +127,7 @@ export const PublicWebsite: React.FC = () => {
             <p className="inkbound-public-kicker">Free at the core</p>
             <h2 id="premium-title">Your library is not the paywall.</h2>
             <p>
-              Every reader can keep an unlimited library and import books. Inkbound Premium is reserved for deeper analysis, faster library organization, richer reflections, and extra creative tools.
+              Every reader can keep an unlimited library and import books. Inkbound Premium is reserved for deeper analysis, faster library organization, richer reflections, and historical reading views.
             </p>
           </div>
           <div className="inkbound-public-premium-card">
