@@ -68,6 +68,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
   const queuedBookIds = useMemo(() => new Set(readImportEnrichmentQueue().map((item) => item.targetBookId)), [books, historyVersion, retryProgress?.completed]);
   const retryRunning = retryProgress?.status === 'queued' || retryProgress?.status === 'running';
   const retryPaused = Boolean(paused && retryProgress && !retryRunning && retryProgress.total > retryProgress.completed);
+  const retryComplete = retryProgress?.status === 'complete';
   const retryPercent = retryProgress?.total ? Math.min(100, Math.round((retryProgress.completed / retryProgress.total) * 100)) : 0;
 
   useEffect(() => { retryEnrichmentRef.current = onRetryEnrichment; }, [onRetryEnrichment]);
@@ -139,6 +140,10 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     });
   };
 
+  const openNextDetailBatch = () => {
+    if (selectedEntry) requestDetailUpdate(selectedEntry);
+  };
+
   return (
     <div className="space-y-7 pb-24">
       {pendingRetry && (
@@ -166,27 +171,42 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
         <p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Your imported books are ready immediately. Covers, summaries, and other optional details can be filled in separately without blocking your library.</p>
       </header>
 
-      {selectedProgress && selectedProgress.unresolved > 0 && !retryRunning && (
+      {selectedProgress && selectedProgress.unresolved > 0 && !retryProgress && (
         <section className="flex flex-col gap-4 rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-bold text-[var(--ink-ivory)]">Inkbound is still finishing optional book details</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">{selectedProgress.unresolved.toLocaleString()} books are waiting for covers, summaries, or edition details. Large libraries can take a while; your imported books are already safe and ready to use.</p>
+            <p className="font-bold text-[var(--ink-ivory)]">Ready to add more book details</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">{selectedProgress.unresolved.toLocaleString()} books are waiting for covers, summaries, or edition details. Your library is already safe and ready to use.</p>
           </div>
-          <button type="button" onClick={() => selectedEntry && requestDetailUpdate(selectedEntry)} className="quiet-shelf-primary-action shrink-0 justify-center">
+          <button type="button" onClick={openNextDetailBatch} className="quiet-shelf-primary-action shrink-0 justify-center">
             <Play className="h-4 w-4" /> {selectedProgress.unresolved > DETAIL_PASS_LIMIT ? `Add Details to Next ${DETAIL_PASS_LIMIT}` : 'Add Missing Details'}
           </button>
         </section>
       )}
 
       {retryProgress && (
-        <section className={`rounded-2xl border p-4 ${retryPaused ? 'border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/10' : retryProgress.status === 'error' ? 'border-rose-500/35 bg-rose-950/20' : retryProgress.status === 'complete' ? 'border-emerald-500/30 bg-emerald-950/15' : 'border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/10'}`} role="status">
-          <div className="flex items-center gap-3">
-            {retryRunning ? <Loader2 className="h-5 w-5 animate-spin text-[var(--ink-gold)]" /> : <CheckCircle2 className={`h-5 w-5 ${retryPaused ? 'text-[var(--ink-gold)]' : 'text-emerald-300'}`} />}
-            <div className="min-w-0 flex-1">
-              <p className="font-bold text-[var(--ink-ivory)]">{retryRunning ? 'Adding optional book details…' : retryPaused ? 'Detail updates paused' : retryProgress.status === 'complete' ? 'Book detail update finished' : 'Book detail update needs attention'}</p>
-              <p className="mt-1 text-xs text-[var(--ink-muted)]">{retryPaused ? 'Inkbound paused automatic detail checks for now. Your books are safe and ready to use. Continue whenever you are ready.' : retryProgress.message ?? `${retryProgress.completed.toLocaleString()} of ${retryProgress.total.toLocaleString()} books checked.`}</p>
+        <section className={`rounded-2xl border p-4 ${retryPaused ? 'border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/10' : retryProgress.status === 'error' ? 'border-rose-500/35 bg-rose-950/20' : retryComplete ? 'border-emerald-500/30 bg-emerald-950/15' : 'border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/10'}`} role="status">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              {retryRunning ? <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-[var(--ink-gold)]" /> : <CheckCircle2 className={`mt-0.5 h-5 w-5 ${retryPaused ? 'text-[var(--ink-gold)]' : 'text-emerald-300'}`} />}
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-[var(--ink-ivory)]">{retryRunning ? 'Adding book details' : retryPaused ? 'Detail updates paused' : retryComplete ? `${retryProgress.completed.toLocaleString()} books checked` : 'Book detail update needs attention'}</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                  {retryRunning
+                    ? `Checking book ${Math.min(retryProgress.completed + 1, retryProgress.total).toLocaleString()} of ${retryProgress.total.toLocaleString()}. You can keep using Inkbound while this runs.`
+                    : retryPaused
+                      ? 'Your library is ready to use. Inkbound will only add more covers and book details when you choose to continue.'
+                      : retryComplete
+                        ? `${retryProgress.matched.toLocaleString()} books updated · ${retryProgress.covers.toLocaleString()} covers found · ${retryProgress.summaries.toLocaleString()} summaries found${selectedProgress ? ` · ${selectedProgress.unresolved.toLocaleString()} books still waiting for details` : ''}.`
+                        : retryProgress.message ?? `${retryProgress.completed.toLocaleString()} of ${retryProgress.total.toLocaleString()} books checked.`}
+                </p>
+              </div>
             </div>
-            {!retryPaused && <span className="text-xs font-bold text-[var(--ink-gold)]">{retryProgress.completed.toLocaleString()} / {retryProgress.total.toLocaleString()}</span>}
+            {(retryPaused || retryComplete) && selectedProgress && selectedProgress.unresolved > 0 && (
+              <button type="button" onClick={openNextDetailBatch} className="quiet-shelf-primary-action shrink-0 justify-center">
+                <Play className="h-4 w-4" /> {retryPaused ? 'Continue Adding Details' : `Check Next ${Math.min(DETAIL_PASS_LIMIT, selectedProgress.unresolved)}`}
+              </button>
+            )}
+            {retryRunning && <span className="shrink-0 text-xs font-bold text-[var(--ink-gold)]">{retryProgress.completed.toLocaleString()} / {retryProgress.total.toLocaleString()}</span>}
           </div>
           {retryRunning && retryProgress.total > 0 && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/25"><div className="h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${retryPercent}%` }} /></div>}
         </section>
