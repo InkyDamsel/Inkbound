@@ -1,5 +1,4 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
-import { verifyImportRecords } from './libraryEnrichment';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
 
@@ -70,7 +69,7 @@ function readStoredSnapshot(): ImportVerificationJobSnapshot {
       return {
         ...emptySnapshot(),
         status: 'error',
-        error: 'The previous verification was interrupted when Inkbound closed or refreshed. Upload the export again to restart it.',
+        error: 'The previous import was interrupted before the library write finished. Upload the export again; books that were already added will be detected as duplicates and skipped.',
       };
     }
 
@@ -161,6 +160,17 @@ export function resetImportVerificationJob() {
   listeners.forEach((listener) => listener(snapshot));
 }
 
+/**
+ * Imports the user's source-of-truth records immediately.
+ *
+ * Optional cover/summary/edition enrichment is deliberately NOT performed here.
+ * The App import executor creates fallback books and places accepted records on
+ * the resumable enrichment queue, allowing very large libraries to finish the
+ * actual import without waiting on thousands of external metadata requests.
+ *
+ * The legacy function name is retained so existing Import Center callers do not
+ * need a coordinated migration.
+ */
 export function startImportVerificationJob(
   items: ImportRecordItem[],
   preDetectedDuplicates: ImportRecordItem[],
@@ -168,6 +178,7 @@ export function startImportVerificationJob(
   librarySnapshot?: UserBookRecord[],
 ): Promise<void> {
   if (activePromise) return activePromise;
+  void librarySnapshot;
 
   const normalizedItems = items.map(normalizeImportRecord);
   const normalizedPreDetectedDuplicates = preDetectedDuplicates.map(normalizeImportRecord);
@@ -187,39 +198,25 @@ export function startImportVerificationJob(
 
   activePromise = (async () => {
     try {
-      const verification = await verifyImportRecords(normalizedItems, (completed, total) => {
-        emit({
-          ...snapshot,
-          status: 'running',
-          completed,
-          total,
-        });
-      }, librarySnapshot);
-
-      const verifiedRecords = verification.verified.map((record) => ({
-        ...normalizeImportRecord(record),
-        importMetadataVerified: true,
-      }));
-      const unmatchedRecords = verification.unmatched.map((record) => ({
-        ...normalizeImportRecord(record),
-        importMetadataVerified: false,
-      }));
-      const recordsToImport = [...verifiedRecords, ...unmatchedRecords];
-      const executionResult = recordsToImport.length > 0
-        ? await executeImport(recordsToImport)
+      // The export is the source of truth. Add accepted records first; metadata
+      // enrichment happens later from the background queue created by App.tsx.
+      const executionResult = normalizedItems.length > 0
+        ? await executeImport(normalizedItems)
         : [];
-      const importedRecords = Array.isArray(executionResult) ? executionResult.map(normalizeImportRecord) : recordsToImport;
+      const importedRecords = Array.isArray(executionResult)
+        ? executionResult.map(normalizeImportRecord)
+        : normalizedItems;
       const importedIds = new Set(importedRecords.map((record) => record.id));
-      const acceptedVerified = verifiedRecords.filter((record) => importedIds.has(record.id));
-      const acceptedUnmatched = unmatchedRecords.filter((record) => importedIds.has(record.id));
-      const writeRejected = recordsToImport
+      const writeRejected = normalizedItems
         .filter((record) => !importedIds.has(record.id))
         .map((record) => ({ ...record, duplicateAction: 'skip' as const }));
 
-      persistMetadataPending(acceptedUnmatched);
+      // Keep a best-effort missing-details list for the Import History download.
+      // If this exceeds browser local-storage limits, the normal enrichment queue
+      // remains authoritative and the import itself still succeeds.
+      persistMetadataPending(importedRecords);
 
       const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
-      verification.duplicates.map(normalizeImportRecord).forEach((record) => duplicateMap.set(record.id, record));
       writeRejected.forEach((record) => duplicateMap.set(record.id, record));
 
       emit({
@@ -227,8 +224,8 @@ export function startImportVerificationJob(
         completed: normalizedItems.length,
         total: normalizedItems.length,
         importedCount: importedRecords.length,
-        matchedCount: acceptedVerified.length,
-        metadataPendingCount: acceptedUnmatched.length,
+        matchedCount: 0,
+        metadataPendingCount: importedRecords.length,
         duplicates: [...duplicateMap.values()],
         unmatched: [],
       });
@@ -238,7 +235,7 @@ export function startImportVerificationJob(
         status: 'error',
         error: error instanceof Error
           ? error.message
-          : 'The import could not be completed. Your library was not changed.',
+          : 'The import could not be completed. Books already written to your library were left intact.',
       });
     } finally {
       activePromise = null;
