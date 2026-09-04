@@ -15,6 +15,7 @@ import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBounda
 import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
 import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
+import { LibrarySyncCheckpointBridge } from './features/sync/LibrarySyncCheckpointBridge.tsx';
 import { ManualCoverLedgerBridge } from './features/sync/ManualCoverLedgerBridge.tsx';
 import { ProtectedBookDetailsLedgerBridge } from './features/sync/ProtectedBookDetailsLedgerBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
@@ -106,6 +107,7 @@ const InkboundApplication = () => (
         <AccountSyncProvider>
           <AuthSessionGate>
             <SecurityBootstrap />
+            <LibrarySyncCheckpointBridge />
             <CloudPersistenceBridge />
             <CloudServerRefreshBridge />
             <ManualCoverLedgerBridge />
