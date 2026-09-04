@@ -1,13 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Image, Lock, Share2, Sparkles } from 'lucide-react';
+import { Download, Image, Lock, MessageSquareQuote, Share2, Sparkles, Star } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
-import {
-  exportRuntimeBinaryFile,
-  shareRuntimeBinaryFile,
-} from '../platform/runtimeExport';
+import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 
 interface InkboundStudioScreenProps {
   books: UserBookRecord[];
@@ -16,11 +13,12 @@ interface InkboundStudioScreenProps {
 
 type ShareFormat = 'story' | 'portrait' | 'square' | 'pinterest';
 type ShareTheme = 'quiet-library' | 'cozy-autumn' | 'dark-academia' | 'celestial';
+type CardTemplate = 'reading-card' | 'quote-card' | 'review-card' | 'reading-update';
 
 interface SharePreferences {
   format: ShareFormat;
   theme: ShareTheme;
-  showName: boolean;
+  template: CardTemplate;
   showRating: boolean;
   showPages: boolean;
   showReadingTime: boolean;
@@ -43,29 +41,20 @@ const themes: Record<ShareTheme, { label: string; background: string; accent: st
   celestial: { label: 'Celestial', background: '#17192f', accent: '#a8a3d4', text: '#f3f1ff' },
 };
 
-const escapeXml = (value: string) =>
-  value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-
-const wrapTitle = (value: string, maxCharacters: number, maxLines: number): string[] => {
-  const words = value.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = '';
-
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length <= maxCharacters || !current) {
-      current = next;
-      continue;
-    }
-
-    lines.push(current);
-    current = word;
-    if (lines.length === maxLines - 1) break;
-  }
-
-  if (current && lines.length < maxLines) lines.push(current);
-  return lines.length > 0 ? lines : [value];
+const templates: Record<CardTemplate, { label: string; description: string }> = {
+  'reading-card': { label: 'Book Card', description: 'A polished finished or currently-reading card.' },
+  'quote-card': { label: 'Favorite Quote', description: 'Turn a saved quote into something worth sharing.' },
+  'review-card': { label: 'Mini Review', description: 'Pair your rating with a short review excerpt.' },
+  'reading-update': { label: 'Reading Update', description: 'Share progress, pages and time without a screenshot.' },
 };
+
+const escapeXml = (value: string) => value
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;');
+
+const truncate = (value: string, length: number) => value.length > length ? `${value.slice(0, length - 1).trim()}…` : value;
 
 export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ books, sessions }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
@@ -74,7 +63,7 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
   const [preferences, setPreferences] = usePersistentState<SharePreferences>(STORAGE_KEY, {
     format: 'portrait',
     theme: 'quiet-library',
-    showName: false,
+    template: 'reading-card',
     showRating: true,
     showPages: true,
     showReadingTime: true,
@@ -83,65 +72,76 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
   const [message, setMessage] = useState('');
 
   const selectedBook = books.find((book) => book.id === preferences.selectedBookId) ?? shareableBooks[0] ?? books[0];
-  const completedBookSessions = sessions.filter(
-    (session) => session.bookId === selectedBook?.id && getSessionDurationMinutes(session) > 0,
-  );
-  const readingMinutes = completedBookSessions.reduce(
-    (sum, session) => sum + getSessionDurationMinutes(session),
-    0,
-  );
+  const bookSessions = sessions.filter((session) => session.bookId === selectedBook?.id && getSessionDurationMinutes(session) > 0);
+  const readingMinutes = bookSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
   const edition = selectedBook?.editions.find((item) => item.id === selectedBook.activeEditionId) ?? selectedBook?.editions[0];
-  const format = formats[preferences.format];
-  const theme = themes[preferences.theme];
-  const isSquare = preferences.format === 'square';
+  const format = formats[preferences.format] ?? formats.portrait;
+  const theme = themes[preferences.theme] ?? themes['quiet-library'];
+  const template = templates[preferences.template] ?? templates['reading-card'];
+  const favoriteQuote = selectedBook?.favoriteQuotes?.[0]?.quote?.trim() ?? '';
+  const review = selectedBook?.review?.trim() ?? '';
+  const progress = Math.max(0, Math.min(100, Math.round(selectedBook?.progressPercentage ?? 0)));
   const lengthText = edition?.format === 'audiobook'
-    ? edition.audiobookDurationMins && edition.audiobookDurationMins > 0
-      ? `${Math.floor(edition.audiobookDurationMins / 60)}h ${edition.audiobookDurationMins % 60}m audio`
-      : 'Audio length unavailable'
-    : edition?.pageCount && edition.pageCount > 0
-      ? `${edition.pageCount} pages`
-      : 'Page count unavailable';
+    ? edition.audiobookDurationMins ? `${Math.floor(edition.audiobookDurationMins / 60)}h ${edition.audiobookDurationMins % 60}m audio` : 'Audiobook'
+    : edition?.pageCount ? `${edition.pageCount} pages` : 'Book details';
+  const timeText = `${Math.floor(readingMinutes / 60)}h ${readingMinutes % 60}m reading`;
+  const ratingText = selectedBook?.rating ? `${selectedBook.rating} / 5` : 'Not rated yet';
+
+  const cardCopy = useMemo(() => {
+    if (!selectedBook) return { kicker: '', title: '', body: '', footer: '' };
+    switch (preferences.template) {
+      case 'quote-card':
+        return {
+          kicker: 'A LINE I KEPT',
+          title: favoriteQuote ? `“${truncate(favoriteQuote, 180)}”` : 'Save a favorite quote to make this card yours.',
+          body: selectedBook.work.title,
+          footer: selectedBook.work.author,
+        };
+      case 'review-card':
+        return {
+          kicker: selectedBook.rating ? `${ratingText} · MY REVIEW` : 'MY REVIEW',
+          title: selectedBook.work.title,
+          body: review ? truncate(review, 220) : 'Write a review in Inkbound and your words will appear here.',
+          footer: selectedBook.work.author,
+        };
+      case 'reading-update':
+        return {
+          kicker: 'CURRENTLY READING',
+          title: selectedBook.work.title,
+          body: `${progress}% complete${preferences.showReadingTime ? ` · ${timeText}` : ''}`,
+          footer: selectedBook.work.author,
+        };
+      default:
+        return {
+          kicker: selectedBook.status === 'finished' ? 'FINISHED READING' : 'CURRENTLY READING',
+          title: selectedBook.work.title,
+          body: selectedBook.work.author,
+          footer: [preferences.showRating && selectedBook.rating ? ratingText : '', preferences.showPages ? lengthText : '', preferences.showReadingTime ? timeText : ''].filter(Boolean).join(' · '),
+        };
+    }
+  }, [favoriteQuote, lengthText, preferences.showPages, preferences.showRating, preferences.showReadingTime, preferences.template, progress, ratingText, readingMinutes, review, selectedBook, timeText]);
 
   const previewStyle = useMemo(() => ({
     aspectRatio: `${format.width} / ${format.height}`,
-    background: `radial-gradient(circle at top right, ${theme.accent}55, transparent 42%), ${theme.background}`,
+    background: `radial-gradient(circle at 82% 8%, ${theme.accent}66, transparent 38%), linear-gradient(145deg, ${theme.background}, ${theme.background} 70%, ${theme.accent}22)`,
     color: theme.text,
   }), [format, theme]);
 
   const buildSvg = () => {
     if (!selectedBook) return '';
-    const author = escapeXml(selectedBook.work.author);
-    const titleLines = wrapTitle(selectedBook.work.title, isSquare ? 22 : 28, isSquare ? 3 : 4).map(escapeXml);
-    const rating = selectedBook.rating
-      ? `${'★'.repeat(Math.round(selectedBook.rating))}${'☆'.repeat(Math.max(0, 5 - Math.round(selectedBook.rating)))}`
-      : '';
-    const timeText = `${Math.floor(readingMinutes / 60)}h ${readingMinutes % 60}m reading`;
-    const status = selectedBook.status === 'finished' ? 'FINISHED' : 'CURRENTLY READING';
-    const titleFontSize = isSquare ? 58 : Math.max(48, format.width * 0.062);
-    const titleStartY = isSquare ? 38 : 39;
-    const titleLineGap = isSquare ? 6.5 : 6;
-    const titleMarkup = titleLines
-      .map((line, index) => `<tspan x="50%" y="${titleStartY + index * titleLineGap}%">${line}</tspan>`)
-      .join('');
-    const titleEndY = titleStartY + (titleLines.length - 1) * titleLineGap;
-    const authorY = titleEndY + (isSquare ? 7 : 6.5);
-    const ratingY = authorY + (isSquare ? 8 : 9);
-    const pagesY = ratingY + (preferences.showRating && rating ? (isSquare ? 8 : 9) : 1);
-    const readingTimeY = pagesY + (preferences.showPages ? (isSquare ? 5.5 : 6) : 0);
-
+    const isSquare = preferences.format === 'square';
+    const titleSize = preferences.template === 'quote-card' ? (isSquare ? 43 : 48) : (isSquare ? 54 : 62);
+    const bodySize = preferences.template === 'review-card' ? 30 : 28;
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${format.width}" height="${format.height}" viewBox="0 0 ${format.width} ${format.height}">
-      <defs><radialGradient id="glow" cx="85%" cy="5%"><stop offset="0" stop-color="${theme.accent}" stop-opacity=".55"/><stop offset="1" stop-color="${theme.background}" stop-opacity="0"/></radialGradient></defs>
+      <defs><radialGradient id="glow" cx="82%" cy="8%"><stop offset="0" stop-color="${theme.accent}" stop-opacity=".62"/><stop offset="1" stop-color="${theme.background}" stop-opacity="0"/></radialGradient></defs>
       <rect width="100%" height="100%" fill="${theme.background}"/><rect width="100%" height="100%" fill="url(#glow)"/>
-      <rect x="${format.width * 0.08}" y="${format.height * 0.08}" width="${format.width * 0.84}" height="${format.height * 0.84}" rx="42" fill="none" stroke="${theme.accent}" stroke-opacity=".45" stroke-width="3"/>
-      <text x="50%" y="14%" text-anchor="middle" fill="${theme.accent}" font-family="Georgia,serif" font-size="28" letter-spacing="8">INKBOUND</text>
-      <text x="50%" y="${isSquare ? 23 : 25}%" text-anchor="middle" fill="${theme.text}" font-family="Georgia,serif" font-size="34" letter-spacing="5">${status}</text>
-      <text text-anchor="middle" fill="${theme.text}" font-family="Georgia,serif" font-size="${titleFontSize}" font-weight="700">${titleMarkup}</text>
-      <text x="50%" y="${authorY}%" text-anchor="middle" fill="${theme.text}" opacity=".72" font-family="Arial,sans-serif" font-size="30">${author}</text>
-      ${preferences.showRating && rating ? `<text x="50%" y="${ratingY}%" text-anchor="middle" fill="${theme.accent}" font-size="45">${rating}</text>` : ''}
-      ${preferences.showPages ? `<text x="50%" y="${pagesY}%" text-anchor="middle" fill="${theme.text}" opacity=".82" font-family="Arial,sans-serif" font-size="30">${escapeXml(lengthText)}</text>` : ''}
-      ${preferences.showReadingTime ? `<text x="50%" y="${readingTimeY}%" text-anchor="middle" fill="${theme.text}" opacity=".82" font-family="Arial,sans-serif" font-size="30">${timeText}</text>` : ''}
-      ${preferences.showName ? `<text x="50%" y="${isSquare ? 82 : 81}%" text-anchor="middle" fill="${theme.text}" opacity=".7" font-family="Georgia,serif" font-size="27">A reader's life, remembered.</text>` : ''}
-      <text x="50%" y="89%" text-anchor="middle" fill="${theme.accent}" font-family="Arial,sans-serif" font-size="24">Created with Inkbound</text>
+      <rect x="8%" y="7%" width="84%" height="86%" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".45" stroke-width="3"/>
+      <circle cx="50%" cy="16%" r="5" fill="${theme.accent}"/><text x="50%" y="12%" text-anchor="middle" fill="${theme.accent}" font-family="Georgia,serif" font-size="27" letter-spacing="8">INKBOUND</text>
+      <text x="50%" y="25%" text-anchor="middle" fill="${theme.accent}" font-family="Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="5">${escapeXml(cardCopy.kicker)}</text>
+      <foreignObject x="13%" y="31%" width="74%" height="30%"><div xmlns="http://www.w3.org/1999/xhtml" style="color:${theme.text};font:700 ${titleSize}px Georgia,serif;text-align:center;line-height:1.15;display:flex;height:100%;align-items:center;justify-content:center">${escapeXml(cardCopy.title)}</div></foreignObject>
+      <foreignObject x="15%" y="63%" width="70%" height="15%"><div xmlns="http://www.w3.org/1999/xhtml" style="color:${theme.text};opacity:.78;font:${bodySize}px Arial,sans-serif;text-align:center;line-height:1.45">${escapeXml(cardCopy.body)}</div></foreignObject>
+      <foreignObject x="14%" y="80%" width="72%" height="8%"><div xmlns="http://www.w3.org/1999/xhtml" style="color:${theme.accent};font:600 23px Arial,sans-serif;text-align:center;line-height:1.4">${escapeXml(cardCopy.footer)}</div></foreignObject>
+      <text x="50%" y="90%" text-anchor="middle" fill="${theme.text}" opacity=".55" font-family="Arial,sans-serif" font-size="20">Created with Inkbound</text>
     </svg>`;
   };
 
@@ -160,44 +160,26 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Could not prepare the share image.');
       context.drawImage(image, 0, 0);
-      const pngBlob = await new Promise<Blob>((resolve, reject) =>
-        canvas.toBlob(
-          (result) => result ? resolve(result) : reject(new Error('Could not create image.')),
-          'image/png',
-          1,
-        ),
-      );
-      const filename = `inkbound-${selectedBook?.work.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'share-card'}.png`;
-      return { filename, blob: pngBlob };
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+      const pngBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create image.')), 'image/png', 1));
+      const slug = selectedBook?.work.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'share-card';
+      return { filename: `inkbound-${preferences.template}-${slug}.png`, blob: pngBlob };
+    } finally { URL.revokeObjectURL(url); }
   };
 
   const downloadImage = async () => {
     try {
       const { filename, blob } = await createPng();
       await exportRuntimeBinaryFile({ filename, mimeType: 'image/png', contents: blob });
-      setMessage('Share image saved.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Export failed.');
-    }
+      setMessage('Studio card saved.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Export failed.'); }
   };
 
   const shareImage = async () => {
     try {
       const { filename, blob } = await createPng();
-      const result = await shareRuntimeBinaryFile({
-        filename,
-        mimeType: 'image/png',
-        contents: blob,
-        title: 'My Inkbound reading card',
-        text: 'Made with Inkbound',
-      });
-      setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the image was saved instead.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.');
-    }
+      const result = await shareRuntimeBinaryFile({ filename, mimeType: 'image/png', contents: blob, title: 'My Inkbound reading card', text: 'Made with Inkbound' });
+      setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the card was saved instead.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); }
   };
 
   return (
@@ -205,206 +187,72 @@ export const InkboundStudioScreen: React.FC<InkboundStudioScreenProps> = ({ book
       <header>
         <p className="inkbound-kicker">Create & Share</p>
         <h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Inkbound Studio</h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">
-          Turn your reading life into polished social cards without taking screenshots.
-        </p>
+        <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">Turn the reading life you already track into polished cards made to share.</p>
       </header>
 
-      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,430px)_minmax(0,1fr)]">
         <section className="inkbound-panel min-w-0 space-y-5 rounded-3xl p-5 sm:p-7">
-          <label className="block text-sm font-semibold text-[var(--ink-ivory)]">
-            Book
-            <select
-              value={selectedBook?.id ?? ''}
-              onChange={(event) =>
-                setPreferences((current) => ({ ...current, selectedBookId: event.target.value }))
-              }
-              className="mt-2 min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-[var(--ink-ivory)]"
-            >
-              {shareableBooks.map((book) => (
-                <option key={book.id} value={book.id}>{book.work.title}</option>
+          <div>
+            <p className="text-sm font-semibold text-[var(--ink-ivory)]">Card style</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {(Object.entries(templates) as [CardTemplate, typeof templates[CardTemplate]][]).map(([id, item]) => (
+                <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, template: id }))} className={`rounded-xl border p-3 text-left ${preferences.template === id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)]' : 'border-[var(--ink-border)]'}`}>
+                  <span className="block text-xs font-bold text-[var(--ink-ivory)]">{item.label}</span>
+                  <span className="mt-1 block text-[11px] leading-4 text-[var(--ink-muted)]">{item.description}</span>
+                </button>
               ))}
+            </div>
+          </div>
+
+          <label className="block text-sm font-semibold text-[var(--ink-ivory)]">Book
+            <select value={selectedBook?.id ?? ''} onChange={(event) => setPreferences((current) => ({ ...current, selectedBookId: event.target.value }))} className="mt-2 min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-[var(--ink-ivory)]">
+              {shareableBooks.map((book) => <option key={book.id} value={book.id}>{book.work.title}</option>)}
             </select>
           </label>
 
           <div>
             <p className="text-sm font-semibold text-[var(--ink-ivory)]">Format</p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {(Object.entries(formats) as [ShareFormat, typeof formats[ShareFormat]][]).map(([id, item]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setPreferences((current) => ({ ...current, format: id }))}
-                  className={`min-h-11 rounded-xl border px-3 text-xs font-semibold ${
-                    preferences.format === id
-                      ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]'
-                      : 'border-[var(--ink-border)] text-[var(--ink-muted)]'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">{(Object.entries(formats) as [ShareFormat, typeof formats[ShareFormat]][]).map(([id, item]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, format: id }))} className={`min-h-11 rounded-xl border px-3 text-xs font-semibold ${preferences.format === id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}>{item.label}</button>)}</div>
           </div>
 
           <div>
             <p className="text-sm font-semibold text-[var(--ink-ivory)]">Theme</p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {(Object.entries(themes) as [ShareTheme, typeof themes[ShareTheme]][]).map(([id, item]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setPreferences((current) => ({ ...current, theme: id }))}
-                  className={`min-h-11 rounded-xl border px-3 text-xs font-semibold ${
-                    preferences.theme === id
-                      ? 'border-[var(--ink-gold)] text-[var(--ink-ivory)]'
-                      : 'border-[var(--ink-border)] text-[var(--ink-muted)]'
-                  }`}
-                  style={{ background: item.background }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">{(Object.entries(themes) as [ShareTheme, typeof themes[ShareTheme]][]).map(([id, item]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, theme: id }))} className={`min-h-11 rounded-xl border px-3 text-xs font-semibold ${preferences.theme === id ? 'border-[var(--ink-gold)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`} style={{ background: item.background }}>{item.label}</button>)}</div>
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-[var(--ink-ivory)]">Privacy & details</p>
-            {[
-              ['showRating', 'Show rating'],
-              ['showPages', 'Show page or audio length'],
-              ['showReadingTime', 'Show reading time'],
-              ['showName', 'Show personal footer'],
-            ].map(([key, label]) => (
-              <label
-                key={key}
-                className="flex min-h-11 items-center justify-between gap-4 rounded-xl border border-[var(--ink-border-subtle)] px-4 text-sm text-[var(--ink-muted)]"
-              >
-                <span className="min-w-0">{label}</span>
-                <input
-                  type="checkbox"
-                  checked={preferences[key as keyof SharePreferences] as boolean}
-                  onChange={(event) =>
-                    setPreferences((current) => ({ ...current, [key]: event.target.checked }))
-                  }
-                />
-              </label>
-            ))}
+            <p className="text-sm font-semibold text-[var(--ink-ivory)]">Details</p>
+            {([['showRating', 'Show rating'], ['showPages', 'Show page or audio length'], ['showReadingTime', 'Show reading time']] as const).map(([key, label]) => <label key={key} className="flex min-h-11 items-center justify-between gap-4 rounded-xl border border-[var(--ink-border-subtle)] px-4 text-sm text-[var(--ink-muted)]"><span>{label}</span><input type="checkbox" checked={preferences[key]} onChange={(event) => setPreferences((current) => ({ ...current, [key]: event.target.checked }))} /></label>)}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              disabled={!selectedBook}
-              onClick={() => void shareImage()}
-              className="quiet-shelf-primary-action min-h-12 justify-center disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <Share2 className="h-4 w-4" /> Share
-            </button>
-            <button
-              type="button"
-              disabled={!selectedBook}
-              onClick={() => void downloadImage()}
-              className="quiet-shelf-secondary-action min-h-12 justify-center disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <Download className="h-4 w-4" /> Save PNG
-            </button>
+            <button type="button" disabled={!selectedBook} onClick={() => void shareImage()} className="quiet-shelf-primary-action min-h-12 justify-center disabled:opacity-45"><Share2 className="h-4 w-4" /> Share</button>
+            <button type="button" disabled={!selectedBook} onClick={() => void downloadImage()} className="quiet-shelf-secondary-action min-h-12 justify-center disabled:opacity-45"><Download className="h-4 w-4" /> Save PNG</button>
           </div>
 
-          {userPlan === 'free' && (
-            <button
-              type="button"
-              onClick={() =>
-                openUpgradeModal(
-                  'Premium adds Inkbound’s advanced creative and reflection tools.',
-                )
-              }
-              className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-[var(--ink-border)] p-4 text-left text-sm text-[var(--ink-muted)]"
-            >
-              <Lock className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
-              <span className="min-w-0">
-                <strong className="block text-[var(--ink-ivory)]">More with Premium</strong>
-                Explore Inkbound’s deeper creative and reading-history experiences.
-              </span>
-            </button>
-          )}
+          {userPlan === 'free' && <button type="button" onClick={() => openUpgradeModal('Premium adds Inkbound’s advanced creative and reflection tools.')} className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-[var(--ink-border)] p-4 text-left text-sm text-[var(--ink-muted)]"><Lock className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><span><strong className="block text-[var(--ink-ivory)]">More with Premium</strong>Build beautiful reading cards, recaps and memories from the library you already keep.</span></button>}
           {message && <p role="status" className="break-words text-sm text-[var(--ink-muted)]">{message}</p>}
         </section>
 
         <section className="inkbound-panel flex min-h-[460px] min-w-0 items-center justify-center rounded-3xl p-4 sm:min-h-[640px] sm:p-8">
           {selectedBook ? (
-            <div
-              className={`relative flex w-full max-w-[520px] flex-col items-center justify-between overflow-hidden rounded-[24px] border border-white/15 text-center shadow-2xl sm:rounded-[32px] ${
-                isSquare ? 'p-[6%]' : 'p-[8%]'
-              }`}
-              style={previewStyle}
-            >
-              <div>
-                <p
-                  className="text-[10px] font-bold uppercase tracking-[0.3em] sm:text-xs sm:tracking-[0.4em]"
-                  style={{ color: theme.accent }}
-                >
-                  Inkbound
-                </p>
-                <p
-                  className={`${isSquare ? 'mt-4 text-xs' : 'mt-6 text-xs sm:mt-8 sm:text-sm'} font-bold uppercase tracking-[0.2em] opacity-80 sm:tracking-[0.25em]`}
-                >
-                  {selectedBook.status === 'finished' ? 'Finished' : 'Currently Reading'}
-                </p>
+            <div className="relative flex w-full max-w-[520px] flex-col items-center justify-between overflow-hidden rounded-[28px] border border-white/15 p-[8%] text-center shadow-2xl" style={previewStyle}>
+              <div className="w-full">
+                <p className="text-[10px] font-bold uppercase tracking-[0.4em] sm:text-xs" style={{ color: theme.accent }}>Inkbound</p>
+                <div className="mx-auto mt-5 h-1 w-1 rounded-full" style={{ background: theme.accent }} />
               </div>
-
-              <div className={isSquare ? 'my-4 min-w-0' : 'my-8 min-w-0 sm:my-12'}>
-                <Sparkles
-                  className={`mx-auto ${isSquare ? 'mb-3 h-7 w-7' : 'mb-4 h-7 w-7 sm:mb-6 sm:h-8 sm:w-8'}`}
-                  style={{ color: theme.accent }}
-                />
-                <h2
-                  className={`break-words font-serif font-bold leading-tight ${
-                    isSquare ? 'text-2xl sm:text-4xl' : 'text-3xl sm:text-5xl'
-                  }`}
-                >
-                  {selectedBook.work.title}
-                </h2>
-                <p className={`${isSquare ? 'mt-2 text-sm' : 'mt-3 text-sm sm:mt-4 sm:text-base'} break-words opacity-70`}>
-                  {selectedBook.work.author}
-                </p>
-                {preferences.showRating && selectedBook.rating && (
-                  <p
-                    className={`${isSquare ? 'mt-3 text-xl' : 'mt-5 text-xl sm:mt-7 sm:text-2xl'}`}
-                    style={{ color: theme.accent }}
-                  >
-                    {'★'.repeat(Math.round(selectedBook.rating))}
-                  </p>
-                )}
-                <div className={`${isSquare ? 'mt-3 space-y-1 text-xs' : 'mt-6 space-y-2 text-xs sm:mt-8 sm:text-sm'} opacity-80`}>
-                  {preferences.showPages && <p>{lengthText}</p>}
-                  {preferences.showReadingTime && (
-                    <p>{Math.floor(readingMinutes / 60)}h {readingMinutes % 60}m reading</p>
-                  )}
-                </div>
+              <div className="my-8 min-w-0 sm:my-12">
+                {preferences.template === 'quote-card' ? <MessageSquareQuote className="mx-auto mb-5 h-8 w-8" style={{ color: theme.accent }} /> : preferences.template === 'review-card' ? <Star className="mx-auto mb-5 h-8 w-8" style={{ color: theme.accent }} /> : <Sparkles className="mx-auto mb-5 h-8 w-8" style={{ color: theme.accent }} />}
+                <p className="text-xs font-bold uppercase tracking-[0.24em]" style={{ color: theme.accent }}>{cardCopy.kicker}</p>
+                <h2 className={`${preferences.template === 'quote-card' ? 'text-2xl sm:text-4xl' : 'text-3xl sm:text-5xl'} mt-5 break-words font-serif font-bold leading-tight`}>{cardCopy.title}</h2>
+                <p className="mx-auto mt-5 max-w-[90%] break-words text-sm leading-relaxed opacity-75 sm:text-base">{cardCopy.body}</p>
+                <p className="mt-5 break-words text-xs font-semibold sm:text-sm" style={{ color: theme.accent }}>{cardCopy.footer}</p>
+                {preferences.template === 'reading-update' && <div className="mx-auto mt-6 h-2 w-[80%] overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full" style={{ width: `${progress}%`, background: theme.accent }} /></div>}
               </div>
-
-              <div>
-                {preferences.showName && (
-                  <p className={`${isSquare ? 'mb-1 text-xs' : 'mb-3 text-sm'} font-serif opacity-70`}>
-                    A reader&apos;s life, remembered.
-                  </p>
-                )}
-                <p
-                  className={isSquare ? 'text-[10px] font-semibold' : 'text-xs font-semibold'}
-                  style={{ color: theme.accent }}
-                >
-                  Created with Inkbound
-                </p>
-              </div>
+              <p className="text-[10px] font-semibold opacity-60 sm:text-xs">Created with Inkbound · {template.label}</p>
             </div>
           ) : (
-            <div className="text-center">
-              <Image className="mx-auto h-10 w-10 text-[var(--ink-gold)]" />
-              <p className="mt-3 text-sm text-[var(--ink-muted)]">
-                Add or start a book to create your first share card.
-              </p>
-            </div>
+            <div className="text-center"><Image className="mx-auto h-10 w-10 text-[var(--ink-gold)]" /><p className="mt-3 text-sm text-[var(--ink-muted)]">Add or start a book to create your first share card.</p></div>
           )}
         </section>
       </div>
