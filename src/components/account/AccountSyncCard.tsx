@@ -9,9 +9,9 @@ import {
 } from '../../features/sync/cloudSyncHealth';
 
 const formatLastSync = (value: string | null) => {
-  if (!value) return 'No successful cloud sync recorded on this device yet';
+  if (!value) return 'No completed account update on this device yet';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Previously synchronized' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? 'Updated previously' : date.toLocaleString();
 };
 
 export const AccountSyncCard: React.FC = () => {
@@ -48,10 +48,10 @@ export const AccountSyncCard: React.FC = () => {
     <section className="inkbound-panel rounded-3xl p-5 sm:p-7">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="inkbound-kicker">Cross-device persistence</p>
+          <p className="inkbound-kicker">Your Inkbound account</p>
           <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Take Inkbound with you</h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">
-            Sign in with Google or email to synchronize books, sessions, profile details, profile images, and Photo Memories
+            Sign in with Google or email to keep your books, reading sessions, profile, and Photo Memories up to date
             across your devices. Your library belongs to your Inkbound account, not one particular device.
           </p>
         </div>
@@ -60,13 +60,13 @@ export const AccountSyncCard: React.FC = () => {
 
       {!sync.isConfigured && (
         <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-[var(--ink-muted)]">
-          Firebase credentials are missing from this deployment. Add the Inkbound Firebase values to the environment before using account synchronization.
+          Account syncing is temporarily unavailable in this version of Inkbound. Please try again after updating the app or contact support.
         </div>
       )}
 
       {!sync.isAuthReady ? (
         <div className="mt-6 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">
-          Restoring your saved account session...
+          Restoring your saved account...
         </div>
       ) : !sync.user ? (
         <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -119,7 +119,7 @@ export const AccountSyncCard: React.FC = () => {
           <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-page)] p-4 sm:p-5">
             <p className="text-sm font-bold text-[var(--ink-ivory)]">One account, every device</p>
             <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">
-              Books, reading sessions, and Photo Memories added on your phone, computer, tablet, or the web stay attached to the same signed-in Inkbound account and restore on your other devices.
+              Books, reading sessions, and Photo Memories added on your phone, computer, tablet, or the web stay with the same Inkbound account and appear on your other devices.
             </p>
             <p className="mt-4 text-xs leading-5 text-[var(--ink-muted)]">
               Already use Google? Keep using it. After signing in with Google, you can add an email/password login to the same account instead of creating a second library.
@@ -140,7 +140,7 @@ export const AccountSyncCard: React.FC = () => {
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-[var(--ink-ivory)]">{sync.user.displayName || 'Connected reader'}</p>
                 <p className="break-all text-xs text-[var(--ink-muted)]">{sync.user.email || 'Inkbound account connected'}</p>
-                <p className="mt-1 break-words text-[11px] text-[var(--ink-faint)]">Signed in persistently · {formatLastSync(cloudHealth.lastSuccessfulSyncAt ?? sync.lastSyncedAt)}</p>
+                <p className="mt-1 break-words text-[11px] text-[var(--ink-faint)]">Signed in on this device · {formatLastSync(cloudHealth.lastSuccessfulSyncAt ?? sync.lastSyncedAt)}</p>
               </div>
             </div>
 
@@ -180,17 +180,17 @@ export const AccountSyncCard: React.FC = () => {
             <Cloud className={`mt-0.5 h-5 w-5 shrink-0 ${cloudHealth.status === 'error' ? 'text-rose-300' : cloudHealth.status === 'checking' ? 'text-amber-300' : 'text-emerald-300'}`} />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-[var(--ink-ivory)]">
-                {cloudHealth.status === 'error' ? 'Cloud synchronization needs attention' : cloudHealth.status === 'checking' ? 'Checking cloud synchronization…' : cloudHealth.status === 'healthy' ? 'Cloud synchronization verified' : 'Cloud synchronization is starting'}
+                {cloudHealth.status === 'error' ? 'Your library needs attention' : cloudHealth.status === 'checking' ? 'Checking your saved library…' : cloudHealth.status === 'healthy' ? 'Your library is up to date' : 'Getting your library ready'}
               </p>
               <p className="mt-1 break-words text-xs leading-5 text-[var(--ink-muted)]">{cloudHealth.message}</p>
               <button type="button" onClick={requestCloudRefresh} disabled={cloudHealth.status === 'checking'} className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--ink-border)] px-3 text-xs font-semibold text-[var(--ink-ivory)] disabled:opacity-50">
                 <RefreshCw className={`h-4 w-4 ${cloudHealth.status === 'checking' ? 'animate-spin' : ''}`} />
-                Retry cloud sync
+                Try again
               </button>
             </div>
           </div>
 
-          <p className="text-xs text-[var(--ink-faint)]">Signing into another device restores the cloud library and Photo Memories for this account before that device reconciles its local changes.</p>
+          <p className="text-xs text-[var(--ink-faint)]">When you sign in on another device, Inkbound restores your saved library and Photo Memories before adding changes from that device.</p>
         </div>
       )}
 
