@@ -257,7 +257,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <p className="mt-2 font-semibold text-[var(--ink-ivory)]">Unlimited books and imports</p>
             <p className="mt-1 text-xs text-[var(--ink-muted)]">
               {userPlan === 'premium'
-                ? 'Premium adds advanced insights and power tools, not extra library space.'
+                ? 'Premium adds deeper insights and extra tools, not extra library space.'
                 : 'Included with Inkbound Free.'}
             </p>
           </article>
@@ -275,11 +275,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <CreditCard className="h-4 w-4 text-[var(--ink-mauve)]" /> Subscription & billing
               </div>
               <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                Change your plan, update payment details, view invoices, or cancel Premium from the billing service that owns your subscription.
+                Change your plan, update payment details, view invoices, or cancel Premium where you originally subscribed.
               </p>
               {!canManageSubscription && (
                 <p className="mt-2 text-xs text-amber-400">
-                  Subscription management has not been connected on this device yet.
+                  Subscription settings aren’t available on this device yet.
                 </p>
               )}
             </div>
@@ -359,7 +359,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       <section className="inkbound-panel rounded-3xl p-6">
         <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Export your data</h2>
         <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-          JSON preserves the complete Inkbound record. CSV creates a spreadsheet-friendly library using each book’s active edition.
+          Download a complete Inkbound backup, or a spreadsheet-friendly copy of your library.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button type="button" onClick={() => void handleExportJSON()} className="quiet-shelf-primary-action justify-center">
@@ -379,7 +379,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       <section className="rounded-3xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-6">
         <h2 className="font-serif text-2xl text-[#e9b2b2]">Device & account data</h2>
         <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-          Clearing this device keeps your cloud account. Deleting your account permanently removes the account and Inkbound data associated with it.
+          Clearing this device keeps your saved Inkbound account. Deleting your account permanently removes the account and Inkbound data associated with it.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button
@@ -390,7 +390,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             }}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/40 px-4 text-sm font-bold text-[#e9b2b2] hover:bg-[#c97b7b]/10"
           >
-            <RotateCcw className="h-4 w-4" /> {user ? 'Clear device & sign out' : 'Clear local data'}
+            <RotateCcw className="h-4 w-4" /> {user ? 'Clear device & sign out' : 'Clear data on this device'}
           </button>
           <button
             type="button"
@@ -425,7 +425,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </button>
             <h3 id="clear-data-title" className="pr-12 font-serif text-3xl text-[var(--ink-ivory)]">Clear this device?</h3>
             <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
-              This removes only this device's cached Inkbound books and reading sessions. Your cloud library stays intact. {user ? 'You will be signed out before the local cache is cleared. ' : ''}This action cannot be triggered until you type the exact phrase below.
+              This removes only the Inkbound books and reading sessions saved on this device. Your account library stays intact. {user ? 'You will be signed out before this device is cleared. ' : ''}This action cannot start until you type the exact phrase below.
             </p>
             <div className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-muted)]">
               Type <strong className="select-all text-[var(--ink-ivory)]">{CLEAR_DEVICE_PHRASE}</strong>
@@ -476,7 +476,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <div>
                 <h3 id="delete-account-title" className="font-serif text-3xl text-[var(--ink-ivory)]">Permanently delete your account?</h3>
                 <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
-                  This permanently removes your Inkbound login, cloud library, reading sessions, profile, preferences, uploaded profile images, complimentary access, and local Inkbound data on this device. This cannot be undone.
+                  This permanently removes your Inkbound login, saved library, reading sessions, profile, preferences, uploaded profile images, complimentary access, and Inkbound data on this device. This cannot be undone.
                 </p>
               </div>
             </div>
@@ -485,7 +485,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
                 <p className="text-sm font-bold text-amber-300">Your subscription is managed separately</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                  Deleting your Inkbound account does not automatically cancel an App Store, Google Play, or other paid subscription. Your account can still be deleted now, but billing may continue until you cancel the subscription with the store or billing provider that manages it.
+                  Deleting your Inkbound account does not automatically cancel an App Store, Google Play, or other paid subscription. Your account can still be deleted now, but billing may continue until you cancel where you originally subscribed.
                 </p>
                 {canManageSubscription && (
                   <button type="button" onClick={() => void openRuntimeSubscriptionManagement()} className="quiet-shelf-secondary-action mt-3 justify-center">
@@ -496,7 +496,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             )}
 
             <div className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-xs leading-5 text-[var(--ink-muted)]">
-              We recommend exporting a Complete JSON backup before continuing. Inkbound requires every confirmation below and fresh account verification before permanent deletion begins.
+              We recommend downloading a complete backup before continuing. Inkbound requires every confirmation below and a fresh sign-in check before permanent deletion begins.
             </div>
 
             <label className="mt-5 flex items-start gap-3 rounded-xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-4 text-sm leading-5 text-[var(--ink-muted)]">
@@ -508,7 +508,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 className="mt-0.5 h-4 w-4 shrink-0"
               />
               <span>
-                I understand that deleting my account permanently removes my Inkbound account and cloud data and cannot be undone.
+                I understand that deleting my account permanently removes my Inkbound account and saved data and cannot be undone.
               </span>
             </label>
 
@@ -557,13 +557,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
             {deleteReauthenticationRequirement === 'google' && (
               <p className="mt-4 text-xs leading-5 text-[var(--ink-muted)]">
-                After you press the final delete button, Google will ask you to verify this account again before Inkbound sends the deletion request.
+                After you press the final delete button, Google will ask you to verify this account again before Inkbound deletes it.
               </p>
             )}
 
             {deleteReauthenticationRequirement === 'unsupported' && (
               <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-200">
-                This account's sign-in provider needs a platform reauthentication adapter before deletion can continue on this device.
+                Account deletion is not available for this sign-in method on this device yet. Please try another device or contact support.
               </p>
             )}
 
