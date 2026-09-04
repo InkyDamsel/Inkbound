@@ -28,6 +28,7 @@ interface PendingRetry { entry: ImportHistoryEntry; targetBookIds: string[]; }
 
 const IMPORTED_LIBRARY_COLLAPSED_KEY = 'inkbound_import_history_library_collapsed_v1';
 const MANUAL_COVERS_COLLAPSED_KEY = 'inkbound_import_history_manual_covers_collapsed_v1';
+const DETAIL_PASS_LIMIT = 100;
 
 function readCollapsedPreference(key: string): boolean {
   try { return localStorage.getItem(key) === '1'; } catch { return false; }
@@ -80,7 +81,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
     const runtimeWindow = window as RetryRuntimeWindow;
     if (runtimeWindow.__inkboundImportRetryRunning) return;
     runtimeWindow.__inkboundImportRetryRunning = true;
-    void retryEnrichmentRef.current(activeRetry.targetBookIds).finally(() => {
+    void retryEnrichmentRef.current(activeRetry.targetBookIds.slice(0, DETAIL_PASS_LIMIT)).finally(() => {
       runtimeWindow.__inkboundImportRetryRunning = false;
       setRetryProgress(readImportEnrichmentRetryProgress());
       setHistoryVersion((value) => value + 1);
@@ -110,13 +111,17 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
 
   const requestDetailUpdate = (entry: ImportHistoryEntry, ids?: string[]) => {
     const allowed = ids ? new Set(ids) : null;
-    const targetBookIds = entry.items.map((item) => item.targetBookId).filter((id) => !allowed || allowed.has(id));
+    const targetBookIds = entry.items
+      .filter((item) => !allowed || allowed.has(item.targetBookId))
+      .sort((a, b) => Number(Boolean(b.isbn?.trim())) - Number(Boolean(a.isbn?.trim())))
+      .slice(0, DETAIL_PASS_LIMIT)
+      .map((item) => item.targetBookId);
     if (targetBookIds.length) setPendingRetry({ entry, targetBookIds });
   };
 
   const startPendingRetry = () => {
     if (!pendingRetry) return;
-    const requestedIds = retryImportHistoryItems(pendingRetry.entry, pendingRetry.targetBookIds);
+    const requestedIds = retryImportHistoryItems(pendingRetry.entry, pendingRetry.targetBookIds).slice(0, DETAIL_PASS_LIMIT);
     setPendingRetry(null);
     if (!requestedIds.length) return;
     setImportEnrichmentPaused(false);
@@ -147,10 +152,10 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
               <div>
                 <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Continue adding book details?</h2>
                 <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">Inkbound will check these books for optional covers, summaries, and edition details. Your books are already safely imported and usable.</p>
-                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">For very large libraries this can take time. You may use other Inkbound screens, but avoid refreshing or closing the app while an active detail pass is running.</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">To protect very large libraries from runaway provider and Firebase usage, each manual detail pass checks at most {DETAIL_PASS_LIMIT} books. Books with ISBNs are checked first, and anything left stays safely queued for a later pass.</p>
                 <div className="mt-5 flex justify-end gap-2">
                   <button type="button" onClick={() => setPendingRetry(null)} className="quiet-shelf-secondary-action min-h-11 justify-center">Cancel</button>
-                  <button type="button" onClick={startPendingRetry} className="quiet-shelf-primary-action min-h-11 justify-center">Continue Adding Details</button>
+                  <button type="button" onClick={startPendingRetry} className="quiet-shelf-primary-action min-h-11 justify-center">Check Next {pendingRetry.targetBookIds.length}</button>
                 </div>
               </div>
             </div>
@@ -171,7 +176,7 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
             <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">{selectedProgress.unresolved.toLocaleString()} books are waiting for covers, summaries, or edition details. Large libraries can take a while; your imported books are already safe and ready to use.</p>
           </div>
           <button type="button" onClick={paused ? continueQueuedDetails : () => selectedEntry && requestDetailUpdate(selectedEntry)} className="quiet-shelf-primary-action shrink-0 justify-center">
-            <Play className="h-4 w-4" /> {paused ? 'Continue Adding Details' : 'Check Missing Details'}
+            <Play className="h-4 w-4" /> {paused ? 'Continue Adding Details' : selectedProgress.unresolved > DETAIL_PASS_LIMIT ? `Check Next ${DETAIL_PASS_LIMIT}` : 'Check Missing Details'}
           </button>
         </section>
       )}
