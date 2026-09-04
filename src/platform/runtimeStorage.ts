@@ -24,7 +24,12 @@ const browserStorageAdapter: RuntimeStorageAdapter = {
   },
   getAllKeys: () => {
     if (typeof window === 'undefined') return [];
-    return Object.keys(window.localStorage);
+    const keys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key !== null) keys.push(key);
+    }
+    return keys;
   },
 };
 
