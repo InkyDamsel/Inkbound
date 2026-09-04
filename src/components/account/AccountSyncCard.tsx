@@ -14,6 +14,13 @@ const formatLastSync = (value: string | null) => {
   return Number.isNaN(date.getTime()) ? 'Updated previously' : date.toLocaleString();
 };
 
+const friendlyCloudMessage = (health: CloudSyncHealth) => {
+  if (health.status === 'healthy') return 'Your latest changes are saved and available across your signed-in devices.';
+  if (health.status === 'checking') return 'Inkbound is checking for your latest saved books and reading activity.';
+  if (health.status === 'error') return health.message;
+  return 'Inkbound will keep your saved library available across your signed-in devices.';
+};
+
 export const AccountSyncCard: React.FC = () => {
   const sync = useAccountSync();
   const isWorking = sync.status === 'working';
@@ -182,10 +189,10 @@ export const AccountSyncCard: React.FC = () => {
               <p className="text-sm font-bold text-[var(--ink-ivory)]">
                 {cloudHealth.status === 'error' ? 'Your library needs attention' : cloudHealth.status === 'checking' ? 'Checking your saved library…' : cloudHealth.status === 'healthy' ? 'Your library is up to date' : 'Getting your library ready'}
               </p>
-              <p className="mt-1 break-words text-xs leading-5 text-[var(--ink-muted)]">{cloudHealth.message}</p>
+              <p className="mt-1 break-words text-xs leading-5 text-[var(--ink-muted)]">{friendlyCloudMessage(cloudHealth)}</p>
               <button type="button" onClick={requestCloudRefresh} disabled={cloudHealth.status === 'checking'} className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--ink-border)] px-3 text-xs font-semibold text-[var(--ink-ivory)] disabled:opacity-50">
                 <RefreshCw className={`h-4 w-4 ${cloudHealth.status === 'checking' ? 'animate-spin' : ''}`} />
-                Try again
+                {cloudHealth.status === 'error' ? 'Try again' : cloudHealth.status === 'checking' ? 'Checking…' : 'Check for updates'}
               </button>
             </div>
           </div>
