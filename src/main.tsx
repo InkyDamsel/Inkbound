@@ -21,6 +21,7 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
+import { hydrateLargeBrowserStorage } from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
 import {
   getNativeRuntimeError,
@@ -53,24 +54,6 @@ if (!rootElement) {
 }
 
 const isPublicWebsite = !isNativeRuntime() && window.location.pathname === '/';
-
-if (!isPublicWebsite) {
-  isolateDevelopmentBrowserStorage();
-  purgeUnverifiedLegacyImportMetadata();
-}
-
-if (!isPublicWebsite && !isNativeRuntime()) {
-  window.addEventListener('beforeunload', (event) => {
-    const retry = readImportEnrichmentRetryProgress();
-    if (!retry || (retry.status !== 'queued' && retry.status !== 'running')) return;
-    event.preventDefault();
-    event.returnValue = '';
-  });
-}
-
-if (isAndroidRuntime()) {
-  void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
-}
 
 const OpeningScreen = ({ message }: { message: string }) => (
   <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
@@ -143,19 +126,57 @@ const InkboundApplication = () => (
   </BreakpointProvider>
 );
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <AppErrorBoundary>
-      {isPublicWebsite ? <PublicWebsite /> : <InkboundApplication />}
-    </AppErrorBoundary>
-  </StrictMode>,
-);
+async function bootstrap() {
+  if (!isPublicWebsite && !isNativeRuntime()) {
+    // Load oversized account/library caches from IndexedDB before React or the
+    // cloud bridge reads localStorage. The storage shim keeps existing feature
+    // code synchronous while removing localStorage's practical size ceiling.
+    await hydrateLargeBrowserStorage();
+  }
 
-if (import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
-      // Offline/install support is an enhancement; a registration failure must
-      // never prevent the reading journal itself from opening.
+  if (!isPublicWebsite) {
+    isolateDevelopmentBrowserStorage();
+    purgeUnverifiedLegacyImportMetadata();
+  }
+
+  if (!isPublicWebsite && !isNativeRuntime()) {
+    window.addEventListener('beforeunload', (event) => {
+      const retry = readImportEnrichmentRetryProgress();
+      if (!retry || (retry.status !== 'queued' && retry.status !== 'running')) return;
+      event.preventDefault();
+      event.returnValue = '';
     });
-  }, { once: true });
+  }
+
+  if (isAndroidRuntime()) {
+    void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
+  }
+
+  createRoot(rootElement).render(
+    <StrictMode>
+      <AppErrorBoundary>
+        {isPublicWebsite ? <PublicWebsite /> : <InkboundApplication />}
+      </AppErrorBoundary>
+    </StrictMode>,
+  );
+
+  if (import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
+        // Offline/install support is an enhancement; a registration failure must
+        // never prevent the reading journal itself from opening.
+      });
+    }, { once: true });
+  }
 }
+
+void bootstrap().catch((error) => {
+  console.error('Inkbound bootstrap failed.', error);
+  createRoot(rootElement).render(
+    <StrictMode>
+      <AppErrorBoundary>
+        <OpeningScreen message="Inkbound could not restore local storage. Refresh once to retry." />
+      </AppErrorBoundary>
+    </StrictMode>,
+  );
+});
