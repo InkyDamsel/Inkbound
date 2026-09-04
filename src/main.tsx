@@ -42,6 +42,7 @@ import './styles/light-theme-2.css';
 import './styles/mobile-app.css';
 import './styles/mobile-help-position.css';
 import './styles/mobile-landscape.css';
+import './styles/responsive-parity.css';
 import './styles/public-website.css';
 // Keep this last: it protects intentionally dark artwork/hero surfaces from
 // broad light-theme utility remapping and strengthens parchment-mode contrast.
