@@ -22,8 +22,6 @@ let installed = false;
 let originalGetItem: Storage['getItem'] | null = null;
 let originalSetItem: Storage['setItem'] | null = null;
 let originalRemoveItem: Storage['removeItem'] | null = null;
-let originalKey: Storage['key'] | null = null;
-let originalLengthDescriptor: PropertyDescriptor | undefined;
 
 function isManagedKey(key: string) {
   return exactManagedKeys.has(key) || managedPrefixes.some((prefix) => key.startsWith(prefix));
@@ -104,7 +102,9 @@ async function readAllLargeValues(): Promise<Array<[string, string]>> {
       let values: unknown[] | null = null;
       const finish = () => {
         if (!keys || !values) return;
-        resolve(keys.map((key, index) => [String(key), typeof values![index] === 'string' ? values![index] as string : ''] as [string, string]).filter(([, value]) => value.length > 0));
+        resolve(keys
+          .map((key, index) => [String(key), typeof values![index] === 'string' ? values![index] as string : ''] as [string, string])
+          .filter(([, value]) => value.length > 0));
       };
       keyRequest.onsuccess = () => { keys = keyRequest.result; finish(); };
       valueRequest.onsuccess = () => { values = valueRequest.result; finish(); };
@@ -118,21 +118,6 @@ async function readAllLargeValues(): Promise<Array<[string, string]>> {
   });
 }
 
-function nativeKeys(storage: Storage): string[] {
-  if (!originalKey || !originalLengthDescriptor?.get) return [];
-  try {
-    const length = Number(originalLengthDescriptor.get.call(storage)) || 0;
-    const keys: string[] = [];
-    for (let index = 0; index < length; index += 1) {
-      const key = originalKey.call(storage, index);
-      if (key !== null) keys.push(key);
-    }
-    return keys;
-  } catch {
-    return [];
-  }
-}
-
 function installStorageBridge() {
   if (installed || typeof window === 'undefined' || typeof Storage === 'undefined') return;
   installed = true;
@@ -140,8 +125,6 @@ function installStorageBridge() {
   originalGetItem = Storage.prototype.getItem;
   originalSetItem = Storage.prototype.setItem;
   originalRemoveItem = Storage.prototype.removeItem;
-  originalKey = Storage.prototype.key;
-  originalLengthDescriptor = Object.getOwnPropertyDescriptor(Storage.prototype, 'length');
 
   Storage.prototype.getItem = function getItem(key: string): string | null {
     if (isWindowLocalStorage(this) && isManagedKey(key) && cache.has(key)) return cache.get(key) ?? null;
@@ -177,23 +160,10 @@ function installStorageBridge() {
     }
     originalRemoveItem!.call(this, key);
   };
+}
 
-  Storage.prototype.key = function key(index: number): string | null {
-    if (!isWindowLocalStorage(this)) return originalKey!.call(this, index);
-    const keys = [...new Set([...nativeKeys(this), ...cache.keys()])];
-    return keys[index] ?? null;
-  };
-
-  if (originalLengthDescriptor?.get) {
-    Object.defineProperty(Storage.prototype, 'length', {
-      configurable: true,
-      enumerable: originalLengthDescriptor.enumerable ?? true,
-      get() {
-        if (!isWindowLocalStorage(this as Storage)) return originalLengthDescriptor!.get!.call(this);
-        return new Set([...nativeKeys(this as Storage), ...cache.keys()]).size;
-      },
-    });
-  }
+export function getLargeBrowserStorageKeys(): string[] {
+  return [...cache.keys()];
 }
 
 export async function hydrateLargeBrowserStorage(): Promise<void> {
@@ -207,7 +177,7 @@ export async function hydrateLargeBrowserStorage(): Promise<void> {
 
   // Migrate any still-small managed values from localStorage into IndexedDB so
   // they can grow past browser quota later without changing feature code.
-  for (const key of nativeKeys(window.localStorage)) {
+  for (const key of Object.keys(window.localStorage)) {
     if (!isManagedKey(key) || cache.has(key)) continue;
     try {
       const value = originalGetItem?.call(window.localStorage, key);
