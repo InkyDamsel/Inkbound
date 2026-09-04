@@ -1,3 +1,4 @@
+import { getLargeBrowserStorageKeys } from './largeBrowserStorage';
 import { removeRuntimeMediaByPrefix } from './runtimeMediaStorage';
 
 export interface RuntimeStorageAdapter {
@@ -24,12 +25,7 @@ const browserStorageAdapter: RuntimeStorageAdapter = {
   },
   getAllKeys: () => {
     if (typeof window === 'undefined') return [];
-    const keys: string[] = [];
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (key !== null) keys.push(key);
-    }
-    return keys;
+    return [...new Set([...Object.keys(window.localStorage), ...getLargeBrowserStorageKeys()])];
   },
 };
 
