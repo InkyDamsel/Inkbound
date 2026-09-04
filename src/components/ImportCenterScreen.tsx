@@ -17,7 +17,6 @@ import {
   Upload,
 } from 'lucide-react';
 import { Format, ImportRecordItem, ImportSourceInfo, ReadingStatus, UserBookRecord } from '../types';
-import { useUserPlan } from '../context/UserPlanContext';
 import { analyzeImportDuplicates } from '../features/import/libraryEnrichment';
 import { readXlsxRecords } from '../features/import/spreadsheetImport';
 import {
@@ -199,10 +198,6 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
   onUndoLastImport,
   onRetryEnrichment,
 }) => {
-  const { userPlan, freeBookLimit, openUpgradeModal } = useUserPlan();
-  const isPremium = userPlan === 'premium';
-  const currentBookCount = books.length;
-  const remainingFreeSlots = Math.max(0, freeBookLimit - currentBookCount);
   const initialJob = getImportVerificationSnapshot();
 
   const [centerView, setCenterView] = useState<ImportCenterView>(() => readImportCenterView());
@@ -261,8 +256,8 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     [newRecords, selectedIds],
   );
 
-  const maximumSelection = isPremium ? newRecords.length : remainingFreeSlots;
-  const allEligibleSelected = newRecords.length > 0 && selectedIds.length === Math.min(newRecords.length, maximumSelection);
+  const maximumSelection = newRecords.length;
+  const allEligibleSelected = newRecords.length > 0 && selectedIds.length === newRecords.length;
   const mappingReady = Boolean(columnMapping.title) && importRecords.length > 0;
   const isLargeSelectedImport = selectedRecords.length >= LARGE_LIBRARY_IMPORT_THRESHOLD;
   const isLargeCompletedImport = importedCount >= LARGE_LIBRARY_IMPORT_THRESHOLD || metadataPendingCount >= LARGE_LIBRARY_IMPORT_THRESHOLD;
@@ -275,8 +270,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
     const duplicateAnalysis = analyzeImportDuplicates(mappedRecords, books);
     setImportRecords(mappedRecords);
     setDuplicateRecords(duplicateAnalysis.duplicates);
-    const initialLimit = isPremium ? duplicateAnalysis.unique.length : remainingFreeSlots;
-    setSelectedIds(duplicateAnalysis.unique.slice(0, initialLimit).map((record) => record.id));
+    setSelectedIds(duplicateAnalysis.unique.map((record) => record.id));
   };
 
   const updateColumnMapping = (field: ImportFieldKey, header: string) => {
@@ -341,26 +335,21 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
 
   const toggleSelection = (recordId: string) => {
     if (isImporting || duplicateIds.has(recordId)) return;
-    setSelectedIds((current) => {
-      if (current.includes(recordId)) return current.filter((id) => id !== recordId);
-      if (!isPremium && current.length >= remainingFreeSlots) {
-        openUpgradeModal('Upgrade to Inkbound Premium to import every book in this file.');
-        return current;
-      }
-      return [...current, recordId];
-    });
+    setSelectedIds((current) => (
+      current.includes(recordId)
+        ? current.filter((id) => id !== recordId)
+        : [...current, recordId]
+    ));
   };
 
   const selectAllEligible = () => {
-    const limit = isPremium ? newRecords.length : remainingFreeSlots;
-    setSelectedIds(newRecords.slice(0, limit).map((record) => record.id));
+    setSelectedIds(newRecords.map((record) => record.id));
   };
 
   const selectByStatus = (status: ReadingStatus) => {
     setSelectedIds(
       newRecords
         .filter((record) => record.status === status)
-        .slice(0, isPremium ? newRecords.length : remainingFreeSlots)
         .map((record) => record.id),
     );
   };
@@ -480,7 +469,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
           {currentStep === 3 && (
             <section className="space-y-4">
               <h2 className="font-serif text-xl font-bold text-[#f4efe6]">Review your import</h2>
-              <ImportAnalysisSummaryGrid importRecordCount={importRecords.length} currentBookCount={currentBookCount} freeBookLimit={freeBookLimit} remainingFreeSlots={remainingFreeSlots} isPremium={isPremium} />
+              <ImportAnalysisSummaryGrid importRecordCount={importRecords.length} />
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4"><p className="text-xs font-bold uppercase tracking-wider text-stone-500">Found in file</p><p className="mt-2 font-serif text-3xl text-[#f4efe6]">{importRecords.length.toLocaleString()}</p></div>
@@ -492,21 +481,17 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
                 <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-sm text-stone-300"><CopyCheck className="h-5 w-5 shrink-0 text-amber-300" /><div><p className="font-bold text-amber-200">Duplicates will not be added again</p><p className="mt-1 text-xs leading-5 text-stone-400">Inkbound matched {duplicateRecords.length.toLocaleString()} {duplicateRecords.length === 1 ? 'book' : 'books'} by ISBN or exact title and author, including repeats already in your library and repeats inside this file.</p></div></div>
               )}
 
-              {isPremium ? (
-                <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-emerald-200"><CheckCircle2 className="h-5 w-5 shrink-0" /><div><p className="font-bold">Premium unlimited import</p><p className="mt-1 text-emerald-100/70">All {newRecords.length.toLocaleString()} new books are ready to import.</p></div></div>
-              ) : newRecords.length > remainingFreeSlots ? (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-stone-300"><AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" /><div><p className="font-bold text-amber-300">Choose up to {remainingFreeSlots} books</p><p className="mt-1">Upgrade to Premium to import the entire file.</p></div></div>
-              ) : null}
+              <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 text-sm text-emerald-200"><CheckCircle2 className="h-5 w-5 shrink-0" /><div><p className="font-bold">Ready to import</p><p className="mt-1 text-emerald-100/70">All {newRecords.length.toLocaleString()} new books are ready to import. Library importing is available to every Inkbound reader.</p></div></div>
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={goBack} className="quiet-shelf-secondary-action min-h-11"><ArrowLeft className="h-4 w-4" /> Back</button><button type="button" onClick={goNext} disabled={newRecords.length === 0} className="quiet-shelf-primary-action min-h-11 disabled:opacity-50">Choose Books<ArrowRight className="h-4 w-4" /></button></div>
             </section>
           )}
 
           {currentStep === 4 && (
             <section className="space-y-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose books to import</h2><p className="mt-1 text-sm text-stone-400" aria-live="polite"><strong className="text-[#f4efe6]">{selectedIds.length.toLocaleString()}</strong> of {newRecords.length.toLocaleString()} new books selected{duplicateRecords.length > 0 && ` · ${duplicateRecords.length.toLocaleString()} duplicates already skipped`}{!isPremium && ` · ${remainingFreeSlots.toLocaleString()} slots available`}.</p></div>{!isPremium && <button type="button" onClick={() => openUpgradeModal('Import every book with Inkbound Premium.')} className="text-xs font-bold text-[#e5c158] hover:underline">Upgrade for unlimited imports</button>}</div>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><h2 className="font-serif text-xl font-bold text-[#f4efe6]">Choose books to import</h2><p className="mt-1 text-sm text-stone-400" aria-live="polite"><strong className="text-[#f4efe6]">{selectedIds.length.toLocaleString()}</strong> of {newRecords.length.toLocaleString()} new books selected{duplicateRecords.length > 0 && ` · ${duplicateRecords.length.toLocaleString()} duplicates already skipped`}.</p></div></div>
 
               <div className="flex flex-wrap gap-2 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-3">
-                <button type="button" onClick={selectAllEligible} disabled={allEligibleSelected || maximumSelection === 0 || isImporting} className="quiet-shelf-secondary-action min-h-10 px-4 disabled:opacity-40">{isPremium ? 'Select All New' : `Select Up to ${remainingFreeSlots}`}</button>
+                <button type="button" onClick={selectAllEligible} disabled={allEligibleSelected || maximumSelection === 0 || isImporting} className="quiet-shelf-secondary-action min-h-10 px-4 disabled:opacity-40">Select All New</button>
                 <button type="button" onClick={() => setSelectedIds([])} disabled={selectedIds.length === 0 || isImporting} className="quiet-shelf-secondary-action min-h-10 px-4 disabled:opacity-40">Clear All</button>
                 <button type="button" onClick={() => selectByStatus('tbr')} disabled={isImporting} className="quiet-shelf-secondary-action min-h-10 px-4">Select TBR</button>
                 <button type="button" onClick={() => selectByStatus('currently-reading')} disabled={isImporting} className="quiet-shelf-secondary-action min-h-10 px-4">Select Reading</button>
