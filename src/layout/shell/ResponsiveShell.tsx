@@ -14,26 +14,26 @@ const faqSections = [
       ['Does Inkbound work across devices?', 'Yes. Sign in with the same Inkbound account and your cloud library, reading sessions, and synced profile information can follow you to another device.'],
       ['What happens when I sign out?', 'Inkbound removes signed-in account data from that device while keeping your cloud account and library intact. Sign back into the same account to restore your synced data.'],
       ['Can I use Inkbound offline?', 'Inkbound keeps local data available where possible. Changes that need the cloud will continue syncing after your connection returns.'],
-      ['Why can syncing sometimes take longer?', 'A first sign-in, a fresh device, a very large library, or a slow connection can require extra time. Returning readers should be able to use verified local data while cloud updates continue in the background.'],
+      ['Why can syncing sometimes take longer?', 'A first sign-in, a fresh device, a very large library, or a slow connection can require extra time. Returning readers should be able to keep using saved library data while updates continue in the background.'],
     ],
   },
   {
-    title: 'Imports & library maintenance',
+    title: 'Imports & library updates',
     items: [
       ['How does Inkbound handle large libraries?', 'Inkbound is designed to import large libraries quickly, then fill in missing book details gradually so you do not have to wait for every cover and summary before using your library.'],
-      ['When are missing covers and summaries updated?', 'Inkbound performs light maintenance while the app is active and gives larger repair jobs priority during quieter hours on your device.'],
-      ['Does maintenance keep running after I close Inkbound?', 'Not continuously. Mobile operating systems and browsers can pause background work. Inkbound safely resumes queued maintenance the next time the app becomes active and conditions allow it.'],
-      ['Do I need to re-import books with missing details?', 'No. Inkbound can keep missing covers and summaries queued for repair without requiring you to import the library again.'],
-      ['Will metadata repair overwrite my reading data?', 'No. Library maintenance is intended to fill missing book metadata, not replace your ratings, reviews, reading status, dates, progress, notes, tags, collections, or ownership information.'],
-      ['What if Inkbound cannot find a cover or summary?', 'The book remains in your library. Inkbound can retry missing metadata later instead of treating your reading record as disposable.'],
+      ['When are missing covers and summaries updated?', 'Inkbound can check for missing book details while the app is active. Very large libraries are handled in smaller batches so the app stays responsive.'],
+      ['Does Inkbound keep checking after I close the app?', 'Not continuously. Phones, tablets, and browsers can pause background work. Inkbound keeps unfinished detail checks safely queued so you can continue later.'],
+      ['Do I need to re-import books with missing details?', 'No. Inkbound can keep missing covers and summaries queued without requiring you to import the library again.'],
+      ['Will adding book details overwrite my reading data?', 'No. Adding missing book details does not replace your ratings, reviews, reading status, dates, progress, notes, tags, collections, or ownership information.'],
+      ['What if Inkbound cannot find a cover or summary?', 'The book stays safely in your library. You can try adding its missing details again later.'],
     ],
   },
   {
     title: 'Reading sessions',
     items: [
-      ['What happens to maintenance while I use the reading timer?', 'Your reading session takes priority. Large-library metadata maintenance pauses while the timer is active and resumes later.'],
+      ['What happens to book-detail updates while I use the reading timer?', 'Your reading session takes priority. Large-library detail updates pause while the timer is active and can continue later.'],
       ['What if my connection drops during a session?', 'The reading timer and session experience are designed to continue locally rather than depending on a constant internet connection. Cloud updates can catch up when connectivity returns.'],
-      ['What if I background Inkbound during a timer?', 'Your active timer draft is preserved. When Inkbound becomes active again, elapsed time is reconciled from the saved session timestamps instead of relying only on foreground timer ticks.'],
+      ['What if I background Inkbound during a timer?', 'Your active timer draft is preserved. When Inkbound becomes active again, elapsed time is restored from the saved session times rather than relying only on what stayed visible on screen.'],
     ],
   },
   {
@@ -114,11 +114,11 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
                 <Mail className="mt-1 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
                 <div className="min-w-0">
                   <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Still need help?</h3>
-                  <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">If you cannot find the answer you are looking for, email us. For a technical issue, include a short description of what happened and a screenshot when possible.</p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">If you cannot find the answer you are looking for, email us. If something is not working as expected, include a short description of what happened and a screenshot when possible.</p>
                   <a href="mailto:inkbound@inkydameinteractive.com" className="mt-4 inline-flex min-h-11 max-w-full items-center py-2 font-bold text-[var(--ink-gold)] hover:underline">
                     <span className="break-all">inkbound@inkydameinteractive.com</span>
                   </a>
-                  <p className="text-xs text-[var(--ink-muted)]">Account, sync, import, privacy, billing, and technical support</p>
+                  <p className="text-xs text-[var(--ink-muted)]">Account, sync, import, privacy, billing, and app support</p>
                 </div>
               </div>
             </section>
