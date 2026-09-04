@@ -3,10 +3,6 @@ import { ResponsiveGrid } from '../../layout/responsive';
 
 interface ImportAnalysisSummaryGridProps {
   importRecordCount: number;
-  currentBookCount: number;
-  freeBookLimit: number;
-  remainingFreeSlots: number;
-  isPremium: boolean;
 }
 
 interface SummaryCardProps {
@@ -31,45 +27,27 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
 
 export const ImportAnalysisSummaryGrid: React.FC<ImportAnalysisSummaryGridProps> = ({
   importRecordCount,
-  currentBookCount,
-  freeBookLimit,
-  remainingFreeSlots,
-  isPremium,
-}) => {
-  const eligibleCount = isPremium
-    ? importRecordCount
-    : Math.min(remainingFreeSlots, importRecordCount);
+}) => (
+  <ResponsiveGrid minItemWidth={190} maxColumns={3} gap={16}>
+    <SummaryCard
+      label="Books in File"
+      value={importRecordCount}
+      description="Total records detected"
+      valueClassName="text-[#361539] dark:text-[#c5a059]"
+    />
 
-  return (
-    <ResponsiveGrid minItemWidth={190} maxColumns={3} gap={16}>
-      <SummaryCard
-        label="Books in File"
-        value={importRecordCount}
-        description="Total records detected"
-        valueClassName="text-[#361539] dark:text-[#c5a059]"
-      />
+    <SummaryCard
+      label="Import Access"
+      value="Unlimited"
+      description="Available to every Inkbound reader"
+      valueClassName="text-[#2e102d] dark:text-[#f3ede2]"
+    />
 
-      <SummaryCard
-        label="Account Plan Status"
-        value={isPremium ? 'Unlimited' : `${currentBookCount} / ${freeBookLimit}`}
-        description={
-          isPremium
-            ? 'Unlimited Premium Plan'
-            : `${remainingFreeSlots} free slot${remainingFreeSlots === 1 ? '' : 's'} remaining`
-        }
-        valueClassName="text-[#2e102d] dark:text-[#f3ede2]"
-      />
-
-      <SummaryCard
-        label="Eligible for Import"
-        value={eligibleCount}
-        description={
-          isPremium
-            ? 'All records eligible'
-            : `Fits within ${freeBookLimit}-book limit`
-        }
-        valueClassName="text-emerald-600"
-      />
-    </ResponsiveGrid>
-  );
-};
+    <SummaryCard
+      label="Eligible for Import"
+      value={importRecordCount}
+      description="All records eligible"
+      valueClassName="text-emerald-600"
+    />
+  </ResponsiveGrid>
+);
