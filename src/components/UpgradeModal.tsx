@@ -26,7 +26,7 @@ export const UpgradeModal: React.FC = () => {
     { feature: 'Year in Books', free: false, premium: true },
     { feature: 'Bookshelf Through Time', free: false, premium: true },
     { feature: 'Inkbound Studio exports', free: false, premium: true },
-    { feature: 'Advanced reading-history experiences', free: false, premium: true },
+    { feature: 'Deeper reading-history features', free: false, premium: true },
   ];
 
   return (
@@ -60,7 +60,7 @@ export const UpgradeModal: React.FC = () => {
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--ink-muted)]">
             Your library stays unlimited on Free. Premium unlocks Inkbound's deeper reflection,
-            historical insights, creative recaps, and power tools.
+            historical insights, creative recaps, and advanced library tools.
           </p>
 
           {upgradeReason && (
@@ -101,7 +101,7 @@ export const UpgradeModal: React.FC = () => {
 
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm leading-6 text-[var(--ink-muted)]">
             <strong className="text-[var(--ink-ivory)]">Free is a complete reading library.</strong>{' '}
-            Premium is for readers who want Inkbound to turn that library into a richer personal archive of how, when, and what they read.
+            Premium is for readers who want a richer record of how, when, and what they read.
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)]">
@@ -131,7 +131,7 @@ export const UpgradeModal: React.FC = () => {
               Current account: <span className="font-bold uppercase text-[var(--ink-mauve)]">{userPlan} Plan</span>
             </div>
             <p className="text-center text-xs text-[var(--ink-muted)] sm:text-right">
-              Billing checkout will be connected before public subscriptions open.
+              Premium subscriptions are not open yet. The prices above are planned launch pricing.
             </p>
           </div>
         </div>
