@@ -2,8 +2,11 @@ import {
   Auth,
   GoogleAuthProvider,
   browserLocalPersistence,
+  browserSessionPersistence,
+  inMemoryPersistence,
   setPersistence,
   signInWithPopup,
+  signInWithRedirect,
 } from 'firebase/auth';
 import { isNativeRuntime } from './runtimePlatform';
 
@@ -12,20 +15,61 @@ export interface RuntimeAuthenticationAdapter {
   signInWithGoogle(auth: Auth): Promise<void>;
 }
 
+function firebaseAuthCode(error: unknown): string {
+  return typeof error === 'object' && error && 'code' in error
+    ? String((error as { code?: unknown }).code ?? '')
+    : '';
+}
+
+async function prepareBrowserPersistence(auth: Auth): Promise<void> {
+  const persistenceOptions = [
+    browserLocalPersistence,
+    browserSessionPersistence,
+    inMemoryPersistence,
+  ];
+
+  let lastError: unknown;
+  for (const persistence of persistenceOptions) {
+    try {
+      await setPersistence(auth, persistence);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  // Authentication itself is more important than persistence. If a browser is
+  // blocking every storage mechanism, Firebase can still attempt the sign-in
+  // instead of Inkbound failing before credentials are even checked.
+  console.warn('Inkbound could not enable Firebase auth persistence. Continuing with the current Firebase auth state.', lastError);
+}
+
 const browserAuthenticationAdapter: RuntimeAuthenticationAdapter = {
   preparePersistence: async (auth) => {
-    // Firebase's browser-local persistence remains suitable for the Capacitor
-    // WebView. Native adapters only need to replace provider flows that depend on
-    // browser popup/redirect semantics.
-    await setPersistence(auth, browserLocalPersistence);
+    await prepareBrowserPersistence(auth);
   },
   signInWithGoogle: async (auth) => {
     if (isNativeRuntime()) {
       throw new Error('Google sign-in is not connected to the Android app build yet. Use email/password while the native Google sign-in adapter is being configured.');
     }
+
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    await signInWithPopup(auth, provider);
+
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      const code = firebaseAuthCode(error);
+      const popupCouldNotOpen = code === 'auth/popup-blocked'
+        || code === 'auth/operation-not-supported-in-this-environment';
+
+      if (!popupCouldNotOpen) throw error;
+
+      // Some browsers/extensions block Firebase popup handshakes. Redirect is a
+      // safe browser fallback and onAuthStateChanged restores the signed-in user
+      // when Inkbound returns from Google.
+      await signInWithRedirect(auth, provider);
+    }
   },
 };
 
