@@ -100,16 +100,16 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
   return (
     <section className="inkbound-panel p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-[var(--ink-mauve)]" />
+            <Database className="h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
             <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Catalog contribution review</h2>
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ink-muted)]">
             Review reader-submitted catalog-safe metadata. Approval verifies the contribution; promotion is a separate owner-only step that makes the record available to Inkbound metadata searches.
           </p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">
+        <button type="button" onClick={() => void load()} disabled={loading} className="quiet-shelf-secondary-action w-full shrink-0 justify-center disabled:opacity-40 lg:w-auto">
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
