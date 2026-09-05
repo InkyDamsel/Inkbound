@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Eye, Sparkles } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
@@ -27,8 +27,10 @@ interface ShelfPreferences {
 }
 
 const PREFERENCES_KEY = 'inkbound_bookshelf_through_time_preferences';
-const BOOKS_PER_SHELF = 8;
+const BOOKS_PER_SHELF = 12;
 const MINIMUM_SHELF_ROWS = 3;
+const SHELVES_PER_PAGE = 4;
+const DECORATION_SCALE = 1.22;
 const DECORATION_ROOT = '/assets/shelf-decorations';
 
 const themeClasses: Record<ShelfTheme, string> = {
@@ -89,11 +91,17 @@ const sharedDecorations: ShelfDecoration[] = [
 function getShelfDecorations(theme: ShelfTheme, shelfIndex: number, bookCount: number): ShelfDecoration[] {
   const themed = themeDecorations[theme];
   const primary = themed[shelfIndex % themed.length];
-  if (bookCount >= 6) return [primary];
-
   const secondaryPool = shelfIndex % 2 === 0 ? sharedDecorations : themed;
   const secondary = secondaryPool[(shelfIndex * 3 + bookCount + 1) % secondaryPool.length];
-  return secondary.src === primary.src ? [primary] : [primary, secondary];
+  const tertiary = sharedDecorations[(shelfIndex * 5 + bookCount + 2) % sharedDecorations.length];
+
+  if (bookCount >= 11) return [primary];
+  if (bookCount >= 7 || secondary.src === primary.src) return [primary, secondary.src === primary.src ? tertiary : secondary];
+
+  const result = [primary, secondary, tertiary].filter(
+    (item, index, items) => items.findIndex((candidate) => candidate.src === item.src) === index,
+  );
+  return result.slice(0, 3);
 }
 
 function validLocalDate(year: number, month: number, day: number): Date | null {
@@ -208,6 +216,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     showStats: true,
     highlightNew: true,
   });
+  const [shelfPage, setShelfPage] = useState(0);
 
   const selectedMonth = availableMonths.includes(preferences.month)
     ? preferences.month
@@ -220,6 +229,10 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
   });
   const booksFinishedThisMonth = finishedBooks.filter((book) => monthKey(book.dateFinished) === selectedMonth);
   const shelfRowCount = Math.max(MINIMUM_SHELF_ROWS, Math.ceil(shelfBooks.length / BOOKS_PER_SHELF));
+  const shelfPageCount = Math.max(1, Math.ceil(shelfRowCount / SHELVES_PER_PAGE));
+  const safeShelfPage = Math.min(shelfPage, shelfPageCount - 1);
+  const pageStartShelf = safeShelfPage * SHELVES_PER_PAGE;
+  const visibleShelfCount = Math.min(SHELVES_PER_PAGE, shelfRowCount - pageStartShelf);
   const totalPages = shelfBooks.reduce((sum, book) => {
     const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
     return sum + (edition?.pageCount ?? 0);
@@ -229,6 +242,10 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length
     : 0;
   const highlightNew = preferences.highlightNew !== false;
+
+  useEffect(() => {
+    setShelfPage(0);
+  }, [selectedMonth]);
 
   const updatePreference = <K extends keyof ShelfPreferences>(key: K, value: ShelfPreferences[K]) => {
     setPreferences((current) => ({ ...current, [key]: value }));
@@ -279,7 +296,8 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
           </div>
 
           <div className="relative z-10 mt-8 space-y-7">
-            {Array.from({ length: shelfRowCount }, (_, shelfIndex) => {
+            {Array.from({ length: visibleShelfCount }, (_, visibleShelfIndex) => {
+              const shelfIndex = pageStartShelf + visibleShelfIndex;
               const shelfSlice = shelfBooks.slice(shelfIndex * BOOKS_PER_SHELF, shelfIndex * BOOKS_PER_SHELF + BOOKS_PER_SHELF);
               const decorations = getShelfDecorations(preferences.theme, shelfIndex, shelfSlice.length);
               return (
@@ -355,7 +373,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                         );
                       })}
 
-                      <div className={`pointer-events-none flex shrink-0 items-end gap-1.5 sm:gap-2 ${shelfSlice.length > 0 ? 'ml-auto pl-5 sm:pl-8' : 'mx-auto'}`} aria-hidden="true">
+                      <div className={`pointer-events-none flex shrink-0 items-end gap-2 sm:gap-3 ${shelfSlice.length > 0 ? 'ml-5 sm:ml-8' : 'mx-auto'}`} aria-hidden="true">
                         {decorations.map((decoration, decorationIndex) => (
                           <img
                             key={`${decoration.src}-${shelfIndex}-${decorationIndex}`}
@@ -363,8 +381,11 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                             alt=""
                             title={decoration.label}
                             draggable={false}
-                            className="select-none object-contain drop-shadow-[0_9px_9px_rgba(0,0,0,.42)]"
-                            style={{ width: decoration.width, height: decoration.height }}
+                            className="select-none object-contain drop-shadow-[0_10px_10px_rgba(0,0,0,.5)]"
+                            style={{
+                              width: Math.round(decoration.width * DECORATION_SCALE),
+                              height: Math.round(decoration.height * DECORATION_SCALE),
+                            }}
                             loading="lazy"
                             decoding="async"
                           />
@@ -380,6 +401,32 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
               );
             })}
           </div>
+
+          {shelfPageCount > 1 && (
+            <div className="relative z-10 mt-6 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShelfPage((current) => Math.max(0, current - 1))}
+                disabled={safeShelfPage <= 0}
+                className="quiet-shelf-icon-button disabled:opacity-30"
+                aria-label="Previous shelf page"
+              >
+                <ChevronLeft />
+              </button>
+              <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs text-white/60 backdrop-blur-sm">
+                Shelves {pageStartShelf + 1}–{Math.min(pageStartShelf + visibleShelfCount, shelfRowCount)} of {shelfRowCount}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShelfPage((current) => Math.min(shelfPageCount - 1, current + 1))}
+                disabled={safeShelfPage >= shelfPageCount - 1}
+                className="quiet-shelf-icon-button disabled:opacity-30"
+                aria-label="Next shelf page"
+              >
+                <ChevronRight />
+              </button>
+            </div>
+          )}
 
           {preferences.showStats && (
             <div className="relative z-10 mt-8 grid grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-center backdrop-blur-sm sm:grid-cols-4">
