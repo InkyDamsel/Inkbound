@@ -20,7 +20,7 @@ interface LibraryBookGridProps {
 }
 
 const LOCAL_DATA_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
-const HYDRATION_FALLBACK_MS = 12000;
+const HYDRATION_FALLBACK_MS = 4000;
 const INITIAL_RENDER_COUNT = 120;
 const RENDER_STEP = 120;
 
@@ -53,7 +53,10 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
     };
   }, [isAuthReady, user?.uid]);
 
-  const isHydratingCloudLibrary = !hydrationTimedOut && (!isAuthReady || Boolean(user && !cloudLibraryReady));
+  // A library already present on this device is immediately usable. Network
+  // reconciliation must never hide a reader's books behind a loading screen.
+  const hasLocalBooks = books.length > 0;
+  const isHydratingCloudLibrary = !hasLocalBooks && !hydrationTimedOut && (!isAuthReady || Boolean(user && !cloudLibraryReady));
   const visibleBooks = useMemo(() => books.slice(0, Math.min(visibleCount, books.length)), [books, visibleCount]);
   const hasMoreBooks = visibleBooks.length < books.length;
 
@@ -62,7 +65,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
       <section className="space-y-4" aria-live="polite" aria-busy="true">
         <div className="inkbound-panel flex items-center gap-3 rounded-2xl px-5 py-4">
           <Loader2 className="h-5 w-5 animate-spin text-[var(--ink-muted)]" />
-          <div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Syncing your library…</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Inkbound is checking your cloud library before showing cached book details and covers.</p></div>
+          <div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Opening your library…</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Inkbound is restoring the books saved to your account.</p></div>
         </div>
         <ResponsiveGrid minItemWidth={150} maxColumns={6} gap={16} alignItems="stretch">
           {Array.from({ length: 12 }, (_, index) => <div key={`library-sync-placeholder-${index}`} className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3" aria-hidden="true"><div className="mx-auto aspect-[2/3] w-28 animate-pulse rounded-md bg-[var(--ink-surface)]" /><div className="mt-4 h-4 w-4/5 animate-pulse rounded-full bg-[var(--ink-surface)]" /><div className="mt-2 h-3 w-1/2 animate-pulse rounded-full bg-[var(--ink-surface)]" /><div className="mt-4 h-6 w-16 animate-pulse rounded-full bg-[var(--ink-surface)]" /></div>)}
@@ -73,7 +76,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
 
   return (
     <section className="space-y-4">
-      {hydrationTimedOut && user && !cloudLibraryReady ? <div className="inkbound-panel flex items-start gap-3 rounded-2xl px-5 py-4" role="status"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Cloud sync is taking longer than expected.</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Inkbound stopped blocking your library. Cloud sync will keep retrying in the background.</p></div></div> : null}
+      {hydrationTimedOut && user && !cloudLibraryReady && !hasLocalBooks ? <div className="inkbound-panel flex items-start gap-3 rounded-2xl px-5 py-4" role="status"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Your saved library is taking a little longer to arrive.</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">You can keep using Inkbound. We’ll continue trying as your connection allows.</p></div></div> : null}
       <ResponsiveGrid minItemWidth={150} maxColumns={6} gap={16} alignItems="stretch">
         {visibleBooks.map((book) => {
           const isSelected = selectedBookIds.includes(book.id);
@@ -102,7 +105,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
       {books.length > INITIAL_RENDER_COUNT ? (
         <div className="inkbound-panel flex flex-col items-center justify-between gap-3 rounded-2xl px-5 py-4 sm:flex-row">
           <p className="text-sm text-[var(--ink-muted)]">
-            Showing <strong className="text-[var(--ink-ivory)]">{visibleBooks.length.toLocaleString()}</strong> of <strong className="text-[var(--ink-ivory)]">{books.length.toLocaleString()}</strong> books to keep large libraries fast and stable.
+            Showing <strong className="text-[var(--ink-ivory)]">{visibleBooks.length.toLocaleString()}</strong> of <strong className="text-[var(--ink-ivory)]">{books.length.toLocaleString()}</strong> books. Inkbound loads your shelf in sections so even very large libraries stay smooth.
           </p>
           {hasMoreBooks ? (
             <button
@@ -110,7 +113,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
               onClick={() => setVisibleCount((current) => Math.min(current + RENDER_STEP, books.length))}
               className="quiet-shelf-secondary-action w-full justify-center sm:w-auto"
             >
-              Load {Math.min(RENDER_STEP, books.length - visibleBooks.length).toLocaleString()} more
+              Show {Math.min(RENDER_STEP, books.length - visibleBooks.length).toLocaleString()} more
             </button>
           ) : null}
         </div>
