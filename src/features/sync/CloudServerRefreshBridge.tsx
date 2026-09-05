@@ -2,8 +2,11 @@ import React, { useEffect, useRef } from 'react';
 import {
   collection,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
+  serverTimestamp,
+  setDoc,
 } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
@@ -52,6 +55,12 @@ interface RetryProgress {
   covers?: number;
   summaries?: number;
   updatedAt?: string;
+}
+
+interface LibrarySyncManifest {
+  status?: 'syncing' | 'complete';
+  expectedBookCount?: number;
+  uploadedBookCount?: number;
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -184,9 +193,6 @@ function pauseAutomaticMetadataWork() {
   const completed = progress.completed ?? 0;
   const total = progress.total ?? 0;
 
-  // A retry that already checked every requested book is finished, even if an
-  // older build left its status as running/error during shutdown. Never relabel
-  // a 100% pass as "stopped" just because automatic background work is disabled.
   if (total > 0 && completed >= total) {
     writeJson(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, {
       status: 'complete',
@@ -210,25 +216,13 @@ function pauseAutomaticMetadataWork() {
     matched: progress.matched ?? 0,
     covers: progress.covers ?? 0,
     summaries: progress.summaries ?? 0,
-    message: 'Automatic missing-detail retries were paused to prevent background usage charges. Start a retry manually when you want Inkbound to check those books.',
+    message: 'Automatic missing-detail retries were paused. Start a retry manually when you want Inkbound to check those books.',
     updatedAt: new Date().toISOString(),
   });
 }
 
-// Run before App renders. Metadata repair may still be started explicitly by the
-// user, but it must never silently resume a large retry after a refresh/reopen.
 pauseAutomaticMetadataWork();
 
-/**
- * Cost-safe cloud companion.
- *
- * CloudPersistenceBridge remains the normal event-driven sync owner. This bridge
- * intentionally does NOT poll Firestore, refresh on an interval, or refresh on
- * every app resume. It only:
- *   1. protects a known non-empty local library from a catastrophic empty replace,
- *   2. performs a one-time server recovery when the device cache is already empty,
- *   3. performs a full server refresh only after an explicit force-refresh event.
- */
 export const CloudServerRefreshBridge: React.FC = () => {
   const { user } = useAccountSync();
   const running = useRef(false);
@@ -239,7 +233,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
       publishCloudSyncHealth({
         status: 'idle',
         lastSuccessfulSyncAt: null,
-        message: user ? 'Cloud database is unavailable.' : 'Waiting for sign-in.',
+        message: user ? 'Your saved library is temporarily unavailable.' : 'Waiting for sign-in.',
       });
       return undefined;
     }
@@ -247,11 +241,44 @@ export const CloudServerRefreshBridge: React.FC = () => {
     const uid = user.uid;
     let disposed = false;
     const storage = getRuntimeStorage();
+    const libraryManifestRef = doc(db, 'users', uid, 'syncState', 'library');
 
     const pendingState = () => readJson<PendingSyncState>(`inkbound_pending_sync_${uid}_v1`, {
       books: {},
       sessions: {},
     });
+
+    const verifyCloudLibraryComplete = async () => {
+      const manifestSnapshot = await getDoc(libraryManifestRef);
+      if (!manifestSnapshot.exists()) return { complete: true, expected: 0, uploaded: 0 };
+
+      const manifest = manifestSnapshot.data() as LibrarySyncManifest;
+      const expected = Math.max(0, manifest.expectedBookCount ?? 0);
+      if (!expected) return { complete: true, expected: 0, uploaded: 0 };
+
+      const countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
+      const uploaded = countSnapshot.data().count;
+      const complete = uploaded >= expected;
+
+      if (complete && manifest.status !== 'complete') {
+        await setDoc(libraryManifestRef, {
+          status: 'complete',
+          expectedBookCount: expected,
+          uploadedBookCount: uploaded,
+          completedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } else if (!complete) {
+        await setDoc(libraryManifestRef, {
+          status: 'syncing',
+          expectedBookCount: expected,
+          uploadedBookCount: uploaded,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+
+      return { complete, expected, uploaded };
+    };
 
     const restoreCatastrophicEmptyLibrary = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
@@ -271,7 +298,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
       publishCloudSyncHealth({
         status: 'error',
         lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
-        message: `Inkbound blocked an unexpected empty-library replacement and kept ${knownBooks.current.length.toLocaleString()} locally cached books visible.`,
+        message: `Inkbound protected your library and kept ${knownBooks.current.length.toLocaleString()} books visible after an unexpected empty-library update.`,
       });
     };
 
@@ -283,7 +310,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
         publishCloudSyncHealth({
           status: 'healthy',
           lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
-          message: 'Cost-safe sync is active. Continuous Firebase polling is disabled.',
+          message: 'Your latest changes are saved and available across your signed-in devices.',
         });
         return;
       }
@@ -292,19 +319,35 @@ export const CloudServerRefreshBridge: React.FC = () => {
       publishCloudSyncHealth({
         status: 'checking',
         lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
-        message: 'Local library cache is empty. Checking the server once for recovery…',
+        message: 'Checking your saved library before restoring it to this device…',
       });
 
       try {
-        // CloudPersistenceBridge already uses normal getDocs successfully for the
-        // signed-in library. Reuse that path here instead of the stricter
-        // getDocsFromServer helper, which can fail even when normal Firebase reads
-        // are working in the browser.
+        const syncState = await verifyCloudLibraryComplete();
+        if (disposed) return;
+        if (!syncState.complete) {
+          publishCloudSyncHealth({
+            status: 'error',
+            lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+            message: `Your cloud library is still finishing its backup (${syncState.uploaded.toLocaleString()} of ${syncState.expected.toLocaleString()} books saved). Inkbound did not replace this device with an incomplete copy. Open the device that imported the library and let it finish syncing.`,
+          });
+          return;
+        }
+
         const snapshot = await getDocs(collection(db, 'users', uid, 'books'));
         if (disposed) return;
         const serverBooks = snapshot.docs
           .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
           .filter(Boolean);
+
+        if (syncState.expected > 0 && serverBooks.length < syncState.expected) {
+          publishCloudSyncHealth({
+            status: 'error',
+            lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+            message: `Inkbound found only ${serverBooks.length.toLocaleString()} of ${syncState.expected.toLocaleString()} expected books online, so it left this device untouched instead of restoring an incomplete library.`,
+          });
+          return;
+        }
 
         if (serverBooks.length > 0) {
           writeJson(BOOKS_KEY, serverBooks);
@@ -318,15 +361,15 @@ export const CloudServerRefreshBridge: React.FC = () => {
           status: serverBooks.length > 0 ? 'healthy' : 'error',
           lastSuccessfulSyncAt: syncedAt,
           message: serverBooks.length > 0
-            ? `Recovered ${serverBooks.length.toLocaleString()} books from Firebase without enabling background polling.`
-            : 'Firebase also returned an empty library. Inkbound did not create or delete any records during this recovery check.',
+            ? `Restored ${serverBooks.length.toLocaleString()} saved books to this device.`
+            : 'No saved books were found online. Inkbound did not create or delete anything during this check.',
         });
       } catch (error) {
         console.error('Inkbound one-time library recovery failed.', error);
         publishCloudSyncHealth({
           status: 'error',
           lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
-          message: 'Inkbound could not complete the one-time cloud recovery check. Your local data was not cleared.',
+          message: 'Inkbound could not finish checking your saved library. Your existing data was left unchanged.',
         });
       } finally {
         running.current = false;
@@ -339,10 +382,21 @@ export const CloudServerRefreshBridge: React.FC = () => {
       publishCloudSyncHealth({
         status: 'checking',
         lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
-        message: 'Running the cloud refresh you requested…',
+        message: 'Checking for your latest saved books and reading activity…',
       });
 
       try {
+        const syncState = await verifyCloudLibraryComplete();
+        if (disposed) return;
+        if (!syncState.complete) {
+          publishCloudSyncHealth({
+            status: 'error',
+            lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+            message: `Your cloud library is still finishing its backup (${syncState.uploaded.toLocaleString()} of ${syncState.expected.toLocaleString()} books saved). Inkbound kept the library already on this device instead of replacing it with an incomplete copy.`,
+          });
+          return;
+        }
+
         const [bookSnapshot, sessionSnapshot, profileSnapshot] = await Promise.all([
           getDocs(collection(db, 'users', uid, 'books')),
           getDocs(collection(db, 'users', uid, 'sessions')),
@@ -357,6 +411,15 @@ export const CloudServerRefreshBridge: React.FC = () => {
         const serverSessions = sessionSnapshot.docs
           .map((item) => (item.data() as CloudRecord<ReadingSession>).data)
           .filter(Boolean);
+
+        if (syncState.expected > 0 && serverBooks.length < syncState.expected) {
+          publishCloudSyncHealth({
+            status: 'error',
+            lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+            message: `Inkbound found only ${serverBooks.length.toLocaleString()} of ${syncState.expected.toLocaleString()} expected books online. The library already on this device was kept unchanged.`,
+          });
+          return;
+        }
 
         const currentBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const currentSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
@@ -391,14 +454,14 @@ export const CloudServerRefreshBridge: React.FC = () => {
         publishCloudSyncHealth({
           status: 'healthy',
           lastSuccessfulSyncAt: syncedAt,
-          message: `Cloud refresh finished. ${serverBooks.length.toLocaleString()} Firebase books were checked and missing cover/metadata fields were restored without enabling recurring polling.`,
+          message: `Your library is up to date. ${serverBooks.length.toLocaleString()} saved books were checked.`,
         });
       } catch (error) {
         console.error('Inkbound manual cloud refresh failed.', error);
         publishCloudSyncHealth({
           status: 'error',
           lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
-          message: 'The requested cloud refresh could not reach Firebase. Existing local data was left intact.',
+          message: 'Inkbound could not check for updates right now. The library already on this device was left unchanged.',
         });
       } finally {
         running.current = false;
