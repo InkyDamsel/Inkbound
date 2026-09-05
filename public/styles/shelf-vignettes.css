@@ -1,0 +1,176 @@
+/* Bookshelf Through Time — composed shelf-decoration vignettes.
+   These styles intentionally turn the generated transparent PNGs into small
+   layered shelf scenes instead of laying them out as isolated flex items. */
+
+/* The decoration wrapper is the only aria-hidden container with direct shelf PNGs. */
+div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) {
+  position: relative;
+  display: block !important;
+  flex: 0 0 230px !important;
+  width: 230px !important;
+  height: 138px !important;
+  margin-left: 18px !important;
+  padding: 0 !important;
+  overflow: visible;
+}
+
+/* Use one real PNG as the anchor object; the vignette adds two supporting props. */
+div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) > img {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 72px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: 138px !important;
+  max-height: 132px !important;
+  object-fit: contain !important;
+  transform-origin: bottom center;
+  filter: drop-shadow(0 9px 7px rgba(0, 0, 0, .45));
+}
+
+div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) > img:nth-of-type(n+2) {
+  display: none !important;
+}
+
+div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before,
+div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  z-index: 2;
+  background-repeat: no-repeat;
+  background-position: bottom center;
+  background-size: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 6px rgba(0, 0, 0, .42));
+}
+
+/* ---------- Quiet Library ---------- */
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(1) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 92px; height: 70px; left: 0;
+  background-image: url('/assets/shelf-decorations/bonus_book_stack.png');
+}
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(1) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 68px; height: 86px; right: 0;
+  background-image: url('/assets/shelf-decorations/quiet_library_vase.png');
+}
+
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(2) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) > img { left: 92px !important; max-height: 116px !important; }
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(2) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 110px; height: 65px; left: 0;
+  background-image: url('/assets/shelf-decorations/bonus_book_stack.png');
+}
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(2) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 54px; height: 68px; right: 4px;
+  background-image: url('/assets/shelf-decorations/bonus_inkwell.png');
+}
+
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(3) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) > img { left: 58px !important; max-height: 136px !important; }
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(3) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 72px; height: 84px; left: 0;
+  background-image: url('/assets/shelf-decorations/bonus_small_plant.png');
+}
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(3) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 76px; height: 56px; right: 0;
+  background-image: url('/assets/shelf-decorations/bonus_teacup.png');
+}
+
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(4) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) > img { left: 72px !important; max-height: 126px !important; }
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(4) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 105px; height: 68px; left: 0;
+  background-image: url('/assets/shelf-decorations/bonus_book_stack.png');
+}
+div[class*="from-stone-950"] [class*="space-y-7"] > div:nth-child(4) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 66px; height: 88px; right: 0;
+  background-image: url('/assets/shelf-decorations/quiet_library_vase.png');
+}
+
+/* ---------- Cozy Evening ---------- */
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(1) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 72px; height: 94px; left: 0;
+  background-image: url('/assets/shelf-decorations/cozy_evening_candle.png');
+}
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(1) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 80px; height: 64px; right: 0;
+  background-image: url('/assets/shelf-decorations/cozy_evening_mug.png');
+}
+
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(2) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) > img { left: 58px !important; }
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(2) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 102px; height: 72px; left: 0;
+  background-image: url('/assets/shelf-decorations/cozy_evening_blanket.png');
+}
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(2) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 92px; height: 62px; right: 0;
+  background-image: url('/assets/shelf-decorations/cozy_evening_sleepy_cat.png');
+}
+
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(3) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 74px; height: 106px; left: 0;
+  background-image: url('/assets/shelf-decorations/cozy_evening_dried_flowers.png');
+}
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(3) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 72px; height: 90px; right: 0;
+  background-image: url('/assets/shelf-decorations/cozy_evening_salt_lamp.png');
+}
+
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(4) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) > img { left: 68px !important; }
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(4) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 92px; height: 74px; left: 0;
+  background-image: url('/assets/shelf-decorations/bonus_books_trailing_plant.png');
+}
+div[class*="from-[#3a241c]"] [class*="space-y-7"] > div:nth-child(4) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 72px; height: 88px; right: 0;
+  background-image: url('/assets/shelf-decorations/cozy_evening_lantern.png');
+}
+
+/* ---------- Midnight Study ---------- */
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(1) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 82px; height: 82px; left: 0;
+  background-image: url('/assets/shelf-decorations/midnight_study_crystal.png');
+}
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(1) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 62px; height: 92px; right: 0;
+  background-image: url('/assets/shelf-decorations/midnight_study_glass_bottle.png');
+}
+
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(2) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 84px; height: 106px; left: 0;
+  background-image: url('/assets/shelf-decorations/midnight_study_hourglass.png');
+}
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(2) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 92px; height: 74px; right: 0;
+  background-image: url('/assets/shelf-decorations/midnight_study_skull_books.png');
+}
+
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(3) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) > img { left: 66px !important; }
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(3) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 88px; height: 96px; left: 0;
+  background-image: url('/assets/shelf-decorations/midnight_study_moon_bookend.png');
+}
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(3) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 68px; height: 86px; right: 0;
+  background-image: url('/assets/shelf-decorations/bonus_inkwell.png');
+}
+
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(4) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::before {
+  width: 86px; height: 98px; left: 0;
+  background-image: url('/assets/shelf-decorations/midnight_study_moon_orb.png');
+}
+div[class*="from-[#171825]"] [class*="space-y-7"] > div:nth-child(4) div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"])::after {
+  width: 76px; height: 92px; right: 0;
+  background-image: url('/assets/shelf-decorations/midnight_study_dark_plant.png');
+}
+
+/* Keep the four-shelf pagination layout intact on smaller screens; the vignette
+   becomes a compact accent instead of forcing extra horizontal scrolling. */
+@media (max-width: 720px) {
+  div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) {
+    flex-basis: 165px !important;
+    width: 165px !important;
+    height: 118px !important;
+    margin-left: 12px !important;
+    transform: scale(.88);
+    transform-origin: bottom left;
+  }
+}
