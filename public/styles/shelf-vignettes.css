@@ -1,23 +1,14 @@
-/* Bookshelf Through Time — decoration reset.
-   The decoration experiment is intentionally disabled; keep the existing
-   pagination and let the books themselves visually fill each shelf. */
+/* Bookshelf Through Time — book-only shelf layout.
+   Decorations were removed; keep the books visually distributed across the shelf. */
 
-/* Hide every shelf-decoration bundle without touching the book data or controls. */
-div[aria-hidden="true"]:has(> img[src*="/assets/shelf-decorations/"]) {
-  display: none !important;
-}
-
-/* When a decoration bundle exists in the shelf row, distribute the book buttons
-   across the full available width so the shelf reads as filled rather than sparse. */
-div:has(> div[aria-hidden="true"] > img[src*="/assets/shelf-decorations/"]) {
+.bookshelf-row {
   width: 100% !important;
   min-width: 100% !important;
   justify-content: space-between !important;
 }
 
-/* Keep the book spacing from getting too stretched on narrower screens. */
 @media (max-width: 900px) {
-  div:has(> div[aria-hidden="true"] > img[src*="/assets/shelf-decorations/"]) {
+  .bookshelf-row {
     justify-content: flex-start !important;
   }
 }
