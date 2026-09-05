@@ -10,9 +10,9 @@ import { readImportEnrichmentRetryProgress } from './features/import/importHisto
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
 import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.tsx';
+import { AdaptiveCloudPersistenceBridge } from './features/sync/AdaptiveCloudPersistenceBridge.tsx';
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
-import { CloudPersistenceBridge } from './features/sync/CloudPersistenceBridge.tsx';
 import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
 import { LibrarySyncCheckpointBridge } from './features/sync/LibrarySyncCheckpointBridge.tsx';
@@ -108,7 +108,7 @@ const InkboundApplication = () => (
           <AuthSessionGate>
             <SecurityBootstrap />
             <LibrarySyncCheckpointBridge />
-            <CloudPersistenceBridge />
+            <AdaptiveCloudPersistenceBridge />
             <CloudServerRefreshBridge />
             <ManualCoverLedgerBridge />
             <ProtectedBookDetailsLedgerBridge />
