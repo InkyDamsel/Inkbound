@@ -22,7 +22,7 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
-import { hydrateLargeBrowserStorage, hydrateNoncriticalLargeBrowserStorage } from './platform/largeBrowserStorage.ts';
+import { hydrateDeferredLargeBrowserStorage, hydrateLargeBrowserStorage } from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
 import { getRuntimeStorage } from './platform/runtimeStorage.ts';
 import {
@@ -188,7 +188,7 @@ async function bootstrap() {
 
   if (!isPublicWebsite && !isNativeRuntime()) {
     window.setTimeout(() => {
-      void hydrateNoncriticalLargeBrowserStorage();
+      void hydrateDeferredLargeBrowserStorage();
     }, 0);
   }
 
