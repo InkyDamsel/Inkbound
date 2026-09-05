@@ -12,19 +12,17 @@ export interface CloudSyncHealth {
 let currentHealth: CloudSyncHealth = {
   status: 'idle',
   lastSuccessfulSyncAt: null,
-  message: 'Waiting to update your library across devices.',
+  message: 'Your library is available on this device. Inkbound will save changes to your account when a connection is available.',
 };
 
-function makePartialBackupReaderFriendly(next: CloudSyncHealth): CloudSyncHealth {
-  if (next.status !== 'error') return next;
-
+function makeReaderFriendly(next: CloudSyncHealth): CloudSyncHealth {
   const progress = next.message.match(/\(([\d,]+) of ([\d,]+) books saved\)/i);
   if (progress) {
     const [, saved, expected] = progress;
     return {
       ...next,
       status: 'idle',
-      message: `${saved} of ${expected} books are safely backed up. Your complete library is safe on this device while Inkbound saves the rest, and it will not replace it with an incomplete copy.`,
+      message: `${saved} of ${expected} books are saved to your account. Your complete library is safe on this device while Inkbound saves the rest.`,
     };
   }
 
@@ -34,7 +32,21 @@ function makePartialBackupReaderFriendly(next: CloudSyncHealth): CloudSyncHealth
     return {
       ...next,
       status: 'idle',
-      message: `${saved} of ${expected} books are safely backed up. Your complete library remains untouched on this device while the rest finish saving.`,
+      message: `${saved} of ${expected} books are saved to your account. Your complete library stays safe on this device while the rest finish saving.`,
+    };
+  }
+
+  const normalized = next.message.toLowerCase();
+  if (normalized.includes('firebase') || normalized.includes('firestore') || normalized.includes('polling') || normalized.includes('canonical')) {
+    return {
+      ...next,
+      message: next.status === 'healthy'
+        ? 'Your latest changes are saved and available across your signed-in devices.'
+        : next.status === 'checking'
+          ? 'Inkbound is checking for your latest saved books and reading activity.'
+          : next.status === 'error'
+            ? 'Inkbound could not reach your saved account copy right now. Your library on this device is still available, and you can try again when your connection improves.'
+            : 'Your library is available on this device. Inkbound will save changes to your account when a connection is available.',
     };
   }
 
@@ -46,7 +58,7 @@ export function getCloudSyncHealth(): CloudSyncHealth {
 }
 
 export function publishCloudSyncHealth(next: CloudSyncHealth) {
-  currentHealth = makePartialBackupReaderFriendly(next);
+  currentHealth = makeReaderFriendly(next);
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent<CloudSyncHealth>(INKBOUND_CLOUD_SYNC_HEALTH_EVENT, { detail: currentHealth }));
 }
