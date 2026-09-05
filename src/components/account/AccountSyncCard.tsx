@@ -14,11 +14,23 @@ const formatLastSync = (value: string | null) => {
   return Number.isNaN(date.getTime()) ? 'Updated previously' : date.toLocaleString();
 };
 
+const isPartialBackup = (health: CloudSyncHealth) =>
+  health.status === 'error' && health.message.toLowerCase().includes('still finishing its backup');
+
 const friendlyCloudMessage = (health: CloudSyncHealth) => {
-  if (health.status === 'healthy') return 'Your latest changes are saved and available across your signed-in devices.';
+  if (isPartialBackup(health)) {
+    const match = health.message.match(/\(([^)]+ books saved)\)/i);
+    const progress = match?.[1];
+    return progress
+      ? `${progress}. Your complete library is safe on this device while Inkbound finishes saving the rest to your account.`
+      : 'Your complete library is safe on this device while Inkbound finishes saving the rest to your account.';
+  }
+  if (health.status === 'healthy') {
+    return health.message || 'Your latest changes are saved and available across your signed-in devices.';
+  }
   if (health.status === 'checking') return 'Inkbound is checking for your latest saved books and reading activity.';
   if (health.status === 'error') return health.message;
-  return 'Inkbound will keep your saved library available across your signed-in devices.';
+  return 'Your library is available on this device. Check for updates whenever you want Inkbound to compare it with your saved account copy.';
 };
 
 export const AccountSyncCard: React.FC = () => {
@@ -43,6 +55,7 @@ export const AccountSyncCard: React.FC = () => {
     () => sync.user?.providerData.some((provider) => provider.providerId === 'password') ?? false,
     [sync.user],
   );
+  const partialBackup = isPartialBackup(cloudHealth);
 
   const submitEmailAuth = (event: FormEvent) => {
     event.preventDefault();
@@ -183,16 +196,16 @@ export const AccountSyncCard: React.FC = () => {
             </div>
           )}
 
-          <div className={`flex items-start gap-3 rounded-2xl border p-4 ${cloudHealth.status === 'error' ? 'border-rose-500/30 bg-rose-950/15' : cloudHealth.status === 'checking' ? 'border-amber-500/25 bg-amber-950/10' : 'border-emerald-500/25 bg-emerald-950/15'}`}>
-            <Cloud className={`mt-0.5 h-5 w-5 shrink-0 ${cloudHealth.status === 'error' ? 'text-rose-300' : cloudHealth.status === 'checking' ? 'text-amber-300' : 'text-emerald-300'}`} />
+          <div className={`flex items-start gap-3 rounded-2xl border p-4 ${cloudHealth.status === 'error' && !partialBackup ? 'border-rose-500/30 bg-rose-950/15' : cloudHealth.status === 'checking' || partialBackup ? 'border-amber-500/25 bg-amber-950/10' : 'border-emerald-500/25 bg-emerald-950/15'}`}>
+            <Cloud className={`mt-0.5 h-5 w-5 shrink-0 ${cloudHealth.status === 'error' && !partialBackup ? 'text-rose-300' : cloudHealth.status === 'checking' || partialBackup ? 'text-amber-300' : 'text-emerald-300'}`} />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-[var(--ink-ivory)]">
-                {cloudHealth.status === 'error' ? 'Your library needs attention' : cloudHealth.status === 'checking' ? 'Checking your saved library…' : cloudHealth.status === 'healthy' ? 'Your library is up to date' : 'Getting your library ready'}
+                {partialBackup ? 'Saving your library' : cloudHealth.status === 'error' ? 'Your library needs attention' : cloudHealth.status === 'checking' ? 'Checking your saved library…' : cloudHealth.status === 'healthy' ? 'Your library is up to date' : 'Your library is available'}
               </p>
               <p className="mt-1 break-words text-xs leading-5 text-[var(--ink-muted)]">{friendlyCloudMessage(cloudHealth)}</p>
               <button type="button" onClick={requestCloudRefresh} disabled={cloudHealth.status === 'checking'} className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--ink-border)] px-3 text-xs font-semibold text-[var(--ink-ivory)] disabled:opacity-50">
                 <RefreshCw className={`h-4 w-4 ${cloudHealth.status === 'checking' ? 'animate-spin' : ''}`} />
-                {cloudHealth.status === 'error' ? 'Try again' : cloudHealth.status === 'checking' ? 'Checking…' : 'Check for updates'}
+                {partialBackup ? 'Check saving progress' : cloudHealth.status === 'error' ? 'Try again' : cloudHealth.status === 'checking' ? 'Checking…' : 'Check for updates'}
               </button>
             </div>
           </div>
