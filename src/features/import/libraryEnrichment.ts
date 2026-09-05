@@ -233,10 +233,24 @@ export function analyzeImportDuplicates(
   const seenIsbns = new Set<string>();
   const seenTitleAuthors = new Set<string>();
 
+  // Build the existing-library identity indexes once. The previous implementation
+  // scanned every existing book for every incoming row, which turns a 50K import
+  // against a 16K library into hundreds of millions of comparisons and can hang
+  // the browser. Indexed lookups keep duplicate analysis effectively linear.
+  const libraryIsbns = new Set<string>();
+  const libraryTitleAuthors = new Set<string>();
+  for (const book of library) {
+    bookIdentifiers(book).forEach((isbn) => libraryIsbns.add(isbn));
+    const key = titleAuthorKey(book.work.title, book.work.author);
+    if (key) libraryTitleAuthors.add(key);
+  }
+
   for (const item of items) {
     const isbn = compactIsbn(item.isbn);
     const key = titleAuthorKey(item.title, item.author);
-    const matchesExistingLibrary = library.some((book) => isSameBookIdentity(item, book));
+    const matchesExistingLibrary = Boolean(
+      (isbn && libraryIsbns.has(isbn)) || (key && libraryTitleAuthors.has(key)),
+    );
     const matchesCurrentBatch = Boolean((isbn && seenIsbns.has(isbn)) || (key && seenTitleAuthors.has(key)));
 
     if (matchesExistingLibrary || matchesCurrentBatch) {
@@ -354,10 +368,6 @@ function importSearchQueries(item: ImportRecordItem): string[] {
   const formatTerms = formatSearchTerms(item);
   const hasIsbn = Boolean(compactIsbn(item.isbn));
 
-  // When Goodreads or another source provides no ISBN, search the requested
-  // edition format explicitly before the generic title/author fallback. This is
-  // especially important for Kindle/ebook and audiobook releases that may never
-  // have an ISBN but still exist in our metadata sources.
   if (!hasIsbn && fullTitle && primaryAuthor) {
     formatTerms.forEach((term) => queries.push(`${fullTitle} ${primaryAuthor} ${term}`));
   }
@@ -372,8 +382,6 @@ function importSearchQueries(item: ImportRecordItem): string[] {
   if (attempts > 1 && normalizedTitle && primaryAuthor) queries.push(`${normalizedTitle} ${primaryAuthor}`);
   if (attempts > 1 && shortTitle) queries.push(shortTitle);
 
-  // Keep the normal fast path bounded, but allow one extra format-aware query
-  // when there is no ISBN so ebook/audiobook imports get a fair lookup chance.
   const maxQueries = !hasIsbn && formatTerms.length > 0 ? 5 : 4;
   return [...new Set(queries.map((query) => query.trim()).filter(Boolean))].slice(0, maxQueries);
 }
