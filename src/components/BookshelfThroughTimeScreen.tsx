@@ -11,6 +11,13 @@ interface BookshelfThroughTimeScreenProps {
 
 type ShelfTheme = 'quiet-library' | 'cozy-evening' | 'midnight-study';
 
+type ShelfDecoration = {
+  src: string;
+  label: string;
+  width: number;
+  height: number;
+};
+
 interface ShelfPreferences {
   month: string;
   theme: ShelfTheme;
@@ -22,6 +29,7 @@ interface ShelfPreferences {
 const PREFERENCES_KEY = 'inkbound_bookshelf_through_time_preferences';
 const BOOKS_PER_SHELF = 8;
 const MINIMUM_SHELF_ROWS = 3;
+const DECORATION_ROOT = '/assets/shelf-decorations';
 
 const themeClasses: Record<ShelfTheme, string> = {
   'quiet-library': 'from-stone-950 via-[#302923] to-[#171411]',
@@ -34,6 +42,59 @@ const shelfWoodClasses: Record<ShelfTheme, string> = {
   'cozy-evening': 'from-[#a76b43] via-[#7d4c31] to-[#543120]',
   'midnight-study': 'from-[#5d493e] via-[#42352f] to-[#2d2726]',
 };
+
+const themeDecorations: Record<ShelfTheme, ShelfDecoration[]> = {
+  'quiet-library': [
+    { src: `${DECORATION_ROOT}/quiet_library_books_plant.png`, label: 'books and plant', width: 118, height: 108 },
+    { src: `${DECORATION_ROOT}/quiet_library_clock.png`, label: 'antique clock', width: 82, height: 90 },
+    { src: `${DECORATION_ROOT}/quiet_library_framed_art.png`, label: 'framed artwork', width: 92, height: 108 },
+    { src: `${DECORATION_ROOT}/quiet_library_globe.png`, label: 'globe', width: 96, height: 100 },
+    { src: `${DECORATION_ROOT}/quiet_library_squirrel_bookend.png`, label: 'bookend', width: 100, height: 88 },
+    { src: `${DECORATION_ROOT}/quiet_library_trailing_plant.png`, label: 'trailing plant', width: 106, height: 118 },
+    { src: `${DECORATION_ROOT}/quiet_library_vase.png`, label: 'ceramic vase', width: 80, height: 96 },
+  ],
+  'cozy-evening': [
+    { src: `${DECORATION_ROOT}/cozy_evening_blanket.png`, label: 'folded blanket', width: 116, height: 80 },
+    { src: `${DECORATION_ROOT}/cozy_evening_candle.png`, label: 'candle', width: 70, height: 92 },
+    { src: `${DECORATION_ROOT}/cozy_evening_dried_flowers.png`, label: 'dried flowers', width: 92, height: 112 },
+    { src: `${DECORATION_ROOT}/cozy_evening_lantern.png`, label: 'lantern', width: 84, height: 108 },
+    { src: `${DECORATION_ROOT}/cozy_evening_mug.png`, label: 'reading mug', width: 88, height: 80 },
+    { src: `${DECORATION_ROOT}/cozy_evening_plant.png`, label: 'cozy plant', width: 96, height: 106 },
+    { src: `${DECORATION_ROOT}/cozy_evening_salt_lamp.png`, label: 'warm lamp', width: 78, height: 88 },
+    { src: `${DECORATION_ROOT}/cozy_evening_sleepy_cat.png`, label: 'sleepy cat', width: 122, height: 78 },
+  ],
+  'midnight-study': [
+    { src: `${DECORATION_ROOT}/midnight_study_celestial_sphere.png`, label: 'celestial sphere', width: 104, height: 106 },
+    { src: `${DECORATION_ROOT}/midnight_study_crystal.png`, label: 'crystal cluster', width: 92, height: 82 },
+    { src: `${DECORATION_ROOT}/midnight_study_dark_plant.png`, label: 'dark plant', width: 98, height: 112 },
+    { src: `${DECORATION_ROOT}/midnight_study_glass_bottle.png`, label: 'glass bottle', width: 74, height: 100 },
+    { src: `${DECORATION_ROOT}/midnight_study_hourglass.png`, label: 'hourglass', width: 76, height: 102 },
+    { src: `${DECORATION_ROOT}/midnight_study_moon_bookend.png`, label: 'moon bookend', width: 98, height: 96 },
+    { src: `${DECORATION_ROOT}/midnight_study_moon_orb.png`, label: 'moon orb', width: 94, height: 96 },
+    { src: `${DECORATION_ROOT}/midnight_study_skull_books.png`, label: 'books and skull', width: 118, height: 92 },
+  ],
+};
+
+const sharedDecorations: ShelfDecoration[] = [
+  { src: `${DECORATION_ROOT}/bonus_book_stack.png`, label: 'stacked books', width: 108, height: 72 },
+  { src: `${DECORATION_ROOT}/bonus_books_trailing_plant.png`, label: 'books and trailing plant', width: 124, height: 106 },
+  { src: `${DECORATION_ROOT}/bonus_candle_holder.png`, label: 'candle holder', width: 70, height: 94 },
+  { src: `${DECORATION_ROOT}/bonus_cat_books.png`, label: 'cat and books', width: 118, height: 92 },
+  { src: `${DECORATION_ROOT}/bonus_cloche.png`, label: 'glass cloche', width: 84, height: 98 },
+  { src: `${DECORATION_ROOT}/bonus_inkwell.png`, label: 'inkwell', width: 76, height: 82 },
+  { src: `${DECORATION_ROOT}/bonus_small_plant.png`, label: 'small plant', width: 82, height: 92 },
+  { src: `${DECORATION_ROOT}/bonus_teacup.png`, label: 'teacup', width: 84, height: 72 },
+];
+
+function getShelfDecorations(theme: ShelfTheme, shelfIndex: number, bookCount: number): ShelfDecoration[] {
+  const themed = themeDecorations[theme];
+  const primary = themed[shelfIndex % themed.length];
+  if (bookCount >= 6) return [primary];
+
+  const secondaryPool = shelfIndex % 2 === 0 ? sharedDecorations : themed;
+  const secondary = secondaryPool[(shelfIndex * 3 + bookCount + 1) % secondaryPool.length];
+  return secondary.src === primary.src ? [primary] : [primary, secondary];
+}
 
 function validLocalDate(year: number, month: number, day: number): Date | null {
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
@@ -220,10 +281,11 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
           <div className="relative z-10 mt-8 space-y-7">
             {Array.from({ length: shelfRowCount }, (_, shelfIndex) => {
               const shelfSlice = shelfBooks.slice(shelfIndex * BOOKS_PER_SHELF, shelfIndex * BOOKS_PER_SHELF + BOOKS_PER_SHELF);
+              const decorations = getShelfDecorations(preferences.theme, shelfIndex, shelfSlice.length);
               return (
                 <div key={shelfIndex} className="min-w-0">
-                  <div className="overflow-x-auto overflow-y-hidden overscroll-x-contain px-1 pb-1 sm:px-2">
-                    <div className="flex min-h-36 min-w-max items-end gap-2 sm:gap-3">
+                  <div className="overflow-x-auto overflow-y-visible overscroll-x-contain px-1 pb-1 sm:px-2">
+                    <div className="flex min-h-36 min-w-full w-max items-end gap-2 sm:gap-3">
                       {shelfSlice.map((book, index) => {
                         const isNewThisMonth = monthKey(book.dateFinished) === selectedMonth;
                         const { height, width } = getShelfBookDimensions(book, index);
@@ -292,9 +354,22 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                           </button>
                         );
                       })}
-                      {shelfSlice.length === 0 && (
-                        <div className="flex h-24 w-[min(72vw,360px)] items-center justify-center rounded-2xl border border-dashed border-white/15 px-4 text-center text-sm text-white/35">Room for future stories</div>
-                      )}
+
+                      <div className={`pointer-events-none flex shrink-0 items-end gap-1.5 sm:gap-2 ${shelfSlice.length > 0 ? 'ml-auto pl-5 sm:pl-8' : 'mx-auto'}`} aria-hidden="true">
+                        {decorations.map((decoration, decorationIndex) => (
+                          <img
+                            key={`${decoration.src}-${shelfIndex}-${decorationIndex}`}
+                            src={decoration.src}
+                            alt=""
+                            title={decoration.label}
+                            draggable={false}
+                            className="select-none object-contain drop-shadow-[0_9px_9px_rgba(0,0,0,.42)]"
+                            style={{ width: decoration.width, height: decoration.height }}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
                   <div className="relative h-5">
