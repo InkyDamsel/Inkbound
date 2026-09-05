@@ -15,8 +15,10 @@ function hasLocalLibrary(): boolean {
   try {
     const raw = getRuntimeStorage().getItem(BOOKS_KEY);
     if (!raw) return false;
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) && parsed.length > 0;
+    const trimmed = raw.trim();
+    // Avoid parsing a 40k+ book JSON payload just to answer whether a local
+    // working library exists. The actual library owner will parse it once.
+    return trimmed.startsWith('[') && trimmed !== '[]';
   } catch {
     return false;
   }
