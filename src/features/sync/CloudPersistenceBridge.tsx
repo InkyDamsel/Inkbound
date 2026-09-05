@@ -36,7 +36,7 @@ const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
 const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
 const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
-const BRIDGE_VERSION = '9';
+const BRIDGE_VERSION = '10';
 const SYNC_FLUSH_DEBOUNCE_MS = 3000;
 const INITIAL_UPLOAD_BATCH_SIZE = 100;
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
@@ -321,12 +321,6 @@ function applyPending<T extends { id: string }>(cloudItems: T[], mutations: Reco
   return [...merged.values()];
 }
 
-async function runInBatches(tasks: Array<() => Promise<unknown>>) {
-  for (let index = 0; index < tasks.length; index += INITIAL_UPLOAD_BATCH_SIZE) {
-    await Promise.all(tasks.slice(index, index + INITIAL_UPLOAD_BATCH_SIZE).map((task) => task()));
-  }
-}
-
 function removeNoOpMutations<T>(mutations: Record<string, RecordMutation<T>>, baseline: Record<string, string>) {
   Object.entries(mutations).forEach(([id, mutation]) => {
     if (mutation.operation === 'delete') {
@@ -358,7 +352,54 @@ export const CloudPersistenceBridge: React.FC = () => {
     let flushRequested = false;
     const unsubscribers: Array<() => void> = [];
 
+    const checkpointRecordBatch = <T,>(
+      kind: 'books' | 'sessions',
+      entries: Array<[string, RecordMutation<T>]>,
+    ) => {
+      const latestPending = readPending(uid);
+      const latestBaseline = readBaseline(uid);
+      const pendingCollection = kind === 'books' ? latestPending.books : latestPending.sessions;
+      const baselineCollection = kind === 'books' ? latestBaseline.books : latestBaseline.sessions;
+
+      entries.forEach(([id, mutation]) => {
+        if (stable(pendingCollection[id]) !== stable(mutation)) return;
+        if (mutation.operation === 'delete') delete baselineCollection[id];
+        else if (mutation.data !== undefined) baselineCollection[id] = stable(mutation.data);
+        delete pendingCollection[id];
+      });
+
+      writeBaseline(uid, latestBaseline);
+      writePending(uid, latestPending);
+    };
+
+    const uploadRecordEntries = async <T,>(
+      kind: 'books' | 'sessions',
+      entries: Array<[string, RecordMutation<T>]>,
+    ) => {
+      for (let index = 0; index < entries.length; index += INITIAL_UPLOAD_BATCH_SIZE) {
+        if (disposed) return;
+        const batch = entries.slice(index, index + INITIAL_UPLOAD_BATCH_SIZE);
+        await Promise.all(batch.map(async ([id, mutation]) => {
+          const target = doc(db!, 'users', uid, kind, id);
+          if (mutation.operation === 'delete') await deleteDoc(target);
+          else if (mutation.data) {
+            await setDoc(target, {
+              data: mutation.data,
+              updatedAt: serverTimestamp(),
+              clientUpdatedAt: mutation.clientUpdatedAt,
+            }, { merge: true });
+          }
+        }));
+
+        // Checkpoint every successful batch immediately. If the browser, app, or
+        // device closes after this point, already-saved records are not requeued.
+        checkpointRecordBatch(kind, batch);
+      }
+    };
+
     const performFlushPending = async () => {
+      if (!navigator.onLine) return;
+
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
       removeNoOpMutations(pending.books, baseline.books);
@@ -368,51 +409,32 @@ export const CloudPersistenceBridge: React.FC = () => {
 
       const bookEntries = Object.entries(pending.books);
       const sessionEntries = Object.entries(pending.sessions);
-      const tasks: Array<() => Promise<unknown>> = [];
 
-      bookEntries.forEach(([id, mutation]) => tasks.push(async () => {
-        const target = doc(db!, 'users', uid, 'books', id);
-        if (mutation.operation === 'delete') await deleteDoc(target);
-        else if (mutation.data) await setDoc(target, { data: mutation.data, updatedAt: serverTimestamp(), clientUpdatedAt: mutation.clientUpdatedAt }, { merge: true });
-      }));
-      sessionEntries.forEach(([id, mutation]) => tasks.push(async () => {
-        const target = doc(db!, 'users', uid, 'sessions', id);
-        if (mutation.operation === 'delete') await deleteDoc(target);
-        else if (mutation.data) await setDoc(target, { data: mutation.data, updatedAt: serverTimestamp(), clientUpdatedAt: mutation.clientUpdatedAt }, { merge: true });
-      }));
-      if (tasks.length) await runInBatches(tasks);
+      await uploadRecordEntries<UserBookRecord>('books', bookEntries);
+      await uploadRecordEntries<ReadingSession>('sessions', sessionEntries);
 
-      let preparedProfile: ReaderProfile | undefined;
-      if (pending.profile) {
-        preparedProfile = await prepareCloudProfile(uid, pending.profile.data);
+      const latestBeforeProfile = readPending(uid);
+      if (pending.profile && stable(latestBeforeProfile.profile) === stable(pending.profile)) {
+        const preparedProfile = await prepareCloudProfile(uid, pending.profile.data);
         await setDoc(doc(db!, 'users', uid, 'profile', 'current'), {
-          data: preparedProfile, updatedAt: serverTimestamp(), clientUpdatedAt: pending.profile.clientUpdatedAt,
+          data: preparedProfile,
+          updatedAt: serverTimestamp(),
+          clientUpdatedAt: pending.profile.clientUpdatedAt,
         }, { merge: true });
-      }
 
-      const latest = readPending(uid);
-      bookEntries.forEach(([id, mutation]) => {
-        if (stable(latest.books[id]) !== stable(mutation)) return;
-        if (mutation.operation === 'delete') delete baseline.books[id];
-        else if (mutation.data) baseline.books[id] = stable(mutation.data);
-        delete latest.books[id];
-      });
-      sessionEntries.forEach(([id, mutation]) => {
-        if (stable(latest.sessions[id]) !== stable(mutation)) return;
-        if (mutation.operation === 'delete') delete baseline.sessions[id];
-        else if (mutation.data) baseline.sessions[id] = stable(mutation.data);
-        delete latest.sessions[id];
-      });
-      if (pending.profile && preparedProfile && stable(latest.profile) === stable(pending.profile)) {
-        const fingerprint = stable(preparedProfile);
-        baseline.profile = fingerprint;
-        profileFingerprint.current = fingerprint;
-        localStorage.setItem(PROFILE_KEY, fingerprint);
-        delete latest.profile;
-        notifyCloudDataUpdated([PROFILE_KEY]);
+        const latestPending = readPending(uid);
+        if (stable(latestPending.profile) === stable(pending.profile)) {
+          const latestBaseline = readBaseline(uid);
+          const fingerprint = stable(preparedProfile);
+          latestBaseline.profile = fingerprint;
+          profileFingerprint.current = fingerprint;
+          localStorage.setItem(PROFILE_KEY, fingerprint);
+          delete latestPending.profile;
+          writeBaseline(uid, latestBaseline);
+          writePending(uid, latestPending);
+          notifyCloudDataUpdated([PROFILE_KEY]);
+        }
       }
-      writeBaseline(uid, baseline);
-      writePending(uid, latest);
     };
 
     const flushPending = (): Promise<void> => {
@@ -489,11 +511,6 @@ export const CloudPersistenceBridge: React.FC = () => {
       const cloudSessions = sessionSnapshot ? sessionSnapshot.docs.map((item) => (item.data() as CloudRecord<ReadingSession>).data).filter(Boolean) : localSessions;
 
       if (sameAccount && !intentionalClear && bookSnapshot && sessionSnapshot) {
-        // Metadata enrichment can finish locally before Firestore has persisted every
-        // enriched book. Preserve richer covers/summaries/edition data by merging
-        // those fields onto the cloud record and queueing the merged record upward.
-        // User-owned reading state still comes from the cloud copy, so this recovery
-        // cannot roll back ratings, statuses, progress, notes, or other newer edits.
         protectRicherLocalBookMetadata(localBooks, cloudBooks, pending.books);
         reconcileHydrationChanges(
           localBooks,
@@ -607,7 +624,7 @@ export const CloudPersistenceBridge: React.FC = () => {
       hydrated.current = true;
       localStorage.setItem(BRIDGE_VERSION_KEY, BRIDGE_VERSION);
       notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
-      try { await flushPending(); } catch { /* durable pending queue retries on the next local change/sign-out */ }
+      try { await flushPending(); } catch { /* Durable queue remains for the next open/reconnect. */ }
     };
 
     void initialize().catch(() => {
@@ -619,9 +636,19 @@ export const CloudPersistenceBridge: React.FC = () => {
       }
       hydrated.current = true;
       notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
+      if (navigator.onLine) void flushPending().catch(() => undefined);
     });
 
     const preserve = () => captureCurrentChanges();
+    const resumePendingSync = () => {
+      if (!hydrated.current || disposed || !navigator.onLine) return;
+      captureCurrentChanges();
+      void flushPending().catch(() => undefined);
+    };
+    const handleVisibilityChange = () => {
+      preserve();
+      if (document.visibilityState === 'visible') resumePendingSync();
+    };
     const syncNow = (event: Event) => {
       if (!hydrated.current || disposed) return;
       const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
@@ -640,7 +667,9 @@ export const CloudPersistenceBridge: React.FC = () => {
     };
 
     window.addEventListener('pagehide', preserve);
-    document.addEventListener('visibilitychange', preserve);
+    window.addEventListener('online', resumePendingSync);
+    window.addEventListener('focus', resumePendingSync);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncNow);
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
     return () => {
@@ -648,7 +677,9 @@ export const CloudPersistenceBridge: React.FC = () => {
       disposed = true;
       if (flushTimer !== undefined) window.clearTimeout(flushTimer);
       window.removeEventListener('pagehide', preserve);
-      document.removeEventListener('visibilitychange', preserve);
+      window.removeEventListener('online', resumePendingSync);
+      window.removeEventListener('focus', resumePendingSync);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, syncNow);
       window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
       unsubscribers.forEach((unsubscribe) => unsubscribe());
