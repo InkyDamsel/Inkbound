@@ -202,20 +202,6 @@ async function bootstrap() {
       void hydrateDeferredLargeBrowserStorage();
     }, 0);
   }
-
-  // During the web beta, correctness is more important than offline shell caching.
-  // A previous worker cached /app and index.html and could strand returning users
-  // on an obsolete build. The retirement worker clears those caches and unregisters
-  // itself; future visits then load the deployed app directly from Hosting.
-  if (import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      void navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
-        .then((registration) => registration.update())
-        .catch(() => {
-          // Service-worker cleanup is best effort and must never block Inkbound.
-        });
-    }, { once: true });
-  }
 }
 
 void bootstrap().catch((error) => {
