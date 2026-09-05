@@ -22,7 +22,11 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
-import { hydrateDeferredLargeBrowserStorage, hydrateLargeBrowserStorage } from './platform/largeBrowserStorage.ts';
+import {
+  hydrateDeferredLargeBrowserStorage,
+  hydrateLargeBrowserStorage,
+  prepareLargeBrowserStorageForStartup,
+} from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
 import {
   getNativeRuntimeError,
@@ -57,7 +61,6 @@ if (!rootElement) {
 
 const isPublicWebsite = !isNativeRuntime() && window.location.pathname === '/';
 const AUTH_OPEN_GRACE_MS = 1800;
-const STORAGE_OPEN_GRACE_MS = 2500;
 
 const OpeningScreen = ({ message }: { message: string }) => (
   <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
@@ -147,28 +150,13 @@ const InkboundApplication = () => (
   </BreakpointProvider>
 );
 
-async function restoreStartupStorageWithoutBlocking() {
-  let timeoutId: number | undefined;
-  try {
-    await Promise.race([
-      hydrateLargeBrowserStorage(),
-      new Promise<void>((resolve) => {
-        timeoutId = window.setTimeout(resolve, STORAGE_OPEN_GRACE_MS);
-      }),
-    ]);
-  } catch (error) {
-    console.warn('Inkbound could not fully restore browser storage before opening.', error);
-  } finally {
-    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-  }
-}
-
 async function bootstrap() {
   if (!isPublicWebsite && !isNativeRuntime()) {
-    // Restore sync-critical local values when possible, but never hold the whole
-    // application hostage to a blocked/corrupt IndexedDB database. Cloud sync can
-    // finish recovery after the UI is visible.
-    await restoreStartupStorageWithoutBlocking();
+    // Install the storage compatibility layer synchronously, but do not touch
+    // IndexedDB before first paint. This protects an existing large library from
+    // early React writes while guaranteeing browser database work can never block
+    // Inkbound from opening.
+    prepareLargeBrowserStorageForStartup();
   }
 
   if (!isPublicWebsite) {
@@ -189,6 +177,10 @@ async function bootstrap() {
     void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
   }
 
+  // First paint comes before IndexedDB/library restoration. Returning users must
+  // always get a usable application shell even if Safari/Chrome has a blocked or
+  // unhealthy browser database. Hydration refreshes App's canonical books state
+  // through the existing cloud-data event when it completes.
   createRoot(rootElement).render(
     <StrictMode>
       <AppErrorBoundary>
@@ -199,7 +191,9 @@ async function bootstrap() {
 
   if (!isPublicWebsite && !isNativeRuntime()) {
     window.setTimeout(() => {
-      void hydrateDeferredLargeBrowserStorage();
+      void hydrateLargeBrowserStorage().finally(() => {
+        void hydrateDeferredLargeBrowserStorage();
+      });
     }, 0);
   }
 }
