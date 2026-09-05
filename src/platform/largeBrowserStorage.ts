@@ -3,6 +3,8 @@ const STORE_NAME = 'entries';
 const DB_VERSION = 1;
 const LOCAL_STORAGE_SOFT_LIMIT = 1_500_000;
 
+export const LARGE_BROWSER_STORAGE_HYDRATED_EVENT = 'inkbound:large-browser-storage-hydrated';
+
 const exactManagedKeys = new Set([
   'inkbound_books',
   'inkbound_import_enrichment_queue_v3',
@@ -26,6 +28,8 @@ const cache = new Map<string, string>();
 const pendingWrites = new Set<Promise<void>>();
 let databasePromise: Promise<IDBDatabase | null> | null = null;
 let installed = false;
+let startupHydrationPending = false;
+let startupHydrationPromise: Promise<void> | null = null;
 let deferredHydrationPromise: Promise<void> | null = null;
 let originalGetItem: Storage['getItem'] | null = null;
 let originalSetItem: Storage['setItem'] | null = null;
@@ -45,6 +49,10 @@ function isWindowLocalStorage(storage: Storage) {
   } catch {
     return false;
   }
+}
+
+function announceStartupHydrated() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(LARGE_BROWSER_STORAGE_HYDRATED_EVENT));
 }
 
 function openDatabase(): Promise<IDBDatabase | null> {
@@ -167,6 +175,11 @@ function installStorageBridge() {
       return;
     }
 
+    // React mounts before IndexedDB restoration now. During that brief window the
+    // app may try to persist its initial empty state. Never let that overwrite the
+    // reader's authoritative IndexedDB library or sync baselines.
+    if (startupHydrationPending && isStartupKey(key)) return;
+
     const normalized = String(value);
     cache.set(key, normalized);
     trackWrite(putLargeValue(key, normalized));
@@ -185,6 +198,7 @@ function installStorageBridge() {
 
   Storage.prototype.removeItem = function removeItem(key: string): void {
     if (isWindowLocalStorage(this) && isManagedKey(key)) {
+      if (startupHydrationPending && isStartupKey(key)) return;
       cache.delete(key);
       trackWrite(deleteLargeValue(key));
     }
@@ -228,18 +242,42 @@ export async function flushLargeBrowserStorage(): Promise<void> {
 }
 
 /**
- * Restore only the values required to safely open the reader's working library.
- * Import history and enrichment caches are intentionally deferred so a monster
- * library does not have to clone every oversized IndexedDB value before React can
- * render the application shell.
+ * Install the localStorage bridge synchronously so React can render immediately.
+ * Startup-managed writes are temporarily protected until IndexedDB restoration
+ * completes, preventing an empty first render from clobbering an existing library.
  */
-export async function hydrateLargeBrowserStorage(): Promise<void> {
-  if (typeof window === 'undefined' || typeof Storage === 'undefined' || typeof indexedDB === 'undefined') return;
+export function prepareLargeBrowserStorageForStartup(): void {
+  if (typeof window === 'undefined' || typeof Storage === 'undefined') return;
+  startupHydrationPending = true;
   installStorageBridge();
+}
 
-  const startupEntries = await readMatchingLargeValues((key) => isManagedKey(key) && isStartupKey(key));
-  startupEntries.forEach(([key, value]) => cache.set(key, value));
-  await migrateManagedLocalStorageValues(isStartupKey);
+/**
+ * Restore the working library and sync-critical values after the application shell
+ * is already visible. Nothing in this path is allowed to gate first paint.
+ */
+export function hydrateLargeBrowserStorage(): Promise<void> {
+  if (startupHydrationPromise) return startupHydrationPromise;
+  if (typeof window === 'undefined' || typeof Storage === 'undefined') return Promise.resolve();
+
+  installStorageBridge();
+  startupHydrationPending = true;
+  startupHydrationPromise = (async () => {
+    if (typeof indexedDB !== 'undefined') {
+      const startupEntries = await readMatchingLargeValues((key) => isManagedKey(key) && isStartupKey(key));
+      startupEntries.forEach(([key, value]) => cache.set(key, value));
+      await migrateManagedLocalStorageValues(isStartupKey);
+    }
+  })()
+    .catch((error) => {
+      console.warn('Inkbound could not fully restore large browser storage.', error);
+    })
+    .finally(() => {
+      startupHydrationPending = false;
+      announceStartupHydrated();
+    });
+
+  return startupHydrationPromise;
 }
 
 /** Load non-critical import/history caches after the app is already visible. */
