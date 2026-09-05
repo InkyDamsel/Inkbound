@@ -1,3 +1,5 @@
+import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+
 const DB_NAME = 'inkbound-large-storage';
 const STORE_NAME = 'entries';
 const DB_VERSION = 1;
@@ -52,7 +54,12 @@ function isWindowLocalStorage(storage: Storage) {
 }
 
 function announceStartupHydrated() {
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event(LARGE_BROWSER_STORAGE_HYDRATED_EVENT));
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(LARGE_BROWSER_STORAGE_HYDRATED_EVENT));
+  // App already listens for cloud-data updates and reloads its canonical books
+  // collection. Reuse that path so a library restored from IndexedDB appears as
+  // soon as background hydration finishes, without reloading the page.
+  notifyCloudDataUpdated(['inkbound_books']);
 }
 
 function openDatabase(): Promise<IDBDatabase | null> {
