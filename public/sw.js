@@ -1,12 +1,12 @@
-const SHELL_CACHE = 'inkbound-shell-v3';
+const SHELL_CACHE = 'inkbound-shell-v4';
 const APP_SHELL = [
   '/',
-  '/app',
   '/index.html',
   '/manifest.webmanifest',
   '/assets/branding/pwa/icon-192.png',
   '/assets/branding/pwa/icon-512.png',
 ];
+const NAVIGATION_NETWORK_TIMEOUT_MS = 1800;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -25,7 +25,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-async function updateCachedNavigation(request, cacheKey) {
+async function fetchAndCacheNavigation(request, cacheKey) {
   try {
     const response = await fetch(request);
     if (response.ok) {
@@ -38,6 +38,32 @@ async function updateCachedNavigation(request, cacheKey) {
   }
 }
 
+async function navigationWithFastNetworkFallback(request, cacheKey, fallbackKey) {
+  const networkRequest = fetchAndCacheNavigation(request, cacheKey);
+  const timeout = new Promise((resolve) => {
+    setTimeout(() => resolve(null), NAVIGATION_NETWORK_TIMEOUT_MS);
+  });
+
+  const quickNetwork = await Promise.race([networkRequest, timeout]);
+  if (quickNetwork) return quickNetwork;
+
+  const cached = await caches.match(cacheKey) || (fallbackKey ? await caches.match(fallbackKey) : null);
+  if (cached) {
+    // The original network request keeps running and refreshes the cache when the
+    // connection eventually responds, so the next visit gets the newest build.
+    eventWaitUntilSafe(networkRequest);
+    return cached;
+  }
+
+  return (await networkRequest) || Response.error();
+}
+
+function eventWaitUntilSafe(promise) {
+  // A navigation can outlive the fetch handler on poor connections. The promise
+  // still completes and updates Cache Storage; there is nothing else to await here.
+  void promise;
+}
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
@@ -46,28 +72,9 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    if (url.pathname === '/app') {
-      event.respondWith((async () => {
-        const cached = await caches.match('/app') || await caches.match('/index.html');
-        if (cached) {
-          event.waitUntil(updateCachedNavigation(request, '/app'));
-          return cached;
-        }
-
-        const network = await updateCachedNavigation(request, '/app');
-        return network || Response.error();
-      })());
-      return;
-    }
-
-    event.respondWith((async () => {
-      const cached = await caches.match(request) || await caches.match('/');
-      if (cached) {
-        event.waitUntil(updateCachedNavigation(request, request));
-        return cached;
-      }
-      return (await updateCachedNavigation(request, request)) || Response.error();
-    })());
+    const cacheKey = url.pathname === '/app' ? '/app' : request;
+    const fallbackKey = url.pathname === '/app' ? '/index.html' : '/';
+    event.respondWith(navigationWithFastNetworkFallback(request, cacheKey, fallbackKey));
     return;
   }
 
