@@ -1,10 +1,24 @@
-/* Keep the floating Help affordance clear of mobile navigation.
-   Phone landscape can exceed Tailwind's md width breakpoint while still using
-   Inkbound's mobile shell, so the md Help position must not drop into the nav. */
+/* Keep the floating Help affordance clear of sticky page actions and mobile navigation.
+   The Help button should never cover a primary action such as Import, Save, or Continue. */
+.inkbound-app-shell button[aria-label='Open Inkbound help and frequently asked questions'] {
+  right: max(16px, env(safe-area-inset-right)) !important;
+  bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+  z-index: 45 !important;
+}
+
+/* Phone landscape can exceed Tailwind's md width breakpoint while still using
+   Inkbound's mobile shell. Keep Help above the compact navigation/action area. */
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
   .inkbound-app-shell button[aria-label='Open Inkbound help and frequently asked questions'] {
     right: max(12px, env(safe-area-inset-right)) !important;
-    bottom: calc(66px + env(safe-area-inset-bottom)) !important;
-    z-index: 45 !important;
+    bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* Give very small phones a little more breathing room above the bottom nav. */
+@media (max-width: 480px) {
+  .inkbound-app-shell button[aria-label='Open Inkbound help and frequently asked questions'] {
+    right: max(12px, env(safe-area-inset-right)) !important;
+    bottom: calc(92px + env(safe-area-inset-bottom)) !important;
   }
 }
