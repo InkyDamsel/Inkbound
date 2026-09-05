@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Loader2, Star } from 'lucide-react';
 import { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
@@ -21,9 +21,12 @@ interface LibraryBookGridProps {
 
 const LOCAL_DATA_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
 const HYDRATION_FALLBACK_MS = 12000;
+const INITIAL_RENDER_COUNT = 120;
+const RENDER_STEP = 120;
 
 export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggleSelectBook }: LibraryBookGridProps) {
   const { user, isAuthReady } = useAccountSync();
+  const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
   const [cloudLibraryReady, setCloudLibraryReady] = useState(() => {
     if (!user) return true;
     return getCloudDataRevision() > 0 && getRuntimeStorage().getItem(LOCAL_DATA_OWNER_UID_KEY) === user.uid;
@@ -51,6 +54,8 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
   }, [isAuthReady, user?.uid]);
 
   const isHydratingCloudLibrary = !hydrationTimedOut && (!isAuthReady || Boolean(user && !cloudLibraryReady));
+  const visibleBooks = useMemo(() => books.slice(0, Math.min(visibleCount, books.length)), [books, visibleCount]);
+  const hasMoreBooks = visibleBooks.length < books.length;
 
   if (isHydratingCloudLibrary) {
     return (
@@ -70,7 +75,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
     <section className="space-y-4">
       {hydrationTimedOut && user && !cloudLibraryReady ? <div className="inkbound-panel flex items-start gap-3 rounded-2xl px-5 py-4" role="status"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Cloud sync is taking longer than expected.</p><p className="mt-0.5 text-xs text-[var(--ink-muted)]">Inkbound stopped blocking your library. Cloud sync will keep retrying in the background.</p></div></div> : null}
       <ResponsiveGrid minItemWidth={150} maxColumns={6} gap={16} alignItems="stretch">
-        {books.map((book) => {
+        {visibleBooks.map((book) => {
           const isSelected = selectedBookIds.includes(book.id);
           const readingState = getBookReadingState(book);
           return (
@@ -93,6 +98,23 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
           );
         })}
       </ResponsiveGrid>
+
+      {books.length > INITIAL_RENDER_COUNT ? (
+        <div className="inkbound-panel flex flex-col items-center justify-between gap-3 rounded-2xl px-5 py-4 sm:flex-row">
+          <p className="text-sm text-[var(--ink-muted)]">
+            Showing <strong className="text-[var(--ink-ivory)]">{visibleBooks.length.toLocaleString()}</strong> of <strong className="text-[var(--ink-ivory)]">{books.length.toLocaleString()}</strong> books to keep large libraries fast and stable.
+          </p>
+          {hasMoreBooks ? (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((current) => Math.min(current + RENDER_STEP, books.length))}
+              className="quiet-shelf-secondary-action w-full justify-center sm:w-auto"
+            >
+              Load {Math.min(RENDER_STEP, books.length - visibleBooks.length).toLocaleString()} more
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
