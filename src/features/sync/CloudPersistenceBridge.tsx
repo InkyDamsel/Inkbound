@@ -36,9 +36,10 @@ const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
 const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
 const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
-const BRIDGE_VERSION = '10';
+const BRIDGE_VERSION = '11';
 const SYNC_FLUSH_DEBOUNCE_MS = 3000;
 const INITIAL_UPLOAD_BATCH_SIZE = 100;
+const CHECKPOINT_BATCH_SIZE = 500;
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
 const INITIAL_SERVER_WAIT_MS = 8000;
 
@@ -62,8 +63,19 @@ interface PendingSyncState {
 interface SyncBaseline { books: Record<string, string>; sessions: Record<string, string>; profile?: string }
 
 const stable = (value: unknown) => JSON.stringify(value);
+const hashText = (value: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+const fingerprint = (value: unknown) => hashText(stable(value));
 const pendingKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
-const baselineKey = (uid: string) => `inkbound_sync_baseline_${uid}_v1`;
+// v2 stores compact hashes instead of full serialized records. This keeps a
+// 40k+ library from duplicating the whole library again inside the baseline.
+const baselineKey = (uid: string) => `inkbound_sync_baseline_${uid}_v2`;
 const clearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 const emptyPending = (): PendingSyncState => ({ books: {}, sessions: {} });
 const emptyBaseline = (): SyncBaseline => ({ books: {}, sessions: {} });
@@ -89,7 +101,7 @@ const writePending = (uid: string, value: PendingSyncState) => {
 };
 
 const toFingerprintMap = <T extends { id: string }>(items: T[]) =>
-  new Map(items.map((item) => [item.id, stable(item)]));
+  new Map(items.map((item) => [item.id, fingerprint(item)]));
 
 async function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -110,14 +122,6 @@ async function preferServerThenCache<T>(serverRead: () => Promise<T>, cacheRead:
 }
 
 const isDataImage = (value?: string) => Boolean(value?.startsWith('data:image/'));
-const hashText = (value: string) => {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-};
 
 async function optimizeProfileImage(value: string, kind: 'avatar' | 'banner'): Promise<Blob> {
   const source = await fetch(value).then((response) => response.blob());
@@ -239,7 +243,7 @@ function protectRicherLocalBookMetadata(
     if (metadataRichness(localBook) <= metadataRichness(cloudBook)) return;
 
     const merged = mergeRicherLocalMetadata(localBook, cloudBook);
-    if (stable(merged) === stable(cloudBook)) return;
+    if (fingerprint(merged) === fingerprint(cloudBook)) return;
     mutations[localBook.id] = { operation: 'upsert', data: merged, clientUpdatedAt: now };
   });
 }
@@ -277,8 +281,8 @@ function reconcileHydrationChanges<T extends { id: string }>(
 
     if (shouldPreferCloud?.(item, cloud)) return;
 
-    const cloudFingerprint = stable(cloud);
-    const localFingerprint = stable(item);
+    const cloudFingerprint = fingerprint(cloud);
+    const localFingerprint = fingerprint(item);
     if (baselineFingerprint !== undefined
       && cloudFingerprint === baselineFingerprint
       && localFingerprint !== baselineFingerprint) {
@@ -290,7 +294,7 @@ function reconcileHydrationChanges<T extends { id: string }>(
     if (mutations[id] || localById.has(id)) return;
     const cloud = cloudById.get(id);
     if (!cloud) return;
-    if (stable(cloud) === baselineFingerprint) {
+    if (fingerprint(cloud) === baselineFingerprint) {
       mutations[id] = { operation: 'delete', clientUpdatedAt: now };
     }
   });
@@ -327,7 +331,7 @@ function removeNoOpMutations<T>(mutations: Record<string, RecordMutation<T>>, ba
       if (baseline[id] === undefined) delete mutations[id];
       return;
     }
-    if (mutation.data !== undefined && baseline[id] === stable(mutation.data)) delete mutations[id];
+    if (mutation.data !== undefined && baseline[id] === fingerprint(mutation.data)) delete mutations[id];
   });
 }
 
@@ -364,7 +368,7 @@ export const CloudPersistenceBridge: React.FC = () => {
       entries.forEach(([id, mutation]) => {
         if (stable(pendingCollection[id]) !== stable(mutation)) return;
         if (mutation.operation === 'delete') delete baselineCollection[id];
-        else if (mutation.data !== undefined) baselineCollection[id] = stable(mutation.data);
+        else if (mutation.data !== undefined) baselineCollection[id] = fingerprint(mutation.data);
         delete pendingCollection[id];
       });
 
@@ -376,6 +380,7 @@ export const CloudPersistenceBridge: React.FC = () => {
       kind: 'books' | 'sessions',
       entries: Array<[string, RecordMutation<T>]>,
     ) => {
+      let checkpointEntries: Array<[string, RecordMutation<T>]> = [];
       for (let index = 0; index < entries.length; index += INITIAL_UPLOAD_BATCH_SIZE) {
         if (disposed) return;
         const batch = entries.slice(index, index + INITIAL_UPLOAD_BATCH_SIZE);
@@ -391,9 +396,14 @@ export const CloudPersistenceBridge: React.FC = () => {
           }
         }));
 
-        // Checkpoint every successful batch immediately. If the browser, app, or
-        // device closes after this point, already-saved records are not requeued.
-        checkpointRecordBatch(kind, batch);
+        checkpointEntries.push(...batch);
+        if (checkpointEntries.length >= CHECKPOINT_BATCH_SIZE || index + INITIAL_UPLOAD_BATCH_SIZE >= entries.length) {
+          checkpointRecordBatch(kind, checkpointEntries);
+          checkpointEntries = [];
+          // Give the browser a chance to collect temporary objects and paint the UI
+          // during extremely large uploads instead of monopolizing the main thread.
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        }
       }
     };
 
@@ -425,10 +435,10 @@ export const CloudPersistenceBridge: React.FC = () => {
         const latestPending = readPending(uid);
         if (stable(latestPending.profile) === stable(pending.profile)) {
           const latestBaseline = readBaseline(uid);
-          const fingerprint = stable(preparedProfile);
-          latestBaseline.profile = fingerprint;
-          profileFingerprint.current = fingerprint;
-          localStorage.setItem(PROFILE_KEY, fingerprint);
+          const profileValue = stable(preparedProfile);
+          latestBaseline.profile = profileValue;
+          profileFingerprint.current = profileValue;
+          localStorage.setItem(PROFILE_KEY, profileValue);
           delete latestPending.profile;
           writeBaseline(uid, latestBaseline);
           writePending(uid, latestPending);
@@ -468,11 +478,11 @@ export const CloudPersistenceBridge: React.FC = () => {
       }
       if (!changedKeys || changedKeys.has(PROFILE_KEY)) {
         const profile = safeParse<ReaderProfile>(PROFILE_KEY, {});
-        const fingerprint = stable(profile);
-        if (Object.keys(profile).length && fingerprint !== profileFingerprint.current) {
-          if (baseline.profile === fingerprint) delete pending.profile;
+        const profileValue = stable(profile);
+        if (Object.keys(profile).length && profileValue !== profileFingerprint.current) {
+          if (baseline.profile === profileValue) delete pending.profile;
           else pending.profile = { data: profile, clientUpdatedAt: new Date().toISOString() };
-          profileFingerprint.current = fingerprint;
+          profileFingerprint.current = profileValue;
         }
       }
       writePending(uid, pending);
@@ -523,8 +533,8 @@ export const CloudPersistenceBridge: React.FC = () => {
       }
 
       const nextBaseline: SyncBaseline = {
-        books: Object.fromEntries(cloudBooks.map((book) => [book.id, stable(book)])),
-        sessions: Object.fromEntries(cloudSessions.map((session) => [session.id, stable(session)])),
+        books: Object.fromEntries(cloudBooks.map((book) => [book.id, fingerprint(book)])),
+        sessions: Object.fromEntries(cloudSessions.map((session) => [session.id, fingerprint(session)])),
         profile: baseline.profile,
       };
 
@@ -565,6 +575,7 @@ export const CloudPersistenceBridge: React.FC = () => {
         let changed = false;
         let baselineChanged = false;
         let pendingChanged = false;
+        const currentIndex = new Map(current.map((item, index) => [item.id, index]));
 
         snapshot.docChanges().forEach((change) => {
           const id = change.doc.id;
@@ -580,9 +591,12 @@ export const CloudPersistenceBridge: React.FC = () => {
           }
 
           if (change.type === 'removed') {
-            const next = current.filter((item) => item.id !== id);
-            changed ||= next.length !== current.length;
-            current = next;
+            const index = currentIndex.get(id);
+            if (index !== undefined) {
+              current[index] = undefined as unknown as T;
+              currentIndex.delete(id);
+              changed = true;
+            }
             fingerprints.current.delete(id);
             if (baselineCollection[id] !== undefined) { delete baselineCollection[id]; baselineChanged = true; }
             return;
@@ -590,15 +604,23 @@ export const CloudPersistenceBridge: React.FC = () => {
 
           const record = envelope?.data;
           if (!record) return;
-          const serialized = stable(record);
-          const index = current.findIndex((item) => item.id === record.id);
-          if (index >= 0) {
-            if (stable(current[index]) !== serialized) { current[index] = record; changed = true; }
-          } else { current.push(record); changed = true; }
-          fingerprints.current.set(record.id, serialized);
-          if (baselineCollection[record.id] !== serialized) { baselineCollection[record.id] = serialized; baselineChanged = true; }
+          const recordFingerprint = fingerprint(record);
+          const index = currentIndex.get(record.id);
+          if (index !== undefined) {
+            if (fingerprints.current.get(record.id) !== recordFingerprint) {
+              current[index] = record;
+              changed = true;
+            }
+          } else {
+            currentIndex.set(record.id, current.length);
+            current.push(record);
+            changed = true;
+          }
+          fingerprints.current.set(record.id, recordFingerprint);
+          if (baselineCollection[record.id] !== recordFingerprint) { baselineCollection[record.id] = recordFingerprint; baselineChanged = true; }
         });
 
+        if (changed) current = current.filter(Boolean);
         if (pendingChanged) writePending(uid, pendingState);
         if (baselineChanged) writeBaseline(uid, currentBaseline);
         if (changed) { localStorage.setItem(storageKey, stable(current)); notifyCloudDataUpdated([storageKey]); }
@@ -611,12 +633,12 @@ export const CloudPersistenceBridge: React.FC = () => {
           if (!hydrated.current || !snapshot.exists() || readPending(uid).profile) return;
           const cloudValue = (snapshot.data() as CloudRecord<ReaderProfile>).data;
           if (!cloudValue) return;
-          const fingerprint = stable(cloudValue);
+          const profileValue = stable(cloudValue);
           const currentBaseline = readBaseline(uid);
-          if (currentBaseline.profile !== fingerprint) { currentBaseline.profile = fingerprint; writeBaseline(uid, currentBaseline); }
-          if (fingerprint === profileFingerprint.current) return;
-          profileFingerprint.current = fingerprint;
-          localStorage.setItem(PROFILE_KEY, fingerprint);
+          if (currentBaseline.profile !== profileValue) { currentBaseline.profile = profileValue; writeBaseline(uid, currentBaseline); }
+          if (profileValue === profileFingerprint.current) return;
+          profileFingerprint.current = profileValue;
+          localStorage.setItem(PROFILE_KEY, profileValue);
           notifyCloudDataUpdated([PROFILE_KEY]);
         }, () => undefined),
       );
