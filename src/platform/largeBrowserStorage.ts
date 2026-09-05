@@ -16,16 +16,27 @@ const managedPrefixes = [
   'inkbound_sync_baseline_',
 ];
 
+const STARTUP_EXACT_KEYS = new Set(['inkbound_books']);
+const STARTUP_PREFIXES = [
+  'inkbound_pending_sync_',
+  'inkbound_sync_baseline_',
+];
+
 const cache = new Map<string, string>();
 const pendingWrites = new Set<Promise<void>>();
 let databasePromise: Promise<IDBDatabase | null> | null = null;
 let installed = false;
+let deferredHydrationPromise: Promise<void> | null = null;
 let originalGetItem: Storage['getItem'] | null = null;
 let originalSetItem: Storage['setItem'] | null = null;
 let originalRemoveItem: Storage['removeItem'] | null = null;
 
 function isManagedKey(key: string) {
   return exactManagedKeys.has(key) || managedPrefixes.some((prefix) => key.startsWith(prefix));
+}
+
+function isStartupKey(key: string) {
+  return STARTUP_EXACT_KEYS.has(key) || STARTUP_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
 function isWindowLocalStorage(storage: Storage) {
@@ -107,31 +118,32 @@ function trackWrite(promise: Promise<void>) {
   void promise.finally(() => pendingWrites.delete(promise));
 }
 
-async function readAllLargeValues(): Promise<Array<[string, string]>> {
+async function readMatchingLargeValues(predicate: (key: string) => boolean): Promise<Array<[string, string]>> {
   const database = await openDatabase();
   if (!database) return [];
+
   return new Promise((resolve) => {
+    const entries: Array<[string, string]> = [];
     try {
       const transaction = database.transaction(STORE_NAME, 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const keyRequest = store.getAllKeys();
-      const valueRequest = store.getAll();
-      let keys: IDBValidKey[] | null = null;
-      let values: unknown[] | null = null;
-      const finish = () => {
-        if (!keys || !values) return;
-        resolve(keys
-          .map((key, index) => [String(key), typeof values![index] === 'string' ? values![index] as string : ''] as [string, string])
-          .filter(([, value]) => value.length > 0));
+      const request = transaction.objectStore(STORE_NAME).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(entries);
+          return;
+        }
+        const key = String(cursor.key);
+        if (predicate(key) && typeof cursor.value === 'string' && cursor.value.length > 0) {
+          entries.push([key, cursor.value]);
+        }
+        cursor.continue();
       };
-      keyRequest.onsuccess = () => { keys = keyRequest.result; finish(); };
-      valueRequest.onsuccess = () => { values = valueRequest.result; finish(); };
-      keyRequest.onerror = () => resolve([]);
-      valueRequest.onerror = () => resolve([]);
-      transaction.onerror = () => resolve([]);
-      transaction.onabort = () => resolve([]);
+      request.onerror = () => resolve(entries);
+      transaction.onerror = () => resolve(entries);
+      transaction.onabort = () => resolve(entries);
     } catch {
-      resolve([]);
+      resolve(entries);
     }
   });
 }
@@ -186,6 +198,21 @@ function installStorageBridge() {
   });
 }
 
+async function migrateManagedLocalStorageValues(predicate: (key: string) => boolean) {
+  for (const key of Object.keys(window.localStorage)) {
+    if (!isManagedKey(key) || !predicate(key) || cache.has(key)) continue;
+    try {
+      const value = originalGetItem?.call(window.localStorage, key);
+      if (value !== null) {
+        cache.set(key, value);
+        await putLargeValue(key, value);
+      }
+    } catch {
+      // Best effort only. Existing localStorage remains untouched.
+    }
+  }
+}
+
 export function getLargeBrowserStorageKeys(): string[] {
   return [...cache.keys()];
 }
@@ -200,27 +227,34 @@ export async function flushLargeBrowserStorage(): Promise<void> {
   }
 }
 
+/**
+ * Restore only the values required to safely open the reader's working library.
+ * Import history and enrichment caches are intentionally deferred so a monster
+ * library does not have to clone every oversized IndexedDB value before React can
+ * render the application shell.
+ */
 export async function hydrateLargeBrowserStorage(): Promise<void> {
   if (typeof window === 'undefined' || typeof Storage === 'undefined' || typeof indexedDB === 'undefined') return;
   installStorageBridge();
 
-  const storedEntries = await readAllLargeValues();
-  storedEntries.forEach(([key, value]) => {
-    if (isManagedKey(key)) cache.set(key, value);
-  });
+  const startupEntries = await readMatchingLargeValues((key) => isManagedKey(key) && isStartupKey(key));
+  startupEntries.forEach(([key, value]) => cache.set(key, value));
+  await migrateManagedLocalStorageValues(isStartupKey);
+}
 
-  // Migrate any still-small managed values from localStorage into IndexedDB so
-  // they can grow past browser quota later without changing feature code.
-  for (const key of Object.keys(window.localStorage)) {
-    if (!isManagedKey(key) || cache.has(key)) continue;
-    try {
-      const value = originalGetItem?.call(window.localStorage, key);
-      if (value !== null) {
-        cache.set(key, value);
-        await putLargeValue(key, value);
-      }
-    } catch {
-      // Best effort only. Existing localStorage remains untouched.
-    }
-  }
+/** Load non-critical import/history caches after the app is already visible. */
+export function hydrateDeferredLargeBrowserStorage(): Promise<void> {
+  if (deferredHydrationPromise) return deferredHydrationPromise;
+  if (typeof window === 'undefined' || typeof Storage === 'undefined' || typeof indexedDB === 'undefined') return Promise.resolve();
+
+  installStorageBridge();
+  deferredHydrationPromise = (async () => {
+    const deferredEntries = await readMatchingLargeValues((key) => isManagedKey(key) && !isStartupKey(key));
+    deferredEntries.forEach(([key, value]) => {
+      if (!cache.has(key)) cache.set(key, value);
+    });
+    await migrateManagedLocalStorageValues((key) => !isStartupKey(key));
+  })().catch(() => undefined);
+
+  return deferredHydrationPromise;
 }
