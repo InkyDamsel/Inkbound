@@ -57,6 +57,7 @@ if (!rootElement) {
 
 const isPublicWebsite = !isNativeRuntime() && window.location.pathname === '/';
 const AUTH_OPEN_GRACE_MS = 1800;
+const STORAGE_OPEN_GRACE_MS = 2500;
 
 const OpeningScreen = ({ message }: { message: string }) => (
   <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
@@ -146,11 +147,28 @@ const InkboundApplication = () => (
   </BreakpointProvider>
 );
 
+async function restoreStartupStorageWithoutBlocking() {
+  let timeoutId: number | undefined;
+  try {
+    await Promise.race([
+      hydrateLargeBrowserStorage(),
+      new Promise<void>((resolve) => {
+        timeoutId = window.setTimeout(resolve, STORAGE_OPEN_GRACE_MS);
+      }),
+    ]);
+  } catch (error) {
+    console.warn('Inkbound could not fully restore browser storage before opening.', error);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
+}
+
 async function bootstrap() {
   if (!isPublicWebsite && !isNativeRuntime()) {
-    // Restore only the library and sync-critical oversized values before first render.
-    // Import/history caches hydrate afterward so a giant library never blocks opening.
-    await hydrateLargeBrowserStorage();
+    // Restore sync-critical local values when possible, but never hold the whole
+    // application hostage to a blocked/corrupt IndexedDB database. Cloud sync can
+    // finish recovery after the UI is visible.
+    await restoreStartupStorageWithoutBlocking();
   }
 
   if (!isPublicWebsite) {
@@ -185,12 +203,17 @@ async function bootstrap() {
     }, 0);
   }
 
+  // During the web beta, correctness is more important than offline shell caching.
+  // A previous worker cached /app and index.html and could strand returning users
+  // on an obsolete build. The retirement worker clears those caches and unregisters
+  // itself; future visits then load the deployed app directly from Hosting.
   if (import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
-        // Offline/install support is an enhancement; a registration failure must
-        // never prevent the reading journal itself from opening.
-      });
+      void navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
+        .then((registration) => registration.update())
+        .catch(() => {
+          // Service-worker cleanup is best effort and must never block Inkbound.
+        });
     }, { once: true });
   }
 }
@@ -200,7 +223,7 @@ void bootstrap().catch((error) => {
   createRoot(rootElement).render(
     <StrictMode>
       <AppErrorBoundary>
-        <OpeningScreen message="Inkbound could not restore local storage. Refresh once to retry." />
+        <OpeningScreen message="Inkbound hit a startup problem. Reload to try again; your library data is safe." />
       </AppErrorBoundary>
     </StrictMode>,
   );
