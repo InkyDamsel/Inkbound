@@ -154,12 +154,6 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
   return { role: admin.role, totals, users, audit, admins };
 });
 
-/**
- * Owner-only, read-only account audit. This function intentionally performs no
- * writes and does not participate in the normal sync path. It inspects canonical
- * cloud records directly so the Administration UI can diagnose persistence and
- * import integrity without mounting another client-side source of truth.
- */
 export const getAdminDataIntegrity = onCall({
   enforceAppCheck: ENFORCE_APP_CHECK,
   memory: '512MiB',
@@ -167,30 +161,22 @@ export const getAdminDataIntegrity = onCall({
   await requireAdmin(request, ['owner']);
   const input = request.data as { targetUserId?: unknown } | undefined;
   const targetUserId = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
-  if (!targetUserId || targetUserId.length > 128) {
-    throw new HttpsError('invalid-argument', 'A valid reader is required.');
-  }
+  if (!targetUserId || targetUserId.length > 128) throw new HttpsError('invalid-argument', 'A valid reader is required.');
 
   const db = getFirestore();
   const userRef = db.doc(`users/${targetUserId}`);
-  const [booksSnapshot, sessionsSnapshot, profileSnapshot, auxiliarySnapshot, photoSnapshot, recoverySnapshot] = await Promise.all([
+  const [booksSnapshot, sessionsSnapshot, profileSnapshot, auxiliarySnapshot, photoSnapshot, recoverySnapshot, librarySyncSnapshot] = await Promise.all([
     userRef.collection('books').get(),
     userRef.collection('sessions').get(),
     userRef.collection('profile').doc('current').get(),
     userRef.collection('auxiliary').get(),
     userRef.collection('photoMemories').get(),
     userRef.collection('recoverySnapshots').get(),
+    userRef.collection('syncState').doc('library').get(),
   ]);
 
-  const books = booksSnapshot.docs.map((document) => ({
-    documentId: document.id,
-    book: unwrapData<StoredBook>(document.data()),
-  }));
-  const sessions = sessionsSnapshot.docs.map((document) => ({
-    documentId: document.id,
-    session: unwrapData<StoredSession>(document.data()),
-  }));
-
+  const books = booksSnapshot.docs.map((document) => ({ documentId: document.id, book: unwrapData<StoredBook>(document.data()) }));
+  const sessions = sessionsSnapshot.docs.map((document) => ({ documentId: document.id, session: unwrapData<StoredSession>(document.data()) }));
   const bookIds = new Set(books.map(({ documentId, book }) => typeof book.id === 'string' && book.id ? book.id : documentId));
   let activeCoverCount = 0;
   let anyCoverCount = 0;
@@ -204,31 +190,21 @@ export const getAdminDataIntegrity = onCall({
 
   books.forEach(({ documentId, book }) => {
     if (typeof book.id === 'string' && book.id && book.id !== documentId) bookIdMismatchCount += 1;
-
     const editions = asRecordArray(book.editions);
     const activeEditionId = typeof book.activeEditionId === 'string' ? book.activeEditionId : '';
-    const activeEdition = activeEditionId
-      ? editions.find((edition) => edition.id === activeEditionId)
-      : editions[0];
-    if (!activeEdition || (activeEditionId && !editions.some((edition) => edition.id === activeEditionId))) {
-      missingActiveEditionCount += 1;
-    }
-
+    const activeEdition = activeEditionId ? editions.find((edition) => edition.id === activeEditionId) : editions[0];
+    if (!activeEdition || (activeEditionId && !editions.some((edition) => edition.id === activeEditionId))) missingActiveEditionCount += 1;
     const activeCover = typeof activeEdition?.coverUrl === 'string' ? activeEdition.coverUrl.trim() : '';
     const hasAnyCover = editions.some((edition) => typeof edition.coverUrl === 'string' && edition.coverUrl.trim().length > 0);
     if (activeCover) activeCoverCount += 1;
     if (hasAnyCover) anyCoverCount += 1;
-
     const work = asRecord(book.work);
     const summary = typeof work.summary === 'string' ? work.summary.trim() : '';
     const publisherSummary = typeof work.publisherSummary === 'string'
       ? work.publisherSummary.trim()
-      : typeof book['publisherSummary' as keyof StoredBook] === 'string'
-        ? String(book['publisherSummary' as keyof StoredBook]).trim()
-        : '';
+      : typeof book['publisherSummary' as keyof StoredBook] === 'string' ? String(book['publisherSummary' as keyof StoredBook]).trim() : '';
     if (summary || publisherSummary) visibleSummaryCount += 1;
     if (publisherSummary) publisherSummaryCount += 1;
-
     const tags = asStringArray(book.privateTags).map((tag) => tag.toLowerCase());
     const source = typeof book.sourceOfImport === 'string' ? book.sourceOfImport.toLowerCase() : '';
     const imported = documentId.startsWith('book-import-') || source.includes('import') || tags.includes('imported');
@@ -236,7 +212,6 @@ export const getAdminDataIntegrity = onCall({
       importedBookCount += 1;
       if (book.importMetadataVerified === true) metadataVerifiedImportCount += 1;
     }
-
     const isbn = editions.map((edition) => normalizeIsbn(edition.isbn13) || normalizeIsbn(edition.isbn10) || normalizeIsbn(edition.isbn)).find(Boolean) ?? '';
     const title = normalizeText(work.title);
     const author = normalizeText(work.author);
@@ -257,13 +232,9 @@ export const getAdminDataIntegrity = onCall({
   const possibleDuplicateIdentityGroups = [...duplicateIdentityBuckets.values()].filter((count) => count > 1).length;
   const activePhotoMemories = photoSnapshot.docs.filter((document) => document.get('deleted') !== true).length;
   const deletedPhotoMemories = photoSnapshot.size - activePhotoMemories;
-
   const recoveryPoints = recoverySnapshot.docs.map((document) => {
     const data = document.data();
-    return {
-      createdAtClient: typeof data.createdAtClient === 'string' ? data.createdAtClient : '',
-      createdAt: timestampToIso(data.createdAt),
-    };
+    return { createdAtClient: typeof data.createdAtClient === 'string' ? data.createdAtClient : '', createdAt: timestampToIso(data.createdAt) };
   });
   recoveryPoints.sort((a, b) => (b.createdAtClient || b.createdAt || '').localeCompare(a.createdAtClient || a.createdAt || ''));
 
@@ -278,15 +249,14 @@ export const getAdminDataIntegrity = onCall({
     bookCoverFileCount = files.filter((file) => file.name.includes('/book-covers/')).length;
     photoMemoryFileCount = files.filter((file) => file.name.includes('/photo-memories/')).length;
     profileMediaFileCount = files.filter((file) => file.name.includes('/profile/')).length;
-  } catch {
-    storageStatus = 'unavailable';
-  }
+  } catch { storageStatus = 'unavailable'; }
 
-  const criticalIssueCount = bookIdMismatchCount
-    + sessionIdMismatchCount
-    + missingActiveEditionCount
-    + orphanSessionCount
-    + malformedSessionCount;
+  const criticalIssueCount = bookIdMismatchCount + sessionIdMismatchCount + missingActiveEditionCount + orphanSessionCount + malformedSessionCount;
+  const syncState = librarySyncSnapshot.data() ?? {};
+  const expectedBookCount = typeof syncState.expectedBookCount === 'number' ? Math.max(0, syncState.expectedBookCount) : 0;
+  const cloudBookCount = booksSnapshot.size;
+  const backupRemaining = expectedBookCount > 0 ? Math.max(0, expectedBookCount - cloudBookCount) : 0;
+  const backupComplete = expectedBookCount === 0 || cloudBookCount >= expectedBookCount;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -294,16 +264,25 @@ export const getAdminDataIntegrity = onCall({
     health: criticalIssueCount === 0 ? 'healthy' : 'needs-attention',
     criticalIssueCount,
     library: {
-      books: booksSnapshot.size,
+      books: cloudBookCount,
       sessions: sessionsSnapshot.size,
       activeCovers: activeCoverCount,
       booksWithAnyCover: anyCoverCount,
-      missingActiveCovers: Math.max(0, booksSnapshot.size - activeCoverCount),
+      missingActiveCovers: Math.max(0, cloudBookCount - activeCoverCount),
       visibleSummaries: visibleSummaryCount,
       publisherSummaries: publisherSummaryCount,
       importedBooks: importedBookCount,
       metadataVerifiedImports: metadataVerifiedImportCount,
       possibleDuplicateIdentityGroups,
+    },
+    backup: {
+      tracked: expectedBookCount > 0,
+      complete: backupComplete,
+      expectedBooks: expectedBookCount,
+      savedBooks: cloudBookCount,
+      remainingBooks: backupRemaining,
+      percentComplete: expectedBookCount > 0 ? Math.min(100, Math.round((cloudBookCount / expectedBookCount) * 100)) : 100,
+      status: typeof syncState.status === 'string' ? syncState.status : (backupComplete ? 'complete' : 'syncing'),
     },
     structure: {
       bookIdMismatches: bookIdMismatchCount,
@@ -339,38 +318,12 @@ export const setAdminAccess = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, asy
   const enabled = data?.enabled === true;
   const reason = typeof data?.reason === 'string' ? data.reason.trim() : '';
   const validRoles: AdminRole[] = ['owner', 'support', 'billing', 'viewer'];
-
-  if (!targetUserId || !email || !role || !validRoles.includes(role) || !reason) {
-    throw new HttpsError('invalid-argument', 'User, email, role, and reason are required.');
-  }
-  if (targetUserId === auth.uid && !enabled) {
-    throw new HttpsError('failed-precondition', 'You cannot disable your own administrator access.');
-  }
-
+  if (!targetUserId || !email || !role || !validRoles.includes(role) || !reason) throw new HttpsError('invalid-argument', 'User, email, role, and reason are required.');
+  if (targetUserId === auth.uid && !enabled) throw new HttpsError('failed-precondition', 'You cannot disable your own administrator access.');
   const db = getFirestore();
   const adminRef = db.doc(`admins/${targetUserId}`);
   const previous = (await adminRef.get()).data() ?? null;
-
-  await adminRef.set({
-    email,
-    role,
-    enabled,
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: auth.uid,
-    ...(previous ? {} : { createdAt: FieldValue.serverTimestamp(), createdBy: auth.uid }),
-  }, { merge: true });
-
-  await db.collection('adminAudit').add({
-    action: enabled ? 'set_admin_access' : 'disable_admin_access',
-    targetUserId,
-    targetEmail: email,
-    performedBy: auth.uid,
-    performedByEmail: admin.email,
-    reason,
-    previousValue: previous,
-    newValue: { role, enabled },
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
+  await adminRef.set({ email, role, enabled, updatedAt: FieldValue.serverTimestamp(), updatedBy: auth.uid, ...(previous ? {} : { createdAt: FieldValue.serverTimestamp(), createdBy: auth.uid }) }, { merge: true });
+  await db.collection('adminAudit').add({ action: enabled ? 'set_admin_access' : 'disable_admin_access', targetUserId, targetEmail: email, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { role, enabled }, createdAt: FieldValue.serverTimestamp() });
   return { success: true };
 });
