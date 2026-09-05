@@ -22,7 +22,10 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
-import { hydrateLargeBrowserStorage } from './platform/largeBrowserStorage.ts';
+import {
+  hydrateDeferredLargeBrowserStorage,
+  hydrateLargeBrowserStorage,
+} from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
 import {
   getNativeRuntimeError,
@@ -131,9 +134,8 @@ const InkboundApplication = () => (
 
 async function bootstrap() {
   if (!isPublicWebsite && !isNativeRuntime()) {
-    // Load oversized account/library caches from IndexedDB before React or the
-    // cloud bridge reads localStorage. The storage shim keeps existing feature
-    // code synchronous while removing localStorage's practical size ceiling.
+    // Restore only the working library and sync checkpoint data needed for a safe
+    // first render. Large import/history caches hydrate after the UI is visible.
     await hydrateLargeBrowserStorage();
   }
 
@@ -162,6 +164,13 @@ async function bootstrap() {
       </AppErrorBoundary>
     </StrictMode>,
   );
+
+  if (!isPublicWebsite && !isNativeRuntime()) {
+    // Give React one paint before restoring noncritical import/history caches.
+    window.setTimeout(() => {
+      void hydrateDeferredLargeBrowserStorage();
+    }, 0);
+  }
 
   if (import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
