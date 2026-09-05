@@ -24,7 +24,6 @@ import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.t
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import { hydrateDeferredLargeBrowserStorage, hydrateLargeBrowserStorage } from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
-import { getRuntimeStorage } from './platform/runtimeStorage.ts';
 import {
   getNativeRuntimeError,
   isNativeRuntimeReady,
@@ -57,18 +56,7 @@ if (!rootElement) {
 }
 
 const isPublicWebsite = !isNativeRuntime() && window.location.pathname === '/';
-const OFFLINE_OPEN_GRACE_MS = 1200;
-const LOCAL_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
-const LOCAL_BOOKS_KEY = 'inkbound_books';
-
-const hasUsableLocalAccountData = () => {
-  try {
-    const storage = getRuntimeStorage();
-    return Boolean(storage.getItem(LOCAL_OWNER_UID_KEY) && storage.getItem(LOCAL_BOOKS_KEY));
-  } catch {
-    return false;
-  }
-};
+const AUTH_OPEN_GRACE_MS = 1800;
 
 const OpeningScreen = ({ message }: { message: string }) => (
   <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
@@ -105,20 +93,25 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
 
 const AuthSessionGate = ({ children }: PropsWithChildren) => {
   const { isAuthReady } = useAccountSync();
-  const [allowLocalOpen, setAllowLocalOpen] = useState(false);
+  const [graceElapsed, setGraceElapsed] = useState(false);
 
   useEffect(() => {
-    if (isAuthReady || !hasUsableLocalAccountData()) {
-      setAllowLocalOpen(false);
+    if (isAuthReady) {
+      setGraceElapsed(false);
       return undefined;
     }
 
-    const timer = window.setTimeout(() => setAllowLocalOpen(true), OFFLINE_OPEN_GRACE_MS);
+    // Firebase Auth can take an unexpectedly long time to restore a browser
+    // session when IndexedDB, App Check, captive Wi-Fi, or an auth endpoint is
+    // unavailable. Account restoration is useful, but it must never make the
+    // web app itself inaccessible. After a short grace period, open Inkbound
+    // and let auth/sync finish in the background.
+    const timer = window.setTimeout(() => setGraceElapsed(true), AUTH_OPEN_GRACE_MS);
     return () => window.clearTimeout(timer);
   }, [isAuthReady]);
 
-  if (!isAuthReady && !allowLocalOpen) {
-    return <OpeningScreen message="Restoring your saved account. If the connection is slow, Inkbound will open your on-device library instead." />;
+  if (!isAuthReady && !graceElapsed) {
+    return <OpeningScreen message="Restoring your saved account…" />;
   }
 
   return <>{children}</>;
