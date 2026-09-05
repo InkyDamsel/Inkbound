@@ -1,4 +1,4 @@
-import { PropsWithChildren, StrictMode, useSyncExternalStore } from 'react';
+import { PropsWithChildren, StrictMode, useEffect, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { AppErrorBoundary } from './components/AppErrorBoundary.tsx';
@@ -22,11 +22,9 @@ import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydra
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
-import {
-  hydrateDeferredLargeBrowserStorage,
-  hydrateLargeBrowserStorage,
-} from './platform/largeBrowserStorage.ts';
+import { hydrateLargeBrowserStorage, hydrateNoncriticalLargeBrowserStorage } from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
+import { getRuntimeStorage } from './platform/runtimeStorage.ts';
 import {
   getNativeRuntimeError,
   isNativeRuntimeReady,
@@ -59,6 +57,18 @@ if (!rootElement) {
 }
 
 const isPublicWebsite = !isNativeRuntime() && window.location.pathname === '/';
+const OFFLINE_OPEN_GRACE_MS = 1200;
+const LOCAL_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+const LOCAL_BOOKS_KEY = 'inkbound_books';
+
+const hasUsableLocalAccountData = () => {
+  try {
+    const storage = getRuntimeStorage();
+    return Boolean(storage.getItem(LOCAL_OWNER_UID_KEY) && storage.getItem(LOCAL_BOOKS_KEY));
+  } catch {
+    return false;
+  }
+};
 
 const OpeningScreen = ({ message }: { message: string }) => (
   <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
@@ -95,9 +105,20 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
 
 const AuthSessionGate = ({ children }: PropsWithChildren) => {
   const { isAuthReady } = useAccountSync();
+  const [allowLocalOpen, setAllowLocalOpen] = useState(false);
 
-  if (!isAuthReady) {
-    return <OpeningScreen message="Restoring your saved account and library securely..." />;
+  useEffect(() => {
+    if (isAuthReady || !hasUsableLocalAccountData()) {
+      setAllowLocalOpen(false);
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setAllowLocalOpen(true), OFFLINE_OPEN_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [isAuthReady]);
+
+  if (!isAuthReady && !allowLocalOpen) {
+    return <OpeningScreen message="Restoring your saved account. If the connection is slow, Inkbound will open your on-device library instead." />;
   }
 
   return <>{children}</>;
@@ -134,8 +155,8 @@ const InkboundApplication = () => (
 
 async function bootstrap() {
   if (!isPublicWebsite && !isNativeRuntime()) {
-    // Restore only the working library and sync checkpoint data needed for a safe
-    // first render. Large import/history caches hydrate after the UI is visible.
+    // Restore only the library and sync-critical oversized values before first render.
+    // Import/history caches hydrate afterward so a giant library never blocks opening.
     await hydrateLargeBrowserStorage();
   }
 
@@ -166,9 +187,8 @@ async function bootstrap() {
   );
 
   if (!isPublicWebsite && !isNativeRuntime()) {
-    // Give React one paint before restoring noncritical import/history caches.
     window.setTimeout(() => {
-      void hydrateDeferredLargeBrowserStorage();
+      void hydrateNoncriticalLargeBrowserStorage();
     }, 0);
   }
 
