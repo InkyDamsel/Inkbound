@@ -43,6 +43,39 @@
         }
       })();
     </script>
+    <script>
+      // Emergency cleanup for the old Inkbound PWA worker. Previous beta builds
+      // cached /app and could strand returning readers on obsolete JavaScript.
+      // This removes ONLY Inkbound's shell caches/service-worker registration;
+      // it deliberately leaves Firebase auth, localStorage, and IndexedDB data alone.
+      (() => {
+        if (!('serviceWorker' in navigator)) return;
+        const wasControlled = Boolean(navigator.serviceWorker.controller);
+        Promise.all([
+          navigator.serviceWorker.getRegistrations()
+            .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+            .catch(() => undefined),
+          'caches' in window
+            ? caches.keys()
+                .then((keys) => Promise.all(keys.filter((key) => key.startsWith('inkbound-shell-')).map((key) => caches.delete(key))))
+                .catch(() => undefined)
+            : Promise.resolve(),
+        ]).then(() => {
+          if (!wasControlled) return;
+          const reloadKey = 'inkbound_legacy_worker_cleanup_reload_v1';
+          try {
+            if (sessionStorage.getItem(reloadKey) === '1') {
+              sessionStorage.removeItem(reloadKey);
+              return;
+            }
+            sessionStorage.setItem(reloadKey, '1');
+          } catch {
+            return;
+          }
+          window.location.reload();
+        });
+      })();
+    </script>
     <title>Inkbound — Your Personal Reading Journal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
