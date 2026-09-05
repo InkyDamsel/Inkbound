@@ -1,5 +1,6 @@
-/* Bookshelf Through Time — book-only shelf layout.
-   Decorations were removed; keep the books visually distributed across the shelf. */
+/* Bookshelf Through Time — decoration reset.
+   The decoration experiment is intentionally disabled; keep the existing
+   pagination and let the books themselves visually fill each shelf. */
 
 .bookshelf-row {
   width: 100% !important;
@@ -7,8 +8,19 @@
   justify-content: space-between !important;
 }
 
+/* Keep the book spacing from getting too stretched on narrower screens. */
 @media (max-width: 900px) {
   .bookshelf-row {
     justify-content: flex-start !important;
   }
+}
+
+/* The monthly shelf already contains only books finished in the selected month,
+   so per-book month markers and the matching display toggle are redundant. */
+button [title="Finished this month"] {
+  display: none !important;
+}
+
+aside section:has(> .inkbound-eyebrow:first-child) label:has(.lucide-sparkles) {
+  display: none !important;
 }
