@@ -81,6 +81,26 @@ function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
   return inferSeriesHintFromTitle(book.work.title);
 }
 
+/**
+ * Catalog/import sources sometimes include future series slots as records named
+ * "Untitled (Series Name, #6)" before a real title has been announced. Those are
+ * useful for series order, but they are not owned books merely because an import
+ * source marked every row as owned. Keep the canonical library record untouched
+ * and correct ownership only in the derived Series view until a real title/edition
+ * replaces the placeholder.
+ */
+function normalizeSeriesBook(book: UserBookRecord, resolved: SeriesHint | null): UserBookRecord {
+  const isUntitledPlaceholder = Boolean(
+    resolved
+    && /^untitled\b/i.test(book.work.title.trim())
+    && book.status !== 'finished'
+    && book.status !== 'currently-reading',
+  );
+
+  if (!isUntitledPlaceholder || book.ownership !== 'owned') return book;
+  return { ...book, ownership: 'none' };
+}
+
 const summarize = (
   id: string,
   name: string,
@@ -133,9 +153,11 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
 
   Object.values(overrides).forEach((override) => {
     const entries = override.books.flatMap((entry) => {
-      const book = booksById.get(entry.bookId);
-      if (!book) return [];
-      manuallyAssignedBookIds.add(book.id);
+      const sourceBook = booksById.get(entry.bookId);
+      if (!sourceBook) return [];
+      manuallyAssignedBookIds.add(sourceBook.id);
+      const resolved = resolveSeriesMetadata(sourceBook) ?? { name: override.name, position: entry.position };
+      const book = normalizeSeriesBook(sourceBook, resolved);
       return [{
         book,
         position: entry.position,
@@ -146,16 +168,17 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
   });
 
   const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[] }>();
-  books.forEach((book) => {
-    if (manuallyAssignedBookIds.has(book.id)) return;
+  books.forEach((sourceBook) => {
+    if (manuallyAssignedBookIds.has(sourceBook.id)) return;
 
     // Series organization is library metadata, not reading-activity data. Imported
     // books are intentionally eligible here. We use explicit imported/verified
     // series metadata first, then a conservative title-based fallback for legacy
     // imports that flattened the series into the title.
-    const resolved = resolveSeriesMetadata(book);
+    const resolved = resolveSeriesMetadata(sourceBook);
     if (!resolved) return;
 
+    const book = normalizeSeriesBook(sourceBook, resolved);
     const name = resolved.name;
     const author = book.work.author.trim() || 'Unknown author';
     const key = `${name.toLowerCase()}::${author.toLowerCase()}`;
