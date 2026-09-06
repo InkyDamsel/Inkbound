@@ -15,6 +15,7 @@ import { ReadingSession, ReadingStatus, UserBookRecord } from '../types';
 import { getBookReadingState } from '../features/reading/bookReadingState';
 import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { BookCover } from './BookCover';
 
 interface HomeDashboardProps {
@@ -53,8 +54,6 @@ const getSessionTimestamp = (session: ReadingSession): number => {
   const chosen = end ?? start ?? { hour: 12, minute: 0 };
   const timestamp = new Date(year, month - 1, day, chosen.hour, chosen.minute, 0, 0);
 
-  // A session that starts before midnight and ends after midnight belongs to
-  // the following local calendar day at its endpoint.
   if (start && end && (end.hour < start.hour || (end.hour === start.hour && end.minute < start.minute))) {
     timestamp.setDate(timestamp.getDate() + 1);
   }
@@ -94,7 +93,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
   const currentlyReading = books.filter((book) => book.status === 'currently-reading');
   const currentBook = [...currentlyReading].sort((a, b) => readingRecencyKey(b).localeCompare(readingRecencyKey(a)))[0] ?? null;
-  const finishedBooks = books.filter((book) => book.status === 'finished');
+  const finishedBooks = books.filter(hasTrustworthyFinishedHistory);
   const finishedThisYear = finishedBooks.filter((book) => book.dateFinished?.startsWith(yearPrefix));
   const recentlyFinished = [...finishedBooks]
     .filter((book) => Boolean(book.dateFinished))
