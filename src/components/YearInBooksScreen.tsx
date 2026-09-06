@@ -1,99 +1,42 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Download, Share2, Sparkles, Trophy } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, Download, Share2, Trophy } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 
-interface YearInBooksScreenProps {
-  books: UserBookRecord[];
-  sessions: ReadingSession[];
-  onSelectBook: (book: UserBookRecord) => void;
-}
-
+interface YearInBooksScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; onSelectBook: (book: UserBookRecord) => void; }
 type YearbookTheme = 'quiet-library' | 'winter-study' | 'celestial';
 type ExportFormat = 'story' | 'portrait' | 'square';
-
-interface YearbookPreferences {
-  year: number;
-  page: number;
-  theme: YearbookTheme;
-  exportFormat: ExportFormat;
-}
-
+interface YearbookPreferences { year: number; page: number; theme: YearbookTheme; exportFormat: ExportFormat; }
 const STORAGE_KEY = 'inkbound_year_in_books_preferences';
-
 const themes: Record<YearbookTheme, { label: string; background: string; accent: string; text: string }> = {
   'quiet-library': { label: 'Quiet Library', background: '#171217', accent: '#a87d92', text: '#f4ece3' },
   'winter-study': { label: 'Winter Study', background: '#263036', accent: '#b8ced5', text: '#f5f1e9' },
   celestial: { label: 'Celestial', background: '#17192f', accent: '#aaa4df', text: '#f5f2ff' },
 };
-
 const exportFormats: Record<ExportFormat, { label: string; width: number; height: number }> = {
-  story: { label: 'Story 9:16', width: 1080, height: 1920 },
-  portrait: { label: 'Feed 4:5', width: 1080, height: 1350 },
-  square: { label: 'Square 1:1', width: 1080, height: 1080 },
+  story: { label: 'Story 9:16', width: 1080, height: 1920 }, portrait: { label: 'Feed 4:5', width: 1080, height: 1350 }, square: { label: 'Square 1:1', width: 1080, height: 1080 },
 };
-
-const dateYear = (value?: string): number | null => {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const [year, month, day] = value.split('-').map(Number);
-  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
-  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day ? year : null;
-};
-
-const dateMonth = (value?: string): number | null => {
-  if (!value || dateYear(value) === null) return null;
-  return Number(value.split('-')[1]) - 1;
-};
-
-const formatLocalDate = (value?: string) => {
-  if (!value || dateYear(value) === null) return '—';
-  const [year, month, day] = value.split('-').map(Number);
-  return new Date(year, month - 1, day, 12).toLocaleDateString();
-};
-
+const dateYear = (value?: string): number | null => { if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null; const [year, month, day] = value.split('-').map(Number); const parsed = new Date(year, month - 1, day, 12); return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day ? year : null; };
+const dateMonth = (value?: string): number | null => { if (!value || dateYear(value) === null) return null; return Number(value.split('-')[1]) - 1; };
+const formatLocalDate = (value?: string) => { if (!value || dateYear(value) === null) return '—'; const [year, month, day] = value.split('-').map(Number); return new Date(year, month - 1, day, 12).toLocaleDateString(); };
 const escapeXml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const countValues = (values: string[]) => values.filter(Boolean).reduce<Record<string, number>>((acc, value) => ({ ...acc, [value]: (acc[value] ?? 0) + 1 }), {});
 const topKey = (counts: Record<string, number>) => Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
 const percentDelta = (current: number, previous: number) => previous > 0 ? Math.round(((current - previous) / previous) * 100) : current > 0 ? 100 : 0;
-const deltaLabel = (current: number, previous: number) => {
-  const delta = percentDelta(current, previous);
-  if (delta === 0) return 'Same as last year';
-  return `${delta > 0 ? '+' : ''}${delta}% vs last year`;
-};
+const deltaLabel = (current: number, previous: number) => { const delta = percentDelta(current, previous); if (delta === 0) return 'Same as last year'; return `${delta > 0 ? '+' : ''}${delta}% vs last year`; };
 
 export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, sessions, onSelectBook }) => {
   const currentYear = new Date().getFullYear();
-  const availableYears = useMemo(() => {
-    const years = new Set<number>([currentYear]);
-    books.forEach((book) => {
-      const finishedYear = dateYear(book.dateFinished);
-      const startedYear = dateYear(book.dateStarted);
-      if (finishedYear !== null) years.add(finishedYear);
-      if (startedYear !== null) years.add(startedYear);
-    });
-    sessions.forEach((session) => {
-      const year = dateYear(session.date);
-      if (year !== null && getSessionDurationMinutes(session) > 0) years.add(year);
-    });
-    return [...years].sort((a, b) => b - a);
-  }, [books, sessions, currentYear]);
-
-  const [preferences, setPreferences] = usePersistentState<YearbookPreferences>(STORAGE_KEY, {
-    year: availableYears[0] ?? currentYear,
-    page: 0,
-    theme: 'quiet-library',
-    exportFormat: 'portrait',
-  });
+  const availableYears = useMemo(() => { const years = new Set<number>([currentYear]); books.forEach((book) => { const finishedYear = dateYear(book.dateFinished); const startedYear = dateYear(book.dateStarted); if (finishedYear !== null) years.add(finishedYear); if (startedYear !== null) years.add(startedYear); }); sessions.forEach((session) => { const year = dateYear(session.date); if (year !== null && getSessionDurationMinutes(session) > 0) years.add(year); }); return [...years].sort((a, b) => b - a); }, [books, sessions, currentYear]);
+  const [preferences, setPreferences] = usePersistentState<YearbookPreferences>(STORAGE_KEY, { year: availableYears[0] ?? currentYear, page: 0, theme: 'quiet-library', exportFormat: 'portrait' });
   const [message, setMessage] = useState('');
-
   const yearBooks = books.filter((book) => book.status === 'finished' && dateYear(book.dateFinished) === preferences.year);
   const yearSessions = sessions.filter((session) => dateYear(session.date) === preferences.year && getSessionDurationMinutes(session) > 0);
   const previousBooks = books.filter((book) => book.status === 'finished' && dateYear(book.dateFinished) === preferences.year - 1);
   const previousSessions = sessions.filter((session) => dateYear(session.date) === preferences.year - 1 && getSessionDurationMinutes(session) > 0);
-
   const totalMinutes = yearSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
   const totalPages = yearSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
   const readingDays = new Set(yearSessions.map((session) => session.date)).size;
@@ -101,7 +44,6 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
   const previousMinutes = previousSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
   const previousPages = previousSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
   const previousDays = new Set(previousSessions.map((session) => session.date)).size;
-
   const ratedYearBooks = yearBooks.filter((book) => typeof book.rating === 'number' && Number.isFinite(book.rating));
   const topBook = [...ratedYearBooks].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))[0];
   const fiveStarReads = yearBooks.filter((book) => book.rating === 5).length;
@@ -112,15 +54,9 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
   const longestBook = [...yearBooks].sort((a, b) => (getActiveEdition(b)?.pageCount ?? 0) - (getActiveEdition(a)?.pageCount ?? 0))[0];
   const shortestBook = [...yearBooks].filter((book) => (getActiveEdition(book)?.pageCount ?? 0) > 0).sort((a, b) => (getActiveEdition(a)?.pageCount ?? 0) - (getActiveEdition(b)?.pageCount ?? 0))[0];
   const longestSession = [...yearSessions].sort((a, b) => getSessionDurationMinutes(b) - getSessionDurationMinutes(a))[0];
-  const monthCounts = Array.from({ length: 12 }, (_, month) => ({
-    month,
-    books: yearBooks.filter((book) => dateMonth(book.dateFinished) === month).length,
-    sessions: yearSessions.filter((session) => dateMonth(session.date) === month).length,
-    pages: yearSessions.filter((session) => dateMonth(session.date) === month).reduce((sum, session) => sum + getSessionPagesRead(session), 0),
-  }));
+  const monthCounts = Array.from({ length: 12 }, (_, month) => ({ month, books: yearBooks.filter((book) => dateMonth(book.dateFinished) === month).length, sessions: yearSessions.filter((session) => dateMonth(session.date) === month).length, pages: yearSessions.filter((session) => dateMonth(session.date) === month).reduce((sum, session) => sum + getSessionPagesRead(session), 0) }));
   const biggestMonth = [...monthCounts].sort((a, b) => (b.books - a.books) || (b.pages - a.pages) || (b.sessions - a.sessions))[0];
   const biggestMonthName = biggestMonth ? new Date(preferences.year, biggestMonth.month, 1).toLocaleDateString(undefined, { month: 'long' }) : '—';
-
   const pages = [
     { kicker: `${preferences.year} Yearbook`, title: 'Your Year in Books', body: `${yearBooks.length} finished books, ${totalPages.toLocaleString()} pages and ${Math.round(totalMinutes / 60)} hours spent reading.`, stats: [['Books', yearBooks.length.toString()], ['Pages', totalPages.toLocaleString()], ['Hours', Math.round(totalMinutes / 60).toString()], ['Reading days', readingDays.toString()]] },
     { kicker: 'Year over Year', title: previousBooks.length || previousSessions.length ? 'How this year changed' : 'Your comparison starts here', body: previousBooks.length || previousSessions.length ? `Inkbound compared ${preferences.year} with ${preferences.year - 1} using your real reading history.` : 'Once you have another year of tracked reading, Inkbound will show how your habits changed.', stats: [['Finished books', deltaLabel(yearBooks.length, previousBooks.length)], ['Pages', deltaLabel(totalPages, previousPages)], ['Reading time', deltaLabel(totalMinutes, previousMinutes)], ['Reading days', deltaLabel(readingDays, previousDays)]] },
@@ -129,120 +65,32 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
     { kicker: 'Shelf Extremes', title: longestBook?.work.title ?? 'Your longest read is waiting', body: longestBook ? `${longestBook.work.title} was your longest finished book${getActiveEdition(longestBook)?.pageCount ? ` at ${getActiveEdition(longestBook)?.pageCount} pages` : ''}.` : 'Finish books with page data to build your shelf extremes.', stats: [['Longest', longestBook?.work.title ?? '—'], ['Shortest', shortestBook?.work.title ?? '—'], ['Biggest month', biggestMonthName], ['Top format', topFormat]] },
     { kicker: 'Book of the Year', title: topBook?.work.title ?? 'Your favorite is waiting', body: topBook ? `${topBook.work.author}${topBook.rating ? ` · ${topBook.rating} stars` : ''}` : 'Finish and rate books to reveal your annual favorite.', stats: [['Author', topBook?.work.author ?? '—'], ['Rating', topBook?.rating ? `${topBook.rating} / 5` : '—'], ['Finished', formatLocalDate(topBook?.dateFinished)], ['Sessions', topBook ? yearSessions.filter((session) => session.bookId === topBook.id).length.toString() : '0']] },
   ];
-
   const safePage = Math.min(Math.max(preferences.page, 0), pages.length - 1);
-  const page = pages[safePage];
-  const theme = themes[preferences.theme] ?? themes['quiet-library'];
-  const exportFormat = exportFormats[preferences.exportFormat] ?? exportFormats.portrait;
-  const isSquare = preferences.exportFormat === 'square';
-  const isStory = preferences.exportFormat === 'story';
-  const titleLength = page.title.length;
+  const page = pages[safePage]; const theme = themes[preferences.theme] ?? themes['quiet-library']; const exportFormat = exportFormats[preferences.exportFormat] ?? exportFormats.portrait;
+  const isSquare = preferences.exportFormat === 'square'; const isStory = preferences.exportFormat === 'story'; const isDenseStoryPage = isStory && safePage === 4; const titleLength = page.title.length;
   const previewCardPadding = isSquare ? 'p-[5%]' : isStory ? 'p-[6%]' : 'p-[6%]';
   const previewContentSpacing = isSquare ? 'my-3 sm:my-4' : isStory ? 'my-4 sm:my-6' : 'my-5 sm:my-7';
-  const previewTitleClass = isSquare
-    ? titleLength > 70 ? 'text-lg sm:text-xl' : titleLength > 45 ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'
-    : isStory
-      ? titleLength > 70 ? 'text-3xl sm:text-4xl' : titleLength > 45 ? 'text-4xl sm:text-5xl' : 'text-4xl sm:text-6xl'
-      : titleLength > 70 ? 'text-xl sm:text-2xl' : titleLength > 45 ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl';
+  const previewTitleClass = isSquare ? titleLength > 70 ? 'text-lg sm:text-xl' : titleLength > 45 ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl' : isStory ? titleLength > 70 ? 'text-3xl sm:text-4xl' : titleLength > 45 ? 'text-4xl sm:text-5xl' : 'text-4xl sm:text-6xl' : titleLength > 70 ? 'text-xl sm:text-2xl' : titleLength > 45 ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl';
   const previewBodyClass = isSquare ? 'mt-3 text-xs leading-5 sm:text-sm' : isStory ? 'mt-6 text-base leading-7 sm:text-lg' : 'mt-4 text-sm leading-6';
-  const previewStatsMargin = isSquare ? 'mt-4' : isStory ? 'mt-10' : 'mt-5';
-  const previewStatPadding = isSquare ? 'p-2.5 sm:p-3' : isStory ? 'p-6 sm:p-7' : 'p-3';
+  const previewStatsMargin = isSquare ? 'mt-4' : isStory ? (isDenseStoryPage ? 'mt-10' : 'mt-12') : 'mt-5';
+  const previewStatPadding = isSquare ? 'p-2.5 sm:p-3' : isStory ? (isDenseStoryPage ? 'p-6 sm:p-7' : 'p-7 sm:p-8') : 'p-3';
   const previewStatValueClass = isSquare ? 'text-sm sm:text-base' : isStory ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg';
-  const previewStatMinHeight = isStory ? 'min-h-[96px] sm:min-h-[118px]' : '';
-
+  const previewStatMinHeight = isStory ? (isDenseStoryPage ? 'min-h-[96px] sm:min-h-[118px]' : 'min-h-[132px] sm:min-h-[164px]') : '';
   const buildSvg = () => {
-    const titleSize = isSquare
-      ? titleLength > 70 ? 30 : titleLength > 45 ? 36 : 44
-      : isStory
-        ? titleLength > 70 ? 56 : titleLength > 45 ? 64 : 76
-        : titleLength > 70 ? 36 : titleLength > 45 ? 44 : 54;
-    const bodySize = isSquare ? 21 : isStory ? 32 : 24;
-    const statLabelSize = isSquare ? 16 : isStory ? 22 : 18;
-    const statValueSize = isSquare ? 20 : isStory ? 34 : 23;
-    const innerPadding = isSquare ? 56 : isStory ? 72 : 68;
-    const headerGap = isSquare ? 12 : isStory ? 20 : 18;
-    const bodyGap = isSquare ? 14 : isStory ? 34 : 20;
-    const statsGap = isSquare ? 14 : isStory ? 24 : 16;
-    const statPadding = isSquare ? 16 : isStory ? 32 : 19;
-    const centerGap = isSquare ? 16 : isStory ? 20 : 24;
-    const borderRadius = isSquare ? 28 : 38;
-    const statCards = page.stats.map(([label, value]) => `
-      <div style="box-sizing:border-box;min-width:0;${isStory ? 'min-height:164px;' : ''}border:1px solid rgba(255,255,255,.12);border-radius:${isSquare ? 18 : 22}px;background:rgba(255,255,255,.05);padding:${statPadding}px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:${isSquare ? 7 : isStory ? 14 : 10}px;">
-        <div style="font-family:Arial,sans-serif;font-size:${statLabelSize}px;letter-spacing:2px;text-transform:uppercase;opacity:.62;line-height:1.2;">${escapeXml(label)}</div>
-        <div style="font-family:Georgia,serif;font-size:${statValueSize}px;font-weight:700;line-height:1.18;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(value)}</div>
-      </div>`).join('');
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${exportFormat.width}" height="${exportFormat.height}" viewBox="0 0 ${exportFormat.width} ${exportFormat.height}">
-      <defs>
-        <radialGradient id="glow" cx="82%" cy="8%"><stop offset="0" stop-color="${theme.accent}" stop-opacity=".58"/><stop offset="1" stop-color="${theme.background}" stop-opacity="0"/></radialGradient>
-      </defs>
-      <rect width="100%" height="100%" fill="${theme.background}"/>
-      <rect width="100%" height="100%" fill="url(#glow)"/>
-      <rect x="8%" y="7%" width="84%" height="86%" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".42" stroke-width="3"/>
-      <foreignObject x="8%" y="7%" width="84%" height="86%">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${innerPadding}px;display:flex;flex-direction:column;justify-content:space-between;text-align:center;color:${theme.text};font-family:Arial,sans-serif;overflow:hidden;">
-          <div style="flex:0 0 auto;">
-            <div style="color:${theme.accent};font-family:Georgia,serif;font-size:${isSquare ? 19 : isStory ? 29 : 23}px;font-weight:700;letter-spacing:${isSquare ? 5 : 7}px;line-height:1.15;">INKBOUND</div>
-            <div style="margin-top:${headerGap}px;font-size:${isSquare ? 16 : isStory ? 26 : 20}px;font-weight:700;letter-spacing:${isSquare ? 3 : 5}px;line-height:1.2;text-transform:uppercase;opacity:.78;">${escapeXml(page.kicker)}</div>
-          </div>
-          <div style="flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:${centerGap}px 0;">
-            <div style="font-family:Georgia,serif;font-size:${titleSize}px;font-weight:700;line-height:1.08;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeXml(page.title)}</div>
-            <div style="margin-top:${bodyGap}px;max-width:92%;font-size:${bodySize}px;line-height:1.4;opacity:.76;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(page.body)}</div>
-            <div style="margin-top:${isSquare ? 22 : isStory ? 52 : 30}px;width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${statsGap}px;">${statCards}</div>
-          </div>
-          <div style="flex:0 0 auto;color:${theme.accent};font-size:${isSquare ? 16 : isStory ? 23 : 19}px;font-weight:700;line-height:1.2;">${safePage + 1} / ${pages.length} · Created with Inkbound</div>
-        </div>
-      </foreignObject>
-    </svg>`;
+    const titleSize = isSquare ? titleLength > 70 ? 30 : titleLength > 45 ? 36 : 44 : isStory ? titleLength > 70 ? 56 : titleLength > 45 ? 64 : 76 : titleLength > 70 ? 36 : titleLength > 45 ? 44 : 54;
+    const bodySize = isSquare ? 21 : isStory ? 32 : 24; const statLabelSize = isSquare ? 16 : isStory ? 22 : 18; const statValueSize = isSquare ? 20 : isStory ? 34 : 23;
+    const innerPadding = isSquare ? 56 : isStory ? 72 : 68; const headerGap = isSquare ? 12 : isStory ? 20 : 18; const bodyGap = isSquare ? 14 : isStory ? 34 : 20; const statsGap = isSquare ? 14 : isStory ? 24 : 16; const statPadding = isSquare ? 16 : isStory ? (isDenseStoryPage ? 32 : 38) : 19; const centerGap = isSquare ? 16 : isStory ? 20 : 24;
+    const storyStatHeight = isDenseStoryPage ? 164 : 220;
+    const statCards = page.stats.map(([label, value]) => `<div style="box-sizing:border-box;min-width:0;${isStory ? `min-height:${storyStatHeight}px;` : ''}border:1px solid rgba(255,255,255,.12);border-radius:${isSquare ? 18 : 22}px;background:rgba(255,255,255,.05);padding:${statPadding}px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:${isSquare ? 7 : isStory ? 14 : 10}px;"><div style="font-family:Arial,sans-serif;font-size:${statLabelSize}px;letter-spacing:2px;text-transform:uppercase;opacity:.62;line-height:1.2;">${escapeXml(label)}</div><div style="font-family:Georgia,serif;font-size:${statValueSize}px;font-weight:700;line-height:1.18;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(value)}</div></div>`).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${exportFormat.width}" height="${exportFormat.height}" viewBox="0 0 ${exportFormat.width} ${exportFormat.height}"><defs><radialGradient id="glow" cx="82%" cy="8%"><stop offset="0" stop-color="${theme.accent}" stop-opacity=".58"/><stop offset="1" stop-color="${theme.background}" stop-opacity="0"/></radialGradient></defs><rect width="100%" height="100%" fill="${theme.background}"/><rect width="100%" height="100%" fill="url(#glow)"/><rect x="8%" y="7%" width="84%" height="86%" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".42" stroke-width="3"/><foreignObject x="8%" y="7%" width="84%" height="86%"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${innerPadding}px;display:flex;flex-direction:column;justify-content:space-between;text-align:center;color:${theme.text};font-family:Arial,sans-serif;overflow:hidden;"><div style="flex:0 0 auto;"><div style="color:${theme.accent};font-family:Georgia,serif;font-size:${isSquare ? 19 : isStory ? 29 : 23}px;font-weight:700;letter-spacing:${isSquare ? 5 : 7}px;line-height:1.15;">INKBOUND</div><div style="margin-top:${headerGap}px;font-size:${isSquare ? 16 : isStory ? 26 : 20}px;font-weight:700;letter-spacing:${isSquare ? 3 : 5}px;line-height:1.2;text-transform:uppercase;opacity:.78;">${escapeXml(page.kicker)}</div></div><div style="flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:${centerGap}px 0;"><div style="font-family:Georgia,serif;font-size:${titleSize}px;font-weight:700;line-height:1.08;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeXml(page.title)}</div><div style="margin-top:${bodyGap}px;max-width:92%;font-size:${bodySize}px;line-height:1.4;opacity:.76;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(page.body)}</div><div style="margin-top:${isSquare ? 22 : isStory ? (isDenseStoryPage ? 52 : 64) : 30}px;width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${statsGap}px;">${statCards}</div></div><div style="flex:0 0 auto;color:${theme.accent};font-size:${isSquare ? 16 : isStory ? 23 : 19}px;font-weight:700;line-height:1.2;">${safePage + 1} / ${pages.length} · Created with Inkbound</div></div></foreignObject></svg>`;
   };
-
-  const createPng = async () => {
-    const svgBlob = new Blob([buildSvg()], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-    try {
-      const image = new window.Image(); image.src = url; await image.decode();
-      const canvas = document.createElement('canvas'); canvas.width = exportFormat.width; canvas.height = exportFormat.height;
-      const context = canvas.getContext('2d'); if (!context) throw new Error('Image export is unavailable.');
-      context.drawImage(image, 0, 0);
-      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create image.')), 'image/png', 1));
-      return new File([blob], `inkbound-${preferences.year}-year-in-books-${safePage + 1}.png`, { type: 'image/png' });
-    } finally { URL.revokeObjectURL(url); }
-  };
-
+  const createPng = async () => { const svgBlob = new Blob([buildSvg()], { type: 'image/svg+xml;charset=utf-8' }); const url = URL.createObjectURL(svgBlob); try { const image = new window.Image(); image.src = url; await image.decode(); const canvas = document.createElement('canvas'); canvas.width = exportFormat.width; canvas.height = exportFormat.height; const context = canvas.getContext('2d'); if (!context) throw new Error('Image export is unavailable.'); context.drawImage(image, 0, 0); const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create image.')), 'image/png', 1)); return new File([blob], `inkbound-${preferences.year}-year-in-books-${safePage + 1}.png`, { type: 'image/png' }); } finally { URL.revokeObjectURL(url); } };
   const download = async () => { try { const file = await createPng(); await exportRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file }); setMessage('Yearbook page saved.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Export failed.'); } };
   const share = async () => { try { const file = await createPng(); const result = await shareRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file, title: `${preferences.year} Year in Books`, text: 'My reading year, made with Inkbound' }); setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the image was saved instead.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); } };
-
-  return (
-    <div className="space-y-7 pb-24">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="inkbound-kicker">Annual Yearbook</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Year in Books</h1><p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">A collectible annual recap built from your real books and reading sessions.</p></div><select value={preferences.year} onChange={(event) => setPreferences((current) => ({ ...current, year: Number(event.target.value), page: 0 }))} className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-[var(--ink-ivory)] sm:w-auto">{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select></header>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ['Books finished', yearBooks.length.toString(), deltaLabel(yearBooks.length, previousBooks.length)],
-          ['Pages read', totalPages.toLocaleString(), deltaLabel(totalPages, previousPages)],
-          ['Reading time', `${Math.round(totalMinutes / 60)}h`, deltaLabel(totalMinutes, previousMinutes)],
-          ['Reading days', readingDays.toString(), deltaLabel(readingDays, previousDays)],
-        ].map(([label, value, comparison]) => <div key={label} className="inkbound-panel rounded-2xl p-5"><p className="text-xs uppercase tracking-[0.16em] text-[var(--ink-muted)]">{label}</p><p className="mt-2 font-serif text-3xl font-bold text-[var(--ink-ivory)]">{value}</p><p className="mt-2 text-xs font-semibold text-[var(--ink-gold)]">{comparison}</p></div>)}
-      </section>
-
-      <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <section className="inkbound-panel space-y-5 rounded-3xl p-5 sm:p-6">
-          <div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Theme</p><div className="mt-2 grid gap-2">{(Object.entries(themes) as [YearbookTheme, typeof themes[YearbookTheme]][]).map(([id, item]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, theme: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.theme === id ? 'border-[var(--ink-gold)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`} style={{ background: item.background }}>{item.label}</button>)}</div></div>
-          <div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Export size</p><div className="mt-2 grid gap-2">{(Object.entries(exportFormats) as [ExportFormat, typeof exportFormats[ExportFormat]][]).map(([id, item]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, exportFormat: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.exportFormat === id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}>{item.label}</button>)}</div></div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"><button type="button" onClick={() => void share()} className="quiet-shelf-primary-action min-h-12 justify-center"><Share2 className="h-4 w-4" /> Share</button><button type="button" onClick={() => void download()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Save PNG</button></div>
-          {topBook && <button type="button" onClick={() => onSelectBook(topBook)} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] p-3 text-left"><BookOpen className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><span className="min-w-0"><strong className="block truncate text-sm text-[var(--ink-ivory)]">Open Book of the Year</strong><span className="block truncate text-xs text-[var(--ink-muted)]">{topBook.work.title}</span></span></button>}
-          {message && <p role="status" className="text-sm text-[var(--ink-muted)]">{message}</p>}
-        </section>
-
-        <section className="inkbound-panel flex min-h-[620px] flex-col items-center justify-center rounded-3xl p-4 sm:p-8">
-          <div className="mb-4 flex w-full max-w-[620px] items-center justify-between"><button type="button" onClick={() => setPreferences((current) => ({ ...current, page: (safePage - 1 + pages.length) % pages.length }))} className="quiet-shelf-icon-button h-11 w-11" aria-label="Previous yearbook page"><ChevronLeft /></button><span className="text-xs font-semibold text-[var(--ink-muted)]">Page {safePage + 1} of {pages.length}</span><button type="button" onClick={() => setPreferences((current) => ({ ...current, page: (safePage + 1) % pages.length }))} className="quiet-shelf-icon-button h-11 w-11" aria-label="Next yearbook page"><ChevronRight /></button></div>
-          <div className={`relative flex w-full max-w-[620px] flex-col justify-between overflow-hidden rounded-[32px] border border-white/15 text-center shadow-2xl ${previewCardPadding}`} style={{ aspectRatio: `${exportFormat.width} / ${exportFormat.height}`, background: `radial-gradient(circle at 82% 8%, ${theme.accent}66, transparent 40%), ${theme.background}`, color: theme.text }}>
-            <div><p className="text-[10px] font-bold uppercase tracking-[0.35em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p><p className={`${isSquare ? 'mt-2' : isStory ? 'mt-4' : 'mt-3'} text-[10px] font-bold uppercase tracking-[0.18em] opacity-75 sm:text-xs sm:tracking-[0.23em]`}>{page.kicker}</p></div>
-            <div className={previewContentSpacing}><Trophy className={`${isSquare ? 'mb-3 h-6 w-6' : isStory ? 'mb-8 h-10 w-10' : 'mb-4 h-7 w-7'} mx-auto`} style={{ color: theme.accent }} /><h2 className={`font-serif font-bold leading-[1.08] ${previewTitleClass}`}>{page.title}</h2><p className={`mx-auto max-w-xl opacity-75 ${previewBodyClass}`}>{page.body}</p><div className={`mx-auto grid max-w-xl grid-cols-2 gap-2 sm:gap-3 ${previewStatsMargin}`}>{page.stats.map(([label, value]) => <div key={label} className={`rounded-2xl border border-white/10 bg-white/5 ${previewStatPadding} ${previewStatMinHeight}`}><p className="text-[9px] uppercase tracking-[0.12em] opacity-60 sm:text-[11px] sm:tracking-[0.16em]">{label}</p><p className={`mt-1.5 break-words font-serif font-bold leading-tight sm:mt-2 ${previewStatValueClass}`}>{value}</p></div>)}</div></div>
-            <p className={`${isSquare ? 'text-[10px]' : 'text-xs'} font-semibold`} style={{ color: theme.accent }}>{safePage + 1} / {pages.length} · Created with Inkbound</p>
-          </div>
-        </section>
-      </div>
-    </div>
-  );
+  return <div className="space-y-7 pb-24">
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="inkbound-kicker">Annual Yearbook</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Year in Books</h1><p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">A collectible annual recap built from your real books and reading sessions.</p></div><select value={preferences.year} onChange={(event) => setPreferences((current) => ({ ...current, year: Number(event.target.value), page: 0 }))} className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-[var(--ink-ivory)] sm:w-auto">{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select></header>
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[['Books finished', yearBooks.length.toString(), deltaLabel(yearBooks.length, previousBooks.length)], ['Pages read', totalPages.toLocaleString(), deltaLabel(totalPages, previousPages)], ['Reading time', `${Math.round(totalMinutes / 60)}h`, deltaLabel(totalMinutes, previousMinutes)], ['Reading days', readingDays.toString(), deltaLabel(readingDays, previousDays)]].map(([label, value, comparison]) => <div key={label} className="inkbound-panel rounded-2xl p-5"><p className="text-xs uppercase tracking-[0.16em] text-[var(--ink-muted)]">{label}</p><p className="mt-2 font-serif text-3xl font-bold text-[var(--ink-ivory)]">{value}</p><p className="mt-2 text-xs font-semibold text-[var(--ink-gold)]">{comparison}</p></div>)}</section>
+    <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]"><section className="inkbound-panel space-y-5 rounded-3xl p-5 sm:p-6"><div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Theme</p><div className="mt-2 grid gap-2">{(Object.entries(themes) as [YearbookTheme, typeof themes[YearbookTheme]][]).map(([id, item]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, theme: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.theme === id ? 'border-[var(--ink-gold)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`} style={{ background: item.background }}>{item.label}</button>)}</div></div><div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Export size</p><div className="mt-2 grid gap-2">{(Object.entries(exportFormats) as [ExportFormat, typeof exportFormats[ExportFormat]][]).map(([id, item]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, exportFormat: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.exportFormat === id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}>{item.label}</button>)}</div></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"><button type="button" onClick={() => void share()} className="quiet-shelf-primary-action min-h-12 justify-center"><Share2 className="h-4 w-4" /> Share</button><button type="button" onClick={() => void download()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Save PNG</button></div>{topBook && <button type="button" onClick={() => onSelectBook(topBook)} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] p-3 text-left"><BookOpen className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><span className="min-w-0"><strong className="block truncate text-sm text-[var(--ink-ivory)]">Open Book of the Year</strong><span className="block truncate text-xs text-[var(--ink-muted)]">{topBook.work.title}</span></span></button>}{message && <p role="status" className="text-sm text-[var(--ink-muted)]">{message}</p>}</section>
+      <section className="inkbound-panel flex min-h-[620px] flex-col items-center justify-center rounded-3xl p-4 sm:p-8"><div className="mb-4 flex w-full max-w-[620px] items-center justify-between"><button type="button" onClick={() => setPreferences((current) => ({ ...current, page: (safePage - 1 + pages.length) % pages.length }))} className="quiet-shelf-icon-button h-11 w-11" aria-label="Previous yearbook page"><ChevronLeft /></button><span className="text-xs font-semibold text-[var(--ink-muted)]">Page {safePage + 1} of {pages.length}</span><button type="button" onClick={() => setPreferences((current) => ({ ...current, page: (safePage + 1) % pages.length }))} className="quiet-shelf-icon-button h-11 w-11" aria-label="Next yearbook page"><ChevronRight /></button></div><div className={`relative flex w-full max-w-[620px] flex-col justify-between overflow-hidden rounded-[32px] border border-white/15 text-center shadow-2xl ${previewCardPadding}`} style={{ aspectRatio: `${exportFormat.width} / ${exportFormat.height}`, background: `radial-gradient(circle at 82% 8%, ${theme.accent}66, transparent 40%), ${theme.background}`, color: theme.text }}><div><p className="text-[10px] font-bold uppercase tracking-[0.35em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p><p className={`${isSquare ? 'mt-2' : isStory ? 'mt-4' : 'mt-3'} text-[10px] font-bold uppercase tracking-[0.18em] opacity-75 sm:text-xs sm:tracking-[0.23em]`}>{page.kicker}</p></div><div className={previewContentSpacing}><Trophy className={`${isSquare ? 'mb-3 h-6 w-6' : isStory ? 'mb-8 h-10 w-10' : 'mb-4 h-7 w-7'} mx-auto`} style={{ color: theme.accent }} /><h2 className={`font-serif font-bold leading-[1.08] ${previewTitleClass}`}>{page.title}</h2><p className={`mx-auto max-w-xl opacity-75 ${previewBodyClass}`}>{page.body}</p><div className={`mx-auto grid max-w-xl grid-cols-2 gap-2 sm:gap-3 ${previewStatsMargin}`}>{page.stats.map(([label, value]) => <div key={label} className={`rounded-2xl border border-white/10 bg-white/5 ${previewStatPadding} ${previewStatMinHeight}`}><p className="text-[9px] uppercase tracking-[0.12em] opacity-60 sm:text-[11px] sm:tracking-[0.16em]">{label}</p><p className={`mt-1.5 break-words font-serif font-bold leading-tight sm:mt-2 ${previewStatValueClass}`}>{value}</p></div>)}</div></div><p className={`${isSquare ? 'text-[10px]' : 'text-xs'} font-semibold`} style={{ color: theme.accent }}>{safePage + 1} / {pages.length} · Created with Inkbound</p></div></section></div>
+  </div>;
 };
