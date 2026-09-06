@@ -28,6 +28,7 @@ interface DeletedTimeCapsule {
 const CAPSULES_KEY = 'inkbound_reading_time_capsules';
 const CAPSULE_FILTER_KEY = 'inkbound_time_capsule_filter';
 const UNDO_DELETE_MS = 7000;
+const TIME_CAPSULE_BACKGROUND_URL = '/assets/time-capsules/cozy-time-capsule-background.png';
 
 function getStatus(capsule: TimeCapsule): CapsuleStatus {
   if (capsule.openedAt) return 'opened';
@@ -113,20 +114,24 @@ export const ReadingTimeCapsulesScreen: React.FC<ReadingTimeCapsulesScreenProps>
 
   return (
     <div className="space-y-6 pb-20">
-      <section className="inkbound-panel rounded-3xl p-5 sm:p-8">
-        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div className="min-w-0">
+      <section
+        className="relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] bg-cover bg-center shadow-2xl"
+        style={{ backgroundImage: `url("${TIME_CAPSULE_BACKGROUND_URL}")` }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/30 to-black/20" />
+        <div className="relative flex min-h-[230px] flex-col justify-end gap-5 p-5 sm:min-h-[260px] sm:p-8 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0 max-w-2xl rounded-2xl border border-white/10 bg-black/35 p-5 backdrop-blur-[2px] sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--ink-gold-bright)]">Letters across time</p>
             <h2 className="mt-2 font-serif text-3xl text-[var(--ink-ivory)] md:text-4xl">Reading Time Capsules</h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--ink-muted)]">
               Seal a private note about a book and reveal it when you return to Inkbound on or after a future date.
             </p>
+            {books.length === 0 && <p className="mt-4 text-xs text-[var(--ink-muted)]">Add a book before creating a reading time capsule.</p>}
           </div>
-          <button type="button" disabled={books.length === 0} className="quiet-shelf-primary-action justify-center disabled:cursor-not-allowed disabled:opacity-45" onClick={() => setIsCreating(true)}>
+          <button type="button" disabled={books.length === 0} className="quiet-shelf-primary-action shrink-0 justify-center disabled:cursor-not-allowed disabled:opacity-45" onClick={() => setIsCreating(true)}>
             <Plus /> New capsule
           </button>
         </div>
-        {books.length === 0 && <p className="mt-4 text-xs text-[var(--ink-muted)]">Add a book before creating a reading time capsule.</p>}
       </section>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
