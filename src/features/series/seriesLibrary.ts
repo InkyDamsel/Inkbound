@@ -25,9 +25,14 @@ export interface SeriesSummary {
   isManual: boolean;
 }
 
-interface SeriesHint {
+export interface SeriesHint {
   name: string;
   position: number | null;
+}
+
+export interface EffectiveSeriesMetadata extends SeriesHint {
+  label: string;
+  source: 'manual' | 'metadata' | 'inferred';
 }
 
 const normalizeSeriesName = (value: string) => value.trim().replace(/\s+/g, ' ');
@@ -37,16 +42,6 @@ const seriesId = (name: string, author: string) =>
 
 const GENERIC_SERIES_NAMES = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition']);
 
-/**
- * Many reading-service exports flatten series metadata into the title instead of
- * providing a dedicated series field. Preserve those imported libraries by
- * recognizing only explicit, low-risk suffixes such as:
- *   Title (Series Name, #2)
- *   Title (Series Name Book 2)
- *   Title [Series Name, Vol. 2]
- *
- * Explicit Inkbound/manual metadata always wins over this fallback.
- */
 export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
   const trimmed = title.trim();
   if (!trimmed) return null;
@@ -67,7 +62,7 @@ export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
   };
 }
 
-function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
+export function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
   const explicitName = book.work.seriesName?.trim();
   if (explicitName) {
     return {
@@ -81,14 +76,32 @@ function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
   return inferSeriesHintFromTitle(book.work.title);
 }
 
-/**
- * Catalog/import sources sometimes include future series slots as records named
- * "Untitled (Series Name, #6)" before a real title has been announced. Those are
- * useful for series order, but they are not owned books merely because an import
- * source marked every row as owned. Keep the canonical library record untouched
- * and correct ownership only in the derived Series view until a real title/edition
- * replaces the placeholder.
- */
+/** Canonical resolver for any screen/export that needs the series the reader sees. */
+export function resolveEffectiveSeriesMetadata(
+  book: UserBookRecord,
+  overrides: SeriesOverrides = {},
+): EffectiveSeriesMetadata | null {
+  for (const override of Object.values(overrides)) {
+    const entry = override.books.find((candidate) => candidate.bookId === book.id);
+    if (!entry) continue;
+    return {
+      name: override.name,
+      position: entry.position,
+      label: entry.label?.trim() ?? '',
+      source: 'manual',
+    };
+  }
+
+  const explicitName = book.work.seriesName?.trim();
+  if (explicitName) {
+    const resolved = resolveSeriesMetadata(book)!;
+    return { ...resolved, label: '', source: 'metadata' };
+  }
+
+  const inferred = inferSeriesHintFromTitle(book.work.title);
+  return inferred ? { ...inferred, label: '', source: 'inferred' } : null;
+}
+
 function normalizeSeriesBook(book: UserBookRecord, resolved: SeriesHint | null): UserBookRecord {
   const isUntitledPlaceholder = Boolean(
     resolved
@@ -123,9 +136,7 @@ const summarize = (
   const borrowedCount = ordered.filter(({ book }) => ['borrowed-library', 'borrowed-person'].includes(book.ownership)).length;
   const subscriptionCount = ordered.filter(({ book }) => book.ownership === 'subscription').length;
   const notOwnedCount = ordered.filter(({ book }) => ['none', 'wishlist'].includes(book.ownership)).length;
-  const rated = ordered
-    .map(({ book }) => book.rating)
-    .filter((rating): rating is number => typeof rating === 'number' && rating > 0);
+  const rated = ordered.map(({ book }) => book.rating).filter((rating): rating is number => typeof rating === 'number' && rating > 0);
 
   return {
     id,
@@ -170,11 +181,6 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
   const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[] }>();
   books.forEach((sourceBook) => {
     if (manuallyAssignedBookIds.has(sourceBook.id)) return;
-
-    // Series organization is library metadata, not reading-activity data. Imported
-    // books are intentionally eligible here. We use explicit imported/verified
-    // series metadata first, then a conservative title-based fallback for legacy
-    // imports that flattened the series into the title.
     const resolved = resolveSeriesMetadata(sourceBook);
     if (!resolved) return;
 
