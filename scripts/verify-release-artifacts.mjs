@@ -52,16 +52,21 @@ const checks = [
     message: 'index.html must include search and social-sharing metadata',
   },
   {
-    ok: serviceWorker.includes('inkbound-shell-v2'),
-    message: 'sw.js must contain the current Inkbound shell cache identifier',
+    ok: serviceWorker.includes("const SHELL_CACHE_PREFIX = 'inkbound-shell-';")
+      && serviceWorker.includes('key.startsWith(SHELL_CACHE_PREFIX)')
+      && serviceWorker.includes('caches.delete(key)'),
+    message: 'sw.js must retire legacy Inkbound shell caches so returning readers cannot be trapped on stale builds',
   },
   {
-    ok: serviceWorker.includes("request.mode === 'navigate'"),
-    message: 'sw.js must retain offline navigation fallback behavior',
+    ok: serviceWorker.includes('self.skipWaiting()')
+      && serviceWorker.includes('self.clients.claim()')
+      && serviceWorker.includes('self.registration.unregister()'),
+    message: 'sw.js must activate immediately, claim existing tabs, and retire itself after stale caches are cleared',
   },
   {
-    ok: serviceWorker.includes("url.pathname.startsWith('/assets/')"),
-    message: 'sw.js must retain hashed asset caching behavior',
+    ok: serviceWorker.includes('event.respondWith(fetch(request))')
+      && !serviceWorker.includes('caches.match(request)'),
+    message: 'sw.js must remain network-only while the retirement worker is controlling a tab',
   },
   {
     ok: robots.includes('Disallow: /app'),
