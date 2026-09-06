@@ -1,27 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { ExternalLink, HelpCircle, Mail, X } from 'lucide-react';
+import { QUICK_HELP_ITEMS } from '../../content/helpContent';
 import { useBreakpoint } from '../responsive/BreakpointProvider';
 
 interface ResponsiveShellProps {
   navigation: ReactNode;
   children?: ReactNode;
 }
-
-const faqSections = [
-  {
-    title: 'Quick answers',
-    items: [
-      ['Does Inkbound work across devices?', 'Yes. Sign in with the same Inkbound account and your synced library, reading sessions, profile information, and supported account data can follow you to another device.'],
-      ['Can I use Inkbound offline?', 'Inkbound keeps locally available data usable where possible. Changes that need the cloud can continue syncing after your connection returns.'],
-      ['Can I import a large library?', 'Yes. Inkbound is designed to import large libraries quickly, then fill in missing details gradually so you can start using your library without waiting for every cover and summary.'],
-      ['Is TBR the same as not owning an item?', 'No. Reading status and ownership are separate. A TBR title can be owned, borrowed, available through a subscription, on a wishlist, or not owned at all.'],
-      ['Does Series work with imported books?', 'Yes. Series can use metadata from imported and manually added records. If source information is wrong, you can correct the series without losing your reading data.'],
-      ['Does Inkbound only track traditional books?', 'No. Inkbound can classify books, manga, comics, graphic novels, magazines, light novels, novellas, short stories, and anthologies.'],
-      ['Can I export my library?', 'Yes. Inkbound provides JSON backup and spreadsheet-friendly CSV export tools in Settings. Exporting your own data is part of data ownership.'],
-      ['What if imported metadata is wrong?', 'Imported items become normal library records that you can review and correct. Updating metadata does not erase your personal reading history.'],
-    ],
-  },
-];
 
 const legalLinks = [
   { href: '/privacy.html', label: 'Privacy Policy' },
@@ -70,21 +55,17 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
               </button>
             </div>
 
-            <div className="mt-8 space-y-8">
-              {faqSections.map((section) => (
-                <section key={section.title}>
-                  <h3 className="font-serif text-xl text-[var(--ink-ivory)]">{section.title}</h3>
-                  <div className="mt-3 space-y-2">
-                    {section.items.map(([question, answer]) => (
-                      <details key={question} className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-3">
-                        <summary className="min-h-11 cursor-pointer select-none py-2 font-semibold text-[var(--ink-ivory)]">{question}</summary>
-                        <p className="mt-1 text-sm leading-6 text-[var(--ink-muted)]">{answer}</p>
-                      </details>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
+            <section className="mt-8">
+              <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Quick answers</h3>
+              <div className="mt-3 space-y-2">
+                {QUICK_HELP_ITEMS.map((item) => (
+                  <details key={item.id} className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-3">
+                    <summary className="min-h-11 cursor-pointer select-none py-2 font-semibold text-[var(--ink-ivory)]">{item.question}</summary>
+                    <p className="mt-1 text-sm leading-6 text-[var(--ink-muted)]">{item.answer}</p>
+                  </details>
+                ))}
+              </div>
+            </section>
 
             <a
               href="/faq"
