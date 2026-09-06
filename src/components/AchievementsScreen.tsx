@@ -39,9 +39,11 @@ interface AchievementDefinition {
   unit: string;
 }
 
-const UNLOCKED_STORAGE_KEY = 'inkbound_achievement_unlocks';
-const REVEALED_STORAGE_KEY = 'inkbound_achievement_reveals';
-const SEEN_STORAGE_KEY = 'inkbound_achievement_seen';
+// v2 intentionally resets the beta achievement ledger so imported finished books
+// that previously unlocked milestones do not remain credited after the provenance fix.
+const UNLOCKED_STORAGE_KEY = 'inkbound_achievement_unlocks_v2';
+const REVEALED_STORAGE_KEY = 'inkbound_achievement_reveals_v2';
+const SEEN_STORAGE_KEY = 'inkbound_achievement_seen_v2';
 const FILTER_STORAGE_KEY = 'inkbound_achievement_filter';
 
 const readRecord = (key: string): Record<string, string> => {
@@ -66,6 +68,12 @@ const getActiveEdition = (book: UserBookRecord) =>
 
 const safeNumber = (value: unknown): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+const isImportedBook = (book: UserBookRecord): boolean => Boolean(
+  book.sourceOfImport?.toLowerCase().includes('import')
+  || book.privateTags?.includes('imported')
+  || book.id.startsWith('book-import-')
+);
 
 const achievementFamily = (id: string) => id.replace(/-\d+$/, '');
 
@@ -111,8 +119,19 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     filter === 'unlocked' || filter === 'in-progress' ? filter : 'all';
 
   const definitions = useMemo<AchievementDefinition[]>(() => {
-    const finishedBooks = books.filter((book) => book.status === 'finished');
     const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
+    const booksWithTrackedActivity = new Set(completedSessions.map((session) => session.bookId));
+
+    // Imported history never earns completion achievements by itself. An imported book
+    // becomes eligible only after Inkbound has evidence that the reader interacted with
+    // it here: a tracked session, or an Inkbound status transition that supplied both
+    // dateStarted and dateFinished. Raw imports do not populate dateStarted.
+    const finishedBooks = books.filter((book) => {
+      if (book.status !== 'finished') return false;
+      if (!isImportedBook(book)) return true;
+      return booksWithTrackedActivity.has(book.id) || Boolean(book.dateStarted && book.dateFinished);
+    });
+
     const totalPages = completedSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
     const totalMinutes = completedSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
     const totalHours = Math.floor(totalMinutes / 60);
@@ -133,8 +152,10 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
       return Number.isFinite(hour) && (hour >= 21 || hour < 5);
     }).length;
 
-    const reviewedBooks = books.filter((book) => Boolean(book.review?.trim())).length;
-    const quotedBooks = books.filter(
+    // Imported reviews can arrive with an export, so journal achievements only count
+    // books that have become legitimate Inkbound-finished books as defined above.
+    const reviewedBooks = finishedBooks.filter((book) => Boolean(book.review?.trim())).length;
+    const quotedBooks = finishedBooks.filter(
       (book) => Array.isArray(book.favoriteQuotes) && book.favoriteQuotes.length > 0,
     ).length;
     const largeBooksFinished = finishedBooks.filter(
@@ -146,7 +167,10 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     const distinctFinishedGenres = new Set(
       finishedBooks.flatMap((book) => book.work.genres ?? []).filter(Boolean),
     ).size;
-    const activeBooks = books.filter((book) => book.status === 'currently-reading').length;
+    const activeBooks = books.filter((book) =>
+      book.status === 'currently-reading'
+      && (!isImportedBook(book) || booksWithTrackedActivity.has(book.id) || Boolean(book.dateStarted)),
+    ).length;
 
     return [
       ...makeLadder('books-finished', 'Milestone', Library, finishedBooks.length, 'books', [
@@ -367,7 +391,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
             <p className="inkbound-kicker">Permanent Milestones</p>
             <h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Achievements</h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">
-              Achievement paths stay hidden until your reading activity starts them. Once a path is discovered, Inkbound reveals your next milestone so you always have something new to work toward.
+              Achievement paths stay hidden until your Inkbound activity starts them. Imported reading history does not earn achievements; imported books begin counting only after you read them here or mark them finished in Inkbound.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -409,7 +433,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
           <Award className="mx-auto h-10 w-10 text-[var(--ink-gold)] opacity-70" />
           <h2 className="mt-4 font-serif text-2xl font-bold text-[var(--ink-ivory)]">Your first achievement path is waiting</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-[var(--ink-muted)]">
-            Read, finish books, track sessions, save quotes, and write reviews. New achievement paths reveal themselves as soon as you begin making progress.
+            Read, finish books, track sessions, save quotes, and write reviews in Inkbound. New achievement paths reveal themselves as soon as you begin making progress.
           </p>
         </div>
       ) : (
