@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { ArrowRight, BarChart3, BookOpen, Check, Clock3, Layers3, LibraryBig, ShieldCheck, Sparkles } from 'lucide-react';
+import { PREMIUM_FEATURE_SUMMARY } from '../config/productPolicy';
 
 const APP_PATH = '/app';
 
@@ -7,7 +8,7 @@ const features = [
   {
     icon: LibraryBig,
     title: 'A library that stays yours',
-    text: 'Track unlimited books, editions, ownership, status, collections, tags, ratings, and reading progress in one private reading home.',
+    text: 'Track unlimited reading material, editions, ownership, status, collections, tags, ratings, and reading progress in one private reading home.',
   },
   {
     icon: Clock3,
@@ -17,20 +18,13 @@ const features = [
   {
     icon: Layers3,
     title: 'Built for large libraries',
-    text: 'Import, organize, find duplicates, fill in missing book details, and manage many books without forcing you into a phone-only workflow.',
+    text: 'Import, organize, find duplicates, fill in missing details, and manage large collections without forcing you into a phone-only workflow.',
   },
   {
     icon: BarChart3,
     title: 'Insights without losing the journal',
-    text: 'See statistics, reading patterns, yearly reflections, achievements, and deeper Premium insights while keeping the focus on the books themselves.',
+    text: 'See statistics, reading patterns, yearly reflections, achievements, and deeper Premium insights while keeping the focus on your reading life.',
   },
-];
-
-const premiumFeatures = [
-  'Batch editing for faster library cleanup',
-  'Advanced reading insights and detailed reports',
-  'Monthly Wrapped and Year in Books reflections',
-  'Bookshelf Through Time and deeper reading-history views',
 ];
 
 export const PublicWebsite: React.FC = () => {
@@ -45,7 +39,7 @@ export const PublicWebsite: React.FC = () => {
       description.name = 'description';
       document.head.appendChild(description);
     }
-    description.content = 'Inkbound is a private personal reading journal and library tracker for books, reading sessions, imports, collections, goals, memories, and reading insights.';
+    description.content = 'Inkbound is a private personal reading journal and library tracker for books, manga, comics, reading sessions, imports, collections, series, goals, memories, and reading insights.';
 
     return () => {
       document.title = previousTitle;
@@ -63,6 +57,7 @@ export const PublicWebsite: React.FC = () => {
         <nav className="inkbound-public-links" aria-label="Website sections">
           <a href="#features">Features</a>
           <a href="#premium">Premium</a>
+          <a href="/faq">FAQ</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/support.html">Support</a>
         </nav>
@@ -73,10 +68,8 @@ export const PublicWebsite: React.FC = () => {
         <section className="inkbound-public-hero" aria-labelledby="inkbound-hero-title">
           <div className="inkbound-public-hero-copy">
             <p className="inkbound-public-kicker"><Sparkles className="h-4 w-4" /> Your reading life, kept beautifully</p>
-            <h1 id="inkbound-hero-title">A reading journal built for the books you actually live with.</h1>
-            <p className="inkbound-public-lede">
-              Inkbound brings your library, reading sessions, progress, memories, collections, goals, and insights together in one private home — on the web and on Android.
-            </p>
+            <h1 id="inkbound-hero-title">A reading journal built for the stories you actually live with.</h1>
+            <p className="inkbound-public-lede">Inkbound brings your library, series, reading sessions, progress, memories, collections, goals, and insights together in one private home — on the web and on Android.</p>
             <div className="inkbound-public-actions">
               <a className="inkbound-public-cta" href={APP_PATH}>Start with Inkbound <ArrowRight className="h-5 w-5" /></a>
               <a className="inkbound-public-secondary" href="#features">Explore features</a>
@@ -89,15 +82,9 @@ export const PublicWebsite: React.FC = () => {
           </div>
 
           <div className="inkbound-public-hero-card" aria-label="Inkbound product preview">
-            <div className="inkbound-public-preview-head">
-              <div>
-                <p>Tonight's shelf</p>
-                <h2>Your reading, in one place.</h2>
-              </div>
-              <img src="/assets/branding/pwa/icon-192.png" alt="Inkbound" width="64" height="64" />
-            </div>
+            <div className="inkbound-public-preview-head"><div><p>Tonight's shelf</p><h2>Your reading, in one place.</h2></div><img src="/assets/branding/pwa/icon-192.png" alt="Inkbound" width="64" height="64" /></div>
             <div className="inkbound-public-preview-grid">
-              <article><strong>Library</strong><span>Books, editions, tags & collections</span></article>
+              <article><strong>Library</strong><span>Reading material, series, tags & collections</span></article>
               <article><strong>Sessions</strong><span>Time, pages, streaks & goals</span></article>
               <article><strong>Memories</strong><span>Timeline, photos & reflections</span></article>
               <article><strong>Insights</strong><span>Patterns, reports & yearbooks</span></article>
@@ -106,19 +93,11 @@ export const PublicWebsite: React.FC = () => {
         </section>
 
         <section className="inkbound-public-section" id="features" aria-labelledby="features-title">
-          <p className="inkbound-public-kicker">Made for readers who keep books</p>
+          <p className="inkbound-public-kicker">Made for readers who keep stories</p>
           <h2 id="features-title">More than a list of titles.</h2>
-          <p className="inkbound-public-section-intro">
-            Inkbound keeps your books, sessions, progress, and editions connected, so changes show up throughout your reading history instead of living in separate notes.
-          </p>
+          <p className="inkbound-public-section-intro">Inkbound keeps your library, sessions, progress, editions, and series organization connected, so changes show up throughout your reading history instead of living in separate notes.</p>
           <div className="inkbound-public-feature-grid">
-            {features.map(({ icon: Icon, title, text }) => (
-              <article key={title} className="inkbound-public-feature-card">
-                <Icon className="h-6 w-6" aria-hidden="true" />
-                <h3>{title}</h3>
-                <p>{text}</p>
-              </article>
-            ))}
+            {features.map(({ icon: Icon, title, text }) => <article key={title} className="inkbound-public-feature-card"><Icon className="h-6 w-6" aria-hidden="true" /><h3>{title}</h3><p>{text}</p></article>)}
           </div>
         </section>
 
@@ -126,42 +105,24 @@ export const PublicWebsite: React.FC = () => {
           <div>
             <p className="inkbound-public-kicker">Free at the core</p>
             <h2 id="premium-title">Your library is not the paywall.</h2>
-            <p>
-              Every reader can keep an unlimited library and import books. Inkbound Premium is reserved for deeper analysis, faster library organization, richer reflections, and historical reading views.
-            </p>
+            <p>Every reader can keep an unlimited library and import reading material. Inkbound Premium is reserved for deeper analysis, faster library organization, richer reflections, and historical reading views.</p>
           </div>
           <div className="inkbound-public-premium-card">
             <p className="inkbound-public-plan-name">Inkbound Premium</p>
-            <ul>
-              {premiumFeatures.map((feature) => <li key={feature}><Check className="h-4 w-4" /> {feature}</li>)}
-            </ul>
+            <ul>{PREMIUM_FEATURE_SUMMARY.map((feature) => <li key={feature}><Check className="h-4 w-4" /> {feature}</li>)}</ul>
             <a href={APP_PATH}>See Premium inside Inkbound <ArrowRight className="h-4 w-4" /></a>
           </div>
         </section>
 
         <section className="inkbound-public-section inkbound-public-callout" aria-labelledby="callout-title">
-          <div>
-            <p className="inkbound-public-kicker">One account, all your reading</p>
-            <h2 id="callout-title">Organize on desktop. Log wherever you read.</h2>
-            <p>
-              Use the larger web workspace for imports, cleanup, and library management, then continue with the same Inkbound account on Android. Your library and reading history follow the same Inkbound account across your devices.
-            </p>
-          </div>
+          <div><p className="inkbound-public-kicker">One account, all your reading</p><h2 id="callout-title">Organize on desktop. Log wherever you read.</h2><p>Use the larger web workspace for imports, cleanup, and library management, then continue with the same Inkbound account on Android. Your library and reading history follow the same Inkbound account across your devices.</p></div>
           <a className="inkbound-public-cta" href={APP_PATH}>Open the web app <ArrowRight className="h-5 w-5" /></a>
         </section>
       </main>
 
       <footer className="inkbound-public-footer">
-        <div>
-          <strong>Inkbound</strong>
-          <p>A personal reading journal by Inky Dame Interactive.</p>
-        </div>
-        <nav aria-label="Legal and support">
-          <a href="/privacy.html">Privacy</a>
-          <a href="/terms.html">Terms</a>
-          <a href="/support.html">Support</a>
-          <a href="/delete-account.html">Delete account</a>
-        </nav>
+        <div><strong>Inkbound</strong><p>A personal reading journal by Inky Dame Interactive.</p></div>
+        <nav aria-label="Legal and support"><a href="/faq">FAQ</a><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/support.html">Support</a><a href="/delete-account.html">Delete account</a></nav>
         <p>© {new Date().getFullYear()} Inky Dame Interactive.</p>
       </footer>
     </div>
