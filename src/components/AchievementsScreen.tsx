@@ -7,6 +7,7 @@ import {
   Flame,
   Headphones,
   Library,
+  Lock,
   Moon,
   Sparkles,
   Star,
@@ -15,10 +16,7 @@ import {
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
-import {
-  getSessionDurationMinutes,
-  getSessionPagesRead,
-} from '../features/reading/sessionAnalytics';
+import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 
 type AchievementFilter = 'all' | 'unlocked' | 'in-progress';
@@ -39,17 +37,18 @@ interface AchievementDefinition {
   unit: string;
 }
 
-// v2 intentionally resets the beta achievement ledger so imported finished books
-// that previously unlocked milestones do not remain credited after the provenance fix.
-const UNLOCKED_STORAGE_KEY = 'inkbound_achievement_unlocks_v2';
-const REVEALED_STORAGE_KEY = 'inkbound_achievement_reveals_v2';
-const SEEN_STORAGE_KEY = 'inkbound_achievement_seen_v2';
+// v3 clears beta achievement state that was polluted while imported history
+// could incorrectly reveal/unlock milestones. From here on, revealed objectives
+// stay revealed once legitimate Inkbound progress has started them.
+const UNLOCKED_STORAGE_KEY = 'inkbound_achievement_unlocks_v3';
+const REVEALED_STORAGE_KEY = 'inkbound_achievement_reveals_v3';
+const SEEN_STORAGE_KEY = 'inkbound_achievement_seen_v3';
 const FILTER_STORAGE_KEY = 'inkbound_achievement_filter';
 
 const readRecord = (key: string): Record<string, string> => {
   const parsed = readRuntimeJson<unknown>(key, {});
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? (parsed as Record<string, string>)
+    ? parsed as Record<string, string>
     : {};
 };
 
@@ -84,17 +83,16 @@ const makeLadder = (
   progress: number,
   unit: string,
   milestones: Array<[number, string, string]>,
-): AchievementDefinition[] =>
-  milestones.map(([target, title, description]) => ({
-    id: `${prefix}-${target}`,
-    title,
-    description,
-    category,
-    icon,
-    progress,
-    target,
-    unit,
-  }));
+): AchievementDefinition[] => milestones.map(([target, title, description]) => ({
+  id: `${prefix}-${target}`,
+  title,
+  description,
+  category,
+  icon,
+  progress,
+  target,
+  unit,
+}));
 
 export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, sessions }) => {
   const [unlockDates, setUnlockDates] = usePersistentState<Record<string, string>>(
@@ -111,21 +109,15 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
   );
   const [filter, setFilter] = usePersistentState<AchievementFilter>(FILTER_STORAGE_KEY, readFilter);
 
-  const safeUnlockDates =
-    unlockDates && typeof unlockDates === 'object' && !Array.isArray(unlockDates) ? unlockDates : {};
+  const safeUnlockDates = unlockDates && typeof unlockDates === 'object' && !Array.isArray(unlockDates) ? unlockDates : {};
   const safeRevealedAchievementIds = Array.isArray(revealedAchievementIds) ? revealedAchievementIds : [];
   const safeSeenAchievementIds = Array.isArray(seenAchievementIds) ? seenAchievementIds : [];
-  const safeFilter: AchievementFilter =
-    filter === 'unlocked' || filter === 'in-progress' ? filter : 'all';
+  const safeFilter: AchievementFilter = filter === 'unlocked' || filter === 'in-progress' ? filter : 'all';
 
   const definitions = useMemo<AchievementDefinition[]>(() => {
     const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
     const booksWithTrackedActivity = new Set(completedSessions.map((session) => session.bookId));
 
-    // Imported history never earns completion achievements by itself. An imported book
-    // becomes eligible only after Inkbound has evidence that the reader interacted with
-    // it here: a tracked session, or an Inkbound status transition that supplied both
-    // dateStarted and dateFinished. Raw imports do not populate dateStarted.
     const finishedBooks = books.filter((book) => {
       if (book.status !== 'finished') return false;
       if (!isImportedBook(book)) return true;
@@ -152,21 +144,13 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
       return Number.isFinite(hour) && (hour >= 21 || hour < 5);
     }).length;
 
-    // Imported reviews can arrive with an export, so journal achievements only count
-    // books that have become legitimate Inkbound-finished books as defined above.
     const reviewedBooks = finishedBooks.filter((book) => Boolean(book.review?.trim())).length;
     const quotedBooks = finishedBooks.filter(
       (book) => Array.isArray(book.favoriteQuotes) && book.favoriteQuotes.length > 0,
     ).length;
-    const largeBooksFinished = finishedBooks.filter(
-      (book) => safeNumber(getActiveEdition(book)?.pageCount) >= 500,
-    ).length;
-    const veryLargeBooksFinished = finishedBooks.filter(
-      (book) => safeNumber(getActiveEdition(book)?.pageCount) >= 700,
-    ).length;
-    const distinctFinishedGenres = new Set(
-      finishedBooks.flatMap((book) => book.work.genres ?? []).filter(Boolean),
-    ).size;
+    const largeBooksFinished = finishedBooks.filter((book) => safeNumber(getActiveEdition(book)?.pageCount) >= 500).length;
+    const veryLargeBooksFinished = finishedBooks.filter((book) => safeNumber(getActiveEdition(book)?.pageCount) >= 700).length;
+    const distinctFinishedGenres = new Set(finishedBooks.flatMap((book) => book.work.genres ?? []).filter(Boolean)).size;
     const activeBooks = books.filter((book) =>
       book.status === 'currently-reading'
       && (!isImportedBook(book) || booksWithTrackedActivity.has(book.id) || Boolean(book.dateStarted)),
@@ -314,16 +298,13 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     const byFamily = new Map<string, AchievementDefinition[]>();
     definitions.forEach((achievement) => {
       const family = achievementFamily(achievement.id);
-      const current = byFamily.get(family) ?? [];
-      current.push(achievement);
-      byFamily.set(family, current);
+      byFamily.set(family, [...(byFamily.get(family) ?? []), achievement]);
     });
 
     const reveal = new Set<string>();
     byFamily.forEach((familyAchievements) => {
       const sorted = [...familyAchievements].sort((a, b) => a.target - b.target);
-      const hasStarted = sorted.some((achievement) => achievement.progress > 0);
-      if (!hasStarted) return;
+      if (!sorted.some((achievement) => achievement.progress > 0)) return;
 
       sorted.forEach((achievement) => {
         if (achievement.progress >= achievement.target) reveal.add(achievement.id);
@@ -357,17 +338,16 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     ]);
   }, [setSeenAchievementIds, unseenUnlockedIds]);
 
-  // Current progress is authoritative. Persisted reveal/unlock records only keep dates/history;
-  // they must never make a zero-progress achievement appear or look completed.
   const unlockedAchievements = definitions.filter((item) => item.progress >= item.target);
-  const revealedAchievements = definitions.filter((item) => achievementIdsToReveal.includes(item.id));
-  const inProgressAchievements = revealedAchievements.filter((item) => item.progress < item.target);
-  const visibleAchievements =
-    safeFilter === 'unlocked'
-      ? unlockedAchievements
-      : safeFilter === 'in-progress'
-        ? inProgressAchievements
-        : revealedAchievements;
+  const revealedIds = new Set([...safeRevealedAchievementIds, ...achievementIdsToReveal]);
+  const inProgressAchievements = definitions.filter(
+    (item) => revealedIds.has(item.id) && item.progress > 0 && item.progress < item.target,
+  );
+  const visibleAchievements = safeFilter === 'unlocked'
+    ? unlockedAchievements
+    : safeFilter === 'in-progress'
+      ? inProgressAchievements
+      : definitions;
 
   return (
     <div className="space-y-6 pb-24">
@@ -377,7 +357,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
             <p className="inkbound-kicker">Permanent Milestones</p>
             <h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Achievements</h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">
-              Achievement paths stay hidden until your Inkbound activity starts them. Imported reading history does not earn achievements; imported books begin counting only after you read them here or mark them finished in Inkbound.
+              Hidden achievements reveal their objective once you begin making legitimate Inkbound progress toward them. Imported reading history does not earn achievements.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -395,7 +375,7 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
 
       <div className="flex flex-wrap gap-2">
         {([
-          ['all', 'All visible'],
+          ['all', 'All achievements'],
           ['unlocked', 'Unlocked'],
           ['in-progress', 'In progress'],
         ] as Array<[AchievementFilter, string]>).map(([option, label]) => (
@@ -417,50 +397,51 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
       {visibleAchievements.length === 0 ? (
         <div className="inkbound-panel rounded-3xl px-6 py-14 text-center">
           <Award className="mx-auto h-10 w-10 text-[var(--ink-gold)] opacity-70" />
-          <h2 className="mt-4 font-serif text-2xl font-bold text-[var(--ink-ivory)]">Your first achievement path is waiting</h2>
+          <h2 className="mt-4 font-serif text-2xl font-bold text-[var(--ink-ivory)]">No achievements here yet</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-[var(--ink-muted)]">
-            Read, finish books, track sessions, save quotes, and write reviews in Inkbound. New achievement paths reveal themselves as soon as you begin making progress.
+            Keep using Inkbound and your achievement progress will appear here.
           </p>
         </div>
       ) : (
         <ResponsiveGrid minItemWidth={260} maxColumns={3} gap={16} alignItems="stretch">
           {visibleAchievements.map((achievement) => {
-            const Icon = achievement.icon;
             const unlocked = achievement.progress >= achievement.target;
+            const revealed = unlocked || revealedIds.has(achievement.id);
+            const Icon = revealed ? achievement.icon : Lock;
             const progress = Math.min(achievement.progress, achievement.target);
-            const percent = Math.min(
-              100,
-              Math.max(0, Math.round((progress / achievement.target) * 100)),
-            );
+            const percent = Math.min(100, Math.max(0, Math.round((progress / achievement.target) * 100)));
             const unlockDate = unlocked ? safeUnlockDates[achievement.id] : undefined;
             const parsedUnlockDate = unlockDate ? new Date(unlockDate) : null;
-            const formattedUnlockDate =
-              parsedUnlockDate && !Number.isNaN(parsedUnlockDate.getTime())
-                ? parsedUnlockDate.toLocaleDateString()
-                : null;
+            const formattedUnlockDate = parsedUnlockDate && !Number.isNaN(parsedUnlockDate.getTime())
+              ? parsedUnlockDate.toLocaleDateString()
+              : null;
 
             return (
               <article
                 key={achievement.id}
                 className={`inkbound-panel flex min-h-64 flex-col rounded-3xl p-5 transition ${
-                  unlocked ? 'ring-1 ring-[rgba(197,160,89,0.38)]' : ''
+                  unlocked ? 'ring-1 ring-[rgba(197,160,89,0.38)]' : !revealed ? 'opacity-80' : ''
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div
-                    className={`grid h-14 w-14 place-items-center rounded-2xl border ${
-                      unlocked
-                        ? 'border-[rgba(197,160,89,0.45)] bg-[rgba(197,160,89,0.14)] text-[var(--ink-gold-bright)]'
-                        : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-gold)]'
-                    }`}
-                  >
+                  <div className={`grid h-14 w-14 place-items-center rounded-2xl border ${
+                    unlocked
+                      ? 'border-[rgba(197,160,89,0.45)] bg-[rgba(197,160,89,0.14)] text-[var(--ink-gold-bright)]'
+                      : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-gold)]'
+                  }`}>
                     <Icon className="h-7 w-7" />
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
-                      {achievement.category}
-                    </span>
-                    {!unlocked && (
+                    {revealed ? (
+                      <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
+                        {achievement.category}
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
+                        Hidden
+                      </span>
+                    )}
+                    {revealed && !unlocked && (
                       <span className="rounded-full border border-[var(--ink-border-strong)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-gold-bright)]">
                         In progress
                       </span>
@@ -468,31 +449,43 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
                   </div>
                 </div>
 
-                <h2 className="mt-5 font-serif text-xl font-bold text-[var(--ink-ivory)]">{achievement.title}</h2>
-                <p className="mt-2 text-sm text-[var(--ink-muted)]">{achievement.description}</p>
+                <h2 className="mt-5 font-serif text-xl font-bold text-[var(--ink-ivory)]">
+                  {revealed ? achievement.title : 'Hidden Achievement'}
+                </h2>
+                <p className="mt-2 text-sm text-[var(--ink-muted)]">
+                  {revealed
+                    ? achievement.description
+                    : 'The objective is hidden. Start making progress in this achievement path to reveal it.'}
+                </p>
 
                 <div className="mt-auto pt-6">
-                  <div className="flex items-center justify-between text-xs text-[var(--ink-muted)]">
-                    <span>
-                      {progress.toLocaleString()} / {achievement.target.toLocaleString()} {achievement.unit}
-                    </span>
-                    <strong className="text-[var(--ink-ivory)]">{percent}%</strong>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--ink-surface-soft)]">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--ink-gold),var(--ink-gold-bright))] transition-all"
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
+                  {revealed ? (
+                    <>
+                      <div className="flex items-center justify-between text-xs text-[var(--ink-muted)]">
+                        <span>{progress.toLocaleString()} / {achievement.target.toLocaleString()} {achievement.unit}</span>
+                        <strong className="text-[var(--ink-ivory)]">{percent}%</strong>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--ink-surface-soft)]">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,var(--ink-gold),var(--ink-gold-bright))] transition-all"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
 
-                  {unlocked ? (
-                    <p className="mt-4 flex items-center gap-2 text-xs font-semibold text-[var(--ink-gold-bright)]">
-                      <Check className="h-4 w-4" />
-                      Unlocked{formattedUnlockDate ? ` ${formattedUnlockDate}` : ''}
-                    </p>
+                      {unlocked ? (
+                        <p className="mt-4 flex items-center gap-2 text-xs font-semibold text-[var(--ink-gold-bright)]">
+                          <Check className="h-4 w-4" />
+                          Unlocked{formattedUnlockDate ? ` ${formattedUnlockDate}` : ''}
+                        </p>
+                      ) : (
+                        <p className="mt-4 text-xs font-semibold text-[var(--ink-muted)]">
+                          Keep going — this is your next milestone.
+                        </p>
+                      )}
+                    </>
                   ) : (
-                    <p className="mt-4 text-xs font-semibold text-[var(--ink-muted)]">
-                      Keep going — this is your next milestone.
+                    <p className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)]">
+                      <Lock className="h-4 w-4" /> Locked · objective hidden
                     </p>
                   )}
                 </div>
