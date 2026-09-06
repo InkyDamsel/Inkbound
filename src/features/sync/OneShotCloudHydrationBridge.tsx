@@ -3,15 +3,14 @@ import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
-import {
-  getRuntimeStorage,
-} from '../../platform/runtimeStorage';
+import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_KEY = 'inkbound_books';
-const SESSIONS_KEY = 'inkbound_sessions';
-const PROFILE_KEY = 'inkbound_reader_profile';
-const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
+const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
+const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
+const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const LOCAL_HYDRATION_GRACE_MS = 1800;
 
 interface CloudRecord<T> { data: T }
@@ -79,8 +78,6 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
     };
 
     const hydrate = async () => {
-      // A local library appearing during startup means this is not a new device.
-      // Never pay to download the same collection again.
       if (disposed) return;
       if (hasLocalLibrary()) {
         openFromLocal();
@@ -99,15 +96,9 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         ]);
         if (disposed) return;
 
-        const cloudBooks = bookSnapshot.docs
-          .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
-          .filter(Boolean);
-        const cloudSessions = sessionSnapshot.docs
-          .map((item) => (item.data() as CloudRecord<ReadingSession>).data)
-          .filter(Boolean);
+        const cloudBooks = bookSnapshot.docs.map((item) => (item.data() as CloudRecord<UserBookRecord>).data).filter(Boolean);
+        const cloudSessions = sessionSnapshot.docs.map((item) => (item.data() as CloudRecord<ReadingSession>).data).filter(Boolean);
 
-        // Recheck after the network request. If browser storage finished restoring
-        // while Firestore was in flight, merge instead of replacing it.
         const localBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const localSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
         writeJson(BOOKS_KEY, mergeById(localBooks, cloudBooks));
