@@ -11,6 +11,18 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Build-only CI fixtures. Production deploys still require real values from the
+  # ignored deployment environment; these values are only present on Actions runners.
+  VITE_FIREBASE_API_KEY: ci-firebase-api-key
+  VITE_FIREBASE_AUTH_DOMAIN: inkbound-ci.invalid
+  VITE_FIREBASE_PROJECT_ID: inkbound-app
+  VITE_FIREBASE_STORAGE_BUCKET: inkbound-app.appspot.com
+  VITE_FIREBASE_MESSAGING_SENDER_ID: '100000000001'
+  VITE_FIREBASE_APP_ID: '1:100000000001:web:ciinkboundbuild'
+  VITE_GOOGLE_BOOKS_API_KEY: ci-google-books-key
+  VITE_FIREBASE_APP_CHECK_SITE_KEY: ci-app-check-site-key
+
 jobs:
   verify-shared:
     name: Shared app (${{ matrix.os }})
