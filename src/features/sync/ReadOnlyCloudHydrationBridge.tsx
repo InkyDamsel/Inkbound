@@ -1,16 +1,14 @@
 import React, { useEffect } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, readDb } from '../../lib/firebase';
-import {
-  readRuntimeValue,
-  writeRuntimeValue,
-} from '../../platform/runtimeStorage';
+import { readRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_KEY = 'inkbound_books';
-const SESSIONS_KEY = 'inkbound_sessions';
-const PROFILE_KEY = 'inkbound_reader_profile';
-const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
+const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
+const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
+const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 
 /**
  * Protected development mode is intentionally LOCAL ONLY.
@@ -31,23 +29,15 @@ export const ReadOnlyCloudHydrationBridge: React.FC = () => {
   const sync = useAccountSync();
 
   useEffect(() => {
-    // Production/emulator mode has a writable `db`, so the adaptive persistence
-    // bridge owns cloud hydration. If Firebase is entirely unavailable, there is
-    // nothing to do here either.
     if (!sync.user || !readDb || db) return undefined;
 
     const uid = sync.user.uid;
     const previousOwnerUid = readRuntimeValue(OWNER_UID_KEY);
 
-    // Do not clear or replace local data when the signed-in identity changes in a
-    // protected dev session. Development mode is deliberately non-destructive;
-    // production account switching is handled by the real cloud bridge.
     if (!previousOwnerUid || previousOwnerUid === uid) {
       writeRuntimeValue(OWNER_UID_KEY, uid);
     }
 
-    // Signal that the local working copy is ready so CloudDataRefreshBoundary can
-    // open the application. No getDocs/getDoc/onSnapshot calls are made here.
     notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
 
     console.info(
