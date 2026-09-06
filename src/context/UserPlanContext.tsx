@@ -2,12 +2,13 @@ import React, { createContext, ReactNode, useContext, useEffect, useMemo, useSta
 import { onAuthStateChanged } from 'firebase/auth';
 import { Timestamp, doc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
+import { PRODUCT_POLICY, isFeatureAvailableToFree } from '../config/productPolicy';
 import { UserPlan } from '../types';
 import { auth, functions, readDb } from '../lib/firebase';
 
-// The core library is intentionally unlimited for every reader. Premium is
-// reserved for deeper reflection, analytics, creative exports, and power tools.
-export const FREE_BOOK_LIMIT = Infinity;
+// Backward-compatible export for existing consumers. The authoritative value now
+// lives in productPolicy.ts with the rest of the Free/Premium rules.
+export const FREE_BOOK_LIMIT = PRODUCT_POLICY.library.freeItemLimit;
 
 export type AccessSource = 'free' | 'subscription' | 'vip' | 'courtesy';
 
@@ -143,10 +144,6 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       clearExpiryTimer();
       activeUid = user?.uid ?? null;
 
-      // Authentication changes are an account-isolation boundary. Never carry a
-      // previous reader's premium state into the next account while its entitlement
-      // is still loading (or if the initial network refresh fails). Every new UID
-      // starts fail-closed as Free and may only elevate after authoritative data.
       setUserPlanState('free');
       setAccessSource('free');
       setIsUpgradeModalOpen(false);
@@ -158,14 +155,8 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
 
       setEntitlementLoading(true);
-
-      // First ask trusted server code for the effective entitlement. This is the
-      // same backend data used by Administration, so Settings/sidebar cannot get
-      // stuck on a stale or denied client-side Firestore read.
       void refreshFromServer();
 
-      // Keep the direct listener as a fast live-update path when Firestore rules
-      // permit it. The server lookup above remains the authoritative fallback.
       if (readDb) {
         unsubscribeEntitlement = onSnapshot(
           doc(readDb, 'entitlements', user.uid),
@@ -205,19 +196,22 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const value = useMemo<UserPlanContextType>(() => {
     const isPremium = userPlan === 'premium';
+    const allowed = (feature: Parameters<typeof isFeatureAvailableToFree>[0]) => isPremium || isFeatureAvailableToFree(feature);
 
     return {
       userPlan,
       accessSource,
       setUserPlan,
-      freeBookLimit: FREE_BOOK_LIMIT,
+      freeBookLimit: PRODUCT_POLICY.library.freeItemLimit,
       entitlementLoading,
-      canAddBook: () => true,
-      remainingBookSlots: () => Infinity,
-      canAddMultipleBooks: true,
-      canUseBatchEdit: isPremium,
-      canRunUnlimitedImport: true,
-      canViewDetailedReports: isPremium,
+      canAddBook: (currentBookCount) => currentBookCount < PRODUCT_POLICY.library.freeItemLimit,
+      remainingBookSlots: (currentBookCount) => Number.isFinite(PRODUCT_POLICY.library.freeItemLimit)
+        ? Math.max(0, PRODUCT_POLICY.library.freeItemLimit - currentBookCount)
+        : Infinity,
+      canAddMultipleBooks: PRODUCT_POLICY.library.unlimitedImports,
+      canUseBatchEdit: allowed('batchEdit'),
+      canRunUnlimitedImport: PRODUCT_POLICY.library.unlimitedImports,
+      canViewDetailedReports: allowed('detailedReports'),
       isUpgradeModalOpen,
       upgradeReason,
       openUpgradeModal,
