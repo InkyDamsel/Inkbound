@@ -1,3 +1,5 @@
+import { getRuntimeStorage } from '../../platform/runtimeStorage';
+
 export const INKBOUND_CLOUD_SYNC_HEALTH_EVENT = 'inkbound:cloud-sync-health';
 export const INKBOUND_FORCE_CLOUD_REFRESH_EVENT = 'inkbound:force-cloud-refresh';
 
@@ -8,6 +10,10 @@ export interface CloudSyncHealth {
   lastSuccessfulSyncAt: string | null;
   message: string;
 }
+
+const BOOKS_KEY = 'inkbound_books';
+const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
+const LARGE_LIBRARY_FULL_REFRESH_LIMIT = 5_000;
 
 let currentHealth: CloudSyncHealth = {
   status: 'idle',
@@ -53,6 +59,17 @@ function makeReaderFriendly(next: CloudSyncHealth): CloudSyncHealth {
   return next;
 }
 
+function localLibrarySize(): number {
+  try {
+    const raw = getRuntimeStorage().getItem(BOOKS_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function getCloudSyncHealth(): CloudSyncHealth {
   return currentHealth;
 }
@@ -65,5 +82,17 @@ export function publishCloudSyncHealth(next: CloudSyncHealth) {
 
 export function requestCloudRefresh() {
   if (typeof window === 'undefined') return;
+
+  const bookCount = localLibrarySize();
+  if (bookCount >= LARGE_LIBRARY_FULL_REFRESH_LIMIT) {
+    const storage = getRuntimeStorage();
+    publishCloudSyncHealth({
+      status: 'healthy',
+      lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+      message: `Large-library protection is active for your ${bookCount.toLocaleString()}-item library. Inkbound kept the local working copy and skipped a full cloud reread; your new changes will continue syncing normally.`,
+    });
+    return;
+  }
+
   window.dispatchEvent(new Event(INKBOUND_FORCE_CLOUD_REFRESH_EVENT));
 }
