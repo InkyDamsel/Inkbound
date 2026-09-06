@@ -18,6 +18,7 @@ import {
 import {
   AUXILIARY_ACCOUNT_KEYS,
   CORE_ACCOUNT_RUNTIME_KEYS,
+  READING_MEMORIES_ACCOUNT_KEY,
   getAccountOwnedKeysToClearForOwnerChange,
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
@@ -119,7 +120,10 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
 {
   assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange(null, 'reader-a'), []);
   assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-a'), []);
-  assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-b').sort(), Object.values(AUXILIARY_ACCOUNT_KEYS).sort());
+  assert.deepEqual(
+    getAuxiliaryKeysToClearForOwnerChange('reader-a', 'reader-b').sort(),
+    [...Object.values(AUXILIARY_ACCOUNT_KEYS), READING_MEMORIES_ACCOUNT_KEY].sort(),
+  );
 }
 
 {
@@ -127,7 +131,7 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange('reader-a', 'reader-a'), []);
   assert.deepEqual(
     getAccountOwnedKeysToClearForOwnerChange('reader-a', 'reader-b').sort(),
-    [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS)].sort(),
+    [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS), READING_MEMORIES_ACCOUNT_KEY].sort(),
   );
 }
 
