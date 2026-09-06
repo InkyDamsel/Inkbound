@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BarChart3, BookOpen, Clock, Filter, Flame, Lock, Sparkles } from 'lucide-react';
+import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, Clock, Filter, Flame, Lock, Sparkles } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { ResponsiveGrid } from '../layout/responsive';
@@ -28,6 +28,11 @@ const timeframeStart = (timeframe: string, today = new Date()) => {
   else start.setMonth(0, 1);
   return localDateKey(start);
 };
+
+const isImportedBook = (book: UserBookRecord) => (
+  Boolean(book.sourceOfImport)
+  || getActiveEdition(book)?.externalSource === 'import'
+);
 
 export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessions }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
@@ -71,6 +76,22 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     Math.round((completedThisYear.length / annualGoal) * 100),
   );
   const currentStreak = getReadingStreak(sessions);
+
+  const trackedBookIdsThisYear = useMemo(() => new Set(
+    sessions
+      .filter((session) => session.date.startsWith(`${currentYear}-`) && getSessionDurationMinutes(session) > 0)
+      .map((session) => session.bookId),
+  ), [currentYear, sessions]);
+
+  const importedBooks = filteredBooks.filter(isImportedBook);
+  const importedCompletedThisYear = completedThisYear.filter(isImportedBook);
+  const fullyTrackedCompletedThisYear = completedThisYear.filter((book) => trackedBookIdsThisYear.has(book.id));
+  const importedRecordsNeedingReview = importedBooks.filter((book) => (
+    book.importMetadataReviewNeeded === true
+    || book.importMetadataVerified === false
+    || (book.status === 'finished' && book.importFinishedDateProvided === false)
+  ));
+  const hasImportedData = importedBooks.length > 0;
 
   const monthlyData = useMemo(() => {
     const formatter = new Intl.DateTimeFormat(undefined, { month: 'short' });
@@ -144,6 +165,40 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
           annualGoalPercent={annualGoalPercent}
           monthlyData={monthlyData}
         />
+
+        {hasImportedData && (
+          <aside className="rounded-2xl border border-[#c5a059]/25 bg-[#c5a059]/[0.06] p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              {importedRecordsNeedingReview.length > 0 ? (
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[#e5c158]" />
+              ) : (
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+              )}
+              <div className="min-w-0 flex-1">
+                <h3 className="font-serif text-base font-bold text-[#f4efe6]">Imported data coverage</h3>
+                <p className="mt-1 text-xs leading-5 text-stone-400">
+                  Finished-book counts can include valid historical finish dates from imports. Pages, listening time, reading time, and streaks only use activity Inkbound can actually track, so those totals may be lower than your imported reading history.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                  <span className="rounded-full border border-[#3d2448] bg-[#120817]/70 px-3 py-1.5 text-stone-300">
+                    {completedThisYear.length} finished this year
+                  </span>
+                  <span className="rounded-full border border-[#3d2448] bg-[#120817]/70 px-3 py-1.5 text-stone-300">
+                    {fullyTrackedCompletedThisYear.length} with tracked Inkbound activity
+                  </span>
+                  <span className="rounded-full border border-[#3d2448] bg-[#120817]/70 px-3 py-1.5 text-stone-300">
+                    {importedCompletedThisYear.length} imported finishes
+                  </span>
+                  {importedRecordsNeedingReview.length > 0 && (
+                    <span className="rounded-full border border-amber-400/25 bg-amber-400/[0.08] px-3 py-1.5 text-amber-200">
+                      {importedRecordsNeedingReview.length} imported records may need review
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </aside>
+        )}
       </section>
 
       <section className="space-y-5 border-t border-[#332435] pt-6">
@@ -217,6 +272,11 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Minutes read</dt><dd className="font-bold text-[#f4efe6]">{Math.round(totalReadingMinutes)}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Average session</dt><dd className="font-bold text-[#e5c158]">{filteredSessions.length ? Math.round(totalReadingMinutes / filteredSessions.length) : 0} min</dd></div>
               </dl>
+              {hasImportedData && (
+                <p className="border-t border-[#3d2448] pt-3 text-[11px] leading-4 text-stone-500">
+                  Session pace reflects tracked Inkbound sessions only.
+                </p>
+              )}
             </article>
 
             <article className="space-y-3 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-5">
@@ -244,6 +304,11 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                   <p className="text-stone-400">No books match the selected filters.</p>
                 )}
               </div>
+              {hasImportedData && (
+                <p className="border-t border-[#3d2448] pt-3 text-[11px] leading-4 text-stone-500">
+                  Format totals may include imported edition metadata.
+                </p>
+              )}
             </article>
           </ResponsiveGrid>
         )}
