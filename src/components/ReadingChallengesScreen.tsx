@@ -23,6 +23,7 @@ import {
   getSessionPagesRead,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
+import { isInkboundFinishedBook, isInkboundStartedBook } from '../features/reading/inkboundActivity';
 import {
   BankMetric,
   buildMonthlyRotation,
@@ -98,7 +99,6 @@ const getActiveEdition = (book: UserBookRecord) =>
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 const monthStart = (key: string) => `${key}-01`;
 const onOrAfter = (value: string | undefined, key: string) => Boolean(value && value >= monthStart(key));
-const hasMonthPrefix = (value: string | undefined, prefix: string) => Boolean(value?.startsWith(prefix));
 
 const metricUnit: Record<ChallengeMetric, string> = {
   books: 'books',
@@ -146,7 +146,8 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
 
   const challenges = useMemo<ChallengeDefinition[]>(() => {
     const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
-    const finishedBooks = books.filter((book) => book.status === 'finished');
+    const trackedBookIds = new Set(completedSessions.map((session) => session.bookId));
+    const finishedBooks = books.filter((book) => isInkboundFinishedBook(book, trackedBookIds));
     const uniqueSessionDays = new Set(completedSessions.map((session) => session.date).filter(Boolean)).size;
     const pagesRead = completedSessions.reduce((total, session) => total + getSessionPagesRead(session), 0);
     const totalReadingMinutes = completedSessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0);
@@ -166,6 +167,7 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
 
     const progressFor = (metric: BankMetric, startKey: string, genrePattern?: string) => {
       const scopedSessions = completedSessions.filter((session) => onOrAfter(session.date, startKey));
+      const scopedTrackedBookIds = new Set(scopedSessions.map((session) => session.bookId));
       const scopedFinished = finishedBooks.filter((book) => onOrAfter(book.dateFinished, startKey));
       switch (metric) {
         case 'pages': return scopedSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
@@ -178,7 +180,7 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
         case 'audiobooks': return scopedFinished.filter((book) => getActiveEdition(book)?.format === 'audiobook').length;
         case 'ebooks': return scopedFinished.filter((book) => getActiveEdition(book)?.format === 'ebook').length;
         case 'long-books': return scopedFinished.filter((book) => (getActiveEdition(book)?.pageCount ?? 0) >= 500).length;
-        case 'started-books': return books.filter((book) => onOrAfter(book.dateStarted, startKey)).length;
+        case 'started-books': return books.filter((book) => onOrAfter(book.dateStarted, startKey) && isInkboundStartedBook(book, scopedTrackedBookIds)).length;
         case 'books':
         default:
           return genrePattern
