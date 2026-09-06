@@ -21,6 +21,7 @@ interface ReadingMemoriesScreenProps {
 
 const MEMORIES_STORAGE_KEY = 'inkbound_book_memories';
 const SELECTED_BOOK_STORAGE_KEY = 'inkbound_memory_selected_book';
+const MEMORIES_BANNER_URL = '/assets/memories/cozy-memories-banner.png';
 
 const emptyMemory = (): ReadingMemoryEntry => ({
   feeling: '',
@@ -131,17 +132,27 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
       </header>
 
       <section className="inkbound-panel overflow-hidden rounded-3xl">
-        <div className={`bg-gradient-to-br ${activeEdition?.coverGradient ?? 'from-[#76586a] to-[#382b40]'} p-6 sm:p-8`}>
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/70">
-            {selectedBook.status === 'finished' ? 'Finished Memory' : 'Reading in Progress'}
-          </p>
-          <h2 className="mt-3 max-w-3xl break-words font-serif text-3xl font-bold text-white sm:text-4xl">
-            {selectedBook.work.title}
-          </h2>
-          <p className="mt-2 break-words text-sm text-white/75">{selectedBook.work.author}</p>
-          <button type="button" onClick={() => onSelectBook(selectedBook)} className="mt-5 min-h-11 rounded-full border border-white/30 px-4 py-2 text-sm font-semibold text-white">
-            Open book details
-          </button>
+        <div
+          className="relative flex min-h-[210px] items-center overflow-hidden p-6 sm:min-h-[250px] sm:p-8"
+          style={{
+            backgroundImage: `linear-gradient(90deg, rgba(12,8,15,.84) 0%, rgba(12,8,15,.56) 40%, rgba(12,8,15,.18) 72%, rgba(12,8,15,.08) 100%), url("${MEMORIES_BANNER_URL}")`,
+            backgroundPosition: 'center center',
+            backgroundSize: 'cover',
+            backgroundRepeat: 'no-repeat',
+          }}
+        >
+          <div className="relative z-10 max-w-2xl rounded-2xl border border-white/10 bg-black/20 p-5 backdrop-blur-[2px] sm:p-6" style={{ textShadow: '0 2px 10px rgba(0,0,0,.72)' }}>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/75">
+              {selectedBook.status === 'finished' ? 'Finished Memory' : 'Reading in Progress'}
+            </p>
+            <h2 className="mt-3 max-w-3xl break-words font-serif text-3xl font-bold text-white sm:text-4xl">
+              {selectedBook.work.title}
+            </h2>
+            <p className="mt-2 break-words text-sm text-white/80">{selectedBook.work.author}</p>
+            <button type="button" onClick={() => onSelectBook(selectedBook)} className="mt-5 min-h-11 rounded-full border border-white/30 bg-black/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur-[2px]">
+              Open book details
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-7 lg:grid-cols-4">
