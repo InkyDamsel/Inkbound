@@ -4,6 +4,7 @@ import { Format, ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { isInkboundFinishedBook } from '../features/reading/inkboundActivity';
 
 interface DragonProfile { id: string; name: string; }
 interface MyDragonScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; }
@@ -47,8 +48,9 @@ const formatSessionDuration = (minutes: number): string => {
 export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions }) => {
   const [dragon, setDragon] = usePersistentState<DragonProfile>(DRAGON_KEY, DEFAULT_DRAGON);
   const [isRenaming, setIsRenaming] = useState(false); const [draftName, setDraftName] = useState(dragon.name);
-  const finishedBooks = books.filter((book) => book.status === 'finished');
   const completedSessions = useMemo(() => sessions.filter((session) => getSessionDurationMinutes(session) > 0 && Number.isFinite(getSessionTimestamp(session))), [sessions]);
+  const trackedBookIds = useMemo(() => new Set(completedSessions.map((session) => session.bookId)), [completedSessions]);
+  const finishedBooks = useMemo(() => books.filter((book) => isInkboundFinishedBook(book, trackedBookIds)), [books, trackedBookIds]);
   const totalPages = completedSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
   const favoriteGenre = useMemo(() => { const counts = new Map<string, number>(); finishedBooks.flatMap((book) => book.work.genres).forEach((genre) => counts.set(genre, (counts.get(genre) ?? 0) + 1)); return [...counts.entries()].sort((a,b) => b[1]-a[1])[0]?.[0] ?? 'Still discovering'; }, [finishedBooks]);
   const favoriteFormat = useMemo(() => { const counts = new Map<Format, number>(); finishedBooks.forEach((book) => { const edition = getActiveEdition(book); if (edition) counts.set(edition.format, (counts.get(edition.format) ?? 0) + 1); }); const format = [...counts.entries()].sort((a,b) => b[1]-a[1])[0]?.[0]; return format ? FORMAT_LABELS[format] : 'Still discovering'; }, [finishedBooks]);
