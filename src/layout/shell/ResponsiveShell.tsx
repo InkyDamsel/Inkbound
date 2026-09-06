@@ -87,7 +87,7 @@ export function ResponsiveShell({ navigation, children }: ResponsiveShellProps) 
             </div>
 
             <a
-              href="/faq.html"
+              href="/faq"
               className="mt-7 flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/10 px-5 py-3 font-bold text-[var(--ink-gold)] transition hover:border-[var(--ink-gold)]/60"
             >
               View full Help Center
