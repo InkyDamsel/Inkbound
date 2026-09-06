@@ -8,8 +8,9 @@ import {
 } from './cloudSyncEvents';
 import { CostSafeCloudPersistenceBridge } from './CostSafeCloudPersistenceBridge';
 import { OneShotCloudHydrationBridge } from './OneShotCloudHydrationBridge';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_KEY = 'inkbound_books';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 
 function hasLocalLibrary(): boolean {
   try {
