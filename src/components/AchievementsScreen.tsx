@@ -322,25 +322,19 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     const reveal = new Set<string>();
     byFamily.forEach((familyAchievements) => {
       const sorted = [...familyAchievements].sort((a, b) => a.target - b.target);
-      const hasStarted = sorted.some(
-        (achievement) => achievement.progress > 0 || Boolean(safeUnlockDates[achievement.id]),
-      );
+      const hasStarted = sorted.some((achievement) => achievement.progress > 0);
       if (!hasStarted) return;
 
       sorted.forEach((achievement) => {
-        if (achievement.progress >= achievement.target || safeUnlockDates[achievement.id]) {
-          reveal.add(achievement.id);
-        }
+        if (achievement.progress >= achievement.target) reveal.add(achievement.id);
       });
 
-      const next = sorted.find(
-        (achievement) => achievement.progress < achievement.target && !safeUnlockDates[achievement.id],
-      );
+      const next = sorted.find((achievement) => achievement.progress < achievement.target);
       if (next) reveal.add(next.id);
     });
 
     return [...reveal];
-  }, [definitions, safeUnlockDates]);
+  }, [definitions]);
 
   useEffect(() => {
     if (achievementIdsToReveal.length === 0) return;
@@ -363,19 +357,11 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     ]);
   }, [setSeenAchievementIds, unseenUnlockedIds]);
 
-  const unlockedAchievements = definitions.filter(
-    (item) => Boolean(safeUnlockDates[item.id]) || item.progress >= item.target,
-  );
-  const revealedAchievements = definitions.filter(
-    (item) =>
-      safeRevealedAchievementIds.includes(item.id) ||
-      achievementIdsToReveal.includes(item.id) ||
-      Boolean(safeUnlockDates[item.id]) ||
-      item.progress >= item.target,
-  );
-  const inProgressAchievements = revealedAchievements.filter(
-    (item) => !(Boolean(safeUnlockDates[item.id]) || item.progress >= item.target),
-  );
+  // Current progress is authoritative. Persisted reveal/unlock records only keep dates/history;
+  // they must never make a zero-progress achievement appear or look completed.
+  const unlockedAchievements = definitions.filter((item) => item.progress >= item.target);
+  const revealedAchievements = definitions.filter((item) => achievementIdsToReveal.includes(item.id));
+  const inProgressAchievements = revealedAchievements.filter((item) => item.progress < item.target);
   const visibleAchievements =
     safeFilter === 'unlocked'
       ? unlockedAchievements
@@ -440,13 +426,13 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
         <ResponsiveGrid minItemWidth={260} maxColumns={3} gap={16} alignItems="stretch">
           {visibleAchievements.map((achievement) => {
             const Icon = achievement.icon;
-            const unlocked = Boolean(safeUnlockDates[achievement.id]) || achievement.progress >= achievement.target;
+            const unlocked = achievement.progress >= achievement.target;
             const progress = Math.min(achievement.progress, achievement.target);
             const percent = Math.min(
               100,
               Math.max(0, Math.round((progress / achievement.target) * 100)),
             );
-            const unlockDate = safeUnlockDates[achievement.id];
+            const unlockDate = unlocked ? safeUnlockDates[achievement.id] : undefined;
             const parsedUnlockDate = unlockDate ? new Date(unlockDate) : null;
             const formattedUnlockDate =
               parsedUnlockDate && !Number.isNaN(parsedUnlockDate.getTime())
