@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17131d"/>
+      <stop offset="0.48" stop-color="#22303a"/>
+      <stop offset="1" stop-color="#130f17"/>
+    </linearGradient>
+    <radialGradient id="cool" cx="72%" cy="8%" r="62%">
+      <stop offset="0" stop-color="#66808f" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#66808f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="plum" cx="12%" cy="18%" r="40%">
+      <stop offset="0" stop-color="#66405f" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#66405f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="warm" cx="82%" cy="86%" r="38%">
+      <stop offset="0" stop-color="#c57d45" stop-opacity=".5"/>
+      <stop offset=".45" stop-color="#8a4d31" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#8a4d31" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="book" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2f1e32"/>
+      <stop offset=".6" stop-color="#43273f"/>
+      <stop offset="1" stop-color="#241823"/>
+    </linearGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="24"/></filter>
+    <filter id="soft"><feGaussianBlur stdDeviation="7"/></filter>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#base)"/>
+  <rect width="1080" height="1920" fill="url(#cool)"/>
+  <rect width="1080" height="1920" fill="url(#plum)"/>
+  <rect width="1080" height="1920" fill="url(#warm)"/>
+
+  <g opacity=".28" filter="url(#soft)" fill="#2f2032">
+    <ellipse cx="80" cy="160" rx="160" ry="260"/>
+    <ellipse cx="1005" cy="360" rx="120" ry="210"/>
+  </g>
+
+  <g opacity=".34" fill="#54405a">
+    <path d="M0 0h210c-35 56-83 85-147 98 47 10 78 34 104 73-75-4-125 20-167 63z"/>
+    <path d="M1080 150h-146c26 46 61 71 109 82-34 16-56 41-77 77 52-2 87 15 114 45z"/>
+  </g>
+
+  <g opacity=".62">
+    <circle cx="855" cy="1430" r="115" fill="#b86b3f" opacity=".18" filter="url(#blur)"/>
+    <circle cx="910" cy="1500" r="78" fill="#f0b26d" opacity=".15" filter="url(#blur)"/>
+  </g>
+
+  <g transform="translate(38 1460)" opacity=".78">
+    <rect x="0" y="215" width="455" height="88" rx="12" fill="#211620"/>
+    <rect x="18" y="145" width="420" height="82" rx="12" fill="url(#book)"/>
+    <rect x="0" y="75" width="448" height="82" rx="12" fill="#332036"/>
+    <rect x="28" y="5" width="392" height="82" rx="12" fill="#2a1b2b"/>
+    <g stroke="#b38a69" stroke-opacity=".38" stroke-width="3">
+      <line x1="46" y1="26" x2="392" y2="26"/><line x1="25" y1="96" x2="414" y2="96"/><line x1="40" y1="166" x2="405" y2="166"/><line x1="22" y1="236" x2="430" y2="236"/>
+    </g>
+  </g>
+
+  <g transform="translate(690 1545)" opacity=".86">
+    <ellipse cx="120" cy="190" rx="112" ry="28" fill="#0b0a0d" opacity=".55"/>
+    <path d="M32 74h168v104c0 45-34 80-84 80s-84-35-84-80z" fill="#bdb3a8" opacity=".82"/>
+    <path d="M198 99c62 0 76 30 76 65s-25 61-70 61" fill="none" stroke="#bdb3a8" stroke-width="23" opacity=".82"/>
+    <ellipse cx="116" cy="75" rx="84" ry="20" fill="#d7d0c7" opacity=".85"/>
+    <path d="M97 58c-6-35 18-49 10-84M130 55c9-31-8-49 1-76M154 63c20-30 6-48 16-70" fill="none" stroke="#e4ddd2" stroke-opacity=".3" stroke-width="8" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(920 1570)" opacity=".88">
+    <rect x="0" y="70" width="98" height="168" rx="20" fill="#5b382b" opacity=".62"/>
+    <rect x="11" y="80" width="76" height="147" rx="15" fill="#f2c889" opacity=".42"/>
+    <path d="M49 35c-26 33-12 58 0 71 13-16 28-40 0-71z" fill="#ffd990"/>
+    <ellipse cx="49" cy="194" rx="70" ry="100" fill="#f0a75d" opacity=".13" filter="url(#blur)"/>
+  </g>
+
+  <g opacity=".14" fill="#f5d7a2">
+    <circle cx="740" cy="1360" r="13"/><circle cx="790" cy="1410" r="9"/><circle cx="890" cy="1332" r="17"/><circle cx="840" cy="1460" r="11"/>
+  </g>
+
+  <rect width="1080" height="1920" fill="none" stroke="#d8c7ba" stroke-opacity=".25" stroke-width="2"/>
+</svg>
