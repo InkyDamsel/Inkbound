@@ -56,6 +56,16 @@ export const allowProductionFirebaseWrites =
   explicitProductionMode ||
   readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
 
+// Local development should not silently invoke production Cloud Functions. A
+// 50k-book stress test can turn automatic metadata work into tens of thousands
+// of billable Cloud Run/Functions invocations. Production builds, emulators, and
+// an explicitly requested live-production dev session retain function access.
+export const allowProductionFirebaseFunctions =
+  useFirebaseEmulators ||
+  !import.meta.env.DEV ||
+  explicitProductionMode ||
+  readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_FUNCTIONS);
+
 let app: FirebaseApp | null = null;
 let appCheck: AppCheck | null = null;
 let auth: Auth | null = null;
@@ -124,7 +134,7 @@ if (isFirebaseConfigured) {
     } : {}),
   });
 
-  functions = getFunctions(app);
+  functions = allowProductionFirebaseFunctions ? getFunctions(app) : null;
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
 
   if (useFirebaseEmulators) {
@@ -132,7 +142,7 @@ if (isFirebaseConfigured) {
 
     connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
     connectFirestoreEmulator(readDb, emulatorHost, 8080);
-    connectFunctionsEmulator(functions, emulatorHost, 5001);
+    if (functions) connectFunctionsEmulator(functions, emulatorHost, 5001);
     if (storage) connectStorageEmulator(storage, emulatorHost, 9199);
 
     db = readDb;
@@ -150,7 +160,7 @@ if (isFirebaseConfigured) {
 
     if (import.meta.env.DEV && !allowProductionFirebaseWrites) {
       console.info(
-        'Inkbound live-cloud verification: production reads/functions are enabled, but browser Firestore writes are blocked. Set VITE_FIREBASE_MODE=production (recommended for intentional beta testing) or VITE_ALLOW_PROD_FIREBASE_WRITES=true before changing production-backed reader data.',
+        'Inkbound protected DEV mode: production Firestore writes and production Cloud Functions are blocked. The local working copy is used without production Firestore collection reads. Set VITE_FIREBASE_MODE=production only for intentional live-cloud beta verification.',
       );
     }
 
