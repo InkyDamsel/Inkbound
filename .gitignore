@@ -6,6 +6,7 @@ dist/
 coverage/
 .firebase-emulator-data/
 firebase-export-*/
+.firebase/hosting.*.cache
 .DS_Store
 *.log
 .env*
