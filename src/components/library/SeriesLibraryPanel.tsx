@@ -10,6 +10,9 @@ interface SeriesLibraryPanelProps {
   onSelectBook: (book: UserBookRecord) => void;
 }
 
+const activeEdition = (book: UserBookRecord) =>
+  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+
 export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [search, setSearch] = useState('');
@@ -63,6 +66,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
         {filtered.map((item) => {
           const expanded = expandedSeriesId === item.id;
           const nextUnread = item.books.find(({ book }) => book.status !== 'finished');
+          const firstBook = item.books[0]?.book;
           return (
             <article key={item.id} className="inkbound-panel overflow-hidden rounded-3xl">
               <button
@@ -71,9 +75,19 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                 className="flex w-full flex-col gap-5 p-5 text-left sm:p-6 lg:flex-row lg:items-center"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-4">
-                  <div className="grid h-16 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
-                    {item.books[0] ? <BookCover book={item.books[0].book} className="h-full w-full" /> : <BookOpen className="h-5 w-5 text-[var(--ink-gold)]" />}
-                  </div>
+                  {firstBook ? (
+                    <BookCover
+                      work={firstBook.work}
+                      edition={activeEdition(firstBook)}
+                      size="sm"
+                      showFormatBadge={false}
+                      className="!h-16 !w-12 rounded-lg"
+                    />
+                  ) : (
+                    <div className="grid h-16 w-12 shrink-0 place-items-center rounded-lg border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
+                      <BookOpen className="h-5 w-5 text-[var(--ink-gold)]" />
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <h3 className="truncate font-serif text-2xl text-[var(--ink-ivory)]">{item.name}</h3>
                     <p className="truncate text-sm text-[var(--ink-muted)]">{item.author}</p>
@@ -87,7 +101,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                 <div className="flex w-full items-center gap-4 lg:w-auto">
                   <div className="min-w-0 flex-1 lg:w-48 lg:flex-none">
                     <div className="flex items-center justify-between text-xs text-[var(--ink-muted)]"><span>Series progress</span><span>{item.completionPercent}%</span></div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${item.completionPercent}%` }} /></div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${item.completionPercent}%` }} /></div>
                   </div>
                   <ChevronRight className={`h-5 w-5 shrink-0 text-[var(--ink-gold)] transition ${expanded ? 'rotate-90' : ''}`} />
                 </div>
@@ -103,7 +117,13 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                         onClick={() => onSelectBook(book)}
                         className="flex min-w-0 items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-left transition hover:border-[var(--ink-gold)]/35"
                       >
-                        <BookCover book={book} className="h-16 w-11 shrink-0 rounded-md" />
+                        <BookCover
+                          work={book.work}
+                          edition={activeEdition(book)}
+                          size="sm"
+                          showFormatBadge={false}
+                          className="!h-16 !w-11 rounded-md"
+                        />
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-gold)]">{displayPosition}</p>
                           <p className="truncate font-serif text-lg text-[var(--ink-ivory)]">{book.work.title}</p>
