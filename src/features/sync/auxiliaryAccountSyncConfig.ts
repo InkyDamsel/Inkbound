@@ -1,7 +1,17 @@
 /**
+ * Reading Memories are synced per book instead of as one monolithic auxiliary
+ * document. Keeping the runtime key here lets account-transition cleanup remain
+ * centralized while avoiding whole-memory-map overwrite conflicts across devices.
+ */
+export const READING_MEMORIES_ACCOUNT_KEY = 'inkbound_book_memories';
+
+/**
  * Account-owned runtime keys that must follow an authenticated reader across
  * devices. Keep UI-only state (filters, collapsed sections, selected tabs,
  * onboarding state) device-local and out of this list.
+ *
+ * Reading Memories intentionally are not in this object: they use the dedicated
+ * ReadingMemoryCloudSyncBridge so separate books can merge safely across devices.
  */
 export const AUXILIARY_ACCOUNT_KEYS = {
   collectionDefinitions: 'inkbound_collection_definitions',
@@ -9,7 +19,6 @@ export const AUXILIARY_ACCOUNT_KEYS = {
   libraryCustomListMembers: 'inkbound_library_custom_list_members',
   annualReadingGoal: 'inkbound_annual_goal',
   dailyReadingGoalMinutes: 'inkbound_daily_goal_minutes',
-  readingMemories: 'inkbound_book_memories',
   timelineMemories: 'inkbound_timeline_memories',
   readingTimeCapsules: 'inkbound_reading_time_capsules',
   joinedChallenges: 'inkbound_joined_challenges',
@@ -44,7 +53,7 @@ export const getAuxiliaryKeysToClearForOwnerChange = (
   previousOwnerUid: string | null,
   nextOwnerUid: string,
 ) => previousOwnerUid && previousOwnerUid !== nextOwnerUid
-  ? Object.values(AUXILIARY_ACCOUNT_KEYS)
+  ? [...Object.values(AUXILIARY_ACCOUNT_KEYS), READING_MEMORIES_ACCOUNT_KEY]
   : [];
 
 /**
@@ -57,5 +66,5 @@ export const getAccountOwnedKeysToClearForOwnerChange = (
   previousOwnerUid: string | null,
   nextOwnerUid: string,
 ) => previousOwnerUid && previousOwnerUid !== nextOwnerUid
-  ? [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS)]
+  ? [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS), READING_MEMORIES_ACCOUNT_KEY]
   : [];
