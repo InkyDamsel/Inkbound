@@ -6,8 +6,8 @@ import {
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
-import { CloudPersistenceBridge } from './CloudPersistenceBridge';
 import { CostSafeCloudPersistenceBridge } from './CostSafeCloudPersistenceBridge';
+import { OneShotCloudHydrationBridge } from './OneShotCloudHydrationBridge';
 
 const BOOKS_KEY = 'inkbound_books';
 
@@ -27,9 +27,8 @@ function hasLocalLibrary(): boolean {
 /**
  * Existing devices already have a durable local working copy, so they should not
  * pay for a full Firestore library read every time Inkbound opens. New/empty
- * devices temporarily use the legacy hydration bridge to restore their saved
- * library. As soon as a local library exists, the expensive collection listeners
- * are removed and local-first cost-safe persistence takes over.
+ * devices get one guarded, one-shot cloud restore with no collection listeners.
+ * As soon as a local library exists, local-first cost-safe persistence takes over.
  */
 export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   const [localLibraryReady, setLocalLibraryReady] = useState(hasLocalLibrary);
@@ -53,5 +52,5 @@ export const AdaptiveCloudPersistenceBridge: React.FC = () => {
 
   return localLibraryReady
     ? <CostSafeCloudPersistenceBridge />
-    : <CloudPersistenceBridge />;
+    : <OneShotCloudHydrationBridge />;
 };
