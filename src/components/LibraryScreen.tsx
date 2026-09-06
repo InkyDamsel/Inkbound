@@ -38,6 +38,7 @@ type CustomListMemberships = Record<string, string[]>;
 
 const CUSTOM_LISTS_STORAGE_KEY = 'inkbound_library_custom_lists';
 const CUSTOM_LIST_MEMBERS_STORAGE_KEY = 'inkbound_library_custom_list_members';
+const LIBRARY_BANNER_ASSET = '/assets/library/cozy-library-background.png';
 const customListTabId = (name: string) => `list:${name}`;
 
 const statusTabs = [
@@ -169,12 +170,18 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   return (
     <div className="space-y-6 pb-24">
-      <section className="inkbound-panel overflow-hidden p-6 sm:p-8">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-2xl"><span className="inkbound-kicker">Your personal collection</span><h1 className="inkbound-page-title mt-2">My Library</h1><p className="inkbound-page-copy mt-2">Browse every book you own, borrow, love, pause, or plan to return to.</p></div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-full border border-[#c5a059]/25 bg-[#c5a059]/8 px-4 py-2 text-xs text-[#d9ced9]"><span className="font-bold text-[#f4efe6]">{filteredBooks.length}</span> shown<span className="mx-2 text-[#807482]">of</span><span className="font-bold text-[#f4efe6]">{books.length}</span> books</div>
-            <div className="flex items-center gap-1.5 rounded-full border border-[#c5a059]/35 bg-[#c5a059]/10 px-4 py-2 text-xs font-bold text-[#e2bd66]"><Sparkles className="h-3.5 w-3.5" /> Unlimited Library</div>
+      <section className="relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
+        <div aria-hidden="true" className="pointer-events-none absolute -inset-3 scale-[1.035] bg-cover bg-center bg-no-repeat blur-[3px]" style={{ backgroundImage: `url("${LIBRARY_BANNER_ASSET}")` }} />
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(9,8,18,.88)_0%,rgba(9,8,18,.70)_44%,rgba(9,8,18,.36)_78%,rgba(9,8,18,.22)_100%)]" />
+        <div className="relative z-10 flex min-h-[260px] flex-col justify-between gap-6 p-6 sm:p-8 xl:flex-row xl:items-end">
+          <div className="max-w-2xl rounded-[1.5rem] border border-white/10 bg-black/25 p-5 backdrop-blur-[3px] sm:p-6">
+            <span className="text-xs font-bold uppercase tracking-[0.22em] text-[#e0c77c]">Your personal collection</span>
+            <h1 className="mt-2 font-serif text-4xl text-white">My Library</h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-white/75">Browse every book you own, borrow, love, pause, or plan to return to.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 backdrop-blur-[3px]">
+            <div className="rounded-full border border-white/15 bg-black/25 px-4 py-2 text-xs text-white/75"><span className="font-bold text-white">{filteredBooks.length}</span> shown<span className="mx-2 text-white/40">of</span><span className="font-bold text-white">{books.length}</span> books</div>
+            <div className="flex items-center gap-1.5 rounded-full border border-[#c5a059]/35 bg-black/25 px-4 py-2 text-xs font-bold text-[#e2bd66]"><Sparkles className="h-3.5 w-3.5" /> Unlimited Library</div>
             <button type="button" onClick={onOpenAddBook} className="quiet-shelf-primary-action"><Plus className="h-4 w-4" /><span>Add Book</span></button>
           </div>
         </div>
@@ -187,7 +194,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           <button type="button" onClick={openCreateList} className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-full border border-dashed border-[#c5a059]/40 px-4 py-2 text-xs font-semibold text-[#e2bd66] transition hover:bg-[#c5a059]/10"><FolderPlus className="h-3.5 w-3.5" /> New List</button>
         </div>
         {activeCustomList && <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#c5a059]/18 bg-[#120c15] p-3"><span className="mr-auto text-xs text-[#ad9fac]"><strong className="text-[#f4efe6]">{activeCustomList}</strong> is separate from reading status.</span>{selectedBookIds.length > 0 && <><button type="button" onClick={addSelectedToActiveList} className="quiet-shelf-secondary-action"><Plus className="h-4 w-4" /> Add selected</button><button type="button" onClick={removeSelectedFromActiveList} className="quiet-shelf-secondary-action"><X className="h-4 w-4" /> Remove selected</button></>}<button type="button" onClick={deleteActiveList} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-rose-500/25 px-3 text-xs font-semibold text-rose-300 hover:bg-rose-950/20"><Trash2 className="h-4 w-4" /> Delete list</button></div>}
-
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
           <label className="relative xl:col-span-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#807482]" /><input type="search" placeholder="Search title, author, series, or tag" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} className="h-11 w-full rounded-xl border border-[#c5a059]/18 bg-[#0d0910] pl-10 pr-4 text-sm text-[#f4efe6] outline-none transition placeholder:text-[#6f6570] focus:border-[#c5a059]/55" /></label>
           <select value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} className="inkbound-select"><option value="all">All formats</option><option value="hardcover">Hardcover</option><option value="paperback">Paperback</option><option value="ebook">Ebook</option><option value="audiobook">Audiobook</option></select>
