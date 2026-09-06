@@ -98,12 +98,8 @@ export interface UserBookRecord {
   collections: string[];
   whyIAddedThis?: string;
   sourceOfImport?: string;
-  // Import metadata is disposable. These flags let the enrichment manager
-  // distinguish verified matches from legacy guesses that need review.
   importMetadataVerified?: boolean;
   importMetadataReviewNeeded?: boolean;
-  // True only when the source export explicitly supplied a finished/read date.
-  // False means the book was imported as finished without a trustworthy historical date.
   importFinishedDateProvided?: boolean;
   dateAdded: string;
   dateStarted?: string;
@@ -148,13 +144,23 @@ export interface ImportSourceInfo {
   supported: boolean;
 }
 
+/**
+ * Canonical normalized import row. Import readers/map panels may accept many
+ * source column names, but everything must normalize into this shape before it
+ * enters verification/enrichment or the user's library.
+ */
 export interface ImportRecordItem {
   id: string;
   title: string;
   author: string;
   isbn?: string;
   format: Format;
+  materialType?: ReadingMaterialType;
+  seriesName?: string;
+  seriesOrder?: number;
   status: ReadingStatus;
+  ownership?: OwnershipStatus;
+  subscriptionService?: SubscriptionService;
   rating?: number;
   dateRead?: string;
   dateAdded: string;
@@ -165,8 +171,5 @@ export interface ImportRecordItem {
   confidence: number;
   duplicateAction: 'skip' | 'merge' | 'keep_both' | 'replace';
   coverGradient: string;
-  // Verification is determined before the selected records are written into the
-  // library. Carrying it with the import record keeps Import Center and Import
-  // History on the same accounting source instead of recomputing different totals.
   importMetadataVerified?: boolean;
 }
