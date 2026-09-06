@@ -21,6 +21,10 @@ import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
+import {
+  SERIES_OVERRIDES_STORAGE_KEY,
+  type SeriesOverrides,
+} from '../features/series/seriesOverrides';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
@@ -54,6 +58,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
   const { user, signOutAccount } = useAccountSync();
   const [annualGoal, setAnnualGoal] = usePersistentState('inkbound_annual_goal', '25');
   const [dailyGoalMins, setDailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
+  const [seriesOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [exported, setExported] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState('');
@@ -70,19 +75,51 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
   const hasPaidSubscription = accessSource === 'subscription';
   const canManageSubscription = canManageRuntimeSubscription();
 
+  const getEffectiveSeries = (book: UserBookRecord) => {
+    for (const override of Object.values(seriesOverrides)) {
+      const entry = override.books.find((candidate) => candidate.bookId === book.id);
+      if (entry) {
+        return {
+          name: override.name,
+          number: entry.position,
+          label: entry.label ?? '',
+          source: 'manual' as const,
+        };
+      }
+    }
+    return {
+      name: book.work.seriesName ?? '',
+      number: book.work.seriesOrder ?? null,
+      label: '',
+      source: book.work.seriesName ? 'metadata' as const : 'none' as const,
+    };
+  };
+
   const markExported = () => { setExported(true); window.setTimeout(() => setExported(false), 3000); };
 
   const handleExportJSON = async () => {
-    const data = { schemaVersion: 1, app: 'Inkbound', exportDate: new Date().toISOString(), preferences: { annualGoal, dailyGoalMins, theme: isDarkMode ? 'dark' : 'light' }, books, sessions };
+    const data = {
+      schemaVersion: 2,
+      app: 'Inkbound',
+      exportDate: new Date().toISOString(),
+      preferences: { annualGoal, dailyGoalMins, theme: isDarkMode ? 'dark' : 'light' },
+      books,
+      sessions,
+      seriesOrganization: {
+        overrides: seriesOverrides,
+        effectiveByBook: Object.fromEntries(books.map((book) => [book.id, getEffectiveSeries(book)])),
+      },
+    };
     await exportRuntimeTextFile({ filename: `inkbound-library-backup-${localDateKey()}.json`, mimeType: 'application/json;charset=utf-8', contents: JSON.stringify(data, null, 2) });
     markExported();
   };
 
   const handleExportCSV = async () => {
-    const headers = ['Title','Subtitle','Author','Series','Series Number','Status','Ownership','Rating','Format','ISBN','Page Count','Pages Read','Date Added','Date Started','Date Finished','Tags','Collections'];
+    const headers = ['Title','Subtitle','Author','Series','Series Number','Series Label','Series Source','Status','Ownership','Subscription Service','Rating','Format','ISBN','Page Count','Pages Read','Date Added','Date Started','Date Finished','Tags','Collections'];
     const rows = books.map((book) => {
       const activeEdition = getActiveEdition(book);
-      return [book.work.title, book.work.subtitle, book.work.author, book.work.seriesName, book.work.seriesOrder, book.status, book.ownership, book.rating, activeEdition?.format, activeEdition?.isbn13 ?? activeEdition?.isbn10 ?? activeEdition?.isbn, activeEdition?.pageCount, book.progressPages, book.dateAdded, book.dateStarted, book.dateFinished, book.privateTags.join(' | '), book.collections.join(' | ')].map(csvCell);
+      const series = getEffectiveSeries(book);
+      return [book.work.title, book.work.subtitle, book.work.author, series.name, series.number, series.label, series.source, book.status, book.ownership, book.subscriptionService, book.rating, activeEdition?.format, activeEdition?.isbn13 ?? activeEdition?.isbn10 ?? activeEdition?.isbn, activeEdition?.pageCount, book.progressPages, book.dateAdded, book.dateStarted, book.dateFinished, book.privateTags.join(' | '), book.collections.join(' | ')].map(csvCell);
     });
     const csvContent = `\uFEFF${[headers.map(csvCell).join(','), ...rows.map((row) => row.join(','))].join('\n')}`;
     await exportRuntimeTextFile({ filename: `inkbound-library-${localDateKey()}.csv`, mimeType: 'text/csv;charset=utf-8', contents: csvContent });
@@ -135,7 +172,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
 
       <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Reading goals</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Changes save automatically.</p><ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16} className="mt-5"><label className="text-sm font-semibold text-[var(--ink-ivory)]">Annual book goal<input type="number" inputMode="numeric" min="1" max="1000" value={annualGoal} onChange={(event) => setAnnualGoal(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label><label className="text-sm font-semibold text-[var(--ink-ivory)]">Daily reading target in minutes<input type="number" inputMode="numeric" min="1" max="1440" value={dailyGoalMins} onChange={(event) => setDailyGoalMins(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label></ResponsiveGrid></section>
 
-      <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Export your data</h2><p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Download a complete Inkbound backup, or a spreadsheet-friendly copy of your library.</p><div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap"><button type="button" onClick={() => void handleExportJSON()} className="quiet-shelf-primary-action justify-center"><Download className="h-4 w-4" /> Complete JSON backup</button><button type="button" onClick={() => void handleExportCSV()} className="quiet-shelf-secondary-action justify-center"><FileSpreadsheet className="h-4 w-4" /> Library CSV</button>{exported && <span className="inline-flex items-center gap-2 px-2 text-sm font-semibold text-emerald-400"><Check className="h-4 w-4" /> Export ready</span>}</div></section>
+      <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Export your data</h2><p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Download a complete Inkbound backup, or a spreadsheet-friendly copy of your library. Series corrections, ownership, subscription access, and Collections are included.</p><div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap"><button type="button" onClick={() => void handleExportJSON()} className="quiet-shelf-primary-action justify-center"><Download className="h-4 w-4" /> Complete JSON backup</button><button type="button" onClick={() => void handleExportCSV()} className="quiet-shelf-secondary-action justify-center"><FileSpreadsheet className="h-4 w-4" /> Library CSV</button>{exported && <span className="inline-flex items-center gap-2 px-2 text-sm font-semibold text-emerald-400"><Check className="h-4 w-4" /> Export ready</span>}</div></section>
 
       <section className="rounded-3xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-6"><h2 className="font-serif text-2xl text-[#e9b2b2]">Device & account data</h2><p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Clearing this device keeps your saved Inkbound account. Deleting your account permanently removes the account and Inkbound data associated with it.</p><div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap"><button type="button" onClick={() => { setResetConfirmation(''); setResetDialogOpen(true); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c97b7b]/40 px-4 text-sm font-bold text-[#e9b2b2] hover:bg-[#c97b7b]/10"><RotateCcw className="h-4 w-4" /> {user ? 'Clear device & sign out' : 'Clear data on this device'}</button><button type="button" disabled={!user} onClick={() => { setDeleteAccountError(''); setDeleteConfirmation(''); setDeleteAcknowledged(false); setDeleteSubscriptionAcknowledged(false); setDeletePassword(''); setDeleteDialogOpen(true); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#a65050] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><Trash2 className="h-4 w-4" /> Delete account & data</button></div>{!user && <p className="mt-3 text-xs text-[var(--ink-muted)]">Sign in before requesting permanent account deletion.</p>}</section>
 
