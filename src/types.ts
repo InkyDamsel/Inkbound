@@ -7,6 +7,17 @@ export interface UserPlanState {
 
 export type Format = 'hardcover' | 'paperback' | 'ebook' | 'audiobook';
 
+export type ReadingMaterialType =
+  | 'book'
+  | 'manga'
+  | 'comic'
+  | 'graphic-novel'
+  | 'magazine'
+  | 'light-novel'
+  | 'novella'
+  | 'short-story'
+  | 'anthology';
+
 export type ReadingStatus = 'currently-reading' | 'tbr' | 'finished' | 'paused' | 'dnf' | 'wishlist';
 
 export type OwnershipStatus = 'owned' | 'borrowed-library' | 'borrowed-person' | 'subscription' | 'wishlist' | 'none';
@@ -25,6 +36,7 @@ export interface BookWork {
   summary: string;
   publisherSummary?: string;
   personalSummary?: string;
+  materialType?: ReadingMaterialType;
   seriesName?: string;
   seriesOrder?: number;
   genres: string[];
