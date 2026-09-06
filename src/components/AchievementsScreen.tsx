@@ -4,6 +4,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { isInkboundActiveBook, isInkboundFinishedBook } from '../features/reading/inkboundActivity';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 
 type AchievementFilter = 'all' | 'completed' | 'revealed' | 'in-progress';
@@ -21,7 +22,6 @@ const readStringArray=(key:string):string[]=>{const parsed=readRuntimeJson<unkno
 const readFilter=():AchievementFilter=>{const parsed=readRuntimeJson<unknown>(FILTER_STORAGE_KEY,'all');return parsed==='completed'||parsed==='revealed'||parsed==='in-progress'?parsed:'all';};
 const getActiveEdition=(book:UserBookRecord)=>book.editions.find(e=>e.id===book.activeEditionId)??book.editions[0];
 const safeNumber=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:0;
-const isImportedBook=(book:UserBookRecord)=>Boolean(book.sourceOfImport?.toLowerCase().includes('import')||book.privateTags?.includes('imported')||book.id.startsWith('book-import-'));
 const achievementFamily=(id:string)=>id.replace(/-\d+$/,'');
 const makeLadder=(prefix:string,category:string,icon:React.ElementType,progress:number,unit:string,milestones:Array<[number,string,string]>):AchievementDefinition[]=>milestones.map(([target,title,description])=>({id:`${prefix}-${target}`,title,description,category,icon,progress,target,unit}));
 
@@ -37,12 +37,12 @@ export const AchievementsScreen:React.FC<AchievementsScreenProps>=({books,sessio
 
  const definitions=useMemo<AchievementDefinition[]>(()=>{
   const completedSessions=sessions.filter(s=>getSessionDurationMinutes(s)>0); const trackedIds=new Set(completedSessions.map(s=>s.bookId));
-  const finishedBooks=books.filter(book=>book.status==='finished'&&(!isImportedBook(book)||trackedIds.has(book.id)||Boolean(book.dateStarted&&book.dateFinished)));
+  const finishedBooks=books.filter(book=>isInkboundFinishedBook(book,trackedIds));
   const totalPages=completedSessions.reduce((sum,s)=>sum+getSessionPagesRead(s),0); const totalMinutes=completedSessions.reduce((sum,s)=>sum+getSessionDurationMinutes(s),0); const totalHours=Math.floor(totalMinutes/60); const uniqueDays=new Set(completedSessions.map(s=>s.date).filter(Boolean)).size;
   const audioIds=new Set(books.filter(b=>getActiveEdition(b)?.format==='audiobook').map(b=>b.id)); const audioSessions=completedSessions.filter(s=>audioIds.has(s.bookId));
   const finishedAudio=finishedBooks.filter(b=>getActiveEdition(b)?.format==='audiobook').length; const finishedEbooks=finishedBooks.filter(b=>getActiveEdition(b)?.format==='ebook').length; const finishedPhysical=finishedBooks.filter(b=>['hardcover','paperback'].includes(getActiveEdition(b)?.format??'')).length;
   const nightSessions=completedSessions.filter(s=>{const h=Number.parseInt(s.startTime?.split(':')[0]??'',10);return Number.isFinite(h)&&(h>=21||h<5);}).length;
-  const reviewed=finishedBooks.filter(b=>Boolean(b.review?.trim())).length; const quoted=finishedBooks.filter(b=>Array.isArray(b.favoriteQuotes)&&b.favoriteQuotes.length>0).length; const large=finishedBooks.filter(b=>safeNumber(getActiveEdition(b)?.pageCount)>=500).length; const huge=finishedBooks.filter(b=>safeNumber(getActiveEdition(b)?.pageCount)>=700).length; const genres=new Set(finishedBooks.flatMap(b=>b.work.genres??[]).filter(Boolean)).size; const active=books.filter(b=>b.status==='currently-reading'&&(!isImportedBook(b)||trackedIds.has(b.id)||Boolean(b.dateStarted))).length;
+  const reviewed=finishedBooks.filter(b=>Boolean(b.review?.trim())).length; const quoted=finishedBooks.filter(b=>Array.isArray(b.favoriteQuotes)&&b.favoriteQuotes.length>0).length; const large=finishedBooks.filter(b=>safeNumber(getActiveEdition(b)?.pageCount)>=500).length; const huge=finishedBooks.filter(b=>safeNumber(getActiveEdition(b)?.pageCount)>=700).length; const genres=new Set(finishedBooks.flatMap(b=>b.work.genres??[]).filter(Boolean)).size; const active=books.filter(b=>isInkboundActiveBook(b,trackedIds)).length;
   return [
    ...makeLadder('books-finished','Milestone',Library,finishedBooks.length,'books',[[1,'First Chapter','Finish your first book in Inkbound.'],[5,'Shelf Starter','Finish five books.'],[10,'Ten Down','Finish ten books.'],[15,'Shelf Builder','Finish fifteen books.'],[25,'Quarter Century','Finish twenty-five books.'],[50,'Half a Hundred','Finish fifty books.'],[75,'Deep Shelf','Finish seventy-five books.'],[100,'Century Reader','Finish one hundred books.'],[150,'Library in Motion','Finish one hundred fifty books.'],[200,'Two Hundred Tales','Finish two hundred books.'],[300,'Endless Shelves','Finish three hundred books.'],[500,'Legendary Library','Finish five hundred books.']]),
    ...makeLadder('sessions','Habit',Clock3,completedSessions.length,'sessions',[[1,'Reading Begins','Complete your first tracked reading session.'],[10,'Reading Ritual','Complete ten reading sessions.'],[25,'Settling In','Complete twenty-five reading sessions.'],[50,'Session Regular','Complete fifty reading sessions.'],[100,'Hundred Sessions','Complete one hundred reading sessions.'],[250,'Always Reading','Complete two hundred fifty reading sessions.'],[500,'Reading Is the Routine','Complete five hundred reading sessions.']]),
