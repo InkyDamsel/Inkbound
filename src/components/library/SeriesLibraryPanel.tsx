@@ -1,8 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, ChevronRight, Lock, Search, Sparkles } from 'lucide-react';
+import { BookOpen, ChevronRight, Lock, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
+import { usePersistentState } from '../../hooks/usePersistentState';
 import { buildSeriesLibrary } from '../../features/series/seriesLibrary';
+import {
+  makeSeriesOverrideId,
+  SERIES_OVERRIDES_STORAGE_KEY,
+  type SeriesOverride,
+  type SeriesOverrides,
+} from '../../features/series/seriesOverrides';
 import { BookCover } from '../BookCover';
 
 interface SeriesLibraryPanelProps {
@@ -10,156 +17,94 @@ interface SeriesLibraryPanelProps {
   onSelectBook: (book: UserBookRecord) => void;
 }
 
-const activeEdition = (book: UserBookRecord) =>
-  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+type DraftBook = { bookId: string; position: string; label: string };
+type Draft = { id?: string; name: string; author: string; books: DraftBook[] };
+const emptyDraft = (): Draft => ({ name: '', author: '', books: [] });
+const activeEdition = (book: UserBookRecord) => book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 
 export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
+  const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
-  const series = useMemo(() => buildSeriesLibrary(books), [books]);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [error, setError] = useState('');
+  const series = useMemo(() => buildSeriesLibrary(books, overrides), [books, overrides]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return series;
-    return series.filter((item) =>
-      item.name.toLowerCase().includes(query)
-      || item.author.toLowerCase().includes(query)
-      || item.books.some(({ book }) => book.work.title.toLowerCase().includes(query)),
-    );
+    return series.filter((item) => item.name.toLowerCase().includes(query) || item.author.toLowerCase().includes(query) || item.books.some(({ book }) => book.work.title.toLowerCase().includes(query)));
   }, [search, series]);
 
-  if (series.length === 0) {
-    return (
-      <section className="inkbound-panel rounded-3xl p-6 text-center sm:p-10">
-        <BookOpen className="mx-auto h-10 w-10 text-[var(--ink-gold)]" />
-        <h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No series found yet</h2>
-        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--ink-muted)]">
-          Books with series information will collect here automatically. Manual series creation and corrections are coming next.
-        </p>
-      </section>
-    );
-  }
+  const openCreate = () => { setError(''); setDraft(emptyDraft()); };
+  const openEdit = (item: (typeof series)[number]) => {
+    setError('');
+    setDraft({ id: item.id, name: item.name, author: item.author, books: item.books.map(({ book, position, displayPosition }) => ({ bookId: book.id, position: position?.toString() ?? '', label: displayPosition.startsWith('Book ') || displayPosition === 'Series book' ? '' : displayPosition })) });
+  };
+  const toggleDraftBook = (bookId: string) => setDraft((current) => {
+    if (!current) return current;
+    const exists = current.books.some((entry) => entry.bookId === bookId);
+    return { ...current, books: exists ? current.books.filter((entry) => entry.bookId !== bookId) : [...current.books, { bookId, position: '', label: '' }] };
+  });
+  const updateDraftBook = (bookId: string, patch: Partial<DraftBook>) => setDraft((current) => current ? { ...current, books: current.books.map((entry) => entry.bookId === bookId ? { ...entry, ...patch } : entry) } : current);
+  const saveDraft = () => {
+    if (!draft) return;
+    const name = draft.name.trim();
+    const author = draft.author.trim();
+    if (!name) { setError('Give the series a name.'); return; }
+    if (draft.books.length === 0) { setError('Add at least one book to the series.'); return; }
+    const id = draft.id ?? makeSeriesOverrideId(name, author || 'Unknown author');
+    const now = new Date().toISOString();
+    const existing = overrides[id];
+    const next: SeriesOverride = {
+      id, name, author: author || 'Unknown author',
+      books: draft.books.map((entry) => ({ bookId: entry.bookId, position: entry.position.trim() === '' ? null : Number(entry.position), label: entry.label.trim() || undefined })),
+      createdAt: existing?.createdAt ?? now, updatedAt: now,
+    };
+    setOverrides((current) => ({ ...current, [id]: next }));
+    setExpandedSeriesId(id); setDraft(null);
+  };
+  const deleteManualSeries = (id: string) => {
+    setOverrides((current) => { const next = { ...current }; delete next[id]; return next; });
+    if (expandedSeriesId === id) setExpandedSeriesId(null);
+  };
 
   return (
     <div className="space-y-5">
       <section className="inkbound-panel rounded-3xl p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="inkbound-kicker">Series</p>
-            <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Your reading worlds</h2>
-            <p className="mt-1 text-sm text-[var(--ink-muted)]">{series.length} series found in your library.</p>
+          <div><p className="inkbound-kicker">Series</p><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Your reading worlds</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">{series.length} series found in your library.</p></div>
+          <div className="flex w-full flex-col gap-2 sm:max-w-lg sm:flex-row">
+            <label className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search series or book" className="h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-10 pr-4 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55" /></label>
+            <button type="button" onClick={openCreate} className="quiet-shelf-primary-action shrink-0"><Plus className="h-4 w-4" />Create Series</button>
           </div>
-          <label className="relative w-full sm:max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search series or book"
-              className="h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-10 pr-4 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55"
-            />
-          </label>
         </div>
       </section>
 
-      <div className="grid gap-4">
-        {filtered.map((item) => {
+      {series.length === 0 ? <section className="inkbound-panel rounded-3xl p-6 text-center sm:p-10"><BookOpen className="mx-auto h-10 w-10 text-[var(--ink-gold)]" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No series found yet</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--ink-muted)]">Series metadata groups books automatically, or create one yourself when metadata is missing or wrong.</p><button type="button" onClick={openCreate} className="quiet-shelf-primary-action mx-auto mt-5"><Plus className="h-4 w-4" />Create your first series</button></section> : filtered.length === 0 ? <section className="inkbound-panel rounded-3xl p-8 text-center text-sm text-[var(--ink-muted)]">No series match that search.</section> : (
+        <div className="grid gap-4">{filtered.map((item) => {
           const expanded = expandedSeriesId === item.id;
           const nextUnread = item.books.find(({ book }) => book.status !== 'finished');
           const firstBook = item.books[0]?.book;
-          return (
-            <article key={item.id} className="inkbound-panel overflow-hidden rounded-3xl">
-              <button
-                type="button"
-                onClick={() => setExpandedSeriesId(expanded ? null : item.id)}
-                className="flex w-full flex-col gap-5 p-5 text-left sm:p-6 lg:flex-row lg:items-center"
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-4">
-                  {firstBook ? (
-                    <BookCover
-                      work={firstBook.work}
-                      edition={activeEdition(firstBook)}
-                      size="sm"
-                      showFormatBadge={false}
-                      className="!h-16 !w-12 rounded-lg"
-                    />
-                  ) : (
-                    <div className="grid h-16 w-12 shrink-0 place-items-center rounded-lg border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
-                      <BookOpen className="h-5 w-5 text-[var(--ink-gold)]" />
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <h3 className="truncate font-serif text-2xl text-[var(--ink-ivory)]">{item.name}</h3>
-                    <p className="truncate text-sm text-[var(--ink-muted)]">{item.author}</p>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-muted)]">
-                      <span><strong className="text-[var(--ink-ivory)]">{item.finishedCount}</strong> of {item.books.length} finished</span>
-                      {item.currentlyReadingCount > 0 && <span>{item.currentlyReadingCount} reading now</span>}
-                      {nextUnread && <span>Next: {nextUnread.book.work.title}</span>}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex w-full items-center gap-4 lg:w-auto">
-                  <div className="min-w-0 flex-1 lg:w-48 lg:flex-none">
-                    <div className="flex items-center justify-between text-xs text-[var(--ink-muted)]"><span>Series progress</span><span>{item.completionPercent}%</span></div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${item.completionPercent}%` }} /></div>
-                  </div>
-                  <ChevronRight className={`h-5 w-5 shrink-0 text-[var(--ink-gold)] transition ${expanded ? 'rotate-90' : ''}`} />
-                </div>
-              </button>
+          return <article key={item.id} className="inkbound-panel overflow-hidden rounded-3xl">
+            <button type="button" onClick={() => setExpandedSeriesId(expanded ? null : item.id)} className="flex w-full flex-col gap-5 p-5 text-left sm:p-6 lg:flex-row lg:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-4">{firstBook && <BookCover work={firstBook.work} edition={activeEdition(firstBook)} size="sm" showFormatBadge={false} className="!h-16 !w-12 rounded-lg" />}<div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-serif text-2xl text-[var(--ink-ivory)]">{item.name}</h3>{item.isManual && <span className="rounded-full border border-[var(--ink-gold)]/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-gold)]">Custom</span>}</div><p className="truncate text-sm text-[var(--ink-muted)]">{item.author}</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-muted)]"><span><strong className="text-[var(--ink-ivory)]">{item.finishedCount}</strong> of {item.books.length} finished</span>{item.currentlyReadingCount > 0 && <span>{item.currentlyReadingCount} reading now</span>}{nextUnread && <span>Next: {nextUnread.book.work.title}</span>}</div></div></div>
+              <div className="flex w-full items-center gap-4 lg:w-auto"><div className="min-w-0 flex-1 lg:w-48 lg:flex-none"><div className="flex items-center justify-between text-xs text-[var(--ink-muted)]"><span>Series progress</span><span>{item.completionPercent}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--ink-gold)]" style={{ width: `${item.completionPercent}%` }} /></div></div><ChevronRight className={`h-5 w-5 shrink-0 text-[var(--ink-gold)] transition ${expanded ? 'rotate-90' : ''}`} /></div>
+            </button>
+            {expanded && <div className="border-t border-[var(--ink-border-subtle)] px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
+              <div className="mb-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => openEdit(item)} className="quiet-shelf-secondary-action"><Pencil className="h-4 w-4" />{item.isManual ? 'Edit series' : 'Correct series'}</button>{item.isManual && <button type="button" onClick={() => deleteManualSeries(item.id)} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" />Remove custom grouping</button>}</div>
+              <div className="grid gap-3">{item.books.map(({ book, displayPosition }) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="flex min-w-0 items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-left transition hover:border-[var(--ink-gold)]/35"><BookCover work={book.work} edition={activeEdition(book)} size="sm" showFormatBadge={false} className="!h-16 !w-11 rounded-md" /><div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-gold)]">{displayPosition}</p><p className="truncate font-serif text-lg text-[var(--ink-ivory)]">{book.work.title}</p><p className="mt-1 text-xs capitalize text-[var(--ink-muted)]">{book.status.replaceAll('-', ' ')}{book.rating ? ` · ${book.rating}/5` : ''}</p></div><ChevronRight className="h-4 w-4 shrink-0 text-[var(--ink-faint)]" /></button>)}</div>
+              <section className="mt-5 rounded-2xl border border-[var(--ink-gold)]/20 bg-[var(--ink-gold)]/5 p-4 sm:p-5"><div className="flex items-start gap-3">{userPlan === 'premium' ? <Sparkles className="mt-1 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /> : <Lock className="mt-1 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />}<div className="min-w-0 flex-1"><h4 className="font-serif text-xl text-[var(--ink-ivory)]">Series Insights</h4>{userPlan === 'premium' ? <div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-black/15 p-3"><span className="text-xs text-[var(--ink-muted)]">Average rating</span><strong className="mt-1 block text-[var(--ink-ivory)]">{item.averageRating ? item.averageRating.toFixed(1) : 'Not rated'}</strong></div><div className="rounded-xl bg-black/15 p-3"><span className="text-xs text-[var(--ink-muted)]">Unread in library</span><strong className="mt-1 block text-[var(--ink-ivory)]">{item.books.length - item.finishedCount}</strong></div><div className="rounded-xl bg-black/15 p-3"><span className="text-xs text-[var(--ink-muted)]">Completion</span><strong className="mt-1 block text-[var(--ink-ivory)]">{item.completionPercent}%</strong></div></div> : <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">Premium adds deeper series reading time, ratings, pace, timelines, favorite installments, and more.</p><button type="button" onClick={() => openUpgradeModal('Premium unlocks in-depth Series Insights.')} className="quiet-shelf-secondary-action shrink-0">Unlock Series Insights</button></div>}</div></div></section>
+            </div>}
+          </article>;
+        })}</div>
+      )}
 
-              {expanded && (
-                <div className="border-t border-[var(--ink-border-subtle)] px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
-                  <div className="grid gap-3">
-                    {item.books.map(({ book, displayPosition }) => (
-                      <button
-                        key={book.id}
-                        type="button"
-                        onClick={() => onSelectBook(book)}
-                        className="flex min-w-0 items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-left transition hover:border-[var(--ink-gold)]/35"
-                      >
-                        <BookCover
-                          work={book.work}
-                          edition={activeEdition(book)}
-                          size="sm"
-                          showFormatBadge={false}
-                          className="!h-16 !w-11 rounded-md"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-gold)]">{displayPosition}</p>
-                          <p className="truncate font-serif text-lg text-[var(--ink-ivory)]">{book.work.title}</p>
-                          <p className="mt-1 text-xs capitalize text-[var(--ink-muted)]">{book.status.replaceAll('-', ' ')}{book.rating ? ` · ${book.rating}/5` : ''}</p>
-                        </div>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-[var(--ink-faint)]" />
-                      </button>
-                    ))}
-                  </div>
-
-                  <section className="mt-5 rounded-2xl border border-[var(--ink-gold)]/20 bg-[var(--ink-gold)]/5 p-4 sm:p-5">
-                    <div className="flex items-start gap-3">
-                      {userPlan === 'premium' ? <Sparkles className="mt-1 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /> : <Lock className="mt-1 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />}
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-serif text-xl text-[var(--ink-ivory)]">Series Insights</h4>
-                        {userPlan === 'premium' ? (
-                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                            <div className="rounded-xl bg-black/15 p-3"><span className="text-xs text-[var(--ink-muted)]">Average rating</span><strong className="mt-1 block text-[var(--ink-ivory)]">{item.averageRating ? item.averageRating.toFixed(1) : 'Not rated'}</strong></div>
-                            <div className="rounded-xl bg-black/15 p-3"><span className="text-xs text-[var(--ink-muted)]">Unread in library</span><strong className="mt-1 block text-[var(--ink-ivory)]">{item.books.length - item.finishedCount}</strong></div>
-                            <div className="rounded-xl bg-black/15 p-3"><span className="text-xs text-[var(--ink-muted)]">Completion</span><strong className="mt-1 block text-[var(--ink-ivory)]">{item.completionPercent}%</strong></div>
-                          </div>
-                        ) : (
-                          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">Premium adds deeper series reading time, ratings, pace, timelines, favorite installments, and more.</p>
-                            <button type="button" onClick={(event) => { event.stopPropagation(); openUpgradeModal('Premium unlocks in-depth Series Insights.'); }} className="quiet-shelf-secondary-action shrink-0">Unlock Series Insights</button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </section>
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+      {draft && <div className="fixed inset-0 z-[220] overflow-y-auto bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setDraft(null); }}><section className="mx-auto my-4 w-full max-w-3xl rounded-3xl border border-[var(--ink-gold)]/30 bg-[#17101b] p-5 shadow-2xl sm:my-8 sm:p-6" role="dialog" aria-modal="true"><div className="flex items-start justify-between gap-4"><div><p className="inkbound-kicker">Series organization</p><h2 className="mt-1 font-serif text-3xl text-[var(--ink-ivory)]">{draft.id ? 'Edit Series' : 'Create Series'}</h2></div><button type="button" onClick={() => setDraft(null)} className="rounded-full p-2 text-[var(--ink-muted)] hover:bg-white/5"><X className="h-5 w-5" /></button></div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold text-[var(--ink-ivory)]">Series name<input autoFocus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} className="mt-2 h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] px-3 text-sm outline-none focus:border-[var(--ink-gold)]" /></label><label className="text-sm font-semibold text-[var(--ink-ivory)]">Author<input value={draft.author} onChange={(event) => setDraft({ ...draft, author: event.target.value })} className="mt-2 h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] px-3 text-sm outline-none focus:border-[var(--ink-gold)]" /></label></div>
+        <p className="mt-5 text-sm font-semibold text-[var(--ink-ivory)]">Books in this series</p><div className="mt-2 max-h-[48dvh] space-y-2 overflow-y-auto pr-1">{books.map((book) => { const entry = draft.books.find((item) => item.bookId === book.id); return <div key={book.id} className={`rounded-2xl border p-3 ${entry ? 'border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/5' : 'border-[var(--ink-border-subtle)]'}`}><div className="flex items-center gap-3"><input type="checkbox" checked={Boolean(entry)} onChange={() => toggleDraftBook(book.id)} className="h-5 w-5 accent-[#c5a059]" /><div className="min-w-0 flex-1"><p className="truncate font-semibold text-[var(--ink-ivory)]">{book.work.title}</p><p className="truncate text-xs text-[var(--ink-muted)]">{book.work.author}</p></div></div>{entry && <div className="mt-3 grid gap-2 pl-8 sm:grid-cols-2"><input type="number" step="0.1" value={entry.position} onChange={(event) => updateDraftBook(book.id, { position: event.target.value })} placeholder="Position (1, 1.5, 2...)" className="h-10 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] px-3 text-sm outline-none" /><input value={entry.label} onChange={(event) => updateDraftBook(book.id, { label: event.target.value })} placeholder="Optional label: Prequel, Novella..." className="h-10 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] px-3 text-sm outline-none" /></div>}</div>; })}</div>
+        {error && <p className="mt-3 text-sm text-rose-300">{error}</p>}<div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setDraft(null)} className="quiet-shelf-secondary-action">Cancel</button><button type="button" onClick={saveDraft} className="quiet-shelf-primary-action">Save Series</button></div>
+      </section></div>}
     </div>
   );
 };
