@@ -21,7 +21,7 @@ import {
 } from '../features/reading/sessionAnalytics';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 
-type AchievementFilter = 'all' | 'unlocked';
+type AchievementFilter = 'all' | 'unlocked' | 'in-progress';
 
 interface AchievementsScreenProps {
   books: UserBookRecord[];
@@ -40,6 +40,7 @@ interface AchievementDefinition {
 }
 
 const UNLOCKED_STORAGE_KEY = 'inkbound_achievement_unlocks';
+const REVEALED_STORAGE_KEY = 'inkbound_achievement_reveals';
 const SEEN_STORAGE_KEY = 'inkbound_achievement_seen';
 const FILTER_STORAGE_KEY = 'inkbound_achievement_filter';
 
@@ -57,7 +58,7 @@ const readStringArray = (key: string): string[] => {
 
 const readFilter = (): AchievementFilter => {
   const parsed = readRuntimeJson<unknown>(FILTER_STORAGE_KEY, 'all');
-  return parsed === 'unlocked' ? parsed : 'all';
+  return parsed === 'unlocked' || parsed === 'in-progress' ? parsed : 'all';
 };
 
 const getActiveEdition = (book: UserBookRecord) =>
@@ -65,6 +66,8 @@ const getActiveEdition = (book: UserBookRecord) =>
 
 const safeNumber = (value: unknown): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+const achievementFamily = (id: string) => id.replace(/-\d+$/, '');
 
 const makeLadder = (
   prefix: string,
@@ -90,6 +93,10 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     UNLOCKED_STORAGE_KEY,
     () => readRecord(UNLOCKED_STORAGE_KEY),
   );
+  const [revealedAchievementIds, setRevealedAchievementIds] = usePersistentState<string[]>(
+    REVEALED_STORAGE_KEY,
+    () => readStringArray(REVEALED_STORAGE_KEY),
+  );
   const [seenAchievementIds, setSeenAchievementIds] = usePersistentState<string[]>(
     SEEN_STORAGE_KEY,
     () => readStringArray(SEEN_STORAGE_KEY),
@@ -98,8 +105,10 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
 
   const safeUnlockDates =
     unlockDates && typeof unlockDates === 'object' && !Array.isArray(unlockDates) ? unlockDates : {};
+  const safeRevealedAchievementIds = Array.isArray(revealedAchievementIds) ? revealedAchievementIds : [];
   const safeSeenAchievementIds = Array.isArray(seenAchievementIds) ? seenAchievementIds : [];
-  const safeFilter: AchievementFilter = filter === 'unlocked' ? filter : 'all';
+  const safeFilter: AchievementFilter =
+    filter === 'unlocked' || filter === 'in-progress' ? filter : 'all';
 
   const definitions = useMemo<AchievementDefinition[]>(() => {
     const finishedBooks = books.filter((book) => book.status === 'finished');
@@ -277,6 +286,45 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     }));
   }, [newlyUnlocked, setUnlockDates]);
 
+  const achievementIdsToReveal = useMemo(() => {
+    const byFamily = new Map<string, AchievementDefinition[]>();
+    definitions.forEach((achievement) => {
+      const family = achievementFamily(achievement.id);
+      const current = byFamily.get(family) ?? [];
+      current.push(achievement);
+      byFamily.set(family, current);
+    });
+
+    const reveal = new Set<string>();
+    byFamily.forEach((familyAchievements) => {
+      const sorted = [...familyAchievements].sort((a, b) => a.target - b.target);
+      const hasStarted = sorted.some(
+        (achievement) => achievement.progress > 0 || Boolean(safeUnlockDates[achievement.id]),
+      );
+      if (!hasStarted) return;
+
+      sorted.forEach((achievement) => {
+        if (achievement.progress >= achievement.target || safeUnlockDates[achievement.id]) {
+          reveal.add(achievement.id);
+        }
+      });
+
+      const next = sorted.find(
+        (achievement) => achievement.progress < achievement.target && !safeUnlockDates[achievement.id],
+      );
+      if (next) reveal.add(next.id);
+    });
+
+    return [...reveal];
+  }, [definitions, safeUnlockDates]);
+
+  useEffect(() => {
+    if (achievementIdsToReveal.length === 0) return;
+    setRevealedAchievementIds((current) => [
+      ...new Set([...(Array.isArray(current) ? current : []), ...achievementIdsToReveal]),
+    ]);
+  }, [achievementIdsToReveal, setRevealedAchievementIds]);
+
   const unseenUnlockedIds = useMemo(
     () => definitions
       .filter((item) => item.progress >= item.target && !safeSeenAchievementIds.includes(item.id))
@@ -291,8 +339,25 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
     ]);
   }, [setSeenAchievementIds, unseenUnlockedIds]);
 
-  const unlockedAchievements = definitions.filter((item) => Boolean(safeUnlockDates[item.id]) || item.progress >= item.target);
-  const visibleAchievements = safeFilter === 'unlocked' ? unlockedAchievements : unlockedAchievements;
+  const unlockedAchievements = definitions.filter(
+    (item) => Boolean(safeUnlockDates[item.id]) || item.progress >= item.target,
+  );
+  const revealedAchievements = definitions.filter(
+    (item) =>
+      safeRevealedAchievementIds.includes(item.id) ||
+      achievementIdsToReveal.includes(item.id) ||
+      Boolean(safeUnlockDates[item.id]) ||
+      item.progress >= item.target,
+  );
+  const inProgressAchievements = revealedAchievements.filter(
+    (item) => !(Boolean(safeUnlockDates[item.id]) || item.progress >= item.target),
+  );
+  const visibleAchievements =
+    safeFilter === 'unlocked'
+      ? unlockedAchievements
+      : safeFilter === 'in-progress'
+        ? inProgressAchievements
+        : revealedAchievements;
 
   return (
     <div className="space-y-6 pb-24">
@@ -302,29 +367,39 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
             <p className="inkbound-kicker">Permanent Milestones</p>
             <h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Achievements</h1>
             <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">
-              Achievements stay hidden until you earn them. Once discovered, they become a permanent part of your Inkbound history.
+              Achievement paths stay hidden until your reading activity starts them. Once a path is discovered, Inkbound reveals your next milestone so you always have something new to work toward.
             </p>
           </div>
-          <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-6 py-4 text-center">
-            <p className="font-serif text-4xl font-bold text-[var(--ink-ivory)]">{unlockedAchievements.length}</p>
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--ink-muted)]">discovered</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-6 py-4 text-center">
+              <p className="font-serif text-4xl font-bold text-[var(--ink-ivory)]">{unlockedAchievements.length}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[var(--ink-muted)]">unlocked</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-6 py-4 text-center">
+              <p className="font-serif text-4xl font-bold text-[var(--ink-ivory)]">{inProgressAchievements.length}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[var(--ink-muted)]">in progress</p>
+            </div>
           </div>
         </div>
       </section>
 
       <div className="flex flex-wrap gap-2">
-        {(['all', 'unlocked'] as AchievementFilter[]).map((option) => (
+        {([
+          ['all', 'All visible'],
+          ['unlocked', 'Unlocked'],
+          ['in-progress', 'In progress'],
+        ] as Array<[AchievementFilter, string]>).map(([option, label]) => (
           <button
             key={option}
             type="button"
             onClick={() => setFilter(option)}
-            className={`min-h-11 rounded-xl border px-4 text-sm font-semibold capitalize transition ${
+            className={`min-h-11 rounded-xl border px-4 text-sm font-semibold transition ${
               safeFilter === option
                 ? 'border-[var(--ink-gold)] bg-[rgba(197,160,89,0.14)] text-[var(--ink-ivory)]'
                 : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-muted)]'
             }`}
           >
-            {option === 'all' ? 'Discovered' : 'Unlocked'}
+            {label}
           </button>
         ))}
       </div>
@@ -332,15 +407,21 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
       {visibleAchievements.length === 0 ? (
         <div className="inkbound-panel rounded-3xl px-6 py-14 text-center">
           <Award className="mx-auto h-10 w-10 text-[var(--ink-gold)] opacity-70" />
-          <h2 className="mt-4 font-serif text-2xl font-bold text-[var(--ink-ivory)]">Your first achievement is waiting</h2>
+          <h2 className="mt-4 font-serif text-2xl font-bold text-[var(--ink-ivory)]">Your first achievement path is waiting</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-[var(--ink-muted)]">
-            Keep reading, tracking sessions, and building your library. Achievements reveal themselves only when you earn them.
+            Read, finish books, track sessions, save quotes, and write reviews. New achievement paths reveal themselves as soon as you begin making progress.
           </p>
         </div>
       ) : (
         <ResponsiveGrid minItemWidth={260} maxColumns={3} gap={16} alignItems="stretch">
           {visibleAchievements.map((achievement) => {
             const Icon = achievement.icon;
+            const unlocked = Boolean(safeUnlockDates[achievement.id]) || achievement.progress >= achievement.target;
+            const progress = Math.min(achievement.progress, achievement.target);
+            const percent = Math.min(
+              100,
+              Math.max(0, Math.round((progress / achievement.target) * 100)),
+            );
             const unlockDate = safeUnlockDates[achievement.id];
             const parsedUnlockDate = unlockDate ? new Date(unlockDate) : null;
             const formattedUnlockDate =
@@ -351,15 +432,30 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
             return (
               <article
                 key={achievement.id}
-                className="inkbound-panel flex min-h-64 flex-col rounded-3xl p-5 ring-1 ring-[rgba(197,160,89,0.38)] transition"
+                className={`inkbound-panel flex min-h-64 flex-col rounded-3xl p-5 transition ${
+                  unlocked ? 'ring-1 ring-[rgba(197,160,89,0.38)]' : ''
+                }`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="grid h-14 w-14 place-items-center rounded-2xl border border-[rgba(197,160,89,0.45)] bg-[rgba(197,160,89,0.14)] text-[var(--ink-gold-bright)]">
+                  <div
+                    className={`grid h-14 w-14 place-items-center rounded-2xl border ${
+                      unlocked
+                        ? 'border-[rgba(197,160,89,0.45)] bg-[rgba(197,160,89,0.14)] text-[var(--ink-gold-bright)]'
+                        : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-gold)]'
+                    }`}
+                  >
                     <Icon className="h-7 w-7" />
                   </div>
-                  <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
-                    {achievement.category}
-                  </span>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
+                      {achievement.category}
+                    </span>
+                    {!unlocked && (
+                      <span className="rounded-full border border-[var(--ink-border-strong)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-gold-bright)]">
+                        In progress
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <h2 className="mt-5 font-serif text-xl font-bold text-[var(--ink-ivory)]">{achievement.title}</h2>
@@ -367,16 +463,28 @@ export const AchievementsScreen: React.FC<AchievementsScreenProps> = ({ books, s
 
                 <div className="mt-auto pt-6">
                   <div className="flex items-center justify-between text-xs text-[var(--ink-muted)]">
-                    <span>{achievement.target.toLocaleString()} {achievement.unit}</span>
-                    <strong className="text-[var(--ink-ivory)]">100%</strong>
+                    <span>
+                      {progress.toLocaleString()} / {achievement.target.toLocaleString()} {achievement.unit}
+                    </span>
+                    <strong className="text-[var(--ink-ivory)]">{percent}%</strong>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--ink-surface-soft)]">
-                    <div className="h-full w-full rounded-full bg-[linear-gradient(90deg,var(--ink-gold),var(--ink-gold-bright))]" />
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--ink-gold),var(--ink-gold-bright))] transition-all"
+                      style={{ width: `${percent}%` }}
+                    />
                   </div>
-                  <p className="mt-4 flex items-center gap-2 text-xs font-semibold text-[var(--ink-gold-bright)]">
-                    <Check className="h-4 w-4" />
-                    Unlocked{formattedUnlockDate ? ` ${formattedUnlockDate}` : ''}
-                  </p>
+
+                  {unlocked ? (
+                    <p className="mt-4 flex items-center gap-2 text-xs font-semibold text-[var(--ink-gold-bright)]">
+                      <Check className="h-4 w-4" />
+                      Unlocked{formattedUnlockDate ? ` ${formattedUnlockDate}` : ''}
+                    </p>
+                  ) : (
+                    <p className="mt-4 text-xs font-semibold text-[var(--ink-muted)]">
+                      Keep going — this is your next milestone.
+                    </p>
+                  )}
                 </div>
               </article>
             );
