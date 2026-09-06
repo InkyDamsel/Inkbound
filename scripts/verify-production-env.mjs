@@ -11,6 +11,7 @@ for (const filename of ['.env', '.env.local', '.env.production', '.env.productio
   if (fs.existsSync(filepath)) loadDotenv({ path: filepath, override: true });
 }
 
+const runtimeTarget = String(process.env.VITE_RUNTIME_TARGET ?? 'web').trim().toLowerCase();
 const required = [
   'VITE_FIREBASE_API_KEY',
   'VITE_FIREBASE_AUTH_DOMAIN',
@@ -18,8 +19,12 @@ const required = [
   'VITE_FIREBASE_STORAGE_BUCKET',
   'VITE_FIREBASE_MESSAGING_SENDER_ID',
   'VITE_FIREBASE_APP_ID',
-  'VITE_GOOGLE_BOOKS_API_KEY',
   'VITE_FIREBASE_APP_CHECK_SITE_KEY',
+  // The browser build calls Google Books directly, so it requires the browser
+  // key. Android deliberately clears that key and routes book search through the
+  // protected backend instead; requiring it there would force a web credential
+  // into the native bundle and contradict the Android security boundary.
+  ...(runtimeTarget === 'android' ? [] : ['VITE_GOOGLE_BOOKS_API_KEY']),
 ];
 
 const missing = required.filter((name) => !String(process.env[name] ?? '').trim());
@@ -43,4 +48,4 @@ if (process.env.VITE_FIREBASE_PROJECT_ID !== 'inkbound-app') {
   process.exit(1);
 }
 
-console.log('Inkbound production environment verified.');
+console.log(`Inkbound ${runtimeTarget} production environment verified.`);
