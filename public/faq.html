@@ -10,7 +10,11 @@
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--text); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
     a { color:var(--gold); }
-    .wrap { width:min(100% - 32px, 980px); margin:0 auto; padding:56px 0 72px; }
+    .wrap { width:min(100% - 32px, 980px); margin:0 auto; padding:32px 0 72px; }
+    .topbar { display:flex; justify-content:flex-start; margin-bottom:28px; }
+    .back-link { display:inline-flex; min-height:44px; align-items:center; gap:9px; border:1px solid color-mix(in srgb, var(--gold) 38%, transparent); border-radius:999px; background:color-mix(in srgb, var(--gold) 10%, transparent); padding:10px 16px; color:var(--gold); font-size:.92rem; font-weight:800; text-decoration:none; transition:.2s ease; }
+    .back-link:hover { border-color:color-mix(in srgb, var(--gold) 65%, transparent); background:color-mix(in srgb, var(--gold) 16%, transparent); }
+    .back-link span:first-child { font-size:1.1rem; line-height:1; }
     .eyebrow { margin:0 0 10px; color:var(--rose); font-size:.78rem; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
     h1,h2 { font-family:Georgia,"Times New Roman",serif; font-weight:500; }
     h1 { margin:0; font-size:clamp(2.25rem,6vw,4.25rem); }
@@ -24,11 +28,14 @@
     details p { margin:0 0 18px; color:var(--muted); line-height:1.7; }
     .support { margin-top:52px; padding:24px; border:1px solid color-mix(in srgb, var(--gold) 35%, transparent); border-radius:24px; background:var(--soft); }
     .support h2 { margin-bottom:8px; }
-    footer { margin-top:40px; padding-top:24px; border-top:1px solid var(--border); color:var(--muted); font-size:.9rem; display:flex; flex-wrap:wrap; gap:16px; }
+    footer { margin-top:40px; padding-top:24px; border-top:1px solid var(--border); color:var(--muted); font-size:.9rem; display:flex; flex-wrap:wrap; align-items:center; gap:16px; }
+    footer .return { margin-left:auto; font-weight:800; text-decoration:none; }
+    @media (max-width:640px) { .wrap { padding-top:20px; } footer .return { margin-left:0; width:100%; } }
   </style>
 </head>
 <body>
   <main class="wrap">
+    <div class="topbar"><a class="back-link" href="/" aria-label="Return to Inkbound"><span aria-hidden="true">←</span><span>Back to Inkbound</span></a></div>
     <p class="eyebrow">Inkbound Help Center</p>
     <h1>Frequently asked questions</h1>
     <p class="lead">Answers about your library, series, reading materials, imports, syncing, reading sessions, privacy, and your Inkbound data.</p>
@@ -98,7 +105,7 @@
 
     <section class="support"><h2>Still need help?</h2><p class="lead">Email <a href="mailto:inkbound@inkydameinteractive.com">inkbound@inkydameinteractive.com</a>. If something is not working as expected, include a short description and a screenshot when possible.</p></section>
 
-    <footer><a href="/privacy.html">Privacy Policy</a><a href="/terms.html">Terms of Service</a><a href="/delete-account.html">Delete Account</a><a href="/support.html">Support</a></footer>
+    <footer><a href="/privacy.html">Privacy Policy</a><a href="/terms.html">Terms of Service</a><a href="/delete-account.html">Delete Account</a><a href="/support.html">Support</a><a class="return" href="/">← Back to Inkbound</a></footer>
   </main>
 </body>
 </html>
