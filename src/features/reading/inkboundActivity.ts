@@ -4,7 +4,8 @@ export function isImportedBook(book: UserBookRecord): boolean {
   return Boolean(
     book.sourceOfImport?.toLowerCase().includes('import')
       || book.privateTags?.includes('imported')
-      || book.id.startsWith('book-import-'),
+      || book.id.startsWith('book-import-')
+      || book.editions.some((edition) => edition.externalSource === 'import'),
   );
 }
 
