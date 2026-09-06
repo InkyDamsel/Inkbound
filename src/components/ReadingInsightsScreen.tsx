@@ -24,6 +24,13 @@ const mostCommon = (values: string[]) => { const counts = new Map<string, number
 const percentChange = (current: number, previous: number) => previous === 0 ? (current > 0 ? null : 0) : Math.round(((current - previous) / previous) * 100);
 const shortDelta = (current: number, previous: number) => { const change = percentChange(current, previous); if (change === null) return 'New activity'; if (change === 0) return 'No change'; return `${change > 0 ? '↑' : '↓'} ${Math.abs(change)}%`; };
 const comparisonText = (current: number, previous: number, noun: string) => { const change = percentChange(current, previous); if (change === null) return `${current} ${noun} now; there were none in the previous period.`; if (change === 0) return `${current} ${noun}, unchanged from the previous period.`; return `${current} ${noun}, ${Math.abs(change)}% ${change > 0 ? 'higher' : 'lower'} than the previous period (${previous}).`; };
+const isImportedBook = (book: UserBookRecord) => Boolean(book.sourceOfImport);
+const importedMetadataIsUsable = (book: UserBookRecord) => !isImportedBook(book) || book.importMetadataReviewNeeded !== true;
+const hasTrustworthyFinishedHistory = (book: UserBookRecord) => {
+  if (book.status !== 'finished' || !parseLocalDateKey(book.dateFinished)) return false;
+  if (!isImportedBook(book)) return true;
+  return book.importFinishedDateProvided === true && book.importMetadataReviewNeeded !== true;
+};
 
 export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ books, sessions }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
@@ -46,6 +53,8 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
   const validSessions = useMemo(() => sessions.filter((session) => getSessionDurationMinutes(session) > 0 && parseLocalDateKey(session.date) !== null), [sessions]);
   const filteredSessions = useMemo(() => validSessions.filter((session) => dateIsInCurrentRange(session.date)), [validSessions, rangeWindow]);
   const previousSessions = useMemo(() => validSessions.filter((session) => dateIsInPreviousRange(session.date)), [validSessions, rangeWindow]);
+  const importedBooks = useMemo(() => books.filter(isImportedBook), [books]);
+  const importedReviewCount = useMemo(() => importedBooks.filter((book) => book.importMetadataReviewNeeded === true).length, [importedBooks]);
 
   const analytics = useMemo(() => {
     const currentMinutes = filteredSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
@@ -54,8 +63,9 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     const previousPages = previousSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
     const currentDays = new Set(filteredSessions.map((session) => session.date)).size;
     const previousDays = new Set(previousSessions.map((session) => session.date)).size;
-    const currentFinished = books.filter((book) => book.status === 'finished' && (range === 'all-time' || dateIsInCurrentRange(book.dateFinished)));
-    const previousFinished = range === 'all-time' ? [] : books.filter((book) => book.status === 'finished' && dateIsInPreviousRange(book.dateFinished));
+    const trustworthyFinished = books.filter(hasTrustworthyFinishedHistory);
+    const currentFinished = trustworthyFinished.filter((book) => range === 'all-time' || dateIsInCurrentRange(book.dateFinished));
+    const previousFinished = range === 'all-time' ? [] : trustworthyFinished.filter((book) => dateIsInPreviousRange(book.dateFinished));
     const bucketCount = range === '30-days' ? 10 : range === '90-days' ? 12 : 12;
     const buckets = Array.from({ length: bucketCount }, () => 0);
     if (range !== 'all-time' && rangeWindow.cutoff) {
@@ -69,7 +79,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
 
   const insights = useMemo<InsightCard[]>(() => {
     const allTime = range === 'all-time';
-    const rangeLabel = allTime ? 'your full history' : 'this period';
+    const rangeLabel = allTime ? 'your verified reading history' : 'this period';
     const totalMinutes = analytics.currentMinutes;
     const previousMinutes = analytics.previousMinutes;
     const avgMinutes = filteredSessions.length ? Math.round(totalMinutes / filteredSessions.length) : 0;
@@ -84,10 +94,17 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     const preferredTime = nightSessions.length >= morningSessions.length ? 'evening' : 'morning';
     const preferredCount = Math.max(nightSessions.length, morningSessions.length);
     const preferredShare = timedSessions.length ? Math.round((preferredCount / timedSessions.length) * 100) : 0;
-    const sessionBookIds = new Set(filteredSessions.map((session) => session.bookId));
-    const finishedBooks = analytics.currentFinished;
+    const currentSessionBookIds = new Set(filteredSessions.map((session) => session.bookId));
+    const allSessionBookIds = new Set(validSessions.map((session) => session.bookId));
+    const finishedBooks = analytics.currentFinished.filter(importedMetadataIsUsable);
     const previousFinishedBooks = analytics.previousFinished;
-    const lifecycleBooks = allTime ? books.filter((book) => ['currently-reading', 'finished', 'paused', 'dnf'].includes(book.status)) : books.filter((book) => sessionBookIds.has(book.id) || dateIsInCurrentRange(book.dateFinished));
+    const lifecycleBooks = books.filter((book) => {
+      if (allTime) {
+        if (allSessionBookIds.has(book.id) || hasTrustworthyFinishedHistory(book)) return true;
+        return !isImportedBook(book) && ['currently-reading', 'paused', 'dnf'].includes(book.status);
+      }
+      return currentSessionBookIds.has(book.id) || (hasTrustworthyFinishedHistory(book) && dateIsInCurrentRange(book.dateFinished));
+    });
     const completedPercent = lifecycleBooks.length ? Math.round((finishedBooks.length / lifecycleBooks.length) * 100) : 0;
     const ratedBooks = finishedBooks.filter((book) => typeof book.rating === 'number' && Number.isFinite(book.rating));
     const avgRating = ratedBooks.length ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length : 0;
@@ -97,24 +114,28 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     const strongestRatedGenre = [...genreRatings.entries()].filter(([, ratings]) => ratings.length >= 2).map(([name, ratings]) => ({ name, count: ratings.length, average: ratings.reduce((a, b) => a + b, 0) / ratings.length })).sort((a, b) => b.average - a.average || b.count - a.count)[0];
     const location = mostCommon(filteredSessions.map((session) => session.location ?? ''));
     const mood = mostCommon(filteredSessions.map((session) => session.mood ?? ''));
-    const formatBooks = allTime ? books : books.filter((book) => sessionBookIds.has(book.id));
+    const formatBooks = books.filter((book) => {
+      if (!importedMetadataIsUsable(book)) return false;
+      if (allTime) return allSessionBookIds.has(book.id) || hasTrustworthyFinishedHistory(book);
+      return currentSessionBookIds.has(book.id) || (hasTrustworthyFinishedHistory(book) && dateIsInCurrentRange(book.dateFinished));
+    });
     const audiobookBooks = formatBooks.filter((book) => getActiveEdition(book)?.format === 'audiobook');
     const audioShare = formatBooks.length ? Math.round((audiobookBooks.length / formatBooks.length) * 100) : 0;
     const dayChange = percentChange(readingDays, previousReadingDays);
 
     return [
-      { id: 'momentum-comparison', category: 'progress', eyebrow: 'Period-over-period momentum', title: allTime ? 'Your long-term reading rhythm' : dayChange === null ? 'A new reading rhythm is taking shape' : dayChange > 10 ? 'Your reading consistency is climbing' : dayChange < -10 ? 'Your reading rhythm has eased recently' : 'Your reading rhythm is holding steady', body: allTime ? 'Choose a shorter range to compare equal windows.' : 'Inkbound compares equal windows so changes in consistency are visible instead of buried in totals.', evidence: allTime ? `${readingDays} reading days are recorded across your full session history.` : comparisonText(readingDays, previousReadingDays, 'active reading days'), icon: TrendingUp },
-      { id: 'page-pace', category: 'progress', eyebrow: 'Reading volume trend', title: pages === 0 ? 'Your page-volume trend is waiting' : allTime ? `${pages.toLocaleString()} pages tell the story of your logged reading` : previousPages > pages ? 'Your page pace has softened this period' : previousPages < pages ? 'You are moving through more pages than before' : 'Your page pace is steady', body: 'This signal uses pages recorded in completed sessions rather than library page counts.', evidence: allTime ? `${pages.toLocaleString()} pages across ${readingDays} reading days.` : comparisonText(pages, previousPages, 'pages'), icon: BarChart3 },
-      { id: 'reading-window', category: 'habits', eyebrow: 'Natural reading window', title: timedSessions.length < 3 ? 'Your preferred reading time needs more evidence' : preferredTime === 'evening' ? 'Your reading life comes alive at night' : 'Mornings are your clearest reading time', body: timedSessions.length < 3 ? 'Inkbound waits for at least three timed sessions before treating this as a pattern.' : `This is based on when your real sessions begin.`, evidence: timedSessions.length ? `${preferredShare}% of ${timedSessions.length} timed sessions happened in the ${preferredTime}.` : 'No timed sessions in this range.', icon: preferredTime === 'evening' ? Moon : Clock3 },
-      { id: 'session-shape', category: 'habits', eyebrow: 'Session depth', title: filteredSessions.length < 3 ? 'Your session style needs more history' : avgMinutes >= 40 ? 'Immersive sessions define this period' : 'Short sessions are carrying your momentum', body: 'Session depth shows how your reading time is actually distributed.', evidence: allTime ? `${avgMinutes} minute average across ${filteredSessions.length} sessions.` : `${avgMinutes} minute current average; previous period: ${previousAvgMinutes || 0} minutes.`, icon: Clock3 },
-      { id: 'genre-gravity', category: 'taste', eyebrow: 'Stories pulling you back', title: genre && genre[1] >= 2 ? `${genre[0]} keeps earning your attention` : 'Your dominant genre needs more evidence', body: genre && genre[1] >= 2 ? `${genre[0]} appears more often than any other genre among finished books in ${rangeLabel}.` : 'Inkbound waits for repeated finished-book evidence before naming a dominant genre.', evidence: genre ? `${genre[1]} finished books include ${genre[0]}.` : 'No genre pattern is available yet.', icon: Compass },
-      { id: 'genre-satisfaction', category: 'taste', eyebrow: 'Taste meets satisfaction', title: strongestRatedGenre ? `${strongestRatedGenre.name} is delivering your strongest ratings` : 'Your highest-satisfaction genre is still emerging', body: strongestRatedGenre ? 'This connects what you read with how highly you rate it.' : 'Rate at least two finished books in the same genre to form this signal.', evidence: strongestRatedGenre ? `${strongestRatedGenre.average.toFixed(1)} average across ${strongestRatedGenre.count} rated ${strongestRatedGenre.name} books.` : `${ratedBooks.length} rated finishes are available.`, icon: Sparkles },
-      { id: 'rating-pattern', category: 'taste', eyebrow: 'Overall satisfaction', title: ratedBooks.length < 3 ? 'Your satisfaction pattern needs more ratings' : avgRating >= 4.25 ? 'Your recent choices are landing exceptionally well' : avgRating >= 3.5 ? 'Your reading choices are mostly working for you' : 'Your ratings show more experimentation than certainty', body: 'Only rated books you actually finished are included.', evidence: ratedBooks.length ? `${avgRating.toFixed(1)} average rating across ${ratedBooks.length} rated finishes.` : 'No rated finishes in this range.', icon: Sparkles },
-      { id: 'completion-pattern', category: 'progress', eyebrow: 'Completion signal', title: lifecycleBooks.length < 3 ? 'Your completion pattern needs more active-reading history' : completedPercent >= 70 ? 'Finishing is a strong part of your reading pattern' : completedPercent >= 40 ? 'You balance finishing with exploration' : 'Your active shelf shows more exploration than completion', body: 'This does not penalize you for a giant unread library; only represented active-reading books count.', evidence: lifecycleBooks.length ? `${finishedBooks.length} of ${lifecycleBooks.length} represented books are finished (${completedPercent}%).${!allTime ? ` Previous period: ${previousFinishedBooks.length} finishes.` : ''}` : 'No active-reading lifecycle books are represented.', icon: Target },
-      { id: 'environment-signal', category: 'habits', eyebrow: 'Reading environment', title: location && location[1] >= 2 ? `${location[0]} is becoming a reliable reading setting` : 'Your reading-place pattern needs more evidence', body: 'Repeated locations can reveal the environments that naturally support your reading habit.', evidence: location ? `${location[1]} sessions were recorded at ${location[0]}${mood ? `; ${mood[0]} is the most logged mood` : ''}.` : 'No repeated session location is available.', icon: BookOpen },
-      { id: 'format-signal', category: 'taste', eyebrow: 'Format mix', title: formatBooks.length < 3 ? 'Your format pattern needs more history' : audioShare >= 40 ? 'Audio is a major part of how you read' : audioShare >= 15 ? 'Audio gives your reading life a second lane' : 'Your reading is led by print and ebooks', body: 'This uses the active editions of books represented in the selected range.', evidence: formatBooks.length ? `${audiobookBooks.length} of ${formatBooks.length} represented books are audiobooks (${audioShare}%).` : 'No represented formats are available.', icon: Headphones },
+      { id: 'momentum-comparison', category: 'progress', eyebrow: 'Period-over-period momentum', title: allTime ? 'Your long-term reading rhythm' : dayChange === null ? 'A new reading rhythm is taking shape' : dayChange > 10 ? 'Your reading consistency is climbing' : dayChange < -10 ? 'Your reading rhythm has eased recently' : 'Your reading rhythm is holding steady', body: allTime ? 'Choose a shorter range to compare equal windows.' : 'Inkbound compares equal windows so changes in consistency are visible instead of buried in totals.', evidence: allTime ? `${readingDays} reading days are recorded across your Inkbound session history.` : comparisonText(readingDays, previousReadingDays, 'active reading days'), icon: TrendingUp },
+      { id: 'page-pace', category: 'progress', eyebrow: 'Reading volume trend', title: pages === 0 ? 'Your page-volume trend is waiting' : allTime ? `${pages.toLocaleString()} pages tell the story of your logged reading` : previousPages > pages ? 'Your page pace has softened this period' : previousPages < pages ? 'You are moving through more pages than before' : 'Your page pace is steady', body: 'This signal uses pages recorded in completed sessions rather than imported library page counts.', evidence: allTime ? `${pages.toLocaleString()} pages across ${readingDays} reading days.` : comparisonText(pages, previousPages, 'pages'), icon: BarChart3 },
+      { id: 'reading-window', category: 'habits', eyebrow: 'Natural reading window', title: timedSessions.length < 3 ? 'Your preferred reading time needs more evidence' : preferredTime === 'evening' ? 'Your reading life comes alive at night' : 'Mornings are your clearest reading time', body: timedSessions.length < 3 ? 'Inkbound waits for at least three timed sessions before treating this as a pattern.' : 'This is based only on when your real Inkbound sessions begin.', evidence: timedSessions.length ? `${preferredShare}% of ${timedSessions.length} timed sessions happened in the ${preferredTime}.` : 'No timed sessions in this range.', icon: preferredTime === 'evening' ? Moon : Clock3 },
+      { id: 'session-shape', category: 'habits', eyebrow: 'Session depth', title: filteredSessions.length < 3 ? 'Your session style needs more history' : avgMinutes >= 40 ? 'Immersive sessions define this period' : 'Short sessions are carrying your momentum', body: 'Session depth shows how your tracked reading time is actually distributed.', evidence: allTime ? `${avgMinutes} minute average across ${filteredSessions.length} sessions.` : `${avgMinutes} minute current average; previous period: ${previousAvgMinutes || 0} minutes.`, icon: Clock3 },
+      { id: 'genre-gravity', category: 'taste', eyebrow: 'Stories pulling you back', title: genre && genre[1] >= 2 ? `${genre[0]} keeps earning your attention` : 'Your dominant genre needs more evidence', body: genre && genre[1] >= 2 ? `${genre[0]} appears more often than any other genre among trustworthy finished-book records in ${rangeLabel}.` : 'Inkbound waits for repeated finished-book evidence before naming a dominant genre.', evidence: genre ? `${genre[1]} trustworthy finished books include ${genre[0]}.` : 'No reliable genre pattern is available yet.', icon: Compass },
+      { id: 'genre-satisfaction', category: 'taste', eyebrow: 'Taste meets satisfaction', title: strongestRatedGenre ? `${strongestRatedGenre.name} is delivering your strongest ratings` : 'Your highest-satisfaction genre is still emerging', body: strongestRatedGenre ? 'This connects reliable finished-book history with the ratings you gave those books.' : 'Rate at least two trustworthy finished books in the same genre to form this signal.', evidence: strongestRatedGenre ? `${strongestRatedGenre.average.toFixed(1)} average across ${strongestRatedGenre.count} rated ${strongestRatedGenre.name} books.` : `${ratedBooks.length} reliable rated finishes are available.`, icon: Sparkles },
+      { id: 'rating-pattern', category: 'taste', eyebrow: 'Overall satisfaction', title: ratedBooks.length < 3 ? 'Your satisfaction pattern needs more ratings' : avgRating >= 4.25 ? 'Your recent choices are landing exceptionally well' : avgRating >= 3.5 ? 'Your reading choices are mostly working for you' : 'Your ratings show more experimentation than certainty', body: 'Only rated books with trustworthy finished history are included.', evidence: ratedBooks.length ? `${avgRating.toFixed(1)} average rating across ${ratedBooks.length} reliable rated finishes.` : 'No reliable rated finishes in this range.', icon: Sparkles },
+      { id: 'completion-pattern', category: 'progress', eyebrow: 'Completion signal', title: lifecycleBooks.length < 3 ? 'Your completion pattern needs more active-reading history' : completedPercent >= 70 ? 'Finishing is a strong part of your reading pattern' : completedPercent >= 40 ? 'You balance finishing with exploration' : 'Your active shelf shows more exploration than completion', body: 'This ignores a giant unread import and only uses books represented by real sessions, native reading state, or trustworthy finish history.', evidence: lifecycleBooks.length ? `${finishedBooks.length} of ${lifecycleBooks.length} represented books are finished (${completedPercent}%).${!allTime ? ` Previous period: ${previousFinishedBooks.length} trustworthy finishes.` : ''}` : 'No reliable active-reading lifecycle books are represented.', icon: Target },
+      { id: 'environment-signal', category: 'habits', eyebrow: 'Reading environment', title: location && location[1] >= 2 ? `${location[0]} is becoming a reliable reading setting` : 'Your reading-place pattern needs more evidence', body: 'Repeated locations come only from completed Inkbound sessions.', evidence: location ? `${location[1]} sessions were recorded at ${location[0]}${mood ? `; ${mood[0]} is the most logged mood` : ''}.` : 'No repeated session location is available.', icon: BookOpen },
+      { id: 'format-signal', category: 'taste', eyebrow: 'Format mix', title: formatBooks.length < 3 ? 'Your format pattern needs more history' : audioShare >= 40 ? 'Audio is a major part of how you read' : audioShare >= 15 ? 'Audio gives your reading life a second lane' : 'Your reading is led by print and ebooks', body: 'This uses active editions only for books represented by tracked activity or trustworthy finished history; imported metadata marked for review is excluded.', evidence: formatBooks.length ? `${audiobookBooks.length} of ${formatBooks.length} reliable represented books are audiobooks (${audioShare}%).` : 'No reliable represented formats are available.', icon: Headphones },
     ];
-  }, [analytics, books, filteredSessions, previousSessions, range, rangeWindow]);
+  }, [analytics, books, filteredSessions, previousSessions, range, rangeWindow, validSessions]);
 
   const visibleInsights = insights.filter((insight) => !dismissedIds.includes(insight.id) && (category === 'all' || insight.category === category));
   const isPremium = userPlan === 'premium';
@@ -130,12 +151,14 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ['Books finished', analytics.currentFinished.length.toString(), range === 'all-time' ? 'Lifetime total' : shortDelta(analytics.currentFinished.length, analytics.previousFinished.length)],
-          ['Pages read', analytics.currentPages.toLocaleString(), range === 'all-time' ? 'Lifetime sessions' : shortDelta(analytics.currentPages, analytics.previousPages)],
-          ['Reading time', `${Math.floor(analytics.currentMinutes / 60)}h ${analytics.currentMinutes % 60}m`, range === 'all-time' ? 'Lifetime sessions' : shortDelta(analytics.currentMinutes, analytics.previousMinutes)],
-          ['Reading days', analytics.currentDays.toString(), range === 'all-time' ? 'Lifetime activity' : shortDelta(analytics.currentDays, analytics.previousDays)],
+          ['Books finished', analytics.currentFinished.length.toString(), range === 'all-time' ? 'Trustworthy history' : shortDelta(analytics.currentFinished.length, analytics.previousFinished.length)],
+          ['Pages read', analytics.currentPages.toLocaleString(), range === 'all-time' ? 'Tracked sessions' : shortDelta(analytics.currentPages, analytics.previousPages)],
+          ['Reading time', `${Math.floor(analytics.currentMinutes / 60)}h ${analytics.currentMinutes % 60}m`, range === 'all-time' ? 'Tracked sessions' : shortDelta(analytics.currentMinutes, analytics.previousMinutes)],
+          ['Reading days', analytics.currentDays.toString(), range === 'all-time' ? 'Tracked activity' : shortDelta(analytics.currentDays, analytics.previousDays)],
         ].map(([label, value, delta]) => <div key={label} className="inkbound-panel rounded-2xl p-5"><p className="text-xs font-semibold uppercase tracking-[0.15em] text-[var(--ink-muted)]">{label}</p><p className="mt-2 font-serif text-3xl font-bold text-[var(--ink-ivory)]">{value}</p><p className="mt-2 text-xs font-semibold text-[var(--ink-gold-bright)]">{delta}</p></div>)}
       </section>
+
+      {importedBooks.length > 0 && <section className="rounded-2xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 px-5 py-4"><p className="text-sm font-semibold text-[var(--ink-ivory)]">Insight data quality</p><p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Reading time, pages, days, pace, time-of-day and environment patterns use completed Inkbound sessions only. Imported finishes count only when the source supplied a valid historical finish date and the record is not marked for review. Taste signals exclude imported metadata that needs review.</p>{importedReviewCount > 0 && <p className="mt-2 text-xs font-semibold text-[var(--ink-gold-bright)]">{importedReviewCount.toLocaleString()} imported record{importedReviewCount === 1 ? '' : 's'} currently excluded from metadata-based insights until reviewed.</p>}</section>}
 
       <section className="inkbound-panel rounded-3xl p-6">
         <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-gold-bright)]">Reading pulse</p><h3 className="mt-2 font-serif text-2xl text-[var(--ink-ivory)]">Activity across the selected period</h3></div><p className="text-xs text-[var(--ink-muted)]">Bars represent reading minutes from completed sessions</p></div>
