@@ -1,11 +1,30 @@
-export type ImportFieldKey = 'title' | 'author' | 'isbn' | 'format' | 'status' | 'rating' | 'dateRead' | 'dateAdded' | 'review';
+export type ImportFieldKey =
+  | 'title'
+  | 'author'
+  | 'isbn'
+  | 'format'
+  | 'materialType'
+  | 'seriesName'
+  | 'seriesOrder'
+  | 'status'
+  | 'ownership'
+  | 'subscriptionService'
+  | 'rating'
+  | 'dateRead'
+  | 'dateAdded'
+  | 'review';
 
 export const IMPORT_FIELD_OPTIONS: Array<{ key: ImportFieldKey; label: string; required?: boolean }> = [
   { key: 'title', label: 'Title', required: true },
   { key: 'author', label: 'Author' },
   { key: 'isbn', label: 'ISBN' },
   { key: 'format', label: 'Format' },
+  { key: 'materialType', label: 'Reading Material Type' },
+  { key: 'seriesName', label: 'Series' },
+  { key: 'seriesOrder', label: 'Series Number' },
   { key: 'status', label: 'Reading Status' },
+  { key: 'ownership', label: 'Ownership / Access' },
+  { key: 'subscriptionService', label: 'Subscription Service' },
   { key: 'rating', label: 'Rating' },
   { key: 'dateRead', label: 'Finished Date' },
   { key: 'dateAdded', label: 'Date Added' },
@@ -16,10 +35,15 @@ export type ImportColumnMapping = Partial<Record<ImportFieldKey, string>>;
 
 const aliases: Record<ImportFieldKey, string[]> = {
   title: ['title', 'book title', 'book', 'book name', 'name'],
-  author: ['author', 'author name', 'authors', 'writer', 'book author'],
+  author: ['author', 'author name', 'authors', 'writer', 'book author', 'creator'],
   isbn: ['isbn13', 'isbn 13', 'isbn_13', 'isbn-13', 'isbn', 'isbn10', 'isbn 10', 'isbn_10', 'isbn-10'],
   format: ['binding', 'format', 'media type', 'media_type', 'book format', 'book_format', 'edition format'],
+  materialType: ['reading material type', 'material type', 'reading type', 'content type', 'publication type', 'item type', 'book type'],
+  seriesName: ['series', 'series name', 'series_name', 'book series', 'series title', 'series_title'],
+  seriesOrder: ['series number', 'series no', 'series #', 'series order', 'series position', 'book number', 'book #', 'volume number', 'volume', 'vol'],
   status: ['exclusive shelf', 'status', 'reading status', 'read status', 'read_status', 'shelf', 'bookshelf'],
+  ownership: ['ownership', 'ownership status', 'owned', 'access', 'access type', 'availability'],
+  subscriptionService: ['subscription service', 'subscription', 'service', 'reading service', 'provider'],
   rating: ['my rating', 'rating', 'star rating', 'star_rating', 'stars', 'score'],
   dateRead: ['date read', 'dateread', 'date finished', 'finished date', 'date_finished', 'finished_at', 'completed date', 'date completed'],
   dateAdded: ['date added', 'dateadded', 'created_at', 'added_at', 'added date', 'imported date'],
