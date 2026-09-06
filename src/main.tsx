@@ -9,6 +9,7 @@ import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { readImportEnrichmentRetryProgress } from './features/import/importHistory.ts';
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
+import { ReadingMemoryCloudSyncBridge } from './features/memories/ReadingMemoryCloudSyncBridge.tsx';
 import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.tsx';
 import { AdaptiveCloudPersistenceBridge } from './features/sync/AdaptiveCloudPersistenceBridge.tsx';
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
@@ -134,6 +135,7 @@ const InkboundApplication = () => (
             <ManualCoverLedgerBridge />
             <ProtectedBookDetailsLedgerBridge />
             <AuxiliaryAccountSyncBridge />
+            <ReadingMemoryCloudSyncBridge />
             <ReadOnlyCloudHydrationBridge />
             <PhotoMemoryAutoSyncBridge />
             <LegacyBookCoverMigrationBridge />
