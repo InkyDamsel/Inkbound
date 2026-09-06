@@ -22,6 +22,13 @@ export const AUXILIARY_ACCOUNT_KEYS = {
   timelineMemories: 'inkbound_timeline_memories',
   readingTimeCapsules: 'inkbound_reading_time_capsules',
   joinedChallenges: 'inkbound_joined_challenges',
+  customChallenges: 'inkbound_custom_challenges_v1',
+  challengeRotation: 'inkbound_challenge_rotation_v2',
+  joinedChallengeSnapshots: 'inkbound_joined_challenge_snapshots_v2',
+  dragonProfile: 'inkbound_dragon',
+  achievementUnlocks: 'inkbound_achievement_unlocks_v5',
+  achievementReveals: 'inkbound_achievement_reveals_v5',
+  achievementSeen: 'inkbound_achievement_seen_v5',
 } as const;
 
 /**
