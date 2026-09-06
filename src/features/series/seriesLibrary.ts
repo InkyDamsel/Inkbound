@@ -15,6 +15,11 @@ export interface SeriesSummary {
   finishedCount: number;
   currentlyReadingCount: number;
   tbrCount: number;
+  unreadCount: number;
+  ownedCount: number;
+  borrowedCount: number;
+  subscriptionCount: number;
+  notOwnedCount: number;
   completionPercent: number;
   averageRating: number | null;
   isManual: boolean;
@@ -38,10 +43,18 @@ const summarize = (
     if (typeof b.position === 'number') return 1;
     return a.book.work.publicationYear - b.book.work.publicationYear || a.book.work.title.localeCompare(b.book.work.title);
   });
+
   const finishedCount = ordered.filter(({ book }) => book.status === 'finished').length;
   const currentlyReadingCount = ordered.filter(({ book }) => book.status === 'currently-reading').length;
   const tbrCount = ordered.filter(({ book }) => book.status === 'tbr').length;
-  const rated = ordered.map(({ book }) => book.rating).filter((rating): rating is number => typeof rating === 'number' && rating > 0);
+  const unreadCount = ordered.length - finishedCount;
+  const ownedCount = ordered.filter(({ book }) => book.ownership === 'owned').length;
+  const borrowedCount = ordered.filter(({ book }) => ['borrowed-library', 'borrowed-person'].includes(book.ownership)).length;
+  const subscriptionCount = ordered.filter(({ book }) => book.ownership === 'subscription').length;
+  const notOwnedCount = ordered.filter(({ book }) => ['none', 'wishlist'].includes(book.ownership)).length;
+  const rated = ordered
+    .map(({ book }) => book.rating)
+    .filter((rating): rating is number => typeof rating === 'number' && rating > 0);
 
   return {
     id,
@@ -51,6 +64,11 @@ const summarize = (
     finishedCount,
     currentlyReadingCount,
     tbrCount,
+    unreadCount,
+    ownedCount,
+    borrowedCount,
+    subscriptionCount,
+    notOwnedCount,
     completionPercent: ordered.length ? Math.round((finishedCount / ordered.length) * 100) : 0,
     averageRating: rated.length ? rated.reduce((sum, rating) => sum + rating, 0) / rated.length : null,
     isManual,
