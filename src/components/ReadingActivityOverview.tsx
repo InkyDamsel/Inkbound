@@ -10,6 +10,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { isInkboundFinishedBook } from '../features/reading/inkboundActivity';
 import {
   getLongestReadingStreak,
   getReadingDates,
@@ -108,6 +109,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
   }, [trackerSessions]);
 
   const booksById = useMemo(() => new Map(books.map((book) => [book.id, book])), [books]);
+  const trackedBookIds = useMemo(() => new Set(trackerSessions.map((session) => session.bookId)), [trackerSessions]);
   const currentStreak = getReadingStreak(trackerSessions);
   const longestStreak = getLongestReadingStreak(trackerSessions);
   const totalReadingDays = activeDates.length;
@@ -118,10 +120,10 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
     const minutes = monthSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
     const pages = monthSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
     const bookIds = new Set(monthSessions.map((session) => session.bookId));
-    const finishedBooks = books.filter((book) => normalizeDateKey(book.dateFinished)?.startsWith(visibleMonth)).length;
+    const finishedBooks = books.filter((book) => isInkboundFinishedBook(book, trackedBookIds) && normalizeDateKey(book.dateFinished)?.startsWith(visibleMonth)).length;
     const longestSession = monthSessions.reduce((longest, session) => Math.max(longest, getSessionDurationMinutes(session)), 0);
     return { minutes, pages, booksTouched: bookIds.size, finishedBooks, longestSession };
-  }, [books, trackerSessions, visibleMonth]);
+  }, [books, trackedBookIds, trackerSessions, visibleMonth]);
 
   const calendarDays = useMemo(() => {
     const [year, month] = visibleMonth.split('-').map(Number);
