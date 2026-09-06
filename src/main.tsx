@@ -2,6 +2,7 @@ import { PropsWithChildren, StrictMode, useEffect, useState, useSyncExternalStor
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { AppErrorBoundary } from './components/AppErrorBoundary.tsx';
+import { FaqPage } from './components/FaqPage.tsx';
 import { PublicWebsite } from './components/PublicWebsite.tsx';
 import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContext.tsx';
@@ -60,7 +61,15 @@ if (!rootElement) {
   throw new Error('Inkbound could not find its application root.');
 }
 
-const isPublicWebsite = !isNativeRuntime() && window.location.pathname === '/';
+const normalizedPath = window.location.pathname.replace(/\/+$/, '') || '/';
+const publicSurface = !isNativeRuntime()
+  ? normalizedPath === '/'
+    ? 'marketing'
+    : normalizedPath === '/faq'
+      ? 'faq'
+      : null
+  : null;
+const isPublicSurface = publicSurface !== null;
 const AUTH_OPEN_GRACE_MS = 1800;
 
 const OpeningScreen = ({ message }: { message: string }) => (
@@ -152,8 +161,13 @@ const InkboundApplication = () => (
   </BreakpointProvider>
 );
 
+const PublicSurface = () => {
+  if (publicSurface === 'faq') return <FaqPage />;
+  return <PublicWebsite />;
+};
+
 async function bootstrap() {
-  if (!isPublicWebsite && !isNativeRuntime()) {
+  if (!isPublicSurface && !isNativeRuntime()) {
     // Install the storage compatibility layer synchronously, but do not touch
     // IndexedDB before first paint. This protects an existing large library from
     // early React writes while guaranteeing browser database work can never block
@@ -161,12 +175,12 @@ async function bootstrap() {
     prepareLargeBrowserStorageForStartup();
   }
 
-  if (!isPublicWebsite) {
+  if (!isPublicSurface) {
     isolateDevelopmentBrowserStorage();
     purgeUnverifiedLegacyImportMetadata();
   }
 
-  if (!isPublicWebsite && !isNativeRuntime()) {
+  if (!isPublicSurface && !isNativeRuntime()) {
     window.addEventListener('beforeunload', (event) => {
       const retry = readImportEnrichmentRetryProgress();
       if (!retry || (retry.status !== 'queued' && retry.status !== 'running')) return;
@@ -186,12 +200,12 @@ async function bootstrap() {
   createRoot(rootElement).render(
     <StrictMode>
       <AppErrorBoundary>
-        {isPublicWebsite ? <PublicWebsite /> : <InkboundApplication />}
+        {isPublicSurface ? <PublicSurface /> : <InkboundApplication />}
       </AppErrorBoundary>
     </StrictMode>,
   );
 
-  if (!isPublicWebsite && !isNativeRuntime()) {
+  if (!isPublicSurface && !isNativeRuntime()) {
     window.setTimeout(() => {
       void hydrateLargeBrowserStorage().finally(() => {
         void hydrateDeferredLargeBrowserStorage();
