@@ -12,6 +12,7 @@ import {
 } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
+import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
 import { StatisticsGoalOverview } from './statistics/StatisticsGoalOverview';
 import { StatisticsSummaryGrid } from './statistics/StatisticsSummaryGrid';
 
@@ -28,11 +29,6 @@ const timeframeStart = (timeframe: string, today = new Date()) => {
   else start.setMonth(0, 1);
   return localDateKey(start);
 };
-
-const isImportedBook = (book: UserBookRecord) => (
-  Boolean(book.sourceOfImport)
-  || getActiveEdition(book)?.externalSource === 'import'
-);
 
 export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessions }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
@@ -54,7 +50,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     && getSessionDurationMinutes(session) > 0
   )), [filteredBookIds, reportEnd, reportStart, sessions]);
 
-  const finishedBooks = filteredBooks.filter((book) => book.status === 'finished');
+  const finishedBooks = filteredBooks.filter(hasTrustworthyFinishedHistory);
   const reportFinishedBooks = finishedBooks.filter((book) => (
     Boolean(book.dateFinished)
     && book.dateFinished! >= reportStart
@@ -177,7 +173,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
               <div className="min-w-0 flex-1">
                 <h3 className="font-serif text-base font-bold text-[#f4efe6]">Imported data coverage</h3>
                 <p className="mt-1 text-xs leading-5 text-stone-400">
-                  Finished-book counts can include valid historical finish dates from imports. Pages, listening time, reading time, and streaks only use activity Inkbound can actually track, so those totals may be lower than your imported reading history.
+                  Finished-book counts include only trustworthy historical finish dates from imports. Pages, listening time, reading time, and streaks still use activity Inkbound can actually track, so those totals may be lower than your imported reading history.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
                   <span className="rounded-full border border-[#3d2448] bg-[#120817]/70 px-3 py-1.5 text-stone-300">
@@ -187,7 +183,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                     {fullyTrackedCompletedThisYear.length} with tracked Inkbound activity
                   </span>
                   <span className="rounded-full border border-[#3d2448] bg-[#120817]/70 px-3 py-1.5 text-stone-300">
-                    {importedCompletedThisYear.length} imported finishes
+                    {importedCompletedThisYear.length} trusted imported finishes
                   </span>
                   {importedRecordsNeedingReview.length > 0 && (
                     <span className="rounded-full border border-amber-400/25 bg-amber-400/[0.08] px-3 py-1.5 text-amber-200">
