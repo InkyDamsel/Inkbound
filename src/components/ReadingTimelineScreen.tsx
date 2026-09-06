@@ -121,8 +121,14 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
     const nextEvents: TimelineEvent[] = [];
 
     books.forEach((book) => {
+      const isImported = Boolean(book.sourceOfImport);
       const added = normalizeDate(book.dateAdded);
-      if (added) {
+      const finished = book.status === 'finished' ? normalizeDate(book.dateFinished) : null;
+
+      // Imported library dates describe the source library, not necessarily actions
+      // that happened inside Inkbound. Keep native chronology clean instead of
+      // presenting imported metadata as if Inkbound witnessed it.
+      if (!isImported && added) {
         nextEvents.push({
           id: `added-${book.id}`,
           date: added.toISOString(),
@@ -134,7 +140,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
         });
       }
 
-      const started = normalizeDate(book.dateStarted);
+      const started = !isImported ? normalizeDate(book.dateStarted) : null;
       if (started) {
         nextEvents.push({
           id: `started-${book.id}`,
@@ -147,8 +153,30 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
         });
       }
 
-      const finished = book.status === 'finished' ? normalizeDate(book.dateFinished) : null;
-      if (finished) {
+      if (finished && !isImported) {
+        nextEvents.push({
+          id: `finished-${book.id}`,
+          date: finished.toISOString(),
+          type: 'books',
+          title: `Finished ${book.work.title}`,
+          description: book.rating ? `You rated it ${book.rating} out of 5 stars.` : 'Another reading journey completed.',
+          bookId: book.id,
+          meta: book.rating ? `${book.rating.toFixed(1)} stars` : 'Finished book',
+        });
+      } else if (finished && isImported && book.importFinishedDateProvided) {
+        nextEvents.push({
+          id: `imported-finished-${book.id}`,
+          date: finished.toISOString(),
+          type: 'books',
+          title: `Imported history: Finished ${book.work.title}`,
+          description: `This finish date came from ${book.sourceOfImport || 'your imported library'} and is shown as historical context, not tracked Inkbound activity.`,
+          bookId: book.id,
+          meta: 'Imported history',
+        });
+      } else if (finished && isImported && !book.importFinishedDateProvided) {
+        // An imported book without a trustworthy historical finish date only gets a
+        // dated finish event once Inkbound has a real date to work with (for example,
+        // after the reader marks it finished in Inkbound).
         nextEvents.push({
           id: `finished-${book.id}`,
           date: finished.toISOString(),
@@ -160,7 +188,11 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
         });
       }
 
-      if (book.review?.trim()) {
+      // Imported reviews and quotes do not currently carry their own provenance
+      // timestamps. Showing them on a finish/session/add date would manufacture a
+      // chronology, so they stay on the book record until Inkbound has a real
+      // created-at timestamp for those fields.
+      if (!isImported && book.review?.trim()) {
         const reviewDate = finished ?? normalizeDate(book.lastSessionDate) ?? added;
         if (reviewDate) {
           nextEvents.push({
@@ -175,19 +207,21 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
         }
       }
 
-      book.favoriteQuotes?.forEach((quote, index) => {
-        const quoteDate = finished ?? normalizeDate(book.lastSessionDate) ?? added;
-        if (!quoteDate) return;
-        nextEvents.push({
-          id: `quote-${book.id}-${quote.id || index}`,
-          date: new Date(quoteDate.getTime() + index * 1000).toISOString(),
-          type: 'quotes',
-          title: `Saved a quote from ${book.work.title}`,
-          description: `“${quote.quote}”`,
-          bookId: book.id,
-          meta: quote.pageOrChapter || 'Favorite quote',
+      if (!isImported) {
+        book.favoriteQuotes?.forEach((quote, index) => {
+          const quoteDate = finished ?? normalizeDate(book.lastSessionDate) ?? added;
+          if (!quoteDate) return;
+          nextEvents.push({
+            id: `quote-${book.id}-${quote.id || index}`,
+            date: new Date(quoteDate.getTime() + index * 1000).toISOString(),
+            type: 'quotes',
+            title: `Saved a quote from ${book.work.title}`,
+            description: `“${quote.quote}”`,
+            bookId: book.id,
+            meta: quote.pageOrChapter || 'Favorite quote',
+          });
         });
-      });
+      }
     });
 
     sessions.forEach((session) => {
