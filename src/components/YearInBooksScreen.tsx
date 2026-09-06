@@ -137,36 +137,37 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
   const isSquare = preferences.exportFormat === 'square';
   const isStory = preferences.exportFormat === 'story';
   const titleLength = page.title.length;
-  const previewCardPadding = isSquare ? 'p-[5%]' : isStory ? 'p-[8%]' : 'p-[6%]';
-  const previewContentSpacing = isSquare ? 'my-3 sm:my-4' : isStory ? 'my-8 sm:my-12' : 'my-5 sm:my-7';
+  const previewCardPadding = isSquare ? 'p-[5%]' : isStory ? 'p-[6%]' : 'p-[6%]';
+  const previewContentSpacing = isSquare ? 'my-3 sm:my-4' : isStory ? 'my-4 sm:my-6' : 'my-5 sm:my-7';
   const previewTitleClass = isSquare
     ? titleLength > 70 ? 'text-lg sm:text-xl' : titleLength > 45 ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl'
     : isStory
-      ? titleLength > 70 ? 'text-2xl sm:text-3xl' : titleLength > 45 ? 'text-3xl sm:text-4xl' : 'text-3xl sm:text-5xl'
+      ? titleLength > 70 ? 'text-3xl sm:text-4xl' : titleLength > 45 ? 'text-4xl sm:text-5xl' : 'text-4xl sm:text-6xl'
       : titleLength > 70 ? 'text-xl sm:text-2xl' : titleLength > 45 ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl';
-  const previewBodyClass = isSquare ? 'mt-3 text-xs leading-5 sm:text-sm' : isStory ? 'mt-5 text-sm leading-7 sm:text-base' : 'mt-4 text-sm leading-6';
-  const previewStatsMargin = isSquare ? 'mt-4' : isStory ? 'mt-8' : 'mt-5';
-  const previewStatPadding = isSquare ? 'p-2.5 sm:p-3' : isStory ? 'p-4' : 'p-3';
-  const previewStatValueClass = isSquare ? 'text-sm sm:text-base' : isStory ? 'text-lg sm:text-xl' : 'text-base sm:text-lg';
+  const previewBodyClass = isSquare ? 'mt-3 text-xs leading-5 sm:text-sm' : isStory ? 'mt-6 text-base leading-7 sm:text-lg' : 'mt-4 text-sm leading-6';
+  const previewStatsMargin = isSquare ? 'mt-4' : isStory ? 'mt-10' : 'mt-5';
+  const previewStatPadding = isSquare ? 'p-2.5 sm:p-3' : isStory ? 'p-6 sm:p-7' : 'p-3';
+  const previewStatValueClass = isSquare ? 'text-sm sm:text-base' : isStory ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg';
+  const previewStatMinHeight = isStory ? 'min-h-[96px] sm:min-h-[118px]' : '';
 
   const buildSvg = () => {
     const titleSize = isSquare
       ? titleLength > 70 ? 30 : titleLength > 45 ? 36 : 44
       : isStory
-        ? titleLength > 70 ? 48 : titleLength > 45 ? 56 : 66
+        ? titleLength > 70 ? 56 : titleLength > 45 ? 64 : 76
         : titleLength > 70 ? 36 : titleLength > 45 ? 44 : 54;
-    const bodySize = isSquare ? 21 : isStory ? 28 : 24;
-    const statLabelSize = isSquare ? 16 : isStory ? 21 : 18;
-    const statValueSize = isSquare ? 20 : isStory ? 28 : 23;
-    const innerPadding = isSquare ? 56 : isStory ? 88 : 68;
-    const headerGap = isSquare ? 12 : isStory ? 28 : 18;
-    const bodyGap = isSquare ? 14 : isStory ? 28 : 20;
-    const statsGap = isSquare ? 14 : isStory ? 22 : 16;
-    const statPadding = isSquare ? 16 : isStory ? 24 : 19;
-    const centerGap = isSquare ? 16 : isStory ? 34 : 24;
+    const bodySize = isSquare ? 21 : isStory ? 32 : 24;
+    const statLabelSize = isSquare ? 16 : isStory ? 22 : 18;
+    const statValueSize = isSquare ? 20 : isStory ? 34 : 23;
+    const innerPadding = isSquare ? 56 : isStory ? 72 : 68;
+    const headerGap = isSquare ? 12 : isStory ? 20 : 18;
+    const bodyGap = isSquare ? 14 : isStory ? 34 : 20;
+    const statsGap = isSquare ? 14 : isStory ? 24 : 16;
+    const statPadding = isSquare ? 16 : isStory ? 32 : 19;
+    const centerGap = isSquare ? 16 : isStory ? 20 : 24;
     const borderRadius = isSquare ? 28 : 38;
     const statCards = page.stats.map(([label, value]) => `
-      <div style="box-sizing:border-box;min-width:0;border:1px solid rgba(255,255,255,.12);border-radius:${isSquare ? 18 : 22}px;background:rgba(255,255,255,.05);padding:${statPadding}px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:${isSquare ? 7 : 10}px;">
+      <div style="box-sizing:border-box;min-width:0;${isStory ? 'min-height:164px;' : ''}border:1px solid rgba(255,255,255,.12);border-radius:${isSquare ? 18 : 22}px;background:rgba(255,255,255,.05);padding:${statPadding}px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:${isSquare ? 7 : isStory ? 14 : 10}px;">
         <div style="font-family:Arial,sans-serif;font-size:${statLabelSize}px;letter-spacing:2px;text-transform:uppercase;opacity:.62;line-height:1.2;">${escapeXml(label)}</div>
         <div style="font-family:Georgia,serif;font-size:${statValueSize}px;font-weight:700;line-height:1.18;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(value)}</div>
       </div>`).join('');
@@ -181,13 +182,13 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
       <foreignObject x="8%" y="7%" width="84%" height="86%">
         <div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${innerPadding}px;display:flex;flex-direction:column;justify-content:space-between;text-align:center;color:${theme.text};font-family:Arial,sans-serif;overflow:hidden;">
           <div style="flex:0 0 auto;">
-            <div style="color:${theme.accent};font-family:Georgia,serif;font-size:${isSquare ? 19 : isStory ? 27 : 23}px;font-weight:700;letter-spacing:${isSquare ? 5 : 7}px;line-height:1.15;">INKBOUND</div>
-            <div style="margin-top:${headerGap}px;font-size:${isSquare ? 16 : isStory ? 25 : 20}px;font-weight:700;letter-spacing:${isSquare ? 3 : 5}px;line-height:1.2;text-transform:uppercase;opacity:.78;">${escapeXml(page.kicker)}</div>
+            <div style="color:${theme.accent};font-family:Georgia,serif;font-size:${isSquare ? 19 : isStory ? 29 : 23}px;font-weight:700;letter-spacing:${isSquare ? 5 : 7}px;line-height:1.15;">INKBOUND</div>
+            <div style="margin-top:${headerGap}px;font-size:${isSquare ? 16 : isStory ? 26 : 20}px;font-weight:700;letter-spacing:${isSquare ? 3 : 5}px;line-height:1.2;text-transform:uppercase;opacity:.78;">${escapeXml(page.kicker)}</div>
           </div>
           <div style="flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:${centerGap}px 0;">
             <div style="font-family:Georgia,serif;font-size:${titleSize}px;font-weight:700;line-height:1.08;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeXml(page.title)}</div>
             <div style="margin-top:${bodyGap}px;max-width:92%;font-size:${bodySize}px;line-height:1.4;opacity:.76;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(page.body)}</div>
-            <div style="margin-top:${isSquare ? 22 : isStory ? 44 : 30}px;width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${statsGap}px;">${statCards}</div>
+            <div style="margin-top:${isSquare ? 22 : isStory ? 52 : 30}px;width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${statsGap}px;">${statCards}</div>
           </div>
           <div style="flex:0 0 auto;color:${theme.accent};font-size:${isSquare ? 16 : isStory ? 23 : 19}px;font-weight:700;line-height:1.2;">${safePage + 1} / ${pages.length} · Created with Inkbound</div>
         </div>
@@ -236,8 +237,8 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
         <section className="inkbound-panel flex min-h-[620px] flex-col items-center justify-center rounded-3xl p-4 sm:p-8">
           <div className="mb-4 flex w-full max-w-[620px] items-center justify-between"><button type="button" onClick={() => setPreferences((current) => ({ ...current, page: (safePage - 1 + pages.length) % pages.length }))} className="quiet-shelf-icon-button h-11 w-11" aria-label="Previous yearbook page"><ChevronLeft /></button><span className="text-xs font-semibold text-[var(--ink-muted)]">Page {safePage + 1} of {pages.length}</span><button type="button" onClick={() => setPreferences((current) => ({ ...current, page: (safePage + 1) % pages.length }))} className="quiet-shelf-icon-button h-11 w-11" aria-label="Next yearbook page"><ChevronRight /></button></div>
           <div className={`relative flex w-full max-w-[620px] flex-col justify-between overflow-hidden rounded-[32px] border border-white/15 text-center shadow-2xl ${previewCardPadding}`} style={{ aspectRatio: `${exportFormat.width} / ${exportFormat.height}`, background: `radial-gradient(circle at 82% 8%, ${theme.accent}66, transparent 40%), ${theme.background}`, color: theme.text }}>
-            <div><p className="text-[10px] font-bold uppercase tracking-[0.35em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p><p className={`${isSquare ? 'mt-2' : isStory ? 'mt-5' : 'mt-3'} text-[10px] font-bold uppercase tracking-[0.18em] opacity-75 sm:text-xs sm:tracking-[0.23em]`}>{page.kicker}</p></div>
-            <div className={previewContentSpacing}><Trophy className={`${isSquare ? 'mb-3 h-6 w-6' : isStory ? 'mb-6 h-8 w-8' : 'mb-4 h-7 w-7'} mx-auto`} style={{ color: theme.accent }} /><h2 className={`font-serif font-bold leading-[1.08] ${previewTitleClass}`}>{page.title}</h2><p className={`mx-auto max-w-xl opacity-75 ${previewBodyClass}`}>{page.body}</p><div className={`mx-auto grid max-w-xl grid-cols-2 gap-2 sm:gap-3 ${previewStatsMargin}`}>{page.stats.map(([label, value]) => <div key={label} className={`rounded-2xl border border-white/10 bg-white/5 ${previewStatPadding}`}><p className="text-[9px] uppercase tracking-[0.12em] opacity-60 sm:text-[11px] sm:tracking-[0.16em]">{label}</p><p className={`mt-1.5 break-words font-serif font-bold leading-tight sm:mt-2 ${previewStatValueClass}`}>{value}</p></div>)}</div></div>
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.35em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p><p className={`${isSquare ? 'mt-2' : isStory ? 'mt-4' : 'mt-3'} text-[10px] font-bold uppercase tracking-[0.18em] opacity-75 sm:text-xs sm:tracking-[0.23em]`}>{page.kicker}</p></div>
+            <div className={previewContentSpacing}><Trophy className={`${isSquare ? 'mb-3 h-6 w-6' : isStory ? 'mb-8 h-10 w-10' : 'mb-4 h-7 w-7'} mx-auto`} style={{ color: theme.accent }} /><h2 className={`font-serif font-bold leading-[1.08] ${previewTitleClass}`}>{page.title}</h2><p className={`mx-auto max-w-xl opacity-75 ${previewBodyClass}`}>{page.body}</p><div className={`mx-auto grid max-w-xl grid-cols-2 gap-2 sm:gap-3 ${previewStatsMargin}`}>{page.stats.map(([label, value]) => <div key={label} className={`rounded-2xl border border-white/10 bg-white/5 ${previewStatPadding} ${previewStatMinHeight}`}><p className="text-[9px] uppercase tracking-[0.12em] opacity-60 sm:text-[11px] sm:tracking-[0.16em]">{label}</p><p className={`mt-1.5 break-words font-serif font-bold leading-tight sm:mt-2 ${previewStatValueClass}`}>{value}</p></div>)}</div></div>
             <p className={`${isSquare ? 'text-[10px]' : 'text-xs'} font-semibold`} style={{ color: theme.accent }}>{safePage + 1} / {pages.length} · Created with Inkbound</p>
           </div>
         </section>
