@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Award,
   BookOpenCheck,
@@ -23,6 +23,13 @@ import {
   getSessionPagesRead,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
+import {
+  BankMetric,
+  buildMonthlyRotation,
+  CHALLENGE_BANK,
+  ChallengeRotationState,
+  findBankTemplate,
+} from '../features/challenges/challengeBank';
 
 interface ReadingChallengesScreenProps {
   books: UserBookRecord[];
@@ -33,16 +40,22 @@ type ChallengeKind = 'core' | 'rotating' | 'seasonal' | 'custom';
 type ChallengeFilter = 'active' | 'featured' | 'custom' | 'completed' | 'all';
 type ChallengeMetric = 'books' | 'pages' | 'minutes' | 'days' | 'listening';
 
+type IconType = React.ComponentType<{ className?: string }>;
+
 interface ChallengeDefinition {
   id: string;
+  baseId?: string;
   title: string;
   description: string;
   target: number;
   unit: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: IconType;
   progress: number;
   kind: ChallengeKind;
   badge?: string;
+  startMonthKey?: string;
+  metric?: BankMetric;
+  genrePattern?: string;
 }
 
 interface CustomChallenge {
@@ -53,10 +66,38 @@ interface CustomChallenge {
   createdAt: string;
 }
 
+interface JoinedChallengeSnapshot {
+  id: string;
+  baseId: string;
+  title: string;
+  description: string;
+  target: number;
+  unit: string;
+  kind: 'rotating' | 'seasonal';
+  badge?: string;
+  startMonthKey: string;
+  metric: BankMetric;
+  iconKey: keyof typeof iconMap;
+  genrePattern?: string;
+}
+
+const iconMap = {
+  book: BookOpenCheck,
+  calendar: CalendarDays,
+  headphones: Headphones,
+  pages: LibraryBig,
+  clock: Clock3,
+  sparkles: Sparkles,
+  flame: Flame,
+  trophy: Trophy,
+} as const;
+
 const clampProgress = (progress: number, target: number) => Math.min(target, Math.max(0, progress));
 const getActiveEdition = (book: UserBookRecord) =>
   book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+const monthStart = (key: string) => `${key}-01`;
+const onOrAfter = (value: string | undefined, key: string) => Boolean(value && value >= monthStart(key));
 const hasMonthPrefix = (value: string | undefined, prefix: string) => Boolean(value?.startsWith(prefix));
 
 const metricUnit: Record<ChallengeMetric, string> = {
@@ -66,6 +107,8 @@ const metricUnit: Record<ChallengeMetric, string> = {
   days: 'reading days',
   listening: 'minutes listened',
 };
+
+const makeInitialRotation = (key: string): ChallengeRotationState => buildMonthlyRotation(key);
 
 export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = ({ books, sessions }) => {
   const now = new Date();
@@ -82,33 +125,35 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
     'inkbound_custom_challenges_v1',
     [],
   );
+  const [rotation, setRotation] = usePersistentState<ChallengeRotationState>(
+    'inkbound_challenge_rotation_v2',
+    makeInitialRotation(currentMonthKey),
+  );
+  const [joinedSnapshots, setJoinedSnapshots] = usePersistentState<JoinedChallengeSnapshot[]>(
+    'inkbound_joined_challenge_snapshots_v2',
+    [],
+  );
   const [filter, setFilter] = useState<ChallengeFilter>('active');
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customTitle, setCustomTitle] = useState('');
   const [customTarget, setCustomTarget] = useState('5');
   const [customMetric, setCustomMetric] = useState<ChallengeMetric>('books');
 
+  useEffect(() => {
+    if (rotation.monthKey === currentMonthKey) return;
+    setRotation(buildMonthlyRotation(currentMonthKey, rotation.seen, rotation.previous));
+  }, [currentMonthKey, rotation, setRotation]);
+
   const challenges = useMemo<ChallengeDefinition[]>(() => {
-    const finishedBooks = books.filter((book) => book.status === 'finished');
     const completedSessions = sessions.filter((session) => getSessionDurationMinutes(session) > 0);
+    const finishedBooks = books.filter((book) => book.status === 'finished');
     const uniqueSessionDays = new Set(completedSessions.map((session) => session.date).filter(Boolean)).size;
     const pagesRead = completedSessions.reduce((total, session) => total + getSessionPagesRead(session), 0);
     const totalReadingMinutes = completedSessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0);
     const totalListeningMinutes = completedSessions.reduce((total, session) => total + getSessionListeningMinutes(session), 0);
     const audiobookBooks = finishedBooks.filter((book) => getActiveEdition(book)?.format === 'audiobook').length;
-    const physicalBooks = finishedBooks.filter((book) => ['hardcover', 'paperback'].includes(getActiveEdition(book)?.format ?? '')).length;
     const longBooksFinished = finishedBooks.filter((book) => (getActiveEdition(book)?.pageCount ?? 0) >= 500).length;
-    const activeBooksStarted = books.filter((book) => book.status === 'currently-reading' && Boolean(book.dateStarted)).length;
-    const finishedGenres = new Set(finishedBooks.flatMap((book) => book.work.genres ?? []).filter(Boolean)).size;
     const currentStreak = getReadingStreak(completedSessions, localDateKey());
-
-    const monthlySessions = completedSessions.filter((session) => hasMonthPrefix(session.date, currentMonthKey));
-    const monthlyFinishedBooks = finishedBooks.filter((book) => hasMonthPrefix(book.dateFinished, currentMonthKey));
-    const monthlyPages = monthlySessions.reduce((total, session) => total + getSessionPagesRead(session), 0);
-    const monthlyMinutes = monthlySessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0);
-    const monthlyListening = monthlySessions.reduce((total, session) => total + getSessionListeningMinutes(session), 0);
-    const monthlyDays = new Set(monthlySessions.map((session) => session.date).filter(Boolean)).size;
-    const monthlyGenres = new Set(monthlyFinishedBooks.flatMap((book) => book.work.genres ?? []).filter(Boolean)).size;
 
     const core: ChallengeDefinition[] = [
       { id: 'finish-five', title: 'Five Books Finished', description: 'Complete five books and build momentum on your reading year.', target: 5, unit: 'books', icon: BookOpenCheck, progress: finishedBooks.length, kind: 'core' },
@@ -119,38 +164,95 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
       { id: 'seven-day-streak', title: 'Seven-Day Spark', description: 'Build a seven-day reading streak from tracked Inkbound sessions.', target: 7, unit: 'streak days', icon: Flame, progress: currentStreak, kind: 'core' },
     ];
 
-    const bank: ChallengeDefinition[] = [
-      { id: 'bank-page-turner', title: 'Page Turner', description: 'Read 1,500 pages this month.', target: 1500, unit: 'pages', icon: LibraryBig, progress: monthlyPages, kind: 'rotating' },
-      { id: 'bank-reading-dates', title: 'Reading Dates', description: 'Read on ten different days this month.', target: 10, unit: 'days', icon: CalendarDays, progress: monthlyDays, kind: 'rotating' },
-      { id: 'bank-listening-hours', title: 'Listening Hours', description: 'Listen to five audiobook hours this month.', target: 300, unit: 'minutes listened', icon: Headphones, progress: monthlyListening, kind: 'rotating' },
-      { id: 'bank-shelf-sweep', title: 'Shelf Sweep', description: 'Finish four books this month.', target: 4, unit: 'books', icon: BookOpenCheck, progress: monthlyFinishedBooks.length, kind: 'rotating' },
-      { id: 'bank-genre-hop', title: 'Genre Hopper', description: 'Finish books from three different genres this month.', target: 3, unit: 'genres', icon: Sparkles, progress: monthlyGenres, kind: 'rotating' },
-      { id: 'bank-reading-hours', title: 'Ten Hours Together', description: 'Spend ten tracked hours reading this month.', target: 600, unit: 'minutes', icon: Clock3, progress: monthlyMinutes, kind: 'rotating' },
-      { id: 'bank-physical-stack', title: 'Off the Physical Stack', description: 'Finish three hardcover or paperback books.', target: 3, unit: 'physical books', icon: BookOpenCheck, progress: physicalBooks, kind: 'rotating' },
-      { id: 'bank-audio-ten', title: 'Ten Hours in Your Ears', description: 'Log ten hours of audiobook listening.', target: 600, unit: 'minutes listened', icon: Headphones, progress: totalListeningMinutes, kind: 'rotating' },
-      { id: 'bank-genre-sampler', title: 'Genre Sampler', description: 'Finish books across five different genres.', target: 5, unit: 'genres', icon: Sparkles, progress: finishedGenres, kind: 'rotating' },
-      { id: 'bank-reading-momentum', title: 'Reading Momentum', description: 'Start three books and move them into active reading.', target: 3, unit: 'books started', icon: Flame, progress: activeBooksStarted, kind: 'rotating' },
-      { id: 'bank-twenty-hours', title: 'Lost in the Pages', description: 'Spend twenty tracked hours reading.', target: 1200, unit: 'minutes', icon: Clock3, progress: totalReadingMinutes, kind: 'rotating' },
-      { id: 'bank-two-thousand', title: 'Two Thousand Pages', description: 'Read 2,000 tracked pages this month.', target: 2000, unit: 'pages', icon: LibraryBig, progress: monthlyPages, kind: 'rotating' },
-    ];
+    const progressFor = (metric: BankMetric, startKey: string, genrePattern?: string) => {
+      const scopedSessions = completedSessions.filter((session) => onOrAfter(session.date, startKey));
+      const scopedFinished = finishedBooks.filter((book) => onOrAfter(book.dateFinished, startKey));
+      switch (metric) {
+        case 'pages': return scopedSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+        case 'days': return new Set(scopedSessions.map((session) => session.date).filter(Boolean)).size;
+        case 'listening': return scopedSessions.reduce((sum, session) => sum + getSessionListeningMinutes(session), 0);
+        case 'minutes': return scopedSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
+        case 'sessions': return scopedSessions.length;
+        case 'genres': return new Set(scopedFinished.flatMap((book) => book.work.genres ?? []).filter(Boolean)).size;
+        case 'physical': return scopedFinished.filter((book) => ['hardcover', 'paperback'].includes(getActiveEdition(book)?.format ?? '')).length;
+        case 'audiobooks': return scopedFinished.filter((book) => getActiveEdition(book)?.format === 'audiobook').length;
+        case 'ebooks': return scopedFinished.filter((book) => getActiveEdition(book)?.format === 'ebook').length;
+        case 'long-books': return scopedFinished.filter((book) => (getActiveEdition(book)?.pageCount ?? 0) >= 500).length;
+        case 'started-books': return books.filter((book) => onOrAfter(book.dateStarted, startKey)).length;
+        case 'books':
+        default:
+          return genrePattern
+            ? scopedFinished.filter((book) => (book.work.genres ?? []).some((genre) => new RegExp(genrePattern, 'i').test(genre))).length
+            : scopedFinished.length;
+      }
+    };
 
-    // Deterministic monthly rotation: three adjacent picks shift by four slots each month,
-    // so the same challenge cannot reappear in consecutive months.
-    const rotationStart = ((year * 12 + month) * 4) % bank.length;
-    const rotating = [0, 1, 2].map((offset) => ({
-      ...bank[(rotationStart + offset) % bank.length],
-      id: `${bank[(rotationStart + offset) % bank.length].id}-${currentMonthKey}`,
-      badge: currentMonthLabel,
-    }));
+    const rotationIds = rotation.monthKey === currentMonthKey ? rotation.selections : [];
+    const rotating: ChallengeDefinition[] = rotationIds.flatMap((baseId) => {
+      const template = findBankTemplate(baseId);
+      if (!template) return [];
+      return [{
+        id: `${template.id}:${currentMonthKey}`,
+        baseId: template.id,
+        title: template.title,
+        description: `${template.description} This month's challenge only rotates away if you never join it.`,
+        target: template.target,
+        unit: template.unit,
+        icon: iconMap[template.icon],
+        progress: progressFor(template.metric, currentMonthKey),
+        kind: 'rotating' as const,
+        badge: currentMonthLabel,
+        startMonthKey: currentMonthKey,
+        metric: template.metric,
+      }];
+    });
 
     const seasonal: ChallengeDefinition[] = [];
-    if ([12, 1, 2].includes(month)) seasonal.push({ id: `winter-reading-${year}-${month}`, title: 'Winter Reading Retreat', description: 'Finish three books during the winter season.', target: 3, unit: 'books', icon: Sparkles, progress: monthlyFinishedBooks.length, kind: 'seasonal', badge: 'Winter' });
-    if ([3, 4, 5].includes(month)) seasonal.push({ id: `spring-shelf-${year}-${month}`, title: 'Spring Shelf Refresh', description: 'Read on twelve different days this month.', target: 12, unit: 'days', icon: CalendarDays, progress: monthlyDays, kind: 'seasonal', badge: 'Spring' });
-    if ([6, 7, 8].includes(month)) seasonal.push({ id: `summer-reading-${year}-${month}`, title: 'Summer Reading', description: 'Finish five books this month.', target: 5, unit: 'books', icon: BookOpenCheck, progress: monthlyFinishedBooks.length, kind: 'seasonal', badge: 'Summer' });
-    if ([9, 10, 11].includes(month)) seasonal.push({ id: `cozy-fall-${year}-${month}`, title: 'Cozy Fall Reading', description: 'Read 1,500 pages this month.', target: 1500, unit: 'pages', icon: LibraryBig, progress: monthlyPages, kind: 'seasonal', badge: 'Fall' });
-    if (month === 2) seasonal.push({ id: `valentines-${year}`, title: 'Love at First Chapter', description: 'Finish two romance reads during February.', target: 2, unit: 'books', icon: Award, progress: monthlyFinishedBooks.filter((book) => (book.work.genres ?? []).some((genre) => genre.toLowerCase().includes('romance'))).length, kind: 'seasonal', badge: "Valentine's" });
-    if (month === 10) seasonal.push({ id: `spooky-${year}`, title: 'Spooky Season', description: 'Finish three horror, thriller, or mystery reads during October.', target: 3, unit: 'books', icon: Flame, progress: monthlyFinishedBooks.filter((book) => (book.work.genres ?? []).some((genre) => /horror|thriller|mystery/i.test(genre))).length, kind: 'seasonal', badge: 'October' });
-    if (month === 12) seasonal.push({ id: `year-end-${year}`, title: 'End-of-Year Shelf Sweep', description: 'Finish three books before the year closes.', target: 3, unit: 'books', icon: Trophy, progress: monthlyFinishedBooks.length, kind: 'seasonal', badge: 'Year End' });
+    const addSeasonal = (baseId: string, title: string, description: string, target: number, unit: string, metric: BankMetric, icon: IconType, badge: string, genrePattern?: string) => {
+      seasonal.push({
+        id: `${baseId}:${year}:${month}`,
+        baseId,
+        title,
+        description,
+        target,
+        unit,
+        icon,
+        progress: progressFor(metric, currentMonthKey, genrePattern),
+        kind: 'seasonal',
+        badge,
+        startMonthKey: currentMonthKey,
+        metric,
+        genrePattern,
+      });
+    };
+
+    if ([12, 1, 2].includes(month)) addSeasonal(`winter-${year}`, 'Winter Reading Retreat', 'Settle in and finish three books during this winter reading window.', 3, 'books', 'books', Sparkles, 'Winter');
+    if ([3, 4, 5].includes(month)) addSeasonal(`spring-${year}`, 'Spring Shelf Refresh', 'Read on twelve different days and bring fresh momentum to your shelf.', 12, 'days', 'days', CalendarDays, 'Spring');
+    if ([6, 7, 8].includes(month)) addSeasonal(`summer-${year}`, 'Summer Reading Escape', 'Finish five books during the summer reading season.', 5, 'books', 'books', BookOpenCheck, 'Summer');
+    if ([9, 10, 11].includes(month)) addSeasonal(`autumn-${year}`, 'Cozy Fall Reading', 'Read 1,500 tracked pages during cozy reading season.', 1500, 'pages', 'pages', LibraryBig, 'Fall');
+    if (month === 1) addSeasonal(`new-year-${year}`, 'Fresh Chapter', 'Start three new books to open the reading year.', 3, 'books started', 'started-books', Flame, 'New Year');
+    if (month === 2) addSeasonal(`valentine-${year}`, 'Love at First Chapter', 'Finish two romance reads during February.', 2, 'books', 'books', Award, "Valentine's", 'romance');
+    if (month === 10) addSeasonal(`spooky-${year}`, 'Spooky Season', 'Finish three horror, thriller, or mystery reads during October.', 3, 'books', 'books', Flame, 'October', 'horror|thriller|mystery');
+    if (month === 12) addSeasonal(`year-end-${year}`, 'End-of-Year Shelf Sweep', 'Finish three books before the year closes.', 3, 'books', 'books', Trophy, 'Year End');
+
+    const currentIds = new Set([...rotating, ...seasonal].map((challenge) => challenge.id));
+    const carried: ChallengeDefinition[] = joinedSnapshots
+      .filter((snapshot) => joinedChallengeIds.includes(snapshot.id) && !currentIds.has(snapshot.id))
+      .map((snapshot) => ({
+        id: snapshot.id,
+        baseId: snapshot.baseId,
+        title: snapshot.title,
+        description: `${snapshot.description} You started this challenge earlier, so Inkbound kept it active instead of rotating it away.`,
+        target: snapshot.target,
+        unit: snapshot.unit,
+        icon: iconMap[snapshot.iconKey],
+        progress: progressFor(snapshot.metric, snapshot.startMonthKey, snapshot.genrePattern),
+        kind: snapshot.kind,
+        badge: snapshot.badge ? `${snapshot.badge} · In progress` : 'In progress',
+        startMonthKey: snapshot.startMonthKey,
+        metric: snapshot.metric,
+        genrePattern: snapshot.genrePattern,
+      }));
 
     const metricProgress: Record<ChallengeMetric, number> = {
       books: finishedBooks.length,
@@ -171,8 +273,8 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
       badge: 'My Challenge',
     }));
 
-    return [...core, ...rotating, ...seasonal, ...custom];
-  }, [books, currentMonthKey, currentMonthLabel, customChallenges, month, sessions, year]);
+    return [...core, ...carried, ...rotating, ...seasonal, ...custom];
+  }, [books, currentMonthKey, currentMonthLabel, customChallenges, joinedChallengeIds, joinedSnapshots, month, rotation, sessions, year]);
 
   const joinedChallenges = challenges.filter((challenge) => joinedChallengeIds.includes(challenge.id));
   const completedCount = joinedChallenges.filter((challenge) => challenge.progress >= challenge.target).length;
@@ -188,8 +290,32 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
     return true;
   });
 
-  const toggleChallenge = (challengeId: string) => {
-    setJoinedChallengeIds((current) => current.includes(challengeId) ? current.filter((id) => id !== challengeId) : [...current, challengeId]);
+  const toggleChallenge = (challenge: ChallengeDefinition) => {
+    const joined = joinedChallengeIds.includes(challenge.id);
+    if (joined) {
+      setJoinedChallengeIds((current) => current.filter((id) => id !== challenge.id));
+      return;
+    }
+
+    setJoinedChallengeIds((current) => [...current, challenge.id]);
+    if ((challenge.kind === 'rotating' || challenge.kind === 'seasonal') && challenge.baseId && challenge.metric && challenge.startMonthKey) {
+      const iconEntry = (Object.entries(iconMap) as Array<[keyof typeof iconMap, IconType]>).find(([, Icon]) => Icon === challenge.icon);
+      const snapshot: JoinedChallengeSnapshot = {
+        id: challenge.id,
+        baseId: challenge.baseId,
+        title: challenge.title,
+        description: challenge.description.replace(" This month's challenge only rotates away if you never join it.", ''),
+        target: challenge.target,
+        unit: challenge.unit,
+        kind: challenge.kind,
+        badge: challenge.badge,
+        startMonthKey: challenge.startMonthKey,
+        metric: challenge.metric,
+        iconKey: iconEntry?.[0] ?? 'sparkles',
+        genrePattern: challenge.genrePattern,
+      };
+      setJoinedSnapshots((current) => current.some((item) => item.id === snapshot.id) ? current : [...current, snapshot]);
+    }
   };
 
   const createCustomChallenge = () => {
@@ -219,7 +345,7 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
             <p className="inkbound-kicker">Your Reading Year</p>
             <h1 className="mt-1 font-serif text-3xl font-bold text-[var(--ink-ivory)] sm:text-4xl">Reading Challenges</h1>
             <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
-              Pick from Inkbound's rotating challenge bank, join seasonal events, or make a goal that is completely your own. Progress updates automatically from your books and reading sessions.
+              Inkbound quietly rotates a deep challenge bank every month, adds seasonal and holiday events, and keeps anything you actually start. Unstarted monthly challenges move aside for something fresh.
             </p>
           </div>
           <div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:min-w-[240px]">
@@ -243,7 +369,7 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
 
       <section className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div><p className="inkbound-kicker">Challenge Library</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Choose what inspires you</h2></div>
+          <div><p className="inkbound-kicker">Challenge Library</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Choose what inspires you</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">{CHALLENGE_BANK.length} rotating challenge ideas live behind the scenes, plus seasonal and holiday events.</p></div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setShowCustomForm(true)} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[var(--ink-border-strong)] px-4 text-xs font-semibold text-[var(--ink-gold-bright)]"><Plus className="h-4 w-4" /> Custom challenge</button>
             {([['active', 'Active'], ['featured', 'Featured'], ['custom', 'My Challenges'], ['completed', 'Completed'], ['all', 'All Challenges']] as Array<[ChallengeFilter, string]>).map(([value, label]) => (
@@ -267,7 +393,7 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
                   <div className="flex items-start justify-between gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] text-[var(--ink-gold)]"><Icon className="h-6 w-6" /></span><div className="flex flex-wrap justify-end gap-2">{challenge.badge && <span className="rounded-full border border-[var(--ink-border-strong)] px-2.5 py-1 text-[11px] font-bold text-[var(--ink-gold-bright)]">{challenge.badge}</span>}{completed && joined && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-1 text-[11px] font-bold text-emerald-500"><Check className="h-3.5 w-3.5" /> Complete</span>}</div></div>
                   <h3 className="mt-5 font-serif text-xl font-bold text-[var(--ink-ivory)]">{challenge.title}</h3><p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">{challenge.description}</p>
                   <div className="mt-auto pt-6"><div className="flex min-w-0 items-center justify-between gap-3 text-xs text-[var(--ink-muted)]"><span className="min-w-0 break-words">{progress.toLocaleString()} of {challenge.target.toLocaleString()} {challenge.unit}</span><strong className="shrink-0 text-[var(--ink-ivory)]">{percentage}%</strong></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--ink-surface-soft)]"><div className="h-full rounded-full bg-gradient-to-r from-[var(--ink-mauve)] to-[var(--ink-gold)] transition-all" style={{ width: `${percentage}%` }} /></div>
-                    <div className="mt-5 flex gap-2"><button type="button" onClick={() => toggleChallenge(challenge.id)} className={`min-h-11 flex-1 rounded-xl border px-4 text-sm font-semibold transition ${joined ? 'border-[var(--ink-border)] text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]' : 'border-[var(--ink-border-strong)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]'}`}>{joined ? 'Leave challenge' : 'Join challenge'}</button>{challenge.kind === 'custom' && <button type="button" onClick={() => deleteCustomChallenge(challenge.id)} className="min-h-11 rounded-xl border border-[var(--ink-border)] px-3 text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]" aria-label={`Delete ${challenge.title}`}><X className="h-4 w-4" /></button>}</div>
+                    <div className="mt-5 flex gap-2"><button type="button" onClick={() => toggleChallenge(challenge)} className={`min-h-11 flex-1 rounded-xl border px-4 text-sm font-semibold transition ${joined ? 'border-[var(--ink-border)] text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]' : 'border-[var(--ink-border-strong)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]'}`}>{joined ? 'Leave challenge' : 'Join challenge'}</button>{challenge.kind === 'custom' && <button type="button" onClick={() => deleteCustomChallenge(challenge.id)} className="min-h-11 rounded-xl border border-[var(--ink-border)] px-3 text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]" aria-label={`Delete ${challenge.title}`}><X className="h-4 w-4" /></button>}</div>
                   </div>
                 </article>
               );
