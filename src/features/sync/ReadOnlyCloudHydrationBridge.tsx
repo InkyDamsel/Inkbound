@@ -1,21 +1,8 @@
 import React, { useEffect } from 'react';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  type DocumentData,
-  type QuerySnapshot,
-} from 'firebase/firestore';
-import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, readDb } from '../../lib/firebase';
 import {
-  readRuntimeJson,
   readRuntimeValue,
-  removeRuntimeValue,
-  writeRuntimeJson,
   writeRuntimeValue,
 } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
@@ -25,116 +12,49 @@ const SESSIONS_KEY = 'inkbound_sessions';
 const PROFILE_KEY = 'inkbound_reader_profile';
 const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
 
-interface CloudRecord<T> {
-  data: T;
-}
-
-interface ReaderProfile {
-  displayName?: string;
-  email?: string;
-  favoriteQuote?: string;
-  bio?: string;
-  avatarImage?: string;
-  bannerImage?: string;
-}
-
-function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): T[] {
-  const merged = new Map(localItems.map((item) => [item.id, item]));
-  cloudItems.forEach((item) => merged.set(item.id, item));
-  return Array.from(merged.values());
-}
-
 /**
- * Protected development mode intentionally disables browser-side production writes.
- * It must not disable account restoration. This bridge reads the signed-in user's
- * cloud library/profile while leaving all write-capable sync code disabled.
- * Production uses CloudPersistenceBridge instead.
+ * Protected development mode is intentionally LOCAL ONLY.
+ *
+ * When Inkbound is running from the development server without explicit
+ * production-write mode, Firebase Auth may still point at the real project so a
+ * developer can sign in, but the app must not silently read production Firestore
+ * collections. A large-library stress test can turn a harmless localhost reload
+ * into tens of thousands of billable reads if this bridge hydrates or subscribes
+ * to the real books collection.
+ *
+ * Intentional live-cloud beta verification remains available by starting the app
+ * with VITE_FIREBASE_MODE=production. In that mode `db` is available and the
+ * normal AdaptiveCloudPersistenceBridge owns one-time hydration plus local-first
+ * persistence.
  */
 export const ReadOnlyCloudHydrationBridge: React.FC = () => {
   const sync = useAccountSync();
 
   useEffect(() => {
-    // `db` is available in production (or an explicit live-write dev session), so
-    // the normal bidirectional bridge owns hydration there.
+    // Production/emulator mode has a writable `db`, so the adaptive persistence
+    // bridge owns cloud hydration. If Firebase is entirely unavailable, there is
+    // nothing to do here either.
     if (!sync.user || !readDb || db) return undefined;
 
     const uid = sync.user.uid;
-    let disposed = false;
-    const unsubscribers: Array<() => void> = [];
+    const previousOwnerUid = readRuntimeValue(OWNER_UID_KEY);
 
-    const hydrate = async () => {
-      const previousOwnerUid = readRuntimeValue(OWNER_UID_KEY);
-      const sameAccount = !previousOwnerUid || previousOwnerUid === uid;
-      const localBooks = sameAccount ? readRuntimeJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
-      const localSessions = sameAccount ? readRuntimeJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
-
-      const booksRef = collection(readDb, 'users', uid, 'books');
-      const sessionsRef = collection(readDb, 'users', uid, 'sessions');
-      const profileRef = doc(readDb, 'users', uid, 'profile', 'current');
-
-      const [bookSnapshot, sessionSnapshot, profileSnapshot] = await Promise.all([
-        getDocs(booksRef),
-        getDocs(sessionsRef),
-        getDoc(profileRef),
-      ]);
-      if (disposed) return;
-
-      const cloudBooks = bookSnapshot.docs
-        .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
-        .filter(Boolean);
-      const cloudSessions = sessionSnapshot.docs
-        .map((item) => (item.data() as CloudRecord<ReadingSession>).data)
-        .filter(Boolean);
-
-      const nextBooks = sameAccount ? mergeById(localBooks, cloudBooks) : cloudBooks;
-      const nextSessions = sameAccount ? mergeById(localSessions, cloudSessions) : cloudSessions;
-
-      writeRuntimeJson(BOOKS_KEY, nextBooks);
-      writeRuntimeJson(SESSIONS_KEY, nextSessions);
-
-      if (profileSnapshot.exists()) {
-        const cloudProfile = (profileSnapshot.data() as CloudRecord<ReaderProfile>).data;
-        if (cloudProfile) writeRuntimeJson(PROFILE_KEY, cloudProfile);
-      } else if (!sameAccount) {
-        removeRuntimeValue(PROFILE_KEY);
-      }
-
+    // Do not clear or replace local data when the signed-in identity changes in a
+    // protected dev session. Development mode is deliberately non-destructive;
+    // production account switching is handled by the real cloud bridge.
+    if (!previousOwnerUid || previousOwnerUid === uid) {
       writeRuntimeValue(OWNER_UID_KEY, uid);
-      notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
+    }
 
-      const applyCollectionSnapshot = <T extends { id: string }>(
-        storageKey: 'inkbound_books' | 'inkbound_sessions',
-        snapshot: QuerySnapshot<DocumentData>,
-      ) => {
-        const cloudItems = snapshot.docs
-          .map((item) => (item.data() as CloudRecord<T>).data)
-          .filter(Boolean);
-        const current = readRuntimeJson<T[]>(storageKey, []);
-        writeRuntimeJson(storageKey, mergeById(current, cloudItems));
-        notifyCloudDataUpdated([storageKey]);
-      };
+    // Signal that the local working copy is ready so CloudDataRefreshBoundary can
+    // open the application. No getDocs/getDoc/onSnapshot calls are made here.
+    notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
 
-      unsubscribers.push(
-        onSnapshot(booksRef, (snapshot) => applyCollectionSnapshot<UserBookRecord>(BOOKS_KEY, snapshot)),
-        onSnapshot(sessionsRef, (snapshot) => applyCollectionSnapshot<ReadingSession>(SESSIONS_KEY, snapshot)),
-        onSnapshot(profileRef, (snapshot) => {
-          if (!snapshot.exists()) return;
-          const cloudProfile = (snapshot.data() as CloudRecord<ReaderProfile>).data;
-          if (!cloudProfile) return;
-          writeRuntimeJson(PROFILE_KEY, cloudProfile);
-          notifyCloudDataUpdated([PROFILE_KEY]);
-        }),
-      );
-    };
+    console.info(
+      'Inkbound DEV protected mode: using the local working copy only. Production Firestore reads are disabled to prevent test billing. Set VITE_FIREBASE_MODE=production only for intentional live-cloud beta verification.',
+    );
 
-    void hydrate().catch((error) => {
-      console.warn('Inkbound could not restore cloud data in protected development mode.', error);
-    });
-
-    return () => {
-      disposed = true;
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
-    };
+    return undefined;
   }, [sync.user?.uid]);
 
   return null;
