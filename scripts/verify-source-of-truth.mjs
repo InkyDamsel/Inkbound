@@ -20,9 +20,6 @@ const walk = (directory) => {
 };
 walk(path.join(root, 'src'));
 
-// Retired collection stores are the kind of true duplicate database this guard is
-// designed to prevent. Their literal names may exist only in the registry where
-// migration/cleanup code can identify old installs.
 for (const file of sourceFiles) {
   const relative = path.relative(root, file).replaceAll('\\', '/');
   if (relative === 'src/features/sync/storageKeys.ts') continue;
@@ -79,6 +76,19 @@ for (const relative of [
 const main = read('src/main.tsx');
 if (/from ['"].*CloudPersistenceBridge['"]/.test(main) && !main.includes('AdaptiveCloudPersistenceBridge')) {
   violations.push('main.tsx: legacy CloudPersistenceBridge must not replace the adaptive canonical sync path');
+}
+if (!main.includes('<CanonicalLibraryNormalizationBridge />')) {
+  violations.push('main.tsx: canonical library normalization must run at the persistence boundary');
+}
+
+const seriesLibrary = read('src/features/series/seriesLibrary.ts');
+if (/ownership\s*:\s*['"]none['"]/.test(seriesLibrary)) {
+  violations.push('seriesLibrary.ts: Series derivation must not invent a second ownership value');
+}
+
+const normalizer = read('src/features/library/libraryNormalization.ts');
+if (!normalizer.includes('normalizeCanonicalLibraryRecords')) {
+  violations.push('libraryNormalization.ts: canonical library record normalizer is missing');
 }
 
 const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
