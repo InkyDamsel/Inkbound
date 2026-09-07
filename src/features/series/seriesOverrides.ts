@@ -1,3 +1,4 @@
+import { readRuntimeJson } from '../../platform/runtimeStorage';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../sync/storageKeys';
 
 export const SERIES_OVERRIDES_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides;
@@ -18,6 +19,9 @@ export interface SeriesOverride {
 }
 
 export type SeriesOverrides = Record<string, SeriesOverride>;
+
+export const readSeriesOverrides = (): SeriesOverrides =>
+  readRuntimeJson<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
 
 export const makeSeriesOverrideId = (name: string, author: string) =>
   `series-${name}::${author}`
