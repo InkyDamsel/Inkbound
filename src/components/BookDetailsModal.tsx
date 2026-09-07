@@ -3,6 +3,7 @@ import { BookOpen } from 'lucide-react';
 import { BookDetailsModal as BookDetailsModalCore } from './BookDetailsModalCore';
 import { CatalogContributionLauncher } from './catalog/CatalogContributionLauncher';
 import { LibraryLoanReminderControl } from './library/LibraryLoanReminderControl';
+import { FinishOnTimeControl } from './reading/FinishOnTimeControl';
 import { openLibrarySeriesForBook } from '../features/library/libraryNavigation';
 import { resolveEffectiveSeriesMetadata, seriesPositionLabel } from '../features/series/seriesLibrary';
 import { readSeriesOverrides } from '../features/series/seriesOverrides';
@@ -100,6 +101,7 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
     <div className="book-details-modal-host">
       <BookDetailsModalCore {...props} book={displayBook} onUpdateBook={handleUpdateBook} />
       {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
+      {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && effectiveSeries && (
         <button
