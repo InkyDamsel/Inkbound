@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { BookOpen } from 'lucide-react';
 import { BookDetailsModal as BookDetailsModalCore } from './BookDetailsModalCore';
 import { CatalogContributionLauncher } from './catalog/CatalogContributionLauncher';
+import { LibraryLoanReminderControl } from './library/LibraryLoanReminderControl';
 import { openLibrarySeriesForBook } from '../features/library/libraryNavigation';
 import { resolveEffectiveSeriesMetadata, seriesPositionLabel } from '../features/series/seriesLibrary';
 import { readSeriesOverrides } from '../features/series/seriesOverrides';
@@ -98,6 +99,7 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
     <>
       <BookDetailsModalCore {...props} book={displayBook} onUpdateBook={handleUpdateBook} />
       {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
+      {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && effectiveSeries && (
         <button
           type="button"
