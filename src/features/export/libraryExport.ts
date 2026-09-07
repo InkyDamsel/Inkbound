@@ -38,9 +38,9 @@ export function buildInkboundBackup(
 
 export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: SeriesOverrides): string {
   const headers = [
-    'Title', 'Subtitle', 'Author', 'Series', 'Series Number', 'Series Label', 'Series Source',
+    'Title', 'Subtitle', 'Author', 'Reading Material Type', 'Series', 'Series Number', 'Series Label', 'Series Source',
     'Status', 'Ownership', 'Subscription Service', 'Rating', 'Format', 'ISBN', 'Page Count',
-    'Pages Read', 'Date Added', 'Date Started', 'Date Finished', 'Tags', 'Collections',
+    'Pages Read', 'Minutes Listened', 'Progress Percent', 'Date Added', 'Date Started', 'Date Finished', 'Tags', 'Collections',
   ];
 
   const rows = books.map((book) => {
@@ -50,6 +50,7 @@ export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: Series
       book.work.title,
       book.work.subtitle,
       book.work.author,
+      book.work.materialType ?? 'book',
       series?.name ?? '',
       series?.position ?? null,
       series?.label ?? '',
@@ -62,6 +63,8 @@ export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: Series
       activeEdition?.isbn13 ?? activeEdition?.isbn10 ?? activeEdition?.isbn,
       activeEdition?.pageCount,
       book.progressPages,
+      book.progressMinutes,
+      book.progressPercentage,
       book.dateAdded,
       book.dateStarted,
       book.dateFinished,
