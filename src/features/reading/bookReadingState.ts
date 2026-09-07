@@ -1,4 +1,5 @@
 import type { Edition, ReadingStatus, UserBookRecord } from '../../types';
+import { localDateKey } from './sessionAnalytics';
 
 export interface BookReadingState {
   status: ReadingStatus;
@@ -84,18 +85,24 @@ export function getBookReadingState(book: UserBookRecord): BookReadingState {
   };
 }
 
-function localDateKey(value = new Date()): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
+/**
+ * Canonical reading-status transition. Any surface that changes status should use
+ * this helper so status, dates, and known-endpoint progress cannot drift apart.
+ */
 export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, date = localDateKey()): UserBookRecord {
-  const nextBook: UserBookRecord = {
+  if (status === 'finished') {
+    return reconcileFinishedBookProgress({
+      ...book,
+      status,
+      dateStarted: book.dateStarted ?? date,
+      dateFinished: book.dateFinished ?? date,
+    });
+  }
+
+  return {
     ...book,
     status,
-    dateFinished: status === 'finished' ? book.dateFinished ?? date : undefined,
+    dateStarted: status === 'currently-reading' ? book.dateStarted ?? date : book.dateStarted,
+    dateFinished: undefined,
   };
-  return status === 'finished' ? reconcileFinishedBookProgress(nextBook) : nextBook;
 }
