@@ -30,6 +30,10 @@ const themeClasses: Record<ShelfTheme, string> = {
   'midnight-study': 'from-[#171825] via-[#26283a] to-[#101119]',
 };
 
+const themeBackgroundImages: Partial<Record<ShelfTheme, string>> = {
+  'quiet-library': '/assets/library/cozy-bookshelf-background.png',
+};
+
 const shelfWoodClasses: Record<ShelfTheme, string> = {
   'quiet-library': 'from-[#8a5b3f] via-[#68432f] to-[#4a3024]',
   'cozy-evening': 'from-[#a76b43] via-[#7d4c31] to-[#543120]',
@@ -170,6 +174,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length
     : 0;
   const highlightNew = preferences.highlightNew !== false;
+  const themeBackgroundImage = themeBackgroundImages[preferences.theme];
 
   useEffect(() => {
     setShelfPage(0);
@@ -208,7 +213,15 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className={`relative min-h-[560px] min-w-0 overflow-hidden rounded-3xl bg-gradient-to-br ${themeClasses[preferences.theme]} p-4 shadow-2xl sm:p-8`}>
-          <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255,255,255,.13), transparent 42%), linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px)', backgroundSize: 'auto, 100% 28px' }} />
+          {themeBackgroundImage && (
+            <div
+              className="pointer-events-none absolute inset-0 bg-cover bg-top opacity-55"
+              style={{ backgroundImage: `url("${themeBackgroundImage}")` }}
+              aria-hidden="true"
+            />
+          )}
+          <div className="pointer-events-none absolute inset-0 bg-black/10" aria-hidden="true" />
+          <div className="pointer-events-none absolute inset-0 opacity-25" style={{ backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255,255,255,.13), transparent 42%), linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px)', backgroundSize: 'auto, 100% 28px' }} />
           <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-white/[0.035] to-transparent" />
 
           <div className="relative z-10 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
