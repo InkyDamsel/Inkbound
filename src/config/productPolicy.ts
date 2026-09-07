@@ -1,3 +1,35 @@
+export type FeatureTier = 'free' | 'premium';
+export type ProductFeature =
+  | 'batchEdit'
+  | 'detailedReports'
+  | 'advancedInsights'
+  | 'monthlyWrapped'
+  | 'yearInBooks'
+  | 'bookshelfThroughTime'
+  | 'seriesCore'
+  | 'seriesInsights'
+  | 'collections'
+  | 'readingProgress'
+  | 'readingCalendar'
+  | 'studio'
+  | 'completeExport';
+
+const featurePolicy: Record<ProductFeature, FeatureTier> = {
+  batchEdit: 'premium',
+  detailedReports: 'premium',
+  advancedInsights: 'premium',
+  monthlyWrapped: 'premium',
+  yearInBooks: 'premium',
+  bookshelfThroughTime: 'premium',
+  seriesCore: 'free',
+  seriesInsights: 'premium',
+  collections: 'free',
+  readingProgress: 'free',
+  readingCalendar: 'free',
+  studio: 'free',
+  completeExport: 'free',
+};
+
 export const PRODUCT_POLICY = {
   library: {
     freeItemLimit: Infinity,
@@ -9,25 +41,8 @@ export const PRODUCT_POLICY = {
     plannedMonthlyPrice: 6.99,
     plannedAnnualPrice: 59.99,
   },
-  features: {
-    batchEdit: 'premium',
-    detailedReports: 'premium',
-    advancedInsights: 'premium',
-    monthlyWrapped: 'premium',
-    yearInBooks: 'premium',
-    bookshelfThroughTime: 'premium',
-    seriesCore: 'free',
-    seriesInsights: 'premium',
-    collections: 'free',
-    readingProgress: 'free',
-    readingCalendar: 'free',
-    studio: 'free',
-    completeExport: 'free',
-  },
+  features: featurePolicy,
 } as const;
-
-export type ProductFeature = keyof typeof PRODUCT_POLICY.features;
-export type FeatureTier = (typeof PRODUCT_POLICY.features)[ProductFeature];
 
 export const isFeatureAvailableToFree = (feature: ProductFeature) => PRODUCT_POLICY.features[feature] === 'free';
 
