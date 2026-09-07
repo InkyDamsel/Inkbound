@@ -3,6 +3,7 @@ import { CheckCircle2, Copy, Merge, Search, ShieldCheck } from 'lucide-react';
 import type { Edition, UserBookRecord } from '../types';
 import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import { BookCover } from './BookCover';
+import { CustomOwnershipCategoryManager } from './ownership/CustomOwnershipCategoryManager';
 
 export interface DuplicateMergeRequest {
   keepBookId: string;
@@ -101,8 +102,6 @@ const mergeDuplicateBooks = (keeper: UserBookRecord, group: UserBookRecord[]): U
     },
     editions: [...editionByKey.values()],
     activeEditionId: mergedActiveEdition?.id ?? keeper.activeEditionId,
-    // The selected keeper remains authoritative for current reading state. Do not
-    // combine max pages/minutes/percentage from different editions into one record.
     progressPages: keeper.progressPages,
     progressMinutes: keeper.progressMinutes,
     progressPercentage: keeper.progressPercentage,
@@ -190,28 +189,33 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
 
   return <div className="space-y-6 pb-24">
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0"><p className="inkbound-kicker">Library Cleanup</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Duplicate Management</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Inkbound scans exact ISBNs first, then normalized title + author. Nothing is merged automatically—you choose what stays.</p></div>
-      <div className="shrink-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 py-3 text-sm"><strong className="text-[var(--ink-ivory)]">{groups.length} groups</strong><span className="ml-2 text-[var(--ink-muted)]">· {booksInGroups} books involved</span></div>
+      <div className="min-w-0"><p className="inkbound-kicker">Library Maintenance</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Keep your library tidy</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Manage your reader-defined ownership categories and review possible duplicate books from one place.</p></div>
+      <div className="shrink-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 py-3 text-sm"><strong className="text-[var(--ink-ivory)]">{groups.length} duplicate groups</strong><span className="ml-2 text-[var(--ink-muted)]">· {booksInGroups} books involved</span></div>
     </header>
 
-    <section className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div className="min-w-0"><p className="font-semibold text-[var(--ink-ivory)]">Merge safely</p><p className="mt-1 text-sm text-[var(--ink-muted)]">The copy you choose to keep remains the source of current progress and status. Reading sessions from the removed copies are moved to it, while tags, collections, editions, notes, reviews, quotes, dates, and verified metadata are preserved where appropriate.</p></div></div></section>
+    <CustomOwnershipCategoryManager books={books} />
 
-    <div className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search duplicate groups by title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></div>
+    <section className="space-y-4">
+      <div><p className="inkbound-kicker">Duplicate cleanup</p><h2 className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">Duplicate Management</h2><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Inkbound scans exact ISBNs first, then normalized title + author. Nothing is merged automatically—you choose what stays.</p></div>
+      <section className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" /><div className="min-w-0"><p className="font-semibold text-[var(--ink-ivory)]">Merge safely</p><p className="mt-1 text-sm text-[var(--ink-muted)]">The copy you choose to keep remains the source of current progress and status. Reading sessions from the removed copies are moved to it, while tags, collections, editions, notes, reviews, quotes, dates, and verified metadata are preserved where appropriate.</p></div></div></section>
 
-    {visibleGroups.length === 0 ? <section className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No duplicate groups to review</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">Your current library scan is clean, or the remaining groups were marked as separate books.</p></section> : <div className="space-y-5">{visibleGroups.map((group) => {
-      const selectedKeeper = keeperByGroup[group.id] ?? group.books[0].id;
-      return <article key={group.id} className="inkbound-panel rounded-3xl p-5 sm:p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><Copy className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><h2 className="min-w-0 truncate font-serif text-xl font-bold text-[var(--ink-ivory)]">{group.books[0].work.title}</h2></div><p className="mt-1 text-xs text-[var(--ink-muted)]">{group.reason === 'isbn' ? 'Exact ISBN match' : 'Exact normalized title + author'} · {group.books.length} copies</p></div><div className="flex flex-col gap-2 min-[430px]:flex-row"><button type="button" onClick={() => ignoreGroup(group.id)} className="quiet-shelf-secondary-action justify-center">Not Duplicates</button><button type="button" onClick={() => mergeGroup(group)} className="quiet-shelf-primary-action justify-center"><Merge className="h-4 w-4" /> Merge Group</button></div></div>
-        <div className="mt-5 grid gap-3 lg:grid-cols-2">{group.books.map((book) => {
-          const edition = activeEdition(book);
-          const selected = selectedKeeper === book.id;
-          return <label key={book.id} className={`flex min-w-0 cursor-pointer gap-3 rounded-2xl border p-3 sm:gap-4 sm:p-4 ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}>
-            <input type="radio" name={`keeper-${group.id}`} value={book.id} checked={selected} onChange={() => setKeeperByGroup((current) => ({ ...current, [group.id]: book.id }))} className="mt-1 h-5 w-5 shrink-0" />
-            <BookCover work={book.work} edition={edition} size="sm" />
-            <span className="min-w-0 flex-1"><strong className="block break-words text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><small className="block break-words text-[var(--ink-muted)]">{book.work.author}</small><span className="mt-2 block text-xs text-[var(--ink-muted)]">{book.status} · {book.progressPercentage}% · {book.rating ? `${book.rating}★` : 'unrated'}</span><span className="mt-1 block break-words text-xs text-[var(--ink-faint)]">ISBN {edition?.isbn13 || edition?.isbn10 || edition?.isbn || 'unknown'} · {edition?.format || 'unknown format'}</span><button type="button" onClick={(event) => { event.preventDefault(); onSelectBook(book); }} className="mt-3 min-h-11 text-xs font-bold text-[var(--ink-mauve)]">Open book details</button>{selected && <span className="mt-2 block text-xs font-bold text-[var(--ink-gold)]">Keep this copy</span>}</span>
-          </label>;
-        })}</div>
-      </article>;
-    })}</div>}
+      <div className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search duplicate groups by title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></div>
+
+      {visibleGroups.length === 0 ? <section className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No duplicate groups to review</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">Your current library scan is clean, or the remaining groups were marked as separate books.</p></section> : <div className="space-y-5">{visibleGroups.map((group) => {
+        const selectedKeeper = keeperByGroup[group.id] ?? group.books[0].id;
+        return <article key={group.id} className="inkbound-panel rounded-3xl p-5 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><Copy className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><h2 className="min-w-0 truncate font-serif text-xl font-bold text-[var(--ink-ivory)]">{group.books[0].work.title}</h2></div><p className="mt-1 text-xs text-[var(--ink-muted)]">{group.reason === 'isbn' ? 'Exact ISBN match' : 'Exact normalized title + author'} · {group.books.length} copies</p></div><div className="flex flex-col gap-2 min-[430px]:flex-row"><button type="button" onClick={() => ignoreGroup(group.id)} className="quiet-shelf-secondary-action justify-center">Not Duplicates</button><button type="button" onClick={() => mergeGroup(group)} className="quiet-shelf-primary-action justify-center"><Merge className="h-4 w-4" /> Merge Group</button></div></div>
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">{group.books.map((book) => {
+            const edition = activeEdition(book);
+            const selected = selectedKeeper === book.id;
+            return <label key={book.id} className={`flex min-w-0 cursor-pointer gap-3 rounded-2xl border p-3 sm:gap-4 sm:p-4 ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}>
+              <input type="radio" name={`keeper-${group.id}`} value={book.id} checked={selected} onChange={() => setKeeperByGroup((current) => ({ ...current, [group.id]: book.id }))} className="mt-1 h-5 w-5 shrink-0" />
+              <BookCover work={book.work} edition={edition} size="sm" />
+              <span className="min-w-0 flex-1"><strong className="block break-words text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><small className="block break-words text-[var(--ink-muted)]">{book.work.author}</small><span className="mt-2 block text-xs text-[var(--ink-muted)]">{book.status} · {book.progressPercentage}% · {book.rating ? `${book.rating}★` : 'unrated'}</span><span className="mt-1 block break-words text-xs text-[var(--ink-faint)]">ISBN {edition?.isbn13 || edition?.isbn10 || edition?.isbn || 'unknown'} · {edition?.format || 'unknown format'}</span><button type="button" onClick={(event) => { event.preventDefault(); onSelectBook(book); }} className="mt-3 min-h-11 text-xs font-bold text-[var(--ink-mauve)]">Open book details</button>{selected && <span className="mt-2 block text-xs font-bold text-[var(--ink-gold)]">Keep this copy</span>}</span>
+            </label>;
+          })}</div>
+        </article>;
+      })}</div>}
+    </section>
   </div>;
 };
