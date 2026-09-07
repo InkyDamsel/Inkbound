@@ -15,7 +15,9 @@ export type ProductFeature =
   | 'completeExport';
 
 const featurePolicy: Record<ProductFeature, FeatureTier> = {
-  batchEdit: 'premium',
+  // Basic library cleanup is core data management. Readers should never need
+  // Premium just to correct imported status, ownership, format, or type in bulk.
+  batchEdit: 'free',
   detailedReports: 'premium',
   advancedInsights: 'premium',
   monthlyWrapped: 'premium',
@@ -47,11 +49,10 @@ export const PRODUCT_POLICY = {
 export const isFeatureAvailableToFree = (feature: ProductFeature) => PRODUCT_POLICY.features[feature] === 'free';
 
 export const PREMIUM_FEATURE_SUMMARY = [
-  'Batch editing for faster library cleanup',
   'Advanced reading insights and detailed reports',
   'Monthly Wrapped and Year in Books reflections',
   'Bookshelf Through Time and deeper reading-history views',
   'Deeper Series Insights',
 ] as const;
 
-export const PREMIUM_UPGRADE_REASON = 'Premium adds advanced insights, batch editing, Wrapped, Year in Books, deeper Series Insights, and historical shelf views.';
+export const PREMIUM_UPGRADE_REASON = 'Premium adds advanced insights, Wrapped, Year in Books, deeper Series Insights, and historical shelf views.';
