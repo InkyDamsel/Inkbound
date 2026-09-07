@@ -29,5 +29,9 @@ export async function syncNativeLibraryLoanReminder(book: UserBookRecord): Promi
 
 export async function syncNativeLibraryLoanReminders(books: UserBookRecord[]): Promise<void> {
   if (!isAndroidRuntime()) return;
-  await Promise.all(books.map(syncNativeLibraryLoanReminder));
+  // A large Inkbound library can contain tens of thousands of records. Only
+  // records that are library loans (or retain loan metadata that may need an old
+  // alarm cancelled) should ever cross the native bridge.
+  const relevant = books.filter((book) => book.ownership === 'borrowed-library' || Boolean(book.libraryLoan));
+  await Promise.all(relevant.map(syncNativeLibraryLoanReminder));
 }
