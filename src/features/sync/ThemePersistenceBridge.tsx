@@ -3,8 +3,9 @@ import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/fires
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { readRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const THEME_STORAGE_KEY = 'inkbound_theme';
+const THEME_STORAGE_KEY = SYNC_STORAGE_KEYS.theme;
 const THEME_POLL_MS = 1500;
 
 type InkboundTheme = 'dark' | 'light';
