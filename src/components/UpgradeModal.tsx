@@ -1,7 +1,10 @@
 import React, { useEffect } from 'react';
-import { Check, Lock, Sparkles, X } from 'lucide-react';
+import { Check, HeartHandshake, Lock, Sparkles, X } from 'lucide-react';
 import { PRODUCT_POLICY } from '../config/productPolicy';
 import { useUserPlan } from '../context/UserPlanContext';
+import { isNativeRuntime } from '../platform/runtimePlatform';
+
+const supportDeveloperUrl = import.meta.env.VITE_SUPPORT_DEVELOPER_URL?.trim();
 
 export const UpgradeModal: React.FC = () => {
   const { isUpgradeModalOpen, closeUpgradeModal, upgradeReason, userPlan } = useUserPlan();
@@ -52,6 +55,23 @@ export const UpgradeModal: React.FC = () => {
               <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>
             </div>
           </div>
+
+          {!isNativeRuntime() && (
+            <div className="rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/5 p-5">
+              <div className="flex items-start gap-3">
+                <HeartHandshake className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Support the developer</h3>
+                  <p className="mt-1 text-sm leading-6 text-[var(--ink-muted)]">Want to help Inkbound keep growing without starting a subscription? You can make a one-time contribution instead. Supporting the developer does not change your plan or unlock Premium features.</p>
+                  {supportDeveloperUrl ? (
+                    <a href={supportDeveloperUrl} target="_blank" rel="noreferrer" className="quiet-shelf-secondary-action mt-4 inline-flex justify-center"><HeartHandshake className="h-4 w-4" /> Support Inkbound</a>
+                  ) : (
+                    <button type="button" disabled className="quiet-shelf-secondary-action mt-4 justify-center opacity-50"><HeartHandshake className="h-4 w-4" /> Support link coming soon</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm leading-6 text-[var(--ink-muted)]"><strong className="text-[var(--ink-ivory)]">Free is a complete reading library.</strong>{' '}Premium is for readers who want a richer record of how, when, and what they read.</div>
 
