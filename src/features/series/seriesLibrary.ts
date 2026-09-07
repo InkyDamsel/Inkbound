@@ -36,30 +36,20 @@ export interface EffectiveSeriesMetadata extends SeriesHint {
 }
 
 const normalizeSeriesName = (value: string) => value.trim().replace(/\s+/g, ' ');
-
-const seriesId = (name: string, author: string) =>
-  `${name}::${author}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
+const seriesId = (name: string, author: string) => `${name}::${author}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const GENERIC_SERIES_NAMES = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition']);
 
 export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
   const trimmed = title.trim();
   if (!trimmed) return null;
-
   const suffix = trimmed.match(/[\[(]([^\])]+)[\])]\s*$/)?.[1]?.trim();
   if (!suffix) return null;
-
   const match = suffix.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*)(\d+(?:\.\d+)?)\s*$/i);
   if (!match) return null;
-
   const name = normalizeSeriesName(match[1].replace(/[,:;\-]+$/g, ''));
   if (name.length < 2 || GENERIC_SERIES_NAMES.has(name.toLowerCase())) return null;
-
   const parsedPosition = Number.parseFloat(match[2]);
-  return {
-    name,
-    position: Number.isFinite(parsedPosition) && parsedPosition >= 0 ? parsedPosition : null,
-  };
+  return { name, position: Number.isFinite(parsedPosition) && parsedPosition >= 0 ? parsedPosition : null };
 }
 
 export function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
@@ -67,54 +57,32 @@ export function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
   if (explicitName) {
     return {
       name: normalizeSeriesName(explicitName),
-      position: typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder)
-        ? book.work.seriesOrder
-        : null,
+      position: typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder) ? book.work.seriesOrder : null,
     };
   }
-
   return inferSeriesHintFromTitle(book.work.title);
 }
 
 /** Canonical resolver for any screen/export that needs the series the reader sees. */
-export function resolveEffectiveSeriesMetadata(
-  book: UserBookRecord,
-  overrides: SeriesOverrides = {},
-): EffectiveSeriesMetadata | null {
+export function resolveEffectiveSeriesMetadata(book: UserBookRecord, overrides: SeriesOverrides = {}): EffectiveSeriesMetadata | null {
   for (const override of Object.values(overrides)) {
     const entry = override.books.find((candidate) => candidate.bookId === book.id);
     if (!entry) continue;
-    return {
-      name: override.name,
-      position: entry.position,
-      label: entry.label?.trim() ?? '',
-      source: 'manual',
-    };
+    return { name: override.name, position: entry.position, label: entry.label?.trim() ?? '', source: 'manual' };
   }
-
   const explicitName = book.work.seriesName?.trim();
-  if (explicitName) {
-    const resolved = resolveSeriesMetadata(book)!;
-    return { ...resolved, label: '', source: 'metadata' };
-  }
-
+  if (explicitName) return { ...resolveSeriesMetadata(book)!, label: '', source: 'metadata' };
   const inferred = inferSeriesHintFromTitle(book.work.title);
   return inferred ? { ...inferred, label: '', source: 'inferred' } : null;
 }
 
-/**
- * Series cards should not repeat source-export suffixes such as
- * "Title (Series Name, #2)" when the surrounding UI already provides the series.
- * This changes presentation only; the canonical imported title stays untouched.
- */
+/** Presentation-only cleanup; the canonical imported title stays untouched. */
 export function seriesBookDisplayTitle(book: UserBookRecord, seriesName?: string): string {
   const title = book.work.title.trim();
   if (/^untitled\b/i.test(title)) return 'Untitled / Upcoming';
-
   const inferred = inferSeriesHintFromTitle(title);
   const sameSeries = inferred && (!seriesName || normalizeSeriesName(inferred.name).toLowerCase() === normalizeSeriesName(seriesName).toLowerCase());
   if (!sameSeries) return title;
-
   const withoutSuffix = title.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
   return withoutSuffix || title;
 }
@@ -133,32 +101,13 @@ export function seriesPositionLabel(book: UserBookRecord, position: number | nul
   return `${positionNoun(book)} ${position}`;
 }
 
-function normalizeSeriesBook(book: UserBookRecord, resolved: SeriesHint | null): UserBookRecord {
-  const isUntitledPlaceholder = Boolean(
-    resolved
-    && /^untitled\b/i.test(book.work.title.trim())
-    && book.status !== 'finished'
-    && book.status !== 'currently-reading',
-  );
-
-  if (!isUntitledPlaceholder || book.ownership === 'none' || book.ownership === 'wishlist') return book;
-  return { ...book, ownership: 'none' };
-}
-
-const summarize = (
-  id: string,
-  name: string,
-  author: string,
-  entries: SeriesBookEntry[],
-  isManual: boolean,
-): SeriesSummary => {
+const summarize = (id: string, name: string, author: string, entries: SeriesBookEntry[], isManual: boolean): SeriesSummary => {
   const ordered = [...entries].sort((a, b) => {
     if (typeof a.position === 'number' && typeof b.position === 'number') return a.position - b.position;
     if (typeof a.position === 'number') return -1;
     if (typeof b.position === 'number') return 1;
     return a.book.work.publicationYear - b.book.work.publicationYear || a.book.work.title.localeCompare(b.book.work.title);
   });
-
   const finishedCount = ordered.filter(({ book }) => book.status === 'finished').length;
   const currentlyReadingCount = ordered.filter(({ book }) => book.status === 'currently-reading').length;
   const tbrCount = ordered.filter(({ book }) => book.status === 'tbr').length;
@@ -168,20 +117,9 @@ const summarize = (
   const subscriptionCount = ordered.filter(({ book }) => book.ownership === 'subscription').length;
   const notOwnedCount = ordered.filter(({ book }) => ['none', 'wishlist'].includes(book.ownership)).length;
   const rated = ordered.map(({ book }) => book.rating).filter((rating): rating is number => typeof rating === 'number' && rating > 0);
-
   return {
-    id,
-    name,
-    author,
-    books: ordered,
-    finishedCount,
-    currentlyReadingCount,
-    tbrCount,
-    unreadCount,
-    ownedCount,
-    borrowedCount,
-    subscriptionCount,
-    notOwnedCount,
+    id, name, author, books: ordered, finishedCount, currentlyReadingCount, tbrCount, unreadCount, ownedCount, borrowedCount,
+    subscriptionCount, notOwnedCount,
     completionPercent: ordered.length ? Math.round((finishedCount / ordered.length) * 100) : 0,
     averageRating: rated.length ? rated.reduce((sum, rating) => sum + rating, 0) / rated.length : null,
     isManual,
@@ -195,42 +133,27 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
 
   Object.values(overrides).forEach((override) => {
     const entries = override.books.flatMap((entry) => {
-      const sourceBook = booksById.get(entry.bookId);
-      if (!sourceBook) return [];
-      manuallyAssignedBookIds.add(sourceBook.id);
-      const resolved = resolveSeriesMetadata(sourceBook) ?? { name: override.name, position: entry.position };
-      const book = normalizeSeriesBook(sourceBook, resolved);
-      return [{
-        book,
-        position: entry.position,
-        displayPosition: seriesPositionLabel(book, entry.position, entry.label),
-      }];
+      const book = booksById.get(entry.bookId);
+      if (!book) return [];
+      manuallyAssignedBookIds.add(book.id);
+      return [{ book, position: entry.position, displayPosition: seriesPositionLabel(book, entry.position, entry.label) }];
     });
     if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
   });
 
   const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[] }>();
-  books.forEach((sourceBook) => {
-    if (manuallyAssignedBookIds.has(sourceBook.id)) return;
-    const resolved = resolveSeriesMetadata(sourceBook);
+  books.forEach((book) => {
+    if (manuallyAssignedBookIds.has(book.id)) return;
+    const resolved = resolveSeriesMetadata(book);
     if (!resolved) return;
-
-    const book = normalizeSeriesBook(sourceBook, resolved);
     const name = resolved.name;
     const author = book.work.author.trim() || 'Unknown author';
     const key = `${name.toLowerCase()}::${author.toLowerCase()}`;
     const current = metadataGroups.get(key) ?? { name, author, entries: [] };
-    current.entries.push({
-      book,
-      position: resolved.position,
-      displayPosition: seriesPositionLabel(book, resolved.position),
-    });
+    current.entries.push({ book, position: resolved.position, displayPosition: seriesPositionLabel(book, resolved.position) });
     metadataGroups.set(key, current);
   });
 
-  metadataGroups.forEach(({ name, author, entries }) => {
-    summaries.push(summarize(seriesId(name, author), name, author, entries, false));
-  });
-
+  metadataGroups.forEach(({ name, author, entries }) => summaries.push(summarize(seriesId(name, author), name, author, entries, false)));
   return summaries.sort((a, b) => a.name.localeCompare(b.name));
 }
