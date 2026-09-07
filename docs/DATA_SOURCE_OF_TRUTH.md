@@ -23,6 +23,17 @@ Types such as `ReadingStatus`, `OwnershipStatus`, `ReadingMaterialType`, `Format
 
 Use this module for status, ownership, reading-material type, format, priority, and subscription-service labels/options. Do not hardcode alternate option lists in individual screens.
 
+## Reading status and progress semantics
+
+**Canonical resolver/mutation helpers:** `src/features/reading/bookReadingState.ts`
+
+- `getActiveEdition()` is the shared active-edition resolver.
+- `getBookReadingState()` is the canonical derived reading-state view.
+- `withReadingStatus()` is the canonical status transition and owns the related started/finished-date and known-endpoint progress rules.
+- `reconcileFinishedBookProgress()` is the narrow legacy/import reconciliation path.
+
+New status-changing surfaces must call these helpers rather than inventing a second set of finish/start rules.
+
 ## Product / Free vs Premium policy
 
 **Canonical policy:** `src/config/productPolicy.ts`
@@ -37,7 +48,7 @@ This owns library limits, subscription availability, planned pricing, and which 
 
 `buildSeriesLibrary()` is the canonical series grouping/summarization path. Other views that group by series should use the resolver instead of reading only `book.work.seriesName`.
 
-Manual series corrections remain in `src/features/series/seriesOverrides.ts` and are inputs to the resolver, not a competing series database.
+Manual series corrections remain in `src/features/series/seriesOverrides.ts` and are inputs to the resolver, not a competing series database. Their persistence key comes from the canonical storage-key registry.
 
 ## Collections
 
@@ -47,7 +58,7 @@ Manual series corrections remain in `src/features/series/seriesOverrides.ts` and
 - Collection definitions provide presentation metadata and smart-collection rules.
 - The My Library → Collections tab embeds this same Collections screen. It must not maintain a second custom-list membership database.
 
-Legacy `inkbound_library_custom_lists` / `inkbound_library_custom_list_members` keys are not authoritative and must not be used for new collection writes.
+Legacy `inkbound_library_custom_lists` / `inkbound_library_custom_list_members` keys are explicitly retired. They are not part of `AUXILIARY_ACCOUNT_KEYS`, are not synced, and must not be used for new collection reads or writes.
 
 ## Help / FAQ content
 
@@ -61,11 +72,25 @@ The in-app Quick Help panel selects a subset from this content. The `/faq` page 
 
 Settings should call these serializers. Export code must use the canonical series resolver and the current `UserBookRecord` fields rather than reimplementing metadata resolution itself.
 
-## Sync storage keys
+## Persistent storage keys
 
 **Canonical key registry:** `src/features/sync/storageKeys.ts`
 
-Cloud/local persistence bridges should import these keys. Adding another hardcoded `inkbound_books`, `inkbound_sessions`, or `inkbound_reader_profile` constant creates drift risk.
+This registry owns core library/session/profile keys, account-owned auxiliary keys, theme, import-enrichment keys, and explicitly retired legacy keys. Sync bridges and feature persistence should consume the registry or a constant derived from it instead of redefining key strings.
+
+`src/features/sync/auxiliaryAccountSyncConfig.ts` defines **which** registered account-data keys are eligible for auxiliary cloud sync. It does not own a second set of values.
+
+## Cloud sync roles
+
+The local runtime copy is the application working source. Cloud code has narrowly separated roles:
+
+- `AdaptiveCloudPersistenceBridge` chooses the appropriate hydration/persistence strategy.
+- `CostSafeCloudPersistenceBridge` persists local canonical changes.
+- `OneShotCloudHydrationBridge` restores an empty/new local cache.
+- `CloudServerRefreshBridge` handles explicit/recovery refreshes rather than acting as an everyday feature data source.
+- Auxiliary/profile/media bridges persist their specific registered account-owned data.
+
+Feature screens must not bypass these boundaries with their own independent Firestore-backed copy of library facts.
 
 ## Derived screens are not data stores
 
