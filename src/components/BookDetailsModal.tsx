@@ -7,6 +7,7 @@ import { openLibrarySeriesForBook } from '../features/library/libraryNavigation'
 import { resolveEffectiveSeriesMetadata, seriesPositionLabel } from '../features/series/seriesLibrary';
 import { readSeriesOverrides } from '../features/series/seriesOverrides';
 import type { Edition, UserBookRecord } from '../types';
+import './bookDetailsResponsive.css';
 
 function normalizeStoredIsbn(value?: string): string | undefined {
   if (!value) return value;
@@ -96,7 +97,7 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
   };
 
   return (
-    <>
+    <div className="book-details-modal-host">
       <BookDetailsModalCore {...props} book={displayBook} onUpdateBook={handleUpdateBook} />
       {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
@@ -113,6 +114,6 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
           <span className="shrink-0 text-[var(--ink-gold)]">View series →</span>
         </button>
       )}
-    </>
+    </div>
   );
 };
