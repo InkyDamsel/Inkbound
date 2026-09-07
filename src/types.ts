@@ -20,7 +20,7 @@ export type ReadingMaterialType =
 
 export type ReadingStatus = 'currently-reading' | 'tbr' | 'finished' | 'paused' | 'dnf' | 'wishlist';
 
-export type OwnershipStatus = 'owned' | 'borrowed-library' | 'borrowed-person' | 'subscription' | 'wishlist' | 'none';
+export type OwnershipStatus = 'owned' | 'borrowed-library' | 'borrowed-person' | 'subscription' | 'wishlist' | 'custom' | 'none';
 
 export type SubscriptionService = 'kindle-unlimited' | 'audible-plus' | 'everand' | 'kobo-plus' | 'libby' | 'hoopla' | 'other';
 
@@ -89,6 +89,7 @@ export interface UserBookRecord {
   editions: Edition[];
   status: ReadingStatus;
   ownership: OwnershipStatus;
+  customOwnershipCategoryId?: string;
   subscriptionService?: SubscriptionService;
   libraryLoan?: LibraryLoan;
   progressPages: number;
