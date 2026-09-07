@@ -1,0 +1,55 @@
+@media (max-width: 639px) {
+  /* The native Android shell is edge-to-edge, so Book Details needs to own the
+     entire mobile viewport instead of behaving like a desktop bottom sheet. */
+  .book-details-modal-host > div.fixed {
+    align-items: stretch !important;
+    padding: 0 !important;
+  }
+
+  .book-details-modal-host > div.fixed > section[role='dialog'] {
+    height: 100dvh;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border-left: 0;
+    border-right: 0;
+  }
+
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header {
+    flex: 0 0 auto;
+    max-height: 44dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Keep enough room for the actual book fields/tabs even on shorter phones. */
+  .book-details-modal-host > div.fixed > section[role='dialog'] > nav {
+    flex: 0 0 auto;
+  }
+
+  .book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
+    min-height: 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* The large desktop cover was consuming too much of the native phone header. */
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header > div > button.shrink-0 > div {
+    width: 5rem !important;
+    height: 7rem !important;
+  }
+
+  /* Cover, metadata sync, and Delete must all remain reachable on a phone. */
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header .quiet-shelf-secondary-action {
+    min-height: 44px;
+    flex: 1 1 auto;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header .quiet-shelf-secondary-action.text-rose-300 {
+    border-color: rgba(251, 113, 133, 0.35);
+    background: rgba(127, 29, 29, 0.18);
+  }
+}
