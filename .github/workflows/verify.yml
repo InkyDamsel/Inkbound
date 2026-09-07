@@ -53,6 +53,9 @@ jobs:
       - name: Critical reading regressions
         run: npm run test:critical
 
+      - name: Verify source-of-truth boundaries
+        run: npm run verify:source-of-truth
+
       - name: Production build
         run: npm run build
 
