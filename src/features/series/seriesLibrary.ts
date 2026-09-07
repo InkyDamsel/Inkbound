@@ -1,5 +1,5 @@
 import { UserBookRecord } from '../../types';
-import { SeriesOverrides } from './seriesOverrides';
+import { orderedSeriesOverrides, SeriesOverrides } from './seriesOverrides';
 
 export interface SeriesBookEntry {
   book: UserBookRecord;
@@ -65,7 +65,7 @@ export function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
 
 /** Canonical resolver for any screen/export that needs the series the reader sees. */
 export function resolveEffectiveSeriesMetadata(book: UserBookRecord, overrides: SeriesOverrides = {}): EffectiveSeriesMetadata | null {
-  for (const override of Object.values(overrides)) {
+  for (const override of orderedSeriesOverrides(overrides)) {
     const entry = override.books.find((candidate) => candidate.bookId === book.id);
     if (!entry) continue;
     return { name: override.name, position: entry.position, label: entry.label?.trim() ?? '', source: 'manual' };
@@ -131,10 +131,10 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
   const manuallyAssignedBookIds = new Set<string>();
   const summaries: SeriesSummary[] = [];
 
-  Object.values(overrides).forEach((override) => {
+  orderedSeriesOverrides(overrides).forEach((override) => {
     const entries = override.books.flatMap((entry) => {
       const book = booksById.get(entry.bookId);
-      if (!book) return [];
+      if (!book || manuallyAssignedBookIds.has(book.id)) return [];
       manuallyAssignedBookIds.add(book.id);
       return [{ book, position: entry.position, displayPosition: seriesPositionLabel(book, entry.position, entry.label) }];
     });
