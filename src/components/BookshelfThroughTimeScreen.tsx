@@ -30,8 +30,10 @@ const themeClasses: Record<ShelfTheme, string> = {
   'midnight-study': 'from-[#171825] via-[#26283a] to-[#101119]',
 };
 
-const themeBackgroundImages: Partial<Record<ShelfTheme, string>> = {
+const themeBackgroundImages: Record<ShelfTheme, string> = {
   'quiet-library': '/assets/library/cozy-bookshelf-background.png',
+  'cozy-evening': '/assets/library/cozy-bookshelf-background.png',
+  'midnight-study': '/assets/library/cozy-bookshelf-background.png',
 };
 
 const shelfWoodClasses: Record<ShelfTheme, string> = {
