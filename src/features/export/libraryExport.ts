@@ -1,6 +1,7 @@
 import { getActiveEdition } from '../reading/bookReadingState';
 import { resolveEffectiveSeriesMetadata } from '../series/seriesLibrary';
 import type { SeriesOverrides } from '../series/seriesOverrides';
+import { readCustomOwnershipCategories } from '../ownership/customOwnershipCategories';
 import type { ReadingSession, UserBookRecord } from '../../types';
 
 const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
@@ -17,13 +18,17 @@ export function buildInkboundBackup(
   seriesOverrides: SeriesOverrides,
   preferences: InkboundExportPreferences,
 ) {
+  const customOwnershipCategories = readCustomOwnershipCategories();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     app: 'Inkbound',
     exportDate: new Date().toISOString(),
     preferences,
     books,
     sessions,
+    ownershipOrganization: {
+      customCategories: customOwnershipCategories,
+    },
     seriesOrganization: {
       overrides: seriesOverrides,
       effectiveByBook: Object.fromEntries(books.map((book) => {
@@ -37,9 +42,11 @@ export function buildInkboundBackup(
 }
 
 export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: SeriesOverrides): string {
+  const customOwnershipCategories = readCustomOwnershipCategories();
+  const ownershipNameById = new Map(customOwnershipCategories.map((category) => [category.id, category.name]));
   const headers = [
     'Title', 'Subtitle', 'Author', 'Reading Material Type', 'Series', 'Series Number', 'Series Label', 'Series Source',
-    'Status', 'Ownership', 'Subscription Service', 'Borrowed Date', 'Library Due Date', 'Rating', 'Format', 'ISBN', 'Page Count',
+    'Status', 'Ownership', 'Custom Ownership Category', 'Subscription Service', 'Borrowed Date', 'Library Due Date', 'Rating', 'Format', 'ISBN', 'Page Count',
     'Pages Read', 'Minutes Listened', 'Progress Percent', 'Date Added', 'Date Started', 'Date Finished', 'Tags', 'Collections',
   ];
 
@@ -57,6 +64,7 @@ export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: Series
       series?.source ?? 'none',
       book.status,
       book.ownership,
+      book.ownership === 'custom' ? ownershipNameById.get(book.customOwnershipCategoryId ?? '') ?? '' : '',
       book.subscriptionService,
       book.libraryLoan?.borrowedDate,
       book.libraryLoan?.dueDate,
