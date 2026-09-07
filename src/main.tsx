@@ -72,13 +72,25 @@ const publicSurface = !isNativeRuntime()
   : null;
 const isPublicSurface = publicSurface !== null;
 const AUTH_OPEN_GRACE_MS = 1800;
+const NATIVE_RUNTIME_TIMEOUT_MS = 15000;
 
-const OpeningScreen = ({ message }: { message: string }) => (
+type OpeningScreenProps = {
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) => (
   <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-[max(1.5rem,env(safe-area-inset-left))] py-[max(1.5rem,env(safe-area-inset-top))] text-center">
     <div className="max-w-sm">
       <div className="mx-auto h-9 w-9 animate-pulse rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]" />
       <p className="mt-4 font-serif text-xl text-[var(--ink-ivory)]">Opening Inkbound</p>
       <p className="mt-2 text-sm text-[var(--ink-muted)]">{message}</p>
+      {actionLabel && onAction && (
+        <button type="button" className="quiet-shelf-secondary-action mt-5 justify-center" onClick={onAction}>
+          {actionLabel}
+        </button>
+      )}
     </div>
   </main>
 );
@@ -95,8 +107,24 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
     getNativeRuntimeError,
   );
 
+  useEffect(() => {
+    if (ready || error || !isAndroidRuntime()) return undefined;
+
+    const timer = window.setTimeout(() => {
+      markNativeRuntimeFailed(new Error('Secure Android services took too long to respond. Check your connection and try again.'));
+    }, NATIVE_RUNTIME_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [ready, error]);
+
   if (error) {
-    return <OpeningScreen message={`Android services could not start: ${error}`} />;
+    return (
+      <OpeningScreen
+        message={`Android services could not start: ${error}`}
+        actionLabel="Try Again"
+        onAction={() => window.location.reload()}
+      />
+    );
   }
 
   if (!ready) {
@@ -208,7 +236,11 @@ void bootstrap().catch((error) => {
   createRoot(rootElement).render(
     <StrictMode>
       <AppErrorBoundary>
-        <OpeningScreen message="Inkbound hit a startup problem. Reload to try again; your library data is safe." />
+        <OpeningScreen
+          message="Inkbound hit a startup problem. Reload to try again; your library data is safe."
+          actionLabel="Reload Inkbound"
+          onAction={() => window.location.reload()}
+        />
       </AppErrorBoundary>
     </StrictMode>,
   );
