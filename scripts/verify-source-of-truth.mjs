@@ -2,14 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const sourceRoot = path.join(root, 'src');
-const registryPath = path.join(sourceRoot, 'features', 'sync', 'storageKeys.ts');
-const registryRelative = path.relative(root, registryPath).replaceAll('\\', '/');
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+const violations = [];
 
-const registrySource = fs.readFileSync(registryPath, 'utf8');
-const registeredKeys = [...new Set(
-  [...registrySource.matchAll(/['"]((?:inkbound|bookhaven)_[a-z0-9_]+)['"]/gi)].map((match) => match[1]),
-)];
+const retiredCollectionKeys = [
+  'inkbound_library_custom_lists',
+  'inkbound_library_custom_list_members',
+];
 
 const sourceFiles = [];
 const walk = (directory) => {
@@ -19,30 +18,79 @@ const walk = (directory) => {
     else if (/\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) sourceFiles.push(absolute);
   }
 };
-walk(sourceRoot);
+walk(path.join(root, 'src'));
 
-const violations = [];
+// Retired collection stores are the kind of true duplicate database this guard is
+// designed to prevent. Their literal names may exist only in the registry where
+// migration/cleanup code can identify old installs.
 for (const file of sourceFiles) {
   const relative = path.relative(root, file).replaceAll('\\', '/');
-  if (relative === registryRelative) continue;
-  const source = fs.readFileSync(file, 'utf8');
-  for (const key of registeredKeys) {
-    if (!source.includes(`'${key}'`) && !source.includes(`"${key}"`) && !source.includes(`\`${key}\``)) continue;
-    violations.push(`${relative}: hardcodes registered storage key ${key}`);
-  }
-}
-
-const retiredCollectionKeys = [
-  'inkbound_library_custom_lists',
-  'inkbound_library_custom_list_members',
-];
-for (const file of sourceFiles) {
-  const relative = path.relative(root, file).replaceAll('\\', '/');
-  if (relative === registryRelative) continue;
+  if (relative === 'src/features/sync/storageKeys.ts') continue;
   const source = fs.readFileSync(file, 'utf8');
   for (const key of retiredCollectionKeys) {
     if (source.includes(key)) violations.push(`${relative}: references retired collection store ${key}`);
   }
+}
+
+const auxiliaryConfig = read('src/features/sync/auxiliaryAccountSyncConfig.ts');
+if (/libraryCustomLists\s*:|libraryCustomListMembers\s*:/.test(auxiliaryConfig)) {
+  violations.push('auxiliaryAccountSyncConfig.ts: retired collection stores must not be cloud-synced');
+}
+
+const libraryScreen = read('src/components/LibraryScreen.tsx');
+if (/customListMemberships|inkbound_library_custom_lists|inkbound_library_custom_list_members/.test(libraryScreen)) {
+  violations.push('LibraryScreen.tsx: My Library must not own a second collection-membership store');
+}
+if (!libraryScreen.includes('<CollectionsScreen')) {
+  violations.push('LibraryScreen.tsx: My Library Collections must render the canonical CollectionsScreen');
+}
+
+const tbrScreen = read('src/components/TBRScreen.tsx');
+if (!tbrScreen.includes('resolveEffectiveSeriesMetadata')) {
+  violations.push('TBRScreen.tsx: series grouping must use the canonical effective-series resolver');
+}
+
+const settingsScreen = read('src/components/SettingsScreen.tsx');
+for (const required of ['buildInkboundBackup', 'buildLibraryCsv', 'PREMIUM_UPGRADE_REASON']) {
+  if (!settingsScreen.includes(required)) violations.push(`SettingsScreen.tsx: missing canonical ${required} consumer`);
+}
+
+const upgradeModal = read('src/components/UpgradeModal.tsx');
+if (!upgradeModal.includes('PRODUCT_POLICY')) {
+  violations.push('UpgradeModal.tsx: pricing and feature tiers must come from PRODUCT_POLICY');
+}
+
+const publicWebsite = read('src/components/PublicWebsite.tsx');
+if (!publicWebsite.includes('PREMIUM_FEATURE_SUMMARY')) {
+  violations.push('PublicWebsite.tsx: Premium marketing summary must use canonical product policy copy');
+}
+
+for (const relative of [
+  'src/components/AddBookModal.tsx',
+  'src/components/BatchEditModal.tsx',
+  'src/components/LibraryScreen.tsx',
+]) {
+  const source = read(relative);
+  if (!source.includes('libraryTaxonomy')) {
+    violations.push(`${relative}: library value labels/options must consume libraryTaxonomy`);
+  }
+}
+
+const main = read('src/main.tsx');
+if (/from ['"].*CloudPersistenceBridge['"]/.test(main) && !main.includes('AdaptiveCloudPersistenceBridge')) {
+  violations.push('main.tsx: legacy CloudPersistenceBridge must not replace the adaptive canonical sync path');
+}
+
+const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
+for (const required of [
+  'src/domain/libraryTaxonomy.ts',
+  'src/config/productPolicy.ts',
+  'src/features/series/seriesLibrary.ts',
+  'src/features/export/libraryExport.ts',
+  'src/features/sync/storageKeys.ts',
+  'src/features/reading/bookReadingState.ts',
+]) {
+  if (!sourceOfTruthDoc.includes(required)) violations.push(`DATA_SOURCE_OF_TRUTH.md: missing ${required}`);
 }
 
 if (violations.length) {
@@ -51,4 +99,4 @@ if (violations.length) {
   process.exit(1);
 }
 
-console.log(`Inkbound source-of-truth storage verification passed (${registeredKeys.length} registered keys).`);
+console.log('Inkbound source-of-truth boundary verification passed.');
