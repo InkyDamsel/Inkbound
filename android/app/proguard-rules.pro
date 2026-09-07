@@ -5,6 +5,13 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
+# Inkbound does not ship Facebook authentication. The Capacitor Firebase
+# Authentication plugin still contains optional Facebook provider handlers,
+# which makes R8 look for the Facebook SDK even though those code paths are
+# unused. Suppress those optional references so release shrinking can remove
+# the handlers instead of forcing the Facebook SDK into the app bundle.
+-dontwarn com.facebook.**
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:
