@@ -77,6 +77,11 @@ export interface FavoriteQuote {
   note?: string;
 }
 
+export interface LibraryLoan {
+  borrowedDate?: string;
+  dueDate?: string;
+}
+
 export interface UserBookRecord {
   id: string;
   work: BookWork;
@@ -85,6 +90,7 @@ export interface UserBookRecord {
   status: ReadingStatus;
   ownership: OwnershipStatus;
   subscriptionService?: SubscriptionService;
+  libraryLoan?: LibraryLoan;
   progressPages: number;
   progressMinutes: number;
   progressPercentage: number;
