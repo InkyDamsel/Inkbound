@@ -41,7 +41,7 @@ export const AUXILIARY_ACCOUNT_KEYS = {
   achievementSeen: ACCOUNT_DATA_STORAGE_KEYS.achievementSeen,
 } as const;
 
-/** Retired stores that may exist on older devices but are never authoritative. */
+/** Retired stores are named here only for migration/cleanup tooling. They are never synced. */
 export const LEGACY_AUXILIARY_ACCOUNT_KEYS = [
   LEGACY_SYNC_STORAGE_KEYS.libraryCustomLists,
   LEGACY_SYNC_STORAGE_KEYS.libraryCustomListMembers,
@@ -57,12 +57,12 @@ export const getAuxiliaryKeysToClearForOwnerChange = (
   previousOwnerUid: string | null,
   nextOwnerUid: string,
 ) => previousOwnerUid && previousOwnerUid !== nextOwnerUid
-  ? [...Object.values(AUXILIARY_ACCOUNT_KEYS), ...LEGACY_AUXILIARY_ACCOUNT_KEYS, READING_MEMORIES_ACCOUNT_KEY]
+  ? [...Object.values(AUXILIARY_ACCOUNT_KEYS), READING_MEMORIES_ACCOUNT_KEY]
   : [];
 
 export const getAccountOwnedKeysToClearForOwnerChange = (
   previousOwnerUid: string | null,
   nextOwnerUid: string,
 ) => previousOwnerUid && previousOwnerUid !== nextOwnerUid
-  ? [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS), ...LEGACY_AUXILIARY_ACCOUNT_KEYS, READING_MEMORIES_ACCOUNT_KEY]
+  ? [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS), READING_MEMORIES_ACCOUNT_KEY]
   : [];
