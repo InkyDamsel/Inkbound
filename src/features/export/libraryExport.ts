@@ -39,7 +39,7 @@ export function buildInkboundBackup(
 export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: SeriesOverrides): string {
   const headers = [
     'Title', 'Subtitle', 'Author', 'Reading Material Type', 'Series', 'Series Number', 'Series Label', 'Series Source',
-    'Status', 'Ownership', 'Subscription Service', 'Rating', 'Format', 'ISBN', 'Page Count',
+    'Status', 'Ownership', 'Subscription Service', 'Borrowed Date', 'Library Due Date', 'Rating', 'Format', 'ISBN', 'Page Count',
     'Pages Read', 'Minutes Listened', 'Progress Percent', 'Date Added', 'Date Started', 'Date Finished', 'Tags', 'Collections',
   ];
 
@@ -58,6 +58,8 @@ export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: Series
       book.status,
       book.ownership,
       book.subscriptionService,
+      book.libraryLoan?.borrowedDate,
+      book.libraryLoan?.dueDate,
       book.rating,
       activeEdition?.format,
       activeEdition?.isbn13 ?? activeEdition?.isbn10 ?? activeEdition?.isbn,
