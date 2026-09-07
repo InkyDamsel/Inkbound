@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, Square, Star, X } from 'lucide-react';
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
+import { replaceCanonicalBook } from '../features/library/libraryMutations';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
 import { usePersistentState } from '../hooks/usePersistentState';
 import type { UserBookRecord } from '../types';
@@ -17,7 +18,7 @@ interface LibraryScreenProps {
   onSelectAll: (ids: string[]) => void;
   onClearSelection: () => void;
   onSelectBook: (book: UserBookRecord) => void;
-  onUpdateBook: (book: UserBookRecord) => void;
+  onUpdateBook?: (book: UserBookRecord) => void;
   onOpenBatchEdit: () => void;
   onOpenAddBook: () => void;
 }
@@ -61,6 +62,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
 
+  const updateLibraryBook = onUpdateBook ?? ((book: UserBookRecord) => replaceCanonicalBook(books, book));
   const allGenres = useMemo(() => Array.from(new Set(books.flatMap((book) => book.work.genres))).sort(), [books]);
 
   const filteredBooks = useMemo(() => books.filter((book) => {
@@ -129,7 +131,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       {section === 'series' ? (
         <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} />
       ) : section === 'collections' ? (
-        <CollectionsScreen books={books} onUpdateBook={onUpdateBook} onSelectBook={onSelectBook} />
+        <CollectionsScreen books={books} onUpdateBook={updateLibraryBook} onSelectBook={onSelectBook} />
       ) : <>
         <section className="inkbound-panel p-4 sm:p-5">
           <div className="flex gap-2 overflow-x-auto pb-2">{statusTabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold ${activeTab === tab.id ? 'border-[#d8ae54] bg-[#c5a059] text-[#171015]' : 'border-transparent bg-[#1d1422] text-[#cfc2cf]'}`}>{tab.label}</button>)}</div>
