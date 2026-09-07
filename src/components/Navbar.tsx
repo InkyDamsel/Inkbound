@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3, Bell, BookHeart, BookMarked, BookOpen, Bookmark, CalendarClock, CalendarDays,
-  ChevronDown, Clock3, Copy, DownloadCloud, FolderHeart, History, Home, Images, Library, Moon,
+  ChevronDown, Clock3, Copy, DownloadCloud, History, Home, Images, Library, Moon,
   MoreHorizontal, Palette, Plus, Search, Settings, ShieldCheck, Sparkles, Sun, Target, Trophy, UserRound, X,
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
@@ -41,7 +41,7 @@ const homeItem: NavigationItem = { id: 'home', label: 'Home', icon: Home };
 const navigationGroups: NavigationGroup[] = [
   { id: 'reading', label: 'Reading', items: [
     { id: 'library', label: 'My Library', icon: Library },
-    { id: 'sessions', label: 'Reading Sessions', icon: Clock3 }, { id: 'collections', label: 'Collections', icon: FolderHeart },
+    { id: 'sessions', label: 'Reading Sessions', icon: Clock3 },
     { id: 'import', label: 'Import', icon: DownloadCloud },
   ]},
   { id: 'journal', label: 'Journal', items: [
