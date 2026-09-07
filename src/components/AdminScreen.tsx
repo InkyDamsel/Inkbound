@@ -37,6 +37,8 @@ interface DashboardData {
 }
 
 const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
+const READER_PAGE_SIZE = 10;
+const AUDIT_PAGE_SIZE = 10;
 
 let cachedDashboard: DashboardData | null = null;
 let cachedSelectedUserId: string | null = null;
@@ -69,6 +71,38 @@ function normalizeDashboardPayload(value: unknown): DashboardData {
   throw new Error('The Administration service returned an unexpected response shape.');
 }
 
+const PaginationControls: React.FC<{
+  page: number;
+  pageCount: number;
+  onPageChange: (page: number) => void;
+}> = ({ page, pageCount, onPageChange }) => {
+  if (pageCount <= 1) return null;
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 border-t border-[var(--ink-border-subtle)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-xs text-[var(--ink-muted)]">Page {page} of {pageCount}</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          className="quiet-shelf-secondary-action min-h-10 justify-center px-3 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(pageCount, page + 1))}
+          disabled={page >= pageCount}
+          className="quiet-shelf-secondary-action min-h-10 justify-center px-3 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const AdminScreen: React.FC = () => {
   const { user } = useAccountSync();
   const [query, setQuery] = useState('');
@@ -87,8 +121,20 @@ export const AdminScreen: React.FC = () => {
   const [eraseConfirmation, setEraseConfirmation] = useState('');
   const [eraseReason, setEraseReason] = useState('');
   const [erasing, setErasing] = useState(false);
+  const [readerPage, setReaderPage] = useState(1);
+  const [auditPage, setAuditPage] = useState(1);
 
   const approvedOwner = Boolean(user?.email && OWNER_EMAILS.has(user.email.toLowerCase()));
+
+  const readerPageCount = Math.max(1, Math.ceil((data?.users.length ?? 0) / READER_PAGE_SIZE));
+  const safeReaderPage = Math.min(readerPage, readerPageCount);
+  const readerStartIndex = (safeReaderPage - 1) * READER_PAGE_SIZE;
+  const visibleReaders = data?.users.slice(readerStartIndex, readerStartIndex + READER_PAGE_SIZE) ?? [];
+
+  const auditPageCount = Math.max(1, Math.ceil((data?.audit.length ?? 0) / AUDIT_PAGE_SIZE));
+  const safeAuditPage = Math.min(auditPage, auditPageCount);
+  const auditStartIndex = (safeAuditPage - 1) * AUDIT_PAGE_SIZE;
+  const visibleAudit = data?.audit.slice(auditStartIndex, auditStartIndex + AUDIT_PAGE_SIZE) ?? [];
 
   const selectReader = (reader: AdminUser) => {
     cachedSelectedUserId = reader.uid;
@@ -125,6 +171,8 @@ export const AdminScreen: React.FC = () => {
       cachedSelectedUserId = nextSelected?.uid ?? null;
       setData(dashboard);
       setSelectedUser(nextSelected);
+      setReaderPage(1);
+      setAuditPage(1);
       setStatus('Owner data refreshed.');
     } catch (error) {
       setStatus(error instanceof Error ? `Administration refresh failed: ${error.message}` : 'The admin dashboard could not be loaded.');
@@ -239,8 +287,10 @@ export const AdminScreen: React.FC = () => {
 
       <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.7fr)]">
         <div className="inkbound-panel min-w-0 p-5">
-          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Readers</h2><p className="text-sm text-[var(--ink-muted)]">Search by name, email, or Firebase UID.</p></div><form onSubmit={(event) => { event.preventDefault(); void loadDashboard(query); }} className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row"><label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3"><Search className="h-4 w-4 shrink-0 text-[var(--ink-muted)]" /><input id="admin-reader-search" name="adminReaderSearch" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search readers" className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink-ivory)] outline-none" /></label><button className="quiet-shelf-primary-action w-full justify-center sm:w-auto" type="submit" disabled={loading}>Search</button></form></div>
-          <div className="mt-5 grid gap-2">{data === null ? <p className="py-8 text-center text-[var(--ink-muted)]">Press Refresh to load owner data.</p> : data.users.length ? data.users.map((reader) => <button key={reader.uid} type="button" onClick={() => selectReader(reader)} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-3 text-left transition ${selectedUser?.uid === reader.uid ? 'border-[var(--ink-mauve)] bg-[var(--ink-surface-soft)]' : 'border-[var(--ink-border-subtle)] hover:bg-[var(--ink-surface-soft)]'}`}>{reader.photoUrl ? <img src={reader.photoUrl} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" /> : <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--ink-surface-raised)] font-serif text-[var(--ink-ivory)]">{(reader.displayName || reader.email).charAt(0).toUpperCase()}</span>}<span className="min-w-0 flex-1"><strong className="block truncate text-[var(--ink-ivory)]">{reader.displayName || 'Unnamed reader'}</strong><small className="block truncate text-[var(--ink-muted)]">{reader.email}</small></span>{reader.vipEnabled && <span className="quiet-shelf-premium-pill shrink-0">VIP</span>}</button>) : <p className="py-8 text-center text-[var(--ink-muted)]">No matching readers found.</p>}</div>
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Readers</h2><p className="text-sm text-[var(--ink-muted)]">Search by name, email, or Firebase UID.</p></div><form onSubmit={(event) => { event.preventDefault(); setReaderPage(1); void loadDashboard(query); }} className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row"><label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3"><Search className="h-4 w-4 shrink-0 text-[var(--ink-muted)]" /><input id="admin-reader-search" name="adminReaderSearch" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search readers" className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ink-ivory)] outline-none" /></label><button className="quiet-shelf-primary-action w-full justify-center sm:w-auto" type="submit" disabled={loading}>Search</button></form></div>
+          {data && data.users.length > 0 && <p className="mt-4 text-xs text-[var(--ink-muted)]">Showing {readerStartIndex + 1}–{Math.min(readerStartIndex + READER_PAGE_SIZE, data.users.length)} of {data.users.length} readers</p>}
+          <div className="mt-4 grid gap-2">{data === null ? <p className="py-8 text-center text-[var(--ink-muted)]">Press Refresh to load owner data.</p> : data.users.length ? visibleReaders.map((reader) => <button key={reader.uid} type="button" onClick={() => selectReader(reader)} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-3 text-left transition ${selectedUser?.uid === reader.uid ? 'border-[var(--ink-mauve)] bg-[var(--ink-surface-soft)]' : 'border-[var(--ink-border-subtle)] hover:bg-[var(--ink-surface-soft)]'}`}>{reader.photoUrl ? <img src={reader.photoUrl} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" /> : <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--ink-surface-raised)] font-serif text-[var(--ink-ivory)]">{(reader.displayName || reader.email).charAt(0).toUpperCase()}</span>}<span className="min-w-0 flex-1"><strong className="block truncate text-[var(--ink-ivory)]">{reader.displayName || 'Unnamed reader'}</strong><small className="block truncate text-[var(--ink-muted)]">{reader.email}</small></span>{reader.vipEnabled && <span className="quiet-shelf-premium-pill shrink-0">VIP</span>}</button>) : <p className="py-8 text-center text-[var(--ink-muted)]">No matching readers found.</p>}</div>
+          <PaginationControls page={safeReaderPage} pageCount={readerPageCount} onPageChange={setReaderPage} />
         </div>
 
         <aside className="inkbound-panel min-w-0 p-5">
@@ -275,7 +325,16 @@ export const AdminScreen: React.FC = () => {
 
       <AdminCatalogContributionsPanel />
 
-      <section className="inkbound-panel min-w-0 p-5"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Recent admin activity</h2><div className="mt-4 divide-y divide-[var(--ink-border-subtle)]">{data?.audit.length ? data.audit.map((entry) => <article key={entry.id} className="grid min-w-0 gap-1 py-3 md:grid-cols-[180px_1fr_1fr]"><span className="text-sm text-[var(--ink-muted)]">{formatDate(entry.createdAt)}</span><strong className="break-words text-sm text-[var(--ink-ivory)]">{entry.action.replaceAll('_', ' ')} · {entry.targetEmail || 'Unknown reader'}</strong><span className="break-words text-sm text-[var(--ink-muted)]">{entry.reason}</span></article>) : <p className="py-6 text-[var(--ink-muted)]">No admin activity yet.</p>}</div></section>
+      <section className="inkbound-panel min-w-0 p-5">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Recent admin activity</h2>
+            {data && data.audit.length > 0 && <p className="mt-1 text-xs text-[var(--ink-muted)]">Showing {auditStartIndex + 1}–{Math.min(auditStartIndex + AUDIT_PAGE_SIZE, data.audit.length)} of {data.audit.length} entries</p>}
+          </div>
+        </div>
+        <div className="mt-4 divide-y divide-[var(--ink-border-subtle)]">{data?.audit.length ? visibleAudit.map((entry) => <article key={entry.id} className="grid min-w-0 gap-1 py-3 md:grid-cols-[180px_1fr_1fr]"><span className="text-sm text-[var(--ink-muted)]">{formatDate(entry.createdAt)}</span><strong className="break-words text-sm text-[var(--ink-ivory)]">{entry.action.replaceAll('_', ' ')} · {entry.targetEmail || 'Unknown reader'}</strong><span className="break-words text-sm text-[var(--ink-muted)]">{entry.reason}</span></article>) : <p className="py-6 text-[var(--ink-muted)]">No admin activity yet.</p>}</div>
+        <PaginationControls page={safeAuditPage} pageCount={auditPageCount} onPageChange={setAuditPage} />
+      </section>
 
       {eraseDialogOpen && selectedUser && (
         <div className="fixed inset-0 z-[280] grid place-items-center overflow-y-auto bg-black/85 p-4 backdrop-blur-sm" onClick={() => !erasing && setEraseDialogOpen(false)}>
