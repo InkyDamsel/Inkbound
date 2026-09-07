@@ -48,6 +48,7 @@ export const OWNERSHIP_OPTIONS: LibraryOption<OwnershipStatus>[] = [
   { value: 'borrowed-person', label: 'Borrowed from someone' },
   { value: 'subscription', label: 'Subscription access' },
   { value: 'wishlist', label: 'Wishlist' },
+  { value: 'custom', label: 'Custom', description: 'Use a reader-defined ownership category.' },
   { value: 'none', label: 'Not owned' },
 ];
 
