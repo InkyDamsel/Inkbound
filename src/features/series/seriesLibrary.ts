@@ -1,5 +1,5 @@
 import { UserBookRecord } from '../../types';
-import { normalizeSeriesPositionLabel, SeriesOverrides } from './seriesOverrides';
+import { SeriesOverrides } from './seriesOverrides';
 
 export interface SeriesBookEntry {
   book: UserBookRecord;
@@ -102,6 +102,37 @@ export function resolveEffectiveSeriesMetadata(
   return inferred ? { ...inferred, label: '', source: 'inferred' } : null;
 }
 
+/**
+ * Series cards should not repeat source-export suffixes such as
+ * "Title (Series Name, #2)" when the surrounding UI already provides the series.
+ * This changes presentation only; the canonical imported title stays untouched.
+ */
+export function seriesBookDisplayTitle(book: UserBookRecord, seriesName?: string): string {
+  const title = book.work.title.trim();
+  if (/^untitled\b/i.test(title)) return 'Untitled / Upcoming';
+
+  const inferred = inferSeriesHintFromTitle(title);
+  const sameSeries = inferred && (!seriesName || normalizeSeriesName(inferred.name).toLowerCase() === normalizeSeriesName(seriesName).toLowerCase());
+  if (!sameSeries) return title;
+
+  const withoutSuffix = title.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
+  return withoutSuffix || title;
+}
+
+const positionNoun = (book: UserBookRecord) => {
+  const type = book.work.materialType ?? 'book';
+  if (type === 'manga' || type === 'light-novel') return 'Volume';
+  if (type === 'comic' || type === 'magazine') return 'Issue';
+  return 'Book';
+};
+
+export function seriesPositionLabel(book: UserBookRecord, position: number | null, customLabel?: string): string {
+  const custom = customLabel?.trim();
+  if (custom) return custom;
+  if (typeof position !== 'number' || !Number.isFinite(position)) return 'Series item';
+  return `${positionNoun(book)} ${position}`;
+}
+
 function normalizeSeriesBook(book: UserBookRecord, resolved: SeriesHint | null): UserBookRecord {
   const isUntitledPlaceholder = Boolean(
     resolved
@@ -110,7 +141,7 @@ function normalizeSeriesBook(book: UserBookRecord, resolved: SeriesHint | null):
     && book.status !== 'currently-reading',
   );
 
-  if (!isUntitledPlaceholder || book.ownership !== 'owned') return book;
+  if (!isUntitledPlaceholder || book.ownership === 'none' || book.ownership === 'wishlist') return book;
   return { ...book, ownership: 'none' };
 }
 
@@ -172,7 +203,7 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
       return [{
         book,
         position: entry.position,
-        displayPosition: normalizeSeriesPositionLabel(entry.position, entry.label),
+        displayPosition: seriesPositionLabel(book, entry.position, entry.label),
       }];
     });
     if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
@@ -192,7 +223,7 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     current.entries.push({
       book,
       position: resolved.position,
-      displayPosition: normalizeSeriesPositionLabel(resolved.position),
+      displayPosition: seriesPositionLabel(book, resolved.position),
     });
     metadataGroups.set(key, current);
   });
