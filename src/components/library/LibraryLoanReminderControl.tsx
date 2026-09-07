@@ -44,10 +44,14 @@ export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProp
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[215] flex items-center gap-2 rounded-full border border-[var(--ink-gold)]/35 bg-[#17101b]/95 px-4 py-3 text-xs font-semibold text-[var(--ink-ivory)] shadow-2xl backdrop-blur-md"
+        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[215] flex w-[min(calc(100vw-2rem),42rem)] -translate-x-1/2 items-center justify-center gap-3 rounded-2xl border border-[var(--ink-gold)]/45 bg-[#211526]/98 px-5 py-4 text-sm font-semibold text-[var(--ink-ivory)] shadow-2xl backdrop-blur-md transition hover:border-[var(--ink-gold)]/70 hover:bg-[#281a2e] sm:bottom-6 sm:w-auto sm:min-w-[22rem] sm:rounded-full sm:px-6 sm:py-3.5"
+        aria-label={dueDate ? `Edit library return date. Due ${dueDate}` : 'Add library borrowed and return dates'}
       >
-        <CalendarClock className="h-4 w-4 text-[var(--ink-gold)]" />
-        <span>{dueDate ? `Library due ${dueDate}` : 'Add library return date'}</span>
+        <CalendarClock className="h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
+        <span className="min-w-0 text-center">
+          <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink-gold)]">Library loan</span>
+          <span className="block truncate">{dueDate ? `Due back ${dueDate} · Edit dates` : 'Add borrowed & due dates'}</span>
+        </span>
       </button>
 
       {open && (
