@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { BookOpen } from 'lucide-react';
 import { BookDetailsModal as BookDetailsModalCore } from './BookDetailsModalCore';
 import { CatalogContributionLauncher } from './catalog/CatalogContributionLauncher';
+import { EditionLccnControl } from './edition/EditionLccnControl';
 import { LibraryLoanReminderControl } from './library/LibraryLoanReminderControl';
 import { FinishOnTimeControl } from './reading/FinishOnTimeControl';
 import { openLibrarySeriesForBook } from '../features/library/libraryNavigation';
@@ -28,6 +29,7 @@ function normalizeEditionIdentifiers(edition: Edition): Edition {
     isbn,
     isbn10,
     isbn13,
+    lccn: edition.lccn?.trim() || undefined,
   };
 }
 
@@ -68,8 +70,8 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
 
   useEffect(() => {
     if (!props.book || !normalizedBook) return;
-    const before = props.book.editions.map((edition) => [edition.isbn, edition.isbn10, edition.isbn13]);
-    const after = normalizedBook.editions.map((edition) => [edition.isbn, edition.isbn10, edition.isbn13]);
+    const before = props.book.editions.map((edition) => [edition.isbn, edition.isbn10, edition.isbn13, edition.lccn]);
+    const after = normalizedBook.editions.map((edition) => [edition.isbn, edition.isbn10, edition.isbn13, edition.lccn]);
     if (JSON.stringify(before) !== JSON.stringify(after)) props.onUpdateBook(normalizedBook);
   }, [normalizedBook, props.book, props.onUpdateBook]);
 
@@ -101,6 +103,7 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
     <div className="book-details-modal-host">
       <BookDetailsModalCore {...props} book={displayBook} onUpdateBook={handleUpdateBook} />
       {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
+      {normalizedBook && <EditionLccnControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && effectiveSeries && (
