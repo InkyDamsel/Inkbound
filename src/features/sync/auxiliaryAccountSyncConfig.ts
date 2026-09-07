@@ -27,6 +27,7 @@ export const READING_MEMORIES_ACCOUNT_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingMem
 export const AUXILIARY_ACCOUNT_KEYS = {
   collectionDefinitions: ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions,
   seriesOverrides: ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides,
+  customOwnershipCategories: ACCOUNT_DATA_STORAGE_KEYS.customOwnershipCategories,
   annualReadingGoal: ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal,
   dailyReadingGoalMinutes: ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes,
   timelineMemories: ACCOUNT_DATA_STORAGE_KEYS.timelineMemories,
