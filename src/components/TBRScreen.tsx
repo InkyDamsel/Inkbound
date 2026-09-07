@@ -1,9 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import { UserBookRecord, Priority } from '../types';
-import { BookCover } from './BookCover';
-import { TBRBookGrid } from './tbr/TBRBookGrid';
-import { TBRGroupedBookGrid } from './tbr/TBRGroupedBookGrid';
-import { TBRSummaryGrid } from './tbr/TBRSummaryGrid';
 import {
   ArrowRight,
   Bookmark,
@@ -16,11 +11,21 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import { FORMAT_OPTIONS, priorityLabel } from '../domain/libraryTaxonomy';
+import { getActiveEdition } from '../features/reading/bookReadingState';
+import { resolveEffectiveSeriesMetadata } from '../features/series/seriesLibrary';
+import { SERIES_OVERRIDES_STORAGE_KEY, type SeriesOverrides } from '../features/series/seriesOverrides';
+import { usePersistentState } from '../hooks/usePersistentState';
+import type { Priority, ReadingStatus, UserBookRecord } from '../types';
+import { BookCover } from './BookCover';
+import { TBRBookGrid } from './tbr/TBRBookGrid';
+import { TBRGroupedBookGrid } from './tbr/TBRGroupedBookGrid';
+import { TBRSummaryGrid } from './tbr/TBRSummaryGrid';
 
 interface TBRScreenProps {
   books: UserBookRecord[];
   onSelectBook: (book: UserBookRecord) => void;
-  onUpdateStatus: (bookId: string, status: any) => void;
+  onUpdateStatus: (bookId: string, status: ReadingStatus) => void;
   onUpdatePriority: (bookId: string, priority: Priority) => void;
 }
 
@@ -32,16 +37,6 @@ const priorityOrder: Record<Priority, number> = {
   medium: 3,
   low: 4,
 };
-
-const priorityLabels: Record<Priority, string> = {
-  top: 'Read Next',
-  high: 'High Priority',
-  medium: 'Someday Soon',
-  low: 'Back Shelf',
-};
-
-const getActiveEdition = (book: UserBookRecord) =>
-  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 
 export const TBRScreen: React.FC<TBRScreenProps> = ({
   books,
@@ -58,6 +53,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
   const [pickerOwnedOnly, setPickerOwnedOnly] = useState(false);
   const [recommendedBook, setRecommendedBook] = useState<UserBookRecord | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
+  const [seriesOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
 
   const tbrBooks = useMemo(() => books.filter((book) => book.status === 'tbr'), [books]);
 
@@ -73,11 +69,11 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
 
   const seriesGroups = useMemo(() => {
     return tbrBooks.reduce<Record<string, UserBookRecord[]>>((groups, book) => {
-      const key = book.work.seriesName || 'Standalone Titles';
+      const key = resolveEffectiveSeriesMetadata(book, seriesOverrides)?.name ?? 'Standalone Titles';
       groups[key] = [...(groups[key] || []), book];
       return groups;
     }, {});
-  }, [tbrBooks]);
+  }, [seriesOverrides, tbrBooks]);
 
   const genreGroups = useMemo(() => {
     return tbrBooks.reduce<Record<string, UserBookRecord[]>>((groups, book) => {
@@ -133,7 +129,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
             <p className="inkbound-kicker">Your future reading</p>
             <h1 className="inkbound-page-title">To Be Read</h1>
             <p className="inkbound-page-copy mt-3">
-              Keep the books that caught your attention, remember why they mattered, and shape a queue that feels personal rather than endless.
+              Keep the reading material that caught your attention, remember why it mattered, and shape a queue that feels personal rather than endless.
             </p>
           </div>
 
@@ -153,7 +149,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {[
-            { id: 'grid' as TbrView, label: 'All Books', icon: LayoutGrid },
+            { id: 'grid' as TbrView, label: 'All Items', icon: LayoutGrid },
             { id: 'queue' as TbrView, label: 'Priority Queue', icon: List },
             { id: 'series' as TbrView, label: 'By Series', icon: Layers },
             { id: 'genre' as TbrView, label: 'By Genre', icon: Filter },
@@ -178,7 +174,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
           })}
         </div>
 
-        <p className="text-xs text-[var(--ink-muted)]">{ownedCount} of these books are already owned.</p>
+        <p className="text-xs text-[var(--ink-muted)]">{ownedCount} of these items are already owned.</p>
       </div>
 
       {tbrBooks.length === 0 ? (
@@ -186,7 +182,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
           <Bookmark className="mx-auto h-10 w-10 text-[var(--ink-gold)]" />
           <h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">Your TBR is clear</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-[var(--ink-muted)]">
-            Books you mark as To Be Read will collect here with their priority and the reason you saved them.
+            Reading material you mark as To Be Read will collect here with its priority and the reason you saved it.
           </p>
         </div>
       ) : tbrView === 'grid' ? (
@@ -205,9 +201,9 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
               <section key={priority} className="inkbound-panel p-5">
                 <div className="mb-4 flex items-center justify-between border-b border-[var(--ink-border-subtle)] pb-4">
                   <div>
-                    <p className="inkbound-kicker">{priorityLabels[priority]}</p>
+                    <p className="inkbound-kicker">{priorityLabel(priority)}</p>
                     <h2 className="mt-1 font-serif text-2xl text-[var(--ink-ivory)]">
-                      {group.length} book{group.length === 1 ? '' : 's'}
+                      {group.length} item{group.length === 1 ? '' : 's'}
                     </h2>
                   </div>
                 </div>
@@ -274,10 +270,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
                 Format
                 <select value={pickerFormat} onChange={(event) => setPickerFormat(event.target.value)} className="inkbound-select mt-2 w-full">
                   <option value="all">Any active format</option>
-                  <option value="hardcover">Hardcover</option>
-                  <option value="paperback">Paperback</option>
-                  <option value="ebook">Ebook</option>
-                  <option value="audiobook">Audiobook</option>
+                  {FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
 
@@ -294,7 +287,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
 
             <label className="mt-4 flex min-h-11 items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] px-3 text-xs text-[var(--ink-muted)]">
               <input type="checkbox" checked={pickerOwnedOnly} onChange={(event) => setPickerOwnedOnly(event.target.checked)} className="h-5 w-5" />
-              Only choose from books I own
+              Only choose from items I own
             </label>
 
             <div className="mt-6">
@@ -335,7 +328,7 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
               ) : (
                 <button type="button" onClick={handleChooseNextRead} className="quiet-shelf-primary-action w-full min-h-12">
                   <Shuffle className="h-4 w-4" />
-                  Find My Next Book
+                  Find My Next Read
                 </button>
               )}
             </div>
