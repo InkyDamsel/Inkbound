@@ -9,6 +9,7 @@ import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContex
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { readImportEnrichmentRetryProgress } from './features/import/importHistory.ts';
 import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
+import { CanonicalLibraryNormalizationBridge } from './features/library/CanonicalLibraryNormalizationBridge.tsx';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
 import { ReadingMemoryCloudSyncBridge } from './features/memories/ReadingMemoryCloudSyncBridge.tsx';
 import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.tsx';
@@ -115,11 +116,6 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
       return undefined;
     }
 
-    // Firebase Auth can take an unexpectedly long time to restore a browser
-    // session when IndexedDB, App Check, captive Wi-Fi, or an auth endpoint is
-    // unavailable. Account restoration is useful, but it must never make the
-    // web app itself inaccessible. After a short grace period, open Inkbound
-    // and let auth/sync finish in the background.
     const timer = window.setTimeout(() => setGraceElapsed(true), AUTH_OPEN_GRACE_MS);
     return () => window.clearTimeout(timer);
   }, [isAuthReady]);
@@ -148,6 +144,7 @@ const InkboundApplication = () => (
             <ReadOnlyCloudHydrationBridge />
             <PhotoMemoryAutoSyncBridge />
             <LegacyBookCoverMigrationBridge />
+            <CanonicalLibraryNormalizationBridge />
             <ThemePersistenceBridge />
             <CloudDataRefreshBoundary>
               <RecoverySafetyBridge />
@@ -168,10 +165,6 @@ const PublicSurface = () => {
 
 async function bootstrap() {
   if (!isPublicSurface && !isNativeRuntime()) {
-    // Install the storage compatibility layer synchronously, but do not touch
-    // IndexedDB before first paint. This protects an existing large library from
-    // early React writes while guaranteeing browser database work can never block
-    // Inkbound from opening.
     prepareLargeBrowserStorageForStartup();
   }
 
@@ -193,10 +186,6 @@ async function bootstrap() {
     void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
   }
 
-  // First paint comes before IndexedDB/library restoration. Returning users must
-  // always get a usable application shell even if Safari/Chrome has a blocked or
-  // unhealthy browser database. Hydration refreshes App's canonical books state
-  // through the existing cloud-data event when it completes.
   createRoot(rootElement).render(
     <StrictMode>
       <AppErrorBoundary>
