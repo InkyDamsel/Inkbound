@@ -54,6 +54,7 @@ export interface Edition {
   isbn10?: string;
   isbn13?: string;
   asin?: string;
+  lccn?: string;
   pageCount?: number;
   audiobookDurationMins?: number;
   narrator?: string;
