@@ -92,6 +92,7 @@ export interface UserBookRecord {
   customOwnershipCategoryId?: string;
   subscriptionService?: SubscriptionService;
   libraryLoan?: LibraryLoan;
+  finishByDate?: string;
   progressPages: number;
   progressMinutes: number;
   progressPercentage: number;
