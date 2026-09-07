@@ -14,6 +14,7 @@ export const SYNC_STORAGE_KEYS = {
 export const ACCOUNT_DATA_STORAGE_KEYS = {
   collectionDefinitions: 'inkbound_collection_definitions',
   seriesOverrides: 'inkbound_series_overrides_v1',
+  customOwnershipCategories: 'inkbound_custom_ownership_categories_v1',
   annualReadingGoal: 'inkbound_annual_goal',
   dailyReadingGoalMinutes: 'inkbound_daily_goal_minutes',
   timelineMemories: 'inkbound_timeline_memories',
