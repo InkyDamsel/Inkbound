@@ -63,11 +63,12 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
+            // Release-only shrinking keeps the tester bundle lean without changing
+            // debug behavior. R8 removes unused bytecode and Android's resource
+            // shrinker drops resources no longer referenced after minification.
+            minifyEnabled true
+            shrinkResources true
             signingConfig signingConfigs.release
-            // AGP 8.13 no longer supports the legacy proguard-android.txt default.
-            // Keep the optimized Android baseline even while minification is off,
-            // so enabling R8 later does not reintroduce a deprecated configuration.
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
