@@ -1,4 +1,6 @@
-export const SERIES_OVERRIDES_STORAGE_KEY = 'inkbound_series_overrides_v1';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../sync/storageKeys';
+
+export const SERIES_OVERRIDES_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides;
 
 export interface SeriesBookOverride {
   bookId: string;
@@ -27,5 +29,5 @@ export const normalizeSeriesPositionLabel = (position: number | null, label?: st
   const custom = label?.trim();
   if (custom) return custom;
   if (typeof position !== 'number' || !Number.isFinite(position)) return 'Series book';
-  return Number.isInteger(position) ? `Book ${position}` : `Book ${position}`;
+  return `Book ${position}`;
 };
