@@ -80,7 +80,11 @@ if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication
 }
 
 const mainSource = fs.readFileSync(mainPath, 'utf8');
-if (!mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator")) {
+// No service-worker registration is the safest native configuration. If web PWA
+// registration is added later, it must be explicitly excluded from native WebView.
+const mentionsServiceWorker = mainSource.includes('serviceWorker');
+const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator");
+if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
 }
 if (!mainSource.includes('<NativeRuntimeGate>')) {
