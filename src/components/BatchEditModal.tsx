@@ -1,21 +1,23 @@
 import React, { useMemo, useState } from 'react';
-import { Lock, Sparkles, Trash2, X } from 'lucide-react';
-import { useUserPlan } from '../context/UserPlanContext';
+import { Trash2, X } from 'lucide-react';
 import {
   FORMAT_OPTIONS,
+  MATERIAL_TYPE_OPTIONS,
   OWNERSHIP_OPTIONS,
   PRIORITY_OPTIONS,
   READING_STATUS_OPTIONS,
   formatLabel,
+  materialTypeLabel,
   ownershipLabel,
   priorityLabel,
   readingStatusLabel,
 } from '../domain/libraryTaxonomy';
-import type { Format, OwnershipStatus, Priority, ReadingStatus, UserBookRecord } from '../types';
+import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 
 export interface BatchEditChanges {
   status?: ReadingStatus;
   ownership?: OwnershipStatus;
+  materialType?: ReadingMaterialType;
   format?: Format;
   priority?: Priority;
   rating?: number | null;
@@ -45,16 +47,17 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({
   onApplyBatchChanges,
   onDeleteSelected,
 }) => {
-  const { userPlan, openUpgradeModal } = useUserPlan();
   const selectedBooks = books.filter((book) => selectedBookIds.includes(book.id));
   const firstBook = selectedBooks[0];
 
   const sameStatus = selectedBooks.every((book) => book.status === firstBook?.status);
   const sameOwnership = selectedBooks.every((book) => book.ownership === firstBook?.ownership);
   const samePriority = selectedBooks.every((book) => book.priority === firstBook?.priority);
+  const sameMaterialType = selectedBooks.every((book) => (book.work.materialType ?? 'book') === (firstBook?.work.materialType ?? 'book'));
 
   const [targetStatus, setTargetStatus] = useState<string>(sameStatus ? firstBook?.status || 'keep' : 'multiple');
   const [targetOwnership, setTargetOwnership] = useState<string>(sameOwnership ? firstBook?.ownership || 'keep' : 'multiple');
+  const [targetMaterialType, setTargetMaterialType] = useState<string>(sameMaterialType ? firstBook?.work.materialType ?? 'book' : 'multiple');
   const [targetPriority, setTargetPriority] = useState<string>(samePriority ? firstBook?.priority || 'keep' : 'multiple');
   const [targetFormat, setTargetFormat] = useState<string>('keep');
   const [targetRating, setTargetRating] = useState<string>('keep');
@@ -71,6 +74,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({
   const changes = useMemo<BatchEditChanges>(() => ({
     status: targetStatus !== 'multiple' && targetStatus !== 'keep' ? targetStatus as ReadingStatus : undefined,
     ownership: targetOwnership !== 'multiple' && targetOwnership !== 'keep' ? targetOwnership as OwnershipStatus : undefined,
+    materialType: targetMaterialType !== 'multiple' && targetMaterialType !== 'keep' ? targetMaterialType as ReadingMaterialType : undefined,
     priority: targetPriority !== 'multiple' && targetPriority !== 'keep' ? targetPriority as Priority : undefined,
     format: targetFormat !== 'keep' ? targetFormat as Format : undefined,
     rating: targetRating === 'clear' ? null : targetRating !== 'keep' ? Number(targetRating) : undefined,
@@ -80,12 +84,13 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({
     removeTag: normalizeOptionalText(tagToRemove)?.toLowerCase(),
     addCollection: normalizeOptionalText(collectionToAdd),
     removeCollection: normalizeOptionalText(collectionToRemove),
-  }), [collectionToAdd, collectionToRemove, dateFinished, dateFinishedMode, dateStarted, dateStartedMode, tagToAdd, tagToRemove, targetFormat, targetOwnership, targetPriority, targetRating, targetStatus]);
+  }), [collectionToAdd, collectionToRemove, dateFinished, dateFinishedMode, dateStarted, dateStartedMode, tagToAdd, tagToRemove, targetFormat, targetMaterialType, targetOwnership, targetPriority, targetRating, targetStatus]);
 
   const previewItems = useMemo(() => {
     const items: string[] = [];
     if (changes.status) items.push(`Status → ${readingStatusLabel(changes.status)}`);
     if (changes.ownership) items.push(`Ownership → ${ownershipLabel(changes.ownership)}`);
+    if (changes.materialType) items.push(`Reading type → ${materialTypeLabel(changes.materialType)}`);
     if (changes.format) items.push(`Format → ${formatLabel(changes.format)}`);
     if (changes.priority) items.push(`Priority → ${priorityLabel(changes.priority)}`);
     if (changes.rating !== undefined) items.push(changes.rating === null ? 'Clear rating' : `Rating → ${changes.rating}/5`);
@@ -104,30 +109,13 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({
     onClose();
   };
 
-  if (userPlan === 'free') {
-    return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="batch-edit-premium-title">
-        <div className="relative w-full max-w-md space-y-5 rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] text-center shadow-2xl sm:rounded-2xl sm:p-6">
-          <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-full bg-black/30 p-2 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close batch edit"><X className="h-5 w-5" /></button>
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#c5a059]/40 bg-[#c5a059]/20 text-[#e5c158]"><Lock className="h-6 w-6" /></div>
-          <h3 id="batch-edit-premium-title" className="font-serif text-2xl font-bold text-[#f4efe6]">Batch Editing is Premium</h3>
-          <p className="text-sm leading-relaxed text-stone-300">Modify statuses, formats, ownership, ratings, dates, tags, collections, or priorities across multiple items with Inkbound Premium.</p>
-          <div className="flex flex-col gap-2 pt-2">
-            <button type="button" onClick={() => { onClose(); openUpgradeModal('Batch editing requires an Inkbound Premium account.'); }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-sm font-bold text-[#120817] shadow transition hover:opacity-95"><Sparkles className="h-4 w-4" /> View Premium</button>
-            <button type="button" onClick={onClose} className="min-h-11 w-full rounded-xl text-sm font-semibold text-stone-400 transition hover:bg-[#25132f]">Cancel</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const inputClass = 'min-h-11 w-full rounded-lg border border-[#3d2448] bg-[#120817] p-2 text-[#f4efe6] focus:border-[#c5a059] focus:outline-none';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title">
       <div className="relative flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-[#3d2448] p-5 sm:p-6 sm:pb-4">
-          <div><span className="rounded bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#120817]">Batch Edit Engine</span><h3 id="batch-edit-title" className="mt-2 font-serif text-xl font-bold text-[#f4efe6]">{selectedBooks.length} Items Selected</h3></div>
+          <div><span className="rounded bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#120817]">Batch Edit</span><h3 id="batch-edit-title" className="mt-2 font-serif text-xl font-bold text-[#f4efe6]">{selectedBooks.length} Items Selected</h3></div>
           <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-2 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close batch edit"><X className="h-5 w-5" /></button>
         </div>
 
@@ -140,6 +128,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div><label className="mb-1 block font-bold text-[#f4efe6]">Reading Status</label><select value={targetStatus} onChange={(event) => setTargetStatus(event.target.value)} className={inputClass}><option value="keep">Keep Current Values</option>{targetStatus === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
             <div><label className="mb-1 block font-bold text-[#f4efe6]">Ownership</label><select value={targetOwnership} onChange={(event) => setTargetOwnership(event.target.value)} className={inputClass}><option value="keep">Keep Current Values</option>{targetOwnership === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+            <div><label className="mb-1 block font-bold text-[#f4efe6]">Reading Material Type</label><select value={targetMaterialType} onChange={(event) => setTargetMaterialType(event.target.value)} className={inputClass}><option value="keep">Keep Current Types</option>{targetMaterialType === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
             <div><label className="mb-1 block font-bold text-[#f4efe6]">Primary Format</label><select value={targetFormat} onChange={(event) => setTargetFormat(event.target.value)} className={inputClass}><option value="keep">Keep Current Formats</option>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
             <div><label className="mb-1 block font-bold text-[#f4efe6]">Priority</label><select value={targetPriority} onChange={(event) => setTargetPriority(event.target.value)} className={inputClass}><option value="keep">Keep Current Values</option>{targetPriority === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
             <div><label className="mb-1 block font-bold text-[#f4efe6]">Rating</label><select value={targetRating} onChange={(event) => setTargetRating(event.target.value)} className={inputClass}><option value="keep">Keep Current Ratings</option><option value="5">5 stars</option><option value="4">4 stars</option><option value="3">3 stars</option><option value="2">2 stars</option><option value="1">1 star</option><option value="clear">Clear Rating</option></select></div>
@@ -160,10 +149,10 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({
           <div className="rounded-xl border border-[#c5a059]/30 bg-[#25132f] p-4 text-stone-200">
             <p className="font-bold text-[#f4efe6]">Change preview</p>
             {previewItems.length === 0 ? <p className="mt-2 text-stone-400">No changes selected yet. Existing values will be left alone.</p> : <ul className="mt-2 space-y-1.5 text-stone-300">{previewItems.map((item) => <li key={item}>• {item}</li>)}</ul>}
-            <p className="mt-3 text-[11px] text-stone-500">These changes will apply to all {selectedBooks.length} selected items.</p>
+            <p className="mt-3 text-[11px] text-stone-500">These changes will apply to all {selectedBooks.length} selected items. Reading history stays intact unless you explicitly change dates or delete items.</p>
           </div>
 
-          {showConfirmDelete && <div className="space-y-3 rounded-xl border border-rose-500/40 bg-rose-950/90 p-4 text-xs text-white"><p className="font-bold text-rose-200">Delete these {selectedBooks.length} items? This cannot be undone.</p><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setShowConfirmDelete(false)} className="min-h-11 rounded-lg bg-stone-800 px-4 font-bold">Cancel</button><button type="button" onClick={() => { onDeleteSelected(); onClose(); }} className="min-h-11 rounded-lg bg-rose-600 px-4 font-bold text-white hover:bg-rose-700">Yes, Delete</button></div></div>}
+          {showConfirmDelete && <div className="space-y-3 rounded-xl border border-rose-500/40 bg-rose-950/90 p-4 text-xs text-white"><p className="font-bold text-rose-200">Delete these {selectedBooks.length} items? Their associated reading sessions will also be removed. This cannot be undone.</p><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setShowConfirmDelete(false)} className="min-h-11 rounded-lg bg-stone-800 px-4 font-bold">Cancel</button><button type="button" onClick={() => { onDeleteSelected(); onClose(); }} className="min-h-11 rounded-lg bg-rose-600 px-4 font-bold text-white hover:bg-rose-700">Yes, Delete</button></div></div>}
         </div>
 
         <div className="grid gap-2 border-t border-[#3d2448] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:grid-cols-[auto_1fr] sm:p-6 sm:pt-4">
