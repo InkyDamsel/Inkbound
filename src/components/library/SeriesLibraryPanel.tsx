@@ -3,6 +3,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Lock, Pencil, Plus, Search, Sparkl
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
+import { consumeLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
 import {
   buildSeriesLibrary,
   seriesBookDisplayTitle,
@@ -75,6 +76,22 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    const targetBookId = consumeLibrarySeriesFocusBookId();
+    if (!targetBookId) return;
+    const targetIndex = series.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
+    if (targetIndex < 0) return;
+
+    const targetSeries = series[targetIndex];
+    setSearch('');
+    setCurrentPage(Math.floor(targetIndex / SERIES_PER_PAGE) + 1);
+    setExpandedSeriesId(targetSeries.id);
+
+    window.setTimeout(() => {
+      document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  }, [series]);
 
   const goToPage = (page: number) => {
     const next = Math.max(1, Math.min(page, totalPages));
@@ -229,7 +246,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
               const firstBook = item.books[0]?.book;
 
               return (
-                <article key={item.id} className="inkbound-panel overflow-hidden rounded-3xl">
+                <article key={item.id} data-series-id={item.id} className="inkbound-panel overflow-hidden rounded-3xl">
                   <button type="button" onClick={() => setExpandedSeriesId(expanded ? null : item.id)} className="flex w-full flex-col gap-5 p-5 text-left sm:p-6 lg:flex-row lg:items-center">
                     <div className="flex min-w-0 flex-1 items-center gap-4">
                       {firstBook && <BookCover work={firstBook.work} edition={activeEdition(firstBook)} size="sm" showFormatBadge={false} className="!h-16 !w-12 rounded-lg" />}
