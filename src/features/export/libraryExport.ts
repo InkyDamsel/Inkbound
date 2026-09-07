@@ -46,7 +46,7 @@ export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: Series
   const ownershipNameById = new Map(customOwnershipCategories.map((category) => [category.id, category.name]));
   const headers = [
     'Title', 'Subtitle', 'Author', 'Reading Material Type', 'Series', 'Series Number', 'Series Label', 'Series Source',
-    'Status', 'Ownership', 'Custom Ownership Category', 'Subscription Service', 'Borrowed Date', 'Library Due Date', 'Rating', 'Format', 'ISBN', 'Page Count',
+    'Status', 'Ownership', 'Custom Ownership Category', 'Subscription Service', 'Borrowed Date', 'Library Due Date', 'Finish By Date', 'Rating', 'Format', 'ISBN', 'Page Count',
     'Pages Read', 'Minutes Listened', 'Progress Percent', 'Date Added', 'Date Started', 'Date Finished', 'Tags', 'Collections',
   ];
 
@@ -68,6 +68,7 @@ export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: Series
       book.subscriptionService,
       book.libraryLoan?.borrowedDate,
       book.libraryLoan?.dueDate,
+      book.finishByDate,
       book.rating,
       activeEdition?.format,
       activeEdition?.isbn13 ?? activeEdition?.isbn10 ?? activeEdition?.isbn,
