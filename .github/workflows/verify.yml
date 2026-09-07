@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - design/quiet-shelf-dashboard
+      - feature/series-library
       - main
   pull_request:
 
