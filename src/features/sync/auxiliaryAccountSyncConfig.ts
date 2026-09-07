@@ -1,11 +1,16 @@
-import { CANONICAL_SYNC_COLLECTION_KEYS, SYNC_STORAGE_KEYS } from './storageKeys';
+import {
+  ACCOUNT_DATA_STORAGE_KEYS,
+  CANONICAL_SYNC_COLLECTION_KEYS,
+  LEGACY_SYNC_STORAGE_KEYS,
+  SYNC_STORAGE_KEYS,
+} from './storageKeys';
 
 /**
  * Reading Memories are synced per book instead of as one monolithic auxiliary
  * document. Keeping the runtime key here lets account-transition cleanup remain
  * centralized while avoiding whole-memory-map overwrite conflicts across devices.
  */
-export const READING_MEMORIES_ACCOUNT_KEY = 'inkbound_book_memories';
+export const READING_MEMORIES_ACCOUNT_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingMemories;
 
 /**
  * Account-owned runtime keys that must follow an authenticated reader across
@@ -20,26 +25,26 @@ export const READING_MEMORIES_ACCOUNT_KEY = 'inkbound_book_memories';
  * custom-list stores would recreate a competing collection database.
  */
 export const AUXILIARY_ACCOUNT_KEYS = {
-  collectionDefinitions: 'inkbound_collection_definitions',
-  seriesOverrides: 'inkbound_series_overrides_v1',
-  annualReadingGoal: 'inkbound_annual_goal',
-  dailyReadingGoalMinutes: 'inkbound_daily_goal_minutes',
-  timelineMemories: 'inkbound_timeline_memories',
-  readingTimeCapsules: 'inkbound_reading_time_capsules',
-  joinedChallenges: 'inkbound_joined_challenges',
-  customChallenges: 'inkbound_custom_challenges_v1',
-  challengeRotation: 'inkbound_challenge_rotation_v2',
-  joinedChallengeSnapshots: 'inkbound_joined_challenge_snapshots_v2',
-  dragonProfile: 'inkbound_dragon',
-  achievementUnlocks: 'inkbound_achievement_unlocks_v5',
-  achievementReveals: 'inkbound_achievement_reveals_v5',
-  achievementSeen: 'inkbound_achievement_seen_v5',
+  collectionDefinitions: ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions,
+  seriesOverrides: ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides,
+  annualReadingGoal: ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal,
+  dailyReadingGoalMinutes: ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes,
+  timelineMemories: ACCOUNT_DATA_STORAGE_KEYS.timelineMemories,
+  readingTimeCapsules: ACCOUNT_DATA_STORAGE_KEYS.readingTimeCapsules,
+  joinedChallenges: ACCOUNT_DATA_STORAGE_KEYS.joinedChallenges,
+  customChallenges: ACCOUNT_DATA_STORAGE_KEYS.customChallenges,
+  challengeRotation: ACCOUNT_DATA_STORAGE_KEYS.challengeRotation,
+  joinedChallengeSnapshots: ACCOUNT_DATA_STORAGE_KEYS.joinedChallengeSnapshots,
+  dragonProfile: ACCOUNT_DATA_STORAGE_KEYS.dragonProfile,
+  achievementUnlocks: ACCOUNT_DATA_STORAGE_KEYS.achievementUnlocks,
+  achievementReveals: ACCOUNT_DATA_STORAGE_KEYS.achievementReveals,
+  achievementSeen: ACCOUNT_DATA_STORAGE_KEYS.achievementSeen,
 } as const;
 
 /** Retired stores that may exist on older devices but are never authoritative. */
 export const LEGACY_AUXILIARY_ACCOUNT_KEYS = [
-  'inkbound_library_custom_lists',
-  'inkbound_library_custom_list_members',
+  LEGACY_SYNC_STORAGE_KEYS.libraryCustomLists,
+  LEGACY_SYNC_STORAGE_KEYS.libraryCustomListMembers,
 ] as const;
 
 export const CORE_ACCOUNT_RUNTIME_KEYS = CANONICAL_SYNC_COLLECTION_KEYS;
