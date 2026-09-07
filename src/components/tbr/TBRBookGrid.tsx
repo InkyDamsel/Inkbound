@@ -1,5 +1,6 @@
 import React from 'react';
 import { Play } from 'lucide-react';
+import { PRIORITY_OPTIONS, priorityLabel } from '../../domain/libraryTaxonomy';
 import { Priority, ReadingStatus, UserBookRecord } from '../../types';
 import { ResponsiveGrid } from '../../layout/responsive';
 import { BookCover } from '../BookCover';
@@ -10,13 +11,6 @@ interface TBRBookGridProps {
   onUpdateStatus: (bookId: string, status: ReadingStatus) => void;
   onUpdatePriority: (bookId: string, priority: Priority) => void;
 }
-
-const priorityLabels: Record<Priority, string> = {
-  top: 'Read Next',
-  high: 'High Priority',
-  medium: 'Someday Soon',
-  low: 'Back Shelf',
-};
 
 export function TBRBookGrid({
   books,
@@ -45,7 +39,7 @@ export function TBRBookGrid({
 
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="flex items-start justify-between gap-2">
-                <span className="inkbound-badge">{priorityLabels[book.priority]}</span>
+                <span className="inkbound-badge">{priorityLabel(book.priority)}</span>
                 <select
                   aria-label={`Priority for ${book.work.title}`}
                   value={book.priority}
@@ -54,10 +48,9 @@ export function TBRBookGrid({
                   }
                   className="inkbound-select min-h-8 w-auto px-2 py-1 text-[11px]"
                 >
-                  <option value="top">Read Next</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+                  {PRIORITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                 </select>
               </div>
 
