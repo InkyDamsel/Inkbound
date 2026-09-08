@@ -6,6 +6,7 @@ import {
   reconcileFinishedBookProgress,
   withReadingStatus,
 } from '../src/features/reading/bookReadingState';
+import { hasTrustworthyFinishedHistory } from '../src/features/reading/inkboundActivity';
 import { analyzeLibraryIntegrity } from '../src/features/recovery/libraryIntegrity';
 import {
   getCurrentPace,
@@ -51,15 +52,19 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(state.progressPercentage, 38);
 }
 
+// Explicit Finished history never fabricates page/minute progress. A reader may
+// know they finished a book without Inkbound knowing the exact tracked endpoint.
 {
-  const staleFinished = { ...baseBook(), status: 'finished' as const, progressPages: 190, progressPercentage: 38, dateFinished: '2026-08-15' };
-  const repaired = reconcileFinishedBookProgress(staleFinished);
-  assert.equal(repaired.progressPages, 500);
-  assert.equal(repaired.progressPercentage, 100);
-  const state = getBookReadingState(staleFinished);
-  assert.equal(state.completedUnits, 500);
-  assert.equal(state.progressPercentage, 100);
+  const finishedHistory = { ...baseBook(), status: 'finished' as const, progressPages: 190, progressPercentage: 38, dateFinished: '2026-08-15' };
+  const reconciled = reconcileFinishedBookProgress(finishedHistory);
+  assert.equal(reconciled.progressPages, 190);
+  assert.equal(reconciled.progressPercentage, 38);
+  const state = getBookReadingState(finishedHistory);
+  assert.equal(state.completedUnits, 190);
+  assert.equal(state.progressPercentage, 38);
+  assert.equal(state.isFinished, true);
   assert.equal(state.progressNeedsCorrection, false);
+  assert.equal(hasTrustworthyFinishedHistory(finishedHistory), true);
 }
 
 {
@@ -73,9 +78,17 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
 {
   const finished = withReadingStatus(baseBook(), 'finished', '2026-08-15');
   assert.equal(finished.status, 'finished');
-  assert.equal(finished.progressPages, 500);
-  assert.equal(finished.progressPercentage, 100);
+  assert.equal(finished.progressPages, 190);
+  assert.equal(finished.progressPercentage, 0);
   assert.equal(finished.dateFinished, '2026-08-15');
+  assert.equal(hasTrustworthyFinishedHistory(finished), true);
+}
+
+// Finished without a valid finish date remains a library status but must not be
+// counted in date-based dashboards/annual history until a real date exists.
+{
+  const missingDate = { ...baseBook(), status: 'finished' as const, dateFinished: undefined };
+  assert.equal(hasTrustworthyFinishedHistory(missingDate), false);
 }
 
 {
@@ -138,7 +151,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   );
 }
 
-// A stale device must respect a deletion already observed in its previous baseline.
 {
   assert.equal(shouldPromoteLocalRecordMissingFromCloud({
     hasCloudRecord: false,
@@ -147,7 +159,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), false);
 }
 
-// A genuinely new offline record has no baseline entry and must still upload.
 {
   assert.equal(shouldPromoteLocalRecordMissingFromCloud({
     hasCloudRecord: false,
@@ -156,7 +167,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), true);
 }
 
-// Existing pending intent is handled by the durable queue and must not be duplicated.
 {
   assert.equal(shouldPromoteLocalRecordMissingFromCloud({
     hasCloudRecord: false,
@@ -165,8 +175,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), false);
 }
 
-// The same last-write rule now governs books, sessions and auxiliary account data.
-// A demonstrably newer cloud edit must replace a stale pending copy.
 {
   assert.equal(shouldRemoteChangeReplacePending({
     remoteClientUpdatedAt: '2026-09-08T18:05:00.000Z',
@@ -174,7 +182,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), true);
 }
 
-// A newer local pending edit remains authoritative until it uploads.
 {
   assert.equal(shouldRemoteChangeReplacePending({
     remoteClientUpdatedAt: '2026-09-08T18:00:00.000Z',
@@ -182,8 +189,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), false);
 }
 
-// Firestore server time wins when it proves the remote write happened later,
-// even if a device clock produced an older client timestamp.
 {
   assert.equal(shouldRemoteChangeReplacePending({
     remoteServerMillis: Date.parse('2026-09-08T18:10:00.000Z'),
@@ -192,7 +197,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), true);
 }
 
-// Integrity diagnostics report actual stored state independently from import counters.
 {
   const covered = {
     ...baseBook(),
