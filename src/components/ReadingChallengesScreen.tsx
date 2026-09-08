@@ -16,6 +16,7 @@ import {
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 import {
   getReadingStreak,
   getSessionDurationMinutes,
@@ -31,6 +32,7 @@ import {
   ChallengeRotationState,
   findBankTemplate,
 } from '../features/challenges/challengeBank';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface ReadingChallengesScreenProps {
   books: UserBookRecord[];
@@ -94,8 +96,6 @@ const iconMap = {
 } as const;
 
 const clampProgress = (progress: number, target: number) => Math.min(target, Math.max(0, progress));
-const getActiveEdition = (book: UserBookRecord) =>
-  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 const monthStart = (key: string) => `${key}-01`;
 const onOrAfter = (value: string | undefined, key: string) => Boolean(value && value >= monthStart(key));
@@ -118,19 +118,19 @@ export const ReadingChallengesScreen: React.FC<ReadingChallengesScreenProps> = (
   const year = now.getFullYear();
 
   const [joinedChallengeIds, setJoinedChallengeIds] = usePersistentState<string[]>(
-    'inkbound_joined_challenges',
+    ACCOUNT_DATA_STORAGE_KEYS.joinedChallenges,
     ['finish-five', 'read-seven-days', 'thousand-pages'],
   );
   const [customChallenges, setCustomChallenges] = usePersistentState<CustomChallenge[]>(
-    'inkbound_custom_challenges_v1',
+    ACCOUNT_DATA_STORAGE_KEYS.customChallenges,
     [],
   );
   const [rotation, setRotation] = usePersistentState<ChallengeRotationState>(
-    'inkbound_challenge_rotation_v2',
+    ACCOUNT_DATA_STORAGE_KEYS.challengeRotation,
     makeInitialRotation(currentMonthKey),
   );
   const [joinedSnapshots, setJoinedSnapshots] = usePersistentState<JoinedChallengeSnapshot[]>(
-    'inkbound_joined_challenge_snapshots_v2',
+    ACCOUNT_DATA_STORAGE_KEYS.joinedChallengeSnapshots,
     [],
   );
   const [filter, setFilter] = useState<ChallengeFilter>('active');
