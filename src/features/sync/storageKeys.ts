@@ -39,6 +39,7 @@ export const LEGACY_SYNC_STORAGE_KEYS = {
 
 export const syncPendingStateKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
 export const syncBaselineStateKey = (uid: string) => `inkbound_sync_baseline_${uid}_v2`;
+export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 
 /**
