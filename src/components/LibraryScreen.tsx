@@ -9,6 +9,7 @@ import type { UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
 import { CollectionsScreen } from './CollectionsScreen';
 import { LibraryBookGrid } from './library/LibraryBookGrid';
+import { LoansLibraryPanel } from './library/LoansLibraryPanel';
 import { SeriesLibraryPanel } from './library/SeriesLibraryPanel';
 
 interface LibraryScreenProps {
@@ -125,13 +126,15 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       </section>
 
       <nav className="inkbound-panel flex gap-1 overflow-x-auto p-1.5" aria-label="Library sections">
-        {(['books', 'series', 'collections'] as LibrarySection[]).map((item) => <button key={item} type="button" onClick={() => switchSection(item)} className={`min-h-11 flex-1 whitespace-nowrap rounded-xl px-5 text-sm font-bold capitalize transition ${section === item ? 'bg-[#c5a059] text-[#171015]' : 'text-[#b9acba] hover:bg-white/5 hover:text-[#f4efe6]'}`}>{item}</button>)}
+        {(['books', 'series', 'collections', 'loans'] as LibrarySection[]).map((item) => <button key={item} type="button" onClick={() => switchSection(item)} className={`min-h-11 flex-1 whitespace-nowrap rounded-xl px-5 text-sm font-bold capitalize transition ${section === item ? 'bg-[#c5a059] text-[#171015]' : 'text-[#b9acba] hover:bg-white/5 hover:text-[#f4efe6]'}`}>{item}</button>)}
       </nav>
 
       {section === 'series' ? (
         <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} />
       ) : section === 'collections' ? (
         <CollectionsScreen books={books} onUpdateBook={updateLibraryBook} onSelectBook={onSelectBook} />
+      ) : section === 'loans' ? (
+        <LoansLibraryPanel books={books} onSelectBook={onSelectBook} />
       ) : <>
         <section className="inkbound-panel p-4 sm:p-5">
           <div className="flex gap-2 overflow-x-auto pb-2">{statusTabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold ${activeTab === tab.id ? 'border-[#d8ae54] bg-[#c5a059] text-[#171015]' : 'border-transparent bg-[#1d1422] text-[#cfc2cf]'}`}>{tab.label}</button>)}</div>
