@@ -39,7 +39,7 @@ export const PRODUCT_POLICY = {
     dataExportIncluded: true,
   },
   premium: {
-    subscriptionsOpen: false,
+    subscriptionsOpen: true,
     plannedMonthlyPrice: 6.99,
     plannedAnnualPrice: 59.99,
   },
