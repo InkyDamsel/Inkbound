@@ -17,7 +17,9 @@ import {
 import { READING_MEMORIES_ACCOUNT_KEY } from '../sync/auxiliaryAccountSyncConfig';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
+  INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   type BeforeSignOutDetail,
+  type LocalDataChangedDetail,
 } from '../sync/cloudSyncEvents';
 
 interface ReadingMemoryEntry {
@@ -38,7 +40,7 @@ interface LegacyAuxiliaryMemoryDocument {
   data?: ReadingMemoryMap;
 }
 
-const SYNC_INTERVAL_MS = 1800;
+const FALLBACK_SYNC_INTERVAL_MS = 30000;
 const storage = () => getRuntimeStorage();
 const stable = (value: unknown) => JSON.stringify(value);
 
@@ -88,10 +90,6 @@ function mergeMemoryMaps(base: ReadingMemoryMap, incoming: ReadingMemoryMap): Re
 
     const currentTime = timestamp(current);
     const incomingTime = timestamp(incomingEntry);
-
-    // Reading Memories update updatedAt on every edit. Prefer the newer edit when
-    // two devices both have a copy. If a legacy entry has no useful timestamp,
-    // prefer the incoming value so migration can move forward deterministically.
     if (incomingTime >= currentTime) merged[bookId] = incomingEntry;
   });
 
@@ -112,11 +110,10 @@ function cloudDocumentToEntry(data: CloudMemoryDocument): ReadingMemoryEntry | u
 /**
  * Cross-device synchronization for Reading Memories.
  *
- * Memories are stored one Firestore document per book instead of serializing the
- * entire memory map into one document. That prevents an edit to Book A on one
- * device from overwriting a newer Book B memory written on another device.
- * Local runtime storage remains the immediate/offline source so typing never
- * waits on the network.
+ * Memories remain one Firestore document per book, but local edits now trigger
+ * sync through Inkbound's debounced storage-change signal. A slow fallback timer
+ * exists only for edge cases; leaving the app open no longer wakes this bridge
+ * every 1.8 seconds looking for work.
  */
 export const ReadingMemoryCloudSyncBridge: React.FC = () => {
   const sync = useAccountSync();
@@ -136,7 +133,7 @@ export const ReadingMemoryCloudSyncBridge: React.FC = () => {
     const memoryCollection = collection(db, 'users', uid, 'readingMemories');
 
     const flushLocalChanges = async () => {
-      if (!hydrated.current || disposed || flushRunning.current) return;
+      if (!hydrated.current || disposed || flushRunning.current || !navigator.onLine) return;
       flushRunning.current = true;
 
       try {
@@ -158,8 +155,6 @@ export const ReadingMemoryCloudSyncBridge: React.FC = () => {
             { merge: true },
           );
 
-          // The user may have typed again while this request was in flight. Only
-          // mark the sent version clean if it is still the current local version.
           const latest = readLocalMemories()[bookId];
           if (latest && stable(latest) === sentFingerprint) {
             fingerprints.current[bookId] = sentFingerprint;
@@ -195,21 +190,15 @@ export const ReadingMemoryCloudSyncBridge: React.FC = () => {
           }
         }
       } catch {
-        // Offline startup is intentionally local-first. The same local entries are
-        // compared and uploaded when connectivity returns.
+        // Offline startup remains local-first.
       }
 
       if (disposed) return;
 
-      // Per-book cloud docs supersede the old monolithic auxiliary document, and
-      // the newest local edit wins during initial reconciliation.
       const migratedCloud = mergeMemoryMaps(legacy, cloud);
       const merged = mergeMemoryMaps(migratedCloud, local);
       writeLocalMemories(merged);
 
-      // Fingerprints represent what the per-book collection definitely contains.
-      // Legacy-only and newer-local entries intentionally remain dirty so the
-      // first flush migrates/uploads them into the new conflict-safe structure.
       Object.entries(cloud).forEach(([bookId, entry]) => {
         fingerprints.current[bookId] = stable(entry);
       });
@@ -243,8 +232,6 @@ export const ReadingMemoryCloudSyncBridge: React.FC = () => {
           const localIsDirty = localFingerprint !== undefined
             && fingerprints.current[bookId] !== localFingerprint;
 
-          // Never overwrite unsynced typing. Once the local edit reaches Firestore,
-          // its own snapshot arrives and both devices converge normally.
           if (localIsDirty) return;
 
           fingerprints.current[bookId] = cloudFingerprint;
@@ -257,21 +244,22 @@ export const ReadingMemoryCloudSyncBridge: React.FC = () => {
         if (changedLocal) writeLocalMemories(nextLocal);
       },
       () => {
-        // Local storage remains durable while offline. The polling flush resumes
-        // automatically when Firestore becomes reachable again.
+        // Local storage remains durable while offline.
       },
     );
 
-    const timer = window.setInterval(() => {
-      void flushLocalChanges().catch(() => {
-        // Keep local changes dirty so the next interval retries them.
-      });
-    }, SYNC_INTERVAL_MS);
+    const handleLocalDataChanged = (event: Event) => {
+      const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
+      if (!detail?.keys?.includes(READING_MEMORIES_ACCOUNT_KEY)) return;
+      void flushLocalChanges().catch(() => undefined);
+    };
+
+    const fallbackTimer = window.setInterval(() => {
+      void flushLocalChanges().catch(() => undefined);
+    }, FALLBACK_SYNC_INTERVAL_MS);
 
     const preserveBeforeBackgrounding = () => {
-      void flushLocalChanges().catch(() => {
-        // Local runtime persistence already contains the newest text.
-      });
+      void flushLocalChanges().catch(() => undefined);
     };
 
     const flushBeforeSignOut = (event: Event) => {
@@ -280,6 +268,8 @@ export const ReadingMemoryCloudSyncBridge: React.FC = () => {
       detail.waitUntil(flushLocalChanges());
     };
 
+    window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalDataChanged);
+    window.addEventListener('online', preserveBeforeBackgrounding);
     window.addEventListener('pagehide', preserveBeforeBackgrounding);
     document.addEventListener('visibilitychange', preserveBeforeBackgrounding);
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
@@ -287,7 +277,9 @@ export const ReadingMemoryCloudSyncBridge: React.FC = () => {
     return () => {
       preserveBeforeBackgrounding();
       disposed = true;
-      window.clearInterval(timer);
+      window.clearInterval(fallbackTimer);
+      window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalDataChanged);
+      window.removeEventListener('online', preserveBeforeBackgrounding);
       window.removeEventListener('pagehide', preserveBeforeBackgrounding);
       document.removeEventListener('visibilitychange', preserveBeforeBackgrounding);
       window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
