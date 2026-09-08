@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
+import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import Stripe from 'stripe';
 
@@ -16,14 +16,13 @@ const APP_ORIGIN = 'https://inkbound.inkydameinteractive.com';
 const IS_FUNCTIONS_EMULATOR = process.env.FUNCTIONS_EMULATOR === 'true';
 const ENFORCE_APP_CHECK = !IS_FUNCTIONS_EMULATOR;
 
-type BillingCycle = 'monthly' | 'annual';
 type InkboundSubscriptionStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'canceled';
 
 function stripeClient() {
   return new Stripe(STRIPE_SECRET_KEY.value());
 }
 
-function requireAuth(request: Parameters<Parameters<typeof onCall>[1]>[0]) {
+function requireAuth(request: CallableRequest<unknown>) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to manage Inkbound Premium.');
   return request.auth;
 }
