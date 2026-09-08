@@ -8,7 +8,11 @@ import { FinishOnTimeControl } from './reading/FinishOnTimeControl';
 import { openLibrarySeriesForBook } from '../features/library/libraryNavigation';
 import { resolveEffectiveSeriesMetadata, seriesPositionLabel } from '../features/series/seriesLibrary';
 import { readSeriesOverrides } from '../features/series/seriesOverrides';
-import type { Edition, UserBookRecord } from '../types';
+import { getActiveEdition } from '../features/reading/bookReadingState';
+import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { getRuntimeStorage, notifyRuntimeStorageChanged } from '../platform/runtimeStorage';
+import type { Edition, ReadingSession, UserBookRecord } from '../types';
 import './bookDetailsResponsive.css';
 
 function normalizeStoredIsbn(value?: string): string | undefined {
@@ -41,9 +45,6 @@ function normalizeBookIdentifiers(book: UserBookRecord): UserBookRecord {
 }
 
 function normalizeOwnershipEdit(book: UserBookRecord): UserBookRecord {
-  // Wishlist is not a completed-reading state. If a reader moves a title to
-  // Wishlist from a previously-finished record, clear the finished state/date
-  // so it cannot continue appearing under Read or finished-book statistics.
   if (book.ownership === 'wishlist' && book.status === 'finished') {
     return {
       ...book,
@@ -52,7 +53,6 @@ function normalizeOwnershipEdit(book: UserBookRecord): UserBookRecord {
     };
   }
 
-  // Person-to-person borrowing does not use the library due-date workflow.
   if (book.ownership === 'borrowed-person' && book.libraryLoan) {
     return { ...book, libraryLoan: undefined };
   }
@@ -60,7 +60,19 @@ function normalizeOwnershipEdit(book: UserBookRecord): UserBookRecord {
   return book;
 }
 
-export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsModalCore>> = (props) => {
+function sessionSortKey(session: ReadingSession): string {
+  return `${session.date}T${session.endTime || session.startTime || '00:00'}`;
+}
+
+function trackedProgress(session: ReadingSession | undefined, audiobook: boolean): number {
+  if (!session) return 0;
+  return audiobook ? Math.max(0, Math.floor((session.endTimestampSec ?? 0) / 60)) : Math.max(0, session.endPage ?? 0);
+}
+
+type CoreProps = React.ComponentProps<typeof BookDetailsModalCore>;
+type BookDetailsModalProps = Omit<CoreProps, 'onUpdateSession' | 'onDeleteSession'> & Partial<Pick<CoreProps, 'onUpdateSession' | 'onDeleteSession'>>;
+
+export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   const normalizedBook = useMemo(
     () => props.book ? normalizeBookIdentifiers(props.book) : null,
     [props.book],
@@ -71,10 +83,6 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
     [normalizedBook, seriesOverrides],
   );
 
-  // Book Details should show the same effective series that Series/TBR/export
-  // already use, even when an older import only encoded it in the title. These
-  // display fallbacks are not written back unless the reader actually changes
-  // the Series fields.
   const displayBook = useMemo<UserBookRecord | null>(() => {
     if (!normalizedBook || !effectiveSeries) return normalizedBook;
     if (normalizedBook.work.seriesName?.trim()) return normalizedBook;
@@ -115,6 +123,57 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
     });
   };
 
+  const persistSessions = (nextSessions: ReadingSession[]) => {
+    const storage = getRuntimeStorage();
+    storage.setItem(SYNC_STORAGE_KEYS.sessions, JSON.stringify(nextSessions));
+    notifyRuntimeStorageChanged(SYNC_STORAGE_KEYS.sessions);
+    notifyCloudDataUpdated([SYNC_STORAGE_KEYS.sessions]);
+  };
+
+  const reconcileBookAfterSessionChange = (previous: ReadingSession | undefined, nextSessions: ReadingSession[]) => {
+    if (!normalizedBook) return;
+    const edition = getActiveEdition(normalizedBook);
+    if (!edition) return;
+    const audiobook = edition.format === 'audiobook';
+    const related = nextSessions.filter((session) => session.bookId === normalizedBook.id).sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
+    const latest = related.at(-1);
+    const previousProgress = trackedProgress(previous, audiobook);
+    const currentProgress = audiobook ? normalizedBook.progressMinutes : normalizedBook.progressPages;
+    const nextTrackedProgress = trackedProgress(latest, audiobook);
+    const manualProgressAhead = previous && currentProgress > previousProgress;
+    const nextProgress = manualProgressAhead ? Math.max(currentProgress, nextTrackedProgress) : previous && currentProgress === previousProgress ? nextTrackedProgress : Math.max(currentProgress, nextTrackedProgress);
+    const total = audiobook ? edition.audiobookDurationMins : edition.pageCount;
+    const hasTotal = typeof total === 'number' && Number.isFinite(total) && total > 0;
+    const progressPercentage = hasTotal ? Math.min(100, Math.round((nextProgress / total!) * 100)) : normalizedBook.progressPercentage;
+    const reachedEnd = Boolean(hasTotal && nextProgress >= total!);
+    const trackerHadFinishedBook = Boolean(previous && currentProgress === previousProgress && normalizedBook.progressPercentage === 100);
+    const shouldUnfinish = trackerHadFinishedBook && hasTotal && !reachedEnd;
+
+    handleUpdateBook({
+      ...normalizedBook,
+      progressPages: audiobook ? normalizedBook.progressPages : nextProgress,
+      progressMinutes: audiobook ? nextProgress : normalizedBook.progressMinutes,
+      progressPercentage,
+      status: reachedEnd ? 'finished' : shouldUnfinish ? 'currently-reading' : normalizedBook.status,
+      dateFinished: reachedEnd ? (normalizedBook.dateFinished ?? latest?.date) : shouldUnfinish ? undefined : normalizedBook.dateFinished,
+      lastSessionDate: latest?.date,
+    });
+  };
+
+  const fallbackUpdateSession = (updatedSession: ReadingSession) => {
+    const previous = props.sessions.find((session) => session.id === updatedSession.id);
+    const nextSessions = props.sessions.map((session) => session.id === updatedSession.id ? updatedSession : session);
+    persistSessions(nextSessions);
+    reconcileBookAfterSessionChange(previous, nextSessions);
+  };
+
+  const fallbackDeleteSession = (sessionId: string) => {
+    const previous = props.sessions.find((session) => session.id === sessionId);
+    const nextSessions = props.sessions.filter((session) => session.id !== sessionId);
+    persistSessions(nextSessions);
+    reconcileBookAfterSessionChange(previous, nextSessions);
+  };
+
   const viewSeries = () => {
     if (!normalizedBook || !effectiveSeries) return;
     openLibrarySeriesForBook(normalizedBook.id);
@@ -123,7 +182,13 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
 
   return (
     <div className="book-details-modal-host">
-      <BookDetailsModalCore {...props} book={displayBook} onUpdateBook={handleUpdateBook} />
+      <BookDetailsModalCore
+        {...props}
+        book={displayBook}
+        onUpdateBook={handleUpdateBook}
+        onUpdateSession={props.onUpdateSession ?? fallbackUpdateSession}
+        onDeleteSession={props.onDeleteSession ?? fallbackDeleteSession}
+      />
       {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <EditionLccnControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
