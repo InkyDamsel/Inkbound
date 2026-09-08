@@ -117,7 +117,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden pb-24">
       <section className="relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
-        <div aria-hidden="true" className="pointer-events-none absolute -inset-3 scale-[1.035] bg-cover bg-center blur-[3px]" style={{ backgroundImage: `url("${LIBRARY_BANNER_ASSET}")` }} />
+        <div aria-hidden="true" className="pointer-events-none absolute -inset-3 scale-[1.035] bg-cover bg-center blur-[3px]" style={{ backgroundImage: `url(\"${LIBRARY_BANNER_ASSET}\")` }} />
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(9,8,18,.88),rgba(9,8,18,.36))]" />
         <div className="relative z-10 flex min-h-[260px] flex-col justify-between gap-6 p-6 sm:p-8 xl:flex-row xl:items-end">
           <div className="max-w-2xl rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur-[3px]"><span className="text-xs font-bold uppercase tracking-[0.22em] text-[#e0c77c]">Your personal collection</span><h1 className="mt-2 font-serif text-4xl text-white">My Library</h1><p className="mt-2 text-sm text-white/75">Browse everything you read, keep series in order, and organize personal collections.</p></div>
@@ -125,8 +125,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         </div>
       </section>
 
-      <nav className="inkbound-panel flex gap-1 overflow-x-auto p-1.5" aria-label="Library sections">
-        {(['books', 'series', 'collections', 'loans'] as LibrarySection[]).map((item) => <button key={item} type="button" onClick={() => switchSection(item)} className={`min-h-11 flex-1 whitespace-nowrap rounded-xl px-5 text-sm font-bold capitalize transition ${section === item ? 'bg-[#c5a059] text-[#171015]' : 'text-[#b9acba] hover:bg-white/5 hover:text-[#f4efe6]'}`}>{item}</button>)}
+      <nav className="inkbound-panel grid grid-cols-4 gap-1 p-1.5" aria-label="Library sections">
+        {(['books', 'series', 'collections', 'loans'] as LibrarySection[]).map((item) => <button key={item} type="button" onClick={() => switchSection(item)} className={`flex min-h-11 min-w-0 items-center justify-center rounded-xl px-1 text-[10px] font-bold capitalize leading-none transition min-[390px]:px-1.5 min-[390px]:text-[11px] sm:px-3 sm:text-sm ${section === item ? 'bg-[#c5a059] text-[#171015]' : 'text-[#b9acba] hover:bg-white/5 hover:text-[#f4efe6]'}`}>{item}</button>)}
       </nav>
 
       {section === 'series' ? (
