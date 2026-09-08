@@ -13,10 +13,13 @@ import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
+const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 
 function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   try {
     const storage = getRuntimeStorage();
+    if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
+
     const raw = storage.getItem(BOOKS_KEY);
     if (!raw) return false;
     const trimmed = raw.trim();
@@ -42,8 +45,8 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
  * An established empty library is still a valid working copy. Treating [] as a
  * brand-new device used to rehydrate books after an offline "delete everything"
  * action and could also cause repeated full reads for readers whose library was
- * intentionally empty. The account-owner marker distinguishes that state from a
- * fresh App initialization.
+ * intentionally empty. A separate hydration-required marker keeps account
+ * switches from accidentally skipping the new reader's first cloud reconciliation.
  */
 export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   const { user } = useAccountSync();
