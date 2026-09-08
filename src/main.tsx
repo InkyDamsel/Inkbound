@@ -17,6 +17,7 @@ import { AdaptiveCloudPersistenceBridge } from './features/sync/AdaptiveCloudPer
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
 import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBoundary.tsx';
 import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBridge.tsx';
+import { CrossDeviceDeltaSyncBridge } from './features/sync/CrossDeviceDeltaSyncBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
 import { LibrarySyncCheckpointBridge } from './features/sync/LibrarySyncCheckpointBridge.tsx';
 import { ManualCoverLedgerBridge } from './features/sync/ManualCoverLedgerBridge.tsx';
@@ -165,6 +166,7 @@ const InkboundApplication = () => (
             <LibrarySyncCheckpointBridge />
             <AdaptiveCloudPersistenceBridge />
             <CloudServerRefreshBridge />
+            <CrossDeviceDeltaSyncBridge />
             <ManualCoverLedgerBridge />
             <ProtectedBookDetailsLedgerBridge />
             <AuxiliaryAccountSyncBridge />
