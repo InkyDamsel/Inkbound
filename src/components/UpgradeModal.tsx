@@ -1,19 +1,35 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, HeartHandshake, Lock, Sparkles, X } from 'lucide-react';
 import { PRODUCT_POLICY } from '../config/productPolicy';
 import { useUserPlan } from '../context/UserPlanContext';
+import { startStripeCheckout, type BillingCycle } from '../features/billing/stripeBilling';
 import { isNativeRuntime } from '../platform/runtimePlatform';
 
 const supportDeveloperUrl = import.meta.env.VITE_SUPPORT_DEVELOPER_URL?.trim();
 
 export const UpgradeModal: React.FC = () => {
   const { isUpgradeModalOpen, closeUpgradeModal, upgradeReason, userPlan } = useUserPlan();
+  const [checkoutCycle, setCheckoutCycle] = useState<BillingCycle | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     if (userPlan === 'premium' && isUpgradeModalOpen) closeUpgradeModal();
   }, [closeUpgradeModal, isUpgradeModalOpen, userPlan]);
 
   if (!isUpgradeModalOpen || userPlan === 'premium') return null;
+
+  const beginCheckout = async (cycle: BillingCycle) => {
+    if (isNativeRuntime()) return;
+    setCheckoutError(null);
+    setCheckoutCycle(cycle);
+    try {
+      await startStripeCheckout(cycle);
+    } catch (error) {
+      console.error('Inkbound could not start Stripe Checkout.', error);
+      setCheckoutError('Inkbound could not open checkout. Make sure you are signed in, then try again.');
+      setCheckoutCycle(null);
+    }
+  };
 
   const comparisonRows = [
     { feature: 'Items in your library', free: 'Unlimited', premium: 'Unlimited' },
@@ -32,6 +48,8 @@ export const UpgradeModal: React.FC = () => {
     { feature: 'Bookshelf Through Time', free: PRODUCT_POLICY.features.bookshelfThroughTime === 'free', premium: true },
   ];
 
+  const native = isNativeRuntime();
+
   return (
     <div className="fixed inset-0 z-[140] flex items-end overflow-y-auto bg-black/75 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4" role="presentation" onClick={closeUpgradeModal}>
       <section className="relative flex max-h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-surface)] shadow-2xl sm:max-h-[92dvh] sm:max-w-3xl sm:rounded-3xl" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title" onClick={(event) => event.stopPropagation()}>
@@ -47,16 +65,19 @@ export const UpgradeModal: React.FC = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col justify-between rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Monthly</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedMonthlyPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ month</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">Flexible monthly billing. Cancel anytime.</p></div>
-              <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>
+              {!native && <button type="button" onClick={() => void beginCheckout('monthly')} disabled={checkoutCycle !== null} className="quiet-shelf-primary-action mt-5 justify-center disabled:cursor-wait disabled:opacity-60">{checkoutCycle === 'monthly' ? 'Opening checkout…' : 'Choose Monthly'}</button>}
             </div>
             <div className="relative flex flex-col justify-between rounded-2xl border-2 border-[var(--ink-mauve)] bg-[var(--ink-surface-soft)] p-5 shadow-xl">
               <span className="absolute -top-3 right-4 rounded-full bg-[var(--ink-mauve)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-surface)]">Best Value</span>
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-mauve)]">Annual</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedAnnualPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ year</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">About $5/month and roughly 28% less than paying monthly.</p></div>
-              <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>
+              {!native && <button type="button" onClick={() => void beginCheckout('annual')} disabled={checkoutCycle !== null} className="quiet-shelf-primary-action mt-5 justify-center disabled:cursor-wait disabled:opacity-60">{checkoutCycle === 'annual' ? 'Opening checkout…' : 'Choose Annual'}</button>}
             </div>
           </div>
 
-          {!isNativeRuntime() && (
+          {checkoutError && <div className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-100">{checkoutError}</div>}
+          {native && <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-4 py-3 text-center text-xs text-[var(--ink-muted)]">Premium purchases inside the Android app will use Google Play Billing. Stripe checkout is web-only.</div>}
+
+          {!native && (
             <div className="rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/5 p-5">
               <div className="flex items-start gap-3">
                 <HeartHandshake className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
@@ -84,7 +105,7 @@ export const UpgradeModal: React.FC = () => {
 
           <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-center text-xs text-[var(--ink-muted)] sm:text-left">Current account: <span className="font-bold uppercase text-[var(--ink-mauve)]">{userPlan} Plan</span></div>
-            <p className="text-center text-xs text-[var(--ink-muted)] sm:text-right">{PRODUCT_POLICY.premium.subscriptionsOpen ? 'Premium subscriptions are available.' : 'Premium subscriptions are not open yet. The prices above are planned launch pricing.'}</p>
+            <p className="text-center text-xs text-[var(--ink-muted)] sm:text-right">{native ? 'Android billing is handled separately through Google Play.' : 'Premium subscriptions are available through secure Stripe Checkout.'}</p>
           </div>
         </div>
       </section>
