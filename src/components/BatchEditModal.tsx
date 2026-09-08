@@ -10,11 +10,13 @@ import {
   priorityLabel,
   readingStatusLabel,
 } from '../domain/libraryTaxonomy';
+import { readCustomOwnershipCategories } from '../features/ownership/customOwnershipCategories';
 import type { Format, OwnershipStatus, Priority, ReadingStatus, UserBookRecord } from '../types';
 
 export interface BatchEditChanges {
   status?: ReadingStatus;
   ownership?: OwnershipStatus;
+  customOwnershipCategoryId?: string | null;
   format?: Format;
   priority?: Priority;
   rating?: number | null;
@@ -44,9 +46,15 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const selectedBooks = books.filter((book) => selectedBookIds.includes(book.id));
   const first = selectedBooks[0];
   const uniform = <T,>(read: (book: UserBookRecord) => T) => first && selectedBooks.every((book) => read(book) === read(first));
+  const customOwnershipCategories = useMemo(() => readCustomOwnershipCategories(), []);
+  const initialOwnership = uniform((book) => book.ownership)
+    ? first.ownership === 'custom' && uniform((book) => book.customOwnershipCategoryId)
+      ? `custom:${first.customOwnershipCategoryId ?? ''}`
+      : first.ownership
+    : 'multiple';
 
   const [status, setStatus] = useState<string>(uniform((book) => book.status) ? first.status : 'multiple');
-  const [ownership, setOwnership] = useState<string>(uniform((book) => book.ownership) ? first.ownership : 'multiple');
+  const [ownership, setOwnership] = useState<string>(initialOwnership);
   const [priority, setPriority] = useState<string>(uniform((book) => book.priority) ? first.priority : 'multiple');
   const [format, setFormat] = useState('keep');
   const [rating, setRating] = useState('keep');
@@ -63,11 +71,16 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const changes = useMemo<BatchEditChanges>(() => {
     const finishDateChange = finishedMode === 'clear' ? null : finishedMode === 'set' && dateFinished ? dateFinished : undefined;
     const explicitStatus = status !== 'multiple' && status !== 'keep' ? status as ReadingStatus : undefined;
+    const selectedCustomCategoryId = ownership.startsWith('custom:') ? ownership.slice('custom:'.length) : undefined;
+    const selectedOwnership = ownership !== 'multiple' && ownership !== 'keep'
+      ? selectedCustomCategoryId !== undefined ? 'custom' : ownership as OwnershipStatus
+      : undefined;
     return {
-      // A real finished date is itself an explicit statement that the book was
-      // finished. This makes batch date corrections behave like Book Details.
       status: typeof finishDateChange === 'string' ? 'finished' : explicitStatus,
-      ownership: ownership !== 'multiple' && ownership !== 'keep' ? ownership as OwnershipStatus : undefined,
+      ownership: selectedOwnership,
+      customOwnershipCategoryId: selectedOwnership
+        ? selectedOwnership === 'custom' ? selectedCustomCategoryId || null : null
+        : undefined,
       priority: priority !== 'multiple' && priority !== 'keep' ? priority as Priority : undefined,
       format: format !== 'keep' ? format as Format : undefined,
       rating: rating === 'clear' ? null : rating !== 'keep' ? Number(rating) : undefined,
@@ -83,7 +96,12 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const preview = useMemo(() => {
     const items: string[] = [];
     if (changes.status) items.push(`Status → ${readingStatusLabel(changes.status)}`);
-    if (changes.ownership) items.push(`Ownership → ${ownershipLabel(changes.ownership)}`);
+    if (changes.ownership) {
+      const customLabel = changes.ownership === 'custom'
+        ? customOwnershipCategories.find((category) => category.id === changes.customOwnershipCategoryId)?.name
+        : undefined;
+      items.push(`Ownership → ${customLabel ?? ownershipLabel(changes.ownership)}`);
+    }
     if (changes.format) items.push(`Format → ${formatLabel(changes.format)}`);
     if (changes.priority) items.push(`Priority → ${priorityLabel(changes.priority)}`);
     if (changes.rating !== undefined) items.push(changes.rating === null ? 'Clear rating' : `Rating → ${changes.rating}/5`);
@@ -94,7 +112,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     if (changes.addCollection) items.push(`Add collection “${changes.addCollection}”`);
     if (changes.removeCollection) items.push(`Remove collection “${changes.removeCollection}”`);
     return items;
-  }, [changes]);
+  }, [changes, customOwnershipCategories]);
 
   const field = (label: string, child: React.ReactNode) => <div><label className="mb-1 block font-bold text-[#f4efe6]">{label}</label>{child}</div>;
   const optionSet = <T extends string>(options: readonly { value: T; label: string }[]) => options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>);
@@ -115,7 +133,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
         <div className="flex-1 space-y-6 overflow-y-auto p-5 text-xs sm:p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {field('Reading Status', <select value={status} onChange={(event) => setStatus(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{status === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(READING_STATUS_OPTIONS)}</select>)}
-            {field('Ownership', <select value={ownership} onChange={(event) => setOwnership(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{ownership === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(OWNERSHIP_OPTIONS)}</select>)}
+            {field('Ownership', <select value={ownership} onChange={(event) => setOwnership(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{ownership === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom'))}{customOwnershipCategories.length > 0 && <optgroup label="Custom categories">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>)}
             {field('Primary Format', <select value={format} onChange={(event) => setFormat(event.target.value)} className={selectClass}><option value="keep">Keep Current Formats</option>{optionSet(FORMAT_OPTIONS)}</select>)}
             {field('Priority', <select value={priority} onChange={(event) => setPriority(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{priority === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(PRIORITY_OPTIONS)}</select>)}
             {field('Rating', <select value={rating} onChange={(event) => setRating(event.target.value)} className={selectClass}><option value="keep">Keep Current Ratings</option>{[5,4,3,2,1].map((value) => <option key={value} value={value}>{value} stars</option>)}<option value="clear">Clear Rating</option></select>)}
