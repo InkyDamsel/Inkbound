@@ -65,6 +65,16 @@ function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): 
   return [...merged.values()];
 }
 
+function newestSnapshotUpdateMillis(
+  documents: Array<{ data(): unknown }>,
+  initial = 0,
+): number {
+  return documents.reduce((newest, item) => {
+    const updatedAt = (item.data() as CloudRecord<unknown>).updatedAt?.toMillis() ?? 0;
+    return Math.max(newest, updatedAt);
+  }, initial);
+}
+
 /**
  * Restores a genuinely new device exactly once without installing collection
  * listeners. Established local working copies, including intentionally empty
@@ -131,15 +141,17 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
         // Delta sync starts immediately after hydration. Seed its cursor from the
         // newest server timestamp actually present in this full snapshot so it
-        // does not reread a very large library from the beginning. Any write that
-        // lands after this snapshot necessarily has a newer timestamp and remains
-        // visible to the overlap query.
-        const hydrationCursorMillis = Math.max(
-          0,
-          ...bookSnapshot.docs.map((item) => (item.data() as CloudRecord<unknown>).updatedAt?.toMillis() ?? 0),
-          ...sessionSnapshot.docs.map((item) => (item.data() as CloudRecord<unknown>).updatedAt?.toMillis() ?? 0),
-          profileSnapshot.exists() ? (profileSnapshot.data() as CloudRecord<unknown>).updatedAt?.toMillis() ?? 0 : 0,
-        );
+        // does not reread a very large library from the beginning. Reduce rather
+        // than spreading tens of thousands of timestamps into Math.max; large
+        // libraries can exceed JavaScript's function-argument limit.
+        let hydrationCursorMillis = newestSnapshotUpdateMillis(bookSnapshot.docs);
+        hydrationCursorMillis = newestSnapshotUpdateMillis(sessionSnapshot.docs, hydrationCursorMillis);
+        if (profileSnapshot.exists()) {
+          hydrationCursorMillis = Math.max(
+            hydrationCursorMillis,
+            (profileSnapshot.data() as CloudRecord<unknown>).updatedAt?.toMillis() ?? 0,
+          );
+        }
         if (hydrationCursorMillis > 0) {
           storage.setItem(crossDeviceCursorKey(uid), String(hydrationCursorMillis));
         }
