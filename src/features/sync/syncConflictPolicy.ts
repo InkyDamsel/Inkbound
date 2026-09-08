@@ -56,3 +56,18 @@ export function shouldRemoteChangeReplacePending({
   const pendingMillis = parseClientMillis(pendingClientUpdatedAt);
   return remoteMillis > pendingMillis;
 }
+
+/**
+ * A durable deletion tombstone is authoritative only until the same record is
+ * deliberately recreated. When a later cloud upsert exists, the historical
+ * tombstone must not erase the revived record on a newly opened device.
+ */
+export function shouldApplyRemoteTombstone({
+  tombstoneServerMillis = 0,
+  latestRecordServerMillis = 0,
+}: {
+  tombstoneServerMillis?: number;
+  latestRecordServerMillis?: number;
+}): boolean {
+  return latestRecordServerMillis <= tombstoneServerMillis;
+}
