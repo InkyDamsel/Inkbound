@@ -9,6 +9,7 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, storage } from '../../lib/firebase';
+import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
@@ -19,11 +20,17 @@ import {
   type CloudSyncedStorageKey,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import {
+  SYNC_STORAGE_KEYS,
+  localClearIntentKey,
+  syncBaselineStateKey,
+  syncPendingStateKey,
+} from './storageKeys';
 
-const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
-const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
-const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
-const OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+const BOOKS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.books;
+const SESSIONS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.sessions;
+const PROFILE_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.profile;
+const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const SYNC_FLUSH_DEBOUNCE_MS = 3000;
 const UPLOAD_BATCH_SIZE = 100;
 const CHECKPOINT_BATCH_SIZE = 500;
@@ -58,9 +65,6 @@ const hashText = (value: string) => {
   return (hash >>> 0).toString(36);
 };
 const fingerprint = (value: unknown) => hashText(stable(value));
-const pendingKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
-const baselineKey = (uid: string) => `inkbound_sync_baseline_${uid}_v2`;
-const clearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 const emptyPending = (): PendingSyncState => ({ books: {}, sessions: {} });
 const emptyBaseline = (): SyncBaseline => ({ books: {}, sessions: {} });
 
@@ -73,14 +77,15 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-const readPending = (uid: string) => readJson<PendingSyncState>(pendingKey(uid), emptyPending());
-const readBaseline = (uid: string) => readJson<SyncBaseline>(baselineKey(uid), emptyBaseline());
-const writeBaseline = (uid: string, value: SyncBaseline) => runtimeStorage().setItem(baselineKey(uid), stable(value));
+const readPending = (uid: string) => readJson<PendingSyncState>(syncPendingStateKey(uid), emptyPending());
+const readBaseline = (uid: string) => readJson<SyncBaseline>(syncBaselineStateKey(uid), emptyBaseline());
+const writeBaseline = (uid: string, value: SyncBaseline) => runtimeStorage().setItem(syncBaselineStateKey(uid), stable(value));
 const writePending = (uid: string, value: PendingSyncState) => {
+  const key = syncPendingStateKey(uid);
   if (!Object.keys(value.books).length && !Object.keys(value.sessions).length && !value.profile) {
-    runtimeStorage().removeItem(pendingKey(uid));
+    runtimeStorage().removeItem(key);
   } else {
-    runtimeStorage().setItem(pendingKey(uid), stable(value));
+    runtimeStorage().setItem(key, stable(value));
   }
 };
 
@@ -166,6 +171,9 @@ async function prepareCloudProfile(uid: string, profile: ReaderProfile): Promise
  * collection listeners. The local library is the working copy; changed records
  * are uploaded from the durable pending queue. A full server comparison is only
  * done by CloudServerRefreshBridge when the reader explicitly asks for one.
+ *
+ * Retry-on-foreground is driven by runtimeLifecycle so browser visibility and
+ * Android Capacitor appStateChange use the exact same persistence path.
  */
 export const CostSafeCloudPersistenceBridge: React.FC = () => {
   const sync = useAccountSync();
@@ -295,7 +303,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     };
 
     const captureCurrentChanges = (keys?: CloudSyncedStorageKey[]) => {
-      if (disposed || runtimeStorage().getItem(clearIntentKey(uid)) === '1') return;
+      if (disposed || runtimeStorage().getItem(localClearIntentKey(uid)) === '1') return;
       const changedKeys = keys ? new Set(keys) : undefined;
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
@@ -336,19 +344,12 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
 
     const handleCloudUpdate = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
-      // Explicit server refresh/recovery has already written the accepted cloud
-      // values locally. Treat them as the new working state instead of echoing
-      // the whole refreshed library back to Firestore.
       resetWorkingFingerprints(detail?.keys);
     };
 
     const resumePendingSync = () => {
       if (disposed || !navigator.onLine) return;
       void flushPending().catch(() => undefined);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') resumePendingSync();
     };
 
     const flushBeforeSignOut = (event: Event) => {
@@ -364,12 +365,9 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
-    window.addEventListener('online', resumePendingSync);
-    window.addEventListener('focus', resumePendingSync);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
+    const unsubscribeRuntimeResume = subscribeToRuntimeResume(resumePendingSync);
 
-    // Existing durable work resumes without first rereading the whole library.
     if (navigator.onLine) void flushPending().catch(() => undefined);
 
     return () => {
@@ -377,10 +375,8 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       if (flushTimer !== undefined) window.clearTimeout(flushTimer);
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
-      window.removeEventListener('online', resumePendingSync);
-      window.removeEventListener('focus', resumePendingSync);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
+      unsubscribeRuntimeResume();
     };
   }, [sync.user?.uid]);
 
