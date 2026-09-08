@@ -8,14 +8,33 @@ import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
  * Wishlist is preserved because that is an intentional reader choice.
  */
 export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
-  const isFutureUntitledSeriesPlaceholder = /^untitled\b/i.test(book.work.title.trim())
-    && Boolean(inferSeriesHintFromTitle(book.work.title))
-    && book.status !== 'finished'
-    && book.status !== 'currently-reading';
+  let normalized = book;
 
-  if (!isFutureUntitledSeriesPlaceholder) return book;
-  if (book.ownership === 'none' || book.ownership === 'wishlist') return book;
-  return { ...book, ownership: 'none' };
+  // Ownership and reading status are separate concepts, but a title explicitly
+  // moved to the Wishlist cannot simultaneously remain a finished/read item.
+  // This repairs older contradictory records without treating ordinary TBR
+  // ownership changes as reading activity.
+  if (normalized.ownership === 'wishlist' && normalized.status === 'finished') {
+    normalized = {
+      ...normalized,
+      status: 'wishlist',
+      dateFinished: undefined,
+    };
+  }
+
+  // Person-to-person borrowing does not use the library-loan due-date model.
+  if (normalized.ownership === 'borrowed-person' && normalized.libraryLoan) {
+    normalized = { ...normalized, libraryLoan: undefined };
+  }
+
+  const isFutureUntitledSeriesPlaceholder = /^untitled\b/i.test(normalized.work.title.trim())
+    && Boolean(inferSeriesHintFromTitle(normalized.work.title))
+    && normalized.status !== 'finished'
+    && normalized.status !== 'currently-reading';
+
+  if (!isFutureUntitledSeriesPlaceholder) return normalized;
+  if (normalized.ownership === 'none' || normalized.ownership === 'wishlist') return normalized;
+  return { ...normalized, ownership: 'none' };
 }
 
 export function normalizeCanonicalLibraryRecords(books: UserBookRecord[]): {
