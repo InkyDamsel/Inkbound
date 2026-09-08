@@ -148,6 +148,7 @@ export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
 export { getAdminDashboard } from './readerDirectoryMaintenance.js';
 export { getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
 export { listAdminRecoveryPoints, restoreAdminRecoveryPoint } from './adminRecovery.js';
+export { previewAdminRecoveryPoint, restoreAdminRecoverySelection } from './adminSelectiveRecovery.js';
 export { searchHardcoverBooks } from './bookSearch.js';
 export { submitMetadataContribution, getMetadataContributions, reviewMetadataContribution } from './metadataContributions.js';
 export { sendVerificationEmail } from './sendVerificationEmail.js';
