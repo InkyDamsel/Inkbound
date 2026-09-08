@@ -2,11 +2,15 @@ import type { ReadingSession, UserBookRecord } from '../../types';
 import { getActiveEdition } from './bookReadingState';
 import { localDateKey } from './sessionAnalytics';
 
-function sessionSortKey(session: ReadingSession): string {
+export function sessionSortKey(session: ReadingSession): string {
   return `${session.date}T${session.endTime || session.startTime || '00:00'}`;
 }
 
-function sessionProgress(session: ReadingSession, audiobook: boolean, edge: 'start' | 'end'): number {
+export function getSessionProgressEndpoint(
+  session: ReadingSession,
+  audiobook: boolean,
+  edge: 'start' | 'end',
+): number {
   if (audiobook) {
     const seconds = edge === 'start' ? session.startTimestampSec : session.endTimestampSec;
     return Math.max(0, Math.floor((seconds ?? 0) / 60));
@@ -86,14 +90,14 @@ export function reconcileBookAfterSessionMutation(
     : [];
   const previousLatest = previousRelated.at(-1);
   const previousTrackedProgress = previousLatest
-    ? sessionProgress(previousLatest, isAudiobook, 'end')
+    ? getSessionProgressEndpoint(previousLatest, isAudiobook, 'end')
     : changedSession && changedSession.bookId === book.id
-      ? sessionProgress(changedSession, isAudiobook, 'start')
+      ? getSessionProgressEndpoint(changedSession, isAudiobook, 'start')
       : undefined;
   const trackedProgress = latest
-    ? sessionProgress(latest, isAudiobook, 'end')
+    ? getSessionProgressEndpoint(latest, isAudiobook, 'end')
     : changedSession && changedSession.bookId === book.id
-      ? sessionProgress(changedSession, isAudiobook, 'start')
+      ? getSessionProgressEndpoint(changedSession, isAudiobook, 'start')
       : currentProgress;
   const hasManualProgressAhead = previousTrackedProgress !== undefined && currentProgress > previousTrackedProgress;
   const nextProgress = changedSession
