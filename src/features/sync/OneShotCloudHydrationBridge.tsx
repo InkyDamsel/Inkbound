@@ -3,6 +3,7 @@ import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
+import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from './storageKeys';
@@ -11,6 +12,7 @@ const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
+const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 const LOCAL_HYDRATION_GRACE_MS = 1800;
 
 interface CloudRecord<T> { data: T }
@@ -39,6 +41,8 @@ function writeJson(key: string, value: unknown) {
 function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   try {
     const storage = getRuntimeStorage();
+    if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
+
     const raw = storage.getItem(BOOKS_KEY);
     if (!raw) return false;
     const trimmed = raw.trim();
@@ -63,9 +67,10 @@ function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): 
  * listeners. Established local working copies, including intentionally empty
  * libraries, stay local-first.
  *
- * Account ownership is checked before local records are merged. This prevents a
- * previous reader's cached books, sessions, or profile from leaking into a newly
- * signed-in account while the other account-cleanup bridges are still starting.
+ * Account ownership is checked before local records are merged. A switched
+ * account is explicitly marked as requiring hydration so local edits made while
+ * offline can be preserved and merged when connectivity returns instead of being
+ * mistaken for a fully hydrated library.
  */
 export const OneShotCloudHydrationBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -75,6 +80,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
     const uid = user.uid;
     let disposed = false;
     let timer: number | undefined;
+    let hydrationRunning = false;
 
     const openFromLocal = () => {
       getRuntimeStorage().setItem(OWNER_UID_KEY, uid);
@@ -82,12 +88,13 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
     };
 
     const hydrate = async () => {
-      if (disposed) return;
+      if (disposed || hydrationRunning || !navigator.onLine) return;
       if (hasEstablishedLocalWorkingCopy(uid)) {
         openFromLocal();
         return;
       }
 
+      hydrationRunning = true;
       try {
         const booksRef = collection(db!, 'users', uid, 'books');
         const sessionsRef = collection(db!, 'users', uid, 'sessions');
@@ -120,11 +127,21 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
+        if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) {
+          storage.removeItem(HYDRATION_REQUIRED_UID_KEY);
+        }
         notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
       } catch (error) {
-        console.warn('Inkbound one-time cloud restore could not complete; opening the local working copy.', error);
+        console.warn('Inkbound one-time cloud restore could not complete; it will retry when connectivity returns.', error);
         if (!disposed && hasEstablishedLocalWorkingCopy(uid)) openFromLocal();
+      } finally {
+        hydrationRunning = false;
       }
+    };
+
+    const retryHydration = () => {
+      if (disposed || hasEstablishedLocalWorkingCopy(uid)) return;
+      void hydrate();
     };
 
     if (hasEstablishedLocalWorkingCopy(uid)) {
@@ -132,13 +149,16 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
     } else {
       timer = window.setTimeout(() => {
         timer = undefined;
-        void hydrate();
+        retryHydration();
       }, LOCAL_HYDRATION_GRACE_MS);
     }
+
+    const unsubscribeRuntimeResume = subscribeToRuntimeResume(retryHydration);
 
     return () => {
       disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
+      unsubscribeRuntimeResume();
     };
   }, [user?.uid]);
 
