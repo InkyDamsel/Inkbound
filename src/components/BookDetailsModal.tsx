@@ -11,7 +11,7 @@ import { readSeriesOverrides } from '../features/series/seriesOverrides';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
-import { getRuntimeStorage, notifyRuntimeStorageChanged } from '../platform/runtimeStorage';
+import { notifyRuntimeStorageChanged, writeRuntimeJson } from '../platform/runtimeStorage';
 import type { Edition, ReadingSession, UserBookRecord } from '../types';
 import './bookDetailsResponsive.css';
 
@@ -124,8 +124,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   };
 
   const persistSessions = (nextSessions: ReadingSession[]) => {
-    const storage = getRuntimeStorage();
-    storage.setItem(SYNC_STORAGE_KEYS.sessions, JSON.stringify(nextSessions));
+    if (!writeRuntimeJson(SYNC_STORAGE_KEYS.sessions, nextSessions)) return;
     notifyRuntimeStorageChanged(SYNC_STORAGE_KEYS.sessions);
     notifyCloudDataUpdated([SYNC_STORAGE_KEYS.sessions]);
   };
