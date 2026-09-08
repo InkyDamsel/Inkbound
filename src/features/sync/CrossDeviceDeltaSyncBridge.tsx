@@ -32,6 +32,8 @@ import {
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
+const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
+const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 const FOREGROUND_FALLBACK_MS = 120000;
 const QUERY_OVERLAP_MS = 5000;
 
@@ -162,12 +164,17 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     if (!user || !db) return undefined;
     const uid = user.uid;
     let disposed = false;
+    let initialRetryTimer: number | undefined;
 
     knownBookIds.current = idsFromStored<UserBookRecord>(BOOKS_KEY);
 
+    const coreHydrationComplete = () => (
+      runtimeStorage().getItem(OWNER_UID_KEY) === uid
+      && runtimeStorage().getItem(HYDRATION_REQUIRED_UID_KEY) !== uid
+    );
+
     const pullDeltas = async () => {
-      if (disposed || pullRunning.current || !navigator.onLine) return;
-      if (knownBookIds.current.size === 0 && !runtimeStorage().getItem(crossDeviceCursorKey(uid))) return;
+      if (disposed || pullRunning.current || !navigator.onLine || !coreHydrationComplete()) return;
 
       pullRunning.current = true;
       try {
@@ -307,13 +314,6 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       }
     };
 
-    const establishCursorAfterFirstHydration = () => {
-      const books = idsFromStored<UserBookRecord>(BOOKS_KEY);
-      if (!books.size) return;
-      knownBookIds.current = books;
-      if (!runtimeStorage().getItem(crossDeviceCursorKey(uid))) runtimeStorage().setItem(crossDeviceCursorKey(uid), String(Date.now()));
-    };
-
     const unsubscribeRuntimeResume = subscribeToRuntimeResume(() => {
       void pullDeltas();
     });
@@ -321,11 +321,17 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       if (document.visibilityState === 'visible') void pullDeltas();
     }, FOREGROUND_FALLBACK_MS);
 
-    if (knownBookIds.current.size > 0) void pullDeltas();
-    else window.setTimeout(establishCursorAfterFirstHydration, 2500);
+    if (coreHydrationComplete()) void pullDeltas();
+    else {
+      initialRetryTimer = window.setTimeout(() => {
+        initialRetryTimer = undefined;
+        void pullDeltas();
+      }, 2500);
+    }
 
     return () => {
       disposed = true;
+      if (initialRetryTimer !== undefined) window.clearTimeout(initialRetryTimer);
       window.clearInterval(fallback);
       unsubscribeRuntimeResume();
     };
