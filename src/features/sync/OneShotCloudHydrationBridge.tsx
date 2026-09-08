@@ -6,7 +6,7 @@ import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
-import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { crossDeviceCursorKey, SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -15,7 +15,10 @@ const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 const LOCAL_HYDRATION_GRACE_MS = 1800;
 
-interface CloudRecord<T> { data: T }
+interface CloudRecord<T> {
+  data: T;
+  updatedAt?: { toMillis(): number };
+}
 interface ReaderProfile {
   displayName?: string;
   email?: string;
@@ -124,6 +127,21 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
           else if (!sameAccountLocalData) storage.removeItem(PROFILE_KEY);
         } else if (!sameAccountLocalData) {
           storage.removeItem(PROFILE_KEY);
+        }
+
+        // Delta sync starts immediately after hydration. Seed its cursor from the
+        // newest server timestamp actually present in this full snapshot so it
+        // does not reread a very large library from the beginning. Any write that
+        // lands after this snapshot necessarily has a newer timestamp and remains
+        // visible to the overlap query.
+        const hydrationCursorMillis = Math.max(
+          0,
+          ...bookSnapshot.docs.map((item) => (item.data() as CloudRecord<unknown>).updatedAt?.toMillis() ?? 0),
+          ...sessionSnapshot.docs.map((item) => (item.data() as CloudRecord<unknown>).updatedAt?.toMillis() ?? 0),
+          profileSnapshot.exists() ? (profileSnapshot.data() as CloudRecord<unknown>).updatedAt?.toMillis() ?? 0 : 0,
+        );
+        if (hydrationCursorMillis > 0) {
+          storage.setItem(crossDeviceCursorKey(uid), String(hydrationCursorMillis));
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
