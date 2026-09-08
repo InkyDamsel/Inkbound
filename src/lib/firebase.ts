@@ -5,7 +5,14 @@ import {
   ReCaptchaEnterpriseProvider,
   initializeAppCheck,
 } from 'firebase/app-check';
-import { Auth, connectAuthEmulator, getAuth } from 'firebase/auth';
+import {
+  Auth,
+  browserLocalPersistence,
+  connectAuthEmulator,
+  getAuth,
+  indexedDBLocalPersistence,
+  initializeAuth,
+} from 'firebase/auth';
 import {
   Firestore,
   connectFirestoreEmulator,
@@ -117,7 +124,16 @@ if (isFirebaseConfigured) {
     });
   }
 
-  auth = getAuth(app);
+  // Configure native auth persistence at Firebase Auth creation time instead of
+  // trying to switch persistence after the WebView has already started restoring
+  // a session. IndexedDB is preferred in Capacitor because it survives process
+  // restarts reliably; localStorage remains a durable fallback for WebViews that
+  // cannot open IndexedDB. Web continues using Firebase's normal getAuth setup.
+  auth = isNativeRuntime()
+    ? initializeAuth(app, {
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      })
+    : getAuth(app);
 
   // Inkbound owns durable local state, so Firestore only needs an in-memory
   // transport cache. iPadOS browsers (including Chrome, which uses WebKit on
