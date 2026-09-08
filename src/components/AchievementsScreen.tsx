@@ -3,24 +3,23 @@ import { Award, BookOpen, Check, Clock3, Eye, Flame, Headphones, Library, Lock, 
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { isInkboundActiveBook, isInkboundFinishedBook } from '../features/reading/inkboundActivity';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 
 type AchievementFilter = 'all' | 'completed' | 'revealed' | 'in-progress';
 interface AchievementsScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; }
 interface AchievementDefinition { id:string; title:string; description:string; category:string; icon:React.ElementType; progress:number; target:number; unit:string; }
 
-// v5 separates a manual objective reveal from actually starting an achievement.
-// Hidden achievements must never look in-progress simply because the user peeked.
-const UNLOCKED_STORAGE_KEY='inkbound_achievement_unlocks_v5';
-const REVEALED_STORAGE_KEY='inkbound_achievement_reveals_v5';
-const SEEN_STORAGE_KEY='inkbound_achievement_seen_v5';
+const UNLOCKED_STORAGE_KEY=ACCOUNT_DATA_STORAGE_KEYS.achievementUnlocks;
+const REVEALED_STORAGE_KEY=ACCOUNT_DATA_STORAGE_KEYS.achievementReveals;
+const SEEN_STORAGE_KEY=ACCOUNT_DATA_STORAGE_KEYS.achievementSeen;
 const FILTER_STORAGE_KEY='inkbound_achievement_filter';
 const readRecord=(key:string):Record<string,string>=>{const parsed=readRuntimeJson<unknown>(key,{});return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed as Record<string,string>:{};};
 const readStringArray=(key:string):string[]=>{const parsed=readRuntimeJson<unknown>(key,[]);return Array.isArray(parsed)?parsed.filter((item):item is string=>typeof item==='string'):[];};
 const readFilter=():AchievementFilter=>{const parsed=readRuntimeJson<unknown>(FILTER_STORAGE_KEY,'all');return parsed==='completed'||parsed==='revealed'||parsed==='in-progress'?parsed:'all';};
-const getActiveEdition=(book:UserBookRecord)=>book.editions.find(e=>e.id===book.activeEditionId)??book.editions[0];
 const safeNumber=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:0;
 const achievementFamily=(id:string)=>id.replace(/-\d+$/,'');
 const makeLadder=(prefix:string,category:string,icon:React.ElementType,progress:number,unit:string,milestones:Array<[number,string,string]>):AchievementDefinition[]=>milestones.map(([target,title,description])=>({id:`${prefix}-${target}`,title,description,category,icon,progress,target,unit}));
@@ -66,8 +65,6 @@ export const AchievementsScreen:React.FC<AchievementsScreenProps>=({books,sessio
  const newlyUnlocked=useMemo(()=>definitions.filter(a=>a.progress>=a.target&&!safeUnlockDates[a.id]),[definitions,safeUnlockDates]);
  useEffect(()=>{if(!newlyUnlocked.length)return;const timestamp=new Date().toISOString();setUnlockDates(current=>({...current,...Object.fromEntries(newlyUnlocked.map(a=>[a.id,timestamp]))}));},[newlyUnlocked,setUnlockDates]);
 
- // A family only starts once it has real Inkbound activity. Completed milestones plus
- // the single next milestone count as started. Later milestones remain genuinely hidden.
  const automaticRevealIds=useMemo(()=>{const byFamily=new Map<string,AchievementDefinition[]>();definitions.forEach(a=>{const family=achievementFamily(a.id);byFamily.set(family,[...(byFamily.get(family)??[]),a]);});const reveal=new Set<string>();byFamily.forEach(items=>{const sorted=[...items].sort((a,b)=>a.target-b.target);const familyProgress=Math.max(...sorted.map(a=>a.progress));if(familyProgress<=0)return;sorted.filter(a=>a.progress>=a.target).forEach(a=>reveal.add(a.id));const next=sorted.find(a=>a.progress<a.target);if(next)reveal.add(next.id);});return [...reveal];},[definitions]);
  const automaticRevealSet=new Set(automaticRevealIds);
  const manualRevealSet=new Set(safeRevealedAchievementIds);
