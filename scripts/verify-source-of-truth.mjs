@@ -30,11 +30,28 @@ for (const file of sourceFiles) {
 }
 
 const app = read('src/App.tsx');
-for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_KEYS', 'LEGACY_SYNC_STORAGE_KEYS', 'ACCOUNT_DATA_STORAGE_KEYS', 'subscribeToRuntimeResume', 'writeRuntimeJson']) {
+for (const required of [
+  'withReadingStatus',
+  'getActiveEdition',
+  'applySessionProgressToBook',
+  'reconcileBookAfterSessionMutation',
+  'getSessionProgressEndpoint',
+  'SYNC_STORAGE_KEYS',
+  'LEGACY_SYNC_STORAGE_KEYS',
+  'ACCOUNT_DATA_STORAGE_KEYS',
+  'subscribeToRuntimeResume',
+  'writeRuntimeJson',
+]) {
   if (!app.includes(required)) violations.push(`App.tsx: missing canonical ${required} consumer`);
 }
 if (/function\s+applyReadingStatus\s*\(/.test(app)) {
   violations.push('App.tsx: must not maintain a second reading-status transition implementation');
+}
+if (/function\s+sessionSortKey\s*\(|function\s+sessionProgress\s*\(/.test(app)) {
+  violations.push('App.tsx: session progress/sort rules must come from sessionBookReconciliation.ts');
+}
+if (/shouldUnfinishTrackedCompletion/.test(app)) {
+  violations.push('App.tsx: session edits/deletes must not silently unfinish an explicit Finished status');
 }
 for (const literal of ["const BOOKS_STORAGE_KEY = 'inkbound_books'", "const SESSIONS_STORAGE_KEY = 'inkbound_sessions'", "const THEME_STORAGE_KEY = 'inkbound_theme'"]) {
   if (app.includes(literal)) violations.push(`App.tsx: canonical storage key was redefined (${literal})`);
@@ -50,6 +67,13 @@ if (/safeWriteLocalStorage/.test(app)) {
 }
 if (!app.includes('onUpdateSession={handleUpdateSession}') || !app.includes('onDeleteSession={handleDeleteSession}')) {
   violations.push('App.tsx: Book Details session edits/deletes must flow through the canonical App session mutation path');
+}
+
+const sessionBookReconciliation = read('src/features/reading/sessionBookReconciliation.ts');
+for (const required of ['applySessionProgressToBook', 'reconcileBookAfterSessionMutation', 'getSessionProgressEndpoint', 'sessionSortKey']) {
+  if (!sessionBookReconciliation.includes(`export function ${required}`)) {
+    violations.push(`sessionBookReconciliation.ts: missing canonical ${required}`);
+  }
 }
 
 const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
@@ -128,7 +152,7 @@ if (!main.includes('<CrossDeviceDeltaSyncBridge />') || !main.includes('<Auxilia
 }
 
 const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
-for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey']) {
+for (const required of ['shouldRemoteChangeReplacePending', 'shouldApplyRemoteTombstone', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey']) {
   if (!crossDeviceSync.includes(required)) {
     violations.push(`CrossDeviceDeltaSyncBridge.tsx: core sync must consume canonical ${required}`);
   }
@@ -136,10 +160,13 @@ for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeR
 if (/inkbound_(?:pending_sync|sync_baseline|cross_device_cursor)_/.test(crossDeviceSync)) {
   violations.push('CrossDeviceDeltaSyncBridge.tsx: sync metadata key strings must come from storageKeys.ts');
 }
+if (/setDoc\([^\n]*syncTombstones|writeTombstones/.test(crossDeviceSync)) {
+  violations.push('CrossDeviceDeltaSyncBridge.tsx: local deletion publication belongs only to the durable persistence bridge');
+}
 
 const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
-for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume']) {
-  if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical ${required}`);
+for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
+  if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
 }
 
 const auxiliarySync = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
