@@ -165,8 +165,11 @@ export interface ImportRecordItem {
   format: Format;
   status: ReadingStatus;
   rating?: number;
+  dateStarted?: string;
   dateRead?: string;
   dateAdded: string;
+  pageCount?: number;
+  coverUrl?: string;
   review?: string;
   matchedBookId?: string;
   matchTitle?: string;
