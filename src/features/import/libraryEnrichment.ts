@@ -233,10 +233,6 @@ export function analyzeImportDuplicates(
   const seenIsbns = new Set<string>();
   const seenTitleAuthors = new Set<string>();
 
-  // Build the existing-library identity indexes once. The previous implementation
-  // scanned every existing book for every incoming row, which turns a 50K import
-  // against a 16K library into hundreds of millions of comparisons and can hang
-  // the browser. Indexed lookups keep duplicate analysis effectively linear.
   const libraryIsbns = new Set<string>();
   const libraryTitleAuthors = new Set<string>();
   for (const book of library) {
@@ -470,7 +466,12 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
   const editionId = `edition-import-${item.id}`;
   const normalizedIsbn = compactIsbn(item.isbn);
   const dateAdded = normalizeImportDate(item.dateAdded) ?? new Date().toISOString().slice(0, 10);
+  const dateStarted = normalizeImportDate(item.dateStarted);
   const dateFinished = item.status === 'finished' ? normalizeImportDate(item.dateRead) : undefined;
+  const pageCount = typeof item.pageCount === 'number' && Number.isFinite(item.pageCount) && item.pageCount > 0
+    ? Math.round(item.pageCount)
+    : undefined;
+  const coverUrl = item.coverUrl?.trim() || undefined;
   return {
     id: `book-import-${item.id}`,
     work: {
@@ -489,7 +490,9 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
       isbn: item.isbn,
       isbn13: normalizedIsbn.length === 13 ? normalizedIsbn : undefined,
       isbn10: normalizedIsbn.length === 10 ? normalizedIsbn : undefined,
+      pageCount,
       coverGradient: item.coverGradient,
+      coverUrl,
       externalSource: 'import',
     }],
     status: item.status,
@@ -507,7 +510,9 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
     sourceOfImport: 'Library import',
     importMetadataVerified: false,
     importMetadataReviewNeeded: false,
+    importFinishedDateProvided: Boolean(dateFinished),
     dateAdded,
+    dateStarted,
     dateFinished,
   };
 }
@@ -520,14 +525,19 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
     }
 
     const publisherSummary = work.publisherSummary?.trim();
-    const coverUrl = coverEdition?.coverUrl;
+    const sourcePageCount = typeof item.pageCount === 'number' && Number.isFinite(item.pageCount) && item.pageCount > 0
+      ? Math.round(item.pageCount)
+      : undefined;
+    const sourceCoverUrl = item.coverUrl?.trim() || undefined;
+    const coverUrl = sourceCoverUrl || coverEdition?.coverUrl;
     const editionId = `edition-enriched-${item.id}`;
-    const pageCount = edition.pageCount;
+    const pageCount = sourcePageCount || edition.pageCount;
     const hasKnownPageTotal = item.format !== 'audiobook'
       && typeof pageCount === 'number'
       && Number.isFinite(pageCount)
       && pageCount > 0;
     const dateAdded = normalizeImportDate(item.dateAdded) ?? new Date().toISOString().slice(0, 10);
+    const dateStarted = normalizeImportDate(item.dateStarted);
     const dateFinished = item.status === 'finished' ? normalizeImportDate(item.dateRead) : undefined;
     const enriched: UserBookRecord = {
       id: item.targetBookId,
@@ -578,7 +588,9 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       sourceOfImport: 'Library import + verified metadata',
       importMetadataVerified: true,
       importMetadataReviewNeeded: false,
+      importFinishedDateProvided: Boolean(dateFinished),
       dateAdded,
+      dateStarted,
       dateFinished,
     };
 
@@ -673,6 +685,9 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
       : current.editions,
     ...(shouldReconcileImportedFinish && isAudiobook ? { progressMinutes: total!, progressPercentage: 100 } : {}),
     ...(shouldReconcileImportedFinish && !isAudiobook ? { progressPages: total!, progressPercentage: 100 } : {}),
+    dateStarted: current.dateStarted || enriched.dateStarted,
+    dateFinished: current.dateFinished || enriched.dateFinished,
+    importFinishedDateProvided: current.importFinishedDateProvided ?? enriched.importFinishedDateProvided,
     sourceOfImport: 'Library import + verified metadata',
     importMetadataVerified: true,
     importMetadataReviewNeeded: false,
@@ -723,8 +738,11 @@ export function buildRepairQueueItems(
       format: activeEdition?.format || 'hardcover',
       status: book.status,
       rating: book.rating,
+      dateStarted: book.dateStarted,
       dateRead: book.dateFinished,
       dateAdded: book.dateAdded,
+      pageCount: activeEdition?.pageCount,
+      coverUrl: activeEdition?.coverUrl,
       review: book.review,
       confidence: 100,
       duplicateAction: 'merge',
