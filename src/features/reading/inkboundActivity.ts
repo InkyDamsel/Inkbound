@@ -17,15 +17,13 @@ const hasValidDateKey = (value?: string): boolean => {
 };
 
 /**
- * Historical/library reporting may use an imported finish only when the import
- * supplied a real finished date and that record is not marked as questionable.
+ * Historical/library reporting trusts an explicit Finished status plus a valid
+ * finished date, regardless of whether that history was entered manually or
+ * imported. Import verification controls metadata enrichment quality; it must
+ * not erase valid reading history from dashboards, reports, or annual goals.
  */
 export function hasTrustworthyFinishedHistory(book: UserBookRecord): boolean {
-  if (book.status !== 'finished' || !hasValidDateKey(book.dateFinished)) return false;
-  if (!isImportedBook(book)) return true;
-  return book.importFinishedDateProvided === true
-    && book.importMetadataReviewNeeded !== true
-    && book.importMetadataVerified !== false;
+  return book.status === 'finished' && hasValidDateKey(book.dateFinished);
 }
 
 /**
