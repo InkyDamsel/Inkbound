@@ -40,6 +40,26 @@ function normalizeBookIdentifiers(book: UserBookRecord): UserBookRecord {
   };
 }
 
+function normalizeOwnershipEdit(book: UserBookRecord): UserBookRecord {
+  // Wishlist is not a completed-reading state. If a reader moves a title to
+  // Wishlist from a previously-finished record, clear the finished state/date
+  // so it cannot continue appearing under Read or finished-book statistics.
+  if (book.ownership === 'wishlist' && book.status === 'finished') {
+    return {
+      ...book,
+      status: 'wishlist',
+      dateFinished: undefined,
+    };
+  }
+
+  // Person-to-person borrowing does not use the library due-date workflow.
+  if (book.ownership === 'borrowed-person' && book.libraryLoan) {
+    return { ...book, libraryLoan: undefined };
+  }
+
+  return book;
+}
+
 export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsModalCore>> = (props) => {
   const normalizedBook = useMemo(
     () => props.book ? normalizeBookIdentifiers(props.book) : null,
@@ -76,19 +96,21 @@ export const BookDetailsModal: React.FC<React.ComponentProps<typeof BookDetailsM
   }, [normalizedBook, props.book, props.onUpdateBook]);
 
   const handleUpdateBook = (updatedBook: UserBookRecord) => {
+    const normalizedUpdate = normalizeOwnershipEdit(updatedBook);
+
     if (!normalizedBook || !effectiveSeries || normalizedBook.work.seriesName?.trim()) {
-      props.onUpdateBook(updatedBook);
+      props.onUpdateBook(normalizedUpdate);
       return;
     }
 
-    const unchangedInferredName = updatedBook.work.seriesName?.trim() === effectiveSeries.name;
-    const unchangedInferredPosition = updatedBook.work.seriesOrder === (effectiveSeries.position ?? undefined);
+    const unchangedInferredName = normalizedUpdate.work.seriesName?.trim() === effectiveSeries.name;
+    const unchangedInferredPosition = normalizedUpdate.work.seriesOrder === (effectiveSeries.position ?? undefined);
     props.onUpdateBook({
-      ...updatedBook,
+      ...normalizedUpdate,
       work: {
-        ...updatedBook.work,
-        seriesName: unchangedInferredName ? normalizedBook.work.seriesName : updatedBook.work.seriesName,
-        seriesOrder: unchangedInferredPosition ? normalizedBook.work.seriesOrder : updatedBook.work.seriesOrder,
+        ...normalizedUpdate.work,
+        seriesName: unchangedInferredName ? normalizedBook.work.seriesName : normalizedUpdate.work.seriesName,
+        seriesOrder: unchangedInferredPosition ? normalizedBook.work.seriesOrder : normalizedUpdate.work.seriesOrder,
       },
     });
   };
