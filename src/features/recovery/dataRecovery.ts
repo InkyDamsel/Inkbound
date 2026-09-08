@@ -28,11 +28,12 @@ import {
   type AuxiliaryAccountKeyName,
 } from '../sync/auxiliaryAccountSyncConfig';
 import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from '../sync/storageKeys';
 
 const RECOVERY_COLLECTION = 'recoverySnapshots';
-const BOOKS_KEY = 'inkbound_books';
-const SESSIONS_KEY = 'inkbound_sessions';
-const PROFILE_KEY = 'inkbound_reader_profile';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
+const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
+const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const PHOTO_REVISION_KEY = 'inkbound_photo_memory_cloud_revisions_v1';
 const RESTORE_REQUEST_KEY = 'inkbound_pending_recovery_restore_v1';
 const MAX_LISTED_RECOVERY_POINTS = 12;
@@ -148,8 +149,6 @@ async function readCloudPayload(uid: string): Promise<SnapshotPayload> {
         id: item.id as AuxiliaryAccountKeyName,
         data: (item.data() as CloudRecord<unknown>).data,
       })),
-    // Photo-memory recovery intentionally stores Firestore metadata and Storage
-    // paths. Binary media remains in Firebase Storage behind soft-delete tombstones.
     photoMemories: photoSnapshot.docs.map((item) => ({
       id: item.id,
       data: item.data() as Record<string, unknown>,
@@ -216,33 +215,14 @@ export async function createRecoveryPoint(
   const snapshotRef = doc(db, 'users', uid, RECOVERY_COLLECTION, snapshotId);
 
   const tasks: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
-  payload.books.forEach((book) => tasks.push((batch) => batch.set(
-    doc(snapshotRef, 'books', book.id),
-    { data: book },
-  )));
-  payload.sessions.forEach((session) => tasks.push((batch) => batch.set(
-    doc(snapshotRef, 'sessions', session.id),
-    { data: session },
-  )));
-  payload.auxiliary.forEach((item) => tasks.push((batch) => batch.set(
-    doc(snapshotRef, 'auxiliary', item.id),
-    { data: item.data },
-  )));
-  payload.photoMemories.forEach((item) => tasks.push((batch) => batch.set(
-    doc(snapshotRef, 'photoMemories', item.id),
-    { data: item.data },
-  )));
-  payload.runtimeState.forEach((item) => tasks.push((batch) => batch.set(
-    doc(snapshotRef, 'runtimeState', item.id),
-    { data: item.data },
-  )));
-  if (payload.profile) {
-    tasks.push((batch) => batch.set(doc(snapshotRef, 'profile', 'current'), { data: payload.profile }));
-  }
+  payload.books.forEach((book) => tasks.push((batch) => batch.set(doc(snapshotRef, 'books', book.id), { data: book })));
+  payload.sessions.forEach((session) => tasks.push((batch) => batch.set(doc(snapshotRef, 'sessions', session.id), { data: session })));
+  payload.auxiliary.forEach((item) => tasks.push((batch) => batch.set(doc(snapshotRef, 'auxiliary', item.id), { data: item.data })));
+  payload.photoMemories.forEach((item) => tasks.push((batch) => batch.set(doc(snapshotRef, 'photoMemories', item.id), { data: item.data })));
+  payload.runtimeState.forEach((item) => tasks.push((batch) => batch.set(doc(snapshotRef, 'runtimeState', item.id), { data: item.data })));
+  if (payload.profile) tasks.push((batch) => batch.set(doc(snapshotRef, 'profile', 'current'), { data: payload.profile }));
   await commitTasks(tasks);
 
-  // Publish the root metadata only after every child record has committed. This
-  // prevents a partially-written recovery point from appearing as restorable.
   await setDoc(snapshotRef, {
     schemaVersion: 2,
     createdAt: serverTimestamp(),
@@ -290,18 +270,9 @@ async function readRecoveryPayload(uid: string, snapshotId: string): Promise<Sna
     profile: profileSnapshot.exists() ? (profileSnapshot.data() as CloudRecord<ReaderProfile>).data : undefined,
     auxiliary: auxiliarySnapshot.docs
       .filter((item) => item.id in AUXILIARY_ACCOUNT_KEYS)
-      .map((item) => ({
-        id: item.id as AuxiliaryAccountKeyName,
-        data: (item.data() as CloudRecord<unknown>).data,
-      })),
-    photoMemories: photoSnapshot.docs.map((item) => ({
-      id: item.id,
-      data: (item.data() as CloudRecord<Record<string, unknown>>).data,
-    })),
-    runtimeState: runtimeSnapshot.docs.map((item) => ({
-      id: item.id,
-      data: String((item.data() as CloudRecord<unknown>).data ?? ''),
-    })),
+      .map((item) => ({ id: item.id as AuxiliaryAccountKeyName, data: (item.data() as CloudRecord<unknown>).data })),
+    photoMemories: photoSnapshot.docs.map((item) => ({ id: item.id, data: (item.data() as CloudRecord<Record<string, unknown>>).data })),
+    runtimeState: runtimeSnapshot.docs.map((item) => ({ id: item.id, data: String((item.data() as CloudRecord<unknown>).data ?? '') })),
   };
 }
 
@@ -331,11 +302,7 @@ async function replaceCollection(
 }
 
 export function scheduleRecoveryRestore(uid: string, snapshotId: string): void {
-  getRuntimeStorage().setItem(RESTORE_REQUEST_KEY, stable({
-    uid,
-    snapshotId,
-    requestedAt: new Date().toISOString(),
-  } satisfies ScheduledRecoveryRestore));
+  getRuntimeStorage().setItem(RESTORE_REQUEST_KEY, stable({ uid, snapshotId, requestedAt: new Date().toISOString() } satisfies ScheduledRecoveryRestore));
 }
 
 export function readScheduledRecoveryRestore(uid: string): ScheduledRecoveryRestore | null {
@@ -343,9 +310,7 @@ export function readScheduledRecoveryRestore(uid: string): ScheduledRecoveryRest
     const raw = getRuntimeStorage().getItem(RESTORE_REQUEST_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<ScheduledRecoveryRestore>;
-    return parsed.uid === uid && typeof parsed.snapshotId === 'string' && parsed.snapshotId
-      ? parsed as ScheduledRecoveryRestore
-      : null;
+    return parsed.uid === uid && typeof parsed.snapshotId === 'string' && parsed.snapshotId ? parsed as ScheduledRecoveryRestore : null;
   } catch {
     return null;
   }
@@ -358,7 +323,6 @@ export function clearScheduledRecoveryRestore(): void {
 export async function restoreRecoveryPoint(uid: string, snapshotId: string): Promise<void> {
   if (!db || !uid) throw new Error('Cloud recovery is unavailable.');
 
-  // Always preserve the state being replaced so a restore itself is reversible.
   await createRecoveryPoint(uid, 'Before recovery restore', { force: true });
   const payload = await readRecoveryPayload(uid, snapshotId);
 
@@ -369,21 +333,19 @@ export async function restoreRecoveryPoint(uid: string, snapshotId: string): Pro
 
   const profileRef = doc(db, 'users', uid, 'profile', 'current');
   if (payload.profile) {
-    await setDoc(profileRef, {
-      data: payload.profile,
-      updatedAt: serverTimestamp(),
-      clientUpdatedAt: new Date().toISOString(),
-    });
+    await setDoc(profileRef, { data: payload.profile, updatedAt: serverTimestamp(), clientUpdatedAt: new Date().toISOString() });
   } else {
     await deleteDoc(profileRef);
   }
 
   const storage = getRuntimeStorage();
 
-  // Discard sync metadata created for the superseded state. The bridges mount
-  // only after this gated restore completes and will build fresh baselines from
-  // the restored cloud records instead of replaying stale mutations.
-  storage.removeItem(`inkbound_pending_sync_${uid}_v1`);
+  // Recovery must invalidate the CURRENT sync metadata. Keeping an old v2
+  // baseline after a restore can make the restored state look like a local edit
+  // or make a deleted pre-restore record appear authoritative again.
+  storage.removeItem(syncPendingStateKey(uid));
+  storage.removeItem(syncBaselineStateKey(uid));
+  // Older beta keys are cleared too so an upgraded device cannot resurrect them.
   storage.removeItem(`inkbound_sync_baseline_${uid}_v1`);
   storage.removeItem(getAuxiliaryPendingKey(uid));
   storage.removeItem(getAuxiliaryBaselineKey(uid));
@@ -407,8 +369,6 @@ export async function restoreRecoveryPoint(uid: string, snapshotId: string): Pro
     notifyRuntimeStorageChanged(runtimeKey);
   });
 
-  // Force PhotoMemory sync to compare restored cloud metadata against Storage
-  // rather than trusting revision fingerprints from the state we just replaced.
   storage.removeItem(PHOTO_REVISION_KEY);
 
   notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
