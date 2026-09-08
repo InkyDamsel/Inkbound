@@ -25,7 +25,12 @@ import {
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 import { shouldRemoteChangeReplacePending } from './syncConflictPolicy';
-import { SYNC_STORAGE_KEYS } from './storageKeys';
+import {
+  crossDeviceCursorKey,
+  syncBaselineStateKey,
+  syncPendingStateKey,
+  SYNC_STORAGE_KEYS,
+} from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -66,9 +71,6 @@ interface SyncBaseline {
 }
 
 const runtimeStorage = () => getRuntimeStorage();
-const cursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
-const pendingKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
-const baselineKey = (uid: string) => `inkbound_sync_baseline_${uid}_v2`;
 const stable = (value: unknown) => JSON.stringify(value);
 const hashText = (value: string) => {
   let hash = 2166136261;
@@ -94,24 +96,24 @@ function writeJson(key: string, value: unknown) {
 }
 
 function readCursor(uid: string): number {
-  const saved = Number(runtimeStorage().getItem(cursorKey(uid)) ?? '');
+  const saved = Number(runtimeStorage().getItem(crossDeviceCursorKey(uid)) ?? '');
   return Number.isFinite(saved) && saved > 0 ? saved : 0;
 }
 
 function readPending(uid: string): PendingSyncState {
-  return readJson<PendingSyncState>(pendingKey(uid), { books: {}, sessions: {} });
+  return readJson<PendingSyncState>(syncPendingStateKey(uid), { books: {}, sessions: {} });
 }
 
 function writePending(uid: string, pending: PendingSyncState) {
   if (!Object.keys(pending.books).length && !Object.keys(pending.sessions).length && !pending.profile) {
-    runtimeStorage().removeItem(pendingKey(uid));
+    runtimeStorage().removeItem(syncPendingStateKey(uid));
   } else {
-    writeJson(pendingKey(uid), pending);
+    writeJson(syncPendingStateKey(uid), pending);
   }
 }
 
 function readBaseline(uid: string): SyncBaseline {
-  return readJson<SyncBaseline>(baselineKey(uid), { books: {}, sessions: {} });
+  return readJson<SyncBaseline>(syncBaselineStateKey(uid), { books: {}, sessions: {} });
 }
 
 function idsFromStored<T extends { id: string }>(key: string): Set<string> {
@@ -204,7 +206,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
 
     const pullDeltas = async () => {
       if (disposed || pullRunning.current || !navigator.onLine) return;
-      if (knownBookIds.current.size === 0 && !runtimeStorage().getItem(cursorKey(uid))) return;
+      if (knownBookIds.current.size === 0 && !runtimeStorage().getItem(crossDeviceCursorKey(uid))) return;
 
       pullRunning.current = true;
       try {
@@ -322,9 +324,9 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           changedKeys.push(PROFILE_KEY);
         }
 
-        writeJson(baselineKey(uid), baseline);
+        writeJson(syncBaselineStateKey(uid), baseline);
         writePending(uid, pending);
-        if (newestMillis > 0) runtimeStorage().setItem(cursorKey(uid), String(newestMillis));
+        if (newestMillis > 0) runtimeStorage().setItem(crossDeviceCursorKey(uid), String(newestMillis));
         if (changedKeys.length) notifyCloudDataUpdated(changedKeys);
       } catch (error) {
         console.warn('Inkbound cross-device delta sync could not complete.', error);
@@ -338,7 +340,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       if (!books.size) return;
       knownBookIds.current = books;
       knownSessionIds.current = idsFromStored<ReadingSession>(SESSIONS_KEY);
-      if (!runtimeStorage().getItem(cursorKey(uid))) runtimeStorage().setItem(cursorKey(uid), String(Date.now()));
+      if (!runtimeStorage().getItem(crossDeviceCursorKey(uid))) runtimeStorage().setItem(crossDeviceCursorKey(uid), String(Date.now()));
     };
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, captureLocalDeletes);
