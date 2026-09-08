@@ -31,6 +31,7 @@ import {
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 import { shouldRemoteChangeReplacePending } from './syncConflictPolicy';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 interface CloudAuxiliaryRecord {
   data: unknown;
@@ -180,6 +181,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
 
     const initialize = async () => {
       const previousOwnerUid = storage().getItem(ACCOUNT_OWNER_UID_KEY);
+      const ownerChanged = Boolean(previousOwnerUid && previousOwnerUid !== uid);
       const sameAccountLocalData = !previousOwnerUid || previousOwnerUid === uid;
 
       const keysToClear = getAccountOwnedKeysToClearForOwnerChange(previousOwnerUid, uid);
@@ -190,6 +192,16 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
           notifyRuntimeStorageChanged(key);
         }
       });
+
+      if (ownerChanged) {
+        // The old reader's account-owned state is gone. Mark any local edits made
+        // from this point as belonging to the new reader, but keep core hydration
+        // explicitly required until OneShotCloudHydrationBridge successfully
+        // reconciles that reader's cloud library. This prevents both cross-account
+        // leakage and an offline edit from accidentally bypassing first hydration.
+        storage().setItem(ACCOUNT_OWNER_UID_KEY, uid);
+        storage().setItem(SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid, uid);
+      }
       if (keysToClear.length > 0) notifyCloudDataUpdated([...CORE_ACCOUNT_RUNTIME_KEYS]);
 
       const baseline = readBaseline(uid);
