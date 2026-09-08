@@ -9,6 +9,7 @@ export interface RuntimeStorageAdapter {
 }
 
 export const INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT = 'inkbound:runtime-storage-refresh';
+const INKBOUND_LOCAL_DATA_CHANGED_EVENT = 'inkbound:local-data-changed';
 
 const browserStorageAdapter: RuntimeStorageAdapter = {
   getItem: (key) => {
@@ -56,6 +57,17 @@ export function notifyRuntimeStorageChanged(key: string) {
   window.dispatchEvent(new CustomEvent(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, { detail: { key } }));
 }
 
+function notifyLocalRuntimeMutation(key: string) {
+  if (typeof window === 'undefined') return;
+  // Auxiliary account sync also listens to the canonical local-data event. Emit
+  // it from the runtime-storage boundary so web localStorage and Android native
+  // storage behave the same way. Canonical storage already has a debounced web
+  // signal; duplicate canonical notifications are harmless because persistence
+  // fingerprints remove no-op work, while auxiliary values now sync immediately
+  // instead of waiting for the 30-second fallback poll.
+  window.dispatchEvent(new CustomEvent(INKBOUND_LOCAL_DATA_CHANGED_EVENT, { detail: { keys: [key] } }));
+}
+
 export function readRuntimeJson<T>(key: string, fallback: T): T {
   try {
     const stored = activeStorageAdapter.getItem(key);
@@ -67,7 +79,10 @@ export function readRuntimeJson<T>(key: string, fallback: T): T {
 
 export function writeRuntimeJson(key: string, value: unknown): boolean {
   try {
-    activeStorageAdapter.setItem(key, JSON.stringify(value));
+    const serialized = JSON.stringify(value);
+    if (activeStorageAdapter.getItem(key) === serialized) return true;
+    activeStorageAdapter.setItem(key, serialized);
+    notifyLocalRuntimeMutation(key);
     return true;
   } catch {
     return false;
@@ -76,7 +91,9 @@ export function writeRuntimeJson(key: string, value: unknown): boolean {
 
 export function writeRuntimeValue(key: string, value: string): boolean {
   try {
+    if (activeStorageAdapter.getItem(key) === value) return true;
     activeStorageAdapter.setItem(key, value);
+    notifyLocalRuntimeMutation(key);
     return true;
   } catch {
     return false;
@@ -93,7 +110,9 @@ export function readRuntimeValue(key: string): string | null {
 
 export function removeRuntimeValue(key: string): boolean {
   try {
+    if (activeStorageAdapter.getItem(key) === null) return true;
     activeStorageAdapter.removeItem(key);
+    notifyLocalRuntimeMutation(key);
     return true;
   } catch {
     return false;
