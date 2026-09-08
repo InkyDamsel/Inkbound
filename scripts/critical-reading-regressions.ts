@@ -7,6 +7,10 @@ import {
   withReadingStatus,
 } from '../src/features/reading/bookReadingState';
 import { hasTrustworthyFinishedHistory } from '../src/features/reading/inkboundActivity';
+import {
+  applySessionProgressToBook,
+  reconcileBookAfterSessionMutation,
+} from '../src/features/reading/sessionBookReconciliation';
 import { analyzeLibraryIntegrity } from '../src/features/recovery/libraryIntegrity';
 import {
   getCurrentPace,
@@ -53,8 +57,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(state.progressPercentage, 38);
 }
 
-// Explicit Finished history never fabricates page/minute progress. A reader may
-// know they finished a book without Inkbound knowing the exact tracked endpoint.
 {
   const finishedHistory = { ...baseBook(), status: 'finished' as const, progressPages: 190, progressPercentage: 38, dateFinished: '2026-08-15' };
   const reconciled = reconcileFinishedBookProgress(finishedHistory);
@@ -85,11 +87,54 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(hasTrustworthyFinishedHistory(finished), true);
 }
 
-// Finished without a valid finish date remains a library status but must not be
-// counted in date-based dashboards/annual history until a real date exists.
 {
   const missingDate = { ...baseBook(), status: 'finished' as const, dateFinished: undefined };
   assert.equal(hasTrustworthyFinishedHistory(missingDate), false);
+}
+
+// A new tracked session that actually reaches a known endpoint can finish the book.
+{
+  const book = { ...baseBook(), progressPages: 450, progressPercentage: 90 };
+  const completed = applySessionProgressToBook(
+    book,
+    session({ id: 'finish-session', startPage: 450, endPage: 500, pagesRead: 50 }),
+    500,
+    0,
+  );
+  assert.equal(completed.status, 'finished');
+  assert.equal(completed.progressPages, 500);
+  assert.equal(completed.progressPercentage, 100);
+  assert.equal(completed.dateFinished, '2026-08-15');
+}
+
+// Editing/deleting a session may lower tracked progress, but it must never silently
+// erase an explicit Finished reading-history fact or its date.
+{
+  const finished = {
+    ...baseBook(),
+    status: 'finished' as const,
+    progressPages: 500,
+    progressPercentage: 100,
+    dateFinished: '2026-08-15',
+    lastSessionDate: '2026-08-15',
+  };
+  const oldSession = session({ id: 'old-finish', startPage: 450, endPage: 500, pagesRead: 50 });
+  const editedSessions = [session({ id: 'old-finish', startPage: 250, endPage: 300, pagesRead: 50 })];
+  const reconciled = reconcileBookAfterSessionMutation(finished, editedSessions, oldSession);
+  assert.equal(reconciled.progressPages, 300);
+  assert.equal(reconciled.progressPercentage, 60);
+  assert.equal(reconciled.status, 'finished');
+  assert.equal(reconciled.dateFinished, '2026-08-15');
+}
+
+// Manual progress ahead of the edited session remains authoritative.
+{
+  const book = { ...baseBook(), progressPages: 350, progressPercentage: 70 };
+  const previous = session({ id: 'manual-ahead', startPage: 250, endPage: 300, pagesRead: 50 });
+  const nextSessions = [session({ id: 'manual-ahead', startPage: 200, endPage: 250, pagesRead: 50 })];
+  const reconciled = reconcileBookAfterSessionMutation(book, nextSessions, previous);
+  assert.equal(reconciled.progressPages, 350);
+  assert.equal(reconciled.status, 'currently-reading');
 }
 
 {
@@ -198,7 +243,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), true);
 }
 
-// A deletion tombstone wins while it is the newest cloud fact.
 {
   assert.equal(shouldApplyRemoteTombstone({
     tombstoneServerMillis: 2000,
@@ -206,8 +250,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), true);
 }
 
-// Recreating a record after deletion must not let the historical tombstone erase
-// the revived book/session when another device performs a full reconciliation.
 {
   assert.equal(shouldApplyRemoteTombstone({
     tombstoneServerMillis: 1000,
