@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
+import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
@@ -67,6 +68,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
     if (!user || !db) return undefined;
     const uid = user.uid;
     const manifestRef = doc(db, 'users', uid, 'syncState', 'library');
+    lastObservedBookCount.current = readBookCount();
 
     const verifyCheckpoint = async () => {
       const checkpoint = readCheckpoint(uid);
@@ -126,6 +128,9 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
     };
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
+    const unsubscribeRuntimeResume = subscribeToRuntimeResume(() => {
+      if (readCheckpoint(uid)) void verifyCheckpoint();
+    });
 
     const existingCheckpoint = readCheckpoint(uid);
     if (existingCheckpoint) {
@@ -139,6 +144,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
 
     return () => {
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
+      unsubscribeRuntimeResume();
       if (verifyTimer.current !== undefined) window.clearTimeout(verifyTimer.current);
     };
   }, [user?.uid]);
