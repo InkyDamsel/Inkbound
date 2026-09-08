@@ -26,7 +26,6 @@ import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
-const LAST_FULL_SYNC_KEY = 'inkbound_last_cloud_sync_at';
 const FOREGROUND_FALLBACK_MS = 120000;
 const QUERY_OVERLAP_MS = 5000;
 
@@ -58,7 +57,10 @@ interface SyncBaseline {
 }
 
 const runtimeStorage = () => getRuntimeStorage();
-const cursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v1`;
+// v2 intentionally invalidates the original cursor once. The v1 implementation
+// could seed a new delta cursor from an unrelated full-sync timestamp, allowing a
+// device with stale local data to believe it was already current forever.
+const cursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 const pendingKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
 const baselineKey = (uid: string) => `inkbound_sync_baseline_${uid}_v2`;
 const stable = (value: unknown) => JSON.stringify(value);
@@ -87,13 +89,19 @@ function writeJson(key: string, value: unknown) {
 
 function readCursor(uid: string): number {
   const saved = Number(runtimeStorage().getItem(cursorKey(uid)) ?? '');
-  if (Number.isFinite(saved) && saved > 0) return saved;
-  const lastFullSync = Date.parse(runtimeStorage().getItem(LAST_FULL_SYNC_KEY) ?? '');
-  return Number.isFinite(lastFullSync) && lastFullSync > 0 ? lastFullSync : 0;
+  return Number.isFinite(saved) && saved > 0 ? saved : 0;
 }
 
 function readPending(uid: string): PendingSyncState {
   return readJson<PendingSyncState>(pendingKey(uid), { books: {}, sessions: {} });
+}
+
+function writePending(uid: string, pending: PendingSyncState) {
+  if (!Object.keys(pending.books).length && !Object.keys(pending.sessions).length) {
+    runtimeStorage().removeItem(pendingKey(uid));
+  } else {
+    writeJson(pendingKey(uid), pending);
+  }
 }
 
 function readBaseline(uid: string): SyncBaseline {
@@ -116,18 +124,28 @@ function removeIds<T extends { id: string }>(current: T[], removed: Set<string>)
   return current.filter((item) => !removed.has(item.id));
 }
 
+function clientMillis(value?: string): number {
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function cloudWinsPending<T>(record: CloudRecord<T>, pending?: RecordMutation<T>): boolean {
+  if (!pending) return true;
+  const remoteMillis = Math.max(record.updatedAt?.toMillis() ?? 0, clientMillis(record.clientUpdatedAt));
+  return remoteMillis > clientMillis(pending.clientUpdatedAt);
+}
+
 /**
  * Low-cost reconciliation for devices that already have a local library.
  *
  * Ordinary local work remains local-first and upload-only. This bridge pulls only
  * records whose Firestore updatedAt is newer than the device cursor when the app
  * opens/resumes/focuses and on a slow foreground fallback. It never installs a
- * listener on the full books or sessions collections, so a 1,800-book library
- * does not incur 1,800 reads just for opening Inkbound after the initial cursor is
- * established.
+ * listener on the full books or sessions collections.
  *
- * Deletions use tiny tombstone documents because deleted Firestore documents can
- * no longer be discovered by an updatedAt query on another device.
+ * The first v2 reconciliation intentionally starts from epoch once per device.
+ * That repairs devices stranded by the old cursor bootstrap bug. After that one
+ * repair, normal checks are delta-only again.
  */
 export const CrossDeviceDeltaSyncBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -179,8 +197,6 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
 
     const pullDeltas = async () => {
       if (disposed || pullRunning.current || !navigator.onLine) return;
-      // A new/empty device is already handled by OneShotCloudHydrationBridge.
-      // Waiting here prevents a second full collection read during first restore.
       if (knownBookIds.current.size === 0 && !runtimeStorage().getItem(cursorKey(uid))) return;
 
       pullRunning.current = true;
@@ -218,18 +234,22 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const record = item.data() as CloudRecord<UserBookRecord>;
           const updatedMillis = record.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
-          if (!record.data?.id || pending.books[record.data.id]) return;
+          const id = record.data?.id;
+          if (!id || !cloudWinsPending(record, pending.books[id])) return;
+          delete pending.books[id];
           acceptedBooks.push(record.data);
-          baseline.books[record.data.id] = fingerprint(record.data);
+          baseline.books[id] = fingerprint(record.data);
         });
 
         sessionSnapshot.docs.forEach((item) => {
           const record = item.data() as CloudRecord<ReadingSession>;
           const updatedMillis = record.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
-          if (!record.data?.id || pending.sessions[record.data.id]) return;
+          const id = record.data?.id;
+          if (!id || !cloudWinsPending(record, pending.sessions[id])) return;
+          delete pending.sessions[id];
           acceptedSessions.push(record.data);
-          baseline.sessions[record.data.id] = fingerprint(record.data);
+          baseline.sessions[id] = fingerprint(record.data);
         });
 
         tombstoneSnapshot.docs.forEach((item) => {
@@ -238,11 +258,18 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           newestMillis = Math.max(newestMillis, deletedMillis);
           const recordId = record.recordId?.trim();
           if (!recordId) return;
-          if (record.kind === 'books' && !pending.books[recordId]) {
+          const remoteMillis = Math.max(deletedMillis, clientMillis(record.clientUpdatedAt));
+          if (record.kind === 'books') {
+            const pendingMutation = pending.books[recordId];
+            if (pendingMutation && remoteMillis <= clientMillis(pendingMutation.clientUpdatedAt)) return;
+            delete pending.books[recordId];
             removedBooks.add(recordId);
             delete baseline.books[recordId];
           }
-          if (record.kind === 'sessions' && !pending.sessions[recordId]) {
+          if (record.kind === 'sessions') {
+            const pendingMutation = pending.sessions[recordId];
+            if (pendingMutation && remoteMillis <= clientMillis(pendingMutation.clientUpdatedAt)) return;
+            delete pending.sessions[recordId];
             removedSessions.add(recordId);
             delete baseline.sessions[recordId];
           }
@@ -271,6 +298,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
         }
 
         writeJson(baselineKey(uid), baseline);
+        writePending(uid, pending);
         if (newestMillis > 0) runtimeStorage().setItem(cursorKey(uid), String(newestMillis));
         if (changedKeys.length) notifyCloudDataUpdated(changedKeys);
       } catch (error) {
@@ -285,9 +313,6 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       if (!books.size) return;
       knownBookIds.current = books;
       knownSessionIds.current = idsFromStored<ReadingSession>(SESSIONS_KEY);
-      // If this device was empty, OneShotCloudHydration already fetched the full
-      // current account copy. Start future delta checks from now instead of paying
-      // for a second full read immediately afterward.
       if (!runtimeStorage().getItem(cursorKey(uid))) {
         runtimeStorage().setItem(cursorKey(uid), String(Date.now()));
       }
@@ -304,8 +329,6 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       if (document.visibilityState === 'visible') void pullDeltas();
     }, FOREGROUND_FALLBACK_MS);
 
-    // Existing devices reconcile immediately. Empty/new devices let the one-shot
-    // hydrator finish first, then establish their delta cursor from that copy.
     if (knownBookIds.current.size > 0) {
       void pullDeltas();
     } else {
