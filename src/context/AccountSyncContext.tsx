@@ -9,6 +9,14 @@ import {
   signOut,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
+import {
+  IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY,
+  IMPORT_ENRICHMENT_PAUSED_KEY,
+  IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY,
+  IMPORT_ENRICHMENT_RETRY_REQUEST_KEY,
+  IMPORT_HISTORY_STORAGE_KEY,
+} from '../features/import/importHistory';
+import { IMPORT_ENRICHMENT_QUEUE_KEY } from '../features/import/libraryEnrichment';
 import { synchronizePhotoMemories } from '../features/memories/photoMemoryCloudSync';
 import { clearPhotoMemoriesFromDevice } from '../features/memories/photoMemoryStore';
 import { PHOTO_MEMORY_SYNC_QUEUE_KEY } from '../features/memories/photoMemorySyncQueue';
@@ -16,6 +24,14 @@ import { PROFILE_MEDIA_KEY_PREFIX } from '../features/profile/profileMedia';
 import { getProfileMediaSyncQueueKey, synchronizeProfileMedia } from '../features/profile/profileMediaCloudSync';
 import { AUXILIARY_ACCOUNT_KEYS, getAuxiliaryBaselineKey, getAuxiliaryPendingKey } from '../features/sync/auxiliaryAccountSyncConfig';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
+import {
+  LEGACY_SYNC_STORAGE_KEYS,
+  SYNC_STORAGE_KEYS,
+  crossDeviceCursorKey,
+  localClearIntentKey,
+  syncBaselineStateKey,
+  syncPendingStateKey,
+} from '../features/sync/storageKeys';
 import { auth, functions, isFirebaseConfigured } from '../lib/firebase';
 import { prepareRuntimeAuthPersistence, signInRuntimeWithGoogle } from '../platform/runtimeAuthentication';
 import { removeRuntimeMediaByPrefix } from '../platform/runtimeMediaStorage';
@@ -24,9 +40,48 @@ import { readRuntimeValue, removeRuntimeValue, writeRuntimeValue } from '../plat
 type SyncStatus = 'idle' | 'working' | 'success' | 'error';
 interface AccountSyncContextValue { user: User | null; isConfigured: boolean; isAuthReady: boolean; status: SyncStatus; message: string; lastSyncedAt: string | null; signInWithGoogle: () => Promise<void>; signInWithEmail: (email: string, password: string) => Promise<void>; createEmailAccount: (email: string, password: string) => Promise<void>; sendPasswordReset: (email: string) => Promise<void>; linkEmailPassword: (email: string, password: string) => Promise<void>; resendVerificationEmail: () => Promise<void>; signOutAccount: () => Promise<void>; uploadSnapshot: () => Promise<void>; restoreSnapshot: () => Promise<void>; }
 const AccountSyncContext = createContext<AccountSyncContextValue | undefined>(undefined);
-const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
-const SIGNED_IN_DATA_KEYS = ['inkbound_books','inkbound_sessions','inkbound_reader_profile','inkbound_photo_memories','inkbound_photo_memories_v2','inkbound_photo_memory_cloud_revisions_v1',PHOTO_MEMORY_SYNC_QUEUE_KEY,'inkbound_import_history_v1','inkbound_import_enrichment_queue_v1','inkbound_import_enrichment_paused_v1','inkbound_import_enrichment_retry_request_v1','inkbound_import_enrichment_retry_progress_v1',...Object.values(AUXILIARY_ACCOUNT_KEYS),'bookhaven_books','bookhaven_sessions'] as const;
-function clearSignedInDataFromDevice(uid: string) { writeRuntimeValue(`inkbound_local_clear_intent_${uid}`, '1'); SIGNED_IN_DATA_KEYS.forEach((key) => removeRuntimeValue(key)); removeRuntimeValue(getProfileMediaSyncQueueKey(uid)); removeRuntimeValue(getAuxiliaryPendingKey(uid)); removeRuntimeValue(getAuxiliaryBaselineKey(uid)); removeRuntimeValue('inkbound_profile_media_sync_queue_v1'); removeRuntimeValue('inkbound_local_data_owner_uid'); removeRuntimeValue(LAST_SYNC_STORAGE_KEY); removeRuntimeValue(`inkbound_pending_sync_${uid}_v1`); removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`); }
+const LAST_SYNC_STORAGE_KEY = SYNC_STORAGE_KEYS.lastCloudSyncAt;
+const SIGNED_IN_DATA_KEYS = [
+  SYNC_STORAGE_KEYS.books,
+  SYNC_STORAGE_KEYS.sessions,
+  SYNC_STORAGE_KEYS.profile,
+  'inkbound_photo_memories',
+  'inkbound_photo_memories_v2',
+  'inkbound_photo_memory_cloud_revisions_v1',
+  PHOTO_MEMORY_SYNC_QUEUE_KEY,
+  IMPORT_HISTORY_STORAGE_KEY,
+  IMPORT_ENRICHMENT_QUEUE_KEY,
+  IMPORT_ENRICHMENT_PAUSED_KEY,
+  IMPORT_ENRICHMENT_RETRY_REQUEST_KEY,
+  IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY,
+  IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY,
+  ...Object.values(AUXILIARY_ACCOUNT_KEYS),
+  LEGACY_SYNC_STORAGE_KEYS.books,
+  LEGACY_SYNC_STORAGE_KEYS.sessions,
+] as const;
+
+function clearSignedInDataFromDevice(uid: string) {
+  // Keep the clear-intent flag set while removal events fire so persistence
+  // bridges do not interpret sign-out cleanup as a user request to delete the
+  // reader's cloud library. signOutAccount removes the flag after Firebase Auth
+  // has completed the account transition.
+  writeRuntimeValue(localClearIntentKey(uid), '1');
+  SIGNED_IN_DATA_KEYS.forEach((key) => removeRuntimeValue(key));
+  removeRuntimeValue(getProfileMediaSyncQueueKey(uid));
+  removeRuntimeValue(getAuxiliaryPendingKey(uid));
+  removeRuntimeValue(getAuxiliaryBaselineKey(uid));
+  removeRuntimeValue('inkbound_profile_media_sync_queue_v1');
+  removeRuntimeValue(SYNC_STORAGE_KEYS.localOwnerUid);
+  removeRuntimeValue(SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid);
+  removeRuntimeValue(LAST_SYNC_STORAGE_KEY);
+  removeRuntimeValue(syncPendingStateKey(uid));
+  removeRuntimeValue(syncBaselineStateKey(uid));
+  removeRuntimeValue(crossDeviceCursorKey(uid));
+  // Older beta metadata is cleared too so returning accounts cannot inherit a
+  // stale baseline from a pre-v2 build.
+  removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`);
+}
+
 function friendlyAuthMessage(error: unknown, fallback: string): string {
   const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
   const rawMessage = error instanceof Error ? error.message.trim() : '';
@@ -75,7 +130,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
   const resendVerificationEmail = async () => { if (!auth?.currentUser) return; try { setStatus('working'); await requestBrandedVerificationEmail(); setStatus('success'); setMessage('Verification email sent.'); } catch (error) { setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not send the verification email.')); } };
   const synchronizePhotosWithFeedback = async (workingMessage: string) => { if (!user) { setStatus('error'); setMessage('Sign in before updating Photo Memories across devices.'); return; } try { setStatus('working'); setMessage(workingMessage); await synchronizePhotoMemories(user.uid); const syncedAt = new Date().toISOString(); writeRuntimeValue(LAST_SYNC_STORAGE_KEY, syncedAt); setLastSyncedAt(syncedAt); setStatus('success'); setMessage('Your Photo Memories are up to date on your Inkbound devices.'); } catch { setStatus('error'); setMessage('Inkbound could not update Photo Memories right now. It will try again automatically.'); } };
   const uploadSnapshot = async () => synchronizePhotosWithFeedback('Updating Photo Memories...'); const restoreSnapshot = async () => synchronizePhotosWithFeedback('Checking Photo Memories across your devices...');
-  const value = useMemo<AccountSyncContextValue>(() => ({ user, isConfigured: isFirebaseConfigured, isAuthReady, status, message, lastSyncedAt, signInWithGoogle, signInWithEmail, createEmailAccount, sendPasswordReset, linkEmailPassword, resendVerificationEmail, signOutAccount: async () => { if (!auth) return; const signingOutUid = user?.uid ?? auth.currentUser?.uid; if (signingOutUid) { setStatus('working'); setMessage('Saving your latest changes before signing out...'); try { await flushCloudDataBeforeSignOut(signingOutUid); await synchronizePhotoMemories(signingOutUid); await synchronizeProfileMedia(signingOutUid); await flushCloudDataBeforeSignOut(signingOutUid); } catch { setStatus('error'); setMessage('Inkbound could not finish saving your latest changes before signing out. Try again when you are online.'); return; } await clearPhotoMemoriesFromDevice(); await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`); clearSignedInDataFromDevice(signingOutUid); } await signOut(auth); setLastSyncedAt(null); setStatus('idle'); setMessage('Signed out. Account data was removed from this device.'); }, uploadSnapshot, restoreSnapshot }), [isAuthReady, lastSyncedAt, message, status, user]);
+  const value = useMemo<AccountSyncContextValue>(() => ({ user, isConfigured: isFirebaseConfigured, isAuthReady, status, message, lastSyncedAt, signInWithGoogle, signInWithEmail, createEmailAccount, sendPasswordReset, linkEmailPassword, resendVerificationEmail, signOutAccount: async () => { if (!auth) return; const signingOutUid = user?.uid ?? auth.currentUser?.uid; if (signingOutUid) { setStatus('working'); setMessage('Saving your latest changes before signing out...'); try { await flushCloudDataBeforeSignOut(signingOutUid); await synchronizePhotoMemories(signingOutUid); await synchronizeProfileMedia(signingOutUid); await flushCloudDataBeforeSignOut(signingOutUid); } catch { setStatus('error'); setMessage('Inkbound could not finish saving your latest changes before signing out. Try again when you are online.'); return; } await clearPhotoMemoriesFromDevice(); await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`); clearSignedInDataFromDevice(signingOutUid); } try { await signOut(auth); } finally { if (signingOutUid) removeRuntimeValue(localClearIntentKey(signingOutUid)); } setLastSyncedAt(null); setStatus('idle'); setMessage('Signed out. Account data was removed from this device.'); }, uploadSnapshot, restoreSnapshot }), [isAuthReady, lastSyncedAt, message, status, user]);
   return <AccountSyncContext.Provider value={value}>{children}</AccountSyncContext.Provider>;
 };
 export const useAccountSync = () => { const context = useContext(AccountSyncContext); if (!context) throw new Error('useAccountSync must be used within AccountSyncProvider.'); return context; };
