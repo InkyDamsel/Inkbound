@@ -4,6 +4,7 @@ export const SYNC_STORAGE_KEYS = {
   profile: 'inkbound_reader_profile',
   theme: 'inkbound_theme',
   localOwnerUid: 'inkbound_local_data_owner_uid',
+  hydrationRequiredOwnerUid: 'inkbound_cloud_hydration_required_uid',
   lastCloudSyncAt: 'inkbound_last_cloud_sync_at',
   importEnrichmentQueue: 'inkbound_import_enrichment_queue_v3',
   importEnrichmentPaused: 'inkbound_import_enrichment_paused_v1',
