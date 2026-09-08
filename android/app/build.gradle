@@ -62,6 +62,12 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Keep local Android testing completely separate from the Google Play
+            // install so a debug APK can live beside the production/beta app.
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
         release {
             // Release-only shrinking keeps the tester bundle lean without changing
             // debug behavior. R8 removes unused bytecode and Android's resource
