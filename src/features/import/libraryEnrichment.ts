@@ -2,15 +2,17 @@ import type {
   ImportRecordItem,
   UserBookRecord,
 } from '../../types';
+import { getRuntimeStorage, removeRuntimeValue, writeRuntimeJson } from '../../platform/runtimeStorage';
 import { searchGoogleBooks } from '../book-search/data/googleBooksApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import { LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
-export const IMPORT_ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v3';
+export const IMPORT_ENRICHMENT_QUEUE_KEY = SYNC_STORAGE_KEYS.importEnrichmentQueue;
 export const IMPORT_ENRICHMENT_CONCURRENCY = 2;
 export const IMPORT_ENRICHMENT_BATCH_SIZE = 1;
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
-const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
+const LEGACY_BOOKS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.books;
 const IMPORT_SEARCH_TIMEOUT_MS = 3000;
 const IMPORT_BOOK_TIMEOUT_MS = 9000;
 const importSearchCache = new Map<string, Promise<BookSearchWorkGroup[]>>();
@@ -42,7 +44,7 @@ export interface ImportDuplicateAnalysis {
 
 export function readImportEnrichmentQueue(): ImportEnrichmentQueueItem[] {
   try {
-    const stored = localStorage.getItem(IMPORT_ENRICHMENT_QUEUE_KEY);
+    const stored = getRuntimeStorage().getItem(IMPORT_ENRICHMENT_QUEUE_KEY);
     const parsed = stored ? JSON.parse(stored) : [];
     return Array.isArray(parsed) ? parsed as ImportEnrichmentQueueItem[] : [];
   } catch {
@@ -53,10 +55,10 @@ export function readImportEnrichmentQueue(): ImportEnrichmentQueueItem[] {
 export function writeImportEnrichmentQueue(items: ImportEnrichmentQueueItem[]) {
   try {
     if (items.length === 0) {
-      localStorage.removeItem(IMPORT_ENRICHMENT_QUEUE_KEY);
+      removeRuntimeValue(IMPORT_ENRICHMENT_QUEUE_KEY);
       return;
     }
-    localStorage.setItem(IMPORT_ENRICHMENT_QUEUE_KEY, JSON.stringify(items));
+    writeRuntimeJson(IMPORT_ENRICHMENT_QUEUE_KEY, items);
   } catch (error) {
     console.warn('Inkbound could not persist the full enrichment queue on this device.', error);
   }
@@ -185,7 +187,8 @@ function titleSimilarity(importTitle?: string, candidateTitle?: string): number 
 
 function readCurrentLibrary(): UserBookRecord[] {
   try {
-    const stored = localStorage.getItem(BOOKS_STORAGE_KEY) ?? localStorage.getItem(LEGACY_BOOKS_STORAGE_KEY);
+    const storage = getRuntimeStorage();
+    const stored = storage.getItem(BOOKS_STORAGE_KEY) ?? storage.getItem(LEGACY_BOOKS_STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored) as unknown;
     return Array.isArray(parsed) ? parsed as UserBookRecord[] : [];
@@ -532,10 +535,6 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
     const coverUrl = sourceCoverUrl || coverEdition?.coverUrl;
     const editionId = `edition-enriched-${item.id}`;
     const pageCount = sourcePageCount || edition.pageCount;
-    const hasKnownPageTotal = item.format !== 'audiobook'
-      && typeof pageCount === 'number'
-      && Number.isFinite(pageCount)
-      && pageCount > 0;
     const dateAdded = normalizeImportDate(item.dateAdded) ?? new Date().toISOString().slice(0, 10);
     const dateStarted = normalizeImportDate(item.dateStarted);
     const dateFinished = item.status === 'finished' ? normalizeImportDate(item.dateRead) : undefined;
@@ -575,9 +574,11 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       }],
       status: item.status,
       ownership: 'owned',
-      progressPages: item.status === 'finished' && hasKnownPageTotal ? pageCount! : 0,
+      // Metadata enrichment must never invent reading progress. Finished history
+      // and a known page count do not prove the exact tracked endpoint.
+      progressPages: 0,
       progressMinutes: 0,
-      progressPercentage: item.status === 'finished' && hasKnownPageTotal ? 100 : 0,
+      progressPercentage: 0,
       rating: item.rating,
       review: item.review,
       favoriteQuotes: [],
@@ -660,12 +661,6 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
   const visibleSummary = isPlaceholderSummary(current.work.summary)
     ? publisherSummary || enriched.work.summary || current.work.summary
     : current.work.summary;
-  const isAudiobook = mergedActiveEdition?.format === 'audiobook';
-  const total = isAudiobook ? mergedActiveEdition?.audiobookDurationMins : mergedActiveEdition?.pageCount;
-  const hasKnownTotal = typeof total === 'number' && Number.isFinite(total) && total > 0;
-  const shouldReconcileImportedFinish = current.status === 'finished'
-    && current.progressPercentage === 0
-    && hasKnownTotal;
 
   return {
     ...current,
@@ -683,8 +678,8 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
     editions: mergedActiveEdition
       ? current.editions.map((edition) => edition.id === current.activeEditionId ? mergedActiveEdition : edition)
       : current.editions,
-    ...(shouldReconcileImportedFinish && isAudiobook ? { progressMinutes: total!, progressPercentage: 100 } : {}),
-    ...(shouldReconcileImportedFinish && !isAudiobook ? { progressPages: total!, progressPercentage: 100 } : {}),
+    // Keep current reading progress/status authoritative. Enrichment supplies
+    // metadata only and may fill missing historical dates, never page endpoints.
     dateStarted: current.dateStarted || enriched.dateStarted,
     dateFinished: current.dateFinished || enriched.dateFinished,
     importFinishedDateProvided: current.importFinishedDateProvided ?? enriched.importFinishedDateProvided,
