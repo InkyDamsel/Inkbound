@@ -45,6 +45,7 @@ interface ReaderProfile {
 }
 
 type MutationOperation = 'upsert' | 'delete';
+type RecordKind = 'books' | 'sessions';
 interface RecordMutation<T> { operation: MutationOperation; data?: T; clientUpdatedAt: string }
 interface ProfileMutation { data: ReaderProfile; clientUpdatedAt: string }
 interface PendingSyncState {
@@ -207,7 +208,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     runtimeStorage().setItem(OWNER_UID_KEY, uid);
 
     const checkpointRecordBatch = <T,>(
-      kind: 'books' | 'sessions',
+      kind: RecordKind,
       entries: Array<[string, RecordMutation<T>]>,
     ) => {
       const latestPending = readPending(uid);
@@ -227,7 +228,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     };
 
     const uploadRecordEntries = async <T,>(
-      kind: 'books' | 'sessions',
+      kind: RecordKind,
       entries: Array<[string, RecordMutation<T>]>,
     ) => {
       let checkpointEntries: Array<[string, RecordMutation<T>]> = [];
@@ -236,8 +237,25 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         const batch = entries.slice(index, index + UPLOAD_BATCH_SIZE);
         await Promise.all(batch.map(async ([id, mutation]) => {
           const target = doc(db!, 'users', uid, kind, id);
-          if (mutation.operation === 'delete') await deleteDoc(target);
-          else if (mutation.data) {
+          if (mutation.operation === 'delete') {
+            // Deletions must survive offline use. The pending mutation is durable,
+            // so publish its tombstone only when that same queued deletion reaches
+            // Firestore. Other devices can then remove the record even if the
+            // original delete happened with no network connection.
+            await Promise.all([
+              deleteDoc(target),
+              setDoc(
+                doc(db!, 'users', uid, 'syncTombstones', `${kind}_${id}`),
+                {
+                  kind,
+                  recordId: id,
+                  clientUpdatedAt: mutation.clientUpdatedAt,
+                  deletedAt: serverTimestamp(),
+                },
+                { merge: true },
+              ),
+            ]);
+          } else if (mutation.data) {
             await setDoc(target, {
               data: mutation.data,
               updatedAt: serverTimestamp(),
