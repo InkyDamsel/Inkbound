@@ -68,10 +68,12 @@ const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInW
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
-  // Native App Check must be initialized before its token source is bound to the
-  // Firebase JS SDK, but Android is not marked ready until every adapter below is
-  // configured. That prevents account/security providers from racing startup.
-  await FirebaseAppCheck.initialize({
+  // Start native App Check immediately, but do not make successful Play Integrity
+  // attestation a prerequisite for rendering Inkbound. The JS App Check provider
+  // below awaits this promise only when a protected Firebase request actually
+  // needs a token. This keeps the local app/library usable if Google services are
+  // slow or temporarily unavailable without bypassing App Check on cloud calls.
+  const nativeAppCheckReady = FirebaseAppCheck.initialize({
     isTokenAutoRefreshEnabled: true,
   });
 
@@ -186,15 +188,23 @@ export async function initializeAndroidRuntime() {
     },
   });
 
-  // This is intentionally last. It binds native Play Integrity tokens to the
-  // single Firebase JS App Check instance and only then releases NativeRuntimeGate.
+  // Bind the JS App Check provider now so the app shell can open immediately.
+  // Protected requests still wait for native Play Integrity before receiving a
+  // token, so this changes startup availability without weakening enforcement.
   initializeNativeSecurityRuntime({
     getToken: async (forceRefresh = false) => {
+      await nativeAppCheckReady;
       const result = await FirebaseAppCheck.getToken({ forceRefresh });
       return {
         token: result.token,
         expireTimeMillis: result.expireTimeMillis,
       };
     },
+  });
+
+  // Observe initialization failures so they are visible in Android logs. The
+  // token adapter will surface the same failure to protected Firebase requests.
+  void nativeAppCheckReady.catch((error) => {
+    console.error('Inkbound Android App Check could not initialize.', error);
   });
 }
