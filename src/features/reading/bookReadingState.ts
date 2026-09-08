@@ -16,66 +16,44 @@ export function getActiveEdition(book: UserBookRecord): Edition | undefined {
 }
 
 /**
- * Repairs legacy/imported records where the explicit Finished status survived
- * but stored progress did not reach the selected edition endpoint.
+ * Legacy/import reconciliation is deliberately conservative. Explicit Finished
+ * status is a reading-history fact; it does not prove that Inkbound knows the
+ * exact page/minute endpoint the reader reached. Do not fabricate 100% progress
+ * or a full page count merely because a title is Finished.
  *
- * This is intentionally narrow: only already-finished books with a known total
- * are normalized. Correcting an edition length later still goes through the
- * normal progress-correction path, which can move the book back to
- * currently-reading when the corrected endpoint exceeds real progress.
+ * Older builds used this helper to force Finished records to the active edition
+ * endpoint. It now exists as a compatibility boundary and intentionally returns
+ * the stored record unchanged. Historical/dashboard counting is owned by
+ * hasTrustworthyFinishedHistory(), which requires Finished + a valid finish date,
+ * not synthetic progress.
  */
 export function reconcileFinishedBookProgress(book: UserBookRecord): UserBookRecord {
-  if (book.status !== 'finished') return book;
-
-  const activeEdition = getActiveEdition(book);
-  if (!activeEdition) return book;
-
-  if (activeEdition.format === 'audiobook') {
-    const totalMinutes = activeEdition.audiobookDurationMins;
-    if (typeof totalMinutes !== 'number' || !Number.isFinite(totalMinutes) || totalMinutes <= 0) return book;
-    if (book.progressMinutes === totalMinutes && book.progressPercentage === 100) return book;
-    return {
-      ...book,
-      progressMinutes: totalMinutes,
-      progressPercentage: 100,
-    };
-  }
-
-  const totalPages = activeEdition.pageCount;
-  if (typeof totalPages !== 'number' || !Number.isFinite(totalPages) || totalPages <= 0) return book;
-  if (book.progressPages === totalPages && book.progressPercentage === 100) return book;
-  return {
-    ...book,
-    progressPages: totalPages,
-    progressPercentage: 100,
-  };
+  return book;
 }
 
 export function getBookReadingState(book: UserBookRecord): BookReadingState {
-  // The canonical resolver must not expose a stale legacy contradiction to UI.
-  // Finished is authoritative when the selected edition has a known endpoint.
-  const resolvedBook = reconcileFinishedBookProgress(book);
-  const activeEdition = getActiveEdition(resolvedBook);
+  const activeEdition = getActiveEdition(book);
   const isAudiobook = activeEdition?.format === 'audiobook';
-  const completedUnits = Math.max(0, isAudiobook ? resolvedBook.progressMinutes : resolvedBook.progressPages);
+  const completedUnits = Math.max(0, isAudiobook ? book.progressMinutes : book.progressPages);
   const totalUnits = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
   const hasKnownTotal = typeof totalUnits === 'number' && Number.isFinite(totalUnits) && totalUnits > 0;
-  const isFinished = resolvedBook.status === 'finished';
+  const isFinished = book.status === 'finished';
 
   const calculatedPercentage = hasKnownTotal
     ? Math.round((completedUnits / totalUnits!) * 100)
-    : Math.max(0, Math.round(resolvedBook.progressPercentage || 0));
+    : Math.max(0, Math.round(book.progressPercentage || 0));
   const progressPercentage = Math.max(0, Math.min(100, calculatedPercentage));
 
-  // A non-finished record at/above a known endpoint still needs reconciliation.
-  // Finished records are normalized above, so users never receive a warning with
-  // no actionable correction to make.
+  // A non-finished record at/above a known endpoint is contradictory and should
+  // be corrected. A Finished record may legitimately have incomplete/unknown
+  // progress (for example imported reading history), so Finished never receives
+  // a "progress needs correction" warning solely for being below 100%.
   const progressNeedsCorrection = hasKnownTotal
     ? !isFinished && calculatedPercentage >= 100
     : false;
 
   return {
-    status: resolvedBook.status,
+    status: book.status,
     isFinished,
     activeEdition,
     completedUnits,
@@ -87,16 +65,21 @@ export function getBookReadingState(book: UserBookRecord): BookReadingState {
 
 /**
  * Canonical reading-status transition. Any surface that changes status should use
- * this helper so status, dates, and known-endpoint progress cannot drift apart.
+ * this helper so status and reading-history dates cannot drift apart.
+ *
+ * Finished is intentionally independent from page/minute totals. Marking a title
+ * Finished records the status/date but preserves the progress values the reader
+ * actually entered or imported. Progress can be corrected separately without
+ * erasing the finished date.
  */
 export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, date = localDateKey()): UserBookRecord {
   if (status === 'finished') {
-    return reconcileFinishedBookProgress({
+    return {
       ...book,
       status,
       dateStarted: book.dateStarted ?? date,
       dateFinished: book.dateFinished ?? date,
-    });
+    };
   }
 
   return {
