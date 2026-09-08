@@ -147,6 +147,17 @@ function normalizeStatus(value: string): ReadingStatus {
   return 'tbr';
 }
 
+function positiveInteger(value: string): number | undefined {
+  const parsed = Number(value.replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.round(parsed);
+}
+
+function importedCoverUrl(value: string): string | undefined {
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : undefined;
+}
+
 function mapRecord(record: Record<string, unknown>, index: number, mapping: ImportColumnMapping): ImportRecordItem | null {
   const title = mappedValue(record, mapping, 'title');
   if (!title) return null;
@@ -163,8 +174,11 @@ function mapRecord(record: Record<string, unknown>, index: number, mapping: Impo
     format: normalizeFormat(mappedValue(record, mapping, 'format')),
     status: normalizeStatus(mappedValue(record, mapping, 'status')),
     rating: Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue : undefined,
+    dateStarted: mappedValue(record, mapping, 'dateStarted') || undefined,
     dateRead: mappedValue(record, mapping, 'dateRead') || undefined,
     dateAdded: mappedValue(record, mapping, 'dateAdded') || new Date().toISOString().split('T')[0],
+    pageCount: positiveInteger(mappedValue(record, mapping, 'pageCount')),
+    coverUrl: importedCoverUrl(mappedValue(record, mapping, 'coverUrl')),
     review: mappedValue(record, mapping, 'review') || undefined,
     confidence: 100,
     duplicateAction: 'skip',
@@ -411,7 +425,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({
         <>
           <div className="flex items-start gap-3 rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-4 text-xs text-stone-300">
             <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-[#c5a059]" />
-            <div><p className="font-bold text-[#f4efe6]">Your export is the source of truth</p><p className="mt-1 text-stone-400">Inkbound imports your selected non-duplicate books using the title, author, shelf, rating, dates, review, and ISBN from your export. Other book sources are only used to fill in optional covers, summaries, and edition details.</p></div>
+            <div><p className="font-bold text-[#f4efe6]">Your export is the source of truth</p><p className="mt-1 text-stone-400">Inkbound imports your selected non-duplicate books using the title, author, shelf, rating, dates, page count, cover URL, review, and ISBN when those fields are included in your export. Other book sources are only used to fill in optional covers, summaries, and edition details that your export did not provide.</p></div>
           </div>
 
           <div className="overflow-x-auto rounded-2xl border border-[#3d2448] bg-[#1c0f24] p-3">
