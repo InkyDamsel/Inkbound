@@ -65,6 +65,13 @@ import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, lo
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
 import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
 import { subscribeToRuntimeResume } from './platform/runtimeLifecycle';
+import {
+  getRuntimeStorage,
+  readRuntimeValue,
+  removeRuntimeValue,
+  writeRuntimeJson,
+  writeRuntimeValue,
+} from './platform/runtimeStorage';
 import { Check, Flame, RotateCcw, Target } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
@@ -100,26 +107,17 @@ interface BookProgressCorrection {
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
   try {
-    const stored = localStorage.getItem(primaryKey) ?? localStorage.getItem(legacyKey);
+    const storage = getRuntimeStorage();
+    const stored = storage.getItem(primaryKey) ?? storage.getItem(legacyKey);
     return stored ? (JSON.parse(stored) as T) : fallback;
   } catch {
     return fallback;
   }
 }
 
-function safeWriteLocalStorage(key: string, value: unknown): boolean {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch (error) {
-    console.warn(`Inkbound could not update ${key} in the browser cache.`, error);
-    return false;
-  }
-}
-
 function readDailyGoalMinutes(): number {
   try {
-    const raw = localStorage.getItem(DAILY_GOAL_STORAGE_KEY);
+    const raw = getRuntimeStorage().getItem(DAILY_GOAL_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : 30;
     return Math.max(1, Number(parsed) || 30);
   } catch {
@@ -129,7 +127,7 @@ function readDailyGoalMinutes(): number {
 
 function isReadingTimerOpen(): boolean {
   try {
-    return localStorage.getItem(TIMER_OPEN_STORAGE_KEY) === 'true';
+    return getRuntimeStorage().getItem(TIMER_OPEN_STORAGE_KEY) === 'true';
   } catch {
     return false;
   }
@@ -142,7 +140,7 @@ function isPreferredMaintenanceWindow(): boolean {
 
 function canRunDaytimeMaintenance(): boolean {
   try {
-    const lastRun = Number(localStorage.getItem(DAYTIME_MAINTENANCE_KEY) ?? 0);
+    const lastRun = Number(getRuntimeStorage().getItem(DAYTIME_MAINTENANCE_KEY) ?? 0);
     return !Number.isFinite(lastRun) || Date.now() - lastRun >= DAYTIME_MAINTENANCE_COOLDOWN_MS;
   } catch {
     return true;
@@ -150,11 +148,7 @@ function canRunDaytimeMaintenance(): boolean {
 }
 
 function markDaytimeMaintenanceRun() {
-  try {
-    localStorage.setItem(DAYTIME_MAINTENANCE_KEY, String(Date.now()));
-  } catch {
-    // Maintenance scheduling is best-effort only.
-  }
+  writeRuntimeValue(DAYTIME_MAINTENANCE_KEY, String(Date.now()));
 }
 
 function sessionSortKey(session: ReadingSession): string {
@@ -173,7 +167,7 @@ function sessionProgress(session: ReadingSession, audiobook: boolean, edge: 'sta
 export default function App() {
   const [activeTab, setActiveTab] = usePersistentState<NavTab>('inkbound_active_tab', 'home');
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    const savedTheme = readRuntimeValue(THEME_STORAGE_KEY);
     return savedTheme ? savedTheme === 'dark' : true;
   });
   const [books, setBooks] = useState<UserBookRecord[]>(() => readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []));
@@ -193,18 +187,18 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
-    try { localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light'); } catch { /* no-op */ }
+    writeRuntimeValue(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
   useEffect(() => {
     booksRef.current = books;
-    safeWriteLocalStorage(BOOKS_STORAGE_KEY, books);
-    try { localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); } catch { /* no-op */ }
+    writeRuntimeJson(BOOKS_STORAGE_KEY, books);
+    removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
   }, [books]);
 
   useEffect(() => {
-    safeWriteLocalStorage(SESSIONS_STORAGE_KEY, sessions);
-    try { localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); } catch { /* no-op */ }
+    writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions);
+    removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY);
   }, [sessions]);
 
   useEffect(() => {
@@ -443,7 +437,7 @@ export default function App() {
     const verificationSnapshot = getImportVerificationSnapshot(); appendImportHistory(acceptedItems, verificationSnapshot.duplicates.length + writeDuplicates.length); const skippedAtWrite = importedItems.length - acceptedItems.length; showToast(navigator.onLine ? `Added ${immediateBooks.length} books${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will update when Inkbound is online.`); void processImportEnrichmentQueue(); return acceptedItems;
   };
 
-  const handleResetData = () => { booksRef.current = []; setBooks([]); setSessions([]); setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); try { localStorage.removeItem(BOOKS_STORAGE_KEY); localStorage.removeItem(SESSIONS_STORAGE_KEY); localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY); localStorage.removeItem(LEGACY_SESSIONS_STORAGE_KEY); localStorage.removeItem(DAYTIME_MAINTENANCE_KEY); } catch { /* no-op */ } writeImportEnrichmentQueue([]); writeImportHistory([]); writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared all Inkbound books and reading sessions.'); };
+  const handleResetData = () => { booksRef.current = []; setBooks([]); setSessions([]); setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY); removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY); removeRuntimeValue(DAYTIME_MAINTENANCE_KEY); writeImportEnrichmentQueue([]); writeImportHistory([]); writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared all Inkbound books and reading sessions.'); };
   const currentSelectedBook = selectedBookForDetails ? books.find((book) => book.id === selectedBookForDetails.id) ?? selectedBookForDetails : null;
 
   return (
