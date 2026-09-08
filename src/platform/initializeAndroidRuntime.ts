@@ -6,9 +6,7 @@ import { Share } from '@capacitor/share';
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
-  browserLocalPersistence,
   reauthenticateWithCredential,
-  setPersistence,
   signInWithCredential,
 } from 'firebase/auth';
 import { configureRuntimeAuthentication } from './runtimeAuthentication';
@@ -68,19 +66,16 @@ const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInW
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
-  // Start native App Check immediately, but do not make successful Play Integrity
-  // attestation a prerequisite for rendering Inkbound. The JS App Check provider
-  // below awaits this promise only when a protected Firebase request actually
-  // needs a token. This keeps the local app/library usable if Google services are
-  // slow or temporarily unavailable without bypassing App Check on cloud calls.
   const nativeAppCheckReady = FirebaseAppCheck.initialize({
     isTokenAutoRefreshEnabled: true,
   });
 
   configureRuntimeAuthentication({
-    preparePersistence: async (auth) => {
-      await setPersistence(auth, browserLocalPersistence);
-    },
+    // Android Firebase Auth persistence is now configured when the Auth instance
+    // is created in lib/firebase.ts. Re-running setPersistence here can race the
+    // startup restoration inside a Capacitor WebView and falsely report that the
+    // account cannot be kept signed in.
+    preparePersistence: async () => undefined,
     signInWithGoogle: async (auth) => {
       const result = await requestNativeGoogleCredential();
       const idToken = result.credential?.idToken ?? '';
@@ -188,9 +183,6 @@ export async function initializeAndroidRuntime() {
     },
   });
 
-  // Bind the JS App Check provider now so the app shell can open immediately.
-  // Protected requests still wait for native Play Integrity before receiving a
-  // token, so this changes startup availability without weakening enforcement.
   initializeNativeSecurityRuntime({
     getToken: async (forceRefresh = false) => {
       await nativeAppCheckReady;
@@ -202,8 +194,6 @@ export async function initializeAndroidRuntime() {
     },
   });
 
-  // Observe initialization failures so they are visible in Android logs. The
-  // token adapter will surface the same failure to protected Firebase requests.
   void nativeAppCheckReady.catch((error) => {
     console.error('Inkbound Android App Check could not initialize.', error);
   });
