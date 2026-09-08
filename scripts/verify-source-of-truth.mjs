@@ -30,7 +30,7 @@ for (const file of sourceFiles) {
 }
 
 const app = read('src/App.tsx');
-for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_KEYS', 'LEGACY_SYNC_STORAGE_KEYS', 'ACCOUNT_DATA_STORAGE_KEYS', 'subscribeToRuntimeResume']) {
+for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_KEYS', 'LEGACY_SYNC_STORAGE_KEYS', 'ACCOUNT_DATA_STORAGE_KEYS', 'subscribeToRuntimeResume', 'writeRuntimeJson']) {
   if (!app.includes(required)) violations.push(`App.tsx: missing canonical ${required} consumer`);
 }
 if (/function\s+applyReadingStatus\s*\(/.test(app)) {
@@ -38,6 +38,15 @@ if (/function\s+applyReadingStatus\s*\(/.test(app)) {
 }
 for (const literal of ["const BOOKS_STORAGE_KEY = 'inkbound_books'", "const SESSIONS_STORAGE_KEY = 'inkbound_sessions'", "const THEME_STORAGE_KEY = 'inkbound_theme'"]) {
   if (app.includes(literal)) violations.push(`App.tsx: canonical storage key was redefined (${literal})`);
+}
+if (/\blocalStorage\./.test(app)) {
+  violations.push('App.tsx: canonical app persistence must go through runtimeStorage so Android and web emit the same sync events');
+}
+if (!app.includes('writeRuntimeJson(BOOKS_STORAGE_KEY, books)') || !app.includes('writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions)')) {
+  violations.push('App.tsx: canonical books/sessions persistence must use writeRuntimeJson');
+}
+if (/safeWriteLocalStorage/.test(app)) {
+  violations.push('App.tsx: direct browser persistence helper must not bypass runtimeStorage');
 }
 if (!app.includes('onUpdateSession={handleUpdateSession}') || !app.includes('onDeleteSession={handleDeleteSession}')) {
   violations.push('App.tsx: Book Details session edits/deletes must flow through the canonical App session mutation path');
@@ -119,10 +128,13 @@ if (!main.includes('<CrossDeviceDeltaSyncBridge />') || !main.includes('<Auxilia
 }
 
 const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
-for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS']) {
+for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey']) {
   if (!crossDeviceSync.includes(required)) {
     violations.push(`CrossDeviceDeltaSyncBridge.tsx: core sync must consume canonical ${required}`);
   }
+}
+if (/inkbound_(?:pending_sync|sync_baseline|cross_device_cursor)_/.test(crossDeviceSync)) {
+  violations.push('CrossDeviceDeltaSyncBridge.tsx: sync metadata key strings must come from storageKeys.ts');
 }
 
 const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
