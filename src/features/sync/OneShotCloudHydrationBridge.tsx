@@ -36,12 +36,17 @@ function writeJson(key: string, value: unknown) {
   getRuntimeStorage().setItem(key, JSON.stringify(value));
 }
 
-function hasLocalLibrary(): boolean {
+function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   try {
-    const raw = getRuntimeStorage().getItem(BOOKS_KEY);
+    const storage = getRuntimeStorage();
+    const raw = storage.getItem(BOOKS_KEY);
     if (!raw) return false;
     const trimmed = raw.trim();
-    return trimmed.startsWith('[') && trimmed !== '[]';
+    if (!trimmed.startsWith('[')) return false;
+
+    const ownerUid = storage.getItem(OWNER_UID_KEY);
+    if (ownerUid) return ownerUid === uid;
+    return trimmed !== '[]';
   } catch {
     return false;
   }
@@ -54,14 +59,13 @@ function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): 
 }
 
 /**
- * Restores an empty/new device exactly once without installing collection
- * listeners. Existing devices receive a short grace period so IndexedDB/browser
- * storage can restore the local working copy before Inkbound considers a paid
- * Firestore collection read.
+ * Restores a genuinely new device exactly once without installing collection
+ * listeners. Established local working copies, including intentionally empty
+ * libraries, stay local-first.
  *
- * Once any local library exists AdaptiveCloudPersistenceBridge immediately moves
- * to CostSafeCloudPersistenceBridge, where ordinary navigation and edits do not
- * reread the full Firestore library.
+ * Account ownership is checked before local records are merged. This prevents a
+ * previous reader's cached books, sessions, or profile from leaking into a newly
+ * signed-in account while the other account-cleanup bridges are still starting.
  */
 export const OneShotCloudHydrationBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -79,7 +83,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
     const hydrate = async () => {
       if (disposed) return;
-      if (hasLocalLibrary()) {
+      if (hasEstablishedLocalWorkingCopy(uid)) {
         openFromLocal();
         return;
       }
@@ -98,26 +102,32 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
         const cloudBooks = bookSnapshot.docs.map((item) => (item.data() as CloudRecord<UserBookRecord>).data).filter(Boolean);
         const cloudSessions = sessionSnapshot.docs.map((item) => (item.data() as CloudRecord<ReadingSession>).data).filter(Boolean);
+        const storage = getRuntimeStorage();
+        const previousOwnerUid = storage.getItem(OWNER_UID_KEY);
+        const sameAccountLocalData = !previousOwnerUid || previousOwnerUid === uid;
 
-        const localBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
-        const localSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
+        const localBooks = sameAccountLocalData ? readJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
+        const localSessions = sameAccountLocalData ? readJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
         writeJson(BOOKS_KEY, mergeById(localBooks, cloudBooks));
         writeJson(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
 
         if (profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<ReaderProfile>).data;
           if (cloudProfile) writeJson(PROFILE_KEY, cloudProfile);
+          else if (!sameAccountLocalData) storage.removeItem(PROFILE_KEY);
+        } else if (!sameAccountLocalData) {
+          storage.removeItem(PROFILE_KEY);
         }
 
-        getRuntimeStorage().setItem(OWNER_UID_KEY, uid);
+        storage.setItem(OWNER_UID_KEY, uid);
         notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
       } catch (error) {
         console.warn('Inkbound one-time cloud restore could not complete; opening the local working copy.', error);
-        if (!disposed) openFromLocal();
+        if (!disposed && hasEstablishedLocalWorkingCopy(uid)) openFromLocal();
       }
     };
 
-    if (hasLocalLibrary()) {
+    if (hasEstablishedLocalWorkingCopy(uid)) {
       openFromLocal();
     } else {
       timer = window.setTimeout(() => {
