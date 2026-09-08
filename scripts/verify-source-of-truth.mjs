@@ -80,6 +80,28 @@ if (/from ['"].*CloudPersistenceBridge['"]/.test(main) && !main.includes('Adapti
 if (!main.includes('<CanonicalLibraryNormalizationBridge />')) {
   violations.push('main.tsx: canonical library normalization must run at the persistence boundary');
 }
+if (!main.includes('<CrossDeviceDeltaSyncBridge />') || !main.includes('<AuxiliaryAccountSyncBridge />')) {
+  violations.push('main.tsx: both canonical core and auxiliary cross-device sync bridges must remain mounted');
+}
+
+const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
+for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS']) {
+  if (!crossDeviceSync.includes(required)) {
+    violations.push(`CrossDeviceDeltaSyncBridge.tsx: core sync must consume canonical ${required}`);
+  }
+}
+
+const auxiliarySync = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
+for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'AUXILIARY_ACCOUNT_KEYS']) {
+  if (!auxiliarySync.includes(required)) {
+    violations.push(`AuxiliaryAccountSyncBridge.tsx: auxiliary sync must consume canonical ${required}`);
+  }
+}
+
+const photoSync = read('src/features/memories/PhotoMemoryAutoSyncBridge.tsx');
+if (!photoSync.includes('subscribeToRuntimeResume')) {
+  violations.push('PhotoMemoryAutoSyncBridge.tsx: photo-memory sync must use the canonical runtime resume boundary');
+}
 
 const seriesLibrary = read('src/features/series/seriesLibrary.ts');
 if (/ownership\s*:\s*['"]none['"]/.test(seriesLibrary)) {
@@ -101,6 +123,22 @@ for (const required of [
   'src/features/reading/bookReadingState.ts',
 ]) {
   if (!sourceOfTruthDoc.includes(required)) violations.push(`DATA_SOURCE_OF_TRUTH.md: missing ${required}`);
+}
+
+const releaseAudit = read('docs/RELEASE_READINESS_AUDIT.md');
+for (const required of [
+  'One application, one source of truth',
+  'Web feature = Android feature',
+  'Cross-device data matrix',
+  'Manual release cases',
+  'Paid checkout / subscription management',
+]) {
+  if (!releaseAudit.includes(required)) violations.push(`RELEASE_READINESS_AUDIT.md: missing release contract section ${required}`);
+}
+
+const packageJson = JSON.parse(read('package.json'));
+if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:parity')) {
+  violations.push('package.json: release:verify must include the web/Android parity gate');
 }
 
 if (violations.length) {
