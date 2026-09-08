@@ -42,11 +42,28 @@ export const syncBaselineStateKey = (uid: string) => `inkbound_sync_baseline_${u
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 
 /**
- * Canonical persistent collections used by the app shell. UI screens should read
- * the local working copy; cloud bridges own hydration/persistence of these keys.
+ * Runtime keys whose local mutations should emit the debounced Inkbound change
+ * signal. Core library persistence and auxiliary bridges can then react to real
+ * edits instead of waking up every couple of seconds to poll storage.
  */
 export const CANONICAL_SYNC_COLLECTION_KEYS = [
   SYNC_STORAGE_KEYS.books,
   SYNC_STORAGE_KEYS.sessions,
   SYNC_STORAGE_KEYS.profile,
+  ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions,
+  ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides,
+  ACCOUNT_DATA_STORAGE_KEYS.customOwnershipCategories,
+  ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal,
+  ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes,
+  ACCOUNT_DATA_STORAGE_KEYS.timelineMemories,
+  ACCOUNT_DATA_STORAGE_KEYS.readingTimeCapsules,
+  ACCOUNT_DATA_STORAGE_KEYS.joinedChallenges,
+  ACCOUNT_DATA_STORAGE_KEYS.customChallenges,
+  ACCOUNT_DATA_STORAGE_KEYS.challengeRotation,
+  ACCOUNT_DATA_STORAGE_KEYS.joinedChallengeSnapshots,
+  ACCOUNT_DATA_STORAGE_KEYS.dragonProfile,
+  ACCOUNT_DATA_STORAGE_KEYS.achievementUnlocks,
+  ACCOUNT_DATA_STORAGE_KEYS.achievementReveals,
+  ACCOUNT_DATA_STORAGE_KEYS.achievementSeen,
+  ACCOUNT_DATA_STORAGE_KEYS.readingMemories,
 ] as const;
