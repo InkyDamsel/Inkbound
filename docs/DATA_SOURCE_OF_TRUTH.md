@@ -72,6 +72,8 @@ The in-app Quick Help panel selects a subset from this content. The `/faq` page 
 
 Settings should call these serializers. Export code must use the canonical series resolver and the current `UserBookRecord` fields rather than reimplementing metadata resolution itself.
 
+Web and Android call the same serializers. `src/platform/runtimeExport.ts` is only the delivery boundary: browsers download/share the serialized file, while Android supplies Filesystem/Share through `initializeAndroidRuntime.ts`.
+
 ## Persistent storage keys
 
 **Canonical key registry:** `src/features/sync/storageKeys.ts`
@@ -87,10 +89,58 @@ The local runtime copy is the application working source. Cloud code has narrowl
 - `AdaptiveCloudPersistenceBridge` chooses the appropriate hydration/persistence strategy.
 - `CostSafeCloudPersistenceBridge` persists local canonical changes.
 - `OneShotCloudHydrationBridge` restores an empty/new local cache.
+- `CrossDeviceDeltaSyncBridge` pulls changed books, sessions, profile data, and delete tombstones into an already-hydrated device.
+- `AuxiliaryAccountSyncBridge` synchronizes registered account-owned state such as collection definitions, custom ownership categories, goals, and challenge state.
 - `CloudServerRefreshBridge` handles explicit/recovery refreshes rather than acting as an everyday feature data source.
-- Auxiliary/profile/media bridges persist their specific registered account-owned data.
+- Profile/media bridges persist their specific registered account-owned media.
 
 Feature screens must not bypass these boundaries with their own independent Firestore-backed copy of library facts.
+
+## Cross-device conflict policy
+
+**Canonical conflict rule:** `src/features/sync/syncConflictPolicy.ts`
+
+`shouldRemoteChangeReplacePending()` is the shared last-write rule for core and auxiliary sync. A durable local pending mutation represents known user intent. A remote change replaces it only when the remote change is demonstrably newer. Firestore server time is preferred when available; `clientUpdatedAt` is the fallback used across devices.
+
+Startup code must never create a fresh “now” timestamp merely because cached local data differs from an old baseline *before* comparing that cache with cloud state. Doing that makes stale data appear newer simply because the stale device opened later.
+
+## Foreground / resume behavior
+
+**Canonical lifecycle boundary:** `src/platform/runtimeLifecycle.ts`
+
+All cross-device retry/reconciliation behavior that depends on the app returning to the foreground must subscribe through `subscribeToRuntimeResume()`.
+
+- Web installs visibility/pageshow/online behavior through the browser adapter.
+- Android installs Capacitor `appStateChange` plus online behavior in `initializeAndroidRuntime.ts`.
+- Feature and sync code must not assume browser `focus` is equivalent to Android app resume.
+
+This keeps web and Android on the same sync path instead of maintaining separate platform-specific refresh behavior.
+
+## Recovery
+
+Recovery snapshots are versioned safety copies, **not** a second live source of truth.
+
+- Automatic reader safety points are owned by `src/features/recovery/dataRecovery.ts` and `RecoverySafetyBridge.tsx`.
+- Owner/admin full recovery is implemented by `functions/src/adminRecovery.ts`.
+- Owner/admin selective recovery is implemented by `functions/src/adminSelectiveRecovery.ts` and the Administration recovery UI.
+- Every admin restore creates a new safety copy of the state being replaced and records an audit entry.
+- Collection recovery restores the collection definition and missing memberships without deleting newer memberships.
+- A restore must clear the current core and auxiliary sync pending/baseline metadata before the bridges rebuild against the restored cloud state.
+
+## Platform parity
+
+The signed-in web app and Android app mount the same React `App`. Platform adapters may implement device capabilities differently, but shared feature components may not decide that a feature exists on web and disappears on Android.
+
+The permanent parity/release contract lives in `docs/RELEASE_READINESS_AUDIT.md` and is enforced statically by `scripts/verify-cross-platform-parity.mjs` as part of `npm run release:verify`.
+
+Legitimate platform implementations include:
+
+- browser Firebase Google auth vs Android native credential acquisition feeding the same Firebase JS Auth authority,
+- browser download/share vs Android Filesystem/Share,
+- browser visibility lifecycle vs Android Capacitor App lifecycle,
+- web billing vs the required Android store billing implementation once paid subscriptions are opened.
+
+A different implementation is not permission to omit the capability.
 
 ## Derived screens are not data stores
 
@@ -102,6 +152,8 @@ Before adding a new persistent field or metadata source:
 
 1. Identify the existing authoritative domain object/module.
 2. Extend that source first.
-3. Make import, export, sync, and UI consume it.
+3. Make import, export, sync, recovery, and UI consume it.
 4. If migration is needed, migrate old data once rather than keeping both representations alive indefinitely.
 5. Avoid direct Firestore collection reads inside feature screens; sync bridges own cloud persistence and hydration.
+6. Add the feature to the web/Android parity matrix and release test cases.
+7. If platform-specific device behavior is required, add it behind a platform adapter while keeping the shared capability visible and usable on both platforms.
