@@ -27,10 +27,11 @@ export function hasTrustworthyFinishedHistory(book: UserBookRecord): boolean {
 }
 
 /**
- * Activity-driven features (Lumis, achievements, challenges) are stricter than
- * historical reporting. Imported history does not become Inkbound activity just
- * because it contains old dates. The reader must actually interact with the book
- * in Inkbound, or finish an imported book after bringing it into Inkbound.
+ * Activity-driven features (Lumis, achievements, challenges) are deliberately
+ * stricter than historical reporting. Imported history can feed dashboards and
+ * yearly goals when it has valid dates, but it never earns challenge or
+ * achievement progress by itself. An imported title only becomes eligible after
+ * the reader records actual Inkbound reading activity for that title.
  */
 export function isInkboundFinishedBook(
   book: UserBookRecord,
@@ -38,9 +39,7 @@ export function isInkboundFinishedBook(
 ): boolean {
   if (book.status !== 'finished') return false;
   if (!isImportedBook(book)) return true;
-  if (trackedBookIds.has(book.id)) return true;
-
-  return hasValidDateKey(book.dateFinished) && book.importFinishedDateProvided !== true;
+  return trackedBookIds.has(book.id);
 }
 
 /** Imported currently-reading rows only count as active Inkbound reading after
