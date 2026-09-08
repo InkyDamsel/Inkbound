@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -28,6 +29,7 @@ import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
+const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const FOREGROUND_FALLBACK_MS = 120000;
 const QUERY_OVERLAP_MS = 5000;
 
@@ -48,9 +50,14 @@ interface RecordMutation<T> {
   data?: T;
   clientUpdatedAt: string;
 }
+interface ProfileMutation {
+  data: Record<string, unknown>;
+  clientUpdatedAt: string;
+}
 interface PendingSyncState {
   books: Record<string, RecordMutation<UserBookRecord>>;
   sessions: Record<string, RecordMutation<ReadingSession>>;
+  profile?: ProfileMutation;
 }
 interface SyncBaseline {
   books: Record<string, string>;
@@ -96,7 +103,7 @@ function readPending(uid: string): PendingSyncState {
 }
 
 function writePending(uid: string, pending: PendingSyncState) {
-  if (!Object.keys(pending.books).length && !Object.keys(pending.sessions).length) {
+  if (!Object.keys(pending.books).length && !Object.keys(pending.sessions).length && !pending.profile) {
     runtimeStorage().removeItem(pendingKey(uid));
   } else {
     writeJson(pendingKey(uid), pending);
@@ -123,7 +130,7 @@ function removeIds<T extends { id: string }>(current: T[], removed: Set<string>)
   return current.filter((item) => !removed.has(item.id));
 }
 
-function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: RecordMutation<T>): boolean {
+function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpdatedAt: string }): boolean {
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
@@ -140,17 +147,12 @@ function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<
 }
 
 /**
- * Low-cost reconciliation for devices that already have a local library.
+ * Low-cost reconciliation for an already-hydrated device.
  *
- * Ordinary local work remains local-first and upload-only. This bridge pulls only
- * records whose Firestore updatedAt is newer than the device cursor when the app
- * opens/resumes and on a slow foreground fallback. Runtime lifecycle is the one
- * source of truth for foregrounding, so web visibility/pageshow and Android
- * Capacitor AppState both drive the same code path.
- *
- * The first v2 reconciliation intentionally starts from epoch once per device.
- * That repairs devices stranded by the old cursor bootstrap bug. After that one
- * repair, normal checks are delta-only again.
+ * Books and sessions use timestamp-bounded queries; the single profile document
+ * is checked alongside them. All platforms enter this same path through the
+ * runtime lifecycle adapter, so Android foregrounding and browser foregrounding
+ * cannot drift into different sync behavior.
  */
 export const CrossDeviceDeltaSyncBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -208,7 +210,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       try {
         const cursor = readCursor(uid);
         const lowerBound = Timestamp.fromMillis(Math.max(0, cursor - QUERY_OVERLAP_MS));
-        const [bookSnapshot, sessionSnapshot, tombstoneSnapshot] = await Promise.all([
+        const [bookSnapshot, sessionSnapshot, tombstoneSnapshot, profileSnapshot] = await Promise.all([
           getDocs(query(
             collection(db!, 'users', uid, 'books'),
             where('updatedAt', '>', lowerBound),
@@ -224,6 +226,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
             where('deletedAt', '>', lowerBound),
             orderBy('deletedAt', 'asc'),
           )),
+          getDoc(doc(db!, 'users', uid, 'profile', 'current')),
         ]);
         if (disposed) return;
 
@@ -279,11 +282,23 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           }
         });
 
+        let acceptedProfile: Record<string, unknown> | undefined;
+        if (profileSnapshot.exists()) {
+          const profileRecord = profileSnapshot.data() as CloudRecord<Record<string, unknown>>;
+          const updatedMillis = profileRecord.updatedAt?.toMillis() ?? 0;
+          newestMillis = Math.max(newestMillis, updatedMillis);
+          if (updatedMillis > lowerBound.toMillis() && cloudRecordWinsPending(profileRecord, pending.profile)) {
+            acceptedProfile = profileRecord.data;
+            delete pending.profile;
+            baseline.profile = stable(profileRecord.data);
+          }
+        }
+
         let books = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         let sessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
         const nextBooks = removeIds(upsertById(books, acceptedBooks), removedBooks);
         const nextSessions = removeIds(upsertById(sessions, acceptedSessions), removedSessions);
-        const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY> = [];
+        const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (stable(books) !== stable(nextBooks)) {
           books = nextBooks;
@@ -299,6 +314,12 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           knownSessionIds.current = new Set(sessions.map((session) => session.id));
           notifyRuntimeStorageChanged(SESSIONS_KEY);
           changedKeys.push(SESSIONS_KEY);
+        }
+
+        if (acceptedProfile && runtimeStorage().getItem(PROFILE_KEY) !== stable(acceptedProfile)) {
+          writeJson(PROFILE_KEY, acceptedProfile);
+          notifyRuntimeStorageChanged(PROFILE_KEY);
+          changedKeys.push(PROFILE_KEY);
         }
 
         writeJson(baselineKey(uid), baseline);
@@ -317,9 +338,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       if (!books.size) return;
       knownBookIds.current = books;
       knownSessionIds.current = idsFromStored<ReadingSession>(SESSIONS_KEY);
-      if (!runtimeStorage().getItem(cursorKey(uid))) {
-        runtimeStorage().setItem(cursorKey(uid), String(Date.now()));
-      }
+      if (!runtimeStorage().getItem(cursorKey(uid))) runtimeStorage().setItem(cursorKey(uid), String(Date.now()));
     };
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, captureLocalDeletes);
@@ -330,11 +349,8 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       if (document.visibilityState === 'visible') void pullDeltas();
     }, FOREGROUND_FALLBACK_MS);
 
-    if (knownBookIds.current.size > 0) {
-      void pullDeltas();
-    } else {
-      window.setTimeout(establishCursorAfterFirstHydration, 2500);
-    }
+    if (knownBookIds.current.size > 0) void pullDeltas();
+    else window.setTimeout(establishCursorAfterFirstHydration, 2500);
 
     return () => {
       disposed = true;
