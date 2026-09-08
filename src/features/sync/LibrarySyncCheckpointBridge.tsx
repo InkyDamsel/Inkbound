@@ -13,8 +13,9 @@ import {
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_KEY = 'inkbound_books';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const CHECKPOINT_KEY_PREFIX = 'inkbound_library_sync_checkpoint_v1_';
 const VERIFY_DELAY_MS = 15000;
 
@@ -54,7 +55,8 @@ function clearCheckpoint(uid: string) {
 /**
  * Records the expected size of a reader's library before a large local change
  * begins syncing to Firestore. Recovery code can then distinguish a complete
- * cloud library from a partially uploaded one after a crash or forced close.
+ * cloud library from a partially uploaded/deleted one after a crash or forced
+ * close.
  */
 export const LibrarySyncCheckpointBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -72,7 +74,9 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
       try {
         const countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
         const uploadedBookCount = countSnapshot.data().count;
-        const complete = uploadedBookCount >= checkpoint.expectedBookCount;
+        // Equality is required. Using >= incorrectly declared deletion batches
+        // complete while stale cloud books still existed (especially expected 0).
+        const complete = uploadedBookCount === checkpoint.expectedBookCount;
         await setDoc(manifestRef, {
           status: complete ? 'complete' : 'syncing',
           expectedBookCount: checkpoint.expectedBookCount,
