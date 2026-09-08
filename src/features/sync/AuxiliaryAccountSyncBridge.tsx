@@ -43,8 +43,6 @@ interface PendingAuxiliaryMutation {
 type PendingState = Partial<Record<AuxiliaryAccountKeyName, PendingAuxiliaryMutation>>;
 type BaselineState = Partial<Record<AuxiliaryAccountKeyName, string>>;
 
-// Local mutations now emit a debounced storage-change signal. Keep only a slow
-// fallback poll for native/offline edge cases instead of waking every 1.5s.
 const FALLBACK_POLL_MS = 30000;
 const storage = () => getRuntimeStorage();
 const stable = (value: unknown) => JSON.stringify(value);
@@ -97,6 +95,18 @@ function isMeaningful(value: unknown): boolean {
   return true;
 }
 
+function timestampMillis(value?: string): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function remoteWinsConflict(remote: CloudAuxiliaryRecord, pending: PendingAuxiliaryMutation): boolean {
+  const remoteMillis = timestampMillis(remote.clientUpdatedAt);
+  const pendingMillis = timestampMillis(pending.clientUpdatedAt);
+  return remoteMillis > 0 && remoteMillis > pendingMillis;
+}
+
 export const AuxiliaryAccountSyncBridge: React.FC = () => {
   const sync = useAccountSync();
   const hydrated = useRef(false);
@@ -139,8 +149,6 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       try {
         const baseline = readBaseline(uid);
         await Promise.all(entries.map(async ([name, mutation]) => {
-          // Never spend a Firestore write when the pending value is already the
-          // exact cloud baseline for this device.
           if (baseline[name] === stable(mutation.data)) return;
           await setDoc(
             doc(db!, 'users', uid, 'auxiliary', name),
@@ -224,6 +232,13 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
 
         if (cloudRecord) nextBaseline[name] = stable(cloudRecord.data);
 
+        if (localPending && cloudRecord && remoteWinsConflict(cloudRecord, localPending)) {
+          delete pending[name];
+          writeLocalValue(key, cloudRecord.data, true);
+          fingerprints.current[name] = stable(cloudRecord.data);
+          return;
+        }
+
         if (localPending) {
           writeLocalValue(key, localPending.data);
           fingerprints.current[name] = stable(localPending.data);
@@ -237,8 +252,6 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         }
 
         if (sameAccountLocalData && isMeaningful(localValue)) {
-          // Only queue missing cloud state once. The durable baseline prevents a
-          // normal launch from recreating the same write on every session.
           if (nextBaseline[name] !== stable(localValue)) {
             pending[name] = { data: localValue, clientUpdatedAt: now };
           }
@@ -276,12 +289,18 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         const pending = readPending(uid);
         const baseline = readBaseline(uid);
         let baselineChanged = false;
+        let pendingChanged = false;
 
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'removed' || !(change.doc.id in AUXILIARY_ACCOUNT_KEYS)) return;
           const name = change.doc.id as AuxiliaryAccountKeyName;
-          if (pending[name]) return;
           const record = change.doc.data() as CloudAuxiliaryRecord;
+          const localPending = pending[name];
+          if (localPending && !remoteWinsConflict(record, localPending)) return;
+          if (localPending) {
+            delete pending[name];
+            pendingChanged = true;
+          }
           const key = AUXILIARY_ACCOUNT_KEYS[name];
           const fingerprint = stable(record.data);
           if (baseline[name] !== fingerprint) {
@@ -294,6 +313,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         });
 
         if (baselineChanged) writeBaseline(uid, baseline);
+        if (pendingChanged) writePending(uid, pending);
       },
       () => {
         // The local cache remains authoritative while offline.
@@ -306,7 +326,6 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       captureAndFlush();
     };
 
-    // Slow safety net only. Normal local edits sync through the event above.
     const fallbackPoll = window.setInterval(captureAndFlush, FALLBACK_POLL_MS);
     const preserveBeforeBackgrounding = () => captureLocalChanges();
     const flushBeforeSignOut = (event: Event) => {
