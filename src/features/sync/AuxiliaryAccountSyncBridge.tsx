@@ -196,22 +196,12 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       const pending = readPending(uid);
       const now = new Date().toISOString();
 
-      if (sameAccountLocalData) {
-        (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, key]) => {
-          const localValue = readLocalValue(key);
-          if (localValue === undefined) return;
-          const fingerprint = stable(localValue);
-          if (baseline[name] !== undefined && baseline[name] !== fingerprint && !pending[name]) {
-            pending[name] = { data: localValue, clientUpdatedAt: now };
-          }
-        });
-      }
-
       let cloudDocs: Awaited<ReturnType<typeof getDocs>> | undefined;
       try {
         cloudDocs = await getDocs(collection(db!, 'users', uid, 'auxiliary'));
       } catch {
-        // Offline startup remains usable. Pending local mutations stay durable.
+        // Offline startup remains usable. Existing durable pending mutations stay
+        // authoritative; local-only values are queued below when cloud is absent.
       }
       if (disposed) return;
 
@@ -225,10 +215,16 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, key]) => {
         const cloudRecord = cloudByName.get(name);
         const localValue = sameAccountLocalData ? readLocalValue(key) : undefined;
+        const localFingerprint = localValue === undefined ? undefined : stable(localValue);
+        const previousBaseline = baseline[name];
         const localPending = pending[name];
 
         if (cloudRecord) nextBaseline[name] = stable(cloudRecord.data);
 
+        // Only a durable pending mutation represents known local user intent.
+        // Never manufacture a brand-new pending timestamp from a stale startup
+        // cache before comparing it with cloud; doing that made the stale device
+        // look newer simply because it opened later.
         if (localPending && cloudRecord && remoteWinsConflict(cloudRecord, localPending)) {
           delete pending[name];
           writeLocalValue(key, cloudRecord.data, true);
@@ -243,20 +239,34 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         }
 
         if (cloudRecord) {
+          const cloudFingerprint = stable(cloudRecord.data);
+          const localChangedAgainstKnownCloud = sameAccountLocalData
+            && localFingerprint !== undefined
+            && previousBaseline !== undefined
+            && previousBaseline === cloudFingerprint
+            && localFingerprint !== previousBaseline;
+
+          if (localChangedAgainstKnownCloud) {
+            // Cloud is still exactly the baseline this device last saw, while the
+            // local value changed. This is the one startup case where a local edit
+            // can be proven without inventing precedence over a newer cloud value.
+            pending[name] = { data: localValue, clientUpdatedAt: now };
+            fingerprints.current[name] = localFingerprint;
+            return;
+          }
+
           writeLocalValue(key, cloudRecord.data, true);
-          fingerprints.current[name] = stable(cloudRecord.data);
+          fingerprints.current[name] = cloudFingerprint;
           return;
         }
 
         if (sameAccountLocalData && isMeaningful(localValue)) {
-          if (nextBaseline[name] !== stable(localValue)) {
-            pending[name] = { data: localValue, clientUpdatedAt: now };
-          }
-          fingerprints.current[name] = stable(localValue);
+          pending[name] = { data: localValue, clientUpdatedAt: now };
+          fingerprints.current[name] = localFingerprint;
           return;
         }
 
-        fingerprints.current[name] = localValue === undefined ? undefined : stable(localValue);
+        fingerprints.current[name] = localFingerprint;
       });
 
       writeBaseline(uid, nextBaseline);
