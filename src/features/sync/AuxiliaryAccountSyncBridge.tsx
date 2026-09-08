@@ -24,8 +24,10 @@ import {
 } from './auxiliaryAccountSyncConfig';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
+  INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   notifyCloudDataUpdated,
   type BeforeSignOutDetail,
+  type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 
 interface CloudAuxiliaryRecord {
@@ -41,9 +43,12 @@ interface PendingAuxiliaryMutation {
 type PendingState = Partial<Record<AuxiliaryAccountKeyName, PendingAuxiliaryMutation>>;
 type BaselineState = Partial<Record<AuxiliaryAccountKeyName, string>>;
 
-const POLL_MS = 1500;
+// Local mutations now emit a debounced storage-change signal. Keep only a slow
+// fallback poll for native/offline edge cases instead of waking every 1.5s.
+const FALLBACK_POLL_MS = 30000;
 const storage = () => getRuntimeStorage();
 const stable = (value: unknown) => JSON.stringify(value);
+const auxiliaryRuntimeKeys = new Set<string>(Object.values(AUXILIARY_ACCOUNT_KEYS));
 
 function safeParse<T>(key: string, fallback: T): T {
   try {
@@ -96,12 +101,12 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
   const sync = useAccountSync();
   const hydrated = useRef(false);
   const fingerprints = useRef<Partial<Record<AuxiliaryAccountKeyName, string>>>({});
-  const pollRunning = useRef(false);
+  const flushRunning = useRef(false);
 
   useEffect(() => {
     hydrated.current = false;
     fingerprints.current = {};
-    pollRunning.current = false;
+    flushRunning.current = false;
 
     if (!sync.user || !db) return undefined;
     const uid = sync.user.uid;
@@ -125,43 +130,53 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
     };
 
     const flushPending = async () => {
+      if (flushRunning.current || disposed || !navigator.onLine) return;
       const pending = readPending(uid);
       const entries = Object.entries(pending) as Array<[AuxiliaryAccountKeyName, PendingAuxiliaryMutation]>;
       if (entries.length === 0) return;
 
-      const baseline = readBaseline(uid);
-      await Promise.all(entries.map(async ([name, mutation]) => {
-        await setDoc(
-          doc(db!, 'users', uid, 'auxiliary', name),
-          {
-            data: mutation.data,
-            updatedAt: serverTimestamp(),
-            clientUpdatedAt: mutation.clientUpdatedAt,
-          },
-          { merge: true },
-        );
-      }));
+      flushRunning.current = true;
+      try {
+        const baseline = readBaseline(uid);
+        await Promise.all(entries.map(async ([name, mutation]) => {
+          // Never spend a Firestore write when the pending value is already the
+          // exact cloud baseline for this device.
+          if (baseline[name] === stable(mutation.data)) return;
+          await setDoc(
+            doc(db!, 'users', uid, 'auxiliary', name),
+            {
+              data: mutation.data,
+              updatedAt: serverTimestamp(),
+              clientUpdatedAt: mutation.clientUpdatedAt,
+            },
+            { merge: true },
+          );
+        }));
 
-      const latestPending = readPending(uid);
-      entries.forEach(([name, mutation]) => {
-        if (stable(latestPending[name]) !== stable(mutation)) return;
-        const fingerprint = stable(mutation.data);
-        baseline[name] = fingerprint;
-        fingerprints.current[name] = fingerprint;
-        delete latestPending[name];
-      });
-      writeBaseline(uid, baseline);
-      writePending(uid, latestPending);
+        const latestPending = readPending(uid);
+        entries.forEach(([name, mutation]) => {
+          if (stable(latestPending[name]) !== stable(mutation)) return;
+          const fingerprint = stable(mutation.data);
+          baseline[name] = fingerprint;
+          fingerprints.current[name] = fingerprint;
+          delete latestPending[name];
+        });
+        writeBaseline(uid, baseline);
+        writePending(uid, latestPending);
+      } finally {
+        flushRunning.current = false;
+      }
+    };
+
+    const captureAndFlush = () => {
+      captureLocalChanges();
+      void flushPending().catch(() => undefined);
     };
 
     const initialize = async () => {
       const previousOwnerUid = storage().getItem(ACCOUNT_OWNER_UID_KEY);
       const sameAccountLocalData = !previousOwnerUid || previousOwnerUid === uid;
 
-      // A UID transition invalidates every shared account-owned runtime value, not
-      // just auxiliary state. Clear those values before this bridge performs any
-      // cloud read so a failed/slow hydration can never leave the prior reader's
-      // books, sessions, profile, collections, goals, or memories visible.
       const keysToClear = getAccountOwnedKeysToClearForOwnerChange(previousOwnerUid, uid);
       const auxiliaryKeys = new Set(Object.values(AUXILIARY_ACCOUNT_KEYS));
       keysToClear.forEach((key) => {
@@ -191,8 +206,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       try {
         cloudDocs = await getDocs(collection(db!, 'users', uid, 'auxiliary'));
       } catch {
-        // Offline startup remains usable. Pending local mutations stay durable and
-        // will retry through the normal poll/foreground lifecycle.
+        // Offline startup remains usable. Pending local mutations stay durable.
       }
       if (disposed) return;
 
@@ -223,7 +237,11 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         }
 
         if (sameAccountLocalData && isMeaningful(localValue)) {
-          pending[name] = { data: localValue, clientUpdatedAt: now };
+          // Only queue missing cloud state once. The durable baseline prevents a
+          // normal launch from recreating the same write on every session.
+          if (nextBaseline[name] !== stable(localValue)) {
+            pending[name] = { data: localValue, clientUpdatedAt: now };
+          }
           fingerprints.current[name] = stable(localValue);
           return;
         }
@@ -278,24 +296,18 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         if (baselineChanged) writeBaseline(uid, baseline);
       },
       () => {
-        // The local cache remains authoritative while offline; the next poll or
-        // app resume will retry queued changes.
+        // The local cache remains authoritative while offline.
       },
     );
 
-    const poll = window.setInterval(async () => {
-      if (!hydrated.current || disposed || pollRunning.current) return;
-      pollRunning.current = true;
-      try {
-        captureLocalChanges();
-        await flushPending();
-      } catch {
-        // Expected while offline; pending state remains durable.
-      } finally {
-        pollRunning.current = false;
-      }
-    }, POLL_MS);
+    const handleLocalDataChanged = (event: Event) => {
+      const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
+      if (!detail?.keys?.some((key) => auxiliaryRuntimeKeys.has(key))) return;
+      captureAndFlush();
+    };
 
+    // Slow safety net only. Normal local edits sync through the event above.
+    const fallbackPoll = window.setInterval(captureAndFlush, FALLBACK_POLL_MS);
     const preserveBeforeBackgrounding = () => captureLocalChanges();
     const flushBeforeSignOut = (event: Event) => {
       const detail = (event as CustomEvent<BeforeSignOutDetail>).detail;
@@ -304,6 +316,8 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       detail.waitUntil(flushPending());
     };
 
+    window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalDataChanged);
+    window.addEventListener('online', captureAndFlush);
     window.addEventListener('pagehide', preserveBeforeBackgrounding);
     document.addEventListener('visibilitychange', preserveBeforeBackgrounding);
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
@@ -311,7 +325,9 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
     return () => {
       preserveBeforeBackgrounding();
       disposed = true;
-      window.clearInterval(poll);
+      window.clearInterval(fallbackPoll);
+      window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalDataChanged);
+      window.removeEventListener('online', captureAndFlush);
       window.removeEventListener('pagehide', preserveBeforeBackgrounding);
       document.removeEventListener('visibilitychange', preserveBeforeBackgrounding);
       window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
