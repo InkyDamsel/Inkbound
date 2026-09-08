@@ -56,6 +56,9 @@ jobs:
       - name: Verify source-of-truth boundaries
         run: npm run verify:source-of-truth
 
+      - name: Verify web/Android feature parity
+        run: npm run verify:parity
+
       - name: Production build
         run: npm run build
 
@@ -99,6 +102,15 @@ jobs:
 
       - name: Verify Android configuration
         run: npm run verify:android-config
+
+      - name: Verify Android Gradle configuration
+        run: npm run verify:android-gradle
+
+      - name: Verify Android branding
+        run: npm run verify:android-branding
+
+      - name: Verify Android native readiness
+        run: npm run verify:android-native
 
       - name: Build Android debug APK
         working-directory: android
