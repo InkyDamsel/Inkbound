@@ -140,6 +140,11 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
   const [graceElapsed, setGraceElapsed] = useState(false);
 
   useEffect(() => {
+    if (isAndroidRuntime()) {
+      setGraceElapsed(true);
+      return undefined;
+    }
+
     if (isAuthReady) {
       setGraceElapsed(false);
       return undefined;
@@ -148,6 +153,14 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
     const timer = window.setTimeout(() => setGraceElapsed(true), AUTH_OPEN_GRACE_MS);
     return () => window.clearTimeout(timer);
   }, [isAuthReady]);
+
+  // Android must never lose access to its local library just because Firebase
+  // Auth is slow, offline, or restoring a persisted WebView session. Cloud-backed
+  // providers remain mounted inside AccountSyncProvider and reconcile naturally
+  // when onAuthStateChanged eventually resolves.
+  if (isAndroidRuntime()) {
+    return <>{children}</>;
+  }
 
   if (!isAuthReady && !graceElapsed) {
     return <OpeningScreen message="Restoring your saved account…" />;
