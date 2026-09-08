@@ -13,6 +13,7 @@ import {
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
+import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import {
   getRuntimeStorage,
   notifyRuntimeStorageChanged,
@@ -129,7 +130,7 @@ function clientMillis(value?: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function cloudWinsPending<T>(record: CloudRecord<T>, pending?: RecordMutation<T>): boolean {
+export function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: RecordMutation<T>): boolean {
   if (!pending) return true;
   const remoteMillis = Math.max(record.updatedAt?.toMillis() ?? 0, clientMillis(record.clientUpdatedAt));
   return remoteMillis > clientMillis(pending.clientUpdatedAt);
@@ -140,8 +141,9 @@ function cloudWinsPending<T>(record: CloudRecord<T>, pending?: RecordMutation<T>
  *
  * Ordinary local work remains local-first and upload-only. This bridge pulls only
  * records whose Firestore updatedAt is newer than the device cursor when the app
- * opens/resumes/focuses and on a slow foreground fallback. It never installs a
- * listener on the full books or sessions collections.
+ * opens/resumes and on a slow foreground fallback. Runtime lifecycle is the one
+ * source of truth for foregrounding, so web visibility/pageshow and Android
+ * Capacitor AppState both drive the same code path.
  *
  * The first v2 reconciliation intentionally starts from epoch once per device.
  * That repairs devices stranded by the old cursor bootstrap bug. After that one
@@ -235,7 +237,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const updatedMillis = record.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
           const id = record.data?.id;
-          if (!id || !cloudWinsPending(record, pending.books[id])) return;
+          if (!id || !cloudRecordWinsPending(record, pending.books[id])) return;
           delete pending.books[id];
           acceptedBooks.push(record.data);
           baseline.books[id] = fingerprint(record.data);
@@ -246,7 +248,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const updatedMillis = record.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
           const id = record.data?.id;
-          if (!id || !cloudWinsPending(record, pending.sessions[id])) return;
+          if (!id || !cloudRecordWinsPending(record, pending.sessions[id])) return;
           delete pending.sessions[id];
           acceptedSessions.push(record.data);
           baseline.sessions[id] = fingerprint(record.data);
@@ -314,17 +316,16 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       knownBookIds.current = books;
       knownSessionIds.current = idsFromStored<ReadingSession>(SESSIONS_KEY);
       if (!runtimeStorage().getItem(cursorKey(uid))) {
+        // Hydration just loaded the cloud baseline on a truly empty device. The
+        // current moment is safe as the initial cursor only in that scenario.
         runtimeStorage().setItem(cursorKey(uid), String(Date.now()));
       }
     };
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, captureLocalDeletes);
-    window.addEventListener('online', pullDeltas);
-    window.addEventListener('focus', pullDeltas);
-    const visibilityHandler = () => {
-      if (document.visibilityState === 'visible') void pullDeltas();
-    };
-    document.addEventListener('visibilitychange', visibilityHandler);
+    const unsubscribeRuntimeResume = subscribeToRuntimeResume(() => {
+      void pullDeltas();
+    });
     const fallback = window.setInterval(() => {
       if (document.visibilityState === 'visible') void pullDeltas();
     }, FOREGROUND_FALLBACK_MS);
@@ -339,9 +340,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       disposed = true;
       window.clearInterval(fallback);
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, captureLocalDeletes);
-      window.removeEventListener('online', pullDeltas);
-      window.removeEventListener('focus', pullDeltas);
-      document.removeEventListener('visibilitychange', visibilityHandler);
+      unsubscribeRuntimeResume();
     };
   }, [user?.uid]);
 
