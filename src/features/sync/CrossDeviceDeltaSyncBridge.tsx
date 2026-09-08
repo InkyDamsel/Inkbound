@@ -18,7 +18,10 @@ import {
   notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
-import { shouldRemoteChangeReplacePending } from './syncConflictPolicy';
+import {
+  shouldApplyRemoteTombstone,
+  shouldRemoteChangeReplacePending,
+} from './syncConflictPolicy';
 import {
   crossDeviceCursorKey,
   syncBaselineStateKey,
@@ -233,9 +236,10 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const recordId = record.recordId?.trim();
           if (!recordId) return;
           if (record.kind === 'books') {
-            // A book may have been intentionally recreated after an earlier delete.
-            // Never let that historical tombstone erase a newer cloud upsert.
-            if ((bookUpdateMillis.get(recordId) ?? 0) > deletedMillis) return;
+            if (!shouldApplyRemoteTombstone({
+              tombstoneServerMillis: deletedMillis,
+              latestRecordServerMillis: bookUpdateMillis.get(recordId) ?? 0,
+            })) return;
             const pendingMutation = pending.books[recordId];
             if (!tombstoneWinsPending(record, pendingMutation)) return;
             delete pending.books[recordId];
@@ -243,7 +247,10 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
             delete baseline.books[recordId];
           }
           if (record.kind === 'sessions') {
-            if ((sessionUpdateMillis.get(recordId) ?? 0) > deletedMillis) return;
+            if (!shouldApplyRemoteTombstone({
+              tombstoneServerMillis: deletedMillis,
+              latestRecordServerMillis: sessionUpdateMillis.get(recordId) ?? 0,
+            })) return;
             const pendingMutation = pending.sessions[recordId];
             if (!tombstoneWinsPending(record, pendingMutation)) return;
             delete pending.sessions[recordId];
