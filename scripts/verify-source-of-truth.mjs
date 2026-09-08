@@ -29,6 +29,40 @@ for (const file of sourceFiles) {
   }
 }
 
+const app = read('src/App.tsx');
+for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_KEYS', 'LEGACY_SYNC_STORAGE_KEYS', 'ACCOUNT_DATA_STORAGE_KEYS', 'subscribeToRuntimeResume']) {
+  if (!app.includes(required)) violations.push(`App.tsx: missing canonical ${required} consumer`);
+}
+if (/function\s+applyReadingStatus\s*\(/.test(app)) {
+  violations.push('App.tsx: must not maintain a second reading-status transition implementation');
+}
+for (const literal of ["const BOOKS_STORAGE_KEY = 'inkbound_books'", "const SESSIONS_STORAGE_KEY = 'inkbound_sessions'", "const THEME_STORAGE_KEY = 'inkbound_theme'"]) {
+  if (app.includes(literal)) violations.push(`App.tsx: canonical storage key was redefined (${literal})`);
+}
+if (!app.includes('onUpdateSession={handleUpdateSession}') || !app.includes('onDeleteSession={handleDeleteSession}')) {
+  violations.push('App.tsx: Book Details session edits/deletes must flow through the canonical App session mutation path');
+}
+
+const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
+for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_KEYS', 'localDateKey']) {
+  if (!bookDetailsCore.includes(required)) violations.push(`BookDetailsModalCore.tsx: missing canonical ${required} consumer`);
+}
+if (/const\s+localDateKey\s*=/.test(bookDetailsCore)) {
+  violations.push('BookDetailsModalCore.tsx: must use the canonical reading date helper');
+}
+if (bookDetailsCore.includes("const ENRICHMENT_QUEUE_KEY = 'inkbound_import_enrichment_queue_v3'")) {
+  violations.push('BookDetailsModalCore.tsx: import-enrichment storage key must come from SYNC_STORAGE_KEYS');
+}
+
+const bookDetailsWrapper = read('src/components/BookDetailsModal.tsx');
+for (const forbidden of ['writeRuntimeJson', 'notifyRuntimeStorageChanged', 'notifyCloudDataUpdated', 'fallbackUpdateSession', 'fallbackDeleteSession']) {
+  if (bookDetailsWrapper.includes(forbidden)) violations.push(`BookDetailsModal.tsx: session mutation must stay App-owned; found ${forbidden}`);
+}
+
+const sessionEditor = read('src/components/SessionEditorModal.tsx');
+if (!sessionEditor.includes('localDateKey')) violations.push('SessionEditorModal.tsx: must use the canonical reading date helper');
+if (/const\s+localDate\s*=/.test(sessionEditor)) violations.push('SessionEditorModal.tsx: must not maintain a second local-date formatter');
+
 const auxiliaryConfig = read('src/features/sync/auxiliaryAccountSyncConfig.ts');
 if (/libraryCustomLists\s*:|libraryCustomListMembers\s*:/.test(auxiliaryConfig)) {
   violations.push('auxiliaryAccountSyncConfig.ts: retired collection stores must not be cloud-synced');
@@ -91,6 +125,11 @@ for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeR
   }
 }
 
+const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
+for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume']) {
+  if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical ${required}`);
+}
+
 const auxiliarySync = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
 for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'AUXILIARY_ACCOUNT_KEYS']) {
   if (!auxiliarySync.includes(required)) {
@@ -139,6 +178,9 @@ for (const required of [
 const packageJson = JSON.parse(read('package.json'));
 if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:parity')) {
   violations.push('package.json: release:verify must include the web/Android parity gate');
+}
+if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:source-of-truth')) {
+  violations.push('package.json: release:verify must include the source-of-truth gate');
 }
 
 if (violations.length) {
