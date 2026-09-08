@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { Save, Trash2, X } from 'lucide-react';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { localDateKey } from '../features/reading/sessionAnalytics';
 
 interface SessionEditorModalProps {
   books: UserBookRecord[];
@@ -10,13 +11,6 @@ interface SessionEditorModalProps {
   onSave: (session: ReadingSession) => void;
   onDelete?: (sessionId: string) => void;
 }
-
-const localDate = (value = new Date()) => {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 const minutesBetween = (startTime: string, endTime: string) => {
   const [startHour, startMinute] = startTime.split(':').map(Number);
@@ -43,7 +37,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
     : initialProgress;
 
   const [bookId, setBookId] = useState(session?.bookId ?? initialBook?.id ?? '');
-  const [date, setDate] = useState(session?.date ?? localDate());
+  const [date, setDate] = useState(session?.date ?? localDateKey());
   const [startTime, setStartTime] = useState(session?.startTime ?? '19:00');
   const [endTime, setEndTime] = useState(session?.endTime ?? '19:30');
   const [startProgress, setStartProgress] = useState(initialProgress);
@@ -79,7 +73,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
       setError('Choose the date of this reading session.');
       return;
     }
-    if (date > localDate()) {
+    if (date > localDateKey()) {
       setError('A reading session cannot be saved in the future.');
       return;
     }
@@ -142,7 +136,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
               {books.map((book) => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}
             </select>
           </label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Date<input type="date" max={localDate()} value={date} onChange={(event) => setDate(event.target.value)} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Date<input type="date" max={localDateKey()} value={date} onChange={(event) => setDate(event.target.value)} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Duration (minutes)<input type="number" value={durationMinutes ?? ''} readOnly className="inkbound-select mt-1 w-full cursor-default opacity-80" aria-describedby="session-duration-help" /><span id="session-duration-help" className="mt-1 block font-normal text-[var(--ink-text-muted)]">Calculated from start and end time.</span></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Start time<input type="time" value={startTime} onChange={(event) => { setStartTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">End time<input type="time" value={endTime} onChange={(event) => { setEndTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
