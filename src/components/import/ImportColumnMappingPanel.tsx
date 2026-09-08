@@ -29,6 +29,9 @@ export const ImportColumnMappingPanel: React.FC<ImportColumnMappingPanelProps> =
               <p className="mt-1 text-sm leading-6 text-stone-400">
                 Inkbound made its best guesses. Change any field that does not look right, or leave fields you do not need set to Ignore.
               </p>
+              <p className="mt-2 text-xs leading-5 text-stone-500">
+                Covers can only be imported when your export actually includes a cover or image URL. If it does not, you can upload a cover or search online for one from Book Details after import.
+              </p>
             </div>
             <span className="shrink-0 rounded-full border border-[#c5a059]/25 bg-[#c5a059]/10 px-3 py-1.5 text-xs font-bold text-[#e5c158]">
               {mappedCount} mapped · {rowCount.toLocaleString()} rows
