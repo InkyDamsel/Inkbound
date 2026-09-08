@@ -12,6 +12,7 @@ import {
 } from './cloudSyncEvents';
 
 const BOOKS_KEY = 'inkbound_books';
+const LEDGER_BASELINE_PREFIX = 'inkbound_manual_cover_ledger_baseline_v1_';
 
 interface ManualCoverLedgerEntry {
   bookId: string;
@@ -20,6 +21,8 @@ interface ManualCoverLedgerEntry {
   title: string;
   author: string;
 }
+
+type PersistedSignatureState = Record<string, string>;
 
 function readBooks(): UserBookRecord[] {
   try {
@@ -44,12 +47,37 @@ function collectManualAssignments(books: UserBookRecord[]): ManualCoverLedgerEnt
   });
 }
 
+function baselineKey(uid: string) {
+  return `${LEDGER_BASELINE_PREFIX}${uid}`;
+}
+
+function readPersistedSignatures(uid: string): Map<string, string> {
+  try {
+    const raw = getRuntimeStorage().getItem(baselineKey(uid));
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw) as PersistedSignatureState;
+    return new Map(Object.entries(parsed));
+  } catch {
+    return new Map();
+  }
+}
+
+function writePersistedSignatures(uid: string, signatures: Map<string, string>) {
+  const state: PersistedSignatureState = {};
+  signatures.forEach((signature, bookId) => {
+    state[bookId] = signature;
+  });
+  getRuntimeStorage().setItem(baselineKey(uid), JSON.stringify(state));
+}
+
 /**
  * Manual cover choices are user-owned data, not disposable book metadata.
  * Keep a tiny independent Firestore ledger so an older library recovery point
  * can restore book records without rolling back newer manual cover assignments.
- * Ledger entries are intentionally never removed by ordinary metadata changes;
- * a transient sync regression must not erase the user's last explicit choice.
+ *
+ * The local signature baseline is durable across launches. Opening Inkbound must
+ * not rewrite every manual-cover ledger document; only a genuinely new/changed
+ * manual cover is written. A successful write checkpoints its signature locally.
  */
 export const ManualCoverLedgerBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -60,7 +88,7 @@ export const ManualCoverLedgerBridge: React.FC = () => {
   useEffect(() => {
     if (!user || !db) return undefined;
     const uid = user.uid;
-    persistedSignatures.current.clear();
+    persistedSignatures.current = readPersistedSignatures(uid);
 
     const persist = async () => {
       if (running.current) {
@@ -70,16 +98,23 @@ export const ManualCoverLedgerBridge: React.FC = () => {
       running.current = true;
       try {
         const assignments = collectManualAssignments(readBooks());
+        let baselineChanged = false;
+
         for (const assignment of assignments) {
           const signature = `${assignment.editionId}|${assignment.coverUrl}`;
           if (persistedSignatures.current.get(assignment.bookId) === signature) continue;
+
           await setDoc(doc(db, 'users', uid, 'manualCoverAssignments', assignment.bookId), {
             ...assignment,
             clientUpdatedAt: new Date().toISOString(),
             updatedAt: serverTimestamp(),
           }, { merge: true });
+
           persistedSignatures.current.set(assignment.bookId, signature);
+          baselineChanged = true;
         }
+
+        if (baselineChanged) writePersistedSignatures(uid, persistedSignatures.current);
       } catch (error) {
         console.error('Inkbound could not persist the manual cover ledger.', error);
       } finally {
@@ -100,6 +135,9 @@ export const ManualCoverLedgerBridge: React.FC = () => {
       if (detail?.keys?.includes(BOOKS_KEY)) void persist();
     };
 
+    // This startup pass is now cheap after the first successful checkpoint: it
+    // compares local signatures and performs zero Firestore writes when nothing
+    // changed since the prior launch.
     void persist();
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, onCloudChange);
