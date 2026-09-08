@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useAccountSync } from '../../context/AccountSyncContext';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
@@ -11,15 +12,23 @@ import { OneShotCloudHydrationBridge } from './OneShotCloudHydrationBridge';
 import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
+const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 
-function hasLocalLibrary(): boolean {
+function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   try {
-    const raw = getRuntimeStorage().getItem(BOOKS_KEY);
+    const storage = getRuntimeStorage();
+    const raw = storage.getItem(BOOKS_KEY);
     if (!raw) return false;
     const trimmed = raw.trim();
-    // Avoid parsing a 40k+ book JSON payload just to answer whether a local
-    // working library exists. The actual library owner will parse it once.
-    return trimmed.startsWith('[') && trimmed !== '[]';
+    if (!trimmed.startsWith('[')) return false;
+
+    const ownerUid = storage.getItem(OWNER_UID_KEY);
+    if (ownerUid) return ownerUid === uid;
+
+    // Legacy local libraries predate the explicit owner marker. A non-empty
+    // library is strong evidence of a real local working copy; an empty array is
+    // not, because App initializes that value before first-device hydration.
+    return trimmed !== '[]';
   } catch {
     return false;
   }
@@ -27,20 +36,35 @@ function hasLocalLibrary(): boolean {
 
 /**
  * Existing devices already have a durable local working copy, so they should not
- * pay for a full Firestore library read every time Inkbound opens. New/empty
- * devices get one guarded, one-shot cloud restore with no collection listeners.
- * As soon as a local library exists, local-first cost-safe persistence takes over.
+ * pay for a full Firestore library read every time Inkbound opens. New devices
+ * get one guarded cloud restore with no collection listeners.
+ *
+ * An established empty library is still a valid working copy. Treating [] as a
+ * brand-new device used to rehydrate books after an offline "delete everything"
+ * action and could also cause repeated full reads for readers whose library was
+ * intentionally empty. The account-owner marker distinguishes that state from a
+ * fresh App initialization.
  */
 export const AdaptiveCloudPersistenceBridge: React.FC = () => {
-  const [localLibraryReady, setLocalLibraryReady] = useState(hasLocalLibrary);
+  const { user } = useAccountSync();
+  const uid = user?.uid;
+  const [localLibraryReady, setLocalLibraryReady] = useState(false);
 
   useEffect(() => {
-    if (localLibraryReady) return undefined;
+    if (!uid) {
+      setLocalLibraryReady(false);
+      return undefined;
+    }
+
+    const refreshReadiness = () => {
+      setLocalLibraryReady(hasEstablishedLocalWorkingCopy(uid));
+    };
+    refreshReadiness();
 
     const checkForLibrary = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail | LocalDataChangedDetail>).detail;
       if (detail?.keys && !detail.keys.includes(BOOKS_KEY)) return;
-      if (hasLocalLibrary()) setLocalLibraryReady(true);
+      refreshReadiness();
     };
 
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, checkForLibrary);
@@ -49,8 +73,9 @@ export const AdaptiveCloudPersistenceBridge: React.FC = () => {
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, checkForLibrary);
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, checkForLibrary);
     };
-  }, [localLibraryReady]);
+  }, [uid]);
 
+  if (!uid) return null;
   return localLibraryReady
     ? <CostSafeCloudPersistenceBridge />
     : <OneShotCloudHydrationBridge />;
