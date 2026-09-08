@@ -300,8 +300,11 @@ body {
     gap: 6px;
   }
 
-  .quiet-shelf-actions .quiet-shelf-icon-button:first-child,
-  .quiet-shelf-secondary-action {
+  /* Only compress top-bar chrome in landscape. Never hide the shared
+     secondary-action class globally: Book Details, sessions, settings,
+     recovery, imports, and every other feature use it too. */
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-icon-button:first-child,
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-secondary-action {
     display: none;
   }
 
