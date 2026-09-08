@@ -196,6 +196,8 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
         const acceptedSessions: ReadingSession[] = [];
         const removedBooks = new Set<string>();
         const removedSessions = new Set<string>();
+        const bookUpdateMillis = new Map<string, number>();
+        const sessionUpdateMillis = new Map<string, number>();
         let newestMillis = cursor;
 
         bookSnapshot.docs.forEach((item) => {
@@ -203,7 +205,9 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const updatedMillis = record.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
           const id = record.data?.id;
-          if (!id || !cloudRecordWinsPending(record, pending.books[id])) return;
+          if (!id) return;
+          bookUpdateMillis.set(id, updatedMillis);
+          if (!cloudRecordWinsPending(record, pending.books[id])) return;
           delete pending.books[id];
           acceptedBooks.push(record.data);
           baseline.books[id] = fingerprint(record.data);
@@ -214,7 +218,9 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const updatedMillis = record.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
           const id = record.data?.id;
-          if (!id || !cloudRecordWinsPending(record, pending.sessions[id])) return;
+          if (!id) return;
+          sessionUpdateMillis.set(id, updatedMillis);
+          if (!cloudRecordWinsPending(record, pending.sessions[id])) return;
           delete pending.sessions[id];
           acceptedSessions.push(record.data);
           baseline.sessions[id] = fingerprint(record.data);
@@ -227,6 +233,9 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const recordId = record.recordId?.trim();
           if (!recordId) return;
           if (record.kind === 'books') {
+            // A book may have been intentionally recreated after an earlier delete.
+            // Never let that historical tombstone erase a newer cloud upsert.
+            if ((bookUpdateMillis.get(recordId) ?? 0) > deletedMillis) return;
             const pendingMutation = pending.books[recordId];
             if (!tombstoneWinsPending(record, pendingMutation)) return;
             delete pending.books[recordId];
@@ -234,6 +243,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
             delete baseline.books[recordId];
           }
           if (record.kind === 'sessions') {
+            if ((sessionUpdateMillis.get(recordId) ?? 0) > deletedMillis) return;
             const pendingMutation = pending.sessions[recordId];
             if (!tombstoneWinsPending(record, pendingMutation)) return;
             delete pending.sessions[recordId];
