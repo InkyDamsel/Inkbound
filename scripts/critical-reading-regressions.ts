@@ -24,6 +24,7 @@ import {
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
 import {
+  shouldApplyRemoteTombstone,
   shouldPromoteLocalRecordMissingFromCloud,
   shouldRemoteChangeReplacePending,
 } from '../src/features/sync/syncConflictPolicy';
@@ -195,6 +196,23 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
     remoteClientUpdatedAt: '2026-09-08T17:50:00.000Z',
     pendingClientUpdatedAt: '2026-09-08T18:05:00.000Z',
   }), true);
+}
+
+// A deletion tombstone wins while it is the newest cloud fact.
+{
+  assert.equal(shouldApplyRemoteTombstone({
+    tombstoneServerMillis: 2000,
+    latestRecordServerMillis: 1000,
+  }), true);
+}
+
+// Recreating a record after deletion must not let the historical tombstone erase
+// the revived book/session when another device performs a full reconciliation.
+{
+  assert.equal(shouldApplyRemoteTombstone({
+    tombstoneServerMillis: 1000,
+    latestRecordServerMillis: 2000,
+  }), false);
 }
 
 {
