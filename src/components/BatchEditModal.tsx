@@ -60,19 +60,25 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const [collectionRemove, setCollectionRemove] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const changes = useMemo<BatchEditChanges>(() => ({
-    status: status !== 'multiple' && status !== 'keep' ? status as ReadingStatus : undefined,
-    ownership: ownership !== 'multiple' && ownership !== 'keep' ? ownership as OwnershipStatus : undefined,
-    priority: priority !== 'multiple' && priority !== 'keep' ? priority as Priority : undefined,
-    format: format !== 'keep' ? format as Format : undefined,
-    rating: rating === 'clear' ? null : rating !== 'keep' ? Number(rating) : undefined,
-    dateStarted: startedMode === 'clear' ? null : startedMode === 'set' && dateStarted ? dateStarted : undefined,
-    dateFinished: finishedMode === 'clear' ? null : finishedMode === 'set' && dateFinished ? dateFinished : undefined,
-    addTag: optionalText(tagAdd)?.toLowerCase(),
-    removeTag: optionalText(tagRemove)?.toLowerCase(),
-    addCollection: optionalText(collectionAdd),
-    removeCollection: optionalText(collectionRemove),
-  }), [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, startedMode, status, tagAdd, tagRemove]);
+  const changes = useMemo<BatchEditChanges>(() => {
+    const finishDateChange = finishedMode === 'clear' ? null : finishedMode === 'set' && dateFinished ? dateFinished : undefined;
+    const explicitStatus = status !== 'multiple' && status !== 'keep' ? status as ReadingStatus : undefined;
+    return {
+      // A real finished date is itself an explicit statement that the book was
+      // finished. This makes batch date corrections behave like Book Details.
+      status: typeof finishDateChange === 'string' ? 'finished' : explicitStatus,
+      ownership: ownership !== 'multiple' && ownership !== 'keep' ? ownership as OwnershipStatus : undefined,
+      priority: priority !== 'multiple' && priority !== 'keep' ? priority as Priority : undefined,
+      format: format !== 'keep' ? format as Format : undefined,
+      rating: rating === 'clear' ? null : rating !== 'keep' ? Number(rating) : undefined,
+      dateStarted: startedMode === 'clear' ? null : startedMode === 'set' && dateStarted ? dateStarted : undefined,
+      dateFinished: finishDateChange,
+      addTag: optionalText(tagAdd)?.toLowerCase(),
+      removeTag: optionalText(tagRemove)?.toLowerCase(),
+      addCollection: optionalText(collectionAdd),
+      removeCollection: optionalText(collectionRemove),
+    };
+  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, startedMode, status, tagAdd, tagRemove]);
 
   const preview = useMemo(() => {
     const items: string[] = [];
@@ -130,7 +136,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
           <div className="rounded-xl border border-[#c5a059]/30 bg-[#25132f] p-4 text-stone-200">
             <p className="font-bold text-[#f4efe6]">Change preview</p>
             {preview.length === 0 ? <p className="mt-2 text-stone-400">No changes selected yet. Existing values will be left alone.</p> : <ul className="mt-2 space-y-1.5 text-stone-300">{preview.map((item) => <li key={item}>• {item}</li>)}</ul>}
-            <p className="mt-3 text-[11px] text-stone-500">Changes apply to all {selectedBooks.length} selected items. Reading history stays intact unless you explicitly change dates or delete items.</p>
+            <p className="mt-3 text-[11px] text-stone-500">Changes apply to all {selectedBooks.length} selected items. Setting a finished date also marks those books Finished. Reading history stays intact unless you explicitly change dates or delete items.</p>
           </div>
 
           {confirmDelete && <div className="space-y-3 rounded-xl border border-rose-500/40 bg-rose-950/90 p-4 text-xs text-white"><p className="font-bold text-rose-200">Delete these {selectedBooks.length} items? Their reading sessions will also be removed. This cannot be undone.</p><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setConfirmDelete(false)} className="min-h-11 rounded-lg bg-stone-800 px-4 font-bold">Cancel</button><button type="button" onClick={() => { onDeleteSelected(); onClose(); }} className="min-h-11 rounded-lg bg-rose-600 px-4 font-bold">Yes, Delete</button></div></div>}
