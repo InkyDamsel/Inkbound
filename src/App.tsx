@@ -61,6 +61,12 @@ import {
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
+import {
+  applySessionProgressToBook,
+  getSessionProgressEndpoint,
+  reconcileBookAfterSessionMutation,
+  sessionSortKey,
+} from './features/reading/sessionBookReconciliation';
 import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, localDateKey } from './features/reading/sessionAnalytics';
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
 import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
@@ -149,19 +155,6 @@ function canRunDaytimeMaintenance(): boolean {
 
 function markDaytimeMaintenanceRun() {
   writeRuntimeValue(DAYTIME_MAINTENANCE_KEY, String(Date.now()));
-}
-
-function sessionSortKey(session: ReadingSession): string {
-  return `${session.date}T${session.endTime || session.startTime || '00:00'}`;
-}
-
-function sessionProgress(session: ReadingSession, audiobook: boolean, edge: 'start' | 'end'): number {
-  if (audiobook) {
-    const seconds = edge === 'start' ? session.startTimestampSec : session.endTimestampSec;
-    return Math.max(0, Math.floor((seconds ?? 0) / 60));
-  }
-  const pages = edge === 'start' ? session.startPage : session.endPage;
-  return Math.max(0, pages ?? 0);
 }
 
 export default function App() {
@@ -355,7 +348,7 @@ export default function App() {
     if ((isAudiobook && correction.progressMinutes !== undefined) || (!isAudiobook && correction.progressPages !== undefined)) {
       const related = sessions.filter((session) => session.bookId === bookId).sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
       const latest = related.at(-1);
-      if (latest && sessionProgress(latest, isAudiobook, 'end') === oldProgress) {
+      if (latest && getSessionProgressEndpoint(latest, isAudiobook, 'end') === oldProgress) {
         setSessions((current) => current.map((session) => {
           if (session.id !== latest.id) return session;
           if (isAudiobook) { const endTimestampSec = correctedProgress * 60; const startTimestampSec = Math.min(session.startTimestampSec ?? endTimestampSec, endTimestampSec); return { ...session, startTimestampSec, endTimestampSec, minutesListened: Math.max(0, Math.round((endTimestampSec - startTimestampSec) / 60)) }; }
@@ -407,20 +400,11 @@ export default function App() {
   const handleUndoLastBatch = () => { if (!previousBooksState) return; booksRef.current = previousBooksState; setBooks(previousBooksState); if (previousSessionsState) setSessions(previousSessionsState); setPreviousBooksState(null); setPreviousSessionsState(null); showToast('Undid the most recent library change.'); };
 
   const updateBookFromSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
-    setBooks((current) => current.map((book) => {
-      if (book.id !== newSession.bookId) return book;
-      const activeEdition = getActiveEdition(book); const isAudiobook = activeEdition?.format === 'audiobook'; const nextPages = isAudiobook ? book.progressPages : Math.max(book.progressPages, Math.max(0, updatedPages)); const nextMinutes = isAudiobook ? Math.max(book.progressMinutes, Math.max(0, updatedMinutes)) : book.progressMinutes; const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount; const completed = isAudiobook ? nextMinutes : nextPages; const hasKnownTotal = Boolean(total && total > 0); const progressPercentage = hasKnownTotal ? Math.min(100, Math.round((completed / total!) * 100)) : book.progressPercentage; const reachedEnd = Boolean(hasKnownTotal && completed >= total!);
-      return { ...book, progressPages: nextPages, progressMinutes: nextMinutes, progressPercentage, status: reachedEnd ? 'finished' : book.status === 'finished' ? 'finished' : 'currently-reading', dateStarted: book.dateStarted ?? newSession.date, dateFinished: reachedEnd ? book.dateFinished ?? newSession.date : book.status === 'finished' ? book.dateFinished : undefined, lastSessionDate: !book.lastSessionDate || newSession.date > book.lastSessionDate ? newSession.date : book.lastSessionDate };
-    }));
+    setBooks((current) => current.map((book) => applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes)));
   };
 
   const reconcileBookProgressFromSessions = (bookId: string, nextSessions: ReadingSession[], changedSession?: ReadingSession) => {
-    setBooks((current) => current.map((book) => {
-      if (book.id !== bookId) return book;
-      const activeEdition = getActiveEdition(book); const isAudiobook = activeEdition?.format === 'audiobook'; const related = nextSessions.filter((item) => item.bookId === bookId).sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b))); const latest = related.at(-1); const currentProgress = isAudiobook ? book.progressMinutes : book.progressPages;
-      const previousRelated = changedSession ? [...nextSessions.filter((item) => item.bookId === bookId && item.id !== changedSession.id), ...(changedSession.bookId === bookId ? [changedSession] : [])].sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b))) : []; const previousLatest = previousRelated.at(-1); const previousTrackedProgress = previousLatest ? sessionProgress(previousLatest, isAudiobook, 'end') : changedSession && changedSession.bookId === bookId ? sessionProgress(changedSession, isAudiobook, 'start') : undefined; const trackedProgress = latest ? sessionProgress(latest, isAudiobook, 'end') : changedSession && changedSession.bookId === bookId ? sessionProgress(changedSession, isAudiobook, 'start') : currentProgress; const hasManualProgressAhead = previousTrackedProgress !== undefined && currentProgress > previousTrackedProgress; const nextProgress = changedSession ? hasManualProgressAhead ? Math.max(currentProgress, trackedProgress) : trackedProgress : Math.max(currentProgress, trackedProgress); const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount; const hasKnownTotal = Boolean(total && total > 0); const progressPercentage = hasKnownTotal ? Math.min(100, Math.round((nextProgress / total!) * 100)) : book.progressPercentage; const reachedEnd = Boolean(hasKnownTotal && nextProgress >= total!); const wasTrackerFinished = previousTrackedProgress !== undefined && currentProgress === previousTrackedProgress && book.progressPercentage === 100; const shouldUnfinishTrackedCompletion = Boolean(hasKnownTotal && wasTrackerFinished && !reachedEnd);
-      return { ...book, progressPages: isAudiobook ? book.progressPages : nextProgress, progressMinutes: isAudiobook ? nextProgress : book.progressMinutes, progressPercentage, status: reachedEnd ? 'finished' : shouldUnfinishTrackedCompletion ? 'currently-reading' : book.status, dateFinished: reachedEnd ? (book.dateFinished ?? latest?.date) : shouldUnfinishTrackedCompletion ? undefined : book.dateFinished, lastSessionDate: latest?.date };
-    }));
+    setBooks((current) => current.map((book) => book.id === bookId ? reconcileBookAfterSessionMutation(book, nextSessions, changedSession) : book));
   };
 
   const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessions]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
