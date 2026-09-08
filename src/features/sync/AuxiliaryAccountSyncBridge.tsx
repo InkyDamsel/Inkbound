@@ -74,6 +74,11 @@ function writeLocalValue(key: string, value: unknown, notify = false) {
   if (notify) notifyRuntimeStorageChanged(key);
 }
 
+function removeLocalValue(key: string) {
+  storage().removeItem(key);
+  notifyRuntimeStorageChanged(key);
+}
+
 function readPending(uid: string): PendingState {
   return safeParse<PendingState>(getAuxiliaryPendingKey(uid), {});
 }
@@ -272,6 +277,17 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
           return;
         }
 
+        // If this device previously knew a cloud value and the document is now
+        // absent, that absence is a real remote deletion. Do not silently promote
+        // the stale cached value back to Firestore. A durable local pending edit,
+        // handled above, is the only evidence strong enough to recreate it.
+        if (previousBaseline !== undefined) {
+          delete nextBaseline[name];
+          if (localValue !== undefined) removeLocalValue(key);
+          fingerprints.current[name] = undefined;
+          return;
+        }
+
         if (sameAccountLocalData && isMeaningful(localValue)) {
           pending[name] = { data: localValue, clientUpdatedAt: now };
           fingerprints.current[name] = localFingerprint;
@@ -311,16 +327,31 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         let pendingChanged = false;
 
         snapshot.docChanges().forEach((change) => {
-          if (change.type === 'removed' || !(change.doc.id in AUXILIARY_ACCOUNT_KEYS)) return;
+          if (!(change.doc.id in AUXILIARY_ACCOUNT_KEYS)) return;
           const name = change.doc.id as AuxiliaryAccountKeyName;
-          const record = change.doc.data() as CloudAuxiliaryRecord;
+          const key = AUXILIARY_ACCOUNT_KEYS[name];
           const localPending = pending[name];
+
+          if (change.type === 'removed') {
+            // A known pending local edit may intentionally recreate the document.
+            // Otherwise a live remote deletion must remove the stale local value
+            // and baseline so it cannot be resurrected by the fallback poll.
+            if (localPending) return;
+            if (baseline[name] !== undefined) {
+              delete baseline[name];
+              baselineChanged = true;
+            }
+            if (readLocalValue(key) !== undefined) removeLocalValue(key);
+            fingerprints.current[name] = undefined;
+            return;
+          }
+
+          const record = change.doc.data() as CloudAuxiliaryRecord;
           if (localPending && !remoteWinsConflict(record, localPending)) return;
           if (localPending) {
             delete pending[name];
             pendingChanged = true;
           }
-          const key = AUXILIARY_ACCOUNT_KEYS[name];
           const fingerprint = stable(record.data);
           if (baseline[name] !== fingerprint) {
             baseline[name] = fingerprint;
