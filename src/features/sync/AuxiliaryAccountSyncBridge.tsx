@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
+import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import {
   getRuntimeStorage,
   notifyRuntimeStorageChanged,
@@ -29,6 +30,7 @@ import {
   type BeforeSignOutDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { shouldRemoteChangeReplacePending } from './syncConflictPolicy';
 
 interface CloudAuxiliaryRecord {
   data: unknown;
@@ -95,16 +97,11 @@ function isMeaningful(value: unknown): boolean {
   return true;
 }
 
-function timestampMillis(value?: string): number {
-  if (!value) return 0;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function remoteWinsConflict(remote: CloudAuxiliaryRecord, pending: PendingAuxiliaryMutation): boolean {
-  const remoteMillis = timestampMillis(remote.clientUpdatedAt);
-  const pendingMillis = timestampMillis(pending.clientUpdatedAt);
-  return remoteMillis > 0 && remoteMillis > pendingMillis;
+  return shouldRemoteChangeReplacePending({
+    remoteClientUpdatedAt: remote.clientUpdatedAt,
+    pendingClientUpdatedAt: pending.clientUpdatedAt,
+  });
 }
 
 export const AuxiliaryAccountSyncBridge: React.FC = () => {
@@ -282,7 +279,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       });
     });
 
-    const unsubscribe = onSnapshot(
+    const unsubscribeCloud = onSnapshot(
       collection(db, 'users', uid, 'auxiliary'),
       (snapshot) => {
         if (!hydrated.current) return;
@@ -316,7 +313,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         if (pendingChanged) writePending(uid, pending);
       },
       () => {
-        // The local cache remains authoritative while offline.
+        // Local state remains available while Firestore reconnects.
       },
     );
 
@@ -336,21 +333,19 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
     };
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalDataChanged);
-    window.addEventListener('online', captureAndFlush);
     window.addEventListener('pagehide', preserveBeforeBackgrounding);
-    document.addEventListener('visibilitychange', preserveBeforeBackgrounding);
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
+    const unsubscribeRuntimeResume = subscribeToRuntimeResume(captureAndFlush);
 
     return () => {
       preserveBeforeBackgrounding();
       disposed = true;
       window.clearInterval(fallbackPoll);
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalDataChanged);
-      window.removeEventListener('online', captureAndFlush);
       window.removeEventListener('pagehide', preserveBeforeBackgrounding);
-      document.removeEventListener('visibilitychange', preserveBeforeBackgrounding);
       window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
-      unsubscribe();
+      unsubscribeRuntimeResume();
+      unsubscribeCloud();
     };
   }, [sync.user?.uid]);
 
