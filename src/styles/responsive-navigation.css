@@ -6,7 +6,10 @@
   display: grid;
 }
 
-@media (min-width: 768px) {
+/* Full desktop chrome needs real desktop room. Tablets keep the compact
+   navigation model so the sidebar and bottom navigation can never compete for
+   the same viewport. */
+@media (min-width: 1200px) {
   .quiet-shelf-sidebar {
     display: flex;
     min-height: 0;
@@ -66,9 +69,22 @@
   display: none;
 }
 
-@media (max-width: 767px) {
+/* Phones and tablets share the compact shell. Tablet landscape is deliberately
+   included: width alone must not switch a touch tablet into desktop chrome. */
+@media (max-width: 1199px) {
+  :root {
+    --ink-sidebar-width: 0px;
+  }
+
+  .quiet-shelf-sidebar {
+    display: none !important;
+  }
+
   .quiet-shelf-topbar {
+    inset: 0 0 auto 0;
+    width: 100%;
     min-height: calc(64px + env(safe-area-inset-top));
+    grid-template-columns: minmax(0, 1fr) auto;
     padding-top: env(safe-area-inset-top);
     padding-right: max(16px, env(safe-area-inset-right));
     padding-left: max(16px, env(safe-area-inset-left));
@@ -78,13 +94,14 @@
     font-size: 1.35rem;
   }
 
-  .quiet-shelf-header-search,
-  .quiet-shelf-actions {
+  .quiet-shelf-header-search {
     display: none;
   }
 
-  body > #root > div > main {
-    margin-left: 0;
+  .inkbound-main-content {
+    margin-left: 0 !important;
+    width: 100%;
+    max-width: none;
     padding-top: calc(64px + env(safe-area-inset-top));
     padding-bottom: calc(88px + env(safe-area-inset-bottom));
   }
@@ -93,6 +110,7 @@
     right: max(8px, env(safe-area-inset-right));
     bottom: max(8px, env(safe-area-inset-bottom));
     left: max(8px, env(safe-area-inset-left));
+    display: grid !important;
     padding-bottom: 0;
   }
 
@@ -108,5 +126,23 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 767px) {
+  .quiet-shelf-actions {
+    display: none;
+  }
+}
+
+/* Tablets keep useful page actions in the top bar, but compact them enough that
+   they cannot squeeze the page heading off-screen. */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .quiet-shelf-actions {
+    gap: 6px;
+  }
+
+  .quiet-shelf-actions .quiet-shelf-secondary-action {
+    display: none;
   }
 }
