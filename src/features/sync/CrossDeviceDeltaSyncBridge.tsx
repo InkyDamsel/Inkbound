@@ -6,8 +6,6 @@ import {
   getDocs,
   orderBy,
   query,
-  serverTimestamp,
-  setDoc,
   Timestamp,
   where,
 } from 'firebase/firestore';
@@ -19,11 +17,7 @@ import {
   getRuntimeStorage,
   notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
-import {
-  INKBOUND_LOCAL_DATA_CHANGED_EVENT,
-  notifyCloudDataUpdated,
-  type LocalDataChangedDetail,
-} from './cloudSyncEvents';
+import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import { shouldRemoteChangeReplacePending } from './syncConflictPolicy';
 import {
   crossDeviceCursorKey,
@@ -152,15 +146,14 @@ function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<
  * Low-cost reconciliation for an already-hydrated device.
  *
  * Books and sessions use timestamp-bounded queries; the single profile document
- * is checked alongside them. All platforms enter this same path through the
- * runtime lifecycle adapter, so Android foregrounding and browser foregrounding
- * cannot drift into different sync behavior.
+ * is checked alongside them. Local deletions are published by the durable
+ * CostSafeCloudPersistenceBridge, so an offline delete cannot be lost and this
+ * bridge never creates a second deletion path.
  */
 export const CrossDeviceDeltaSyncBridge: React.FC = () => {
   const { user } = useAccountSync();
   const pullRunning = useRef(false);
   const knownBookIds = useRef(new Set<string>());
-  const knownSessionIds = useRef(new Set<string>());
 
   useEffect(() => {
     if (!user || !db) return undefined;
@@ -168,41 +161,6 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     let disposed = false;
 
     knownBookIds.current = idsFromStored<UserBookRecord>(BOOKS_KEY);
-    knownSessionIds.current = idsFromStored<ReadingSession>(SESSIONS_KEY);
-
-    const writeTombstones = async (kind: RecordKind, ids: string[]) => {
-      if (!ids.length || disposed || !navigator.onLine) return;
-      const now = new Date().toISOString();
-      await Promise.all(ids.map((recordId) => setDoc(
-        doc(db!, 'users', uid, 'syncTombstones', `${kind}_${recordId}`),
-        {
-          kind,
-          recordId,
-          clientUpdatedAt: now,
-          deletedAt: serverTimestamp(),
-        },
-        { merge: true },
-      )));
-    };
-
-    const captureLocalDeletes = (event: Event) => {
-      const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
-      const changed = new Set<string>(detail?.keys ?? []);
-
-      if (changed.has(BOOKS_KEY)) {
-        const next = idsFromStored<UserBookRecord>(BOOKS_KEY);
-        const removed = [...knownBookIds.current].filter((id) => !next.has(id));
-        knownBookIds.current = next;
-        void writeTombstones('books', removed).catch(() => undefined);
-      }
-
-      if (changed.has(SESSIONS_KEY)) {
-        const next = idsFromStored<ReadingSession>(SESSIONS_KEY);
-        const removed = [...knownSessionIds.current].filter((id) => !next.has(id));
-        knownSessionIds.current = next;
-        void writeTombstones('sessions', removed).catch(() => undefined);
-      }
-    };
 
     const pullDeltas = async () => {
       if (disposed || pullRunning.current || !navigator.onLine) return;
@@ -296,24 +254,21 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           }
         }
 
-        let books = readJson<UserBookRecord[]>(BOOKS_KEY, []);
-        let sessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
+        const books = readJson<UserBookRecord[]>(BOOKS_KEY, []);
+        const sessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
         const nextBooks = removeIds(upsertById(books, acceptedBooks), removedBooks);
         const nextSessions = removeIds(upsertById(sessions, acceptedSessions), removedSessions);
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (stable(books) !== stable(nextBooks)) {
-          books = nextBooks;
-          writeJson(BOOKS_KEY, books);
-          knownBookIds.current = new Set(books.map((book) => book.id));
+          writeJson(BOOKS_KEY, nextBooks);
+          knownBookIds.current = new Set(nextBooks.map((book) => book.id));
           notifyRuntimeStorageChanged(BOOKS_KEY);
           changedKeys.push(BOOKS_KEY);
         }
 
         if (stable(sessions) !== stable(nextSessions)) {
-          sessions = nextSessions;
-          writeJson(SESSIONS_KEY, sessions);
-          knownSessionIds.current = new Set(sessions.map((session) => session.id));
+          writeJson(SESSIONS_KEY, nextSessions);
           notifyRuntimeStorageChanged(SESSIONS_KEY);
           changedKeys.push(SESSIONS_KEY);
         }
@@ -339,11 +294,9 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       const books = idsFromStored<UserBookRecord>(BOOKS_KEY);
       if (!books.size) return;
       knownBookIds.current = books;
-      knownSessionIds.current = idsFromStored<ReadingSession>(SESSIONS_KEY);
       if (!runtimeStorage().getItem(crossDeviceCursorKey(uid))) runtimeStorage().setItem(crossDeviceCursorKey(uid), String(Date.now()));
     };
 
-    window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, captureLocalDeletes);
     const unsubscribeRuntimeResume = subscribeToRuntimeResume(() => {
       void pullDeltas();
     });
@@ -357,7 +310,6 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     return () => {
       disposed = true;
       window.clearInterval(fallback);
-      window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, captureLocalDeletes);
       unsubscribeRuntimeResume();
     };
   }, [user?.uid]);
