@@ -23,6 +23,7 @@ import {
   notifyCloudDataUpdated,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { shouldRemoteChangeReplacePending } from './syncConflictPolicy';
 import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
@@ -58,9 +59,6 @@ interface SyncBaseline {
 }
 
 const runtimeStorage = () => getRuntimeStorage();
-// v2 intentionally invalidates the original cursor once. The v1 implementation
-// could seed a new delta cursor from an unrelated full-sync timestamp, allowing a
-// device with stale local data to believe it was already current forever.
 const cursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 const pendingKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
 const baselineKey = (uid: string) => `inkbound_sync_baseline_${uid}_v2`;
@@ -125,15 +123,20 @@ function removeIds<T extends { id: string }>(current: T[], removed: Set<string>)
   return current.filter((item) => !removed.has(item.id));
 }
 
-function clientMillis(value?: string): number {
-  const parsed = value ? Date.parse(value) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : 0;
+function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: RecordMutation<T>): boolean {
+  return shouldRemoteChangeReplacePending({
+    remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
+    remoteClientUpdatedAt: record.clientUpdatedAt,
+    pendingClientUpdatedAt: pending?.clientUpdatedAt,
+  });
 }
 
-export function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: RecordMutation<T>): boolean {
-  if (!pending) return true;
-  const remoteMillis = Math.max(record.updatedAt?.toMillis() ?? 0, clientMillis(record.clientUpdatedAt));
-  return remoteMillis > clientMillis(pending.clientUpdatedAt);
+function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<unknown>): boolean {
+  return shouldRemoteChangeReplacePending({
+    remoteServerMillis: record.deletedAt?.toMillis() ?? 0,
+    remoteClientUpdatedAt: record.clientUpdatedAt,
+    pendingClientUpdatedAt: pending?.clientUpdatedAt,
+  });
 }
 
 /**
@@ -260,17 +263,16 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           newestMillis = Math.max(newestMillis, deletedMillis);
           const recordId = record.recordId?.trim();
           if (!recordId) return;
-          const remoteMillis = Math.max(deletedMillis, clientMillis(record.clientUpdatedAt));
           if (record.kind === 'books') {
             const pendingMutation = pending.books[recordId];
-            if (pendingMutation && remoteMillis <= clientMillis(pendingMutation.clientUpdatedAt)) return;
+            if (!tombstoneWinsPending(record, pendingMutation)) return;
             delete pending.books[recordId];
             removedBooks.add(recordId);
             delete baseline.books[recordId];
           }
           if (record.kind === 'sessions') {
             const pendingMutation = pending.sessions[recordId];
-            if (pendingMutation && remoteMillis <= clientMillis(pendingMutation.clientUpdatedAt)) return;
+            if (!tombstoneWinsPending(record, pendingMutation)) return;
             delete pending.sessions[recordId];
             removedSessions.add(recordId);
             delete baseline.sessions[recordId];
@@ -316,8 +318,6 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       knownBookIds.current = books;
       knownSessionIds.current = idsFromStored<ReadingSession>(SESSIONS_KEY);
       if (!runtimeStorage().getItem(cursorKey(uid))) {
-        // Hydration just loaded the cloud baseline on a truly empty device. The
-        // current moment is safe as the initial cursor only in that scenario.
         runtimeStorage().setItem(cursorKey(uid), String(Date.now()));
       }
     };
