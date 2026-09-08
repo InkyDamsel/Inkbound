@@ -22,7 +22,10 @@ import {
   getAccountOwnedKeysToClearForOwnerChange,
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
-import { shouldPromoteLocalRecordMissingFromCloud } from '../src/features/sync/syncConflictPolicy';
+import {
+  shouldPromoteLocalRecordMissingFromCloud,
+  shouldRemoteChangeReplacePending,
+} from '../src/features/sync/syncConflictPolicy';
 
 const baseBook = (): UserBookRecord => ({
   id: 'book-1',
@@ -136,7 +139,6 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
 }
 
 // A stale device must respect a deletion already observed in its previous baseline.
-// Otherwise reconnecting that device would silently resurrect deleted books/sessions.
 {
   assert.equal(shouldPromoteLocalRecordMissingFromCloud({
     hasCloudRecord: false,
@@ -163,8 +165,34 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   }), false);
 }
 
-// Integrity diagnostics report the actual stored cover state and structural
-// relationships independently from import-enrichment counters.
+// The same last-write rule now governs books, sessions and auxiliary account data.
+// A demonstrably newer cloud edit must replace a stale pending copy.
+{
+  assert.equal(shouldRemoteChangeReplacePending({
+    remoteClientUpdatedAt: '2026-09-08T18:05:00.000Z',
+    pendingClientUpdatedAt: '2026-09-08T18:00:00.000Z',
+  }), true);
+}
+
+// A newer local pending edit remains authoritative until it uploads.
+{
+  assert.equal(shouldRemoteChangeReplacePending({
+    remoteClientUpdatedAt: '2026-09-08T18:00:00.000Z',
+    pendingClientUpdatedAt: '2026-09-08T18:05:00.000Z',
+  }), false);
+}
+
+// Firestore server time wins when it proves the remote write happened later,
+// even if a device clock produced an older client timestamp.
+{
+  assert.equal(shouldRemoteChangeReplacePending({
+    remoteServerMillis: Date.parse('2026-09-08T18:10:00.000Z'),
+    remoteClientUpdatedAt: '2026-09-08T17:50:00.000Z',
+    pendingClientUpdatedAt: '2026-09-08T18:05:00.000Z',
+  }), true);
+}
+
+// Integrity diagnostics report actual stored state independently from import counters.
 {
   const covered = {
     ...baseBook(),
