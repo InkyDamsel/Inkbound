@@ -1,0 +1,92 @@
+{
+  "project_info": {
+    "project_number": "905818083152",
+    "project_id": "inkbound-app",
+    "storage_bucket": "inkbound-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:905818083152:android:76fddae64470d381ef2655",
+        "android_client_info": {
+          "package_name": "com.inkydameinteractive.inkbound"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "905818083152-dcqfvg8gkgg07ll2qnmskcomj0qhcv60.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.inkydameinteractive.inkbound",
+            "certificate_hash": "717fad024489cfc290303c805e919528e90bee96"
+          }
+        },
+        {
+          "client_id": "905818083152-gelpd4k7pmhrcqa8e8n8vdq9p49u9146.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.inkydameinteractive.inkbound",
+            "certificate_hash": "3b7d6cf14692533fb0cfc79ff1b47dc6e2877ba9"
+          }
+        },
+        {
+          "client_id": "905818083152-jads9mgispmnan85h3qnkn3hfelvh0rf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.inkydameinteractive.inkbound",
+            "certificate_hash": "bdf55720886b4317d1ea16c417d3ecebbdba1455"
+          }
+        },
+        {
+          "client_id": "905818083152-r5jh7jrbkjcvbpnragr1md8jnoana712.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUjsg80vqv2WD0Jycw9614aJZqOKFX-5s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "905818083152-r5jh7jrbkjcvbpnragr1md8jnoana712.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:905818083152:android:9729b4ca0f8c6deaef2655",
+        "android_client_info": {
+          "package_name": "com.inkydameinteractive.inkbound.debug"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "905818083152-r5jh7jrbkjcvbpnragr1md8jnoana712.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUjsg80vqv2WD0Jycw9614aJZqOKFX-5s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "905818083152-r5jh7jrbkjcvbpnragr1md8jnoana712.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
