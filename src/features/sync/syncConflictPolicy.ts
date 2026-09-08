@@ -27,3 +27,32 @@ export function shouldPromoteLocalRecordMissingFromCloud({
   if (hasCloudRecord || hasPendingMutation) return false;
   return baselineFingerprint === undefined;
 }
+
+function parseClientMillis(value?: string): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Canonical last-write conflict rule shared by book/session delta sync and
+ * auxiliary account sync.
+ *
+ * A pending local mutation is real user intent, so cloud only replaces it when
+ * the cloud change is demonstrably newer. Firestore server time is preferred
+ * when available; clientUpdatedAt is used as the cross-device fallback.
+ */
+export function shouldRemoteChangeReplacePending({
+  remoteServerMillis = 0,
+  remoteClientUpdatedAt,
+  pendingClientUpdatedAt,
+}: {
+  remoteServerMillis?: number;
+  remoteClientUpdatedAt?: string;
+  pendingClientUpdatedAt?: string;
+}): boolean {
+  if (!pendingClientUpdatedAt) return true;
+  const remoteMillis = Math.max(remoteServerMillis, parseClientMillis(remoteClientUpdatedAt));
+  const pendingMillis = parseClientMillis(pendingClientUpdatedAt);
+  return remoteMillis > pendingMillis;
+}
