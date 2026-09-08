@@ -10,6 +10,7 @@ Inkbound should have one authoritative owner for each kind of information. Scree
 - Firestore is persistence/restore for the same records. It is **not** a second UI data source.
 - Existing devices work local-first. Cloud bridges hydrate or persist the canonical local records rather than giving individual screens their own Firestore queries.
 - A library item stores reading status and ownership separately. TBR must never be inferred to mean either owned or not owned.
+- App-level persistence must go through `src/platform/runtimeStorage.ts`; direct browser `localStorage` writes are not the canonical mutation boundary because Android and cloud sync depend on the runtime-storage change signal.
 
 ## Domain types
 
@@ -29,10 +30,19 @@ Use this module for status, ownership, reading-material type, format, priority, 
 
 - `getActiveEdition()` is the shared active-edition resolver.
 - `getBookReadingState()` is the canonical derived reading-state view.
-- `withReadingStatus()` is the canonical status transition and owns the related started/finished-date and known-endpoint progress rules.
-- `reconcileFinishedBookProgress()` is the narrow legacy/import reconciliation path.
+- `withReadingStatus()` is the canonical status transition and owns the related started/finished-date rules.
+- `reconcileFinishedBookProgress()` is the compatibility boundary for legacy/imported records and must never fabricate 100% progress from Finished status alone.
 
-New status-changing surfaces must call these helpers rather than inventing a second set of finish/start rules.
+**Canonical session-to-book reconciliation:** `src/features/reading/sessionBookReconciliation.ts`
+
+- `applySessionProgressToBook()` owns the effect of a newly recorded session on a book.
+- `reconcileBookAfterSessionMutation()` owns progress reconciliation after session edits, moves, or deletes.
+- `getSessionProgressEndpoint()` and `sessionSortKey()` own the shared session endpoint/sort semantics used by App-level mutations.
+- Reaching a known edition endpoint may mark a book Finished.
+- Editing or deleting a session must **not** silently erase an explicit Finished status or its historical finish date.
+- Manual progress ahead of an edited session must remain authoritative.
+
+New status-changing or session-reconciliation surfaces must call these helpers rather than inventing a second set of finish/start/progress rules.
 
 ## Product / Free vs Premium policy
 
@@ -78,7 +88,7 @@ Web and Android call the same serializers. `src/platform/runtimeExport.ts` is on
 
 **Canonical key registry:** `src/features/sync/storageKeys.ts`
 
-This registry owns core library/session/profile keys, account-owned auxiliary keys, theme, import-enrichment keys, and explicitly retired legacy keys. Sync bridges and feature persistence should consume the registry or a constant derived from it instead of redefining key strings.
+This registry owns core library/session/profile keys, account-owned auxiliary keys, theme, import-enrichment keys, cross-device cursor/baseline/pending keys, and explicitly retired legacy keys. Sync bridges and feature persistence should consume the registry or a constant derived from it instead of redefining key strings.
 
 `src/features/sync/auxiliaryAccountSyncConfig.ts` defines **which** registered account-data keys are eligible for auxiliary cloud sync. It does not own a second set of values.
 
@@ -87,9 +97,9 @@ This registry owns core library/session/profile keys, account-owned auxiliary ke
 The local runtime copy is the application working source. Cloud code has narrowly separated roles:
 
 - `AdaptiveCloudPersistenceBridge` chooses the appropriate hydration/persistence strategy.
-- `CostSafeCloudPersistenceBridge` persists local canonical changes.
+- `CostSafeCloudPersistenceBridge` persists local canonical changes and owns durable publication of book/session deletions. A queued offline delete is not complete until the Firestore record deletion **and** its sync tombstone are published.
 - `OneShotCloudHydrationBridge` restores an empty/new local cache.
-- `CrossDeviceDeltaSyncBridge` pulls changed books, sessions, profile data, and delete tombstones into an already-hydrated device.
+- `CrossDeviceDeltaSyncBridge` pulls changed books, sessions, profile data, and delete tombstones into an already-hydrated device. It does not create a second local-deletion path.
 - `AuxiliaryAccountSyncBridge` synchronizes registered account-owned state such as collection definitions, custom ownership categories, goals, and challenge state.
 - `CloudServerRefreshBridge` handles explicit/recovery refreshes rather than acting as an everyday feature data source.
 - Profile/media bridges persist their specific registered account-owned media.
@@ -101,6 +111,8 @@ Feature screens must not bypass these boundaries with their own independent Fire
 **Canonical conflict rule:** `src/features/sync/syncConflictPolicy.ts`
 
 `shouldRemoteChangeReplacePending()` is the shared last-write rule for core and auxiliary sync. A durable local pending mutation represents known user intent. A remote change replaces it only when the remote change is demonstrably newer. Firestore server time is preferred when available; `clientUpdatedAt` is the fallback used across devices.
+
+`shouldApplyRemoteTombstone()` owns the delete-vs-recreated-record rule. A deletion tombstone wins while it is the newest cloud fact; if that same record is deliberately recreated later, the newer upsert wins and the historical tombstone cannot erase it.
 
 Startup code must never create a fresh “now” timestamp merely because cached local data differs from an old baseline *before* comparing that cache with cloud state. Doing that makes stale data appear newer simply because the stale device opened later.
 
@@ -126,6 +138,7 @@ Recovery snapshots are versioned safety copies, **not** a second live source of 
 - Every admin restore creates a new safety copy of the state being replaced and records an audit entry.
 - Collection recovery restores the collection definition and missing memberships without deleting newer memberships.
 - A restore must clear the current core and auxiliary sync pending/baseline metadata before the bridges rebuild against the restored cloud state.
+- Restored books/sessions are written with fresh server timestamps, so old deletion tombstones cannot outrank a deliberate recovery restore.
 
 ## Platform parity
 
