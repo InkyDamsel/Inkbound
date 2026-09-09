@@ -156,7 +156,7 @@ function verifyStripeSignature(rawBody: Buffer, signatureHeader: string, secret:
 }
 
 export const createStripeCheckoutSession = onCall(
-  { enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true', secrets: [stripeConfigSecret] },
+  { invoker: 'public', enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true', secrets: [stripeConfigSecret] },
   async (request) => {
     const auth = requireAuthenticated(request);
     const data = asRecord(request.data);
@@ -199,7 +199,7 @@ export const createStripeCheckoutSession = onCall(
 );
 
 export const createStripeBillingPortalSession = onCall(
-  { enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true', secrets: [stripeConfigSecret] },
+  { invoker: 'public', enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true', secrets: [stripeConfigSecret] },
   async (request) => {
     const auth = requireAuthenticated(request);
     const config = stripeConfigValue();
@@ -223,7 +223,7 @@ export const createStripeBillingPortalSession = onCall(
 );
 
 export const stripeBillingWebhook = onRequest(
-  { secrets: [stripeConfigSecret] },
+  { invoker: 'public', secrets: [stripeConfigSecret] },
   async (request, response) => {
     if (request.method !== 'POST') {
       response.status(405).send('Method not allowed');
@@ -358,7 +358,7 @@ export async function refreshGooglePlayEntitlementForUser(uid: string, force = f
 }
 
 export const verifyGooglePlaySubscription = onCall(
-  { enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true' },
+  { invoker: 'public', enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true' },
   async (request) => {
     const auth = requireAuthenticated(request);
     const data = asRecord(request.data);
