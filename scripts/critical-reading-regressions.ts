@@ -49,6 +49,7 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   id: crypto.randomUUID(), bookId: 'book-1', date: '2026-08-15', startTime: '20:00', endTime: '20:30', durationMinutes: 30, ...overrides,
 });
 
+// Active-edition progress uses the selected edition total.
 {
   const book = baseBook();
   assert.equal(getActiveEdition(book)?.id, 'paper-500');
@@ -73,14 +74,17 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(hasTrustworthyFinishedHistory(finishedHistory), true);
 }
 
+// Leaving Finished clears the finish date but does not invent or erase page progress.
 {
-  const book = { ...baseBook(), status: 'finished' as const, dateFinished: '2026-08-15' };
+  const book = { ...baseBook(), status: 'finished' as const, progressPercentage: 100, dateFinished: '2026-08-15' };
   const corrected = withReadingStatus(book, 'currently-reading');
   assert.equal(corrected.status, 'currently-reading');
   assert.equal(corrected.dateFinished, undefined);
   assert.equal(corrected.progressPages, 190);
 }
 
+// Explicitly marking Finished records the date and canonical 100% without inventing
+// an exact final page endpoint.
 {
   const finished = withReadingStatus(baseBook(), 'finished', '2026-08-15');
   assert.equal(finished.status, 'finished');
@@ -91,11 +95,11 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
 }
 
 {
-  const missingDate = { ...baseBook(), status: 'finished' as const, dateFinished: undefined };
+  const missingDate = { ...baseBook(), status: 'finished' as const, progressPercentage: 100, dateFinished: undefined };
   assert.equal(hasTrustworthyFinishedHistory(missingDate), false);
 }
 
-// A new tracked session that actually reaches a known endpoint can finish the book.
+// A new tracked session that actually reaches a known endpoint finishes the book.
 {
   const book = { ...baseBook(), progressPages: 450, progressPercentage: 90 };
   const completed = applySessionProgressToBook(
@@ -110,8 +114,8 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(completed.dateFinished, '2026-08-15');
 }
 
-// Editing/deleting a session may lower tracked progress, but it must never silently
-// erase an explicit Finished reading-history fact or its date.
+// Logging or reconciling partial session progress against an already-Finished book
+// must never downgrade its canonical completion state.
 {
   const finished = {
     ...baseBook(),
@@ -124,10 +128,21 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   const remaining = [session({ id: 'older', date: '2026-08-14', startPage: 100, endPage: 200, pagesRead: 100 })];
   const reconciled = reconcileBookAfterSessionMutation(finished, remaining);
   assert.equal(reconciled.status, 'finished');
+  assert.equal(reconciled.progressPercentage, 100);
   assert.equal(reconciled.dateFinished, '2026-08-15');
+
+  const partialSession = applySessionProgressToBook(
+    { ...finished, progressPages: 190 },
+    session({ id: 'partial-after-finish', startPage: 190, endPage: 220, pagesRead: 30 }),
+    220,
+    0,
+  );
+  assert.equal(partialSession.status, 'finished');
+  assert.equal(partialSession.progressPercentage, 100);
+  assert.equal(partialSession.dateFinished, '2026-08-15');
 }
 
-// Reading analytics must use real session values rather than inferred/imported history.
+// Reading analytics use real session values and deterministic date anchors.
 {
   const sessions = [
     session({ id: 's1', date: '2026-08-10', startPage: 10, endPage: 40, pagesRead: 30, durationMinutes: 30 }),
@@ -141,6 +156,8 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   const currentPace = getCurrentPace(sessions[1], baseBook());
   assert.equal(currentPace.pagesPerHour, 50);
   assert.equal(currentPace.remainingPages, 310);
+  assert.equal(currentPace.sampleMinutes, 60);
+  assert.equal(currentPace.sampleSessions, 1);
 
   const sevenDayPace = getSevenDayAveragePace(sessions, baseBook(), '2026-08-11');
   assert.equal(sevenDayPace.sampleSessions, 2);
@@ -148,13 +165,16 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.ok(Math.abs((sevenDayPace.pagesPerHour ?? 0) - (80 / 1.5)) < 0.0001);
 }
 
-// Integrity analysis should still consider legitimate Finished history structurally healthy
-// even when its exact final page was never recorded.
+// Structural integrity should consider legitimate Finished history healthy even when
+// its exact final page was never recorded.
 {
   const historical = { ...baseBook(), status: 'finished' as const, progressPages: 190, progressPercentage: 100, dateFinished: '2026-08-15' };
   const report = analyzeLibraryIntegrity([historical], []);
   assert.equal(report.bookCount, 1);
+  assert.equal(report.sessionCount, 0);
   assert.equal(report.missingActiveEditionCount, 0);
+  assert.equal(report.duplicateBookIdCount, 0);
+  assert.equal(report.duplicateSessionIdCount, 0);
   assert.equal(report.orphanSessionCount, 0);
   assert.equal(report.healthy, true);
 }
@@ -163,19 +183,35 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
 {
   assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T11:59:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), false);
   assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T12:01:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), true);
+  assert.equal(shouldRemoteChangeReplacePending({ remoteServerMillis: Date.parse('2026-09-09T12:02:00.000Z'), remoteClientUpdatedAt: '2026-09-09T11:00:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), true);
+
   assert.equal(shouldApplyRemoteTombstone({ tombstoneServerMillis: 1000, latestRecordServerMillis: 2000 }), false);
   assert.equal(shouldApplyRemoteTombstone({ tombstoneServerMillis: 2000, latestRecordServerMillis: 1000 }), true);
+
   assert.equal(shouldPromoteLocalRecordMissingFromCloud({ hasCloudRecord: false, baselineFingerprint: undefined, hasPendingMutation: false }), true);
   assert.equal(shouldPromoteLocalRecordMissingFromCloud({ hasCloudRecord: true, baselineFingerprint: undefined, hasPendingMutation: false }), false);
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({ hasCloudRecord: false, baselineFingerprint: 'previous-cloud-version', hasPendingMutation: false }), false);
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({ hasCloudRecord: false, baselineFingerprint: undefined, hasPendingMutation: true }), false);
 }
 
-// Account ownership cleanup must include all canonical core and auxiliary data.
+// Account ownership cleanup only runs when switching between different authenticated
+// readers, and it must include every canonical core/auxiliary account-owned key.
 {
-  const core = getAccountOwnedKeysToClearForOwnerChange();
-  const auxiliary = getAuxiliaryKeysToClearForOwnerChange();
-  CORE_ACCOUNT_RUNTIME_KEYS.forEach((key) => assert.equal(core.includes(key), true));
-  AUXILIARY_ACCOUNT_KEYS.forEach((key) => assert.equal(auxiliary.includes(key), true));
-  assert.equal(auxiliary.includes(READING_MEMORIES_ACCOUNT_KEY), true);
+  const previousUid = 'reader-a';
+  const nextUid = 'reader-b';
+  const coreAndAuxiliary = getAccountOwnedKeysToClearForOwnerChange(previousUid, nextUid);
+  const auxiliaryOnly = getAuxiliaryKeysToClearForOwnerChange(previousUid, nextUid);
+
+  CORE_ACCOUNT_RUNTIME_KEYS.forEach((key) => assert.equal(coreAndAuxiliary.includes(key), true));
+  Object.values(AUXILIARY_ACCOUNT_KEYS).forEach((key) => {
+    assert.equal(coreAndAuxiliary.includes(key), true);
+    assert.equal(auxiliaryOnly.includes(key), true);
+  });
+  assert.equal(coreAndAuxiliary.includes(READING_MEMORIES_ACCOUNT_KEY), true);
+  assert.equal(auxiliaryOnly.includes(READING_MEMORIES_ACCOUNT_KEY), true);
+
+  assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange(previousUid, previousUid), []);
+  assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange(null, nextUid), []);
 }
 
 console.log('Inkbound critical reading regressions passed.');
