@@ -6,10 +6,12 @@ import { replaceCanonicalBook } from '../features/library/libraryMutations';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
+  CUSTOM_OWNERSHIP_CATEGORIES_KEY,
   readCustomOwnershipCategories,
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../platform/runtimeStorage';
 import type { UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
 import { CollectionsScreen } from './CollectionsScreen';
@@ -74,8 +76,16 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   useEffect(() => {
     const refresh = () => setCustomCategories(readCustomOwnershipCategories());
+    const handleRuntimeRefresh = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key === CUSTOM_OWNERSHIP_CATEGORIES_KEY) refresh();
+    };
     window.addEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
-    return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
+    return () => {
+      window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
+      window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
+    };
   }, []);
 
   useEffect(() => {
