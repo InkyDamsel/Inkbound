@@ -161,12 +161,12 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
 
 // Sync conflict rules protect newer/pending local work from stale cloud data.
 {
-  assert.equal(shouldRemoteChangeReplacePending('2026-09-09T12:00:00.000Z', '2026-09-09T11:59:00.000Z'), false);
-  assert.equal(shouldRemoteChangeReplacePending('2026-09-09T12:00:00.000Z', '2026-09-09T12:01:00.000Z'), true);
-  assert.equal(shouldApplyRemoteTombstone('2026-09-09T12:00:00.000Z', '2026-09-09T11:59:00.000Z'), false);
-  assert.equal(shouldApplyRemoteTombstone('2026-09-09T12:00:00.000Z', '2026-09-09T12:01:00.000Z'), true);
-  assert.equal(shouldPromoteLocalRecordMissingFromCloud(false, false), true);
-  assert.equal(shouldPromoteLocalRecordMissingFromCloud(true, false), false);
+  assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T11:59:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), false);
+  assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T12:01:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), true);
+  assert.equal(shouldApplyRemoteTombstone({ tombstoneServerMillis: 1000, latestRecordServerMillis: 2000 }), false);
+  assert.equal(shouldApplyRemoteTombstone({ tombstoneServerMillis: 2000, latestRecordServerMillis: 1000 }), true);
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({ hasCloudRecord: false, baselineFingerprint: undefined, hasPendingMutation: false }), true);
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({ hasCloudRecord: true, baselineFingerprint: undefined, hasPendingMutation: false }), false);
 }
 
 // Account ownership cleanup must include all canonical core and auxiliary data.
