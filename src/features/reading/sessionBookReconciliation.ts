@@ -25,6 +25,8 @@ export function getSessionProgressEndpoint(
  * Reaching a known edition endpoint may mark a book Finished. The inverse is not
  * inferred: an existing Finished status is an explicit reading-history fact and
  * must not be erased merely because tracked page/minute progress is incomplete.
+ * Finished and 100% are one canonical reader-facing state, so session bookkeeping
+ * must never lower the stored percentage of an explicitly Finished title.
  */
 export function applySessionProgressToBook(
   book: UserBookRecord,
@@ -40,17 +42,20 @@ export function applySessionProgressToBook(
   const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
   const completed = isAudiobook ? nextMinutes : nextPages;
   const hasKnownTotal = typeof total === 'number' && Number.isFinite(total) && total > 0;
-  const progressPercentage = hasKnownTotal
-    ? Math.min(100, Math.round((completed / total) * 100))
-    : book.progressPercentage;
   const reachedEnd = Boolean(hasKnownTotal && completed >= total!);
+  const staysFinished = reachedEnd || book.status === 'finished';
+  const progressPercentage = staysFinished
+    ? 100
+    : hasKnownTotal
+      ? Math.min(100, Math.round((completed / total!) * 100))
+      : book.progressPercentage;
 
   return {
     ...book,
     progressPages: nextPages,
     progressMinutes: nextMinutes,
     progressPercentage,
-    status: reachedEnd ? 'finished' : book.status === 'finished' ? 'finished' : 'currently-reading',
+    status: staysFinished ? 'finished' : 'currently-reading',
     dateStarted: book.dateStarted ?? session.date,
     dateFinished: reachedEnd
       ? book.dateFinished ?? session.date
@@ -67,7 +72,8 @@ export function applySessionProgressToBook(
  * Reconciles tracked progress after a session is edited, moved, or deleted.
  * Manual progress ahead of the edited session is preserved. Explicit Finished
  * history is also preserved; session bookkeeping is never allowed to silently
- * rewrite a reader's chosen status back to Currently Reading.
+ * rewrite a reader's chosen status back to Currently Reading or lower its stored
+ * completion percentage below 100%.
  */
 export function reconcileBookAfterSessionMutation(
   book: UserBookRecord,
@@ -106,17 +112,20 @@ export function reconcileBookAfterSessionMutation(
 
   const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
   const hasKnownTotal = typeof total === 'number' && Number.isFinite(total) && total > 0;
-  const progressPercentage = hasKnownTotal
-    ? Math.min(100, Math.round((nextProgress / total) * 100))
-    : book.progressPercentage;
   const reachedEnd = Boolean(hasKnownTotal && nextProgress >= total!);
+  const staysFinished = reachedEnd || book.status === 'finished';
+  const progressPercentage = staysFinished
+    ? 100
+    : hasKnownTotal
+      ? Math.min(100, Math.round((nextProgress / total!) * 100))
+      : book.progressPercentage;
 
   return {
     ...book,
     progressPages: isAudiobook ? book.progressPages : nextProgress,
     progressMinutes: isAudiobook ? nextProgress : book.progressMinutes,
     progressPercentage,
-    status: reachedEnd ? 'finished' : book.status,
+    status: staysFinished ? 'finished' : book.status,
     dateFinished: reachedEnd
       ? book.dateFinished ?? latest?.date ?? localDateKey()
       : book.dateFinished,
