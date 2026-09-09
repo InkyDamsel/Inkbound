@@ -8,8 +8,10 @@ import {
   type CatalogContribution,
   type CatalogPromotionStatus,
 } from '../../features/catalog/metadataContributions';
+import { PaginationControls } from '../PaginationControls';
 
 type ReviewStatus = 'pending' | 'approved' | 'rejected';
+const CONTRIBUTION_PAGE_SIZE = 10;
 
 const formatDate = (value: string | null) => {
   if (!value) return 'Not available';
@@ -28,6 +30,7 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
 
   const load = async (nextFilter = filter) => {
     setLoading(true);
@@ -35,6 +38,7 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
     try {
       const next = await getCatalogContributions(nextFilter);
       setItems(next);
+      setPage(1);
       if (nextFilter === 'approved' && next.length > 0) {
         setPromotionStatuses(await getCatalogPromotionStatuses(next.map((item) => item.id)));
       } else {
@@ -51,6 +55,17 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
   useEffect(() => {
     void load(filter);
   }, [filter]);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / CONTRIBUTION_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const visibleItems = useMemo(
+    () => items.slice((safePage - 1) * CONTRIBUTION_PAGE_SIZE, safePage * CONTRIBUTION_PAGE_SIZE),
+    [items, safePage],
+  );
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const review = async (item: CatalogContribution, decision: 'approved' | 'rejected') => {
     const reviewNote = notes[item.id]?.trim() ?? '';
@@ -120,7 +135,7 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
           <button
             key={value}
             type="button"
-            onClick={() => setFilter(value)}
+            onClick={() => { setFilter(value); setPage(1); }}
             className={`min-h-11 rounded-xl border px-4 text-sm font-semibold capitalize ${filter === value ? 'border-[var(--ink-mauve)] bg-[var(--ink-surface-raised)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}
           >
             {value}
@@ -135,7 +150,7 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
           <div className="flex items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5 text-sm text-[var(--ink-muted)]"><Loader2 className="h-5 w-5 animate-spin" />Loading contributions…</div>
         ) : items.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-[var(--ink-border)] p-6 text-center text-sm text-[var(--ink-muted)]">No {filter} catalog contributions.</p>
-        ) : items.map((item) => {
+        ) : visibleItems.map((item) => {
           const fields = item.fields;
           const busy = reviewingId === item.id || promotingId === item.id;
           const promotion = promotionStatuses[item.id];
@@ -202,7 +217,10 @@ export const AdminCatalogContributionsPanel: React.FC = () => {
         })}
       </div>
 
-      <p className="mt-4 text-xs text-[var(--ink-muted)]">Showing {counts.visible} record{counts.visible === 1 ? '' : 's'} in the current review state.</p>
+      <div className="mt-4">
+        <PaginationControls page={safePage} totalItems={items.length} pageSize={CONTRIBUTION_PAGE_SIZE} onPageChange={setPage} itemLabel="records" />
+      </div>
+      <p className="mt-4 text-xs text-[var(--ink-muted)]">{counts.visible.toLocaleString()} record{counts.visible === 1 ? '' : 's'} in the current review state.</p>
     </section>
   );
 };
