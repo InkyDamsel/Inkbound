@@ -14,6 +14,7 @@ export type AccessSource = 'free' | 'subscription' | 'vip' | 'courtesy';
 
 interface EntitlementRecord {
   subscriptionStatus?: 'none' | 'active' | 'trialing' | 'past_due' | 'canceled';
+  subscriptionProvider?: 'stripe' | 'google_play' | null;
   paidPremiumUntil?: Timestamp | string | null;
   vipEnabled?: boolean;
   courtesyPremiumUntil?: Timestamp | string | null;
@@ -48,29 +49,36 @@ function toMillis(value: Timestamp | string | null | undefined): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function paidAccessIsActive(entitlement: EntitlementRecord): boolean {
+  const paidUntil = toMillis(entitlement.paidPremiumUntil);
+  const now = Date.now();
+  if (entitlement.subscriptionStatus === 'active' || entitlement.subscriptionStatus === 'trialing') {
+    // Legacy entitlements may not have an expiry. New Stripe/Play entitlements do,
+    // and once that known expiry passes a stale status must never grant Premium forever.
+    return paidUntil === 0 || paidUntil > now;
+  }
+  // A canceled subscription remains usable through the already-paid period.
+  return entitlement.subscriptionStatus === 'canceled' && paidUntil > now;
+}
+
 function resolveAccess(entitlement: EntitlementRecord | undefined): { userPlan: UserPlan; accessSource: AccessSource } {
   if (!entitlement) return { userPlan: 'free', accessSource: 'free' };
 
   const now = Date.now();
-  const paidIsActive =
-    entitlement.subscriptionStatus === 'active' ||
-    entitlement.subscriptionStatus === 'trialing' ||
-    toMillis(entitlement.paidPremiumUntil) > now;
   const courtesyIsActive = toMillis(entitlement.courtesyPremiumUntil) > now;
 
   if (entitlement.vipEnabled) return { userPlan: 'premium', accessSource: 'vip' };
-  if (paidIsActive) return { userPlan: 'premium', accessSource: 'subscription' };
+  if (paidAccessIsActive(entitlement)) return { userPlan: 'premium', accessSource: 'subscription' };
   if (courtesyIsActive) return { userPlan: 'premium', accessSource: 'courtesy' };
   return { userPlan: 'free', accessSource: 'free' };
 }
 
 function nextTimedAccessExpiry(entitlement: EntitlementRecord | undefined): number {
   if (!entitlement || entitlement.vipEnabled) return 0;
-  if (entitlement.subscriptionStatus === 'active' || entitlement.subscriptionStatus === 'trialing') return 0;
 
   const now = Date.now();
   const futureExpiries = [
-    toMillis(entitlement.paidPremiumUntil),
+    paidAccessIsActive(entitlement) ? toMillis(entitlement.paidPremiumUntil) : 0,
     toMillis(entitlement.courtesyPremiumUntil),
   ].filter((value) => value > now);
 
