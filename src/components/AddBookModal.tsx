@@ -26,7 +26,8 @@ interface AddBookModalProps {
 
 type AddBookTab = 'search' | 'manual';
 type PendingSearchEdition = { work: BookSearchWorkGroup; edition: BookSearchEdition };
-type CategorySelection = ReadingStatus | `custom:${string}`;
+type CustomCategorySelection = `custom:${string}`;
+type CategorySelection = ReadingStatus | CustomCategorySelection;
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const today = () => {
@@ -34,8 +35,9 @@ const today = () => {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 };
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const categoryStatus = (selection: CategorySelection): ReadingStatus => selection.startsWith('custom:') ? 'custom' : selection;
-const categoryId = (selection: CategorySelection): string | undefined => selection.startsWith('custom:') ? selection.slice('custom:'.length) : undefined;
+const isCustomCategorySelection = (selection: CategorySelection): selection is CustomCategorySelection => selection.startsWith('custom:');
+const categoryStatus = (selection: CategorySelection): ReadingStatus => isCustomCategorySelection(selection) ? 'custom' : selection;
+const categoryId = (selection: CategorySelection): string | undefined => isCustomCategorySelection(selection) ? selection.slice('custom:'.length) : undefined;
 
 export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }) => {
   const [activeTab, setActiveTab] = useState<AddBookTab>('search');
