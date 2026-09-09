@@ -157,8 +157,14 @@ if ([authConfigIndex, reauthConfigIndex, lifecycleConfigIndex, securityReadyInde
 }
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');
-if (!subscriptionSource.includes('!isNativeRuntime() && Boolean(webBillingPortalUrl)')) {
-  fail('native builds must not fall back to the web billing portal.');
+if (!subscriptionSource.includes('isAvailable: () => !isNativeRuntime()')) {
+  fail('browser subscription management must remain unavailable inside native builds.');
+}
+if (!subscriptionSource.includes("if (isNativeRuntime()) throw new Error('Subscription management is not connected to this app store build yet.')")) {
+  fail('browser subscription management must fail closed if invoked from a native runtime.');
+}
+if (!androidRuntimeSource.includes('configureRuntimeSubscriptionManagement')) {
+  fail('Android must install its native subscription-management adapter.');
 }
 
 const authenticationSource = fs.readFileSync(runtimeAuthenticationPath, 'utf8');
