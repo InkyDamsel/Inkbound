@@ -3,12 +3,14 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
+import { onMessagePublished } from 'firebase-functions/v2/pubsub';
 
 const adminApp = getApps()[0] ?? initializeApp();
 const db = getFirestore(adminApp);
 
 const PLAY_PACKAGE_NAME = 'com.inkydameinteractive.inkbound';
 const PLAY_PRODUCT_ID = 'inkbound_premium';
+const PLAY_RTDN_TOPIC = 'inkbound-play-billing';
 const PUBLIC_APP_URL = 'https://inkbound.inkydameinteractive.com';
 const PLAY_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
@@ -22,8 +24,14 @@ interface StripeConfig {
 const stripeConfigSecret = defineSecret('INKBOUND_STRIPE_CONFIG');
 
 type SubscriptionStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'canceled';
-
+type SubscriptionProvider = 'stripe' | 'google_play';
 type JsonRecord = Record<string, unknown>;
+
+interface ProviderState {
+  provider: SubscriptionProvider;
+  status: SubscriptionStatus;
+  expiresAtMillis: number;
+}
 
 function requireAuthenticated(request: CallableRequest<unknown>) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -40,6 +48,21 @@ function stringValue(value: unknown): string {
 
 function numberValue(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function timestampLikeToMillis(value: unknown): number {
+  if (value instanceof Timestamp) return value.toMillis();
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+function subscriptionStatusValue(value: unknown): SubscriptionStatus {
+  const status = stringValue(value);
+  if (status === 'active' || status === 'trialing' || status === 'past_due' || status === 'canceled') return status;
+  return 'none';
 }
 
 function stripeConfigValue(): StripeConfig {
@@ -80,12 +103,60 @@ function stripeSubscriptionExpirySeconds(subscription: JsonRecord): number {
   return data.reduce((latest, item) => Math.max(latest, numberValue(asRecord(item).current_period_end)), 0);
 }
 
-function effectiveSource(status: SubscriptionStatus, expiresAtMillis: number): 'subscription' | 'free' {
+function providerIsActive(state: ProviderState): boolean {
   const now = Date.now();
-  const active =
-    ((status === 'active' || status === 'trialing') && (!expiresAtMillis || expiresAtMillis > now)) ||
-    (status === 'canceled' && expiresAtMillis > now);
-  return active ? 'subscription' : 'free';
+  if (state.status === 'active' || state.status === 'trialing') {
+    return state.expiresAtMillis === 0 || state.expiresAtMillis > now;
+  }
+  return state.status === 'canceled' && state.expiresAtMillis > now;
+}
+
+function providerStateFromEntitlement(entitlement: JsonRecord, provider: SubscriptionProvider): ProviderState {
+  const isStripe = provider === 'stripe';
+  const statusKey = isStripe ? 'stripeSubscriptionStatus' : 'playSubscriptionStatus';
+  const expiryKey = isStripe ? 'stripePaidPremiumUntil' : 'playPaidPremiumUntil';
+  let status = subscriptionStatusValue(entitlement[statusKey]);
+  let expiresAtMillis = timestampLikeToMillis(entitlement[expiryKey]);
+
+  // Migrate legacy single-provider entitlement fields lazily. This prevents the
+  // first event from one billing system from erasing a still-valid purchase made
+  // through the other system.
+  if (status === 'none' && stringValue(entitlement.subscriptionProvider) === provider) {
+    status = subscriptionStatusValue(entitlement.subscriptionStatus);
+    expiresAtMillis = timestampLikeToMillis(entitlement.paidPremiumUntil);
+  }
+
+  return { provider, status, expiresAtMillis };
+}
+
+function canonicalEntitlementFields(
+  entitlement: JsonRecord,
+  stripeState: ProviderState,
+  playState: ProviderState,
+  preferredProvider: SubscriptionProvider,
+): JsonRecord {
+  const activeProviders = [stripeState, playState].filter(providerIsActive);
+  activeProviders.sort((left, right) => {
+    const leftExpiry = left.expiresAtMillis || Number.MAX_SAFE_INTEGER;
+    const rightExpiry = right.expiresAtMillis || Number.MAX_SAFE_INTEGER;
+    if (leftExpiry !== rightExpiry) return rightExpiry - leftExpiry;
+    return left.provider === preferredProvider ? -1 : 1;
+  });
+
+  const selected = activeProviders[0] ?? (preferredProvider === 'stripe' ? stripeState : playState);
+  const hasPaidSubscription = activeProviders.length > 0;
+  const vipActive = entitlement.vipEnabled === true;
+  const courtesyActive = timestampLikeToMillis(entitlement.courtesyPremiumUntil) > Date.now();
+  const basePlan = vipActive || hasPaidSubscription || courtesyActive ? 'premium' : 'free';
+  const effectiveSource = vipActive ? 'vip' : hasPaidSubscription ? 'subscription' : courtesyActive ? 'courtesy' : 'free';
+
+  return {
+    basePlan,
+    subscriptionStatus: selected.status,
+    subscriptionProvider: selected.provider,
+    paidPremiumUntil: selected.expiresAtMillis > 0 ? Timestamp.fromMillis(selected.expiresAtMillis) : FieldValue.delete(),
+    effectiveSource,
+  };
 }
 
 async function stripeRequest(
@@ -115,26 +186,53 @@ async function applyStripeSubscription(uid: string, subscription: JsonRecord) {
   const status = stripeStatus(subscription.status);
   const expirySeconds = stripeSubscriptionExpirySeconds(subscription);
   const expiryMillis = expirySeconds > 0 ? expirySeconds * 1000 : 0;
-  const source = effectiveSource(status, expiryMillis);
   const customer = typeof subscription.customer === 'string' ? subscription.customer : stringValue(asRecord(subscription.customer).id);
   const subscriptionId = stringValue(subscription.id);
+  const entitlementRef = db.doc(`entitlements/${uid}`);
 
-  await db.doc(`entitlements/${uid}`).set({
-    basePlan: source === 'subscription' ? 'premium' : 'free',
-    subscriptionStatus: status,
-    subscriptionProvider: 'stripe',
-    stripeCustomerId: customer || FieldValue.delete(),
-    stripeSubscriptionId: subscriptionId || FieldValue.delete(),
-    paidPremiumUntil: expiryMillis > 0 ? Timestamp.fromMillis(expiryMillis) : FieldValue.delete(),
-    effectiveSource: source,
-    billingVerifiedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: 'stripe',
-  }, { merge: true });
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(entitlementRef);
+    const entitlement = snapshot.data() ?? {};
+    const stripeState: ProviderState = { provider: 'stripe', status, expiresAtMillis: expiryMillis };
+    const playState = providerStateFromEntitlement(entitlement, 'google_play');
+
+    transaction.set(entitlementRef, {
+      ...canonicalEntitlementFields(entitlement, stripeState, playState, 'stripe'),
+      stripeSubscriptionStatus: status,
+      stripePaidPremiumUntil: expiryMillis > 0 ? Timestamp.fromMillis(expiryMillis) : FieldValue.delete(),
+      stripeCustomerId: customer || FieldValue.delete(),
+      stripeSubscriptionId: subscriptionId || FieldValue.delete(),
+      billingVerifiedAt: FieldValue.serverTimestamp(),
+      stripeBillingVerifiedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: 'stripe',
+    }, { merge: true });
+  });
 }
 
 async function retrieveStripeSubscription(config: StripeConfig, subscriptionId: string): Promise<JsonRecord> {
   return stripeRequest(config, 'GET', `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`);
+}
+
+async function resolveStripeUid(subscription: JsonRecord): Promise<string> {
+  const metadataUid = stringValue(asRecord(subscription.metadata).firebaseUid);
+  if (metadataUid) return metadataUid;
+
+  const subscriptionId = stringValue(subscription.id);
+  if (subscriptionId) {
+    const match = await db.collection('entitlements').where('stripeSubscriptionId', '==', subscriptionId).limit(1).get();
+    if (!match.empty) return match.docs[0].id;
+  }
+
+  const customerId = typeof subscription.customer === 'string'
+    ? subscription.customer
+    : stringValue(asRecord(subscription.customer).id);
+  if (customerId) {
+    const match = await db.collection('entitlements').where('stripeCustomerId', '==', customerId).limit(1).get();
+    if (!match.empty) return match.docs[0].id;
+  }
+
+  return '';
 }
 
 function verifyStripeSignature(rawBody: Buffer, signatureHeader: string, secret: string): boolean {
@@ -249,8 +347,9 @@ export const stripeBillingWebhook = onRequest(
         const subscriptionId = typeof object.subscription === 'string' ? object.subscription : stringValue(asRecord(object.subscription).id);
         if (uid && subscriptionId) await applyStripeSubscription(uid, await retrieveStripeSubscription(config, subscriptionId));
       } else if (type === 'customer.subscription.created' || type === 'customer.subscription.updated' || type === 'customer.subscription.deleted') {
-        const uid = stringValue(asRecord(object.metadata).firebaseUid);
+        const uid = await resolveStripeUid(object);
         if (uid) await applyStripeSubscription(uid, object);
+        else console.warn('Stripe subscription event could not be matched to an Inkbound account.', { type, subscriptionId: stringValue(object.id) });
       }
       response.status(200).json({ received: true });
     } catch (error) {
@@ -285,6 +384,24 @@ async function fetchPlaySubscription(purchaseToken: string): Promise<JsonRecord>
   return payload;
 }
 
+async function acknowledgePlaySubscription(purchaseToken: string, subscription: JsonRecord): Promise<void> {
+  if (stringValue(subscription.acknowledgementState) === 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED') return;
+
+  const accessToken = await googleAccessToken();
+  const response = await fetch(
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(PLAY_PACKAGE_NAME)}/purchases/subscriptions/${encodeURIComponent(PLAY_PRODUCT_ID)}/tokens/${encodeURIComponent(purchaseToken)}:acknowledge`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  if (!response.ok) {
+    const payload = await response.text().catch(() => '');
+    throw new Error(`Google Play acknowledgement failed (${response.status})${payload ? `: ${payload}` : '.'}`);
+  }
+}
+
 function playStatus(state: string): SubscriptionStatus {
   if (state === 'SUBSCRIPTION_STATE_ACTIVE' || state === 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD') return 'active';
   if (state === 'SUBSCRIPTION_STATE_CANCELED') return 'canceled';
@@ -312,11 +429,25 @@ async function applyPlaySubscription(uid: string, purchaseToken: string, subscri
 
   const status = playStatus(stringValue(subscription.subscriptionState));
   const expiryMillis = playExpiryMillis(subscription);
-  const source = effectiveSource(status, expiryMillis);
+  const playState: ProviderState = { provider: 'google_play', status, expiresAtMillis: expiryMillis };
   const tokenHash = sha256(purchaseToken);
+  const purchaseRef = db.doc(`billingSubscriptions/${tokenHash}`);
+  const entitlementRef = db.doc(`entitlements/${uid}`);
 
   await db.runTransaction(async (transaction) => {
-    transaction.set(db.doc(`billingSubscriptions/${tokenHash}`), {
+    const [purchaseRecord, entitlementSnapshot] = await Promise.all([
+      transaction.get(purchaseRef),
+      transaction.get(entitlementRef),
+    ]);
+    const existingUid = stringValue(purchaseRecord.get('uid'));
+    if (existingUid && existingUid !== uid) {
+      throw new Error('This Google Play purchase is already linked to a different Inkbound account.');
+    }
+
+    const entitlement = entitlementSnapshot.data() ?? {};
+    const stripeState = providerStateFromEntitlement(entitlement, 'stripe');
+
+    transaction.set(purchaseRef, {
       uid,
       provider: 'google_play',
       packageName: PLAY_PACKAGE_NAME,
@@ -327,32 +458,33 @@ async function applyPlaySubscription(uid: string, purchaseToken: string, subscri
       lastVerifiedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    transaction.set(db.doc(`entitlements/${uid}`), {
-      basePlan: source === 'subscription' ? 'premium' : 'free',
-      subscriptionStatus: status,
-      subscriptionProvider: 'google_play',
-      paidPremiumUntil: expiryMillis > 0 ? Timestamp.fromMillis(expiryMillis) : FieldValue.delete(),
-      effectiveSource: source,
+    transaction.set(entitlementRef, {
+      ...canonicalEntitlementFields(entitlement, stripeState, playState, 'google_play'),
+      playSubscriptionStatus: status,
+      playPaidPremiumUntil: expiryMillis > 0 ? Timestamp.fromMillis(expiryMillis) : FieldValue.delete(),
       playPurchaseTokenHash: tokenHash,
       billingVerifiedAt: FieldValue.serverTimestamp(),
+      playBillingVerifiedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: 'google_play',
     }, { merge: true });
   });
 
+  const source = providerIsActive(playState) ? 'subscription' : 'free';
+  if (source === 'subscription') await acknowledgePlaySubscription(purchaseToken, subscription);
   return { status, expiryMillis, source };
 }
 
 export async function refreshGooglePlayEntitlementForUser(uid: string, force = false): Promise<void> {
   const entitlementRef = db.doc(`entitlements/${uid}`);
   const entitlement = await entitlementRef.get();
-  if (stringValue(entitlement.get('subscriptionProvider')) !== 'google_play') return;
-  const verifiedAt = entitlement.get('billingVerifiedAt');
+  const tokenHash = stringValue(entitlement.get('playPurchaseTokenHash'));
+  if (!tokenHash) return;
+
+  const verifiedAt = entitlement.get('playBillingVerifiedAt') ?? entitlement.get('billingVerifiedAt');
   const lastVerifiedMillis = verifiedAt instanceof Timestamp ? verifiedAt.toMillis() : 0;
   if (!force && lastVerifiedMillis && Date.now() - lastVerifiedMillis < PLAY_REFRESH_INTERVAL_MS) return;
 
-  const tokenHash = stringValue(entitlement.get('playPurchaseTokenHash'));
-  if (!tokenHash) return;
   const purchaseRecord = await db.doc(`billingSubscriptions/${tokenHash}`).get();
   const purchaseToken = stringValue(purchaseRecord.get('purchaseToken'));
   if (!purchaseToken || purchaseRecord.get('uid') !== uid) return;
@@ -381,3 +513,36 @@ export const verifyGooglePlaySubscription = onCall(
     }
   },
 );
+
+export const googlePlayBillingNotification = onMessagePublished(PLAY_RTDN_TOPIC, async (event) => {
+  const message = event.data.message;
+  let payload = asRecord(message.json);
+  if (Object.keys(payload).length === 0 && message.data) {
+    try {
+      payload = asRecord(JSON.parse(Buffer.from(message.data, 'base64').toString('utf8')));
+    } catch (error) {
+      console.warn('Ignoring malformed Google Play RTDN payload.', error);
+      return;
+    }
+  }
+
+  if (stringValue(payload.packageName) !== PLAY_PACKAGE_NAME) return;
+  const notification = asRecord(payload.subscriptionNotification);
+  const purchaseToken = stringValue(notification.purchaseToken);
+  if (!purchaseToken) return;
+
+  const tokenHash = sha256(purchaseToken);
+  const purchaseRecord = await db.doc(`billingSubscriptions/${tokenHash}`).get();
+  const uid = stringValue(purchaseRecord.get('uid'));
+  if (!uid) {
+    console.warn('Google Play RTDN arrived before the purchase was linked to an Inkbound account.', { tokenHash });
+    return;
+  }
+
+  try {
+    await applyPlaySubscription(uid, purchaseToken, await fetchPlaySubscription(purchaseToken));
+  } catch (error) {
+    console.error('Google Play RTDN refresh failed.', { uid, tokenHash, error });
+    throw error;
+  }
+});
