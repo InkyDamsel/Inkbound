@@ -136,9 +136,16 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(getSessionPagesRead(sessions[0]), 30);
   assert.equal(getSessionListeningMinutes(sessions[0]), 0);
   assert.deepEqual(getReadingDates(sessions), ['2026-08-10', '2026-08-11']);
-  assert.equal(getReadingStreak(sessions), 2);
-  assert.equal(getCurrentPace(sessions), 50);
-  assert.equal(getSevenDayAveragePace(sessions, new Date('2026-08-11T12:00:00')), 40);
+  assert.equal(getReadingStreak(sessions, '2026-08-11'), 2);
+
+  const currentPace = getCurrentPace(sessions[1], baseBook());
+  assert.equal(currentPace.pagesPerHour, 50);
+  assert.equal(currentPace.remainingPages, 310);
+
+  const sevenDayPace = getSevenDayAveragePace(sessions, baseBook(), '2026-08-11');
+  assert.equal(sevenDayPace.sampleSessions, 2);
+  assert.equal(sevenDayPace.sampleMinutes, 90);
+  assert.ok(Math.abs((sevenDayPace.pagesPerHour ?? 0) - (80 / 1.5)) < 0.0001);
 }
 
 // Integrity analysis should preserve legitimate Finished history with incomplete endpoints.
