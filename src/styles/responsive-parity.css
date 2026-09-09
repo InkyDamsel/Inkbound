@@ -55,6 +55,16 @@
   overflow-wrap: anywhere;
 }
 
+/* Feature actions inside the shared page canvas must never disappear merely
+   because the viewport is compact. Top-bar chrome can still be compacted by the
+   navigation styles, but the actual page controls remain available everywhere. */
+@media (max-width: 1199px) {
+  .inkbound-main-content .quiet-shelf-primary-action,
+  .inkbound-main-content .quiet-shelf-secondary-action {
+    display: inline-flex !important;
+  }
+}
+
 @media (max-width: 767px) {
   /* Preserve the desktop visual language on phones. Only layout changes. */
   .inkbound-app-shell {
@@ -81,12 +91,6 @@
     min-width: 0 !important;
     white-space: normal !important;
     text-align: center;
-  }
-
-  /* Page-level actions must stay visible in Android as well as web. */
-  .inkbound-main-content .quiet-shelf-primary-action,
-  .inkbound-main-content .quiet-shelf-secondary-action {
-    display: inline-flex;
   }
 
   /* Toolbars keep every action available by wrapping instead of clipping. */
