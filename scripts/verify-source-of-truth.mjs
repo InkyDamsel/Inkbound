@@ -91,6 +91,12 @@ const bookDetailsWrapper = read('src/components/BookDetailsModal.tsx');
 for (const forbidden of ['writeRuntimeJson', 'notifyRuntimeStorageChanged', 'notifyCloudDataUpdated', 'fallbackUpdateSession', 'fallbackDeleteSession']) {
   if (bookDetailsWrapper.includes(forbidden)) violations.push(`BookDetailsModal.tsx: session mutation must stay App-owned; found ${forbidden}`);
 }
+if (!bookDetailsWrapper.includes('normalizeLibraryRecord')) {
+  violations.push('BookDetailsModal.tsx: ownership cleanup must use canonical normalizeLibraryRecord');
+}
+if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"]/.test(bookDetailsWrapper)) {
+  violations.push('BookDetailsModal.tsx: Wishlist ownership must not rewrite reading status/history');
+}
 
 const sessionEditor = read('src/components/SessionEditorModal.tsx');
 if (!sessionEditor.includes('localDateKey')) violations.push('SessionEditorModal.tsx: must use the canonical reading date helper');
@@ -107,6 +113,11 @@ if (/customListMemberships|inkbound_library_custom_lists|inkbound_library_custom
 }
 if (!libraryScreen.includes('<CollectionsScreen')) {
   violations.push('LibraryScreen.tsx: My Library Collections must render the canonical CollectionsScreen');
+}
+
+const collectionsScreen = read('src/components/CollectionsScreen.tsx');
+if (!collectionsScreen.includes('ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions')) {
+  violations.push('CollectionsScreen.tsx: collection definitions must use the canonical account-data storage key');
 }
 
 const tbrScreen = read('src/components/TBRScreen.tsx');
@@ -151,8 +162,29 @@ if (!main.includes('<CrossDeviceDeltaSyncBridge />') || !main.includes('<Auxilia
   violations.push('main.tsx: both canonical core and auxiliary cross-device sync bridges must remain mounted');
 }
 
+const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');
+for (const required of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'OneShotCloudHydrationBridge', 'CostSafeCloudPersistenceBridge']) {
+  if (!adaptiveSync.includes(required)) violations.push(`AdaptiveCloudPersistenceBridge.tsx: missing safe hydration boundary ${required}`);
+}
+
+const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
+for (const required of ['subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'crossDeviceCursorKey', 'newestSnapshotUpdateMillis']) {
+  if (!oneShotHydration.includes(required)) violations.push(`OneShotCloudHydrationBridge.tsx: missing safe first-device hydration behavior ${required}`);
+}
+if (/Math\.max\(\s*0\s*,\s*\.\.\./.test(oneShotHydration)) {
+  violations.push('OneShotCloudHydrationBridge.tsx: large-library cursor calculation must not spread an unbounded snapshot into Math.max');
+}
+
+const refreshBoundary = read('src/features/sync/CloudDataRefreshBoundary.tsx');
+for (const required of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'hasEstablishedLocalWorkingCopy', 'notifyCloudDataUpdated']) {
+  if (!refreshBoundary.includes(required)) violations.push(`CloudDataRefreshBoundary.tsx: missing local-first startup safety ${required}`);
+}
+if (refreshBoundary.includes('getCloudDataRevision')) {
+  violations.push('CloudDataRefreshBoundary.tsx: startup readiness must not depend on a global cloud revision from unrelated sync bridges');
+}
+
 const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
-for (const required of ['shouldRemoteChangeReplacePending', 'shouldApplyRemoteTombstone', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey']) {
+for (const required of ['shouldRemoteChangeReplacePending', 'shouldApplyRemoteTombstone', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey', 'hydrationRequiredOwnerUid']) {
   if (!crossDeviceSync.includes(required)) {
     violations.push(`CrossDeviceDeltaSyncBridge.tsx: core sync must consume canonical ${required}`);
   }
@@ -169,11 +201,38 @@ for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselin
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
 }
 
+const checkpointSync = read('src/features/sync/LibrarySyncCheckpointBridge.tsx');
+if (!checkpointSync.includes('uploadedBookCount === checkpoint.expectedBookCount')) {
+  violations.push('LibrarySyncCheckpointBridge.tsx: shrinking/delete-all libraries require exact cloud-count verification');
+}
+if (!checkpointSync.includes('subscribeToRuntimeResume')) {
+  violations.push('LibrarySyncCheckpointBridge.tsx: incomplete checkpoints must retry through the canonical resume boundary');
+}
+
+const serverRefresh = read('src/features/sync/CloudServerRefreshBridge.tsx');
+for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'INKBOUND_FORCE_CLOUD_REFRESH_EVENT']) {
+  if (!serverRefresh.includes(required)) violations.push(`CloudServerRefreshBridge.tsx: explicit refresh must consume canonical ${required}`);
+}
+for (const forbidden of ['pauseAutomaticMetadataWork()', 'recoverBooksIfLocalCacheIsEmpty', 'restoreCatastrophicEmptyLibrary']) {
+  if (serverRefresh.includes(forbidden)) violations.push(`CloudServerRefreshBridge.tsx: automatic startup recovery side effect is forbidden (${forbidden})`);
+}
+if (!serverRefresh.includes('uploaded === 0') || !serverRefresh.includes('uploaded === expected')) {
+  violations.push('CloudServerRefreshBridge.tsx: manual refresh must verify shrinking/empty cloud libraries exactly');
+}
+
 const auxiliarySync = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
-for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'AUXILIARY_ACCOUNT_KEYS']) {
+for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'AUXILIARY_ACCOUNT_KEYS', 'hydrationRequiredOwnerUid', "change.type === 'removed'", 'removeLocalValue']) {
   if (!auxiliarySync.includes(required)) {
-    violations.push(`AuxiliaryAccountSyncBridge.tsx: auxiliary sync must consume canonical ${required}`);
+    violations.push(`AuxiliaryAccountSyncBridge.tsx: auxiliary sync must consume canonical/deletion-safe ${required}`);
   }
+}
+
+const accountSync = read('src/context/AccountSyncContext.tsx');
+for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey', 'localClearIntentKey', 'IMPORT_ENRICHMENT_QUEUE_KEY']) {
+  if (!accountSync.includes(required)) violations.push(`AccountSyncContext.tsx: account cleanup must use canonical ${required}`);
+}
+if (!/finally\s*\{[^}]*removeRuntimeValue\(localClearIntentKey\(signingOutUid\)\)/s.test(accountSync)) {
+  violations.push('AccountSyncContext.tsx: sign-out clear intent must always be removed after the auth transition');
 }
 
 const photoSync = read('src/features/memories/PhotoMemoryAutoSyncBridge.tsx');
@@ -189,6 +248,9 @@ if (/ownership\s*:\s*['"]none['"]/.test(seriesLibrary)) {
 const normalizer = read('src/features/library/libraryNormalization.ts');
 if (!normalizer.includes('normalizeCanonicalLibraryRecords')) {
   violations.push('libraryNormalization.ts: canonical library record normalizer is missing');
+}
+if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"]/.test(normalizer)) {
+  violations.push('libraryNormalization.ts: ownership Wishlist must not erase independent reading status/history');
 }
 
 const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
