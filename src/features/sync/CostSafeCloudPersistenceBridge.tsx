@@ -33,7 +33,7 @@ const PROFILE_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.profile;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const SYNC_FLUSH_DEBOUNCE_MS = 3000;
 const UPLOAD_BATCH_SIZE = 100;
-const CHECKPOINT_BATCH_SIZE = 500;
+const SYNC_RETRY_DELAYS_MS = [15000, 60000, 120000] as const;
 
 interface ReaderProfile {
   displayName?: string;
@@ -174,7 +174,9 @@ async function prepareCloudProfile(uid: string, profile: ReaderProfile): Promise
  * done by CloudServerRefreshBridge when the reader explicitly asks for one.
  *
  * Retry-on-foreground is driven by runtimeLifecycle so browser visibility and
- * Android Capacitor appStateChange use the exact same persistence path.
+ * Android Capacitor appStateChange use the exact same persistence path. Partial
+ * failures also retry with a bounded backoff while the app remains open so one
+ * transient Firestore failure cannot strand the rest of a large import forever.
  */
 export const CostSafeCloudPersistenceBridge: React.FC = () => {
   const sync = useAccountSync();
@@ -188,6 +190,8 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     const uid = sync.user.uid;
     let disposed = false;
     let flushTimer: number | undefined;
+    let retryTimer: number | undefined;
+    let retryAttempt = 0;
     let flushInFlight: Promise<void> | undefined;
     let flushRequested = false;
 
@@ -230,12 +234,12 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     const uploadRecordEntries = async <T,>(
       kind: RecordKind,
       entries: Array<[string, RecordMutation<T>]>,
-    ) => {
-      let checkpointEntries: Array<[string, RecordMutation<T>]> = [];
+    ): Promise<number> => {
+      let failedWrites = 0;
       for (let index = 0; index < entries.length; index += UPLOAD_BATCH_SIZE) {
-        if (disposed) return;
+        if (disposed) return failedWrites;
         const batch = entries.slice(index, index + UPLOAD_BATCH_SIZE);
-        await Promise.all(batch.map(async ([id, mutation]) => {
+        const results = await Promise.allSettled(batch.map(async ([id, mutation]) => {
           const target = doc(db!, 'users', uid, kind, id);
           if (mutation.operation === 'delete') {
             // Deletions must survive offline use. The pending mutation is durable,
@@ -264,17 +268,27 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
           }
         }));
 
-        checkpointEntries.push(...batch);
-        if (checkpointEntries.length >= CHECKPOINT_BATCH_SIZE || index + UPLOAD_BATCH_SIZE >= entries.length) {
-          checkpointRecordBatch(kind, checkpointEntries);
-          checkpointEntries = [];
-          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-        }
+        const successfulEntries: Array<[string, RecordMutation<T>]> = [];
+        results.forEach((result, resultIndex) => {
+          if (result.status === 'fulfilled') {
+            successfulEntries.push(batch[resultIndex]);
+          } else {
+            failedWrites += 1;
+            console.warn(`Inkbound cloud sync will retry a failed ${kind} write.`, result.reason);
+          }
+        });
+
+        // Checkpoint every successful write immediately. A single bad document or
+        // transient request must not keep already-saved records in the pending
+        // queue or prevent later records in the same import from reaching cloud.
+        if (successfulEntries.length > 0) checkpointRecordBatch(kind, successfulEntries);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
       }
+      return failedWrites;
     };
 
-    const performFlushPending = async () => {
-      if (!navigator.onLine || disposed) return;
+    const performFlushPending = async (): Promise<boolean> => {
+      if (!navigator.onLine || disposed) return false;
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
       removeNoOpMutations(pending.books, baseline.books);
@@ -282,39 +296,82 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       if (pending.profile && baseline.profile === stable(pending.profile.data)) delete pending.profile;
       writePending(uid, pending);
 
-      await uploadRecordEntries<UserBookRecord>('books', Object.entries(pending.books));
-      await uploadRecordEntries<ReadingSession>('sessions', Object.entries(pending.sessions));
+      const failedBookWrites = await uploadRecordEntries<UserBookRecord>('books', Object.entries(pending.books));
+      const failedSessionWrites = await uploadRecordEntries<ReadingSession>('sessions', Object.entries(pending.sessions));
 
       const latestBeforeProfile = readPending(uid);
       if (pending.profile && stable(latestBeforeProfile.profile) === stable(pending.profile)) {
-        const preparedProfile = await prepareCloudProfile(uid, pending.profile.data);
-        await setDoc(doc(db!, 'users', uid, 'profile', 'current'), {
-          data: preparedProfile,
-          updatedAt: serverTimestamp(),
-          clientUpdatedAt: pending.profile.clientUpdatedAt,
-        }, { merge: true });
+        try {
+          const preparedProfile = await prepareCloudProfile(uid, pending.profile.data);
+          await setDoc(doc(db!, 'users', uid, 'profile', 'current'), {
+            data: preparedProfile,
+            updatedAt: serverTimestamp(),
+            clientUpdatedAt: pending.profile.clientUpdatedAt,
+          }, { merge: true });
 
-        const latestPending = readPending(uid);
-        if (stable(latestPending.profile) === stable(pending.profile)) {
-          const latestBaseline = readBaseline(uid);
-          const preparedValue = stable(preparedProfile);
-          latestBaseline.profile = preparedValue;
-          delete latestPending.profile;
-          writeBaseline(uid, latestBaseline);
-          writePending(uid, latestPending);
-          runtimeStorage().setItem(PROFILE_KEY, preparedValue);
-          profileFingerprint.current = preparedValue;
+          const latestPending = readPending(uid);
+          if (stable(latestPending.profile) === stable(pending.profile)) {
+            const latestBaseline = readBaseline(uid);
+            const preparedValue = stable(preparedProfile);
+            latestBaseline.profile = preparedValue;
+            delete latestPending.profile;
+            writeBaseline(uid, latestBaseline);
+            writePending(uid, latestPending);
+            runtimeStorage().setItem(PROFILE_KEY, preparedValue);
+            profileFingerprint.current = preparedValue;
+          }
+        } catch (error) {
+          console.warn('Inkbound cloud sync will retry the reader profile update.', error);
         }
+      }
+
+      const remaining = readPending(uid);
+      return failedBookWrites > 0
+        || failedSessionWrites > 0
+        || Object.keys(remaining.books).length > 0
+        || Object.keys(remaining.sessions).length > 0
+        || Boolean(remaining.profile);
+    };
+
+    const clearRetryTimer = () => {
+      if (retryTimer !== undefined) {
+        window.clearTimeout(retryTimer);
+        retryTimer = undefined;
       }
     };
 
-    const flushPending = (): Promise<void> => {
+    let flushPending: () => Promise<void>;
+    const scheduleRetry = () => {
+      if (disposed || !navigator.onLine || retryTimer !== undefined) return;
+      const retryIndex = Math.min(retryAttempt, SYNC_RETRY_DELAYS_MS.length - 1);
+      const delay = SYNC_RETRY_DELAYS_MS[retryIndex];
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void flushPending();
+      }, delay);
+    };
+
+    flushPending = (): Promise<void> => {
       flushRequested = true;
       if (flushInFlight) return flushInFlight;
       flushInFlight = (async () => {
+        let retryNeeded = false;
         while (flushRequested && !disposed) {
           flushRequested = false;
-          await performFlushPending();
+          try {
+            retryNeeded = (await performFlushPending()) || retryNeeded;
+          } catch (error) {
+            retryNeeded = true;
+            console.warn('Inkbound cloud sync paused after an unexpected error and will retry safely.', error);
+          }
+        }
+
+        if (retryNeeded && !disposed) {
+          scheduleRetry();
+        } else {
+          retryAttempt = 0;
+          clearRetryTimer();
         }
       })().finally(() => { flushInFlight = undefined; });
       return flushInFlight;
@@ -350,13 +407,14 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       if (flushTimer !== undefined) window.clearTimeout(flushTimer);
       flushTimer = window.setTimeout(() => {
         flushTimer = undefined;
-        void flushPending().catch(() => undefined);
+        void flushPending();
       }, SYNC_FLUSH_DEBOUNCE_MS);
     };
 
     const handleLocalChange = (event: Event) => {
       const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
       captureCurrentChanges(detail?.keys);
+      clearRetryTimer();
       scheduleFlush();
     };
 
@@ -367,7 +425,8 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
 
     const resumePendingSync = () => {
       if (disposed || !navigator.onLine) return;
-      void flushPending().catch(() => undefined);
+      clearRetryTimer();
+      void flushPending();
     };
 
     const flushBeforeSignOut = (event: Event) => {
@@ -377,6 +436,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         window.clearTimeout(flushTimer);
         flushTimer = undefined;
       }
+      clearRetryTimer();
       captureCurrentChanges();
       detail.waitUntil(flushPending());
     };
@@ -386,11 +446,12 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
     const unsubscribeRuntimeResume = subscribeToRuntimeResume(resumePendingSync);
 
-    if (navigator.onLine) void flushPending().catch(() => undefined);
+    if (navigator.onLine) void flushPending();
 
     return () => {
       disposed = true;
       if (flushTimer !== undefined) window.clearTimeout(flushTimer);
+      clearRetryTimer();
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
       window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
