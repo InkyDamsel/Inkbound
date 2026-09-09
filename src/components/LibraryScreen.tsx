@@ -42,6 +42,7 @@ const libraryCategories = [
   { id: 'currently-reading', label: 'Reading' },
   { id: 'tbr', label: 'TBR' },
   { id: 'finished', label: 'Read' },
+  // Legacy filters remain available so existing records are still easy to find.
   { id: 'paused', label: 'Paused' },
   { id: 'dnf', label: 'DNF' },
   { id: 'owned', label: 'Owned' },
@@ -106,7 +107,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
     if (activeCategory === 'wishlist' && book.ownership !== 'wishlist' && book.status !== 'wishlist') return false;
     if (activeCategory.startsWith('custom:')) {
       const categoryId = activeCategory.slice('custom:'.length);
-      if (book.ownership !== 'custom' || book.customOwnershipCategoryId !== categoryId) return false;
+      if (book.customOwnershipCategoryId !== categoryId) return false;
     }
 
     if (searchFilter.trim()) {
