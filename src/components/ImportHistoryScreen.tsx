@@ -3,7 +3,6 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Download, FileCloc
 import type { UserBookRecord } from '../types';
 import { exportRuntimeTextFile } from '../platform/runtimeExport';
 import { readImportEnrichmentQueue } from '../features/import/libraryEnrichment';
-import { ManualCoverRecoveryPanel } from './ManualCoverRecoveryPanel';
 import {
   ensureImportHistoryForExistingLibrary,
   getImportHistoryProgress,
@@ -27,7 +26,6 @@ type RetryRuntimeWindow = Window & { __inkboundImportRetryRunning?: boolean };
 interface PendingRetry { entry: ImportHistoryEntry; targetBookIds: string[]; }
 
 const IMPORTED_LIBRARY_COLLAPSED_KEY = 'inkbound_import_history_library_collapsed_v1';
-const MANUAL_COVERS_COLLAPSED_KEY = 'inkbound_import_history_manual_covers_collapsed_v1';
 const DETAIL_PASS_LIMIT = 100;
 
 function readCollapsedPreference(key: string): boolean {
@@ -62,7 +60,6 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
   const [retryProgress, setRetryProgress] = useState<ImportEnrichmentRetryProgress | null>(() => readImportEnrichmentRetryProgress());
   const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
   const [importedLibraryCollapsed, setImportedLibraryCollapsed] = useState(() => readCollapsedPreference(IMPORTED_LIBRARY_COLLAPSED_KEY));
-  const [manualCoversCollapsed, setManualCoversCollapsed] = useState(() => readCollapsedPreference(MANUAL_COVERS_COLLAPSED_KEY));
   const retryEnrichmentRef = useRef(onRetryEnrichment);
 
   const history = useMemo(() => ensureImportHistoryForExistingLibrary(books), [books, historyVersion]);
@@ -243,11 +240,6 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
             </div>
           )}
         </div>}
-      </section>
-
-      <section className="overflow-hidden rounded-3xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)]">
-        <button type="button" onClick={() => { const next = !manualCoversCollapsed; setManualCoversCollapsed(next); persistCollapsedPreference(MANUAL_COVERS_COLLAPSED_KEY, next); }} className="flex w-full items-start justify-between gap-4 p-5 text-left sm:items-center sm:px-7"><div className="min-w-0"><p className="inkbound-kicker">Cover Recovery</p><h2 className="mt-1 font-serif text-xl font-bold text-[var(--ink-ivory)]">Manual Cover Library</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">Reuse saved covers without uploading them again.</p></div><span className="flex shrink-0 items-center gap-2 text-xs font-bold text-[var(--ink-gold)]">{manualCoversCollapsed ? 'Expand' : 'Minimize'} {manualCoversCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}</span></button>
-        {!manualCoversCollapsed && <div className="border-t border-[var(--ink-border)] p-3 sm:p-5"><ManualCoverRecoveryPanel books={books} /></div>}
       </section>
     </div>
   );
