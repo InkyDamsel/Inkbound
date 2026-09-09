@@ -194,8 +194,8 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="inkbound-panel rounded-3xl p-4 sm:p-6">
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="py-2">{day}</span>)}</div>
+        <section className="inkbound-panel rounded-3xl p-3 sm:p-6">
+          <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--ink-muted)] sm:text-[11px]">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="py-2">{day}</span>)}</div>
           <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {calendarDays.map((date, index) => {
               if (!date) return <span key={`empty-${index}`} className="aspect-square" aria-hidden="true" />;
@@ -207,16 +207,17 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
               const extraBooks = Math.max(0, dayBooks.length - visibleBooks.length);
               const intensity = activity ? Math.min(1, activity.minutes / 120) : 0;
               return (
-                <button key={date} type="button" onClick={() => setSelectedDate(date)} className={`relative aspect-square overflow-hidden rounded-2xl border p-1 text-left transition hover:-translate-y-0.5 ${isSelected ? 'border-[var(--ink-gold)] ring-1 ring-[var(--ink-gold)]/40' : isToday ? 'border-[var(--ink-mauve)]' : 'border-[var(--ink-border-subtle)]'}`} style={{ background: activity ? `linear-gradient(145deg, color-mix(in srgb, var(--ink-mauve) ${Math.round(10 + intensity * 12)}%, var(--ink-surface-soft)), var(--ink-surface-soft))` : 'var(--ink-surface-soft)' }} aria-label={`${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${activity?.sessions.length ?? 0} Inkbound reading sessions${dayBooks.length ? ` across ${dayBooks.length} ${dayBooks.length === 1 ? 'book' : 'books'}` : ''}`}>
-                  <span className={`relative z-20 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold ${isToday ? 'bg-[var(--ink-gold)] text-black' : 'text-[var(--ink-ivory)]'}`}>{Number(date.slice(-2))}</span>
-                  {visibleBooks.length > 0 && <span className="absolute inset-x-1.5 bottom-1.5 top-7 flex items-end justify-center gap-1 overflow-hidden">{visibleBooks.map((book) => { const coverUrl = getCoverUrl(book); const edition = getActiveEdition(book); return <span key={book.id} title={book.work.title} className={`relative h-full min-w-0 flex-1 overflow-hidden rounded-md border border-white/15 bg-gradient-to-br shadow-lg ${edition?.coverGradient ?? 'from-[#4b2f50] via-[#2c1c32] to-[#161018]'}`}>{coverUrl ? <img src={coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" referrerPolicy="no-referrer" /> : <span className="flex h-full w-full items-center justify-center px-0.5 text-center font-serif text-[7px] leading-tight text-[var(--ink-ivory)]/85">{book.work.title}</span>}</span>; })}</span>}
-                  {activity && <span className="absolute left-1.5 bottom-1.5 z-30 rounded-full bg-black/70 px-1.5 py-0.5 text-[8px] font-bold text-white">{formatMinutes(activity.minutes)}</span>}
-                  {extraBooks > 0 && <span className="absolute bottom-1.5 right-1.5 z-30 rounded-full bg-black/75 px-1.5 py-0.5 text-[8px] font-bold text-white">+{extraBooks}</span>}
+                <button key={date} type="button" onClick={() => setSelectedDate(date)} className={`relative aspect-square min-w-0 overflow-hidden rounded-xl border p-0.5 text-left transition sm:rounded-2xl sm:p-1 sm:hover:-translate-y-0.5 ${isSelected ? 'border-[var(--ink-gold)] ring-1 ring-[var(--ink-gold)]/40' : isToday ? 'border-[var(--ink-mauve)]' : 'border-[var(--ink-border-subtle)]'}`} style={{ background: activity ? `linear-gradient(145deg, color-mix(in srgb, var(--ink-mauve) ${Math.round(10 + intensity * 12)}%, var(--ink-surface-soft)), var(--ink-surface-soft))` : 'var(--ink-surface-soft)' }} aria-label={`${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${activity?.sessions.length ?? 0} Inkbound reading sessions${dayBooks.length ? ` across ${dayBooks.length} ${dayBooks.length === 1 ? 'book' : 'books'}` : ''}`}>
+                  <span className={`relative z-20 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-0.5 text-[10px] font-semibold sm:h-6 sm:min-w-6 sm:px-1 sm:text-xs ${isToday ? 'bg-[var(--ink-gold)] text-black' : 'text-[var(--ink-ivory)]'}`}>{Number(date.slice(-2))}</span>
+                  {activity && <span className="absolute inset-x-1 bottom-1 flex items-center justify-between sm:hidden"><span className="h-1.5 w-1.5 rounded-full bg-[var(--ink-gold)]" aria-hidden="true" /><span className="truncate text-[7px] font-bold text-[var(--ink-ivory)]">{formatMinutes(activity.minutes)}</span></span>}
+                  {visibleBooks.length > 0 && <span className="absolute inset-x-1.5 bottom-1.5 top-7 hidden items-end justify-center gap-1 overflow-hidden sm:flex">{visibleBooks.map((book) => { const coverUrl = getCoverUrl(book); const edition = getActiveEdition(book); return <span key={book.id} title={book.work.title} className={`relative h-full min-w-0 flex-1 overflow-hidden rounded-md border border-white/15 bg-gradient-to-br shadow-lg ${edition?.coverGradient ?? 'from-[#4b2f50] via-[#2c1c32] to-[#161018]'}`}>{coverUrl ? <img src={coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" referrerPolicy="no-referrer" /> : <span className="flex h-full w-full items-center justify-center px-0.5 text-center font-serif text-[7px] leading-tight text-[var(--ink-ivory)]/85">{book.work.title}</span>}</span>; })}</span>}
+                  {activity && <span className="absolute bottom-1.5 left-1.5 z-30 hidden rounded-full bg-black/70 px-1.5 py-0.5 text-[8px] font-bold text-white sm:block">{formatMinutes(activity.minutes)}</span>}
+                  {extraBooks > 0 && <span className="absolute bottom-1.5 right-1.5 z-30 hidden rounded-full bg-black/75 px-1.5 py-0.5 text-[8px] font-bold text-white sm:block">+{extraBooks}</span>}
                 </button>
               );
             })}
           </div>
-          <p className="mt-4 text-xs text-[var(--ink-muted)]">Reading days grow richer with your covers and session time. Select a day for the full story.</p>
+          <p className="mt-4 text-xs text-[var(--ink-muted)]">On phones, reading days stay clean and show session time instead of squeezing covers into tiny cells. Select a day for the full story.</p>
         </section>
 
         <aside className="inkbound-panel rounded-3xl p-5">
