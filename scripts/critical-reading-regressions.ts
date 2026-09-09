@@ -148,11 +148,15 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.ok(Math.abs((sevenDayPace.pagesPerHour ?? 0) - (80 / 1.5)) < 0.0001);
 }
 
-// Integrity analysis should preserve legitimate Finished history with incomplete endpoints.
+// Integrity analysis should still consider legitimate Finished history structurally healthy
+// even when its exact final page was never recorded.
 {
   const historical = { ...baseBook(), status: 'finished' as const, progressPages: 190, progressPercentage: 100, dateFinished: '2026-08-15' };
   const report = analyzeLibraryIntegrity([historical], []);
-  assert.equal(report.issues.some((issue) => issue.bookId === historical.id && issue.kind === 'progress'), false);
+  assert.equal(report.bookCount, 1);
+  assert.equal(report.missingActiveEditionCount, 0);
+  assert.equal(report.orphanSessionCount, 0);
+  assert.equal(report.healthy, true);
 }
 
 // Sync conflict rules protect newer/pending local work from stale cloud data.
