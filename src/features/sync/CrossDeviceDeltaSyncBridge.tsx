@@ -17,7 +17,11 @@ import {
   getRuntimeStorage,
   notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
-import { notifyCloudDataUpdated } from './cloudSyncEvents';
+import {
+  INKBOUND_CLOUD_DATA_EVENT,
+  notifyCloudDataUpdated,
+  type CloudDataUpdatedDetail,
+} from './cloudSyncEvents';
 import {
   shouldApplyRemoteTombstone,
   shouldRemoteChangeReplacePending,
@@ -314,6 +318,14 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       }
     };
 
+    const handleCoreCloudUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
+      if (!detail?.keys?.some((key) => key === BOOKS_KEY || key === SESSIONS_KEY || key === PROFILE_KEY)) return;
+      if (!coreHydrationComplete()) return;
+      void pullDeltas();
+    };
+
+    window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCoreCloudUpdate);
     const unsubscribeRuntimeResume = subscribeToRuntimeResume(() => {
       void pullDeltas();
     });
@@ -333,6 +345,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       disposed = true;
       if (initialRetryTimer !== undefined) window.clearTimeout(initialRetryTimer);
       window.clearInterval(fallback);
+      window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCoreCloudUpdate);
       unsubscribeRuntimeResume();
     };
   }, [user?.uid]);
