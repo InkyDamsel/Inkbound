@@ -157,7 +157,7 @@ export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
   const courtesyIso = courtesyPremiumUntil.toDate().toISOString(); await writeAudit({ action: 'add_courtesy_time', targetUserId, targetEmail, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { days, courtesyPremiumUntil: courtesyIso } }); return { success: true, courtesyPremiumUntil: courtesyIso };
 });
 
-export { createStripeCheckoutSession, createStripeBillingPortalSession, stripeBillingWebhook, verifyGooglePlaySubscription } from './billing.js';
+export { createStripeCheckoutSession, createStripeBillingPortalSession, stripeBillingWebhook, verifyGooglePlaySubscription, googlePlayBillingNotification } from './billing.js';
 export { getAdminDashboard } from './readerDirectoryMaintenance.js';
 export { getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
 export { listAdminRecoveryPoints, restoreAdminRecoveryPoint } from './adminRecovery.js';
