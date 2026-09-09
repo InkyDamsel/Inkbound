@@ -1,9 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, Square, Star, X } from 'lucide-react';
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
+import {
+  CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
+  readCustomOwnershipCategories,
+  type CustomOwnershipCategory,
+} from '../features/ownership/customOwnershipCategories';
 import { usePersistentState } from '../hooks/usePersistentState';
 import type { UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
@@ -28,7 +33,7 @@ type ViewMode = 'grid' | 'list';
 type SortMode = 'recent' | 'title' | 'author' | 'rating' | 'progress';
 
 const LIBRARY_BANNER_ASSET = '/assets/library/cozy-library-background.png';
-const statusTabs = [
+const libraryCategories = [
   { id: 'all', label: 'All' },
   { id: 'currently-reading', label: 'Reading' },
   { id: 'tbr', label: 'TBR' },
@@ -54,7 +59,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const { canUseBatchEdit, openUpgradeModal } = useUserPlan();
   const [section, setSection] = usePersistentState<LibrarySection>(LIBRARY_SECTION_STORAGE_KEY, DEFAULT_LIBRARY_SECTION);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [customCategories, setCustomCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [searchFilter, setSearchFilter] = useState('');
   const [materialFilter, setMaterialFilter] = useState('all');
   const [formatFilter, setFormatFilter] = useState('all');
@@ -63,18 +69,28 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
 
+  useEffect(() => {
+    const refresh = () => setCustomCategories(readCustomOwnershipCategories());
+    window.addEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
+  }, []);
+
   const updateLibraryBook = onUpdateBook ?? ((book: UserBookRecord) => replaceCanonicalBook(books, book));
   const allGenres = useMemo(() => Array.from(new Set(books.flatMap((book) => book.work.genres))).sort(), [books]);
 
   const filteredBooks = useMemo(() => books.filter((book) => {
-    if (activeTab === 'currently-reading' && book.status !== 'currently-reading') return false;
-    if (activeTab === 'tbr' && book.status !== 'tbr') return false;
-    if (activeTab === 'finished' && book.status !== 'finished') return false;
-    if (activeTab === 'paused' && book.status !== 'paused') return false;
-    if (activeTab === 'dnf' && book.status !== 'dnf') return false;
-    if (activeTab === 'owned' && book.ownership !== 'owned') return false;
-    if (activeTab === 'borrowed' && !['borrowed-library', 'borrowed-person'].includes(book.ownership)) return false;
-    if (activeTab === 'wishlist' && book.ownership !== 'wishlist' && book.status !== 'wishlist') return false;
+    if (activeCategory === 'currently-reading' && book.status !== 'currently-reading') return false;
+    if (activeCategory === 'tbr' && book.status !== 'tbr') return false;
+    if (activeCategory === 'finished' && book.status !== 'finished') return false;
+    if (activeCategory === 'paused' && book.status !== 'paused') return false;
+    if (activeCategory === 'dnf' && book.status !== 'dnf') return false;
+    if (activeCategory === 'owned' && book.ownership !== 'owned') return false;
+    if (activeCategory === 'borrowed' && !['borrowed-library', 'borrowed-person'].includes(book.ownership)) return false;
+    if (activeCategory === 'wishlist' && book.ownership !== 'wishlist' && book.status !== 'wishlist') return false;
+    if (activeCategory.startsWith('custom:')) {
+      const categoryId = activeCategory.slice('custom:'.length);
+      if (book.ownership !== 'custom' || book.customOwnershipCategoryId !== categoryId) return false;
+    }
 
     if (searchFilter.trim()) {
       const query = searchFilter.toLowerCase();
@@ -98,7 +114,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         ? (b.rating || 0) - (a.rating || 0)
         : sortBy === 'progress'
           ? b.progressPercentage - a.progressPercentage
-          : new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()), [books, activeTab, searchFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+          : new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()), [books, activeCategory, searchFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const allFilteredSelected = filteredBooks.length > 0 && filteredBooks.every((book) => selectedBookIds.includes(book.id));
   const handleSelectAll = () => {
@@ -137,10 +153,12 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <LoansLibraryPanel books={books} onSelectBook={onSelectBook} />
       ) : <>
         <section className="inkbound-panel p-4 sm:p-5">
-          <div className="flex gap-2 overflow-x-auto pb-2">{statusTabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold ${activeTab === tab.id ? 'border-[#d8ae54] bg-[#c5a059] text-[#171015]' : 'border-transparent bg-[#1d1422] text-[#cfc2cf]'}`}>{tab.label}</button>)}</div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
             <label className="relative xl:col-span-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#807482]" /><input type="search" placeholder="Search title, author, series, or tag" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} className="h-11 w-full rounded-xl border border-[#c5a059]/18 bg-[#0d0910] pl-10 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
+            <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)} className="inkbound-select" aria-label="Library category">
+              <optgroup label="Library categories">{libraryCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</optgroup>
+              {customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}
+            </select>
             <select value={materialFilter} onChange={(event) => setMaterialFilter(event.target.value)} className="inkbound-select"><option value="all">All reading types</option>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.pluralLabel ?? option.label}</option>)}</select>
             <select value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} className="inkbound-select"><option value="all">All formats</option>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
             <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)} className="inkbound-select"><option value="all">All genres</option>{allGenres.map((genre) => <option key={genre}>{genre}</option>)}</select>
@@ -158,7 +176,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <div className="text-xs text-[#807482]">Showing {filteredBooks.length} of {books.length} items</div>
 
         {filteredBooks.length === 0 ? (
-          <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another reading type, status, format, or search.</p></div>
+          <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another category, reading type, format, or search.</p></div>
         ) : viewMode === 'grid' ? (
           <LibraryBookGrid books={filteredBooks} selectedBookIds={selectedBookIds} onToggleSelectBook={onToggleSelectBook} onSelectBook={onSelectBook} />
         ) : (
