@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { IMPORT_ENRICHMENT_PAUSED_KEY } from '../import/importHistory';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
@@ -23,6 +24,7 @@ const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const LAST_SYNC_STORAGE_KEY = SYNC_STORAGE_KEYS.lastCloudSyncAt;
+const LEGACY_AUTOPAUSE_MIGRATION_KEY = 'inkbound_import_enrichment_autopause_cleanup_v1';
 
 interface CloudRecord<T> {
   data: T;
@@ -194,6 +196,15 @@ export const CloudServerRefreshBridge: React.FC = () => {
     const uid = user.uid;
     let disposed = false;
     const storage = getRuntimeStorage();
+
+    // Older builds paused metadata enrichment as a module-load side effect. That
+    // state did not represent a reader choice, so clear it exactly once after the
+    // fixed build opens. Future pause semantics remain untouched after migration.
+    if (storage.getItem(LEGACY_AUTOPAUSE_MIGRATION_KEY) !== '1') {
+      storage.removeItem(IMPORT_ENRICHMENT_PAUSED_KEY);
+      storage.setItem(LEGACY_AUTOPAUSE_MIGRATION_KEY, '1');
+    }
+
     const libraryManifestRef = doc(db, 'users', uid, 'syncState', 'library');
 
     const pendingState = () => readJson<PendingSyncState>(syncPendingStateKey(uid), {
