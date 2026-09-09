@@ -1,3 +1,4 @@
+import { registerPlugin } from '@capacitor/core';
 import { FirebaseAppCheck } from '@capacitor-firebase/app-check';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -9,12 +10,37 @@ import {
   reauthenticateWithCredential,
   signInWithCredential,
 } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
+import { auth, functions } from '../lib/firebase';
 import { configureRuntimeAuthentication } from './runtimeAuthentication';
 import { configureRuntimeExport } from './runtimeExport';
 import { configureRuntimeLifecycle } from './runtimeLifecycle';
 import { initializeNativeSecurityRuntime } from './runtimeNativeSecurityBootstrap';
+import {
+  PremiumBillingPlan,
+  configureRuntimePremiumPurchase,
+  signalPremiumEntitlementRefresh,
+} from './runtimePremiumPurchase';
 import { configureRuntimeReauthentication } from './runtimeReauthentication';
 import { isAndroidRuntime } from './runtimePlatform';
+import { configureRuntimeSubscriptionManagement } from './runtimeSubscriptionManagement';
+
+interface PlayPurchaseResult {
+  purchaseToken?: string;
+  purchased?: boolean;
+  pending?: boolean;
+  acknowledged?: boolean;
+  canceled?: boolean;
+}
+
+interface InkboundPlayBillingPlugin {
+  purchase(options: { basePlanId: PremiumBillingPlan; obfuscatedAccountId: string }): Promise<PlayPurchaseResult>;
+  restore(): Promise<{ purchases: PlayPurchaseResult[] }>;
+  acknowledge(options: { purchaseToken: string }): Promise<void>;
+  manage(): Promise<void>;
+}
+
+const PlayBilling = registerPlugin<InkboundPlayBillingPlugin>('InkboundPlayBilling');
 
 const sanitizeExportFilename = (filename: string) => {
   const cleaned = filename.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+/, '');
@@ -53,13 +79,37 @@ const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInW
   useCredentialManager: true,
 });
 
+const sha256Hex = async (value: string) => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const verifyPlayPurchase = async (purchase: PlayPurchaseResult) => {
+  const purchaseToken = purchase.purchaseToken?.trim() ?? '';
+  if (!purchaseToken) throw new Error('Google Play did not return a purchase token.');
+  if (purchase.pending && !purchase.purchased) throw new Error('Your Google Play purchase is pending. Premium will unlock after Google confirms payment.');
+  if (!purchase.purchased) throw new Error('Google Play has not completed this Premium purchase.');
+  if (!functions) throw new Error('Inkbound billing verification is unavailable right now.');
+
+  const verifySubscription = httpsCallable<{ purchaseToken: string }, { verified: boolean }>(
+    functions,
+    'verifyGooglePlaySubscription',
+  );
+  const response = await verifySubscription({ purchaseToken });
+  if (!response.data.verified) throw new Error('Google Play could not verify Inkbound Premium.');
+
+  if (!purchase.acknowledged) await PlayBilling.acknowledge({ purchaseToken });
+  signalPremiumEntitlementRefresh();
+};
+
 /**
  * Installs Android-native service adapters while preserving Inkbound's existing
- * Firebase JS clients as the single auth/App Check/session authority.
+ * Firebase JS clients as the single auth/App Check/session/entitlement authority.
  *
  * Native plugins supply device capabilities only:
  * - Play Integrity -> Firebase JS App Check CustomProvider
  * - Google native sign-in -> Firebase JS Auth credential
+ * - Google Play Billing -> verified Firebase Premium entitlement
  * - Capacitor App lifecycle -> Inkbound runtime resume signal
  * - Filesystem/Share -> user-owned export/share flows
  */
@@ -76,7 +126,7 @@ export async function initializeAndroidRuntime() {
     // startup restoration inside a Capacitor WebView and falsely report that the
     // account cannot be kept signed in.
     preparePersistence: async () => undefined,
-    signInWithGoogle: async (auth) => {
+    signInWithGoogle: async (firebaseAuth) => {
       const result = await requestNativeGoogleCredential();
       const idToken = result.credential?.idToken ?? '';
       const accessToken = result.credential?.accessToken ?? '';
@@ -84,7 +134,7 @@ export async function initializeAndroidRuntime() {
         throw new Error('Google sign-in did not return an Android identity token.');
       }
       await signInWithCredential(
-        auth,
+        firebaseAuth,
         GoogleAuthProvider.credential(idToken, accessToken || undefined),
       );
     },
@@ -128,6 +178,38 @@ export async function initializeAndroidRuntime() {
 
       throw new Error('This sign-in method cannot be verified on Android yet.');
     },
+  });
+
+  configureRuntimePremiumPurchase({
+    isAvailable: () => Boolean(auth?.currentUser && functions),
+    canRestore: () => Boolean(auth?.currentUser && functions),
+    purchase: async (plan) => {
+      const uid = auth?.currentUser?.uid;
+      if (!uid) throw new Error('Sign in before starting a Premium subscription.');
+      const purchase = await PlayBilling.purchase({
+        basePlanId: plan,
+        obfuscatedAccountId: await sha256Hex(uid),
+      });
+      if (purchase.canceled) return;
+      await verifyPlayPurchase(purchase);
+    },
+    restore: async () => {
+      if (!auth?.currentUser) throw new Error('Sign in before restoring Premium.');
+      const result = await PlayBilling.restore();
+      let restored = 0;
+      for (const purchase of result.purchases ?? []) {
+        if (!purchase.purchased) continue;
+        await verifyPlayPurchase(purchase);
+        restored += 1;
+      }
+      if (restored > 0) signalPremiumEntitlementRefresh();
+      return restored;
+    },
+  });
+
+  configureRuntimeSubscriptionManagement({
+    isAvailable: () => Boolean(auth?.currentUser),
+    open: async () => PlayBilling.manage(),
   });
 
   configureRuntimeExport({
