@@ -1,7 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { defineJsonSecret } from 'firebase-functions/params';
+import { defineSecret } from 'firebase-functions/params';
 import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 
 const adminApp = getApps()[0] ?? initializeApp();
@@ -19,7 +19,7 @@ interface StripeConfig {
   annualPriceId: string;
 }
 
-const stripeConfig = defineJsonSecret<StripeConfig>('INKBOUND_STRIPE_CONFIG');
+const stripeConfigSecret = defineSecret('INKBOUND_STRIPE_CONFIG');
 
 type SubscriptionStatus = 'none' | 'active' | 'trialing' | 'past_due' | 'canceled';
 
@@ -40,6 +40,23 @@ function stringValue(value: unknown): string {
 
 function numberValue(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function stripeConfigValue(): StripeConfig {
+  const raw = stripeConfigSecret.value();
+  let parsed: JsonRecord;
+  try {
+    parsed = asRecord(JSON.parse(raw));
+  } catch {
+    throw new Error('INKBOUND_STRIPE_CONFIG must contain valid JSON.');
+  }
+
+  return {
+    secretKey: stringValue(parsed.secretKey),
+    webhookSecret: stringValue(parsed.webhookSecret),
+    monthlyPriceId: stringValue(parsed.monthlyPriceId),
+    annualPriceId: stringValue(parsed.annualPriceId),
+  };
 }
 
 function sha256(value: string): string {
@@ -139,14 +156,14 @@ function verifyStripeSignature(rawBody: Buffer, signatureHeader: string, secret:
 }
 
 export const createStripeCheckoutSession = onCall(
-  { enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true', secrets: [stripeConfig] },
+  { enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true', secrets: [stripeConfigSecret] },
   async (request) => {
     const auth = requireAuthenticated(request);
     const data = asRecord(request.data);
     const plan = stringValue(data.plan);
     if (plan !== 'monthly' && plan !== 'annual') throw new HttpsError('invalid-argument', 'Choose a valid Premium plan.');
 
-    const config = stripeConfig.value();
+    const config = stripeConfigValue();
     const priceId = plan === 'monthly' ? config.monthlyPriceId : config.annualPriceId;
     if (!config.secretKey || !priceId) throw new HttpsError('failed-precondition', 'Stripe subscriptions are not configured yet.');
 
@@ -182,10 +199,10 @@ export const createStripeCheckoutSession = onCall(
 );
 
 export const createStripeBillingPortalSession = onCall(
-  { enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true', secrets: [stripeConfig] },
+  { enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true', secrets: [stripeConfigSecret] },
   async (request) => {
     const auth = requireAuthenticated(request);
-    const config = stripeConfig.value();
+    const config = stripeConfigValue();
     const entitlement = (await db.doc(`entitlements/${auth.uid}`).get()).data() ?? {};
     const customerId = stringValue(entitlement.stripeCustomerId);
     if (!customerId) throw new HttpsError('failed-precondition', 'This account does not have a Stripe subscription to manage.');
@@ -206,13 +223,13 @@ export const createStripeBillingPortalSession = onCall(
 );
 
 export const stripeBillingWebhook = onRequest(
-  { secrets: [stripeConfig] },
+  { secrets: [stripeConfigSecret] },
   async (request, response) => {
     if (request.method !== 'POST') {
       response.status(405).send('Method not allowed');
       return;
     }
-    const config = stripeConfig.value();
+    const config = stripeConfigValue();
     const signature = request.header('stripe-signature') ?? '';
     if (!config.webhookSecret || !verifyStripeSignature(request.rawBody, signature, config.webhookSecret)) {
       response.status(400).send('Invalid signature');
