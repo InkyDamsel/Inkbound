@@ -8,6 +8,8 @@ import {
   type CloudSyncHealth,
 } from '../../features/sync/cloudSyncHealth';
 
+const AUTH_RESTORE_TIMEOUT_MS = 8000;
+
 const formatLastSync = (value: string | null) => {
   if (!value) return 'This device has not finished its first update yet';
   const date = new Date(value);
@@ -42,6 +44,8 @@ export const AccountSyncCard: React.FC = () => {
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [linkPassword, setLinkPassword] = useState('');
   const [cloudHealth, setCloudHealth] = useState<CloudSyncHealth>(() => getCloudSyncHealth());
+  const [authRestoreTimedOut, setAuthRestoreTimedOut] = useState(false);
+  const [showSignInRecovery, setShowSignInRecovery] = useState(false);
 
   useEffect(() => {
     const handleHealth = (event: Event) => {
@@ -50,6 +54,16 @@ export const AccountSyncCard: React.FC = () => {
     window.addEventListener(INKBOUND_CLOUD_SYNC_HEALTH_EVENT, handleHealth);
     return () => window.removeEventListener(INKBOUND_CLOUD_SYNC_HEALTH_EVENT, handleHealth);
   }, []);
+
+  useEffect(() => {
+    if (sync.isAuthReady) {
+      setAuthRestoreTimedOut(false);
+      setShowSignInRecovery(false);
+      return undefined;
+    }
+    const timeout = window.setTimeout(() => setAuthRestoreTimedOut(true), AUTH_RESTORE_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [sync.isAuthReady]);
 
   const hasPasswordProvider = useMemo(
     () => sync.user?.providerData.some((provider) => provider.providerId === 'password') ?? false,
@@ -63,6 +77,66 @@ export const AccountSyncCard: React.FC = () => {
     if (authMode === 'signin') void sync.signInWithEmail(email, password);
     else void sync.createEmailAccount(email, password);
   };
+
+  const renderSignedOutAccount = () => (
+    <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 sm:p-5">
+        <button
+          type="button"
+          onClick={() => void sync.signInWithGoogle()}
+          disabled={!sync.isConfigured || isWorking}
+          className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-border-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-sm font-bold text-[#4285f4]">G</span>
+          Continue with Google
+        </button>
+
+        <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-[var(--ink-faint)]">
+          <span className="h-px flex-1 bg-[var(--ink-border)]" /> or <span className="h-px flex-1 bg-[var(--ink-border)]" />
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 rounded-xl bg-[var(--ink-page)] p-1">
+          <button type="button" onClick={() => setAuthMode('signin')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'signin' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
+            Sign in
+          </button>
+          <button type="button" onClick={() => setAuthMode('create')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'create' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
+            Create account
+          </button>
+        </div>
+
+        <form className="space-y-3" onSubmit={submitEmailAuth}>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-muted)]">Email</span>
+            <input type="email" inputMode="email" autoCapitalize="none" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="reader@example.com" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-muted)]">Password</span>
+            <input type="password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
+          </label>
+          <button type="submit" disabled={!sync.isConfigured || isWorking} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink-gold)] px-4 text-sm font-bold text-[#20170d] disabled:cursor-not-allowed disabled:opacity-50">
+            <Mail className="h-4 w-4" />
+            {isWorking ? 'Please wait...' : authMode === 'signin' ? 'Sign in with email' : 'Create Inkbound account'}
+          </button>
+        </form>
+
+        {authMode === 'signin' && (
+          <button type="button" onClick={() => email.trim() && void sync.sendPasswordReset(email)} disabled={!email.trim() || isWorking} className="mt-3 min-h-11 px-1 text-xs font-semibold text-[var(--ink-muted)] underline decoration-[var(--ink-border)] underline-offset-4 disabled:opacity-40">
+            Forgot password?
+          </button>
+        )}
+      </div>
+
+      <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-page)] p-4 sm:p-5">
+        <p className="text-sm font-bold text-[var(--ink-ivory)]">One account, every device</p>
+        <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">
+          Books, reading sessions, and Photo Memories added on your phone, computer, tablet, or the web stay with the same Inkbound account and appear on your other devices.
+        </p>
+        <p className="mt-4 text-xs leading-5 text-[var(--ink-muted)]">
+          Already use Google? Keep using it. After signing in with Google, you can add an email login to the same account instead of creating a second library.
+        </p>
+      </div>
+    </div>
+  );
 
   return (
     <section className="inkbound-panel rounded-3xl p-5 sm:p-7">
@@ -84,68 +158,27 @@ export const AccountSyncCard: React.FC = () => {
         </div>
       )}
 
-      {!sync.isAuthReady ? (
-        <div className="mt-6 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">
-          Restoring your saved account...
-        </div>
+      {!sync.isAuthReady && !showSignInRecovery ? (
+        authRestoreTimedOut ? (
+          <div className="mt-6 rounded-2xl border border-amber-500/25 bg-amber-950/10 p-4">
+            <p className="text-sm font-bold text-[var(--ink-ivory)]">We couldn't finish restoring your saved account.</p>
+            <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">Your books stay on this device. You can retry account restoration or go straight to sign in without clearing your local library.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" onClick={() => window.location.reload()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--ink-border)] px-4 text-xs font-semibold text-[var(--ink-ivory)]">
+                <RefreshCw className="h-4 w-4" /> Try again
+              </button>
+              <button type="button" onClick={() => setShowSignInRecovery(true)} className="inline-flex min-h-11 items-center rounded-xl bg-[var(--ink-gold)] px-4 text-xs font-bold text-[#20170d]">
+                Go to sign in
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">
+            Restoring your saved account...
+          </div>
+        )
       ) : !sync.user ? (
-        <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 sm:p-5">
-            <button
-              type="button"
-              onClick={() => void sync.signInWithGoogle()}
-              disabled={!sync.isConfigured || isWorking}
-              className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-border-strong)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-sm font-bold text-[#4285f4]">G</span>
-              Continue with Google
-            </button>
-
-            <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-[var(--ink-faint)]">
-              <span className="h-px flex-1 bg-[var(--ink-border)]" /> or <span className="h-px flex-1 bg-[var(--ink-border)]" />
-            </div>
-
-            <div className="mb-4 grid grid-cols-2 rounded-xl bg-[var(--ink-page)] p-1">
-              <button type="button" onClick={() => setAuthMode('signin')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'signin' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
-                Sign in
-              </button>
-              <button type="button" onClick={() => setAuthMode('create')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'create' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
-                Create account
-              </button>
-            </div>
-
-            <form className="space-y-3" onSubmit={submitEmailAuth}>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-muted)]">Email</span>
-                <input type="email" inputMode="email" autoCapitalize="none" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="reader@example.com" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
-              </label>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-muted)]">Password</span>
-                <input type="password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
-              </label>
-              <button type="submit" disabled={!sync.isConfigured || isWorking} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink-gold)] px-4 text-sm font-bold text-[#20170d] disabled:cursor-not-allowed disabled:opacity-50">
-                <Mail className="h-4 w-4" />
-                {isWorking ? 'Please wait...' : authMode === 'signin' ? 'Sign in with email' : 'Create Inkbound account'}
-              </button>
-            </form>
-
-            {authMode === 'signin' && (
-              <button type="button" onClick={() => email.trim() && void sync.sendPasswordReset(email)} disabled={!email.trim() || isWorking} className="mt-3 min-h-11 px-1 text-xs font-semibold text-[var(--ink-muted)] underline decoration-[var(--ink-border)] underline-offset-4 disabled:opacity-40">
-                Forgot password?
-              </button>
-            )}
-          </div>
-
-          <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-page)] p-4 sm:p-5">
-            <p className="text-sm font-bold text-[var(--ink-ivory)]">One account, every device</p>
-            <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">
-              Books, reading sessions, and Photo Memories added on your phone, computer, tablet, or the web stay with the same Inkbound account and appear on your other devices.
-            </p>
-            <p className="mt-4 text-xs leading-5 text-[var(--ink-muted)]">
-              Already use Google? Keep using it. After signing in with Google, you can add an email login to the same account instead of creating a second library.
-            </p>
-          </div>
-        </div>
+        renderSignedOutAccount()
       ) : (
         <div className="mt-6 space-y-4">
           <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 sm:flex-row sm:items-center sm:justify-between">
