@@ -51,15 +51,27 @@ for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(cand
 
 const main = read('src/main.tsx');
 assert(main.includes('<App />'), 'src/main.tsx must mount the shared <App /> for the signed-in application.');
-assert(!/isAndroidRuntime\([^)]*\)[\s\S]{0,160}<[^>]*App/.test(main), 'src/main.tsx must not select a different application tree for Android.');
+assert(
+  main.includes('{isPublicSurface ? <PublicSurface /> : <InkboundApplication />}'),
+  'src/main.tsx must mount the same InkboundApplication tree for web and Android; only public marketing/FAQ routes may bypass it.',
+);
 
 const navbar = read('src/components/Navbar.tsx');
 const app = read('src/App.tsx');
 assert(navbar.includes('mobileNavigationGroups = visibleNavigationGroups'), 'Mobile navigation must be derived from the same visibleNavigationGroups used by desktop.');
 assert(navbar.includes('mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 2)]'), 'Mobile primary navigation must be derived from the canonical navigation groups.');
 
-// Every canonical navigation destination must be handled by the shared App.
-const navIds = new Set([...navbar.matchAll(/\{\s*id:\s*'([a-z-]+)'\s*,\s*label:/g)].map((match) => match[1]));
+// Every canonical navigation item must be handled by the shared App. Parse only
+// item arrays so group IDs such as "reading" and "journal" are not mistaken for
+// navigable destinations merely because they also have labels.
+const navIds = new Set();
+for (const itemsMatch of navbar.matchAll(/items:\s*\[([\s\S]*?)\]\s*}/g)) {
+  const itemsBlock = itemsMatch[1];
+  for (const itemMatch of itemsBlock.matchAll(/\{\s*id:\s*'([a-z-]+)'\s*,\s*label:/g)) {
+    navIds.add(itemMatch[1]);
+  }
+}
+navIds.add('home');
 const redirectedNavIds = new Set(['import-history']);
 for (const id of navIds) {
   if (redirectedNavIds.has(id)) continue;
