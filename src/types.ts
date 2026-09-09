@@ -18,7 +18,10 @@ export type ReadingMaterialType =
   | 'short-story'
   | 'anthology';
 
-export type ReadingStatus = 'currently-reading' | 'tbr' | 'finished' | 'paused' | 'dnf' | 'wishlist';
+// `custom` is an internal compatibility value for reader-defined categories.
+// The only built-in statuses offered to readers are Currently Reading, TBR, and Read.
+// Legacy paused/dnf/wishlist values remain valid so existing libraries are never rewritten.
+export type ReadingStatus = 'currently-reading' | 'tbr' | 'finished' | 'custom' | 'paused' | 'dnf' | 'wishlist';
 
 export type OwnershipStatus = 'owned' | 'borrowed-library' | 'borrowed-person' | 'subscription' | 'wishlist' | 'custom' | 'none';
 
@@ -90,6 +93,8 @@ export interface UserBookRecord {
   editions: Edition[];
   status: ReadingStatus;
   ownership: OwnershipStatus;
+  // Kept under the existing field name for backward compatibility with synced data.
+  // It now identifies a reader-defined library category independently of ownership.
   customOwnershipCategoryId?: string;
   subscriptionService?: SubscriptionService;
   libraryLoan?: LibraryLoan;
