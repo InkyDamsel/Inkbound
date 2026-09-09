@@ -10,17 +10,9 @@ import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
 export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
   let normalized = book;
 
-  // Ownership and reading status are separate concepts, but a title explicitly
-  // moved to the Wishlist cannot simultaneously remain a finished/read item.
-  // This repairs older contradictory records without treating ordinary TBR
-  // ownership changes as reading activity.
-  if (normalized.ownership === 'wishlist' && normalized.status === 'finished') {
-    normalized = {
-      ...normalized,
-      status: 'wishlist',
-      dateFinished: undefined,
-    };
-  }
+  // Ownership and reading status are independent facts. A reader can move a
+  // previously finished book to the Wishlist ownership bucket without erasing
+  // its finish date/history. Do not normalize one field by rewriting the other.
 
   // Person-to-person borrowing does not use the library-loan due-date model.
   if (normalized.ownership === 'borrowed-person' && normalized.libraryLoan) {
