@@ -22,9 +22,11 @@
   border-radius: var(--ink-card-radius);
 }
 
+/* Inkbound actions use the shared rounded-rectangle control shape. Do not
+   reintroduce the old capsule/pill treatment globally. */
 .inkbound-app-shell .quiet-shelf-primary-action,
 .inkbound-app-shell .quiet-shelf-secondary-action {
-  border-radius: 999px;
+  border-radius: var(--ink-control-radius);
 }
 
 .inkbound-app-shell main img,
@@ -154,6 +156,14 @@
   .inkbound-main-content header > .quiet-shelf-secondary-action,
   .inkbound-main-content section > .quiet-shelf-secondary-action {
     width: 100%;
+  }
+
+  /* The coarse-pointer accessibility rule gives every button a 44px minimum
+     height. Calendar day cells are square controls, so opt this grid out of that
+     generic height while retaining its touch target via the full square cell. */
+  .inkbound-app-shell section[aria-labelledby='reading-activity-title'] .grid.grid-cols-7 > button {
+    min-height: 0;
+    aspect-ratio: 1 / 1;
   }
 }
 
