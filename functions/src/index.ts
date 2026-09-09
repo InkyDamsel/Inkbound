@@ -3,6 +3,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { DocumentReference, FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
+import { refreshGooglePlayEntitlementForUser } from './billing.js';
 
 const adminApp = getApps()[0] ?? initializeApp();
 
@@ -56,11 +57,14 @@ function paidSubscriptionIsActive(entitlement: Record<string, unknown> | undefin
   if (!entitlement) return false;
   const status = entitlement.subscriptionStatus;
   const paidUntil = timestampLikeToMillis(entitlement.paidPremiumUntil);
-  return status === 'active' || status === 'trialing' || paidUntil > Date.now();
+  if (status === 'active' || status === 'trialing') return paidUntil === 0 || paidUntil > Date.now();
+  return status === 'canceled' && paidUntil > Date.now();
 }
 
 async function eraseInkboundUser(uid: string) {
   await Promise.all([db.recursiveDelete(db.doc(`users/${uid}`)), db.doc(`userDirectory/${uid}`).delete(), db.doc(`entitlements/${uid}`).delete(), db.doc(`admins/${uid}`).delete()]);
+  const billingSnapshots = await db.collection('billingSubscriptions').where('uid', '==', uid).get();
+  await Promise.all(billingSnapshots.docs.map((item) => item.ref.delete()));
   const auditSnapshots = await Promise.all([db.collection('adminAudit').where('targetUserId', '==', uid).get(), db.collection('adminAudit').where('performedBy', '==', uid).get()]);
   const auditRefs = new Map<string, DocumentReference>();
   auditSnapshots.forEach((snapshot) => snapshot.docs.forEach((item) => auditRefs.set(item.ref.path, item.ref)));
@@ -104,8 +108,16 @@ export const syncUserDirectory = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
 });
 
 export const getMyEntitlement = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
-  const auth = requireAuthenticated(request); const entitlement = (await db.doc(`entitlements/${auth.uid}`).get()).data() ?? {};
-  return { subscriptionStatus: typeof entitlement.subscriptionStatus === 'string' ? entitlement.subscriptionStatus : 'none', paidPremiumUntil: timestampToIso(entitlement.paidPremiumUntil), vipEnabled: entitlement.vipEnabled === true, courtesyPremiumUntil: timestampToIso(entitlement.courtesyPremiumUntil) };
+  const auth = requireAuthenticated(request);
+  await refreshGooglePlayEntitlementForUser(auth.uid).catch((error) => console.warn('Could not refresh Google Play entitlement during account refresh.', error));
+  const entitlement = (await db.doc(`entitlements/${auth.uid}`).get()).data() ?? {};
+  return {
+    subscriptionStatus: typeof entitlement.subscriptionStatus === 'string' ? entitlement.subscriptionStatus : 'none',
+    subscriptionProvider: typeof entitlement.subscriptionProvider === 'string' ? entitlement.subscriptionProvider : null,
+    paidPremiumUntil: timestampToIso(entitlement.paidPremiumUntil),
+    vipEnabled: entitlement.vipEnabled === true,
+    courtesyPremiumUntil: timestampToIso(entitlement.courtesyPremiumUntil),
+  };
 });
 
 export const deleteMyAccount = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
@@ -145,6 +157,7 @@ export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
   const courtesyIso = courtesyPremiumUntil.toDate().toISOString(); await writeAudit({ action: 'add_courtesy_time', targetUserId, targetEmail, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { days, courtesyPremiumUntil: courtesyIso } }); return { success: true, courtesyPremiumUntil: courtesyIso };
 });
 
+export { createStripeCheckoutSession, createStripeBillingPortalSession, stripeBillingWebhook, verifyGooglePlaySubscription } from './billing.js';
 export { getAdminDashboard } from './readerDirectoryMaintenance.js';
 export { getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
 export { listAdminRecoveryPoints, restoreAdminRecoveryPoint } from './adminRecovery.js';
