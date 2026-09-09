@@ -202,8 +202,10 @@ for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselin
 }
 
 const checkpointSync = read('src/features/sync/LibrarySyncCheckpointBridge.tsx');
-if (!checkpointSync.includes('uploadedBookCount === checkpoint.expectedBookCount')) {
-  violations.push('LibrarySyncCheckpointBridge.tsx: shrinking/delete-all libraries require exact cloud-count verification');
+for (const required of ['checkpoint.direction === \'grow\'', 'uploadedBookCount >= checkpoint.expectedBookCount', 'uploadedBookCount === checkpoint.expectedBookCount']) {
+  if (!checkpointSync.includes(required)) {
+    violations.push(`LibrarySyncCheckpointBridge.tsx: count verification must preserve safe growth/shrink behavior (${required})`);
+  }
 }
 if (!checkpointSync.includes('subscribeToRuntimeResume')) {
   violations.push('LibrarySyncCheckpointBridge.tsx: incomplete checkpoints must retry through the canonical resume boundary');
@@ -251,6 +253,9 @@ if (!normalizer.includes('normalizeCanonicalLibraryRecords')) {
 }
 if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"]/.test(normalizer)) {
   violations.push('libraryNormalization.ts: ownership Wishlist must not erase independent reading status/history');
+}
+if (!normalizer.includes("ownership !== 'borrowed-library'") || !normalizer.includes('libraryLoan: undefined')) {
+  violations.push('libraryNormalization.ts: stale library-loan dates must be cleared when ownership is no longer a library loan');
 }
 
 const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
