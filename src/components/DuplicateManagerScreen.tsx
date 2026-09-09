@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Copy, Merge, Search, ShieldCheck } from 'lucide-react';
 import type { Edition, UserBookRecord } from '../types';
 import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import { BookCover } from './BookCover';
 import { ManualCoverRecoveryPanel } from './ManualCoverRecoveryPanel';
+import { PaginationControls } from './PaginationControls';
 import { CustomOwnershipCategoryManager } from './ownership/CustomOwnershipCategoryManager';
 
 export interface DuplicateMergeRequest {
@@ -25,6 +26,7 @@ interface DuplicateGroup {
 }
 
 const IGNORED_STORAGE_KEY = 'inkbound_duplicate_groups_ignored';
+const DUPLICATE_PAGE_SIZE = 10;
 
 const normalizeText = (value?: string) =>
   value?.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -161,11 +163,10 @@ const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
 };
 
 export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ books, onMergeGroup, onSelectBook }) => {
-  const [ignoredGroupIds, setIgnoredGroupIds] = useState<Set<string>>(() =>
-    new Set(readRuntimeJson<string[]>(IGNORED_STORAGE_KEY, [])),
-  );
+  const [ignoredGroupIds, setIgnoredGroupIds] = useState<Set<string>>(() => new Set(readRuntimeJson<string[]>(IGNORED_STORAGE_KEY, [])));
   const [query, setQuery] = useState('');
   const [keeperByGroup, setKeeperByGroup] = useState<Record<string, string>>({});
+  const [duplicatePage, setDuplicatePage] = useState(1);
   const groups = useMemo(() => findDuplicateGroups(books, ignoredGroupIds), [books, ignoredGroupIds]);
   const visibleGroups = useMemo(() => {
     const normalized = normalizeText(query);
@@ -173,6 +174,14 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
     return groups.filter((group) => group.books.some((book) => normalizeText(`${book.work.title} ${book.work.author}`).includes(normalized)));
   }, [groups, query]);
   const booksInGroups = new Set(groups.flatMap((group) => group.books.map((book) => book.id))).size;
+  const duplicateTotalPages = Math.max(1, Math.ceil(visibleGroups.length / DUPLICATE_PAGE_SIZE));
+  const safeDuplicatePage = Math.min(duplicatePage, duplicateTotalPages);
+  const paginatedGroups = visibleGroups.slice((safeDuplicatePage - 1) * DUPLICATE_PAGE_SIZE, safeDuplicatePage * DUPLICATE_PAGE_SIZE);
+
+  useEffect(() => { setDuplicatePage(1); }, [query]);
+  useEffect(() => {
+    if (duplicatePage > duplicateTotalPages) setDuplicatePage(duplicateTotalPages);
+  }, [duplicatePage, duplicateTotalPages]);
 
   const ignoreGroup = (groupId: string) => {
     const next = new Set(ignoredGroupIds);
@@ -207,7 +216,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
 
       <div className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search duplicate groups by title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></div>
 
-      {visibleGroups.length === 0 ? <section className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No duplicate groups to review</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">Your current library scan is clean, or the remaining groups were marked as separate books.</p></section> : <div className="space-y-5">{visibleGroups.map((group) => {
+      {visibleGroups.length === 0 ? <section className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No duplicate groups to review</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">Your current library scan is clean, or the remaining groups were marked as separate books.</p></section> : <div className="space-y-5">{paginatedGroups.map((group) => {
         const selectedKeeper = keeperByGroup[group.id] ?? group.books[0].id;
         return <article key={group.id} className="inkbound-panel rounded-3xl p-5 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><Copy className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><h2 className="min-w-0 truncate font-serif text-xl font-bold text-[var(--ink-ivory)]">{group.books[0].work.title}</h2></div><p className="mt-1 text-xs text-[var(--ink-muted)]">{group.reason === 'isbn' ? 'Exact ISBN match' : 'Exact normalized title + author'} · {group.books.length} copies</p></div><div className="flex flex-col gap-2 min-[430px]:flex-row"><button type="button" onClick={() => ignoreGroup(group.id)} className="quiet-shelf-secondary-action justify-center">Not Duplicates</button><button type="button" onClick={() => mergeGroup(group)} className="quiet-shelf-primary-action justify-center"><Merge className="h-4 w-4" /> Merge Group</button></div></div>
@@ -221,7 +230,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
             </label>;
           })}</div>
         </article>;
-      })}</div>}
+      })}<PaginationControls page={safeDuplicatePage} totalItems={visibleGroups.length} pageSize={DUPLICATE_PAGE_SIZE} onPageChange={setDuplicatePage} itemLabel="duplicate groups" /></div>}
     </section>
   </div>;
 };
