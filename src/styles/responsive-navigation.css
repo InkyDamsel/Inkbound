@@ -103,22 +103,34 @@
     width: 100%;
     max-width: none;
     padding-top: calc(64px + env(safe-area-inset-top));
-    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
   }
 
+  /* Flat app-style bottom navigation. This intentionally does not use the old
+     floating rounded/pill container. */
   .quiet-shelf-mobile-nav {
-    right: max(8px, env(safe-area-inset-right));
-    bottom: max(8px, env(safe-area-inset-bottom));
-    left: max(8px, env(safe-area-inset-left));
+    right: 0;
+    bottom: 0;
+    left: 0;
     display: grid !important;
-    padding-bottom: 0;
+    padding: 0 0 env(safe-area-inset-bottom);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28);
   }
 
   .quiet-shelf-mobile-nav button {
     min-width: 0;
-    min-height: 52px;
+    min-height: 56px;
     padding: 8px 4px;
+    border-radius: 0;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .quiet-shelf-mobile-nav button.is-active {
+    border-radius: 0;
   }
 
   .quiet-shelf-mobile-nav button span {
