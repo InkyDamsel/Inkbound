@@ -79,19 +79,25 @@ for (const id of navIds) {
   if (!routePattern.test(app)) errors.push(`Navigation destination "${id}" is declared but has no shared App route.`);
 }
 
-// A responsive stylesheet may compact top-bar chrome, but it must never hide
-// a reusable action class globally. That previously made Edit/Delete disappear
-// from Android/landscape dialogs while the same controls remained on web.
+// Responsive styles may compact top-bar chrome. Shared feature actions in the
+// page canvas must still win the cascade at every compact viewport.
+const responsiveParity = read('src/styles/responsive-parity.css');
+const parityImportedAfterAppShell = main.indexOf("./styles/responsive-parity.css") > main.indexOf("./styles/app-shell.css");
+const hasCompactActionOverride = /@media\s*\(max-width:\s*1199px\)[\s\S]*?\.inkbound-main-content\s+\.quiet-shelf-primary-action,[\s\S]*?\.inkbound-main-content\s+\.quiet-shelf-secondary-action\s*\{[\s\S]*?display\s*:\s*inline-flex\s*!important/.test(responsiveParity);
+assert(parityImportedAfterAppShell, 'responsive-parity.css must load after app-shell.css so shared feature-action visibility wins the compact cascade.');
+assert(hasCompactActionOverride, 'responsive-parity.css must force shared primary/secondary feature actions visible through tablet and phone widths.');
+
 for (const file of sourceFiles.filter((candidate) => candidate.endsWith('.css'))) {
   const relative = rel(file);
   const contents = fs.readFileSync(file, 'utf8');
   const rules = contents.matchAll(/([^{}]+)\{([^{}]*display\s*:\s*none[^{}]*)\}/g);
   for (const match of rules) {
     const selector = match[1];
-    if (selector.includes('.quiet-shelf-secondary-action') && !selector.includes('.quiet-shelf-topbar')) {
+    const legacyShellRuleSafelyOverridden = relative === 'src/styles/app-shell.css' && parityImportedAfterAppShell && hasCompactActionOverride;
+    if (selector.includes('.quiet-shelf-secondary-action') && !selector.includes('.quiet-shelf-topbar') && !legacyShellRuleSafelyOverridden) {
       errors.push(`${relative} hides .quiet-shelf-secondary-action outside the top bar. Shared feature actions must remain reachable on Android.`);
     }
-    if (selector.includes('.quiet-shelf-primary-action') && !selector.includes('.quiet-shelf-topbar') && !selector.includes('span')) {
+    if (selector.includes('.quiet-shelf-primary-action') && !selector.includes('.quiet-shelf-topbar') && !selector.includes('span') && !legacyShellRuleSafelyOverridden) {
       errors.push(`${relative} hides .quiet-shelf-primary-action outside the top bar. Shared feature actions must remain reachable on Android.`);
     }
   }
