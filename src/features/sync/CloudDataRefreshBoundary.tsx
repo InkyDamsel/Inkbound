@@ -6,10 +6,7 @@ import { getRuntimeStorage, readRuntimeJson } from '../../platform/runtimeStorag
 import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
 import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
-import {
-  getCloudDataRevision,
-  INKBOUND_CLOUD_DATA_EVENT,
-} from './cloudSyncEvents';
+import { INKBOUND_CLOUD_DATA_EVENT } from './cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
@@ -48,21 +45,20 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       return undefined;
     }
 
-    const revisionAtStart = getCloudDataRevision();
     if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
     else setReadyUid((current) => current === uid ? current : null);
 
     // This boundary only gates a genuinely new/unhydrated account. Existing
     // devices are local-first and must open immediately even when there are no
-    // remote changes to generate a cloud event. Previously, a quiet cloud could
-    // leave an established reader stuck on "Opening Inkbound" forever.
+    // remote changes to generate a cloud event. A cloud event by itself is not
+    // enough to open the app: auxiliary sync can emit one before core library
+    // hydration finishes, so readiness always comes from the canonical owner +
+    // hydration marker state.
     const refresh = () => {
       recoverIncompleteLatestImport();
       reconcileRepeatedImportHistory(readStoredBooks());
 
-      if (hasEstablishedLocalWorkingCopy(uid) || getCloudDataRevision() > revisionAtStart) {
-        setReadyUid(uid);
-      }
+      if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
 
       void synchronizeProfileMedia(uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
