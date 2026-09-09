@@ -2,7 +2,7 @@ import React, { PropsWithChildren, useEffect, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
-import { readRuntimeJson } from '../../platform/runtimeStorage';
+import { getRuntimeStorage, readRuntimeJson } from '../../platform/runtimeStorage';
 import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
 import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
@@ -10,56 +10,76 @@ import {
   getCloudDataRevision,
   INKBOUND_CLOUD_DATA_EVENT,
 } from './cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
+const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
+const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 
 function readStoredBooks(): UserBookRecord[] {
   return readRuntimeJson<UserBookRecord[]>(BOOKS_STORAGE_KEY, []);
 }
 
+function hasEstablishedLocalWorkingCopy(uid: string): boolean {
+  try {
+    const storage = getRuntimeStorage();
+    if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
+    const raw = storage.getItem(BOOKS_STORAGE_KEY);
+    if (!raw || !raw.trim().startsWith('[')) return false;
+    const ownerUid = storage.getItem(OWNER_UID_KEY);
+    if (ownerUid) return ownerUid === uid;
+    // Upgrade path for pre-owner-marker builds. A legacy non-empty library is a
+    // real working copy; a bare [] can be App's fresh initialization and must
+    // still wait for first-device hydration.
+    return raw.trim() !== '[]';
+  } catch {
+    return false;
+  }
+}
+
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
   const { user } = useAccountSync();
-  const [initialCloudRevision, setInitialCloudRevision] = useState(() => getCloudDataRevision());
+  const uid = user?.uid;
+  const [readyUid, setReadyUid] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      setInitialCloudRevision(getCloudDataRevision());
-      return;
+    if (!uid) {
+      setReadyUid(null);
+      return undefined;
     }
 
-    // This boundary now has one responsibility: hold the FIRST signed-in render
-    // until canonical cloud hydration is available. Later cloud updates must not
-    // remount App. The previous keyed remount destroyed navigation/sidebar state,
-    // admin request state, dialogs, and other transient UI whenever books or
-    // sessions synced in the background.
+    const revisionAtStart = getCloudDataRevision();
+    if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
+    else setReadyUid((current) => current === uid ? current : null);
+
+    // This boundary only gates a genuinely new/unhydrated account. Existing
+    // devices are local-first and must open immediately even when there are no
+    // remote changes to generate a cloud event. Previously, a quiet cloud could
+    // leave an established reader stuck on "Opening Inkbound" forever.
     const refresh = () => {
       recoverIncompleteLatestImport();
       reconcileRepeatedImportHistory(readStoredBooks());
 
-      // Capture the first non-zero cloud revision only. Once App is mounted for
-      // this signed-in session, later revisions stay inside their feature/state
-      // owners rather than recreating the entire application shell.
-      setInitialCloudRevision((current) => current > 0 ? current : getCloudDataRevision());
+      if (hasEstablishedLocalWorkingCopy(uid) || getCloudDataRevision() > revisionAtStart) {
+        setReadyUid(uid);
+      }
 
-      void synchronizeProfileMedia(user.uid).catch(() => {
+      void synchronizeProfileMedia(uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
         // retry on the next foreground/online refresh without blocking the app.
       });
     };
 
-    void synchronizeProfileMedia(user.uid).catch(() => undefined);
-    const currentRevision = getCloudDataRevision();
-    if (currentRevision > 0) setInitialCloudRevision((current) => current > 0 ? current : currentRevision);
-
+    void synchronizeProfileMedia(uid).catch(() => undefined);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
     const unsubscribeResume = subscribeToRuntimeResume(refresh);
     return () => {
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
       unsubscribeResume();
     };
-  }, [user?.uid]);
+  }, [uid]);
 
-  if (user && initialCloudRevision === 0) {
+  if (uid && readyUid !== uid) {
     return <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-6 text-center text-[var(--ink-ivory)]">Opening Inkbound...</main>;
   }
 
