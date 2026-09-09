@@ -8,6 +8,7 @@ const mainPath = path.join(cwd, 'src/main.tsx');
 const firebasePath = path.join(cwd, 'src/lib/firebase.ts');
 const googleBooksPath = path.join(cwd, 'src/features/book-search/data/googleBooksApi.ts');
 const runtimeSubscriptionPath = path.join(cwd, 'src/platform/runtimeSubscriptionManagement.ts');
+const runtimePremiumPurchasePath = path.join(cwd, 'src/platform/runtimePremiumPurchase.ts');
 const runtimePlatformPath = path.join(cwd, 'src/platform/runtimePlatform.ts');
 const runtimeAuthenticationPath = path.join(cwd, 'src/platform/runtimeAuthentication.ts');
 const runtimeReauthenticationPath = path.join(cwd, 'src/platform/runtimeReauthentication.ts');
@@ -30,6 +31,7 @@ for (const requiredPath of [
   googleBooksPath,
   runtimePlatformPath,
   runtimeSubscriptionPath,
+  runtimePremiumPurchasePath,
   runtimeAuthenticationPath,
   runtimeReauthenticationPath,
   runtimeExportPath,
@@ -80,8 +82,6 @@ if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication
 }
 
 const mainSource = fs.readFileSync(mainPath, 'utf8');
-// No service-worker registration is the safest native configuration. If web PWA
-// registration is added later, it must be explicitly excluded from native WebView.
 const mentionsServiceWorker = mainSource.includes('serviceWorker');
 const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator");
 if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
@@ -142,6 +142,9 @@ for (const requiredSnippet of [
   'reauthenticateWithCredential',
   "CapacitorApp.addListener('appStateChange'",
   'initializeNativeSecurityRuntime',
+  'PlayBilling.purchase',
+  'verifyGooglePlaySubscription',
+  'obfuscatedAccountId: await sha256Hex(uid)',
 ]) {
   if (!androidRuntimeSource.includes(requiredSnippet)) {
     fail(`Android runtime adapter is missing required native integration: ${requiredSnippet}`);
@@ -157,8 +160,22 @@ if ([authConfigIndex, reauthConfigIndex, lifecycleConfigIndex, securityReadyInde
 }
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');
-if (!subscriptionSource.includes('!isNativeRuntime() && Boolean(webBillingPortalUrl)')) {
-  fail('native builds must not fall back to the web billing portal.');
+if (!subscriptionSource.includes("provider === 'google_play'")) {
+  fail('subscription management must remain provider-aware for Google Play purchases.');
+}
+if (!subscriptionSource.includes("'createStripeBillingPortalSession'")) {
+  fail('Stripe subscription management must continue through the authenticated Firebase billing portal function.');
+}
+if (!subscriptionSource.includes('!isNativeRuntime()')) {
+  fail('browser subscription management must remain excluded from the native Android runtime.');
+}
+
+const premiumPurchaseSource = fs.readFileSync(runtimePremiumPurchasePath, 'utf8');
+if (!premiumPurchaseSource.includes("if (isNativeRuntime()) throw new Error('Google Play Billing is not connected to this Android build yet.')")) {
+  fail('the browser Stripe purchase adapter must fail closed inside native Android.');
+}
+if (!premiumPurchaseSource.includes("'createStripeCheckoutSession'")) {
+  fail('web Premium purchases must continue through the authenticated Stripe Checkout function.');
 }
 
 const authenticationSource = fs.readFileSync(runtimeAuthenticationPath, 'utf8');
@@ -222,6 +239,9 @@ if (fs.existsSync(androidDir)) {
   const appGradle = fs.readFileSync(appGradlePath, 'utf8');
   if (!/applicationId\s+["']com\.inkydameinteractive\.inkbound["']/.test(appGradle)) {
     fail('generated Android applicationId must remain com.inkydameinteractive.inkbound.');
+  }
+  if (!/com\.android\.billingclient:billing:9\.1\.0/.test(appGradle)) {
+    fail('Android Premium purchases must keep Google Play Billing Library 9.1.0.');
   }
   const versionCodeMatch = /versionCode\s+(\d+)/.exec(appGradle);
   const versionNameMatch = /versionName\s+["']([^"']+)["']/.exec(appGradle);
