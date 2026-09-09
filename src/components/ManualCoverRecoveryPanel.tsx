@@ -6,6 +6,7 @@ import { auth, storage } from '../lib/firebase';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
 import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
 import { readImportEnrichmentQueue, writeImportEnrichmentQueue } from '../features/import/libraryEnrichment';
+import { PaginationControls } from './PaginationControls';
 
 interface StoredManualCover {
   name: string;
@@ -19,6 +20,8 @@ interface ManualCoverRecoveryPanelProps {
 }
 
 const BOOKS_STORAGE_KEY = 'inkbound_books';
+const COVER_PAGE_SIZE = 20;
+const BOOK_PAGE_SIZE = 20;
 
 function activeEditionFor(book: UserBookRecord) {
   return book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
@@ -39,6 +42,8 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   const [showUnusedOnly, setShowUnusedOnly] = useState(false);
   const [coverQuery, setCoverQuery] = useState('');
   const [bookQuery, setBookQuery] = useState('');
+  const [coverPage, setCoverPage] = useState(1);
+  const [bookPage, setBookPage] = useState(1);
 
   const loadAssets = async () => {
     const user = auth?.currentUser;
@@ -66,6 +71,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       }));
       loaded.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
       setAssets(loaded);
+      setCoverPage(1);
     } catch (caught) {
       console.error('Inkbound manual cover library listing failed.', caught);
       setError('Inkbound could not load your Manual Cover Library. Check your connection and try again.');
@@ -77,6 +83,9 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   useEffect(() => {
     void loadAssets();
   }, []);
+
+  useEffect(() => { setCoverPage(1); }, [coverQuery, showUnusedOnly]);
+  useEffect(() => { setBookPage(1); }, [bookQuery]);
 
   const selectedAsset = assets.find((asset) => asset.fullPath === selectedAssetPath) ?? null;
   const selectedBook = books.find((book) => book.id === selectedBookId) ?? null;
@@ -104,6 +113,20 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       .filter((book) => !normalizedQuery || `${book.work.title} ${book.work.author}`.toLowerCase().includes(normalizedQuery))
       .sort((a, b) => a.work.title.localeCompare(b.work.title));
   }, [books, bookQuery]);
+
+  const coverTotalPages = Math.max(1, Math.ceil(visibleAssets.length / COVER_PAGE_SIZE));
+  const safeCoverPage = Math.min(coverPage, coverTotalPages);
+  const paginatedAssets = visibleAssets.slice((safeCoverPage - 1) * COVER_PAGE_SIZE, safeCoverPage * COVER_PAGE_SIZE);
+  const bookTotalPages = Math.max(1, Math.ceil(visibleBooks.length / BOOK_PAGE_SIZE));
+  const safeBookPage = Math.min(bookPage, bookTotalPages);
+  const paginatedBooks = visibleBooks.slice((safeBookPage - 1) * BOOK_PAGE_SIZE, safeBookPage * BOOK_PAGE_SIZE);
+
+  useEffect(() => {
+    if (coverPage > coverTotalPages) setCoverPage(coverTotalPages);
+  }, [coverPage, coverTotalPages]);
+  useEffect(() => {
+    if (bookPage > bookTotalPages) setBookPage(bookTotalPages);
+  }, [bookPage, bookTotalPages]);
 
   const useCover = () => {
     if (!selectedAsset || !selectedBook || restoring) return;
@@ -138,8 +161,6 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
         readImportEnrichmentQueue().filter((item) => item.targetBookId !== selectedBook.id),
       );
 
-      // Treat the cover assignment as a canonical local edit and flush it now.
-      // The cloud-data event separately refreshes the currently mounted UI.
       notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
       notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
 
@@ -157,7 +178,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   if (!auth?.currentUser || !storage) return null;
 
   return (
-    <section className="inkbound-panel rounded-3xl p-5 sm:p-7">
+    <section className="space-y-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="inkbound-kicker">Your Covers</p>
@@ -175,157 +196,61 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
         </button>
       </div>
 
-      {error && <p className="mt-4 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>}
+      {error && <p className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>}
       {restoredMessage && (
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-950/15 p-3 text-sm text-emerald-200" role="status">
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-950/15 p-3 text-sm text-emerald-200" role="status">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>{restoredMessage}</span>
         </div>
       )}
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Stored covers</p>
-          <p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{assets.length.toLocaleString()}</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Unused covers</p>
-          <p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{unusedCount.toLocaleString()}</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books in library</p>
-          <p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{books.length.toLocaleString()}</p>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Stored covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{assets.length.toLocaleString()}</p></div>
+        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Unused covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{unusedCount.toLocaleString()}</p></div>
+        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books in library</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{books.length.toLocaleString()}</p></div>
       </div>
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <label className="relative min-w-0 flex-1">
-          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
-          <input
-            type="search"
-            value={coverQuery}
-            onChange={(event) => setCoverQuery(event.target.value)}
-            placeholder="Search covers by linked book title or author"
-            className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none"
-          />
-        </label>
-        <label className="flex min-h-12 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-xs text-[var(--ink-muted)]">
-          <input type="checkbox" checked={showUnusedOnly} onChange={(event) => setShowUnusedOnly(event.target.checked)} />
-          Show unused only
-        </label>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={coverQuery} onChange={(event) => setCoverQuery(event.target.value)} placeholder="Search covers by linked book title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></label>
+        <label className="flex min-h-12 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-xs text-[var(--ink-muted)]"><input type="checkbox" checked={showUnusedOnly} onChange={(event) => setShowUnusedOnly(event.target.checked)} />Show unused only</label>
       </div>
 
       {loading && assets.length === 0 ? (
-        <div className="mt-6 flex items-center gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-5 text-sm text-[var(--ink-muted)]">
-          <Loader2 className="h-5 w-5 animate-spin text-[var(--ink-gold)]" /> Loading your Manual Cover Library…
-        </div>
+        <div className="flex items-center gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-5 text-sm text-[var(--ink-muted)]"><Loader2 className="h-5 w-5 animate-spin text-[var(--ink-gold)]" /> Loading your Manual Cover Library…</div>
       ) : visibleAssets.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-dashed border-[var(--ink-border)] p-7 text-center text-sm text-[var(--ink-muted)]">
-          {assets.length === 0 ? 'No manual covers have been uploaded yet.' : 'No covers match this filter.'}
-        </div>
+        <div className="rounded-2xl border border-dashed border-[var(--ink-border)] p-7 text-center text-sm text-[var(--ink-muted)]">{assets.length === 0 ? 'No manual covers have been uploaded yet.' : 'No covers match this filter.'}</div>
       ) : (
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="grid max-h-[650px] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-            {visibleAssets.map((asset) => {
-              const selected = selectedAssetPath === asset.fullPath;
-              const linkedBooks = linkedBooksFor(asset, books);
-              return (
-                <button
-                  key={asset.fullPath}
-                  type="button"
-                  onClick={() => setSelectedAssetPath(asset.fullPath)}
-                  className={`min-w-0 rounded-2xl border p-2 text-left transition ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}
-                >
-                  <img src={asset.url} alt="Manual book cover" className="aspect-[2/3] w-full rounded-xl object-cover" loading="lazy" />
-                  <p className="mt-2 line-clamp-2 text-xs font-bold text-[var(--ink-ivory)]">
-                    {linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.title).join(', ') : 'Unused cover'}
-                  </p>
-                  <p className="mt-1 truncate text-[10px] text-[var(--ink-muted)]">
-                    {linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.author).join(', ') : asset.updatedAt ? new Date(asset.updatedAt).toLocaleString() : asset.name}
-                  </p>
-                </button>
-              );
-            })}
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 space-y-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+              {paginatedAssets.map((asset) => {
+                const selected = selectedAssetPath === asset.fullPath;
+                const linkedBooks = linkedBooksFor(asset, books);
+                return <button key={asset.fullPath} type="button" onClick={() => setSelectedAssetPath(asset.fullPath)} className={`min-w-0 rounded-2xl border p-2 text-left transition ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}><img src={asset.url} alt="Manual book cover" className="aspect-[2/3] w-full rounded-xl object-cover" loading="lazy" /><p className="mt-2 line-clamp-2 text-xs font-bold text-[var(--ink-ivory)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.title).join(', ') : 'Unused cover'}</p><p className="mt-1 truncate text-[10px] text-[var(--ink-muted)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.author).join(', ') : asset.updatedAt ? new Date(asset.updatedAt).toLocaleString() : asset.name}</p></button>;
+              })}
+            </div>
+            <PaginationControls page={safeCoverPage} totalItems={visibleAssets.length} pageSize={COVER_PAGE_SIZE} onPageChange={setCoverPage} itemLabel="covers" />
           </div>
 
           <aside className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
-            <div className="flex items-center gap-2">
-              <Image className="h-5 w-5 text-[var(--ink-gold)]" />
-              <h3 className="font-serif text-lg font-bold text-[var(--ink-ivory)]">Use selected cover</h3>
-            </div>
+            <div className="flex items-center gap-2"><Image className="h-5 w-5 text-[var(--ink-gold)]" /><h3 className="font-serif text-lg font-bold text-[var(--ink-ivory)]">Use selected cover</h3></div>
+            {selectedAsset ? <div className="mt-4"><img src={selectedAsset.url} alt="Selected manual cover" className="mx-auto max-h-72 rounded-xl object-contain" />{linkedBooksFor(selectedAsset, books).length > 0 && <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">Currently used by: {linkedBooksFor(selectedAsset, books).map((book) => book.work.title).join(', ')}</p>}</div> : <div className="mt-4 grid h-56 place-items-center rounded-xl border border-dashed border-[var(--ink-border)] text-center text-xs text-[var(--ink-muted)]">Select a cover thumbnail first.</div>}
 
-            {selectedAsset ? (
-              <div className="mt-4">
-                <img src={selectedAsset.url} alt="Selected manual cover" className="mx-auto max-h-72 rounded-xl object-contain" />
-                {linkedBooksFor(selectedAsset, books).length > 0 && (
-                  <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">
-                    Currently used by: {linkedBooksFor(selectedAsset, books).map((book) => book.work.title).join(', ')}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="mt-4 grid h-56 place-items-center rounded-xl border border-dashed border-[var(--ink-border)] text-center text-xs text-[var(--ink-muted)]">
-                Select a cover thumbnail first.
-              </div>
-            )}
-
-            <label className="relative mt-4 block">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
-              <input
-                type="search"
-                value={bookQuery}
-                onChange={(event) => setBookQuery(event.target.value)}
-                placeholder="Find a book by title or author"
-                className="min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] pl-10 pr-3 text-sm text-[var(--ink-ivory)] outline-none"
-              />
-            </label>
-
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Choose a book</span>
-              <span className="text-[11px] text-[var(--ink-muted)]">{visibleBooks.length.toLocaleString()} of {books.length.toLocaleString()}</span>
-            </div>
-            <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] p-1">
-              {visibleBooks.map((book) => {
+            <label className="relative mt-4 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={bookQuery} onChange={(event) => setBookQuery(event.target.value)} placeholder="Find a book by title or author" className="min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] pl-10 pr-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
+            <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Choose a book</span><span className="text-[11px] text-[var(--ink-muted)]">{visibleBooks.length.toLocaleString()} of {books.length.toLocaleString()}</span></div>
+            <div className="mt-2 space-y-1 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] p-1">
+              {paginatedBooks.map((book) => {
                 const isSelected = selectedBookId === book.id;
                 const edition = activeEditionFor(book);
-                return (
-                  <button
-                    key={book.id}
-                    type="button"
-                    onClick={() => setSelectedBookId(book.id)}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isSelected ? 'bg-[var(--ink-gold)]/15 text-[var(--ink-gold)]' : 'text-[var(--ink-ivory)] hover:bg-[var(--ink-surface-raised)]'}`}
-                  >
-                    <span className="block break-words font-semibold">{book.work.title}</span>
-                    <span className="mt-0.5 block break-words text-xs text-[var(--ink-muted)]">
-                      {book.work.author}{edition?.coverUrl ? ' · has cover' : ' · missing cover'}
-                    </span>
-                  </button>
-                );
+                return <button key={book.id} type="button" onClick={() => setSelectedBookId(book.id)} className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isSelected ? 'bg-[var(--ink-gold)]/15 text-[var(--ink-gold)]' : 'text-[var(--ink-ivory)] hover:bg-[var(--ink-surface-raised)]'}`}><span className="block break-words font-semibold">{book.work.title}</span><span className="mt-0.5 block break-words text-xs text-[var(--ink-muted)]">{book.work.author}{edition?.coverUrl ? ' · has cover' : ' · missing cover'}</span></button>;
               })}
-              {visibleBooks.length === 0 && (
-                <p className="p-4 text-center text-xs text-[var(--ink-muted)]">No books match that search.</p>
-              )}
+              {visibleBooks.length === 0 && <p className="p-4 text-center text-xs text-[var(--ink-muted)]">No books match that search.</p>}
             </div>
+            <div className="mt-3"><PaginationControls page={safeBookPage} totalItems={visibleBooks.length} pageSize={BOOK_PAGE_SIZE} onPageChange={setBookPage} itemLabel="books" /></div>
 
-            {selectedBook && selectedBookEdition?.coverUrl && (
-              <p className="mt-3 rounded-xl border border-amber-500/25 bg-amber-950/15 p-3 text-xs leading-5 text-amber-200">
-                “{selectedBook.work.title}” already has a cover. Using this one will replace the current cover reference, but the old manual file remains safely stored in your Manual Cover Library.
-              </p>
-            )}
-
-            <button
-              type="button"
-              onClick={useCover}
-              disabled={!selectedAsset || !selectedBook || restoring}
-              className="quiet-shelf-primary-action mt-4 min-h-11 w-full justify-center disabled:opacity-40"
-            >
-              {restoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              {restoring ? 'Applying…' : 'Use This Cover'}
-            </button>
-
-            <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">
-              Inkbound reuses the existing Storage file rather than uploading a duplicate. Choosing a cover is treated as a manual edit, so automatic metadata retry will not overwrite it.
-            </p>
+            {selectedBook && selectedBookEdition?.coverUrl && <p className="mt-3 rounded-xl border border-amber-500/25 bg-amber-950/15 p-3 text-xs leading-5 text-amber-200">“{selectedBook.work.title}” already has a cover. Using this one will replace the current cover reference, but the old manual file remains safely stored in your Manual Cover Library.</p>}
+            <button type="button" onClick={useCover} disabled={!selectedAsset || !selectedBook || restoring} className="quiet-shelf-primary-action mt-4 min-h-11 w-full justify-center disabled:opacity-40">{restoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{restoring ? 'Applying…' : 'Use This Cover'}</button>
+            <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">Inkbound reuses the existing Storage file rather than uploading a duplicate. Choosing a cover is treated as a manual edit, so automatic metadata retry will not overwrite it.</p>
           </aside>
         </div>
       )}
