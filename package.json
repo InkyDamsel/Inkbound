@@ -33,6 +33,7 @@
     "functions:build": "npm --prefix functions run build",
     "firebase:secret:hardcover": "npx firebase-tools functions:secrets:set HARDCOVER_API_TOKEN --project inkbound-app",
     "firebase:secret:google-books": "npx firebase-tools functions:secrets:set GOOGLE_BOOKS_API_KEY --project inkbound-app",
+    "firebase:secret:stripe": "npx firebase-tools functions:secrets:set INKBOUND_STRIPE_CONFIG --project inkbound-app",
     "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules,storage --project inkbound-app",
     "firebase:deploy:functions": "npm run functions:build && npx firebase-tools deploy --only functions --project inkbound-app",
     "firebase:deploy:security": "npm run functions:build && npx firebase-tools deploy --only firestore:rules,storage,functions --project inkbound-app",

@@ -4,6 +4,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
+  onSnapshot,
   orderBy,
   query,
   Timestamp,
@@ -40,6 +42,7 @@ const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 const FOREGROUND_FALLBACK_MS = 120000;
 const QUERY_OVERLAP_MS = 5000;
+const LIVE_SIGNAL_DEBOUNCE_MS = 175;
 
 type RecordKind = 'books' | 'sessions';
 interface CloudRecord<T> {
@@ -154,10 +157,11 @@ function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<
 /**
  * Low-cost reconciliation for an already-hydrated device.
  *
- * Books and sessions use timestamp-bounded queries; the single profile document
- * is checked alongside them. Local deletions are published by the durable
- * CostSafeCloudPersistenceBridge, so an offline delete cannot be lost and this
- * bridge never creates a second deletion path.
+ * The working library stays local-first, but four tiny live Firestore signals
+ * (latest book, latest session, latest tombstone, and profile) wake this bridge
+ * immediately when another device changes cloud state. The actual reconciliation
+ * still uses timestamp-bounded delta queries and the existing pending/conflict
+ * rules, so live sync does not reintroduce stale-device overwrites.
  */
 export const CrossDeviceDeltaSyncBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -169,6 +173,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     const uid = user.uid;
     let disposed = false;
     let initialRetryTimer: number | undefined;
+    let liveSignalTimer: number | undefined;
 
     knownBookIds.current = idsFromStored<UserBookRecord>(BOOKS_KEY);
 
@@ -318,14 +323,47 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       }
     };
 
+    const scheduleLivePull = () => {
+      if (disposed || !coreHydrationComplete()) return;
+      if (liveSignalTimer !== undefined) window.clearTimeout(liveSignalTimer);
+      liveSignalTimer = window.setTimeout(() => {
+        liveSignalTimer = undefined;
+        void pullDeltas();
+      }, LIVE_SIGNAL_DEBOUNCE_MS);
+    };
+
     const handleCoreCloudUpdate = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
       if (!detail?.keys?.some((key) => key === BOOKS_KEY || key === SESSIONS_KEY || key === PROFILE_KEY)) return;
-      if (!coreHydrationComplete()) return;
-      void pullDeltas();
+      scheduleLivePull();
     };
 
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCoreCloudUpdate);
+
+    // These listeners intentionally watch only the newest record in each growing
+    // collection. That restores near-real-time cross-device wakeups without
+    // attaching an expensive listener to the reader's entire library.
+    const unsubscribeBookSignal = onSnapshot(
+      query(collection(db, 'users', uid, 'books'), orderBy('updatedAt', 'desc'), limit(1)),
+      scheduleLivePull,
+      (error) => console.warn('Inkbound book sync signal listener failed.', error),
+    );
+    const unsubscribeSessionSignal = onSnapshot(
+      query(collection(db, 'users', uid, 'sessions'), orderBy('updatedAt', 'desc'), limit(1)),
+      scheduleLivePull,
+      (error) => console.warn('Inkbound session sync signal listener failed.', error),
+    );
+    const unsubscribeTombstoneSignal = onSnapshot(
+      query(collection(db, 'users', uid, 'syncTombstones'), orderBy('deletedAt', 'desc'), limit(1)),
+      scheduleLivePull,
+      (error) => console.warn('Inkbound deletion sync signal listener failed.', error),
+    );
+    const unsubscribeProfileSignal = onSnapshot(
+      doc(db, 'users', uid, 'profile', 'current'),
+      scheduleLivePull,
+      (error) => console.warn('Inkbound profile sync signal listener failed.', error),
+    );
+
     const unsubscribeRuntimeResume = subscribeToRuntimeResume(() => {
       void pullDeltas();
     });
@@ -344,8 +382,13 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     return () => {
       disposed = true;
       if (initialRetryTimer !== undefined) window.clearTimeout(initialRetryTimer);
+      if (liveSignalTimer !== undefined) window.clearTimeout(liveSignalTimer);
       window.clearInterval(fallback);
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCoreCloudUpdate);
+      unsubscribeBookSignal();
+      unsubscribeSessionSignal();
+      unsubscribeTombstoneSignal();
+      unsubscribeProfileSignal();
       unsubscribeRuntimeResume();
     };
   }, [user?.uid]);

@@ -1,18 +1,62 @@
-import React, { useEffect } from 'react';
-import { Check, HeartHandshake, Lock, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Check, HeartHandshake, Lock, RotateCcw, Sparkles, X } from 'lucide-react';
 import { PRODUCT_POLICY } from '../config/productPolicy';
 import { useUserPlan } from '../context/UserPlanContext';
+import {
+  PremiumBillingPlan,
+  canPurchaseRuntimePremium,
+  canRestoreRuntimePremium,
+  purchaseRuntimePremium,
+  restoreRuntimePremium,
+} from '../platform/runtimePremiumPurchase';
 
 const supportDeveloperUrl = import.meta.env.VITE_SUPPORT_DEVELOPER_URL?.trim();
 
 export const UpgradeModal: React.FC = () => {
   const { isUpgradeModalOpen, closeUpgradeModal, upgradeReason, userPlan } = useUserPlan();
+  const [billingPlan, setBillingPlan] = useState<PremiumBillingPlan | 'restore' | null>(null);
+  const [billingError, setBillingError] = useState('');
 
   useEffect(() => {
     if (userPlan === 'premium' && isUpgradeModalOpen) closeUpgradeModal();
   }, [closeUpgradeModal, isUpgradeModalOpen, userPlan]);
 
+  useEffect(() => {
+    if (!isUpgradeModalOpen) {
+      setBillingPlan(null);
+      setBillingError('');
+    }
+  }, [isUpgradeModalOpen]);
+
   if (!isUpgradeModalOpen || userPlan === 'premium') return null;
+
+  const subscriptionsAvailable = PRODUCT_POLICY.premium.subscriptionsOpen && canPurchaseRuntimePremium();
+  const restoreAvailable = PRODUCT_POLICY.premium.subscriptionsOpen && canRestoreRuntimePremium();
+
+  const beginPurchase = async (plan: PremiumBillingPlan) => {
+    setBillingPlan(plan);
+    setBillingError('');
+    try {
+      await purchaseRuntimePremium(plan);
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : 'Inkbound could not start the Premium purchase.');
+    } finally {
+      setBillingPlan(null);
+    }
+  };
+
+  const restorePurchase = async () => {
+    setBillingPlan('restore');
+    setBillingError('');
+    try {
+      const restored = await restoreRuntimePremium();
+      if (restored === 0) setBillingError('No active Inkbound Premium purchase was found for this Google Play account.');
+    } catch (error) {
+      setBillingError(error instanceof Error ? error.message : 'Inkbound could not restore your Premium purchase.');
+    } finally {
+      setBillingPlan(null);
+    }
+  };
 
   const comparisonRows = [
     { feature: 'Items in your library', free: 'Unlimited', premium: 'Unlimited' },
@@ -46,14 +90,17 @@ export const UpgradeModal: React.FC = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col justify-between rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Monthly</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedMonthlyPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ month</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">Flexible monthly billing. Cancel anytime.</p></div>
-              <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>
+              {subscriptionsAvailable ? <button type="button" disabled={billingPlan !== null} onClick={() => void beginPurchase('monthly')} className="quiet-shelf-primary-action mt-4 justify-center disabled:opacity-50">{billingPlan === 'monthly' ? 'Opening checkout…' : 'Choose monthly'}</button> : <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>}
             </div>
             <div className="relative flex flex-col justify-between rounded-2xl border-2 border-[var(--ink-mauve)] bg-[var(--ink-surface-soft)] p-5 shadow-xl">
               <span className="absolute -top-3 right-4 rounded-full bg-[var(--ink-mauve)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-surface)]">Best Value</span>
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-mauve)]">Annual</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedAnnualPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ year</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">About $5/month and roughly 28% less than paying monthly.</p></div>
-              <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>
+              {subscriptionsAvailable ? <button type="button" disabled={billingPlan !== null} onClick={() => void beginPurchase('annual')} className="quiet-shelf-primary-action mt-4 justify-center disabled:opacity-50">{billingPlan === 'annual' ? 'Opening checkout…' : 'Choose annual'}</button> : <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>}
             </div>
           </div>
+
+          {restoreAvailable && <div className="flex justify-center"><button type="button" disabled={billingPlan !== null} onClick={() => void restorePurchase()} className="quiet-shelf-secondary-action justify-center disabled:opacity-50"><RotateCcw className="h-4 w-4" /> {billingPlan === 'restore' ? 'Restoring…' : 'Restore Google Play purchase'}</button></div>}
+          {billingError && <div role="alert" className="rounded-xl border border-red-400/30 bg-red-950/20 px-4 py-3 text-sm text-red-200">{billingError}</div>}
 
           <div className="rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/5 p-5">
             <div className="flex items-start gap-3">
