@@ -223,7 +223,10 @@ export const createStripeBillingPortalSession = onCall(
 );
 
 export const stripeBillingWebhook = onRequest(
-  { invoker: 'public', secrets: [stripeConfigSecret] },
+  // The service's unauthenticated Cloud Run access is managed once in Cloud Run.
+  // Omitting invoker here prevents every Functions deploy from trying to rewrite
+  // the IAM policy on projects where the Firebase CLI identity cannot set it.
+  { secrets: [stripeConfigSecret] },
   async (request, response) => {
     if (request.method !== 'POST') {
       response.status(405).send('Method not allowed');
