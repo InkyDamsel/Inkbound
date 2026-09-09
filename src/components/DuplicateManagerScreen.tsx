@@ -3,6 +3,7 @@ import { CheckCircle2, Copy, Merge, Search, ShieldCheck } from 'lucide-react';
 import type { Edition, UserBookRecord } from '../types';
 import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import { BookCover } from './BookCover';
+import { ManualCoverRecoveryPanel } from './ManualCoverRecoveryPanel';
 import { CustomOwnershipCategoryManager } from './ownership/CustomOwnershipCategoryManager';
 
 export interface DuplicateMergeRequest {
@@ -189,11 +190,16 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
 
   return <div className="space-y-6 pb-24">
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0"><p className="inkbound-kicker">Library Maintenance</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Keep your library tidy</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Manage your reader-defined ownership categories and review possible duplicate books from one place.</p></div>
+      <div className="min-w-0"><p className="inkbound-kicker">Library Maintenance</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Keep your library tidy</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Manage custom categories, saved covers, and possible duplicate books from one place.</p></div>
       <div className="shrink-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 py-3 text-sm"><strong className="text-[var(--ink-ivory)]">{groups.length} duplicate groups</strong><span className="ml-2 text-[var(--ink-muted)]">· {booksInGroups} books involved</span></div>
     </header>
 
     <CustomOwnershipCategoryManager books={books} />
+
+    <section className="space-y-4">
+      <div><p className="inkbound-kicker">Cover management</p><h2 className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">Manual Cover Library</h2><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Reuse saved covers, review your manually uploaded cover library, and manage cover recovery outside the import workflow.</p></div>
+      <div className="inkbound-panel rounded-3xl p-4 sm:p-6"><ManualCoverRecoveryPanel books={books} /></div>
+    </section>
 
     <section className="space-y-4">
       <div><p className="inkbound-kicker">Duplicate cleanup</p><h2 className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">Duplicate Management</h2><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Inkbound scans exact ISBNs first, then normalized title + author. Nothing is merged automatically—you choose what stays.</p></div>
