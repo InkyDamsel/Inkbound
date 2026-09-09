@@ -130,19 +130,20 @@
 }
 
 @media (max-width: 767px) {
-  .quiet-shelf-actions {
+  .quiet-shelf-topbar .quiet-shelf-actions {
     display: none;
   }
 }
 
 /* Tablets keep useful page actions in the top bar, but compact them enough that
-   they cannot squeeze the page heading off-screen. */
+   they cannot squeeze the page heading off-screen. Shared feature actions remain
+   visible because only top-bar chrome is allowed to collapse here. */
 @media (min-width: 768px) and (max-width: 1199px) {
-  .quiet-shelf-actions {
+  .quiet-shelf-topbar .quiet-shelf-actions {
     gap: 6px;
   }
 
-  .quiet-shelf-actions .quiet-shelf-secondary-action {
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-secondary-action {
     display: none;
   }
 }
