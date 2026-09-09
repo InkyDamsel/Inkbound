@@ -47,6 +47,22 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const first = selectedBooks[0];
   const uniform = <T,>(read: (book: UserBookRecord) => T) => first && selectedBooks.every((book) => read(book) === read(first));
   const customOwnershipCategories = useMemo(() => readCustomOwnershipCategories(), []);
+  const allTags = useMemo(
+    () => [...new Set(books.flatMap((book) => book.privateTags ?? []).map((tag) => tag.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [books],
+  );
+  const selectedTags = useMemo(
+    () => [...new Set(selectedBooks.flatMap((book) => book.privateTags ?? []).map((tag) => tag.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [selectedBooks],
+  );
+  const allCollections = useMemo(
+    () => [...new Set(books.flatMap((book) => book.collections ?? []).map((collection) => collection.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [books],
+  );
+  const selectedCollections = useMemo(
+    () => [...new Set(selectedBooks.flatMap((book) => book.collections ?? []).map((collection) => collection.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [selectedBooks],
+  );
   const initialOwnership = uniform((book) => book.ownership)
     ? first.ownership === 'custom' && uniform((book) => book.customOwnershipCategoryId)
       ? `custom:${first.customOwnershipCategoryId ?? ''}`
@@ -116,6 +132,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
   const field = (label: string, child: React.ReactNode) => <div><label className="mb-1 block font-bold text-[#f4efe6]">{label}</label>{child}</div>;
   const optionSet = <T extends string>(options: readonly { value: T; label: string }[]) => options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>);
+  const valueOptions = (values: string[]) => values.map((value) => <option key={value} value={value}>{value}</option>);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title">
@@ -145,10 +162,10 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {field('Add Tag to All', <input value={tagAdd} onChange={(event) => setTagAdd(event.target.value)} placeholder="e.g. 2026-challenge" className={selectClass} />)}
-            {field('Remove Tag from All', <input value={tagRemove} onChange={(event) => setTagRemove(event.target.value)} placeholder="e.g. imported" className={selectClass} />)}
-            {field('Add to Collection', <input value={collectionAdd} onChange={(event) => setCollectionAdd(event.target.value)} placeholder="e.g. Autumn Reads" className={selectClass} />)}
-            {field('Remove from Collection', <input value={collectionRemove} onChange={(event) => setCollectionRemove(event.target.value)} placeholder="e.g. Autumn Reads" className={selectClass} />)}
+            {field('Add Tag to All', <select value={tagAdd} onChange={(event) => setTagAdd(event.target.value)} className={selectClass}><option value="">Choose a saved tag</option>{valueOptions(allTags)}</select>)}
+            {field('Remove Tag from All', <select value={tagRemove} onChange={(event) => setTagRemove(event.target.value)} className={selectClass}><option value="">Choose a tag on selected items</option>{valueOptions(selectedTags)}</select>)}
+            {field('Add to Collection', <select value={collectionAdd} onChange={(event) => setCollectionAdd(event.target.value)} className={selectClass}><option value="">Choose a collection</option>{valueOptions(allCollections)}</select>)}
+            {field('Remove from Collection', <select value={collectionRemove} onChange={(event) => setCollectionRemove(event.target.value)} className={selectClass}><option value="">Choose a collection on selected items</option>{valueOptions(selectedCollections)}</select>)}
           </div>
 
           <div className="rounded-xl border border-[#c5a059]/30 bg-[#25132f] p-4 text-stone-200">
