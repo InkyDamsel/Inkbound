@@ -46,7 +46,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
     }
 
     if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
-    else setReadyUid((current) => current === uid ? current : null);
+    else setReadyUid(null);
 
     // This boundary only gates a genuinely new/unhydrated account. Existing
     // devices are local-first and must open immediately even when there are no
