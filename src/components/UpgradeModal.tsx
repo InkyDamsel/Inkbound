@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, HeartHandshake, Lock, RotateCcw, Sparkles, X } from 'lucide-react';
 import { PRODUCT_POLICY } from '../config/productPolicy';
+import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
 import {
   PremiumBillingPlan,
@@ -11,9 +12,11 @@ import {
 } from '../platform/runtimePremiumPurchase';
 
 const supportDeveloperUrl = import.meta.env.VITE_SUPPORT_DEVELOPER_URL?.trim();
+const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
 
 export const UpgradeModal: React.FC = () => {
   const { isUpgradeModalOpen, closeUpgradeModal, upgradeReason, userPlan } = useUserPlan();
+  const { user } = useAccountSync();
   const [billingPlan, setBillingPlan] = useState<PremiumBillingPlan | 'restore' | null>(null);
   const [billingError, setBillingError] = useState('');
 
@@ -30,7 +33,14 @@ export const UpgradeModal: React.FC = () => {
 
   if (!isUpgradeModalOpen || userPlan === 'premium') return null;
 
-  const subscriptionsAvailable = PRODUCT_POLICY.premium.subscriptionsOpen && canPurchaseRuntimePremium();
+  const ownerEmail = user?.email?.toLowerCase() ?? '';
+  const sandboxBillingRequested = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('billingTest') === '1';
+  const sandboxBillingTest = !PRODUCT_POLICY.premium.subscriptionsOpen
+    && OWNER_EMAILS.has(ownerEmail)
+    && sandboxBillingRequested;
+  const subscriptionsAvailable = (PRODUCT_POLICY.premium.subscriptionsOpen || sandboxBillingTest)
+    && canPurchaseRuntimePremium();
   const restoreAvailable = PRODUCT_POLICY.premium.subscriptionsOpen && canRestoreRuntimePremium();
 
   const beginPurchase = async (plan: PremiumBillingPlan) => {
@@ -83,6 +93,7 @@ export const UpgradeModal: React.FC = () => {
           <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[var(--ink-mauve)]/30 bg-[var(--ink-mauve)]/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[var(--ink-mauve)]"><Sparkles className="h-3.5 w-3.5" /> Inkbound Premium</span>
           <h2 id="upgrade-modal-title" className="mx-auto max-w-2xl pr-8 font-serif text-2xl font-bold text-[var(--ink-ivory)] sm:pr-0 sm:text-3xl">Preserve more of your reading life</h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--ink-muted)]">Your library stays unlimited on Free. Premium unlocks Inkbound's deeper reflection, historical insights, creative recaps, and advanced library tools.</p>
+          {sandboxBillingTest && <div className="mx-auto mt-4 max-w-xl rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-left text-xs font-semibold text-amber-100">Owner-only Stripe Sandbox test mode is active. No real payment will be charged.</div>}
           {upgradeReason && <div className="mx-auto mt-4 flex max-w-xl items-start gap-2 rounded-xl border border-[var(--ink-mauve)]/30 bg-[var(--ink-mauve)]/10 px-4 py-3 text-left text-xs text-[var(--ink-ivory)]"><Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--ink-mauve)]" /><span>{upgradeReason}</span></div>}
         </div>
 
@@ -90,12 +101,12 @@ export const UpgradeModal: React.FC = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col justify-between rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Monthly</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedMonthlyPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ month</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">Flexible monthly billing. Cancel anytime.</p></div>
-              {subscriptionsAvailable ? <button type="button" disabled={billingPlan !== null} onClick={() => void beginPurchase('monthly')} className="quiet-shelf-primary-action mt-4 justify-center disabled:opacity-50">{billingPlan === 'monthly' ? 'Opening checkout…' : 'Choose monthly'}</button> : <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>}
+              {subscriptionsAvailable ? <button type="button" disabled={billingPlan !== null} onClick={() => void beginPurchase('monthly')} className="quiet-shelf-primary-action mt-4 justify-center disabled:opacity-50">{billingPlan === 'monthly' ? 'Opening checkout…' : sandboxBillingTest ? 'Test monthly checkout' : 'Choose monthly'}</button> : <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>}
             </div>
             <div className="relative flex flex-col justify-between rounded-2xl border-2 border-[var(--ink-mauve)] bg-[var(--ink-surface-soft)] p-5 shadow-xl">
               <span className="absolute -top-3 right-4 rounded-full bg-[var(--ink-mauve)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-surface)]">Best Value</span>
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-mauve)]">Annual</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedAnnualPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ year</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">About $5/month and roughly 28% less than paying monthly.</p></div>
-              {subscriptionsAvailable ? <button type="button" disabled={billingPlan !== null} onClick={() => void beginPurchase('annual')} className="quiet-shelf-primary-action mt-4 justify-center disabled:opacity-50">{billingPlan === 'annual' ? 'Opening checkout…' : 'Choose annual'}</button> : <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>}
+              {subscriptionsAvailable ? <button type="button" disabled={billingPlan !== null} onClick={() => void beginPurchase('annual')} className="quiet-shelf-primary-action mt-4 justify-center disabled:opacity-50">{billingPlan === 'annual' ? 'Opening checkout…' : sandboxBillingTest ? 'Test annual checkout' : 'Choose annual'}</button> : <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>}
             </div>
           </div>
 
@@ -128,7 +139,7 @@ export const UpgradeModal: React.FC = () => {
 
           <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-center text-xs text-[var(--ink-muted)] sm:text-left">Current account: <span className="font-bold uppercase text-[var(--ink-mauve)]">{userPlan} Plan</span></div>
-            <p className="text-center text-xs text-[var(--ink-muted)] sm:text-right">{PRODUCT_POLICY.premium.subscriptionsOpen ? 'Premium subscriptions are available.' : 'Premium subscriptions are not open yet. The prices above are planned launch pricing.'}</p>
+            <p className="text-center text-xs text-[var(--ink-muted)] sm:text-right">{sandboxBillingTest ? 'Owner-only Stripe Sandbox testing is active.' : PRODUCT_POLICY.premium.subscriptionsOpen ? 'Premium subscriptions are available.' : 'Premium subscriptions are not open yet. The prices above are planned launch pricing.'}</p>
           </div>
         </div>
       </section>
