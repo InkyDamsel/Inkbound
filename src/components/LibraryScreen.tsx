@@ -16,6 +16,7 @@ import { CollectionsScreen } from './CollectionsScreen';
 import { LibraryBookGrid } from './library/LibraryBookGrid';
 import { LoansLibraryPanel } from './library/LoansLibraryPanel';
 import { SeriesLibraryPanel } from './library/SeriesLibraryPanel';
+import { PaginationControls } from './PaginationControls';
 
 interface LibraryScreenProps {
   books: UserBookRecord[];
@@ -33,6 +34,7 @@ type ViewMode = 'grid' | 'list';
 type SortMode = 'recent' | 'title' | 'author' | 'rating' | 'progress';
 
 const LIBRARY_BANNER_ASSET = '/assets/library/cozy-library-background.png';
+const LIBRARY_PAGE_SIZE = 24;
 const libraryCategories = [
   { id: 'all', label: 'All' },
   { id: 'currently-reading', label: 'Reading' },
@@ -68,12 +70,17 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ownershipFilter, setOwnershipFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const refresh = () => setCustomCategories(readCustomOwnershipCategories());
     window.addEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeCategory, searchFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const updateLibraryBook = onUpdateBook ?? ((book: UserBookRecord) => replaceCanonicalBook(books, book));
   const allGenres = useMemo(() => Array.from(new Set(books.flatMap((book) => book.work.genres))).sort(), [books]);
@@ -115,6 +122,17 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         : sortBy === 'progress'
           ? b.progressPercentage - a.progressPercentage
           : new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()), [books, activeCategory, searchFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedBooks = useMemo(
+    () => filteredBooks.slice((safePage - 1) * LIBRARY_PAGE_SIZE, safePage * LIBRARY_PAGE_SIZE),
+    [filteredBooks, safePage],
+  );
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const allFilteredSelected = filteredBooks.length > 0 && filteredBooks.every((book) => selectedBookIds.includes(book.id));
   const handleSelectAll = () => {
@@ -173,15 +191,17 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </div>
         </section>
 
-        <div className="text-xs text-[#807482]">Showing {filteredBooks.length} of {books.length} items</div>
+        <div className="text-xs text-[#807482]">{filteredBooks.length.toLocaleString()} matching items · {books.length.toLocaleString()} total</div>
 
         {filteredBooks.length === 0 ? (
           <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another category, reading type, format, or search.</p></div>
         ) : viewMode === 'grid' ? (
-          <LibraryBookGrid books={filteredBooks} selectedBookIds={selectedBookIds} onToggleSelectBook={onToggleSelectBook} onSelectBook={onSelectBook} />
+          <LibraryBookGrid books={paginatedBooks} selectedBookIds={selectedBookIds} onToggleSelectBook={onToggleSelectBook} onSelectBook={onSelectBook} />
         ) : (
-          <div className="space-y-3">{filteredBooks.map((book) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="inkbound-panel flex w-full items-center gap-4 p-4 text-left"><BookCover work={book.work} edition={book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0]} size="sm" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-serif text-lg text-[#f4efe6]">{book.work.title}</h3><span className="rounded-full border border-[#c5a059]/20 px-2 py-0.5 text-[10px] font-bold uppercase text-[#cdbbca]">{materialTypeLabel(book.work.materialType ?? 'book', true)}</span></div><p className="text-xs text-[#ad9fac]">{book.work.author}</p></div><div className="hidden text-right sm:block"><p className="text-sm font-bold text-[#e2bd66]">{book.progressPercentage}%</p>{book.rating && <p className="flex items-center justify-end gap-1 text-xs text-[#ad9fac]"><Star className="h-3 w-3 fill-[#e2bd66] text-[#e2bd66]" />{book.rating}</p>}</div></button>)}</div>
+          <div className="space-y-3">{paginatedBooks.map((book) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="inkbound-panel flex w-full items-center gap-4 p-4 text-left"><BookCover work={book.work} edition={book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0]} size="sm" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-serif text-lg text-[#f4efe6]">{book.work.title}</h3><span className="rounded-full border border-[#c5a059]/20 px-2 py-0.5 text-[10px] font-bold uppercase text-[#cdbbca]">{materialTypeLabel(book.work.materialType ?? 'book', true)}</span></div><p className="text-xs text-[#ad9fac]">{book.work.author}</p></div><div className="hidden text-right sm:block"><p className="text-sm font-bold text-[#e2bd66]">{book.progressPercentage}%</p>{book.rating && <p className="flex items-center justify-end gap-1 text-xs text-[#ad9fac]"><Star className="h-3 w-3 fill-[#e2bd66] text-[#e2bd66]" />{book.rating}</p>}</div></button>)}</div>
         )}
+
+        <PaginationControls page={safePage} totalItems={filteredBooks.length} pageSize={LIBRARY_PAGE_SIZE} onPageChange={setPage} itemLabel="items" />
       </>}
 
       {section === 'books' && selectedBookIds.length > 0 && <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-[#c5a059]/35 bg-[#17101b] px-5 py-3 shadow-2xl lg:bottom-6"><span className="text-xs font-bold text-[#f4efe6]">{selectedBookIds.length} selected</span><button type="button" onClick={onOpenBatchEdit} className="quiet-shelf-primary-action">Edit</button><button type="button" onClick={onClearSelection} className="grid h-10 w-10 place-items-center rounded-full text-[#ad9fac]"><X className="h-4 w-4" /></button></div>}
