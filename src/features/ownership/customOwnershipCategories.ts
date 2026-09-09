@@ -59,10 +59,21 @@ export const customOwnershipCategoryLabel = (categoryId?: string): string | unde
 export const deleteCustomOwnershipCategory = (id: string, books: UserBookRecord[]): { deleted: boolean; affectedBooks: number } => {
   const current = readCustomOwnershipCategories();
   if (!current.some((category) => category.id === id)) return { deleted: false, affectedBooks: 0 };
-  const affectedBooks = books.filter((book) => book.ownership === 'custom' && book.customOwnershipCategoryId === id).length;
-  const nextBooks = books.map((book) => book.ownership === 'custom' && book.customOwnershipCategoryId === id
-    ? { ...book, ownership: 'none' as const, customOwnershipCategoryId: undefined }
+
+  // The field name is retained for backward compatibility, but custom categories
+  // are now independent from ownership. Old records that used ownership=custom
+  // still fall back to "Not owned" when their category is removed; newer records
+  // keep their actual ownership and simply lose the deleted category assignment.
+  const affectedBooks = books.filter((book) => book.customOwnershipCategoryId === id).length;
+  const nextBooks = books.map((book) => book.customOwnershipCategoryId === id
+    ? {
+        ...book,
+        ownership: book.ownership === 'custom' ? 'none' as const : book.ownership,
+        status: book.status === 'custom' ? 'tbr' as const : book.status,
+        customOwnershipCategoryId: undefined,
+      }
     : book);
+
   if (!writeCategories(current.filter((category) => category.id !== id))) return { deleted: false, affectedBooks: 0 };
   if (affectedBooks > 0 && writeRuntimeJson(SYNC_STORAGE_KEYS.books, nextBooks)) {
     notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
