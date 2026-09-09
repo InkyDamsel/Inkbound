@@ -14,13 +14,24 @@ export interface LibraryOption<T extends string> {
   description?: string;
 }
 
+// New status assignments stay intentionally simple. Legacy values remain valid in
+// the persisted schema so existing/imported books are never rewritten just to
+// adopt the newer UI model.
 export const READING_STATUS_OPTIONS: LibraryOption<ReadingStatus>[] = [
   { value: 'currently-reading', label: 'Currently Reading', description: 'Put it into your active reading list.' },
   { value: 'tbr', label: 'To Be Read', description: 'Save it for later.' },
-  { value: 'finished', label: 'Finished', description: 'Mark it as already read.' },
-  { value: 'paused', label: 'Paused', description: 'Keep it on hold without losing your place.' },
-  { value: 'dnf', label: 'Did Not Finish', description: 'Keep a record without marking it finished.' },
-  { value: 'wishlist', label: 'Wishlist', description: 'Keep it on your wishlist.' },
+  { value: 'finished', label: 'Read', description: 'Mark it as already read.' },
+];
+
+export const LEGACY_READING_STATUS_OPTIONS: LibraryOption<ReadingStatus>[] = [
+  { value: 'paused', label: 'Paused', description: 'Legacy status retained for existing library records.' },
+  { value: 'dnf', label: 'Did Not Finish', description: 'Legacy status retained for existing library records.' },
+  { value: 'wishlist', label: 'Wishlist', description: 'Legacy status retained for existing library records.' },
+];
+
+export const ALL_READING_STATUS_OPTIONS: LibraryOption<ReadingStatus>[] = [
+  ...READING_STATUS_OPTIONS,
+  ...LEGACY_READING_STATUS_OPTIONS,
 ];
 
 export const MATERIAL_TYPE_OPTIONS: LibraryOption<ReadingMaterialType>[] = [
@@ -75,7 +86,7 @@ const labelFrom = <T extends string>(options: LibraryOption<T>[], value: T, plur
   return plural ? option.pluralLabel ?? option.label : option.label;
 };
 
-export const readingStatusLabel = (value: ReadingStatus) => labelFrom(READING_STATUS_OPTIONS, value);
+export const readingStatusLabel = (value: ReadingStatus) => labelFrom(ALL_READING_STATUS_OPTIONS, value);
 export const materialTypeLabel = (value: ReadingMaterialType, plural = false) => labelFrom(MATERIAL_TYPE_OPTIONS, value, plural);
 export const formatLabel = (value: Format) => labelFrom(FORMAT_OPTIONS, value);
 export const ownershipLabel = (value: OwnershipStatus) => labelFrom(OWNERSHIP_OPTIONS, value);
