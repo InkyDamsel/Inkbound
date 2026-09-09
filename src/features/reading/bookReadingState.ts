@@ -16,19 +16,17 @@ export function getActiveEdition(book: UserBookRecord): Edition | undefined {
 }
 
 /**
- * Legacy/import reconciliation is deliberately conservative. Explicit Finished
- * status is a reading-history fact; it does not prove that Inkbound knows the
- * exact page/minute endpoint the reader reached. Do not fabricate 100% progress
- * or a full page count merely because a title is Finished.
+ * Finished and 100% are one canonical reading state in Inkbound.
  *
- * Older builds used this helper to force Finished records to the active edition
- * endpoint. It now exists as a compatibility boundary and intentionally returns
- * the stored record unchanged. Historical/dashboard counting is owned by
- * hasTrustworthyFinishedHistory(), which requires Finished + a valid finish date,
- * not synthetic progress.
+ * Imported trackers often carry an explicit Read/Finished shelf without an exact
+ * page/minute endpoint. We should not invent historical page numbers, but a title
+ * explicitly marked Finished is complete and must present as 100% everywhere.
+ * This helper normalizes the stored percentage while leaving page/minute endpoints
+ * untouched when the source did not provide them.
  */
 export function reconcileFinishedBookProgress(book: UserBookRecord): UserBookRecord {
-  return book;
+  if (book.status !== 'finished' || book.progressPercentage === 100) return book;
+  return { ...book, progressPercentage: 100 };
 }
 
 export function getBookReadingState(book: UserBookRecord): BookReadingState {
@@ -42,12 +40,13 @@ export function getBookReadingState(book: UserBookRecord): BookReadingState {
   const calculatedPercentage = hasKnownTotal
     ? Math.round((completedUnits / totalUnits!) * 100)
     : Math.max(0, Math.round(book.progressPercentage || 0));
-  const progressPercentage = Math.max(0, Math.min(100, calculatedPercentage));
+  const progressPercentage = isFinished
+    ? 100
+    : Math.max(0, Math.min(100, calculatedPercentage));
 
   // A non-finished record at/above a known endpoint is contradictory and should
-  // be corrected. A Finished record may legitimately have incomplete/unknown
-  // progress (for example imported reading history), so Finished never receives
-  // a "progress needs correction" warning solely for being below 100%.
+  // be corrected. Finished is already canonical 100% regardless of whether an
+  // imported source supplied the exact final page/minute endpoint.
   const progressNeedsCorrection = hasKnownTotal
     ? !isFinished && calculatedPercentage >= 100
     : false;
@@ -65,18 +64,20 @@ export function getBookReadingState(book: UserBookRecord): BookReadingState {
 
 /**
  * Canonical reading-status transition. Any surface that changes status should use
- * this helper so status and reading-history dates cannot drift apart.
+ * this helper so status, completion percentage, and reading-history dates cannot
+ * drift apart.
  *
- * Finished is intentionally independent from page/minute totals. Marking a title
- * Finished records the status/date but preserves the progress values the reader
- * actually entered or imported. Progress can be corrected separately without
- * erasing the finished date.
+ * Marking a title Finished means 100% complete. We do not fabricate an exact
+ * page/minute endpoint when one is unknown; the percentage and Finished status
+ * are the canonical completion signal while the finish date records when the
+ * reader explicitly marks it complete inside Inkbound.
  */
 export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, date = localDateKey()): UserBookRecord {
   if (status === 'finished') {
     return {
       ...book,
       status,
+      progressPercentage: 100,
       dateStarted: book.dateStarted ?? date,
       dateFinished: book.dateFinished ?? date,
     };
