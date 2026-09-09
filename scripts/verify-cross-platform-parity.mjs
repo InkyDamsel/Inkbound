@@ -91,20 +91,21 @@ for (const capability of [
   'configureRuntimeExport',
   'configureRuntimeLifecycle',
   'configureRuntimeReauthentication',
+  'configureRuntimePremiumPurchase',
+  'configureRuntimeSubscriptionManagement',
   'initializeNativeSecurityRuntime',
 ]) {
   assert(androidRuntime.includes(capability), `Android runtime is missing ${capability}; the corresponding shared web capability would not have a native implementation.`);
 }
 
-// Store billing is the one legitimate implementation difference: the feature
-// surface stays shared, but Android must use Google Play instead of a web portal.
-// As soon as subscriptions are opened, missing Play subscription management is
-// a hard release failure rather than an acceptable TODO.
-const productPolicy = read('src/config/productPolicy.ts');
-const subscriptionsOpen = /subscriptionsOpen\s*:\s*true/.test(productPolicy);
-if (subscriptionsOpen) {
-  assert(androidRuntime.includes('configureRuntimeSubscriptionManagement'), 'Premium subscriptions are open, but Android has no Google Play subscription-management adapter.');
-}
+const premiumRuntime = read('src/platform/runtimePremiumPurchase.ts');
+assert(premiumRuntime.includes('createStripeCheckoutSession'), 'Web Premium purchase adapter must route subscription checkout through the secure Stripe callable.');
+assert(androidRuntime.includes('verifyGooglePlaySubscription'), 'Android Premium purchases must be server-verified before entitlement is granted.');
+assert(androidRuntime.includes('PlayBilling.acknowledge'), 'Android Premium purchases must be acknowledged after secure verification.');
+
+const subscriptionRuntime = read('src/platform/runtimeSubscriptionManagement.ts');
+assert(subscriptionRuntime.includes('createStripeBillingPortalSession'), 'Web subscription management must use a server-created Stripe Billing Portal session.');
+assert(androidRuntime.includes('PlayBilling.manage'), 'Android subscription management must stay inside Google Play.');
 
 const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
 assert(bookDetailsCore.includes('onUpdateSession'), 'Book Details must expose reading-session editing on every viewport.');
