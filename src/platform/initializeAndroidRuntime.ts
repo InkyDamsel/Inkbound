@@ -102,7 +102,9 @@ const verifyPlayPurchase = async (purchase: PlayPurchaseResult) => {
   const response = await verifySubscription({ purchaseToken });
   if (!response.data.verified) throw new Error('Google Play could not verify Inkbound Premium.');
 
-  if (!purchase.acknowledged) await PlayBilling.acknowledge({ purchaseToken });
+  // The trusted backend verifies and acknowledges the purchase before returning.
+  // Keeping acknowledgement server-side means entitlement and acknowledgement
+  // cannot disagree if the Android process closes immediately after checkout.
   signalPremiumEntitlementRefresh();
 };
 
