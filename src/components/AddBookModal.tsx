@@ -12,6 +12,7 @@ import { createBookFromSearchEdition } from '../features/book-search/mapping/boo
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
+  createCustomOwnershipCategory,
   readCustomOwnershipCategories,
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
@@ -48,6 +49,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
   const [customCategories, setCustomCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
+  const [creatingCustomCategory, setCreatingCustomCategory] = useState(false);
+  const [newCustomCategoryName, setNewCustomCategoryName] = useState('');
 
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -78,6 +81,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
     window.addEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
   }, []);
+
+  const createAndSelectCustomCategory = () => {
+    const created = createCustomOwnershipCategory(newCustomCategoryName);
+    if (!created) return;
+    setCustomCategories(readCustomOwnershipCategories());
+    setCategory(`custom:${created.id}`);
+    setNewCustomCategoryName('');
+    setCreatingCustomCategory(false);
+  };
 
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
@@ -223,7 +235,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
               <Field label="Genres"><input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance" /></Field>
               {format !== 'audiobook' && <Field label="Page count"><input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" /></Field>}
               <Field label="Format"><select value={format} onChange={(event) => setFormat(event.target.value as Format)}>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
-              <Field label="Reading status / category"><select value={category} onChange={(event) => setCategory(event.target.value as CategorySelection)}><optgroup label="Reading status">{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}</select></Field>
+              <div>
+                <Field label="Reading status / category"><select value={category} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomCategory(true); return; } setCategory(event.target.value as CategorySelection); setCreatingCustomCategory(false); }}><optgroup label="Reading status">{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}<option value="__new__">+ Create custom category…</option></select></Field>
+                {creatingCustomCategory && <div className="mt-2 flex gap-2"><input value={newCustomCategoryName} onChange={(event) => setNewCustomCategoryName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createAndSelectCustomCategory(); } }} placeholder="e.g. Kids Books" className="min-h-11 min-w-0 flex-1 rounded-xl border border-[#c5a059]/18 bg-[#0d0910] px-3 text-sm text-[#f4efe6] outline-none" autoFocus /><button type="button" onClick={createAndSelectCustomCategory} disabled={!newCustomCategoryName.trim()} className="quiet-shelf-secondary-action px-3 disabled:opacity-50">Create</button></div>}
+              </div>
               <Field label="Ownership"><select value={ownership} onChange={(event) => setOwnership(event.target.value as OwnershipStatus)}>{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
               <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
             </div>
