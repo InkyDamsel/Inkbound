@@ -23,7 +23,10 @@ import {
 } from './runtimePremiumPurchase';
 import { configureRuntimeReauthentication } from './runtimeReauthentication';
 import { isAndroidRuntime } from './runtimePlatform';
-import { configureRuntimeSubscriptionManagement } from './runtimeSubscriptionManagement';
+import {
+  configureRuntimeSubscriptionManagement,
+  getStripeSubscriptionPortalUrl,
+} from './runtimeSubscriptionManagement';
 
 interface PlayPurchaseResult {
   purchaseToken?: string;
@@ -38,6 +41,7 @@ interface InkboundPlayBillingPlugin {
   restore(): Promise<{ purchases: PlayPurchaseResult[] }>;
   acknowledge(options: { purchaseToken: string }): Promise<void>;
   manage(): Promise<void>;
+  openExternal(options: { url: string }): Promise<void>;
 }
 
 const PlayBilling = registerPlugin<InkboundPlayBillingPlugin>('InkboundPlayBilling');
@@ -208,8 +212,15 @@ export async function initializeAndroidRuntime() {
   });
 
   configureRuntimeSubscriptionManagement({
-    isAvailable: () => Boolean(auth?.currentUser),
-    open: async () => PlayBilling.manage(),
+    isAvailable: () => Boolean(auth?.currentUser && functions),
+    open: async (provider) => {
+      if (provider === 'google_play') {
+        await PlayBilling.manage();
+        return;
+      }
+      const url = await getStripeSubscriptionPortalUrl();
+      await PlayBilling.openExternal({ url });
+    },
   });
 
   configureRuntimeExport({
