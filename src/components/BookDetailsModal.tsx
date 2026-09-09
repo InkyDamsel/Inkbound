@@ -5,6 +5,7 @@ import { CatalogContributionLauncher } from './catalog/CatalogContributionLaunch
 import { EditionLccnControl } from './edition/EditionLccnControl';
 import { LibraryLoanReminderControl } from './library/LibraryLoanReminderControl';
 import { FinishOnTimeControl } from './reading/FinishOnTimeControl';
+import { normalizeLibraryRecord } from '../features/library/libraryNormalization';
 import { openLibrarySeriesForBook } from '../features/library/libraryNavigation';
 import { resolveEffectiveSeriesMetadata, seriesPositionLabel } from '../features/series/seriesLibrary';
 import { readSeriesOverrides } from '../features/series/seriesOverrides';
@@ -38,22 +39,6 @@ function normalizeBookIdentifiers(book: UserBookRecord): UserBookRecord {
     ...book,
     editions: book.editions.map(normalizeEditionIdentifiers),
   };
-}
-
-function normalizeOwnershipEdit(book: UserBookRecord): UserBookRecord {
-  if (book.ownership === 'wishlist' && book.status === 'finished') {
-    return {
-      ...book,
-      status: 'wishlist',
-      dateFinished: undefined,
-    };
-  }
-
-  if (book.ownership === 'borrowed-person' && book.libraryLoan) {
-    return { ...book, libraryLoan: undefined };
-  }
-
-  return book;
 }
 
 type BookDetailsModalProps = React.ComponentProps<typeof BookDetailsModalCore>;
@@ -90,7 +75,10 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   }, [normalizedBook, props.book, props.onUpdateBook]);
 
   const handleUpdateBook = (updatedBook: UserBookRecord) => {
-    const normalizedUpdate = normalizeOwnershipEdit(updatedBook);
+    // Reuse the canonical library normalizer so Book Details cannot invent a
+    // second ownership/status coupling. Wishlist ownership must never erase a
+    // legitimate Finished status or finish date.
+    const normalizedUpdate = normalizeLibraryRecord(updatedBook);
 
     if (!normalizedBook || !effectiveSeries || normalizedBook.work.seriesName?.trim()) {
       props.onUpdateBook(normalizedUpdate);
