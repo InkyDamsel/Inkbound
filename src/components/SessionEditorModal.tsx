@@ -23,6 +23,12 @@ const minutesBetween = (startTime: string, endTime: string) => {
   return Math.max(1, end - start);
 };
 
+const progressValue = (value: string) => {
+  if (!value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
+};
+
 export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, session, onClose, onSave, onDelete }) => {
   const initialBook = books.find((book) => book.id === session?.bookId) ?? books[0];
   const initialEdition = initialBook ? getActiveEdition(initialBook) : undefined;
@@ -40,8 +46,8 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   const [date, setDate] = useState(session?.date ?? localDateKey());
   const [startTime, setStartTime] = useState(session?.startTime ?? '19:00');
   const [endTime, setEndTime] = useState(session?.endTime ?? '19:30');
-  const [startProgress, setStartProgress] = useState(initialProgress);
-  const [endProgress, setEndProgress] = useState(initialEndProgress);
+  const [startProgress, setStartProgress] = useState(String(initialProgress));
+  const [endProgress, setEndProgress] = useState(String(initialEndProgress));
   const [notes, setNotes] = useState(session?.notes ?? '');
   const [mood, setMood] = useState(session?.mood ?? '');
   const [location, setLocation] = useState(session?.location ?? '');
@@ -60,8 +66,8 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
     const nextEdition = getActiveEdition(nextBook);
     const nextIsAudiobook = nextEdition?.format === 'audiobook';
     const currentProgress = nextIsAudiobook ? nextBook.progressMinutes : nextBook.progressPages;
-    setStartProgress(currentProgress);
-    setEndProgress(currentProgress);
+    setStartProgress(String(currentProgress));
+    setEndProgress(String(currentProgress));
   };
 
   const save = () => {
@@ -81,16 +87,23 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
       setError('Choose valid start and end times for this session.');
       return;
     }
-    if (endProgress < startProgress) {
+
+    const parsedStartProgress = progressValue(startProgress);
+    const parsedEndProgress = progressValue(endProgress);
+    if (parsedStartProgress === null || parsedEndProgress === null) {
+      setError(isAudiobook ? 'Enter starting and ending minutes.' : 'Enter a starting and ending page.');
+      return;
+    }
+    if (parsedEndProgress < parsedStartProgress) {
       setError(isAudiobook ? 'Ending minutes cannot be before starting minutes.' : 'Ending page cannot be before starting page.');
       return;
     }
 
-    if (!isAudiobook && edition?.pageCount && endProgress > edition.pageCount) {
+    if (!isAudiobook && edition?.pageCount && parsedEndProgress > edition.pageCount) {
       setError(`Ending page cannot be greater than this edition's ${edition.pageCount.toLocaleString()} pages.`);
       return;
     }
-    if (isAudiobook && edition?.audiobookDurationMins && endProgress > edition.audiobookDurationMins) {
+    if (isAudiobook && edition?.audiobookDurationMins && parsedEndProgress > edition.audiobookDurationMins) {
       setError(`Ending minute cannot be greater than this audiobook's ${edition.audiobookDurationMins.toLocaleString()} minutes.`);
       return;
     }
@@ -102,12 +115,12 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
       startTime,
       endTime,
       durationMinutes,
-      startPage: isAudiobook ? undefined : startProgress,
-      endPage: isAudiobook ? undefined : endProgress,
-      pagesRead: isAudiobook ? undefined : Math.max(0, endProgress - startProgress),
-      startTimestampSec: isAudiobook ? startProgress * 60 : undefined,
-      endTimestampSec: isAudiobook ? endProgress * 60 : undefined,
-      minutesListened: isAudiobook ? Math.max(0, endProgress - startProgress) : undefined,
+      startPage: isAudiobook ? undefined : parsedStartProgress,
+      endPage: isAudiobook ? undefined : parsedEndProgress,
+      pagesRead: isAudiobook ? undefined : Math.max(0, parsedEndProgress - parsedStartProgress),
+      startTimestampSec: isAudiobook ? parsedStartProgress * 60 : undefined,
+      endTimestampSec: isAudiobook ? parsedEndProgress * 60 : undefined,
+      minutesListened: isAudiobook ? Math.max(0, parsedEndProgress - parsedStartProgress) : undefined,
       listeningSpeed: isAudiobook ? session?.listeningSpeed ?? 1 : undefined,
       notes: notes.trim() || undefined,
       mood: mood.trim() || undefined,
@@ -140,8 +153,8 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Duration (minutes)<input type="number" value={durationMinutes ?? ''} readOnly className="inkbound-select mt-1 w-full cursor-default opacity-80" aria-describedby="session-duration-help" /><span id="session-duration-help" className="mt-1 block font-normal text-[var(--ink-text-muted)]">Calculated from start and end time.</span></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Start time<input type="time" value={startTime} onChange={(event) => { setStartTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">End time<input type="time" value={endTime} onChange={(event) => { setEndTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Starting minute' : 'Starting page'}<input type="number" inputMode="numeric" min={0} value={startProgress} onChange={(event) => setStartProgress(Math.max(0, Number(event.target.value) || 0))} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Ending minute' : 'Ending page'}<input type="number" inputMode="numeric" min={0} value={endProgress} onChange={(event) => setEndProgress(Math.max(0, Number(event.target.value) || 0))} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Starting minute' : 'Starting page'}<input type="number" inputMode="numeric" min={0} value={startProgress} onChange={(event) => { setStartProgress(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Ending minute' : 'Ending page'}<input type="number" inputMode="numeric" min={0} value={endProgress} onChange={(event) => { setEndProgress(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Mood <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><input value={mood} onChange={(event) => setMood(event.target.value)} placeholder="e.g. Cozy, tense, emotional" className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Location <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="e.g. Home, commute, café" className="inkbound-select mt-1 w-full" /></label>
           <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} className="inkbound-select mt-1 w-full resize-y" /></label>
