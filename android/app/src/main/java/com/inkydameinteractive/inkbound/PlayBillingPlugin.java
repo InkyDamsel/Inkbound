@@ -238,15 +238,30 @@ public class PlayBillingPlugin extends Plugin implements PurchasesUpdatedListene
 
     @PluginMethod
     public void manage(PluginCall call) {
+        openUri(
+            call,
+            "https://play.google.com/store/account/subscriptions?sku=" + PRODUCT_ID + "&package=" + PACKAGE_NAME,
+            "Google Play subscription management could not be opened."
+        );
+    }
+
+    @PluginMethod
+    public void openExternal(PluginCall call) {
+        String url = call.getString("url", "");
+        if (url.isEmpty() || (!url.startsWith("https://") && !url.startsWith("http://"))) {
+            call.reject("A valid secure billing URL is required.");
+            return;
+        }
+        openUri(call, url, "The subscription management page could not be opened.");
+    }
+
+    private void openUri(PluginCall call, String url, String errorMessage) {
         try {
-            Uri uri = Uri.parse(
-                "https://play.google.com/store/account/subscriptions?sku=" + PRODUCT_ID + "&package=" + PACKAGE_NAME
-            );
-            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             getActivity().startActivity(intent);
             call.resolve();
         } catch (Exception error) {
-            call.reject("Google Play subscription management could not be opened.", error);
+            call.reject(errorMessage, error);
         }
     }
 
