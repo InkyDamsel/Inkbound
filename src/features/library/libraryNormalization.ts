@@ -14,8 +14,11 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
   // previously finished book to the Wishlist ownership bucket without erasing
   // its finish date/history. Do not normalize one field by rewriting the other.
 
-  // Person-to-person borrowing does not use the library-loan due-date model.
-  if (normalized.ownership === 'borrowed-person' && normalized.libraryLoan) {
+  // Library-loan dates only belong to actual library loans. If ownership moves to
+  // owned, subscription, borrowed-from-person, wishlist, custom, or none, keeping
+  // a stale due date would continue surfacing countdown/reminder UI for a book that
+  // is no longer checked out from a library.
+  if (normalized.ownership !== 'borrowed-library' && normalized.libraryLoan) {
     normalized = { ...normalized, libraryLoan: undefined };
   }
 
