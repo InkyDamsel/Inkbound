@@ -3,6 +3,9 @@ import path from 'node:path';
 
 const root = process.cwd();
 const googleServicesPath = path.join(root, 'android', 'app', 'google-services.json');
+const gradlePath = path.join(root, 'android', 'app', 'build.gradle');
+const mainActivityPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
+const billingPluginPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
 const expectedPackage = 'com.inkydameinteractive.inkbound';
 
 const fail = (message) => {
@@ -34,5 +37,20 @@ if (!services.project_info?.project_number || !services.project_info?.project_id
   fail('google-services.json is missing Firebase project metadata.');
 }
 
+if (!fs.existsSync(gradlePath) || !fs.readFileSync(gradlePath, 'utf8').includes('com.android.billingclient:billing:9.1.0')) {
+  fail('Google Play Billing Library 9.1.0 is not wired into the Android app.');
+}
+if (!fs.existsSync(billingPluginPath)) {
+  fail('PlayBillingPlugin.java is missing. Android cannot purchase or restore Premium.');
+}
+const billingPlugin = fs.readFileSync(billingPluginPath, 'utf8');
+for (const required of ['queryProductDetailsAsync', 'launchBillingFlow', 'queryPurchasesAsync', 'acknowledgePurchase', 'setObfuscatedAccountId']) {
+  if (!billingPlugin.includes(required)) fail(`PlayBillingPlugin.java is missing ${required}.`);
+}
+if (!fs.existsSync(mainActivityPath) || !fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(PlayBillingPlugin.class)')) {
+  fail('MainActivity does not register PlayBillingPlugin.');
+}
+
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
-console.log('Next native checks: register SHA-1/SHA-256 fingerprints in Firebase, enable Google sign-in, and register Play Integrity in App Check.');
+console.log('Inkbound Google Play Billing native wiring verified.');
+console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
