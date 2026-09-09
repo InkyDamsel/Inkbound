@@ -3,12 +3,14 @@ import { Pencil, Plus, Tag, Trash2, X } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
+  CUSTOM_OWNERSHIP_CATEGORIES_KEY,
   createCustomOwnershipCategory,
   deleteCustomOwnershipCategory,
   readCustomOwnershipCategories,
   renameCustomOwnershipCategory,
   type CustomOwnershipCategory,
 } from '../../features/ownership/customOwnershipCategories';
+import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
 
 interface CustomOwnershipCategoryManagerProps {
   books: UserBookRecord[];
@@ -25,8 +27,16 @@ export const CustomOwnershipCategoryManager: React.FC<CustomOwnershipCategoryMan
   const refresh = () => setCategories(readCustomOwnershipCategories());
 
   useEffect(() => {
+    const handleRuntimeRefresh = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key === CUSTOM_OWNERSHIP_CATEGORIES_KEY) refresh();
+    };
     window.addEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
-    return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
+    return () => {
+      window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
+      window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
+    };
   }, []);
 
   const usageById = useMemo(() => {
