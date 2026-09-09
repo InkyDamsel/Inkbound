@@ -20,8 +20,12 @@ const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const CHECKPOINT_KEY_PREFIX = 'inkbound_library_sync_checkpoint_v1_';
 const VERIFY_DELAY_MS = 15000;
 
+type LibraryCountDirection = 'grow' | 'shrink';
+
 interface LocalCheckpoint {
   expectedBookCount: number;
+  previousBookCount?: number;
+  direction?: LibraryCountDirection;
   createdAt: string;
 }
 
@@ -53,6 +57,17 @@ function clearCheckpoint(uid: string) {
   getRuntimeStorage().removeItem(`${CHECKPOINT_KEY_PREFIX}${uid}`);
 }
 
+function checkpointComplete(checkpoint: LocalCheckpoint, uploadedBookCount: number): boolean {
+  // Growth can safely complete at-or-above the local expectation because another
+  // device may have added books concurrently. Shrinks must land exactly on the
+  // expected count; otherwise stale cloud documents still exist. Older beta
+  // checkpoints did not record direction, so keep the conservative exact rule.
+  if (checkpoint.direction === 'grow') {
+    return uploadedBookCount >= checkpoint.expectedBookCount;
+  }
+  return uploadedBookCount === checkpoint.expectedBookCount;
+}
+
 /**
  * Records the expected size of a reader's library before a large local change
  * begins syncing to Firestore. Recovery code can then distinguish a complete
@@ -76,13 +91,12 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
       try {
         const countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
         const uploadedBookCount = countSnapshot.data().count;
-        // Equality is required. Using >= incorrectly declared deletion batches
-        // complete while stale cloud books still existed (especially expected 0).
-        const complete = uploadedBookCount === checkpoint.expectedBookCount;
+        const complete = checkpointComplete(checkpoint, uploadedBookCount);
         await setDoc(manifestRef, {
           status: complete ? 'complete' : 'syncing',
           expectedBookCount: checkpoint.expectedBookCount,
           uploadedBookCount,
+          syncDirection: checkpoint.direction ?? 'unknown',
           updatedAt: serverTimestamp(),
           ...(complete ? { completedAt: serverTimestamp() } : {}),
         }, { merge: true });
@@ -100,9 +114,15 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
       }, VERIFY_DELAY_MS);
     };
 
-    const recordExpectedLibrarySize = async (expectedBookCount: number) => {
+    const recordExpectedLibrarySize = async (
+      previousBookCount: number,
+      expectedBookCount: number,
+    ) => {
+      const direction: LibraryCountDirection = expectedBookCount > previousBookCount ? 'grow' : 'shrink';
       const checkpoint: LocalCheckpoint = {
+        previousBookCount,
         expectedBookCount,
+        direction,
         createdAt: new Date().toISOString(),
       };
       writeCheckpoint(uid, checkpoint);
@@ -110,6 +130,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         await setDoc(manifestRef, {
           status: 'syncing',
           expectedBookCount,
+          syncDirection: direction,
           updatedAt: serverTimestamp(),
         }, { merge: true });
       } catch {
@@ -121,10 +142,11 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
     const handleLocalChange = (event: Event) => {
       const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
       if (detail?.keys && !detail.keys.includes(BOOKS_KEY)) return;
+      const previousCount = lastObservedBookCount.current;
       const nextCount = readBookCount();
-      if (nextCount === lastObservedBookCount.current) return;
+      if (nextCount === previousCount) return;
       lastObservedBookCount.current = nextCount;
-      void recordExpectedLibrarySize(nextCount);
+      void recordExpectedLibrarySize(previousCount, nextCount);
     };
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
@@ -137,6 +159,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
       void setDoc(manifestRef, {
         status: 'syncing',
         expectedBookCount: existingCheckpoint.expectedBookCount,
+        syncDirection: existingCheckpoint.direction ?? 'unknown',
         updatedAt: serverTimestamp(),
       }, { merge: true }).catch(() => undefined);
       scheduleVerification();
