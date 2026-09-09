@@ -29,10 +29,9 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
     [book.customOwnershipCategoryId, categories],
   );
 
-  if (book.ownership !== 'custom') return null;
-
-  const assign = (categoryId: string | undefined) => {
-    onUpdateBook({ ...book, ownership: 'custom', customOwnershipCategoryId: categoryId });
+  const assign = (categoryId: string) => {
+    if (!categoryId) return;
+    onUpdateBook({ ...book, status: 'custom', customOwnershipCategoryId: categoryId });
   };
 
   const createAndAssign = () => {
@@ -47,8 +46,8 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
   return (
     <section className="rounded-2xl border border-[var(--ink-gold)]/25 bg-[var(--ink-surface-soft)] p-4 sm:col-span-2">
       <div className="flex flex-col gap-1">
-        <p className="text-xs font-bold text-[var(--ink-ivory)]">Custom ownership category</p>
-        <p className="text-xs leading-5 text-[var(--ink-muted)]">Choose one you already use or create a category that fits your household or collection. You can rename or remove categories later in Library Maintenance.</p>
+        <p className="text-xs font-bold text-[var(--ink-ivory)]">Custom category</p>
+        <p className="text-xs leading-5 text-[var(--ink-muted)]">Use a reader-defined category such as Kids Books, Classroom, Family Library, DNF, or Paused without changing ownership. Categories can be renamed or removed later in Library Maintenance.</p>
       </div>
 
       <div className="mt-3 flex flex-col gap-3 sm:flex-row">
@@ -60,11 +59,11 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
                 setCreating(true);
                 return;
               }
-              assign(event.target.value || undefined);
+              assign(event.target.value);
             }}
             className="inkbound-select min-w-0 flex-1"
           >
-            <option value="">Choose a custom category</option>
+            <option value="" disabled>Choose a custom category</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
             <option value="__new__">+ Create new category</option>
           </select>
