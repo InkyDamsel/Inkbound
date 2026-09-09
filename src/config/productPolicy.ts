@@ -32,6 +32,8 @@ const featurePolicy: Record<ProductFeature, FeatureTier> = {
   completeExport: 'free',
 };
 
+const subscriptionsOpen = import.meta.env.VITE_PREMIUM_SUBSCRIPTIONS_OPEN === 'true';
+
 export const PRODUCT_POLICY = {
   library: {
     freeItemLimit: Infinity,
@@ -39,7 +41,7 @@ export const PRODUCT_POLICY = {
     dataExportIncluded: true,
   },
   premium: {
-    subscriptionsOpen: false,
+    subscriptionsOpen,
     plannedMonthlyPrice: 6.99,
     plannedAnnualPrice: 59.99,
   },
