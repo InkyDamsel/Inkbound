@@ -1,10 +1,13 @@
-import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
+const COLLECTION_DEFINITIONS_DOC_ID = 'collectionDefinitions';
+const LEGACY_COLLECTION_DEFINITIONS_DOC_ID = 'inkbound_collection_definitions';
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
+type DetailSection = 'collections' | 'books' | 'sessions' | 'auxiliary' | 'profile' | 'photoMemories' | 'syncState' | 'recoveryPoints' | 'entitlement';
 
 interface AdminRecord {
   enabled: boolean;
@@ -20,6 +23,8 @@ interface StoredBook {
   privateTags?: unknown;
   sourceOfImport?: unknown;
   importMetadataVerified?: unknown;
+  collections?: unknown;
+  readingStatus?: unknown;
 }
 
 interface StoredSession {
@@ -29,6 +34,20 @@ interface StoredSession {
 
 function timestampToIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
+}
+
+function serializeFirestoreValue(value: unknown): unknown {
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (Array.isArray(value)) return value.map(serializeFirestoreValue);
+  if (value && typeof value === 'object') {
+    const possibleReference = value as { path?: unknown; latitude?: unknown; longitude?: unknown };
+    if (typeof possibleReference.path === 'string') return possibleReference.path;
+    if (typeof possibleReference.latitude === 'number' && typeof possibleReference.longitude === 'number') {
+      return { latitude: possibleReference.latitude, longitude: possibleReference.longitude };
+    }
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, serializeFirestoreValue(entry)]));
+  }
+  return value;
 }
 
 function normalizeText(value: unknown): string {
@@ -61,6 +80,28 @@ function unwrapData<T>(value: Record<string, unknown>): T {
   return ('data' in value ? value.data : value) as T;
 }
 
+function friendlyAuxiliaryLabel(id: string): string {
+  const labels: Record<string, string> = {
+    collectionDefinitions: 'Collection definitions',
+    seriesOverrides: 'Series overrides',
+    customOwnershipCategories: 'Custom ownership categories',
+    annualReadingGoal: 'Annual reading goal',
+    dailyReadingGoalMinutes: 'Daily reading goal',
+    timelineMemories: 'Timeline memories',
+    readingTimeCapsules: 'Reading time capsules',
+    joinedChallenges: 'Joined challenges',
+    customChallenges: 'Custom challenges',
+    challengeRotation: 'Challenge rotation',
+    joinedChallengeSnapshots: 'Challenge snapshots',
+    dragonProfile: 'Dragon profile',
+    achievementUnlocks: 'Achievement unlocks',
+    achievementReveals: 'Achievement reveals',
+    achievementSeen: 'Achievement seen state',
+    inkbound_collection_definitions: 'Collection definitions',
+  };
+  return labels[id] ?? id.replace(/^inkbound_/, '').replaceAll('_', ' ');
+}
+
 async function requireAdmin(request: CallableRequest<unknown>, allowedRoles?: AdminRole[]) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
 
@@ -72,6 +113,174 @@ async function requireAdmin(request: CallableRequest<unknown>, allowedRoles?: Ad
   }
 
   return { auth: request.auth, admin: record };
+}
+
+async function getPagedDocuments(collection: FirebaseFirestore.CollectionReference, page: number, pageSize: number) {
+  const snapshot = await collection.orderBy(FieldPath.documentId()).offset(page * pageSize).limit(pageSize + 1).get();
+  return { docs: snapshot.docs.slice(0, pageSize), hasMore: snapshot.size > pageSize };
+}
+
+async function getIntegrityDetail(targetUserId: string, section: DetailSection, page: number, pageSize: number) {
+  const db = getFirestore();
+  const userRef = db.doc(`users/${targetUserId}`);
+
+  if (section === 'collections') {
+    const [booksSnapshot, auxiliarySnapshot] = await Promise.all([
+      userRef.collection('books').get(),
+      userRef.collection('auxiliary').get(),
+    ]);
+    const definitionsDoc = auxiliarySnapshot.docs.find((document) => document.id === COLLECTION_DEFINITIONS_DOC_ID)
+      ?? auxiliarySnapshot.docs.find((document) => document.id === LEGACY_COLLECTION_DEFINITIONS_DOC_ID);
+    const definitionsRaw = definitionsDoc ? unwrapData<unknown>(definitionsDoc.data()) : [];
+    const definitions = Array.isArray(definitionsRaw) ? definitionsRaw.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') : [];
+    const memberships = new Map<string, Array<{ id: string; title: string }>>();
+    booksSnapshot.docs.forEach((document) => {
+      const book = unwrapData<StoredBook>(document.data());
+      const work = asRecord(book.work);
+      const title = typeof work.title === 'string' && work.title.trim() ? work.title.trim() : 'Untitled book';
+      asStringArray(book.collections).forEach((collectionName) => {
+        const existing = memberships.get(collectionName) ?? [];
+        existing.push({ id: document.id, title });
+        memberships.set(collectionName, existing);
+      });
+    });
+    return {
+      section,
+      page: 0,
+      pageSize: definitions.length,
+      hasMore: false,
+      total: definitions.length,
+      items: definitions.map((definition, index) => {
+        const name = typeof definition.name === 'string' && definition.name.trim() ? definition.name.trim() : `Collection ${index + 1}`;
+        const members = memberships.get(name) ?? [];
+        return {
+          id: typeof definition.id === 'string' && definition.id ? definition.id : `collection-${index}`,
+          label: name,
+          count: members.length,
+          membersPreview: members.slice(0, 10),
+          raw: serializeFirestoreValue(definition),
+        };
+      }),
+    };
+  }
+
+  if (section === 'books') {
+    const { docs, hasMore } = await getPagedDocuments(userRef.collection('books'), page, pageSize);
+    const items = docs.map((document) => {
+      const stored = document.data();
+      const book = unwrapData<StoredBook>(stored);
+      const work = asRecord(book.work);
+      const editions = asRecordArray(book.editions);
+      const activeEditionId = typeof book.activeEditionId === 'string' ? book.activeEditionId : '';
+      const activeEdition = editions.find((edition) => edition.id === activeEditionId) ?? editions[0] ?? {};
+      const isbn = normalizeIsbn(activeEdition.isbn13) || normalizeIsbn(activeEdition.isbn10) || normalizeIsbn(activeEdition.isbn);
+      return {
+        id: document.id,
+        label: typeof work.title === 'string' && work.title.trim() ? work.title.trim() : 'Untitled book',
+        subtitle: typeof work.author === 'string' ? work.author : '',
+        collections: asStringArray(book.collections),
+        readingStatus: typeof book.readingStatus === 'string' ? book.readingStatus : '',
+        activeEditionId,
+        isbn,
+        sourceOfImport: typeof book.sourceOfImport === 'string' ? book.sourceOfImport : '',
+        updatedAt: timestampToIso(stored.updatedAt),
+        clientUpdatedAt: typeof stored.clientUpdatedAt === 'string' ? stored.clientUpdatedAt : null,
+        raw: serializeFirestoreValue(stored),
+      };
+    });
+    return { section, page, pageSize, hasMore, items };
+  }
+
+  if (section === 'sessions') {
+    const { docs, hasMore } = await getPagedDocuments(userRef.collection('sessions'), page, pageSize);
+    return {
+      section, page, pageSize, hasMore,
+      items: docs.map((document) => {
+        const stored = document.data();
+        const session = unwrapData<Record<string, unknown>>(stored);
+        return {
+          id: document.id,
+          label: typeof session.date === 'string' ? session.date : document.id,
+          subtitle: typeof session.bookId === 'string' ? `Book ${session.bookId}` : '',
+          updatedAt: timestampToIso(stored.updatedAt),
+          clientUpdatedAt: typeof stored.clientUpdatedAt === 'string' ? stored.clientUpdatedAt : null,
+          raw: serializeFirestoreValue(stored),
+        };
+      }),
+    };
+  }
+
+  if (section === 'auxiliary') {
+    const { docs, hasMore } = await getPagedDocuments(userRef.collection('auxiliary'), page, pageSize);
+    return {
+      section, page, pageSize, hasMore,
+      items: docs.map((document) => ({
+        id: document.id,
+        label: friendlyAuxiliaryLabel(document.id),
+        subtitle: document.id,
+        updatedAt: timestampToIso(document.get('updatedAt')),
+        clientUpdatedAt: typeof document.get('clientUpdatedAt') === 'string' ? document.get('clientUpdatedAt') : null,
+        raw: serializeFirestoreValue(document.data()),
+      })),
+    };
+  }
+
+  if (section === 'profile') {
+    const document = await userRef.collection('profile').doc('current').get();
+    return {
+      section, page: 0, pageSize: 1, hasMore: false,
+      items: document.exists ? [{ id: 'current', label: 'Current profile', raw: serializeFirestoreValue(document.data()) }] : [],
+    };
+  }
+
+  if (section === 'photoMemories') {
+    const { docs, hasMore } = await getPagedDocuments(userRef.collection('photoMemories'), page, pageSize);
+    return {
+      section, page, pageSize, hasMore,
+      items: docs.map((document) => ({
+        id: document.id,
+        label: document.get('deleted') === true ? 'Deleted Photo Memory' : 'Photo Memory',
+        subtitle: document.id,
+        raw: serializeFirestoreValue(document.data()),
+      })),
+    };
+  }
+
+  if (section === 'syncState') {
+    const snapshot = await userRef.collection('syncState').get();
+    return {
+      section, page: 0, pageSize: snapshot.size, hasMore: false,
+      items: snapshot.docs.map((document) => ({ id: document.id, label: document.id, raw: serializeFirestoreValue(document.data()) })),
+    };
+  }
+
+  if (section === 'recoveryPoints') {
+    const { docs, hasMore } = await getPagedDocuments(userRef.collection('recoverySnapshots'), page, pageSize);
+    return {
+      section, page, pageSize, hasMore,
+      items: docs.map((document) => {
+        const data = document.data();
+        return {
+          id: document.id,
+          label: typeof data.reason === 'string' ? data.reason : 'Recovery point',
+          subtitle: typeof data.createdAtClient === 'string' ? data.createdAtClient : timestampToIso(data.createdAt) ?? '',
+          counts: {
+            books: typeof data.bookCount === 'number' ? data.bookCount : 0,
+            sessions: typeof data.sessionCount === 'number' ? data.sessionCount : 0,
+            auxiliary: typeof data.auxiliaryCount === 'number' ? data.auxiliaryCount : 0,
+            photoMemories: typeof data.photoMemoryCount === 'number' ? data.photoMemoryCount : 0,
+          },
+          raw: serializeFirestoreValue(data),
+        };
+      }),
+    };
+  }
+
+  const entitlement = await db.doc(`entitlements/${targetUserId}`).get();
+  return {
+    section: 'entitlement', page: 0, pageSize: 1, hasMore: false,
+    items: entitlement.exists ? [{ id: targetUserId, label: 'Entitlement', raw: serializeFirestoreValue(entitlement.data()) }] : [],
+  };
 }
 
 export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
@@ -159,9 +368,18 @@ export const getAdminDataIntegrity = onCall({
   memory: '512MiB',
 }, async (request) => {
   await requireAdmin(request, ['owner']);
-  const input = request.data as { targetUserId?: unknown } | undefined;
+  const input = request.data as { targetUserId?: unknown; detailSection?: unknown; page?: unknown; pageSize?: unknown } | undefined;
   const targetUserId = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
   if (!targetUserId || targetUserId.length > 128) throw new HttpsError('invalid-argument', 'A valid reader is required.');
+
+  const validDetailSections: DetailSection[] = ['collections', 'books', 'sessions', 'auxiliary', 'profile', 'photoMemories', 'syncState', 'recoveryPoints', 'entitlement'];
+  if (typeof input?.detailSection === 'string') {
+    if (!validDetailSections.includes(input.detailSection as DetailSection)) throw new HttpsError('invalid-argument', 'Unsupported Firestore detail section.');
+    const page = typeof input.page === 'number' && Number.isFinite(input.page) ? Math.max(0, Math.floor(input.page)) : 0;
+    const requestedPageSize = typeof input.pageSize === 'number' && Number.isFinite(input.pageSize) ? Math.floor(input.pageSize) : 25;
+    const pageSize = Math.min(50, Math.max(1, requestedPageSize));
+    return { generatedAt: new Date().toISOString(), targetUserId, details: await getIntegrityDetail(targetUserId, input.detailSection as DetailSection, page, pageSize) };
+  }
 
   const db = getFirestore();
   const userRef = db.doc(`users/${targetUserId}`);
