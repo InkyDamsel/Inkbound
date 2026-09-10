@@ -67,6 +67,8 @@ export const HELP_SECTIONS: HelpSection[] = [
     title: 'Imports & library updates',
     items: [
       { id: 'large-imports', question: 'How does Inkbound handle large libraries?', answer: 'Inkbound is designed to import large libraries quickly, then fill in missing details gradually so you do not have to wait for every cover and summary before using your library.' },
+      { id: 'goodreads-dates', question: 'What happens to my Goodreads reading dates?', answer: 'When Goodreads includes a Date Read, Inkbound uses it as the finished date. Goodreads does not export a Date Started field, so Inkbound leaves the start date blank instead of inventing one. Titles without a Goodreads Date Read stay undated rather than being marked finished on the day you import them.' },
+      { id: 'duplicate-imports', question: 'Why did Inkbound skip some books during an import?', answer: 'Inkbound skips books that already exist in your library or appear more than once in the same upload so re-importing does not silently overwrite your current library records. Skipped items are reported after the import.' },
       { id: 'metadata-updates', question: 'When are missing covers and summaries updated?', answer: 'Inkbound can check for missing details while the app is active. Very large libraries are handled in smaller batches so the app stays responsive.' },
       { id: 'closed-app-enrichment', question: 'Does Inkbound keep checking after I close the app?', answer: 'Not continuously. Phones, tablets, and browsers can pause background work. Unfinished detail checks can remain queued so you can continue later.' },
       { id: 'reimport', question: 'Do I need to re-import items with missing details?', answer: 'No. Missing covers and summaries can be retried without importing the library again.' },
@@ -90,8 +92,8 @@ export const HELP_SECTIONS: HelpSection[] = [
     id: 'privacy-data',
     title: 'Privacy, exports & your data',
     items: [
-      { id: 'export-library', question: 'Can I export my library?', answer: 'Yes. Inkbound provides a versioned JSON backup and spreadsheet-friendly CSV export in Settings. Exporting your own data is part of data ownership, not a Premium lock.' },
-      { id: 'csv-json', question: 'What is the difference between CSV and JSON export?', answer: 'CSV is convenient for viewing library fields in spreadsheet tools and includes reading type, effective series information, ownership, progress, dates, tags, and collections. JSON is the richer Inkbound backup format for preserving supported app data and structure, including reading sessions and manual Series organization.' },
+      { id: 'export-library', question: 'Can I export my library?', answer: 'Yes. Inkbound provides a Complete Inkbound Backup plus a spreadsheet-friendly Library CSV in Settings. Exporting your own data is part of data ownership, not a Premium lock.' },
+      { id: 'csv-json', question: 'What is the difference between the Complete Inkbound Backup and Library CSV?', answer: 'Library CSV is the easiest option if you want to view your library in Excel or Google Sheets. Complete Inkbound Backup saves richer Inkbound-specific data and structure, including reading sessions and manual Series organization, in a recovery-friendly file. You normally do not need to open that backup file yourself.' },
       { id: 'clear-vs-delete', question: 'What is the difference between clearing this device and deleting my account?', answer: 'Clearing a device removes local Inkbound data while keeping your cloud account. Deleting your account permanently removes the account and its associated Inkbound cloud data.' },
       { id: 'support-secrets', question: 'Should I email my password or sign-in code to support?', answer: 'No. Inkbound support will never need your password or a sign-in verification code.' },
     ],
