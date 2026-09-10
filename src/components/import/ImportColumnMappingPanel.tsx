@@ -17,6 +17,7 @@ export const ImportColumnMappingPanel: React.FC<ImportColumnMappingPanelProps> =
 }) => {
   const mappedCount = IMPORT_FIELD_OPTIONS.filter((option) => Boolean(mapping[option.key])).length;
   const titleReady = Boolean(mapping.title);
+  const hasShelfLikeMapping = Boolean(mapping.shelves);
 
   return (
     <section className="rounded-2xl border border-[#c5a059]/30 bg-[#1c0f24] p-5 sm:p-6">
@@ -30,8 +31,13 @@ export const ImportColumnMappingPanel: React.FC<ImportColumnMappingPanelProps> =
                 Inkbound made its best guesses. Change any field that does not look right, or leave fields you do not need set to Ignore.
               </p>
               <p className="mt-2 text-xs leading-5 text-stone-500">
-                Covers can only be imported when your export actually includes a cover or image URL. If it does not, you can upload a cover or search online for one from Book Details after import.
+                Covers can only be imported when your export actually includes a cover or image URL. If it does not, you can upload a cover or reuse one from your Manual Cover Library after import.
               </p>
+              {hasShelfLikeMapping && (
+                <div className="mt-3 rounded-xl border border-[#c5a059]/25 bg-[#c5a059]/10 p-3 text-xs leading-5 text-stone-300">
+                  <strong className="text-[#f0cf7a]">Your export includes shelves, lists, or folders.</strong> Inkbound will bring them in as tags. If you also want those groups to become Inkbound Collections, choose the same source column under <strong>Collections</strong> below. This is optional so your source app does not decide how your Inkbound library must be organized.
+                </div>
+              )}
             </div>
             <span className="shrink-0 rounded-full border border-[#c5a059]/25 bg-[#c5a059]/10 px-3 py-1.5 text-xs font-bold text-[#e5c158]">
               {mappedCount} mapped · {rowCount.toLocaleString()} rows
