@@ -146,15 +146,20 @@ function applySourceFieldsToBooks(items: ImportRecordItem[], library: UserBookRe
 async function applySourceFieldsToNewBooks(items: ImportRecordItem[], fallbackLibrary: UserBookRecord[]): Promise<UserBookRecord[]> {
   if (items.length === 0) return fallbackLibrary;
   let latestLibrary = fallbackLibrary;
+  let bestResult = { library: fallbackLibrary, matched: 0 };
+
   for (let attempt = 0; attempt < 10; attempt += 1) {
     latestLibrary = readCurrentBooks(latestLibrary);
     const result = applySourceFieldsToBooks(items, latestLibrary);
-    if (result.matched === items.length) {
-      writeRuntimeJson(SYNC_STORAGE_KEYS.books, result.library);
-      notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
-      return result.library;
-    }
+    if (result.matched > bestResult.matched) bestResult = result;
+    if (result.matched === items.length) break;
     await new Promise<void>((resolve) => window.setTimeout(resolve, 25));
+  }
+
+  if (bestResult.matched > 0) {
+    writeRuntimeJson(SYNC_STORAGE_KEYS.books, bestResult.library);
+    notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
+    return bestResult.library;
   }
 
   // Never synthesize another copy just to attach source fields. If React/native
@@ -196,10 +201,7 @@ export function startImportVerificationJob(
       const importedIds = new Set(importedRecords.map((record) => record.id));
       const writeRejected = mergeResult.remaining.filter((record) => !importedIds.has(record.id)).map((record) => ({ ...record, duplicateAction: 'skip' as const }));
 
-      // App creates the new records first. Wait briefly for that state write, then
-      // apply tags/shelves/mapped Collections from the source to those same books.
       workingLibrary = await applySourceFieldsToNewBooks(importedRecords, workingLibrary);
-
       persistMetadataPending(importedRecords);
       const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
       writeRejected.forEach((record) => duplicateMap.set(record.id, record));
