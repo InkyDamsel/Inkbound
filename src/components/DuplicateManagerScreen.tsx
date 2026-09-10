@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Copy, Merge, Search, ShieldCheck } from 'lucide-react';
 import type { Edition, UserBookRecord } from '../types';
-import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
+import { readRuntimeJson } from '../platform/runtimeStorage';
+import { usePersistentState } from '../hooks/usePersistentState';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { BookCover } from './BookCover';
 import { ManualCoverRecoveryPanel } from './ManualCoverRecoveryPanel';
 import { PaginationControls } from './PaginationControls';
@@ -25,7 +27,10 @@ interface DuplicateGroup {
   books: UserBookRecord[];
 }
 
-const IGNORED_STORAGE_KEY = 'inkbound_duplicate_groups_ignored';
+type DuplicateCandidate = { reason: 'isbn' | 'title-author'; key: string; ids: string[] };
+
+const IGNORED_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups;
+const LEGACY_IGNORED_STORAGE_KEY = 'inkbound_duplicate_groups_ignored';
 const DUPLICATE_PAGE_SIZE = 10;
 
 const normalizeText = (value?: string) =>
@@ -127,8 +132,8 @@ const mergeDuplicateBooks = (keeper: UserBookRecord, group: UserBookRecord[]): U
   };
 };
 
-const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
-  const candidateSets: Array<{ reason: 'isbn' | 'title-author'; key: string; ids: string[] }> = [];
+const buildDuplicateCandidates = (books: UserBookRecord[]): DuplicateCandidate[] => {
+  const candidateSets: DuplicateCandidate[] = [];
   const isbnMap = new Map<string, Set<string>>();
   books.forEach((book) => allBookIsbns(book).forEach((isbn) => {
     const ids = isbnMap.get(isbn) ?? new Set<string>();
@@ -148,14 +153,26 @@ const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
     titleAuthorMap.set(key, ids);
   });
   titleAuthorMap.forEach((ids, key) => { if (ids.size > 1) candidateSets.push({ reason: 'title-author', key, ids: [...ids] }); });
+  return candidateSets;
+};
 
+const stableCandidateId = (candidate: DuplicateCandidate) => `${candidate.reason}:${candidate.key}`;
+const legacyCandidateId = (candidate: DuplicateCandidate) => [...candidate.ids].sort().join('|');
+
+const migrateLegacyIgnoredGroups = (books: UserBookRecord[], legacyIgnored: Set<string>) => {
+  if (!legacyIgnored.size) return [] as string[];
+  return buildDuplicateCandidates(books)
+    .filter((candidate) => legacyIgnored.has(legacyCandidateId(candidate)))
+    .map(stableCandidateId);
+};
+
+const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
   const merged = new Map<string, DuplicateGroup>();
-  candidateSets.forEach((candidate) => {
-    const sortedIds = [...candidate.ids].sort();
-    const id = sortedIds.join('|');
+  buildDuplicateCandidates(books).forEach((candidate) => {
+    const id = stableCandidateId(candidate);
     if (ignored.has(id)) return;
     const existing = merged.get(id);
-    const groupBooks = sortedIds.map((bookId) => books.find((book) => book.id === bookId)).filter((book): book is UserBookRecord => Boolean(book));
+    const groupBooks = candidate.ids.map((bookId) => books.find((book) => book.id === bookId)).filter((book): book is UserBookRecord => Boolean(book));
     if (groupBooks.length < 2) return;
     if (!existing || candidate.reason === 'isbn') merged.set(id, { id, reason: candidate.reason, books: groupBooks });
   });
@@ -163,11 +180,12 @@ const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
 };
 
 export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ books, onMergeGroup, onSelectBook }) => {
-  const [ignoredGroupIds, setIgnoredGroupIds] = useState<Set<string>>(() => new Set(readRuntimeJson<string[]>(IGNORED_STORAGE_KEY, [])));
+  const [ignoredGroupIds, setIgnoredGroupIds] = usePersistentState<string[]>(IGNORED_STORAGE_KEY, []);
   const [query, setQuery] = useState('');
   const [keeperByGroup, setKeeperByGroup] = useState<Record<string, string>>({});
   const [duplicatePage, setDuplicatePage] = useState(1);
-  const groups = useMemo(() => findDuplicateGroups(books, ignoredGroupIds), [books, ignoredGroupIds]);
+  const ignoredGroupSet = useMemo(() => new Set(ignoredGroupIds), [ignoredGroupIds]);
+  const groups = useMemo(() => findDuplicateGroups(books, ignoredGroupSet), [books, ignoredGroupSet]);
   const visibleGroups = useMemo(() => {
     const normalized = normalizeText(query);
     if (!normalized) return groups;
@@ -183,11 +201,15 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
     if (duplicatePage > duplicateTotalPages) setDuplicatePage(duplicateTotalPages);
   }, [duplicatePage, duplicateTotalPages]);
 
+  useEffect(() => {
+    const legacyIgnored = new Set(readRuntimeJson<string[]>(LEGACY_IGNORED_STORAGE_KEY, []));
+    const migrated = migrateLegacyIgnoredGroups(books, legacyIgnored);
+    if (!migrated.length) return;
+    setIgnoredGroupIds((current) => [...new Set([...current, ...migrated])]);
+  }, [books, setIgnoredGroupIds]);
+
   const ignoreGroup = (groupId: string) => {
-    const next = new Set(ignoredGroupIds);
-    next.add(groupId);
-    setIgnoredGroupIds(next);
-    writeRuntimeJson(IGNORED_STORAGE_KEY, [...next]);
+    setIgnoredGroupIds((current) => current.includes(groupId) ? current : [...current, groupId]);
   };
 
   const mergeGroup = (group: DuplicateGroup) => {
