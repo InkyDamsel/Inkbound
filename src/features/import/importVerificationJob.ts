@@ -1,4 +1,8 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
+import { writeRuntimeJson } from '../../platform/runtimeStorage';
+import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
+import { findExistingImportMatch, mergeImportIntoExistingBook } from './safeReimportMerge';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
 
@@ -69,7 +73,7 @@ function readStoredSnapshot(): ImportVerificationJobSnapshot {
       return {
         ...emptySnapshot(),
         status: 'error',
-        error: 'The previous import was interrupted before the library write finished. Upload the export again; books that were already added will be detected as duplicates and skipped.',
+        error: 'The previous import was interrupted before the library write finished. Upload the export again; existing books can be safely enriched without creating extra copies.',
       };
     }
 
@@ -160,16 +164,37 @@ export function resetImportVerificationJob() {
   listeners.forEach((listener) => listener(snapshot));
 }
 
+function mergeExistingRecords(items: ImportRecordItem[], library: UserBookRecord[]): {
+  library: UserBookRecord[];
+  merged: ImportRecordItem[];
+  remaining: ImportRecordItem[];
+} {
+  let nextLibrary = library.map((book) => ({ ...book }));
+  const merged: ImportRecordItem[] = [];
+  const remaining: ImportRecordItem[] = [];
+
+  for (const item of items) {
+    const requestedMatch = item.matchedBookId
+      ? nextLibrary.find((book) => book.id === item.matchedBookId)
+      : undefined;
+    const match = requestedMatch ?? findExistingImportMatch(item, nextLibrary);
+    if (!match || item.duplicateAction !== 'merge') {
+      remaining.push(item);
+      continue;
+    }
+
+    const updated = mergeImportIntoExistingBook(match, item);
+    nextLibrary = nextLibrary.map((book) => book.id === match.id ? updated : book);
+    merged.push({ ...item, matchedBookId: match.id, duplicateAction: 'merge' });
+  }
+
+  return { library: nextLibrary, merged, remaining };
+}
+
 /**
- * Imports the user's source-of-truth records immediately.
- *
- * Optional cover/summary/edition enrichment is deliberately NOT performed here.
- * The App import executor creates fallback books and places accepted records on
- * the resumable enrichment queue, allowing very large libraries to finish the
- * actual import without waiting on thousands of external metadata requests.
- *
- * The legacy function name is retained so existing Import Center callers do not
- * need a coordinated migration.
+ * Writes source-of-truth records immediately. New books go through the normal
+ * App import executor. Re-import rows explicitly marked as merge enrich an
+ * existing Inkbound record without replacing reader-owned data.
  */
 export function startImportVerificationJob(
   items: ImportRecordItem[],
@@ -178,7 +203,6 @@ export function startImportVerificationJob(
   librarySnapshot?: UserBookRecord[],
 ): Promise<void> {
   if (activePromise) return activePromise;
-  void librarySnapshot;
 
   const normalizedItems = items.map(normalizeImportRecord);
   const normalizedPreDetectedDuplicates = preDetectedDuplicates.map(normalizeImportRecord);
@@ -198,22 +222,26 @@ export function startImportVerificationJob(
 
   activePromise = (async () => {
     try {
-      // The export is the source of truth. Add accepted records first; metadata
-      // enrichment happens later from the background queue created by App.tsx.
-      const executionResult = normalizedItems.length > 0
-        ? await executeImport(normalizedItems)
+      const startingLibrary = librarySnapshot ?? [];
+      const mergeResult = mergeExistingRecords(normalizedItems, startingLibrary);
+
+      if (mergeResult.merged.length > 0) {
+        writeRuntimeJson(SYNC_STORAGE_KEYS.books, mergeResult.library);
+        notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
+      }
+
+      const executionResult = mergeResult.remaining.length > 0
+        ? await executeImport(mergeResult.remaining)
         : [];
       const importedRecords = Array.isArray(executionResult)
         ? executionResult.map(normalizeImportRecord)
-        : normalizedItems;
+        : mergeResult.remaining;
       const importedIds = new Set(importedRecords.map((record) => record.id));
-      const writeRejected = normalizedItems
+      const writeRejected = mergeResult.remaining
         .filter((record) => !importedIds.has(record.id))
         .map((record) => ({ ...record, duplicateAction: 'skip' as const }));
 
-      // Keep a best-effort missing-details list for the Import History download.
-      // If this exceeds browser local-storage limits, the normal enrichment queue
-      // remains authoritative and the import itself still succeeds.
+      // Only genuinely new books need the normal cover/summary retry queue.
       persistMetadataPending(importedRecords);
 
       const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
@@ -224,7 +252,7 @@ export function startImportVerificationJob(
         completed: normalizedItems.length,
         total: normalizedItems.length,
         importedCount: importedRecords.length,
-        matchedCount: 0,
+        matchedCount: mergeResult.merged.length,
         metadataPendingCount: importedRecords.length,
         duplicates: [...duplicateMap.values()],
         unmatched: [],
