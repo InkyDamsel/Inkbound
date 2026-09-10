@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3, Bell, BookHeart, BookMarked, BookOpen, Bookmark, CalendarClock, CalendarDays,
   ChevronDown, Clock3, Copy, DownloadCloud, History, Home, Images, Library, Moon,
-  MoreHorizontal, Palette, Plus, Search, Settings, ShieldCheck, Sparkles, Sun, Target, Trophy, UserRound, X,
+  MoreHorizontal, Palette, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, ShieldCheck, Sparkles, Sun, Target, Trophy, UserRound, X,
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
@@ -81,6 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
   const [notificationsRead, setNotificationsRead] = usePersistentState('inkbound_notifications_read', false);
   const [loanReminderReadIds, setLoanReminderReadIds] = usePersistentState<string[]>('inkbound_library_loan_reminders_read', []);
   const [collapsedGroups, setCollapsedGroups] = usePersistentState<Record<NavigationGroupId, boolean>>('inkbound_navigation_collapsed_groups', defaultCollapsedGroups);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = usePersistentState('inkbound_sidebar_collapsed', false);
   const { userPlan, openUpgradeModal } = useUserPlan();
   const { user } = useAccountSync();
   const { displayName, avatarImage, initials } = useReaderProfileIdentity();
@@ -94,6 +95,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
   const loanReminders = useMemo(() => buildLibraryLoanReminders(books), [books]);
   const unreadLoanReminderCount = loanReminders.filter((reminder) => !loanReminderReadIds.includes(reminder.id)).length;
   const hasUnreadNotifications = !notificationsRead || unreadLoanReminderCount > 0;
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ink-sidebar-width', isSidebarCollapsed ? '76px' : '232px');
+    return () => document.documentElement.style.setProperty('--ink-sidebar-width', '232px');
+  }, [isSidebarCollapsed]);
 
   useEffect(() => {
     if (activeTab !== 'import-history') return;
@@ -131,7 +137,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
   const navigateToItem = (item: NavigationItem) => {
     if (item.premium && userPlan === 'free') {
       setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false);
-      openUpgradeModal(`${item.label} is an Inkbound Premium feature. Beta feedback on this feature is welcome from the Premium preview.`);
+      openUpgradeModal(`${item.label} is an Inkbound Premium feature.`);
       return;
     }
     navigate(item.id);
@@ -163,25 +169,29 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
         <Icon className="h-5 w-5 text-[var(--ink-mauve)]" /><span className="flex-1">{item.label}</span>{premium && <small className="quiet-shelf-premium-pill">Premium</small>}
       </button>
     ) : (
-      <button key={item.id} type="button" onClick={() => navigateToItem(item)} className={`quiet-shelf-sidebar-link ${activeTab === item.id ? 'is-active' : ''}`}>
-        <Icon /><span>{item.label}</span>{premium && <small className="quiet-shelf-premium-pill">Premium</small>}
+      <button key={item.id} type="button" title={isSidebarCollapsed ? item.label : undefined} onClick={() => navigateToItem(item)} className={`quiet-shelf-sidebar-link ${isSidebarCollapsed ? '!justify-center !gap-0 !px-0' : ''} ${activeTab === item.id ? 'is-active' : ''}`}>
+        <Icon />{!isSidebarCollapsed && <span>{item.label}</span>}{!isSidebarCollapsed && premium && <small className="quiet-shelf-premium-pill">Premium</small>}
       </button>
     );
   };
 
   return <>
-    <aside className="quiet-shelf-sidebar">
-      <button type="button" className="quiet-shelf-brand" onClick={() => navigate('home')}><span className="quiet-shelf-mark" aria-hidden="true"><BookMarked /></span><span className="quiet-shelf-brand-copy"><span className="quiet-shelf-brand-name">{inkboundBrand.name}</span><span className="quiet-shelf-tagline">{inkboundBrand.tagline}</span></span></button>
-      <nav className="quiet-shelf-sidebar-nav" aria-label="Primary navigation">
+    <aside className={`quiet-shelf-sidebar ${isSidebarCollapsed ? '!px-3' : ''}`}>
+      <button type="button" onClick={() => setIsSidebarCollapsed((current) => !current)} className="absolute -right-3 top-5 z-10 grid h-7 w-7 place-items-center rounded-full border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] text-[var(--ink-muted)] shadow-lg hover:text-[var(--ink-ivory)]" aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+        {isSidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+      </button>
+      <button type="button" className={`quiet-shelf-brand ${isSidebarCollapsed ? '!p-0 !pb-4' : ''}`} onClick={() => navigate('home')} title={isSidebarCollapsed ? inkboundBrand.name : undefined}><span className={`quiet-shelf-mark ${isSidebarCollapsed ? '!mb-0 !h-10 !w-10 !rounded-xl' : ''}`} aria-hidden="true"><BookMarked /></span>{!isSidebarCollapsed && <span className="quiet-shelf-brand-copy"><span className="quiet-shelf-brand-name">{inkboundBrand.name}</span><span className="quiet-shelf-tagline">{inkboundBrand.tagline}</span></span>}</button>
+      <nav className={`quiet-shelf-sidebar-nav ${isSidebarCollapsed ? '!gap-1 overflow-y-auto' : ''}`} aria-label="Primary navigation">
         {renderNavigationItem(homeItem)}
         {visibleNavigationGroups.map((group) => {
+          if (isSidebarCollapsed) return <section key={group.id} className="mt-2 grid gap-1 border-t border-white/5 pt-2">{group.items.map((item) => renderNavigationItem(item))}</section>;
           const isCollapsed = collapsedGroups[group.id] ?? false;
           const containsActiveItem = group.items.some((item) => item.id === activeTab);
           return <section key={group.id} className="mt-3"><button type="button" onClick={() => toggleGroup(group.id)} className={`flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.18em] ${containsActiveItem ? 'text-[var(--ink-mauve)]' : 'text-[var(--ink-muted)]'}`} aria-expanded={!isCollapsed}><span>{group.label}</span><ChevronDown className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} /></button>{!isCollapsed && <div className="grid gap-1">{group.items.map((item) => renderNavigationItem(item))}</div>}</section>;
         })}
       </nav>
-      {userPlan === 'free' ? <section className="quiet-shelf-plan-card"><div className="quiet-shelf-plan-heading"><span>Free Plan</span><button type="button" onClick={() => openUpgradeModal('Explore Inkbound Premium')}>See Plans</button></div><p className="quiet-shelf-plan-count"><strong>Unlimited</strong> books included</p><p className="quiet-shelf-plan-remaining">{books.length} books currently in your library</p><button type="button" className="quiet-shelf-upgrade-button" onClick={() => openUpgradeModal('Premium adds advanced insights, Wrapped, Year in Books, and historical shelf views.')}><Sparkles />Upgrade to Premium</button></section> : <section className="quiet-shelf-plan-card is-premium"><Sparkles /><div><strong>Inkbound Premium</strong><p>Advanced insights and power tools</p></div></section>}
-      <div className="relative"><button type="button" className="quiet-shelf-profile w-full" onClick={() => { setIsProfileOpen((current) => !current); setIsNotificationsOpen(false); }} aria-expanded={isProfileOpen} aria-haspopup="menu">{avatarImage ? <img src={avatarImage} alt="" className="quiet-shelf-avatar object-cover" referrerPolicy="no-referrer" /> : <span className="quiet-shelf-avatar">{initials}</span>}<span className="quiet-shelf-profile-copy"><strong>{displayName}</strong><small>{user ? 'View Profile' : 'Connect account'}</small></span><ChevronDown className={`h-4 w-4 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} /></button>{isProfileOpen && <div className="absolute bottom-full left-0 z-[90] mb-3 w-full rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-2 shadow-2xl" role="menu"><button type="button" role="menuitem" onClick={() => navigate('profile')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><UserRound className="h-4 w-4 text-[var(--ink-mauve)]" />Profile & account</button>{isAdmin && <button type="button" role="menuitem" onClick={() => navigate('admin')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><ShieldCheck className="h-4 w-4 text-[var(--ink-mauve)]" />Administration</button>}<button type="button" role="menuitem" onClick={() => navigate('my-dragon')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><Sparkles className="h-4 w-4 text-[var(--ink-mauve)]" />My Dragon</button></div>}</div>
+      {!isSidebarCollapsed && (userPlan === 'free' ? <section className="quiet-shelf-plan-card"><div className="quiet-shelf-plan-heading"><span>Free Plan</span><button type="button" onClick={() => openUpgradeModal('Explore Inkbound Premium')}>See Plans</button></div><p className="quiet-shelf-plan-count"><strong>Unlimited</strong> books included</p><p className="quiet-shelf-plan-remaining">{books.length} books currently in your library</p><button type="button" className="quiet-shelf-upgrade-button" onClick={() => openUpgradeModal('Premium adds advanced insights, Wrapped, Year in Books, and historical shelf views.')}><Sparkles />Upgrade to Premium</button></section> : <section className="quiet-shelf-plan-card is-premium"><Sparkles /><div><strong>Inkbound Premium</strong><p>Advanced insights and power tools</p></div></section>)}
+      <div className="relative"><button type="button" title={isSidebarCollapsed ? displayName : undefined} className={`quiet-shelf-profile w-full ${isSidebarCollapsed ? '!justify-center !px-0' : ''}`} onClick={() => { setIsProfileOpen((current) => !current); setIsNotificationsOpen(false); }} aria-expanded={isProfileOpen} aria-haspopup="menu">{avatarImage ? <img src={avatarImage} alt="" className="quiet-shelf-avatar object-cover" referrerPolicy="no-referrer" /> : <span className="quiet-shelf-avatar">{initials}</span>}{!isSidebarCollapsed && <><span className="quiet-shelf-profile-copy"><strong>{displayName}</strong><small>{user ? 'View Profile' : 'Connect account'}</small></span><ChevronDown className={`h-4 w-4 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} /></>}</button>{isProfileOpen && <div className={`absolute bottom-full z-[90] mb-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-2 shadow-2xl ${isSidebarCollapsed ? 'left-12 w-56' : 'left-0 w-full'}`} role="menu"><button type="button" role="menuitem" onClick={() => navigate('profile')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><UserRound className="h-4 w-4 text-[var(--ink-mauve)]" />Profile & account</button>{isAdmin && <button type="button" role="menuitem" onClick={() => navigate('admin')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><ShieldCheck className="h-4 w-4 text-[var(--ink-mauve)]" />Administration</button>}<button type="button" role="menuitem" onClick={() => navigate('my-dragon')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-[var(--ink-muted)] hover:bg-[var(--ink-surface-soft)] hover:text-[var(--ink-ivory)]"><Sparkles className="h-4 w-4 text-[var(--ink-mauve)]" />My Dragon</button></div>}</div>
     </aside>
 
     <header className="quiet-shelf-topbar"><div className="quiet-shelf-page-heading"><h1>{activeLabel}</h1></div><div className="quiet-shelf-header-search"><Search /><input value={searchQuery} onFocus={() => setIsSearchOpen(true)} onChange={(event) => { setSearchQuery(event.target.value); setIsSearchOpen(true); }} placeholder="Search books, authors, series, notes..." aria-label="Search library" /><kbd>⌘ K</kbd>{isSearchOpen && <div className="quiet-shelf-search-panel"><div className="quiet-shelf-search-panel-heading"><span>Search your library</span><button type="button" onClick={() => setIsSearchOpen(false)} aria-label="Close search"><X /></button></div>{!normalizedQuery ? <p className="quiet-shelf-search-empty">Start typing to search your books.</p> : searchResults.length === 0 ? <p className="quiet-shelf-search-empty">No matching books found.</p> : searchResults.map((book) => <button key={book.id} type="button" className="quiet-shelf-search-result" onClick={() => { onSelectBook(book); setSearchQuery(''); setIsSearchOpen(false); }}><span className={`quiet-shelf-search-cover bg-gradient-to-br ${book.editions[0]?.coverGradient || 'from-purple-950 to-stone-950'}`}>{book.work.title.charAt(0)}</span><span><strong>{book.work.title}</strong><small>{book.work.author}</small></span></button>)}</div>}</div>
