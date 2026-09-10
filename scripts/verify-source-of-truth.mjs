@@ -69,6 +69,20 @@ if (!app.includes('onUpdateSession={handleUpdateSession}') || !app.includes('onD
   violations.push('App.tsx: Book Details session edits/deletes must flow through the canonical App session mutation path');
 }
 
+const bookReadingState = read('src/features/reading/bookReadingState.ts');
+for (const required of [
+  'getActiveEdition',
+  'getBookReadingState',
+  'getCanonicalProgressPercentage',
+  'getAverageBookProgress',
+  'reconcileFinishedBookProgress',
+  'withReadingStatus',
+]) {
+  if (!bookReadingState.includes(`export function ${required}`)) {
+    violations.push(`bookReadingState.ts: missing canonical ${required}`);
+  }
+}
+
 const sessionBookReconciliation = read('src/features/reading/sessionBookReconciliation.ts');
 for (const required of ['applySessionProgressToBook', 'reconcileBookAfterSessionMutation', 'getSessionProgressEndpoint', 'sessionSortKey']) {
   if (!sessionBookReconciliation.includes(`export function ${required}`)) {
@@ -118,6 +132,14 @@ if (!libraryScreen.includes('<CollectionsScreen')) {
 const collectionsScreen = read('src/components/CollectionsScreen.tsx');
 if (!collectionsScreen.includes('ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions')) {
   violations.push('CollectionsScreen.tsx: collection definitions must use the canonical account-data storage key');
+}
+for (const required of ['getBookReadingState', 'getAverageBookProgress']) {
+  if (!collectionsScreen.includes(required)) {
+    violations.push(`CollectionsScreen.tsx: derived progress must consume canonical ${required}`);
+  }
+}
+if (/\b(?:book|a|b)\.progressPercentage\b/.test(collectionsScreen)) {
+  violations.push('CollectionsScreen.tsx: must not derive display/sort/aggregate progress from raw UserBookRecord.progressPercentage');
 }
 
 const tbrScreen = read('src/components/TBRScreen.tsx');
@@ -266,6 +288,8 @@ for (const required of [
   'src/features/export/libraryExport.ts',
   'src/features/sync/storageKeys.ts',
   'src/features/reading/bookReadingState.ts',
+  'getCanonicalProgressPercentage()',
+  'getAverageBookProgress()',
 ]) {
   if (!sourceOfTruthDoc.includes(required)) violations.push(`DATA_SOURCE_OF_TRUTH.md: missing ${required}`);
 }
