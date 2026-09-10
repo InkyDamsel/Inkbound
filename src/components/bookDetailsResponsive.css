@@ -19,9 +19,9 @@
     max-height: 44dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    /* Reserve a real row for the mobile series shortcut. Previously it floated
-       over the cover/title area even after the close button itself was made
-       tappable. The header content now starts below that control. */
+    /* Reserve a real row for the mobile series shortcut. The shortcut is a
+       sibling of the modal shell, so it cannot participate in header layout on
+       its own; this padding creates that row explicitly. */
     padding-top: calc(max(1rem, env(safe-area-inset-top)) + 3.5rem) !important;
     -webkit-overflow-scrolling: touch;
   }
@@ -33,9 +33,9 @@
 
   .book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
     min-height: 0;
-    /* Build 26: fixed book-planning controls sit above the Android navigation
-       area. Give the editor enough real scroll room that its final fields and
-       Save Book Details button can move completely above those controls. */
+    /* Fixed book-planning controls sit above the Android navigation area. Give
+       the editor enough real scroll room that its final fields and Save button
+       can move completely above those controls. */
     padding-bottom: calc(8.5rem + env(safe-area-inset-bottom)) !important;
     scroll-padding-bottom: calc(8.5rem + env(safe-area-inset-bottom));
     overscroll-behavior: contain;
@@ -61,13 +61,26 @@
     background: rgba(127, 29, 29, 0.18);
   }
 
-  /* Give the series shortcut its own safe-area-aware row and keep the right side
-     clear for the modal close control. */
+  /* Android: the series shortcut gets one explicit, bounded row. Do not rely on
+     left+right+intrinsic flex sizing here; some WebViews allowed the fixed flex
+     item to retain an oversized intrinsic width, which pushed the beginning of
+     the series name off-screen. Width is now explicit and the close-control lane
+     remains reserved on the right. */
   .book-details-series-shortcut {
     top: max(0.75rem, env(safe-area-inset-top)) !important;
     left: 0.75rem !important;
-    right: calc(4rem + env(safe-area-inset-right)) !important;
-    max-width: none !important;
+    right: auto !important;
+    width: calc(100vw - 5.5rem - env(safe-area-inset-right)) !important;
+    max-width: calc(100vw - 5.5rem - env(safe-area-inset-right)) !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
     transform: none !important;
+  }
+
+  .book-details-series-shortcut > span.truncate {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
   }
 }
