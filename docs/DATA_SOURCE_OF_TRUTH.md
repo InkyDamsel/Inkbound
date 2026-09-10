@@ -29,9 +29,12 @@ Use this module for status, ownership, reading-material type, format, priority, 
 **Canonical resolver/mutation helpers:** `src/features/reading/bookReadingState.ts`
 
 - `getActiveEdition()` is the shared active-edition resolver.
-- `getBookReadingState()` is the canonical derived reading-state view.
+- `getBookReadingState()` is the canonical derived reading-state view. Derived UI must use its `progressPercentage` instead of reading stored progress directly when presenting completion.
+- `getCanonicalProgressPercentage()` is the shared reader-facing percentage accessor.
+- `getAverageBookProgress()` is the shared aggregate progress calculation for derived groupings such as Collections and Series.
 - `withReadingStatus()` is the canonical status transition and owns the related started/finished-date rules.
-- `reconcileFinishedBookProgress()` is the compatibility boundary for legacy/imported records and must never fabricate 100% progress from Finished status alone.
+- `reconcileFinishedBookProgress()` is the compatibility boundary for legacy/imported records. It normalizes stored percentage to 100% for explicit Finished records without fabricating page/minute endpoints.
+- Explicit Finished status and reader-facing 100% completion are one canonical reading state, even when an imported source did not supply an exact final page/minute endpoint.
 
 **Canonical session-to-book reconciliation:** `src/features/reading/sessionBookReconciliation.ts`
 
@@ -42,7 +45,7 @@ Use this module for status, ownership, reading-material type, format, priority, 
 - Editing or deleting a session must **not** silently erase an explicit Finished status or its historical finish date.
 - Manual progress ahead of an edited session must remain authoritative.
 
-New status-changing or session-reconciliation surfaces must call these helpers rather than inventing a second set of finish/start/progress rules.
+New status-changing, progress-presenting, aggregate-progress, or session-reconciliation surfaces must call these helpers rather than inventing a second set of finish/start/progress rules.
 
 ## Product / Free vs Premium policy
 
@@ -67,6 +70,7 @@ Manual series corrections remain in `src/features/series/seriesOverrides.ts` and
 - Manual membership is stored on `UserBookRecord.collections`.
 - Collection definitions provide presentation metadata and smart-collection rules.
 - The My Library → Collections tab embeds this same Collections screen. It must not maintain a second custom-list membership database.
+- Collection progress displays, sorting, and averages must consume the canonical reading-state helpers from `src/features/reading/bookReadingState.ts` rather than raw stored `progressPercentage` values.
 
 Legacy `inkbound_library_custom_lists` / `inkbound_library_custom_list_members` keys are explicitly retired. They are not part of `AUXILIARY_ACCOUNT_KEYS`, are not synced, and must not be used for new collection reads or writes.
 
@@ -158,6 +162,8 @@ A different implementation is not permission to omit the capability.
 ## Derived screens are not data stores
 
 Statistics, Insights, Timeline, Series, TBR, Achievements, Studio, Memories, and dashboard widgets can calculate different presentations from the canonical library/session data. They should not persist a second copy of facts such as status, ownership, progress, series assignment, or session history merely to render a screen.
+
+Derived screens that present progress must use `getBookReadingState()`, `getCanonicalProgressPercentage()`, or `getAverageBookProgress()` from the canonical reading-state module. They must not redefine Finished/100% semantics locally.
 
 ## Rule for new features
 
