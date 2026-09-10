@@ -3,7 +3,8 @@ import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https
 
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const RECOVERY_COLLECTION = 'recoverySnapshots';
-const COLLECTION_DEFINITIONS_KEY = 'inkbound_collection_definitions';
+const COLLECTION_DEFINITIONS_DOC_ID = 'collectionDefinitions';
+const LEGACY_COLLECTION_DEFINITIONS_DOC_ID = 'inkbound_collection_definitions';
 const WRITE_BATCH_SIZE = 350;
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
@@ -64,6 +65,21 @@ function timestampToIso(value: unknown): string | null {
 
 function auxiliaryLabel(id: string): string {
   const labels: Record<string, string> = {
+    collectionDefinitions: 'Collection definitions',
+    seriesOverrides: 'Series overrides',
+    customOwnershipCategories: 'Custom ownership categories',
+    annualReadingGoal: 'Annual reading goal',
+    dailyReadingGoalMinutes: 'Daily reading goal',
+    timelineMemories: 'Timeline memories',
+    readingTimeCapsules: 'Reading time capsules',
+    joinedChallenges: 'Joined challenges',
+    customChallenges: 'Custom challenges',
+    challengeRotation: 'Challenge rotation',
+    joinedChallengeSnapshots: 'Challenge snapshots',
+    dragonProfile: 'Dragon profile',
+    achievementUnlocks: 'Achievement unlocks',
+    achievementReveals: 'Achievement reveals',
+    achievementSeen: 'Achievement seen state',
     inkbound_collection_definitions: 'Collection definitions',
     inkbound_series_overrides_v1: 'Series overrides',
     inkbound_custom_ownership_categories_v1: 'Custom ownership categories',
@@ -81,6 +97,11 @@ function auxiliaryLabel(id: string): string {
     inkbound_achievement_seen_v5: 'Achievement seen state',
   };
   return labels[id] ?? id.replace(/^inkbound_/, '').replaceAll('_', ' ');
+}
+
+function findCollectionDefinitionsDocument(snapshot: FirebaseFirestore.QuerySnapshot) {
+  return snapshot.docs.find((document) => document.id === COLLECTION_DEFINITIONS_DOC_ID)
+    ?? snapshot.docs.find((document) => document.id === LEGACY_COLLECTION_DEFINITIONS_DOC_ID);
 }
 
 async function commitTasks(tasks: Array<(batch: FirebaseFirestore.WriteBatch) => void>) {
@@ -172,9 +193,11 @@ export const previewAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
     return { id: document.id, bookId, label: `${bookTitleById.get(bookId) ?? 'Unknown book'} · ${date}${time}` };
   }).sort((a, b) => a.label.localeCompare(b.label));
 
-  const collectionDoc = auxiliarySnapshot.docs.find((document) => document.id === COLLECTION_DEFINITIONS_KEY);
+  const collectionDoc = findCollectionDefinitionsDocument(auxiliarySnapshot);
   const definitionsRaw = unwrapUnknown(collectionDoc?.data());
-  const definitions = Array.isArray(definitionsRaw) ? definitionsRaw.filter((item): item is CollectionDefinition => Boolean(item) && typeof item === 'object') : [];
+  const definitions = Array.isArray(definitionsRaw)
+    ? definitionsRaw.filter((item): item is CollectionDefinition => Boolean(item) && typeof item === 'object')
+    : [];
   const collectionCounts = new Map<string, number>();
   booksSnapshot.docs.forEach((document) => {
     const book = unwrapEnvelope(document.data());
@@ -268,20 +291,28 @@ export const restoreAdminRecoverySelection = onCall({ enforceAppCheck: ENFORCE_A
   }
 
   if (scope === 'collection') {
-    const sourceDefinitions = await snapshotRef.collection('auxiliary').doc(COLLECTION_DEFINITIONS_KEY).get();
-    if (!sourceDefinitions.exists) throw new HttpsError('not-found', 'The selected recovery point does not contain collection definitions.');
+    const auxiliarySnapshot = await snapshotRef.collection('auxiliary').get();
+    const sourceDefinitions = findCollectionDefinitionsDocument(auxiliarySnapshot);
+    if (!sourceDefinitions) throw new HttpsError('not-found', 'The selected recovery point does not contain collection definitions.');
     const rawDefinitions = unwrapUnknown(sourceDefinitions.data());
-    const definitions = Array.isArray(rawDefinitions) ? rawDefinitions.filter((item): item is CollectionDefinition => Boolean(item) && typeof item === 'object') : [];
-    const selectedDefinition = definitions.find((definition) => definition.id === itemId);
+    const definitions = Array.isArray(rawDefinitions)
+      ? rawDefinitions.filter((item): item is CollectionDefinition => Boolean(item) && typeof item === 'object')
+      : [];
+    const selectedDefinition = definitions.find((definition, index) => {
+      const definitionId = typeof definition.id === 'string' && definition.id ? definition.id : `collection-${index}`;
+      return definitionId === itemId;
+    });
     if (!selectedDefinition || typeof selectedDefinition.name !== 'string' || !selectedDefinition.name.trim()) {
       throw new HttpsError('not-found', 'That collection is not present in the selected recovery point.');
     }
     const collectionName = selectedDefinition.name.trim();
 
-    const currentDefinitionsRef = userRef.collection('auxiliary').doc(COLLECTION_DEFINITIONS_KEY);
+    const currentDefinitionsRef = userRef.collection('auxiliary').doc(COLLECTION_DEFINITIONS_DOC_ID);
     const currentDefinitionsSnapshot = await currentDefinitionsRef.get();
     const currentRaw = unwrapUnknown(currentDefinitionsSnapshot.data());
-    const currentDefinitions = Array.isArray(currentRaw) ? currentRaw.filter((item): item is CollectionDefinition => Boolean(item) && typeof item === 'object') : [];
+    const currentDefinitions = Array.isArray(currentRaw)
+      ? currentRaw.filter((item): item is CollectionDefinition => Boolean(item) && typeof item === 'object')
+      : [];
     const nextDefinitions = [...currentDefinitions];
     const existingIndex = nextDefinitions.findIndex((definition) => definition.id === itemId || definition.name === collectionName);
     if (existingIndex >= 0) nextDefinitions[existingIndex] = { ...nextDefinitions[existingIndex], ...selectedDefinition };
