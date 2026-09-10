@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { BookOpen } from 'lucide-react';
 import { BookDetailsModal as BookDetailsModalCore } from './BookDetailsModalCore';
 import { CatalogContributionLauncher } from './catalog/CatalogContributionLauncher';
@@ -44,6 +45,7 @@ function normalizeBookIdentifiers(book: UserBookRecord): UserBookRecord {
 type BookDetailsModalProps = React.ComponentProps<typeof BookDetailsModalCore>;
 
 export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
+  const [seriesHeaderTarget, setSeriesHeaderTarget] = useState<HTMLElement | null>(null);
   const normalizedBook = useMemo(
     () => props.book ? normalizeBookIdentifiers(props.book) : null,
     [props.book],
@@ -74,6 +76,16 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
     if (JSON.stringify(before) !== JSON.stringify(after)) props.onUpdateBook(normalizedBook);
   }, [normalizedBook, props.book, props.onUpdateBook]);
 
+  useEffect(() => {
+    if (!displayBook) {
+      setSeriesHeaderTarget(null);
+      return;
+    }
+    const host = document.querySelector('.book-details-modal-host');
+    const header = host?.querySelector("section[role='dialog'] > header");
+    setSeriesHeaderTarget(header instanceof HTMLElement ? header : null);
+  }, [displayBook?.id]);
+
   const handleUpdateBook = (updatedBook: UserBookRecord) => {
     // Reuse the canonical library normalizer so Book Details cannot invent a
     // second ownership/status coupling. Wishlist ownership must never erase a
@@ -103,6 +115,25 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
     props.onClose();
   };
 
+  const seriesShortcut = normalizedBook && effectiveSeries && seriesHeaderTarget
+    ? createPortal(
+        <div className="book-details-series-row mt-3 flex min-w-0 pr-14">
+          <button
+            type="button"
+            onClick={viewSeries}
+            className="inline-flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-full border border-[var(--ink-gold)]/35 bg-[#17101b]/85 px-4 py-2.5 text-xs font-semibold text-[var(--ink-ivory)] shadow-lg transition hover:border-[var(--ink-gold)]/60"
+            aria-label={`View ${effectiveSeries.name} series`}
+          >
+            <BookOpen className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
+            <span className="min-w-0 truncate">{effectiveSeries.name}</span>
+            <span className="hidden shrink-0 text-[var(--ink-muted)] sm:inline">· {seriesPositionLabel(normalizedBook, effectiveSeries.position, effectiveSeries.label)}</span>
+            <span className="shrink-0 text-[var(--ink-gold)]">View series →</span>
+          </button>
+        </div>,
+        seriesHeaderTarget,
+      )
+    : null;
+
   return (
     <div className="book-details-modal-host">
       <BookDetailsModalCore
@@ -114,19 +145,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
       {normalizedBook && <EditionLccnControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
-      {normalizedBook && effectiveSeries && (
-        <button
-          type="button"
-          onClick={viewSeries}
-          className="book-details-series-shortcut fixed left-1/2 top-[max(.75rem,env(safe-area-inset-top))] z-[215] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--ink-gold)]/35 bg-[#17101b]/95 px-4 py-2.5 text-xs font-semibold text-[var(--ink-ivory)] shadow-2xl backdrop-blur-md transition hover:border-[var(--ink-gold)]/60"
-          aria-label={`View ${effectiveSeries.name} series`}
-        >
-          <BookOpen className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" />
-          <span className="truncate">{effectiveSeries.name}</span>
-          <span className="shrink-0 text-[var(--ink-muted)]">· {seriesPositionLabel(normalizedBook, effectiveSeries.position, effectiveSeries.label)}</span>
-          <span className="shrink-0 text-[var(--ink-gold)]">View series →</span>
-        </button>
-      )}
+      {seriesShortcut}
     </div>
   );
 };
