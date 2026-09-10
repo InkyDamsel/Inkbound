@@ -10,6 +10,8 @@ import { normalizeLibraryRecord } from '../features/library/libraryNormalization
 import { openLibrarySeriesForBook } from '../features/library/libraryNavigation';
 import { resolveEffectiveSeriesMetadata, seriesPositionLabel } from '../features/series/seriesLibrary';
 import { readSeriesOverrides } from '../features/series/seriesOverrides';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { readRuntimeJson } from '../platform/runtimeStorage';
 import type { Edition, UserBookRecord } from '../types';
 import './bookDetailsResponsive.css';
 
@@ -46,6 +48,7 @@ type BookDetailsModalProps = React.ComponentProps<typeof BookDetailsModalCore>;
 
 export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   const [seriesHeaderTarget, setSeriesHeaderTarget] = useState<HTMLElement | null>(null);
+  const [tagPickerTarget, setTagPickerTarget] = useState<HTMLElement | null>(null);
   const normalizedBook = useMemo(
     () => props.book ? normalizeBookIdentifiers(props.book) : null,
     [props.book],
@@ -55,6 +58,11 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
     () => normalizedBook ? resolveEffectiveSeriesMetadata(normalizedBook, seriesOverrides) : null,
     [normalizedBook, seriesOverrides],
   );
+  const availableTags = useMemo(() => {
+    const books = readRuntimeJson<UserBookRecord[]>(SYNC_STORAGE_KEYS.books, []);
+    return [...new Set(books.flatMap((item) => item.privateTags ?? []).map((tag) => tag.trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+  }, [normalizedBook?.id, normalizedBook?.privateTags?.join('|')]);
 
   const displayBook = useMemo<UserBookRecord | null>(() => {
     if (!normalizedBook || !effectiveSeries) return normalizedBook;
@@ -79,12 +87,17 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   useEffect(() => {
     if (!displayBook) {
       setSeriesHeaderTarget(null);
+      setTagPickerTarget(null);
       return;
     }
     const host = document.querySelector('.book-details-modal-host');
     const header = host?.querySelector("section[role='dialog'] > header");
     setSeriesHeaderTarget(header instanceof HTMLElement ? header : null);
-  }, [displayBook?.id]);
+
+    const labels = Array.from(host?.querySelectorAll("section[role='dialog'] label") ?? []);
+    const tagsLabel = labels.find((label) => label.textContent?.trim().startsWith('Tags'));
+    setTagPickerTarget(tagsLabel instanceof HTMLElement ? tagsLabel : null);
+  }, [displayBook?.id, displayBook?.privateTags?.join('|')]);
 
   const handleUpdateBook = (updatedBook: UserBookRecord) => {
     // Reuse the canonical library normalizer so Book Details cannot invent a
@@ -107,6 +120,12 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
         seriesOrder: unchangedInferredPosition ? normalizedBook.work.seriesOrder : normalizedUpdate.work.seriesOrder,
       },
     });
+  };
+
+  const addExistingTag = (tag: string) => {
+    if (!normalizedBook || !tag) return;
+    const nextTags = [...new Set([...(normalizedBook.privateTags ?? []), tag])];
+    handleUpdateBook({ ...normalizedBook, privateTags: nextTags });
   };
 
   const viewSeries = () => {
@@ -134,9 +153,30 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
       )
     : null;
 
+  const tagPicker = normalizedBook && tagPickerTarget && availableTags.length > 0
+    ? createPortal(
+        <select
+          defaultValue=""
+          onChange={(event) => {
+            addExistingTag(event.target.value);
+            event.currentTarget.value = '';
+          }}
+          className="inkbound-select mt-2 w-full"
+          aria-label="Add an existing tag"
+        >
+          <option value="">Add an existing tag…</option>
+          {availableTags
+            .filter((tag) => !(normalizedBook.privateTags ?? []).includes(tag))
+            .map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+        </select>,
+        tagPickerTarget,
+      )
+    : null;
+
   return (
     <div className="book-details-modal-host">
       <BookDetailsModalCore
+        key={`${displayBook?.id ?? 'none'}:${displayBook?.privateTags?.join('|') ?? ''}`}
         {...props}
         book={displayBook}
         onUpdateBook={handleUpdateBook}
@@ -146,6 +186,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
       {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
       {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
       {seriesShortcut}
+      {tagPicker}
     </div>
   );
 };
