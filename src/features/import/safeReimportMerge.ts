@@ -1,13 +1,12 @@
 import type { ImportRecordItem, ReadingStatus, UserBookRecord } from '../../types';
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
-const normalizeText = (value?: string) => value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+const normalizeText = (value?: string) => value?.trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
 function normalizedDate(value?: string): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
-  const canonical = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
-  if (canonical) return trimmed;
+  if (/^(\d{4})-(\d{2})-(\d{2})$/.test(trimmed)) return trimmed;
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return undefined;
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
@@ -75,6 +74,11 @@ function hasManualCover(book: UserBookRecord): boolean {
   return edition?.externalSource === 'manual';
 }
 
+export function isUserSeriesSource(value?: string): boolean {
+  const normalized = value?.trim().toLowerCase() ?? '';
+  return /(^|\b)(manual|user|custom|corrected|override)(\b|$)/.test(normalized);
+}
+
 export function mergeImportIntoExistingBook(existing: UserBookRecord, item: ImportRecordItem): UserBookRecord {
   const incomingDateFinished = normalizedDate(item.dateRead);
   const hasProgress = existing.progressPages > 0 || existing.progressMinutes > 0 || existing.progressPercentage > 0 || Boolean(existing.dateStarted || existing.lastSessionDate);
@@ -102,6 +106,8 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
       ...existing.work,
       title: existing.work.title?.trim() ? existing.work.title : item.title,
       author: existing.work.author?.trim() && normalizeText(existing.work.author) !== 'unknown author' ? existing.work.author : item.author,
+      seriesName: existing.work.seriesName?.trim() ? existing.work.seriesName : item.seriesName,
+      seriesOrder: existing.work.seriesOrder ?? item.seriesOrder,
     },
     editions,
     status,
@@ -121,6 +127,11 @@ export function applyImportExtrasToNewBook(book: UserBookRecord, item: ImportRec
   const optionalShelfCollections = item.importShelvesAsCollections ? shelfTags : [];
   return {
     ...book,
+    work: {
+      ...book.work,
+      seriesName: book.work.seriesName?.trim() ? book.work.seriesName : item.seriesName,
+      seriesOrder: book.work.seriesOrder ?? item.seriesOrder,
+    },
     privateTags: mergeUnique(book.privateTags, importedTags),
     collections: mergeUnique(book.collections, [...sourceCollections, ...optionalShelfCollections]),
   };
