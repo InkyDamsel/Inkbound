@@ -37,6 +37,15 @@ const formatDateTime = (value: string | null) => {
   return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
 };
 
+const readableRecoveryError = (error: unknown, fallback: string) => {
+  if (!error || typeof error !== 'object' || !('message' in error)) return fallback;
+  const message = String((error as { message?: unknown }).message ?? '').trim();
+  if (!message || message === 'internal' || message === 'FirebaseError: internal' || message.includes('functions/internal')) {
+    return `${fallback} The recovery service returned an internal error. Refresh the admin page and try loading this recovery point again.`;
+  }
+  return message;
+};
+
 export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelProps> = ({ targetUserId, targetLabel }) => {
   const [points, setPoints] = useState<RecoveryPointSummary[]>([]);
   const [snapshotId, setSnapshotId] = useState('');
@@ -71,7 +80,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
       setPoints(response.data.points ?? []);
       setStatus(response.data.points?.length ? 'Choose a recovery point to inspect.' : 'No recovery points exist for this reader yet.');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Could not load recovery history.');
+      setStatus(readableRecoveryError(error, 'Could not load recovery history.'));
     } finally {
       setLoading(false);
     }
@@ -81,16 +90,21 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
     setSnapshotId(nextSnapshotId);
     setPreview(null);
     setItemId('');
+    setReason('');
+    setConfirmation('');
     if (!functions || !targetUserId || !nextSnapshotId) return;
     setLoading(true);
     setStatus('Inspecting the selected recovery point…');
     try {
       const inspect = httpsCallable<{ targetUserId: string; snapshotId: string }, RecoveryPreview>(functions, 'previewAdminRecoveryPoint');
       const response = await inspect({ targetUserId, snapshotId: nextSnapshotId });
-      setPreview(response.data);
-      setStatus('Recovery point loaded. Choose only the data you need to recover.');
+      const nextPreview = response.data;
+      setPreview(nextPreview);
+      setStatus(nextPreview.collections.length > 0
+        ? `Recovery point loaded. ${nextPreview.collections.length} saved collection${nextPreview.collections.length === 1 ? '' : 's'} available to inspect.`
+        : 'Recovery point loaded, but it does not contain any saved collection definitions. Try an earlier recovery point.');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Could not inspect that recovery point.');
+      setStatus(readableRecoveryError(error, 'Could not inspect that recovery point.'));
     } finally {
       setLoading(false);
     }
@@ -101,6 +115,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
     setItemId('');
     setReason('');
     setConfirmation('');
+    if (preview) setStatus('Recovery point loaded. Choose only the data you need to recover.');
   };
 
   const restoreSelection = async () => {
@@ -132,7 +147,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
       setReason('');
       setConfirmation('');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Selective recovery could not be completed.');
+      setStatus(readableRecoveryError(error, 'Selective recovery could not be completed.'));
     } finally {
       setRestoring(false);
     }
@@ -168,16 +183,18 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
 
       {preview && <div className="mt-4 space-y-4">
         <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]">Snapshot: <strong className="text-[var(--ink-ivory)]">{formatDateTime(preview.snapshot.createdAtClient || preview.snapshot.createdAt)}</strong> · {preview.books.length} books · {preview.sessions.length} sessions · {preview.collections.length} collections · {preview.auxiliary.length} account records</div>
-        <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Item to recover
+        {choices.length > 0 ? <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Item to recover
           <select value={itemId} onChange={(event) => setItemId(event.target.value)} disabled={loading || restoring} className="inkbound-select mt-2 w-full">
             <option value="">Choose an item</option>
             {choices.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
-        </label>
-        {scope === 'collection' && <p className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">Collection recovery is intentionally non-destructive: it restores the saved collection definition and adds any memberships that are missing now. It does not remove books added to that collection after the snapshot.</p>}
-        <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Support reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} disabled={restoring} placeholder="Required for the admin audit log" className="mt-2 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
-        <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Type RESTORE<input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" disabled={restoring} placeholder="RESTORE" className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label>
-        <button type="button" onClick={() => void restoreSelection()} disabled={!itemId || !reason.trim() || confirmation.trim().toUpperCase() !== 'RESTORE' || restoring} className="quiet-shelf-primary-action w-full justify-center disabled:opacity-45 sm:w-auto"><RotateCcw className={restoring ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> {restoring ? 'Recovering…' : 'Recover selected data'}</button>
+        </label> : <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">No recoverable items were found for this recovery type in the selected snapshot.</div>}
+        {scope === 'collection' && choices.length > 0 && <p className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">Collection recovery is intentionally non-destructive: it restores the saved collection definition and adds any memberships that are missing now. It does not remove books added to that collection after the snapshot.</p>}
+        {choices.length > 0 && <>
+          <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Support reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} disabled={restoring} placeholder="Required for the admin audit log" className="mt-2 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
+          <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Type RESTORE<input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" disabled={restoring} placeholder="RESTORE" className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label>
+          <button type="button" onClick={() => void restoreSelection()} disabled={!itemId || !reason.trim() || confirmation.trim().toUpperCase() !== 'RESTORE' || restoring} className="quiet-shelf-primary-action w-full justify-center disabled:opacity-45 sm:w-auto"><RotateCcw className={restoring ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> {restoring ? 'Recovering…' : 'Recover selected data'}</button>
+        </>}
       </div>}
 
       {status && <p className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-muted)]" role="status">{status}</p>}
