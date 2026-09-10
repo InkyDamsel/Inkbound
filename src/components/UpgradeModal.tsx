@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, HeartHandshake, Lock, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Check, HeartHandshake, RotateCcw, Sparkles, X } from 'lucide-react';
 import { PRODUCT_POLICY } from '../config/productPolicy';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
@@ -15,7 +15,7 @@ const supportDeveloperUrl = import.meta.env.VITE_SUPPORT_DEVELOPER_URL?.trim();
 const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
 
 export const UpgradeModal: React.FC = () => {
-  const { isUpgradeModalOpen, closeUpgradeModal, upgradeReason, userPlan } = useUserPlan();
+  const { isUpgradeModalOpen, closeUpgradeModal, userPlan } = useUserPlan();
   const { user } = useAccountSync();
   const [billingPlan, setBillingPlan] = useState<PremiumBillingPlan | 'restore' | null>(null);
   const [billingError, setBillingError] = useState('');
@@ -94,7 +94,6 @@ export const UpgradeModal: React.FC = () => {
           <h2 id="upgrade-modal-title" className="mx-auto max-w-2xl pr-8 font-serif text-2xl font-bold text-[var(--ink-ivory)] sm:pr-0 sm:text-3xl">Preserve more of your reading life</h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--ink-muted)]">Your library stays unlimited on Free. Premium unlocks Inkbound's deeper reflection, historical insights, creative recaps, and advanced library tools.</p>
           {sandboxBillingTest && <div className="mx-auto mt-4 max-w-xl rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-left text-xs font-semibold text-amber-100">Owner-only Stripe Sandbox test mode is active. No real payment will be charged.</div>}
-          {upgradeReason && <div className="mx-auto mt-4 flex max-w-xl items-start gap-2 rounded-xl border border-[var(--ink-mauve)]/30 bg-[var(--ink-mauve)]/10 px-4 py-3 text-left text-xs text-[var(--ink-ivory)]"><Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--ink-mauve)]" /><span>{upgradeReason}</span></div>}
         </div>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:space-y-8 sm:px-8 sm:py-8">
