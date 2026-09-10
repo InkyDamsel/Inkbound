@@ -19,10 +19,7 @@
     max-height: 44dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    /* Reserve a real row for the mobile series shortcut. The shortcut is a
-       sibling of the modal shell, so it cannot participate in header layout on
-       its own; this padding creates that row explicitly. */
-    padding-top: calc(max(1rem, env(safe-area-inset-top)) + 3.5rem) !important;
+    padding-top: max(1rem, env(safe-area-inset-top)) !important;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -61,24 +58,17 @@
     background: rgba(127, 29, 29, 0.18);
   }
 
-  /* Android: keep the top action intentionally compact. The full series title
-     and position are already visible in Book Details, and trying to squeeze all
-     three labels into this fixed row caused some WebViews to clip the beginning
-     of the pill off-screen. Mobile only needs a reliable View series action. */
-  .book-details-series-shortcut {
-    top: max(0.75rem, env(safe-area-inset-top)) !important;
-    left: max(0.75rem, env(safe-area-inset-left)) !important;
-    right: auto !important;
-    width: auto !important;
-    max-width: calc(100vw - 5.5rem - env(safe-area-inset-left) - env(safe-area-inset-right)) !important;
-    min-width: 0 !important;
-    overflow: hidden !important;
-    transform: none !important;
-    white-space: nowrap !important;
+  /* The series action now lives inside the actual modal header flow instead of
+     floating over the Android viewport. It can shrink normally without clipping
+     the left edge or stealing taps from the close button. */
+  .book-details-series-row {
+    width: 100%;
+    min-width: 0;
   }
 
-  .book-details-series-shortcut > span:nth-of-type(1),
-  .book-details-series-shortcut > span:nth-of-type(2) {
-    display: none !important;
+  .book-details-series-row > button {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
   }
 }
