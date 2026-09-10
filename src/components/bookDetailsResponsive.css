@@ -30,6 +30,11 @@
 
   .book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
     min-height: 0;
+    /* Build 26: fixed book-planning controls sit above the Android navigation
+       area. Give the editor enough real scroll room that its final fields and
+       Save Book Details button can move completely above those controls. */
+    padding-bottom: calc(8.5rem + env(safe-area-inset-bottom)) !important;
+    scroll-padding-bottom: calc(8.5rem + env(safe-area-inset-bottom));
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
