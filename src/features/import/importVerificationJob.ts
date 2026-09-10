@@ -2,7 +2,7 @@ import type { ImportRecordItem, UserBookRecord } from '../../types';
 import { getRuntimeStorage, writeRuntimeJson } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
-import { findExistingImportMatch, mergeImportIntoExistingBook } from './safeReimportMerge';
+import { findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
 
@@ -162,9 +162,6 @@ async function applySourceFieldsToNewBooks(items: ImportRecordItem[], fallbackLi
     return bestResult.library;
   }
 
-  // Never synthesize another copy just to attach source fields. If React/native
-  // persistence has not exposed the newly-created records yet, leave the normal
-  // App write intact rather than risking duplication.
   return latestLibrary;
 }
 
@@ -172,7 +169,8 @@ async function applySourceFieldsToNewBooks(items: ImportRecordItem[], fallbackLi
  * New rows are written by the normal App importer. Existing rows explicitly
  * marked as safe updates are additive: they may fill blanks and merge list data,
  * but never replace reader-owned dates, progress, manual covers, Collections,
- * or manual series work.
+ * or manual series work. Exported manual series corrections are restored only
+ * when the destination book does not already have a manual series assignment.
  */
 export function startImportVerificationJob(
   items: ImportRecordItem[],
@@ -193,6 +191,7 @@ export function startImportVerificationJob(
       let workingLibrary = mergeResult.library;
       if (mergeResult.merged.length > 0) {
         writeRuntimeJson(SYNC_STORAGE_KEYS.books, workingLibrary);
+        restoreManualSeriesOverridesFromImport(mergeResult.merged, workingLibrary);
         notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
       }
 
@@ -202,6 +201,7 @@ export function startImportVerificationJob(
       const writeRejected = mergeResult.remaining.filter((record) => !importedIds.has(record.id)).map((record) => ({ ...record, duplicateAction: 'skip' as const }));
 
       workingLibrary = await applySourceFieldsToNewBooks(importedRecords, workingLibrary);
+      if (importedRecords.length > 0) restoreManualSeriesOverridesFromImport(importedRecords, workingLibrary);
       persistMetadataPending(importedRecords);
       const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
       writeRejected.forEach((record) => duplicateMap.set(record.id, record));
