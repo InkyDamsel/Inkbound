@@ -63,6 +63,27 @@ export function getBookReadingState(book: UserBookRecord): BookReadingState {
 }
 
 /**
+ * Canonical reader-facing percentage. Derived screens must use this instead of
+ * reading UserBookRecord.progressPercentage directly, because Finished records
+ * imported without a final page/minute endpoint still present as 100% complete.
+ */
+export function getCanonicalProgressPercentage(book: UserBookRecord): number {
+  return getBookReadingState(book).progressPercentage;
+}
+
+/**
+ * Canonical aggregate progress for any derived book grouping (collections,
+ * series, dashboards, etc.). Keeping the average here prevents feature screens
+ * from recreating completion rules independently.
+ */
+export function getAverageBookProgress(books: UserBookRecord[]): number {
+  if (books.length === 0) return 0;
+  return Math.round(
+    books.reduce((sum, book) => sum + getCanonicalProgressPercentage(book), 0) / books.length,
+  );
+}
+
+/**
  * Canonical reading-status transition. Any surface that changes status should use
  * this helper so status, completion percentage, and reading-history dates cannot
  * drift apart.
