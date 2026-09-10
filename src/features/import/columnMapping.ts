@@ -1,4 +1,4 @@
-export type ImportFieldKey = 'title' | 'author' | 'isbn' | 'format' | 'status' | 'rating' | 'dateStarted' | 'dateRead' | 'dateAdded' | 'pageCount' | 'coverUrl' | 'review' | 'tags' | 'shelves' | 'collections';
+export type ImportFieldKey = 'title' | 'author' | 'isbn' | 'format' | 'status' | 'rating' | 'dateStarted' | 'dateRead' | 'dateAdded' | 'pageCount' | 'coverUrl' | 'review' | 'tags' | 'shelves' | 'collections' | 'seriesName' | 'seriesOrder' | 'seriesLabel' | 'seriesSource';
 
 export const IMPORT_FIELD_OPTIONS: Array<{ key: ImportFieldKey; label: string; required?: boolean }> = [
   { key: 'title', label: 'Title', required: true },
@@ -16,6 +16,10 @@ export const IMPORT_FIELD_OPTIONS: Array<{ key: ImportFieldKey; label: string; r
   { key: 'tags', label: 'Tags' },
   { key: 'shelves', label: 'Shelves / Lists / Folders' },
   { key: 'collections', label: 'Collections' },
+  { key: 'seriesName', label: 'Series' },
+  { key: 'seriesOrder', label: 'Series Number / Position' },
+  { key: 'seriesLabel', label: 'Series Label' },
+  { key: 'seriesSource', label: 'Series Source' },
 ];
 
 export type ImportColumnMapping = Partial<Record<ImportFieldKey, string>>;
@@ -36,6 +40,10 @@ const aliases: Record<ImportFieldKey, string[]> = {
   tags: ['tags', 'tag', 'labels', 'label', 'keywords'],
   shelves: ['bookshelves', 'book shelves', 'shelves', 'shelf names', 'lists', 'list names', 'folders', 'folder names', 'categories'],
   collections: ['collections', 'collection', 'book collections', 'custom collections'],
+  seriesName: ['series', 'series name', 'series_name', 'series title', 'series_title'],
+  seriesOrder: ['series number', 'series_number', 'series order', 'series_order', 'series position', 'series_position', 'volume number', 'book number'],
+  seriesLabel: ['series label', 'series_label', 'volume label', 'position label'],
+  seriesSource: ['series source', 'series_source', 'series provenance', 'series origin'],
 };
 
 function normalized(value: string): string {
