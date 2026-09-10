@@ -30,8 +30,7 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
   );
 
   const assign = (categoryId: string) => {
-    if (!categoryId) return;
-    onUpdateBook({ ...book, status: 'custom', customOwnershipCategoryId: categoryId });
+    onUpdateBook({ ...book, customOwnershipCategoryId: categoryId || undefined });
   };
 
   const createAndAssign = () => {
@@ -47,7 +46,7 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
     <section className="rounded-2xl border border-[var(--ink-gold)]/25 bg-[var(--ink-surface-soft)] p-4 sm:col-span-2">
       <div className="flex flex-col gap-1">
         <p className="text-xs font-bold text-[var(--ink-ivory)]">Custom category</p>
-        <p className="text-xs leading-5 text-[var(--ink-muted)]">Use a reader-defined category such as Kids Books, Classroom, Family Library, DNF, or Paused without changing ownership. Categories can be renamed or removed later in Library Maintenance.</p>
+        <p className="text-xs leading-5 text-[var(--ink-muted)]">Use a reader-defined category such as Kids Books, Classroom, or Family Library without changing reading status or ownership. Categories can be renamed or removed later in Library Maintenance.</p>
       </div>
 
       <div className="mt-3 flex flex-col gap-3 sm:flex-row">
@@ -63,7 +62,7 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
             }}
             className="inkbound-select min-w-0 flex-1"
           >
-            <option value="" disabled>Choose a custom category</option>
+            <option value="">No custom category</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
             <option value="__new__">+ Create new category</option>
           </select>
