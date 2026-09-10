@@ -9,6 +9,7 @@ import { ManualCoverRecoveryPanel } from './ManualCoverRecoveryPanel';
 import { PaginationControls } from './PaginationControls';
 import { TagManager } from './library/TagManager';
 import { CustomOwnershipCategoryManager } from './ownership/CustomOwnershipCategoryManager';
+import { OwnershipManager } from './ownership/OwnershipManager';
 
 export interface DuplicateMergeRequest {
   keepBookId: string;
@@ -29,7 +30,7 @@ interface DuplicateGroup {
 }
 
 type DuplicateCandidate = { reason: 'isbn' | 'title-author'; key: string; ids: string[] };
-type MaintenanceSection = 'ownership' | 'tags' | 'covers' | 'duplicates';
+type MaintenanceSection = 'categories' | 'ownership' | 'tags' | 'covers' | 'duplicates';
 
 const IGNORED_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups;
 const LEGACY_IGNORED_STORAGE_KEY = 'inkbound_duplicate_groups_ignored';
@@ -194,6 +195,7 @@ const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
 export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ books, onMergeGroup, onSelectBook }) => {
   const [ignoredGroupIds, setIgnoredGroupIds] = usePersistentState<string[]>(IGNORED_STORAGE_KEY, []);
   const [collapsedSections, setCollapsedSections] = usePersistentState<Record<MaintenanceSection, boolean>>(MAINTENANCE_SECTIONS_KEY, {
+    categories: false,
     ownership: false,
     tags: false,
     covers: false,
@@ -204,6 +206,8 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
   const [duplicatePage, setDuplicatePage] = useState(1);
   const ignoredGroupSet = useMemo(() => new Set(ignoredGroupIds), [ignoredGroupIds]);
   const groups = useMemo(() => findDuplicateGroups(books, ignoredGroupSet), [books, ignoredGroupSet]);
+  const categoryCount = useMemo(() => new Set(books.map((book) => book.customOwnershipCategoryId).filter(Boolean)).size, [books]);
+  const ownershipCustomCount = useMemo(() => books.filter((book) => book.ownership === 'custom').length, [books]);
   const tagCount = useMemo(() => new Set(books.flatMap((book) => (book.privateTags ?? []).map((tag) => tag.trim().toLocaleLowerCase()).filter(Boolean))).size, [books]);
   const visibleGroups = useMemo(() => {
     const normalized = normalizeText(query);
@@ -263,13 +267,18 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
 
   return <div className="space-y-6 pb-24">
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0"><p className="inkbound-kicker">Library Maintenance</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Keep your library tidy</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Manage custom categories, tags, saved covers, and possible duplicate books from one place.</p></div>
+      <div className="min-w-0"><p className="inkbound-kicker">Library Maintenance</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Keep your library tidy</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Manage categories, ownership, tags, saved covers, and possible duplicate books from one place.</p></div>
       <div className="shrink-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 py-3 text-sm"><strong className="text-[var(--ink-ivory)]">{groups.length} duplicate groups</strong><span className="ml-2 text-[var(--ink-muted)]">· {booksInGroups} books involved</span></div>
     </header>
 
     <section className="space-y-3">
-      {sectionToggle('ownership', 'Ownership categories', 'Custom category manager', 'Create and manage custom ownership labels for your library.')}
-      {!collapsedSections.ownership && <CustomOwnershipCategoryManager books={books} />}
+      {sectionToggle('categories', 'Category management', 'Category Manager', 'Create, review, rename, and remove reader-defined library categories.', `${categoryCount} in use`)}
+      {!collapsedSections.categories && <CustomOwnershipCategoryManager books={books} />}
+    </section>
+
+    <section className="space-y-3">
+      {sectionToggle('ownership', 'Ownership management', 'Ownership Manager', 'Review ownership usage and clean up books that still use custom ownership assignments.', `${ownershipCustomCount} custom`)}
+      {!collapsedSections.ownership && <OwnershipManager books={books} />}
     </section>
 
     <section className="space-y-3">
