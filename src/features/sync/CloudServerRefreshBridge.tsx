@@ -25,6 +25,7 @@ const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const LAST_SYNC_STORAGE_KEY = SYNC_STORAGE_KEYS.lastCloudSyncAt;
 const LEGACY_AUTOPAUSE_MIGRATION_KEY = 'inkbound_import_enrichment_autopause_cleanup_v1';
+const REPAIR_UPLOAD_BATCH_SIZE = 100;
 
 interface CloudRecord<T> {
   data: T;
@@ -46,6 +47,7 @@ interface LibrarySyncManifest {
   status?: 'syncing' | 'complete';
   expectedBookCount?: number;
   uploadedBookCount?: number;
+  syncDirection?: 'grow' | 'shrink' | 'unknown';
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -212,6 +214,48 @@ export const CloudServerRefreshBridge: React.FC = () => {
       sessions: {},
     });
 
+    const repairIncompleteCloudLibrary = async (expected: number, uploaded: number) => {
+      if (expected <= 0 || uploaded >= expected) return uploaded;
+
+      const localBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
+      if (localBooks.length < expected) return uploaded;
+
+      const cloudSnapshot = await getDocs(collection(db!, 'users', uid, 'books'));
+      const cloudIds = new Set(cloudSnapshot.docs.map((item) => item.id));
+      const missingBooks = localBooks.filter((book) => book?.id && !cloudIds.has(book.id));
+      if (missingBooks.length === 0) return cloudSnapshot.size;
+
+      publishCloudSyncHealth({
+        status: 'checking',
+        lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+        message: `Inkbound found ${missingBooks.length.toLocaleString()} local book${missingBooks.length === 1 ? '' : 's'} missing from your saved account copy. Repairing that upload now…`,
+      });
+
+      const clientUpdatedAt = new Date().toISOString();
+      for (let index = 0; index < missingBooks.length; index += REPAIR_UPLOAD_BATCH_SIZE) {
+        if (disposed) return uploaded;
+        const batch = missingBooks.slice(index, index + REPAIR_UPLOAD_BATCH_SIZE);
+        const results = await Promise.allSettled(batch.map((book) => setDoc(
+          doc(db!, 'users', uid, 'books', book.id),
+          {
+            data: book,
+            updatedAt: serverTimestamp(),
+            clientUpdatedAt,
+          },
+          { merge: true },
+        )));
+
+        results.forEach((result) => {
+          if (result.status === 'rejected') {
+            console.warn('Inkbound manual refresh could not repair one missing book yet.', result.reason);
+          }
+        });
+      }
+
+      const repairedCount = await getCountFromServer(collection(db!, 'users', uid, 'books'));
+      return repairedCount.data().count;
+    };
+
     const verifyCloudLibraryComplete = async () => {
       const manifestSnapshot = await getDoc(libraryManifestRef);
       if (!manifestSnapshot.exists()) return { complete: true, expected: 0, uploaded: 0 };
@@ -219,18 +263,33 @@ export const CloudServerRefreshBridge: React.FC = () => {
       const manifest = manifestSnapshot.data() as LibrarySyncManifest;
       const expected = Math.max(0, manifest.expectedBookCount ?? 0);
       const countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
-      const uploaded = countSnapshot.data().count;
+      let uploaded = countSnapshot.data().count;
 
       // A shrinking library is only complete when the cloud count reaches the
       // expected count exactly. For a previously-complete non-empty manifest,
       // additional books from another device are safe to read; fewer books are
       // never treated as complete. Expected zero always requires actual zero so a
       // delete-all operation cannot be "verified" while stale books remain.
-      const complete = expected === 0
+      let complete = expected === 0
         ? uploaded === 0
         : manifest.status === 'syncing'
           ? uploaded === expected
           : uploaded >= expected;
+
+      // Manual "Try again" is also our recovery escape hatch for older partial
+      // growth uploads whose missing records vanished from the durable pending
+      // queue. Only attempt this when cloud is below the expected count and the
+      // browser still holds at least the full expected local library. We compare
+      // document IDs and upload only cloud-missing books, so existing cloud data
+      // is never replaced wholesale.
+      if (!complete && uploaded < expected) {
+        uploaded = await repairIncompleteCloudLibrary(expected, uploaded);
+        complete = expected === 0
+          ? uploaded === 0
+          : manifest.status === 'syncing'
+            ? uploaded === expected
+            : uploaded >= expected;
+      }
 
       if (complete && manifest.status !== 'complete') {
         await setDoc(libraryManifestRef, {
