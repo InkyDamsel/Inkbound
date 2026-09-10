@@ -67,10 +67,10 @@ export function getBookReadingState(book: UserBookRecord): BookReadingState {
  * this helper so status, completion percentage, and reading-history dates cannot
  * drift apart.
  *
- * Marking a title Finished means 100% complete. We do not fabricate an exact
- * page/minute endpoint when one is unknown; the percentage and Finished status
- * are the canonical completion signal while the finish date records when the
- * reader explicitly marks it complete inside Inkbound.
+ * Inkbound never fabricates a start date. Marking a title Finished records the
+ * finish date only; the start date remains whatever the reader or source actually
+ * supplied. Moving a title back to TBR or Wishlist clears reading dates because
+ * those statuses mean the title is not part of the reader's active/read history.
  */
 export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, date = localDateKey()): UserBookRecord {
   if (status === 'finished') {
@@ -78,8 +78,18 @@ export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, d
       ...book,
       status,
       progressPercentage: 100,
-      dateStarted: book.dateStarted ?? date,
+      dateStarted: book.dateStarted,
       dateFinished: book.dateFinished ?? date,
+    };
+  }
+
+  if (status === 'tbr' || status === 'wishlist') {
+    return {
+      ...book,
+      status,
+      progressPercentage: 0,
+      dateStarted: undefined,
+      dateFinished: undefined,
     };
   }
 
