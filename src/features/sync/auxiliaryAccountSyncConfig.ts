@@ -28,6 +28,7 @@ export const AUXILIARY_ACCOUNT_KEYS = {
   collectionDefinitions: ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions,
   seriesOverrides: ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides,
   customOwnershipCategories: ACCOUNT_DATA_STORAGE_KEYS.customOwnershipCategories,
+  ignoredDuplicateGroups: ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups,
   annualReadingGoal: ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal,
   dailyReadingGoalMinutes: ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes,
   timelineMemories: ACCOUNT_DATA_STORAGE_KEYS.timelineMemories,
