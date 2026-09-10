@@ -116,6 +116,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
     mood: '',
     location: '',
   }));
+  const [endingProgressInput, setEndingProgressInput] = useState<string | null>(null);
 
   const selectedBook = selectableBooks.find((book) => book.id === draft.selectedBookId) || initialBook;
   const activeEdition = selectedBook?.editions.find((edition) => edition.id === selectedBook.activeEditionId) || selectedBook?.editions[0];
@@ -129,6 +130,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
     const nextStartPage = requestedBook.progressPages ?? 0;
     const nextStartMins = requestedBook.progressMinutes ?? 0;
     if (requestedBook.id === draft.selectedBookId && draft.startPage === nextStartPage && draft.endPage === nextStartPage && draft.startMins === nextStartMins && draft.endMins === nextStartMins) return;
+    setEndingProgressInput(null);
     setDraft((current) => ({
       ...current,
       selectedBookId: requestedBook.id,
@@ -204,6 +206,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
     const book = selectableBooks.find((item) => item.id === bookId);
     if (!book) return;
     setError('');
+    setEndingProgressInput(null);
     setDraft((current) => ({
       ...current,
       selectedBookId: bookId,
@@ -222,7 +225,10 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
     setDraft((current) => ({ ...current, isActive: true, startedAt: current.startedAt ?? now, lastActiveAt: now, splitAtMidnight: current.splitAtMidnight ?? true }));
   };
   const pause = () => setDraft((current) => ({ ...current, isActive: false, lastActiveAt: undefined }));
-  const handleFinishSession = () => setDraft((current) => ({ ...current, isActive: false, isFinished: true, lastActiveAt: undefined, endedAt: Date.now() }));
+  const handleFinishSession = () => {
+    setEndingProgressInput(null);
+    setDraft((current) => ({ ...current, isActive: false, isFinished: true, lastActiveAt: undefined, endedAt: Date.now() }));
+  };
   const clearDraft = () => removeRuntimeValue(SESSION_DRAFT_KEY);
   const discardSession = () => {
     if (!window.confirm('Discard this reading session? The timer and unsaved notes will be removed.')) return;
@@ -306,6 +312,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
   const handleSaveAndClose = () => {
     if (!selectedBook) return;
+    if (endingProgressInput === '') return setError(`Enter an ending ${isAudiobook ? 'minute' : 'page'} before saving.`);
     if (!isAudiobook && draft.endPage < draft.startPage) return setError('Ending page cannot be before the starting page. Inkbound will never create negative pages read.');
     if (isAudiobook && draft.endMins < draft.startMins) return setError('Ending minutes cannot be before the starting minute. Inkbound will never create negative listening time.');
     if (!isAudiobook && activeEdition?.pageCount && draft.endPage > activeEdition.pageCount) return setError(`Ending page cannot be beyond page ${activeEdition.pageCount.toLocaleString()} for this edition.`);
@@ -396,7 +403,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Starting minute' : 'Starting page'}</label><div className="w-full rounded-lg border border-[#3d2448] bg-[#17101b] p-3 text-sm text-stone-300">{isAudiobook ? draft.startMins : draft.startPage}</div><p className="mt-1 text-[11px] text-stone-500">Locked to your saved progress when this session began.</p></div>
-                  <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Ending minute' : 'Ending page'}</label><input inputMode="numeric" min={isAudiobook ? draft.startMins : draft.startPage} max={isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount} type="number" value={isAudiobook ? draft.endMins : draft.endPage} onChange={(event) => setDraft((current) => ({ ...current, midnightProgress: undefined, ...(isAudiobook ? { endMins: Math.max(current.startMins, Number.parseInt(event.target.value, 10) || current.startMins) } : { endPage: Math.max(current.startPage, Number.parseInt(event.target.value, 10) || current.startPage) }) }))} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /><p className="mt-1 text-[11px] text-stone-500">Your next session will start here.</p></div>
+                  <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">{isAudiobook ? 'Ending minute' : 'Ending page'}</label><input inputMode="numeric" min={isAudiobook ? draft.startMins : draft.startPage} max={isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount} type="number" value={endingProgressInput ?? String(isAudiobook ? draft.endMins : draft.endPage)} onChange={(event) => { const raw = event.target.value; setEndingProgressInput(raw); setError(''); if (raw === '') return; const parsed = Number.parseInt(raw, 10); if (!Number.isFinite(parsed)) return; setDraft((current) => ({ ...current, midnightProgress: undefined, ...(isAudiobook ? { endMins: Math.max(0, parsed) } : { endPage: Math.max(0, parsed) }) })); }} className="w-full rounded-lg border border-[#3d2448] bg-[#120817] p-3 text-sm text-[#f4efe6] focus:border-[#c5a059] focus:outline-none" /><p className="mt-1 text-[11px] text-stone-500">Your next session will start here.</p></div>
                 </div>
 
                 {!isAudiobook && currentPace?.pagesPerHour ? <div className="rounded-2xl border border-[#c5a059]/35 bg-[#25132f] p-4"><p className="flex items-center gap-2 text-sm font-bold text-[#f4efe6]"><Gauge className="h-4 w-4 text-[#e5c158]" /> Reading pace</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#120817] p-3"><p className="text-[11px] uppercase tracking-wider text-stone-500">Current pace</p><p className="mt-1 text-lg font-bold text-[#f4efe6]">{Math.round(currentPace.pagesPerHour)} pages/hour</p>{currentRemainingLabel && <p className="mt-1 text-xs text-stone-400">About {currentRemainingLabel} of reading remaining.</p>}</div><div className="rounded-xl bg-[#120817] p-3"><p className="text-[11px] uppercase tracking-wider text-stone-500">7-day average</p>{sevenDayPace?.pagesPerHour ? <><p className="mt-1 text-lg font-bold text-[#f4efe6]">{Math.round(sevenDayPace.pagesPerHour)} pages/hour</p>{averageRemainingLabel && <p className="mt-1 text-xs text-stone-400">About {averageRemainingLabel} remaining at your recent average.</p>}</> : <p className="mt-1 text-xs leading-5 text-stone-400">Inkbound needs at least 2 sessions and 20 tracked minutes in the last 7 days before showing an average pace.</p>}</div></div></div> : null}
