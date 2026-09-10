@@ -50,6 +50,8 @@ const libraryCategories = [
   { id: 'wishlist', label: 'Wishlist' },
 ];
 
+const normalizeTag = (value: string) => value.trim().toLocaleLowerCase();
+
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   books,
   selectedBookIds,
@@ -67,6 +69,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [activeCategory, setActiveCategory] = useState('all');
   const [customCategories, setCustomCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [searchFilter, setSearchFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('all');
   const [materialFilter, setMaterialFilter] = useState('all');
   const [formatFilter, setFormatFilter] = useState('all');
   const [genreFilter, setGenreFilter] = useState('all');
@@ -91,10 +94,23 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   useEffect(() => {
     setPage(1);
-  }, [activeCategory, searchFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+  }, [activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const updateLibraryBook = onUpdateBook ?? ((book: UserBookRecord) => replaceCanonicalBook(books, book));
   const allGenres = useMemo(() => Array.from(new Set(books.flatMap((book) => book.work.genres))).sort(), [books]);
+  const allTags = useMemo(() => {
+    const byNormalized = new Map<string, string>();
+    books.forEach((book) => (book.privateTags ?? []).forEach((rawTag) => {
+      const name = rawTag.trim();
+      const normalized = normalizeTag(name);
+      if (normalized && !byNormalized.has(normalized)) byNormalized.set(normalized, name);
+    }));
+    return [...byNormalized.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [books]);
+
+  useEffect(() => {
+    if (tagFilter !== 'all' && !allTags.some(([normalized]) => normalized === tagFilter)) setTagFilter('all');
+  }, [allTags, tagFilter]);
 
   const filteredBooks = useMemo(() => books.filter((book) => {
     if (activeCategory === 'currently-reading' && book.status !== 'currently-reading') return false;
@@ -118,6 +134,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         || book.privateTags.some((tag) => tag.toLowerCase().includes(query)))) return false;
     }
 
+    if (tagFilter !== 'all' && !(book.privateTags ?? []).some((tag) => normalizeTag(tag) === tagFilter)) return false;
     if (materialFilter !== 'all' && (book.work.materialType ?? 'book') !== materialFilter) return false;
     if (formatFilter !== 'all' && !book.editions.some((edition) => edition.format === formatFilter)) return false;
     if (genreFilter !== 'all' && !book.work.genres.includes(genreFilter)) return false;
@@ -132,7 +149,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         ? (b.rating || 0) - (a.rating || 0)
         : sortBy === 'progress'
           ? b.progressPercentage - a.progressPercentage
-          : new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()), [books, activeCategory, searchFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+          : new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -182,12 +199,13 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <LoansLibraryPanel books={books} onSelectBook={onSelectBook} />
       ) : <>
         <section className="inkbound-panel p-4 sm:p-5">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-9">
             <label className="relative xl:col-span-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#807482]" /><input type="search" placeholder="Search title, author, series, or tag" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} className="h-11 w-full rounded-xl border border-[#c5a059]/18 bg-[#0d0910] pl-10 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
             <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)} className="inkbound-select" aria-label="Library category">
               <optgroup label="Library categories">{libraryCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</optgroup>
               {customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}
             </select>
+            <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} className="inkbound-select" aria-label="Tag filter"><option value="all">All tags</option>{allTags.map(([normalized, label]) => <option key={normalized} value={normalized}>{label}</option>)}</select>
             <select value={materialFilter} onChange={(event) => setMaterialFilter(event.target.value)} className="inkbound-select"><option value="all">All reading types</option>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.pluralLabel ?? option.label}</option>)}</select>
             <select value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} className="inkbound-select"><option value="all">All formats</option>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
             <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)} className="inkbound-select"><option value="all">All genres</option>{allGenres.map((genre) => <option key={genre}>{genre}</option>)}</select>
@@ -205,7 +223,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <div className="text-xs text-[#807482]">{filteredBooks.length.toLocaleString()} matching items · {books.length.toLocaleString()} total</div>
 
         {filteredBooks.length === 0 ? (
-          <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another category, reading type, format, or search.</p></div>
+          <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another category, tag, reading type, format, or search.</p></div>
         ) : viewMode === 'grid' ? (
           <LibraryBookGrid books={paginatedBooks} selectedBookIds={selectedBookIds} onToggleSelectBook={onToggleSelectBook} onSelectBook={onSelectBook} />
         ) : (
