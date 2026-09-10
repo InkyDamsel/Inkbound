@@ -52,12 +52,27 @@ export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
   return { name, position: Number.isFinite(parsedPosition) && parsedPosition >= 0 ? parsedPosition : null };
 }
 
+/**
+ * Some older/custom imports converted a blank Series Number cell into numeric 0.
+ * When the title itself contains an unambiguous matching series suffix, recover
+ * the real position from that title instead of letting a bogus Book 0 override it.
+ * A genuine explicit 0 is preserved when the title does not prove otherwise.
+ */
+function recoverSeriesPosition(book: UserBookRecord, seriesName: string, position: number | null): number | null {
+  if (position !== 0) return position;
+  const inferred = inferSeriesHintFromTitle(book.work.title);
+  if (!inferred || inferred.position === null) return position;
+  if (normalizeSeriesName(inferred.name).toLowerCase() !== normalizeSeriesName(seriesName).toLowerCase()) return position;
+  return inferred.position;
+}
+
 export function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
   const explicitName = book.work.seriesName?.trim();
   if (explicitName) {
+    const explicitPosition = typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder) ? book.work.seriesOrder : null;
     return {
       name: normalizeSeriesName(explicitName),
-      position: typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder) ? book.work.seriesOrder : null,
+      position: recoverSeriesPosition(book, explicitName, explicitPosition),
     };
   }
   return inferSeriesHintFromTitle(book.work.title);
@@ -68,7 +83,12 @@ export function resolveEffectiveSeriesMetadata(book: UserBookRecord, overrides: 
   for (const override of orderedSeriesOverrides(overrides)) {
     const entry = override.books.find((candidate) => candidate.bookId === book.id);
     if (!entry) continue;
-    return { name: override.name, position: entry.position, label: entry.label?.trim() ?? '', source: 'manual' };
+    return {
+      name: override.name,
+      position: recoverSeriesPosition(book, override.name, entry.position),
+      label: entry.label?.trim() ?? '',
+      source: 'manual',
+    };
   }
   const explicitName = book.work.seriesName?.trim();
   if (explicitName) return { ...resolveSeriesMetadata(book)!, label: '', source: 'metadata' };
@@ -136,7 +156,8 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
       const book = booksById.get(entry.bookId);
       if (!book || manuallyAssignedBookIds.has(book.id)) return [];
       manuallyAssignedBookIds.add(book.id);
-      return [{ book, position: entry.position, displayPosition: seriesPositionLabel(book, entry.position, entry.label) }];
+      const position = recoverSeriesPosition(book, override.name, entry.position);
+      return [{ book, position, displayPosition: seriesPositionLabel(book, position, entry.label) }];
     });
     if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
   });
