@@ -1,5 +1,7 @@
 import type { ImportRecordItem, ReadingStatus, UserBookRecord } from '../../types';
 import { readSeriesOverrides, SERIES_OVERRIDES_STORAGE_KEY, makeSeriesOverrideId, type SeriesOverrides } from '../series/seriesOverrides';
+import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
+import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { writeRuntimeJson } from '../../platform/runtimeStorage';
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
@@ -188,4 +190,28 @@ export function applyImportExtrasToNewBook(book: UserBookRecord, item: ImportRec
     privateTags: mergeUnique(book.privateTags, importedTags),
     collections: mergeUnique(book.collections, [...sourceCollections, ...optionalShelfCollections]),
   };
+}
+
+export function applySafeReimportUpdates(items: ImportRecordItem[], library: UserBookRecord[]): { updatedCount: number; seriesRestored: number } {
+  const mergeItems = items.filter((item) => item.duplicateAction === 'merge');
+  if (mergeItems.length === 0) return { updatedCount: 0, seriesRestored: 0 };
+
+  const byBookId = new Map<string, ImportRecordItem>();
+  for (const item of mergeItems) {
+    const matched = item.matchedBookId
+      ? library.find((book) => book.id === item.matchedBookId)
+      : findExistingImportMatch(item, library);
+    if (matched) byBookId.set(matched.id, item);
+  }
+
+  if (byBookId.size === 0) return { updatedCount: 0, seriesRestored: 0 };
+
+  const updatedLibrary = library.map((book) => {
+    const item = byBookId.get(book.id);
+    return item ? mergeImportIntoExistingBook(book, item) : book;
+  });
+  writeRuntimeJson(SYNC_STORAGE_KEYS.books, updatedLibrary);
+  const seriesRestored = restoreManualSeriesOverridesFromImport(mergeItems, updatedLibrary);
+  notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
+  return { updatedCount: byBookId.size, seriesRestored };
 }
