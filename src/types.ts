@@ -176,6 +176,10 @@ export interface ImportRecordItem {
   pageCount?: number;
   coverUrl?: string;
   review?: string;
+  tags?: string[];
+  sourceShelves?: string[];
+  sourceCollections?: string[];
+  importShelvesAsCollections?: boolean;
   matchedBookId?: string;
   matchTitle?: string;
   matchAuthor?: string;
