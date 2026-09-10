@@ -159,24 +159,33 @@ const buildDuplicateCandidates = (books: UserBookRecord[]): DuplicateCandidate[]
 const stableCandidateId = (candidate: DuplicateCandidate) => `${candidate.reason}:${candidate.key}`;
 const legacyCandidateId = (candidate: DuplicateCandidate) => [...candidate.ids].sort().join('|');
 
+const preferredDuplicateCandidates = (books: UserBookRecord[]) => {
+  const byMembership = new Map<string, DuplicateCandidate>();
+  buildDuplicateCandidates(books).forEach((candidate) => {
+    const membership = legacyCandidateId(candidate);
+    const existing = byMembership.get(membership);
+    if (!existing || (candidate.reason === 'isbn' && existing.reason !== 'isbn')) byMembership.set(membership, candidate);
+  });
+  return [...byMembership.values()];
+};
+
 const migrateLegacyIgnoredGroups = (books: UserBookRecord[], legacyIgnored: Set<string>) => {
   if (!legacyIgnored.size) return [] as string[];
-  return buildDuplicateCandidates(books)
+  return preferredDuplicateCandidates(books)
     .filter((candidate) => legacyIgnored.has(legacyCandidateId(candidate)))
     .map(stableCandidateId);
 };
 
 const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
-  const merged = new Map<string, DuplicateGroup>();
-  buildDuplicateCandidates(books).forEach((candidate) => {
+  const groups: DuplicateGroup[] = [];
+  preferredDuplicateCandidates(books).forEach((candidate) => {
     const id = stableCandidateId(candidate);
     if (ignored.has(id)) return;
-    const existing = merged.get(id);
     const groupBooks = candidate.ids.map((bookId) => books.find((book) => book.id === bookId)).filter((book): book is UserBookRecord => Boolean(book));
     if (groupBooks.length < 2) return;
-    if (!existing || candidate.reason === 'isbn') merged.set(id, { id, reason: candidate.reason, books: groupBooks });
+    groups.push({ id, reason: candidate.reason, books: groupBooks });
   });
-  return [...merged.values()].sort((a, b) => b.books.length - a.books.length || a.books[0].work.title.localeCompare(b.books[0].work.title));
+  return groups.sort((a, b) => b.books.length - a.books.length || a.books[0].work.title.localeCompare(b.books[0].work.title));
 };
 
 export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ books, onMergeGroup, onSelectBook }) => {
