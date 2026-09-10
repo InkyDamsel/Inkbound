@@ -1,4 +1,5 @@
 import type { UserBookRecord } from '../../types';
+import { reconcileFinishedBookProgress } from '../reading/bookReadingState';
 import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
 
 /**
@@ -6,9 +7,13 @@ import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
  * unpublished "Untitled (Series, #N)" placeholders. Those entries represent a
  * future installment, not something a reader can currently own/borrow/access.
  * Wishlist is preserved because that is an intentional reader choice.
+ *
+ * This boundary also applies canonical reading-state compatibility fixes before
+ * the record is exposed to feature screens. Finished records are normalized
+ * through bookReadingState.ts so every screen sees the same completion state.
  */
 export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
-  let normalized = book;
+  let normalized = reconcileFinishedBookProgress(book);
 
   // Ownership and reading status are independent facts. A reader can move a
   // previously finished book to the Wishlist ownership bucket without erasing
