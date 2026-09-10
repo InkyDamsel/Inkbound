@@ -45,6 +45,7 @@ interface ReadingSessionsScreenProps {
 }
 
 const SESSION_DELETE_UNDO_MS = 7000;
+const SESSION_BANNER_ASSET = '/assets/streaks/cozy-sessions-background.png';
 
 const formatSessionDate = (value: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -180,16 +181,18 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
 
   return (
     <section className="space-y-7 pb-20">
-      <header className="inkbound-panel relative overflow-hidden p-6 sm:p-8">
-        <div className="relative z-10 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-2xl">
-            <p className="inkbound-kicker">Reading journal</p>
-            <h2 className="inkbound-page-title">Reading Sessions</h2>
-            <p className="inkbound-page-copy mt-3">Keep a record of the time, pages, places, and thoughts that shape your reading life.</p>
+      <header className="relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
+        <div aria-hidden="true" className="pointer-events-none absolute -inset-3 scale-[1.035] bg-cover bg-center bg-no-repeat blur-[3px]" style={{ backgroundImage: `url("${SESSION_BANNER_ASSET}")` }} />
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(9,8,18,.88)_0%,rgba(9,8,18,.68)_48%,rgba(9,8,18,.34)_78%,rgba(9,8,18,.22)_100%)]" />
+        <div className="relative z-10 flex min-h-[250px] flex-col justify-between gap-5 p-5 sm:p-7 lg:flex-row lg:items-end">
+          <div className="max-w-2xl rounded-[1.5rem] border border-white/10 bg-black/25 p-5 backdrop-blur-[3px]">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#e0c77c]">Reading journal</p>
+            <h2 className="mt-2 font-serif text-3xl text-white sm:text-4xl">Reading Sessions</h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-white/75">Keep a record of the time, pages, places, and thoughts that shape your reading life.</p>
           </div>
 
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap xl:self-auto">
-            <button type="button" onClick={() => setIsManualEntryOpen(true)} className="quiet-shelf-secondary-action w-full justify-center sm:w-auto">
+          <div className="flex w-full flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 backdrop-blur-[3px] sm:w-auto sm:flex-row sm:flex-wrap">
+            <button type="button" onClick={() => setIsManualEntryOpen(true)} className="quiet-shelf-secondary-action w-full justify-center border-white/10 bg-black/20 text-white sm:w-auto">
               <Plus className="h-4 w-4" /> Add Manually
             </button>
             <button type="button" onClick={() => onOpenTimer()} className="quiet-shelf-primary-action w-full justify-center sm:w-auto">
@@ -197,7 +200,6 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
             </button>
           </div>
         </div>
-        <BookOpen className="pointer-events-none absolute -bottom-10 right-5 h-44 w-44 text-[var(--ink-gold)] opacity-[0.045]" />
       </header>
 
       <ResponsiveGrid minItemWidth={220} maxColumns={4} gap={12}>
