@@ -19,7 +19,10 @@
     max-height: 44dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-top: max(1rem, env(safe-area-inset-top));
+    /* Reserve a real row for the mobile series shortcut. Previously it floated
+       over the cover/title area even after the close button itself was made
+       tappable. The header content now starts below that control. */
+    padding-top: calc(max(1rem, env(safe-area-inset-top)) + 3.5rem) !important;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -58,10 +61,10 @@
     background: rgba(127, 29, 29, 0.18);
   }
 
-  /* The floating series shortcut used to sit directly over the modal's top-right
-     close button on Android. Keep the shortcut fully left of the reserved 64px
-     close-control lane so the X always receives taps. */
+  /* Give the series shortcut its own safe-area-aware row and keep the right side
+     clear for the modal close control. */
   .book-details-series-shortcut {
+    top: max(0.75rem, env(safe-area-inset-top)) !important;
     left: 0.75rem !important;
     right: calc(4rem + env(safe-area-inset-right)) !important;
     max-width: none !important;
