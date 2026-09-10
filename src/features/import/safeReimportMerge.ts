@@ -1,4 +1,6 @@
 import type { ImportRecordItem, ReadingStatus, UserBookRecord } from '../../types';
+import { readSeriesOverrides, SERIES_OVERRIDES_STORAGE_KEY, makeSeriesOverrideId, type SeriesOverrides } from '../series/seriesOverrides';
+import { writeRuntimeJson } from '../../platform/runtimeStorage';
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 const normalizeText = (value?: string) => value?.trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -77,6 +79,57 @@ function hasManualCover(book: UserBookRecord): boolean {
 export function isUserSeriesSource(value?: string): boolean {
   const normalized = value?.trim().toLowerCase() ?? '';
   return /(^|\b)(manual|user|custom|corrected|override)(\b|$)/.test(normalized);
+}
+
+export function restoreManualSeriesOverridesFromImport(items: ImportRecordItem[], library: UserBookRecord[]): number {
+  const manualItems = items.filter((item) => isUserSeriesSource(item.seriesSource) && item.seriesName?.trim());
+  if (manualItems.length === 0) return 0;
+
+  const current = readSeriesOverrides();
+  const next: SeriesOverrides = Object.fromEntries(
+    Object.entries(current).map(([key, value]) => [key, { ...value, books: value.books.map((book) => ({ ...book })) }]),
+  );
+  const alreadyManuallyAssigned = new Set(Object.values(current).flatMap((override) => override.books.map((book) => book.bookId)));
+  const now = new Date().toISOString();
+  let restored = 0;
+
+  for (const item of manualItems) {
+    const matched = item.matchedBookId
+      ? library.find((book) => book.id === item.matchedBookId)
+      : findExistingImportMatch(item, library);
+    if (!matched || alreadyManuallyAssigned.has(matched.id)) continue;
+
+    const seriesName = item.seriesName!.trim();
+    const author = matched.work.author?.trim() || item.author.trim() || 'Unknown Author';
+    const overrideId = makeSeriesOverrideId(seriesName, author);
+    const existingOverride = next[overrideId];
+    const bookEntry = {
+      bookId: matched.id,
+      position: typeof item.seriesOrder === 'number' && Number.isFinite(item.seriesOrder) ? item.seriesOrder : null,
+      ...(item.seriesLabel?.trim() ? { label: item.seriesLabel.trim() } : {}),
+    };
+
+    if (existingOverride) {
+      if (existingOverride.books.some((book) => book.bookId === matched.id)) continue;
+      existingOverride.books.push(bookEntry);
+      existingOverride.updatedAt = now;
+    } else {
+      next[overrideId] = {
+        id: overrideId,
+        name: seriesName,
+        author,
+        books: [bookEntry],
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    alreadyManuallyAssigned.add(matched.id);
+    restored += 1;
+  }
+
+  if (restored > 0) writeRuntimeJson(SERIES_OVERRIDES_STORAGE_KEY, next);
+  return restored;
 }
 
 export function mergeImportIntoExistingBook(existing: UserBookRecord, item: ImportRecordItem): UserBookRecord {
