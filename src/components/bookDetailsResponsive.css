@@ -57,4 +57,14 @@
     border-color: rgba(251, 113, 133, 0.35);
     background: rgba(127, 29, 29, 0.18);
   }
+
+  /* The floating series shortcut used to sit directly over the modal's top-right
+     close button on Android. Keep the shortcut fully left of the reserved 64px
+     close-control lane so the X always receives taps. */
+  .book-details-series-shortcut {
+    left: 0.75rem !important;
+    right: calc(4rem + env(safe-area-inset-right)) !important;
+    max-width: none !important;
+    transform: none !important;
+  }
 }
