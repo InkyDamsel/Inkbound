@@ -1,4 +1,4 @@
-export type ImportFieldKey = 'title' | 'author' | 'isbn' | 'format' | 'status' | 'rating' | 'dateStarted' | 'dateRead' | 'dateAdded' | 'pageCount' | 'coverUrl' | 'review';
+export type ImportFieldKey = 'title' | 'author' | 'isbn' | 'format' | 'status' | 'rating' | 'dateStarted' | 'dateRead' | 'dateAdded' | 'pageCount' | 'coverUrl' | 'review' | 'tags' | 'shelves' | 'collections';
 
 export const IMPORT_FIELD_OPTIONS: Array<{ key: ImportFieldKey; label: string; required?: boolean }> = [
   { key: 'title', label: 'Title', required: true },
@@ -13,6 +13,9 @@ export const IMPORT_FIELD_OPTIONS: Array<{ key: ImportFieldKey; label: string; r
   { key: 'pageCount', label: 'Page Count' },
   { key: 'coverUrl', label: 'Cover URL' },
   { key: 'review', label: 'Review / Notes' },
+  { key: 'tags', label: 'Tags' },
+  { key: 'shelves', label: 'Shelves / Lists / Folders' },
+  { key: 'collections', label: 'Collections' },
 ];
 
 export type ImportColumnMapping = Partial<Record<ImportFieldKey, string>>;
@@ -30,6 +33,9 @@ const aliases: Record<ImportFieldKey, string[]> = {
   pageCount: ['page count', 'pagecount', 'pages', 'number of pages', 'num pages', 'num_pages', 'total pages', 'total_pages'],
   coverUrl: ['cover url', 'cover_url', 'cover image', 'cover image url', 'image url', 'image_url', 'book cover url', 'thumbnail url'],
   review: ['my review', 'review', 'notes', 'note', 'comments', 'comment', 'thoughts'],
+  tags: ['tags', 'tag', 'labels', 'label', 'keywords'],
+  shelves: ['bookshelves', 'book shelves', 'shelves', 'shelf names', 'lists', 'list names', 'folders', 'folder names', 'categories'],
+  collections: ['collections', 'collection', 'book collections', 'custom collections'],
 };
 
 function normalized(value: string): string {
