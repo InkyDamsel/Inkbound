@@ -250,6 +250,23 @@ main img[src*='/assets/lumis/lumis-'] {
   display: none;
 }
 
+/* Keep the desktop sidebar toggle inside the rail instead of hanging over the divider. */
+.quiet-shelf-sidebar > button:first-child {
+  right: 10px !important;
+  top: 14px !important;
+}
+
+/* When the sidebar is collapsed, give the logo and toggle their own vertical space. */
+.quiet-shelf-sidebar:not(:has(.quiet-shelf-brand-copy)) > button:first-child {
+  top: 64px !important;
+  right: 50% !important;
+  transform: translateX(50%);
+}
+
+.quiet-shelf-sidebar:not(:has(.quiet-shelf-brand-copy)) .quiet-shelf-brand {
+  padding-bottom: 44px !important;
+}
+
 @media (min-width: 1280px) {
   main {
     padding-bottom: 3rem;
