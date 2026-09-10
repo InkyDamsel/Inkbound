@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
 import {
   getActiveEdition,
+  getAverageBookProgress,
   getBookReadingState,
   reconcileFinishedBookProgress,
   withReadingStatus,
@@ -72,6 +73,21 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(state.isFinished, true);
   assert.equal(state.progressNeedsCorrection, false);
   assert.equal(hasTrustworthyFinishedHistory(finishedHistory), true);
+}
+
+// Derived groupings must use the canonical reading-state resolver too. This is
+// the exact regression that previously let a 16-book Finished collection show 0%.
+{
+  const importedFinishedBooks = Array.from({ length: 16 }, (_, index) => ({
+    ...baseBook(),
+    id: `finished-${index + 1}`,
+    work: { ...baseBook().work, id: `work-${index + 1}`, title: `Finished ${index + 1}` },
+    status: 'finished' as const,
+    progressPages: 0,
+    progressPercentage: 0,
+    dateFinished: '2026-08-15',
+  }));
+  assert.equal(getAverageBookProgress(importedFinishedBooks), 100);
 }
 
 // Leaving Finished clears the finish date but does not invent or erase page progress.
