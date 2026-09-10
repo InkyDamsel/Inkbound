@@ -180,6 +180,10 @@ export interface ImportRecordItem {
   sourceShelves?: string[];
   sourceCollections?: string[];
   importShelvesAsCollections?: boolean;
+  seriesName?: string;
+  seriesOrder?: number;
+  seriesLabel?: string;
+  seriesSource?: string;
   matchedBookId?: string;
   matchTitle?: string;
   matchAuthor?: string;
