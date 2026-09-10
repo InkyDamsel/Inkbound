@@ -3,9 +3,11 @@ import {
   collection,
   doc,
   getCountFromServer,
+  getDocs,
   serverTimestamp,
   setDoc,
 } from 'firebase/firestore';
+import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
@@ -19,6 +21,7 @@ import { SYNC_STORAGE_KEYS } from './storageKeys';
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const CHECKPOINT_KEY_PREFIX = 'inkbound_library_sync_checkpoint_v1_';
 const VERIFY_DELAY_MS = 15000;
+const REPAIR_BATCH_SIZE = 100;
 
 type LibraryCountDirection = 'grow' | 'shrink';
 
@@ -29,15 +32,19 @@ interface LocalCheckpoint {
   createdAt: string;
 }
 
-function readBookCount(): number {
+function readBooks(): UserBookRecord[] {
   try {
     const raw = getRuntimeStorage().getItem(BOOKS_KEY);
-    if (!raw) return 0;
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.length : 0;
+    return Array.isArray(parsed) ? parsed as UserBookRecord[] : [];
   } catch {
-    return 0;
+    return [];
   }
+}
+
+function readBookCount(): number {
+  return readBooks().length;
 }
 
 function readCheckpoint(uid: string): LocalCheckpoint | null {
@@ -69,6 +76,53 @@ function checkpointComplete(checkpoint: LocalCheckpoint, uploadedBookCount: numb
 }
 
 /**
+ * Repairs a legacy/partial growth upload without overwriting any cloud record
+ * that already exists. This is deliberately limited to an existing growth
+ * checkpoint whose full expected library is still present locally.
+ *
+ * Older beta builds could leave a checkpoint saying e.g. 228 expected while only
+ * 179 documents reached Firestore. The normal delta bridge cannot discover those
+ * missing records after restart because they are no longer in its pending queue.
+ * This pass compares IDs once, uploads only the missing local records, then lets
+ * normal checkpoint verification mark the backup complete.
+ */
+async function repairMissingGrowthRecords(uid: string, checkpoint: LocalCheckpoint): Promise<number> {
+  if (!db || checkpoint.direction !== 'grow') return 0;
+
+  const localBooks = readBooks();
+  if (localBooks.length < checkpoint.expectedBookCount) return 0;
+
+  const booksRef = collection(db, 'users', uid, 'books');
+  const cloudSnapshot = await getDocs(booksRef);
+  const cloudIds = new Set(cloudSnapshot.docs.map((item) => item.id));
+  const missingBooks = localBooks.filter((book) => book?.id && !cloudIds.has(book.id));
+  if (missingBooks.length === 0) return 0;
+
+  const clientUpdatedAt = new Date().toISOString();
+  let uploaded = 0;
+  for (let index = 0; index < missingBooks.length; index += REPAIR_BATCH_SIZE) {
+    const batch = missingBooks.slice(index, index + REPAIR_BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map((book) => setDoc(
+      doc(db!, 'users', uid, 'books', book.id),
+      {
+        data: book,
+        updatedAt: serverTimestamp(),
+        clientUpdatedAt,
+      },
+      { merge: true },
+    )));
+    uploaded += results.filter((result) => result.status === 'fulfilled').length;
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        console.warn('Inkbound checkpoint repair will retry a missing book upload later.', result.reason);
+      }
+    });
+  }
+
+  return uploaded;
+}
+
+/**
  * Records the expected size of a reader's library before a large local change
  * begins syncing to Firestore. Recovery code can then distinguish a complete
  * cloud library from a partially uploaded/deleted one after a crash or forced
@@ -78,6 +132,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
   const { user } = useAccountSync();
   const lastObservedBookCount = useRef(readBookCount());
   const verifyTimer = useRef<number | undefined>(undefined);
+  const repairInFlight = useRef(false);
 
   useEffect(() => {
     if (!user || !db) return undefined;
@@ -89,9 +144,31 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
       const checkpoint = readCheckpoint(uid);
       if (!checkpoint || !navigator.onLine) return;
       try {
-        const countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
-        const uploadedBookCount = countSnapshot.data().count;
-        const complete = checkpointComplete(checkpoint, uploadedBookCount);
+        let countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
+        let uploadedBookCount = countSnapshot.data().count;
+        let complete = checkpointComplete(checkpoint, uploadedBookCount);
+
+        // If an older build stranded part of a growing library outside the
+        // durable pending queue, repair only the cloud-missing IDs from the full
+        // local working copy. Never run this for shrink checkpoints, and never
+        // run it when the local device no longer has the expected full library.
+        if (!complete
+          && checkpoint.direction === 'grow'
+          && readBookCount() >= checkpoint.expectedBookCount
+          && !repairInFlight.current) {
+          repairInFlight.current = true;
+          try {
+            const repaired = await repairMissingGrowthRecords(uid, checkpoint);
+            if (repaired > 0) {
+              countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
+              uploadedBookCount = countSnapshot.data().count;
+              complete = checkpointComplete(checkpoint, uploadedBookCount);
+            }
+          } finally {
+            repairInFlight.current = false;
+          }
+        }
+
         await setDoc(manifestRef, {
           status: complete ? 'complete' : 'syncing',
           expectedBookCount: checkpoint.expectedBookCount,
@@ -101,7 +178,8 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
           ...(complete ? { completedAt: serverTimestamp() } : {}),
         }, { merge: true });
         if (complete) clearCheckpoint(uid);
-      } catch {
+      } catch (error) {
+        console.warn('Inkbound library checkpoint verification will retry later.', error);
         // The local checkpoint remains durable and will be checked again later.
       }
     };
