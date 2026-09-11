@@ -37,6 +37,7 @@ type BarcodeDetectorLike = {
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
+const SCANNER_REVIEW_PAGE_SIZE = 6;
 const today = () => {
   const value = new Date();
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
@@ -72,6 +73,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [priority, setPriority] = useState<Priority>('medium');
 
   const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>([]);
+  const [scannerReviewPage, setScannerReviewPage] = useState(1);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -86,6 +88,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const scannedBooksRef = useRef<ScannedBook[]>([]);
 
   useEffect(() => { scannedBooksRef.current = scannedBooks; }, [scannedBooks]);
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(scannedBooks.length / SCANNER_REVIEW_PAGE_SIZE));
+    setScannerReviewPage((current) => Math.min(current, totalPages));
+  }, [scannedBooks.length]);
 
   const stopCamera = () => {
     if (scanLoopRef.current !== null) cancelAnimationFrame(scanLoopRef.current);
@@ -179,7 +185,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       }
       const book = createBookFromSearchEdition({ work: match.work, edition: match.edition, status: 'tbr' });
       const staged: ScannedBook = { isbn, book: { ...book, status: 'tbr', dateStarted: undefined, dateFinished: undefined } };
-      setScannedBooks((current) => [...current, staged]);
+      setScannedBooks((current) => {
+        const next = [...current, staged];
+        setScannerReviewPage(Math.ceil(next.length / SCANNER_REVIEW_PAGE_SIZE));
+        return next;
+      });
       setScannerMessage(`Added “${match.work.title}” to review. Keep scanning.`);
     } catch (error) {
       setScannerError(error instanceof Error ? error.message : 'Inkbound could not look up that barcode.');
@@ -251,6 +261,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     if (onAddMultipleBooks) onAddMultipleBooks(books);
     else books.forEach(onAddBook);
     setScannedBooks([]);
+    setScannerReviewPage(1);
     stopCamera();
     onClose();
   };
@@ -286,6 +297,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     onClose();
   };
 
+  const scannerReviewTotalPages = Math.max(1, Math.ceil(scannedBooks.length / SCANNER_REVIEW_PAGE_SIZE));
+  const scannerReviewStart = (scannerReviewPage - 1) * SCANNER_REVIEW_PAGE_SIZE;
+  const scannerReviewBooks = scannedBooks.slice(scannerReviewStart, scannerReviewStart + SCANNER_REVIEW_PAGE_SIZE);
+
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="relative max-h-[100dvh] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
@@ -308,8 +323,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             </section>
 
             <section className="rounded-2xl border border-[#3d2448] bg-[#1d1422] p-4 sm:p-5">
-              <div className="flex items-center justify-between gap-3"><div><p className="inkbound-kicker">Review before saving</p><h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scanned books</h3></div>{scannedBooks.length > 0 && <button type="button" onClick={() => setScannedBooks([])} className="text-xs font-bold text-rose-300">Clear all</button>}</div>
-              {scannedBooks.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-[#c5a059]/20 px-5 py-10 text-center text-sm text-[#ad9fac]">Your scanned books will collect here until you are ready to save them.</div> : <div className="mt-4 space-y-3">{scannedBooks.map((item) => { const edition = item.book.editions.find((entry) => entry.id === item.book.activeEditionId) ?? item.book.editions[0]; return <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">{edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover"/> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5"/></span>}<div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p><p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · TBR</p></div><button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4"/></button></article>; })}</div>}
+              <div className="flex items-center justify-between gap-3"><div><p className="inkbound-kicker">Review before saving</p><h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scanned books</h3></div>{scannedBooks.length > 0 && <button type="button" onClick={() => { setScannedBooks([]); setScannerReviewPage(1); }} className="text-xs font-bold text-rose-300">Clear all</button>}</div>
+              {scannedBooks.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-[#c5a059]/20 px-5 py-10 text-center text-sm text-[#ad9fac]">Your scanned books will collect here until you are ready to save them.</div> : <>
+                <div className="mt-4 space-y-3">{scannerReviewBooks.map((item) => { const edition = item.book.editions.find((entry) => entry.id === item.book.activeEditionId) ?? item.book.editions[0]; return <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">{edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover"/> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5"/></span>}<div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p><p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · TBR</p></div><button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4"/></button></article>; })}</div>
+                {scannerReviewTotalPages > 1 && <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-[#120c15] p-2"><button type="button" onClick={() => setScannerReviewPage((current) => Math.max(1, current - 1))} disabled={scannerReviewPage === 1} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">← Previous</button><span className="text-xs font-semibold text-[#ad9fac]">Page {scannerReviewPage} of {scannerReviewTotalPages} · {scannedBooks.length} books</span><button type="button" onClick={() => setScannerReviewPage((current) => Math.min(scannerReviewTotalPages, current + 1))} disabled={scannerReviewPage === scannerReviewTotalPages} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">Next →</button></div>}
+              </>}
               <button type="button" onClick={saveScannedBooks} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-5 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4"/> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to TBR</button>
             </section>
           </div>
