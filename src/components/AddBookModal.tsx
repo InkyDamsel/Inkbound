@@ -16,6 +16,7 @@ import {
   readCustomOwnershipCategories,
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
+import { getRuntimeStorage } from '../platform/runtimeStorage';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 
 interface AddBookModalProps {
@@ -38,6 +39,7 @@ type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => Barc
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const SCANNER_REVIEW_PAGE_SIZE = 6;
+const SCANNER_DRAFT_STORAGE_KEY = 'inkbound_scanner_review_draft_v1';
 const today = () => {
   const value = new Date();
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
@@ -48,6 +50,27 @@ const categoryStatus = (selection: CategorySelection): ReadingStatus => isCustom
 const categoryId = (selection: CategorySelection): string | undefined => isCustomCategorySelection(selection) ? selection.slice('custom:'.length) : undefined;
 const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
 const editionIsbnValues = (edition: BookSearchEdition) => [edition.isbn13, edition.isbn10].map((value) => normalizeIsbn(value ?? '')).filter(Boolean);
+
+function readScannerDraft(): ScannedBook[] {
+  try {
+    const raw = getRuntimeStorage().getItem(SCANNER_DRAFT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed as ScannedBook[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistScannerDraft(items: ScannedBook[]) {
+  try {
+    const storage = getRuntimeStorage();
+    if (items.length === 0) storage.removeItem(SCANNER_DRAFT_STORAGE_KEY);
+    else storage.setItem(SCANNER_DRAFT_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // Draft persistence is a best-effort local safety net. Library saves still use canonical persistence.
+  }
+}
 
 export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, onAddMultipleBooks }) => {
   const [activeTab, setActiveTab] = useState<AddBookTab>('search');
@@ -72,7 +95,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [ownership, setOwnership] = useState<OwnershipStatus>('owned');
   const [priority, setPriority] = useState<Priority>('medium');
 
-  const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>([]);
+  const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>(readScannerDraft);
   const [scannerReviewPage, setScannerReviewPage] = useState(1);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -87,7 +110,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const lookupBusyRef = useRef(false);
   const scannedBooksRef = useRef<ScannedBook[]>([]);
 
-  useEffect(() => { scannedBooksRef.current = scannedBooks; }, [scannedBooks]);
+  useEffect(() => {
+    scannedBooksRef.current = scannedBooks;
+    persistScannerDraft(scannedBooks);
+  }, [scannedBooks]);
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(scannedBooks.length / SCANNER_REVIEW_PAGE_SIZE));
     setScannerReviewPage((current) => Math.min(current, totalPages));
@@ -314,7 +340,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         {activeTab === 'scan' ? (
           <div className="mt-6 space-y-5">
             <section className="rounded-2xl border border-[#c5a059]/25 bg-[#120c15] p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="inkbound-kicker">Stack scanner</p><h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3><p className="mt-2 max-w-2xl text-sm text-[#ad9fac]">Nothing is saved while you scan. Every match collects below for review, then you save the whole stack when you are finished. Scanned books start on your TBR.</p></div><div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div></div>
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="inkbound-kicker">Stack scanner</p><h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3><p className="mt-2 max-w-2xl text-sm text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Your review stack stays saved on this device until you save or clear it. When you are finished, save the whole stack to your TBR.</p></div><div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div></div>
               <div className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-black aspect-[4/3] max-h-[420px]"><video ref={videoRef} muted playsInline className="h-full w-full object-cover" /><div className="pointer-events-none absolute inset-[18%] rounded-2xl border-2 border-[#e5c158]/80"><span className="absolute left-1/2 top-1/2 w-3/4 -translate-x-1/2 border-t border-[#e5c158]/70" /></div>{!cameraActive && <div className="absolute inset-0 grid place-items-center bg-[#120817]/90 text-center"><div><Camera className="mx-auto h-10 w-10 text-[#c5a059]"/><p className="mt-3 text-sm text-[#ad9fac]">Use your camera to scan the ISBN barcode.</p><button type="button" onClick={() => void startCamera()} className="quiet-shelf-primary-action mt-4"><ScanLine className="h-4 w-4"/> Start Scanner</button></div></div>}</div>
               {cameraActive && <div className="mt-3 flex justify-end"><button type="button" onClick={stopCamera} className="quiet-shelf-secondary-action">Stop Camera</button></div>}
               <form onSubmit={addManualIsbn} className="mt-4 flex flex-col gap-2 sm:flex-row"><input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-w-0 flex-1"/><button type="submit" disabled={!manualIsbn.trim() || scanLookupBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scanLookupBusy ? <Loader2 className="h-4 w-4 animate-spin"/> : <Search className="h-4 w-4"/>} Add ISBN</button></form>
