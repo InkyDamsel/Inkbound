@@ -52,8 +52,15 @@ export const LEGACY_AUXILIARY_ACCOUNT_KEYS = [
 export const CORE_ACCOUNT_RUNTIME_KEYS = CANONICAL_SYNC_COLLECTION_KEYS;
 export const ACCOUNT_OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 export type AuxiliaryAccountKeyName = keyof typeof AUXILIARY_ACCOUNT_KEYS;
-export const getAuxiliaryPendingKey = (uid: string) => `inkbound_auxiliary_pending_${uid}_v1`;
-export const getAuxiliaryBaselineKey = (uid: string) => `inkbound_auxiliary_baseline_${uid}_v1`;
+
+// v2 deliberately rebuilds auxiliary baselines from Firestore. Older v1
+// baselines could survive several generations of the sync engine and make a
+// legitimate new local edit look like a no-op. Pending user intent is migrated
+// separately by AuxiliaryAccountSyncBridge before the new baseline is built.
+export const getAuxiliaryPendingKey = (uid: string) => `inkbound_auxiliary_pending_${uid}_v2`;
+export const getAuxiliaryBaselineKey = (uid: string) => `inkbound_auxiliary_baseline_${uid}_v2`;
+export const getLegacyAuxiliaryPendingKey = (uid: string) => `inkbound_auxiliary_pending_${uid}_v1`;
+export const getLegacyAuxiliaryBaselineKey = (uid: string) => `inkbound_auxiliary_baseline_${uid}_v1`;
 
 export const getAuxiliaryKeysToClearForOwnerChange = (
   previousOwnerUid: string | null,
