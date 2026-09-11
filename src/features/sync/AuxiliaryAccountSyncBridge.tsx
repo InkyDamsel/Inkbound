@@ -23,6 +23,8 @@ import {
   getAccountOwnedKeysToClearForOwnerChange,
   getAuxiliaryBaselineKey,
   getAuxiliaryPendingKey,
+  getLegacyAuxiliaryBaselineKey,
+  getLegacyAuxiliaryPendingKey,
 } from './auxiliaryAccountSyncConfig';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
@@ -96,6 +98,20 @@ function readBaseline(uid: string): BaselineState {
 
 function writeBaseline(uid: string, baseline: BaselineState) {
   storage().setItem(getAuxiliaryBaselineKey(uid), stable(baseline));
+}
+
+function migrateLegacySyncMetadata(uid: string) {
+  const newPendingKey = getAuxiliaryPendingKey(uid);
+  const legacyPendingKey = getLegacyAuxiliaryPendingKey(uid);
+  if (storage().getItem(newPendingKey) === null) {
+    const legacyPending = safeParse<PendingState>(legacyPendingKey, {});
+    if (Object.keys(legacyPending).length > 0) writePending(uid, legacyPending);
+  }
+  storage().removeItem(legacyPendingKey);
+  // Never carry the old baseline forward. The whole point of v2 is to rebuild
+  // it from the current cloud truth so years of stale bookkeeping cannot make a
+  // real edit look already-synced.
+  storage().removeItem(getLegacyAuxiliaryBaselineKey(uid));
 }
 
 function isMeaningful(value: unknown): boolean {
@@ -207,6 +223,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       }
       if (keysToClear.length > 0) notifyCloudDataUpdated([...CORE_ACCOUNT_RUNTIME_KEYS]);
 
+      migrateLegacySyncMetadata(uid);
       const baseline = readBaseline(uid);
       const pending = readPending(uid);
       const now = new Date().toISOString();
