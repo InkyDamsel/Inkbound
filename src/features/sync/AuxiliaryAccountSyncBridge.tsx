@@ -6,6 +6,7 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  Timestamp,
 } from 'firebase/firestore';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
@@ -35,6 +36,7 @@ import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 interface CloudAuxiliaryRecord {
   data: unknown;
+  updatedAt?: Timestamp;
   clientUpdatedAt?: string;
 }
 
@@ -105,6 +107,7 @@ function isMeaningful(value: unknown): boolean {
 
 function remoteWinsConflict(remote: CloudAuxiliaryRecord, pending: PendingAuxiliaryMutation): boolean {
   return shouldRemoteChangeReplacePending({
+    remoteServerMillis: remote.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: remote.clientUpdatedAt,
     pendingClientUpdatedAt: pending.clientUpdatedAt,
   });
@@ -199,11 +202,6 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       });
 
       if (ownerChanged) {
-        // The old reader's account-owned state is gone. Mark any local edits made
-        // from this point as belonging to the new reader, but keep core hydration
-        // explicitly required until OneShotCloudHydrationBridge successfully
-        // reconciles that reader's cloud library. This prevents both cross-account
-        // leakage and an offline edit from accidentally bypassing first hydration.
         storage().setItem(ACCOUNT_OWNER_UID_KEY, uid);
         storage().setItem(SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid, uid);
       }
@@ -217,8 +215,7 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       try {
         cloudDocs = await getDocs(collection(db!, 'users', uid, 'auxiliary'));
       } catch {
-        // Offline startup remains usable. Existing durable pending mutations stay
-        // authoritative; local-only values are queued below when cloud is absent.
+        // Offline startup remains usable. Existing durable pending mutations stay authoritative.
       }
       if (disposed) return;
 
@@ -238,10 +235,6 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
 
         if (cloudRecord) nextBaseline[name] = stable(cloudRecord.data);
 
-        // Only a durable pending mutation represents known local user intent.
-        // Never manufacture a brand-new pending timestamp from a stale startup
-        // cache before comparing it with cloud; doing that made the stale device
-        // look newer simply because it opened later.
         if (localPending && cloudRecord && remoteWinsConflict(cloudRecord, localPending)) {
           delete pending[name];
           writeLocalValue(key, cloudRecord.data, true);
@@ -264,9 +257,6 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
             && localFingerprint !== previousBaseline;
 
           if (localChangedAgainstKnownCloud) {
-            // Cloud is still exactly the baseline this device last saw, while the
-            // local value changed. This is the one startup case where a local edit
-            // can be proven without inventing precedence over a newer cloud value.
             pending[name] = { data: localValue, clientUpdatedAt: now };
             fingerprints.current[name] = localFingerprint;
             return;
@@ -277,10 +267,6 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
           return;
         }
 
-        // If this device previously knew a cloud value and the document is now
-        // absent, that absence is a real remote deletion. Do not silently promote
-        // the stale cached value back to Firestore. A durable local pending edit,
-        // handled above, is the only evidence strong enough to recreate it.
         if (previousBaseline !== undefined) {
           delete nextBaseline[name];
           if (localValue !== undefined) removeLocalValue(key);
@@ -333,9 +319,6 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
           const localPending = pending[name];
 
           if (change.type === 'removed') {
-            // A known pending local edit may intentionally recreate the document.
-            // Otherwise a live remote deletion must remove the stale local value
-            // and baseline so it cannot be resurrected by the fallback poll.
             if (localPending) return;
             if (baseline[name] !== undefined) {
               delete baseline[name];
