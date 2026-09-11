@@ -22,6 +22,7 @@ import {
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   notifyCloudDataUpdated,
+  notifyCoreCloudReconciled,
   type CloudDataUpdatedDetail,
 } from './cloudSyncEvents';
 import {
@@ -316,6 +317,11 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
         writePending(uid, pending);
         if (newestMillis > 0) runtimeStorage().setItem(crossDeviceCursorKey(uid), String(newestMillis));
         if (changedKeys.length) notifyCloudDataUpdated(changedKeys);
+
+        // A successful delta pass is the gate that allows queued local writes to
+        // resume. This prevents a stale device from publishing old page/session
+        // state before it has first seen newer cloud progress from another device.
+        notifyCoreCloudReconciled(uid);
       } catch (error) {
         console.warn('Inkbound cross-device delta sync could not complete.', error);
       } finally {

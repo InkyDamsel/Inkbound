@@ -3,6 +3,7 @@ import { CANONICAL_SYNC_COLLECTION_KEYS } from './storageKeys';
 export const INKBOUND_CLOUD_DATA_EVENT = 'inkbound:cloud-data-updated';
 export const INKBOUND_LOCAL_DATA_CHANGED_EVENT = 'inkbound:local-data-changed';
 export const INKBOUND_BEFORE_SIGN_OUT_EVENT = 'inkbound:before-sign-out';
+export const INKBOUND_CORE_RECONCILED_EVENT = 'inkbound:core-cloud-reconciled';
 
 export type CloudSyncedStorageKey = (typeof CANONICAL_SYNC_COLLECTION_KEYS)[number];
 
@@ -17,6 +18,10 @@ export interface LocalDataChangedDetail {
 export interface BeforeSignOutDetail {
   uid: string;
   waitUntil: (promise: Promise<unknown>) => void;
+}
+
+export interface CoreCloudReconciledDetail {
+  uid: string;
 }
 
 type InkboundWindow = Window & {
@@ -41,6 +46,14 @@ export const notifyCloudDataUpdated = (keys: CloudSyncedStorageKey[]) => {
   window.dispatchEvent(
     new CustomEvent<CloudDataUpdatedDetail>(INKBOUND_CLOUD_DATA_EVENT, {
       detail: { keys },
+    }),
+  );
+};
+
+export const notifyCoreCloudReconciled = (uid: string) => {
+  window.dispatchEvent(
+    new CustomEvent<CoreCloudReconciledDetail>(INKBOUND_CORE_RECONCILED_EVENT, {
+      detail: { uid },
     }),
   );
 };
