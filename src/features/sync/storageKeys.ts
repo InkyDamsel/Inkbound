@@ -40,7 +40,11 @@ export const LEGACY_SYNC_STORAGE_KEYS = {
 } as const;
 
 export const syncPendingStateKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
-export const syncBaselineStateKey = (uid: string) => `inkbound_sync_baseline_${uid}_v2`;
+// v3 intentionally invalidates only the cached comparison baseline. Pending
+// local mutations and the cross-device cursor keep their existing versions so
+// an older account can rebuild a clean baseline without losing unsynced edits
+// or replaying its full delta history.
+export const syncBaselineStateKey = (uid: string) => `inkbound_sync_baseline_${uid}_v3`;
 export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 
