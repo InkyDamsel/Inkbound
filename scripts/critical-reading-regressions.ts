@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import type { ReadingSession, UserBookRecord } from '../src/types';
 import {
   getActiveEdition,
@@ -181,6 +182,11 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.ok(Math.abs((sevenDayPace.pagesPerHour ?? 0) - (80 / 1.5)) < 0.0001);
 }
 
+// Malformed/reversed page endpoints never become negative reading-session totals.
+{
+  assert.equal(getSessionPagesRead(session({ startPage: 357, endPage: 52, pagesRead: -305 })), 0);
+}
+
 // Structural integrity should consider legitimate Finished history healthy even when
 // its exact final page was never recorded.
 {
@@ -200,6 +206,14 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T11:59:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), false);
   assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T12:01:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), true);
   assert.equal(shouldRemoteChangeReplacePending({ remoteServerMillis: Date.parse('2026-09-09T12:02:00.000Z'), remoteClientUpdatedAt: '2026-09-09T11:00:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), true);
+
+  // Bookly-style stale-device scenario: the device with old 52/617 data must
+  // yield when the cloud has a newer server-confirmed 357/617 update.
+  assert.equal(shouldRemoteChangeReplacePending({
+    remoteServerMillis: Date.parse('2026-09-11T11:05:00.000Z'),
+    remoteClientUpdatedAt: '2026-09-11T11:04:59.000Z',
+    pendingClientUpdatedAt: '2026-09-11T11:00:00.000Z',
+  }), true);
 
   assert.equal(shouldApplyRemoteTombstone({ tombstoneServerMillis: 1000, latestRecordServerMillis: 2000 }), false);
   assert.equal(shouldApplyRemoteTombstone({ tombstoneServerMillis: 2000, latestRecordServerMillis: 1000 }), true);
@@ -228,6 +242,23 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
 
   assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange(previousUid, previousUid), []);
   assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange(null, nextUid), []);
+}
+
+// Persistence-law guardrails: stale core pending writes must wait for a successful
+// cloud reconciliation, and Collection icons must not be truncated before saving.
+{
+  const costSafeSource = fs.readFileSync(new URL('../src/features/sync/CostSafeCloudPersistenceBridge.tsx', import.meta.url), 'utf8');
+  const deltaSource = fs.readFileSync(new URL('../src/features/sync/CrossDeviceDeltaSyncBridge.tsx', import.meta.url), 'utf8');
+  const auxiliarySource = fs.readFileSync(new URL('../src/features/sync/AuxiliaryAccountSyncBridge.tsx', import.meta.url), 'utf8');
+  const collectionsSource = fs.readFileSync(new URL('../src/components/CollectionsScreen.tsx', import.meta.url), 'utf8');
+
+  assert.match(costSafeSource, /INKBOUND_CORE_RECONCILED_EVENT/);
+  assert.match(costSafeSource, /let coreReconciled = false/);
+  assert.match(costSafeSource, /if \(!coreReconciled\) return Promise\.resolve\(\)/);
+  assert.match(deltaSource, /notifyCoreCloudReconciled\(uid\)/);
+  assert.match(auxiliarySource, /remoteServerMillis: remote\.updatedAt\?\.toMillis\(\) \?\? 0/);
+  assert.doesNotMatch(collectionsSource, /setEmoji\([^\n]*slice\(0,\s*4\)/);
+  assert.match(collectionsSource, /updatedAt: now/);
 }
 
 console.log('Inkbound critical reading regressions passed.');
