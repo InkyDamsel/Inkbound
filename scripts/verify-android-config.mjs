@@ -57,8 +57,13 @@ try {
 if (!Number.isInteger(releaseMetadata.versionCode) || releaseMetadata.versionCode < 1) {
   fail('android-release.json versionCode must be a positive integer.');
 }
-if (typeof releaseMetadata.versionName !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(releaseMetadata.versionName)) {
-  fail('android-release.json versionName must use semantic version format.');
+const semanticVersionName = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const inkboundBuildVersionName = /^build\.\d+(?:\.\d+)*$/;
+if (
+  typeof releaseMetadata.versionName !== 'string'
+  || (!semanticVersionName.test(releaseMetadata.versionName) && !inkboundBuildVersionName.test(releaseMetadata.versionName))
+) {
+  fail('android-release.json versionName must use semantic version format or Inkbound build format (for example build.27.1).');
 }
 
 if (config.appId !== 'com.inkydameinteractive.inkbound') {
