@@ -1,32 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { withReadingStatus } from '../../features/reading/bookReadingState';
-import type { ReadingStatus, UserBookRecord } from '../../types';
+import { OWNERSHIP_OPTIONS } from '../../domain/libraryTaxonomy';
+import type { OwnershipStatus, UserBookRecord } from '../../types';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
+  CUSTOM_OWNERSHIP_CATEGORIES_KEY,
   createCustomOwnershipCategory,
   readCustomOwnershipCategories,
   type CustomOwnershipCategory,
 } from '../../features/ownership/customOwnershipCategories';
+import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
 
 interface CustomOwnershipBookControlProps {
   book: UserBookRecord;
   onUpdateBook: (book: UserBookRecord) => void;
 }
 
-type CustomCategorySelection = `custom:${string}`;
-type CategorySelection = ReadingStatus | CustomCategorySelection;
+type CustomOwnershipSelection = `custom:${string}`;
+type OwnershipSelection = OwnershipStatus | CustomOwnershipSelection;
 
-const READING_STATUS_OPTIONS: Array<{ value: ReadingStatus; label: string }> = [
-  { value: 'currently-reading', label: 'Currently Reading' },
-  { value: 'tbr', label: 'TBR' },
-  { value: 'finished', label: 'Finished' },
-  { value: 'paused', label: 'Paused' },
-  { value: 'dnf', label: 'Did Not Finish' },
-  { value: 'wishlist', label: 'Wishlist' },
-];
-
-const isCustomSelection = (value: CategorySelection): value is CustomCategorySelection => value.startsWith('custom:');
+const BUILT_IN_OWNERSHIP_OPTIONS = OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom');
+const isCustomSelection = (value: OwnershipSelection): value is CustomOwnershipSelection => value.startsWith('custom:');
 
 export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProps> = ({ book, onUpdateBook }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -36,28 +30,35 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
 
   useEffect(() => {
     const refresh = () => setCategories(readCustomOwnershipCategories());
+    const handleRuntimeRefresh = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key === CUSTOM_OWNERSHIP_CATEGORIES_KEY) refresh();
+    };
     window.addEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
-    return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
+    return () => {
+      window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
+      window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
+    };
   }, []);
 
-  // Book Details historically rendered a separate Status control immediately
-  // before this component. This control is now the single Status / Category
-  // source in the editor, matching Add Book. Hide the legacy duplicate without
-  // changing the surrounding modal layout while Build 27 remains stable.
+  // Book Details still renders its historical built-in Ownership select next to
+  // this shared control. This control is now the one authoritative ownership
+  // picker because it includes both built-in and reader-defined values.
   useEffect(() => {
     const root = rootRef.current;
     const grid = root?.parentElement;
     if (!grid) return;
     const labels = Array.from(grid.querySelectorAll(':scope > label'));
-    const legacyStatusLabel = labels.find((label) => {
+    const legacyOwnershipLabel = labels.find((label) => {
       const select = label.querySelector('select');
-      return Boolean(select?.querySelector('option[value="currently-reading"]'));
+      return Boolean(select?.querySelector('option[value="owned"]') && select?.querySelector('option[value="subscription"]'));
     }) as HTMLElement | undefined;
-    if (!legacyStatusLabel) return;
-    const previousDisplay = legacyStatusLabel.style.display;
-    legacyStatusLabel.style.display = 'none';
+    if (!legacyOwnershipLabel) return;
+    const previousDisplay = legacyOwnershipLabel.style.display;
+    legacyOwnershipLabel.style.display = 'none';
     return () => {
-      legacyStatusLabel.style.display = previousDisplay;
+      legacyOwnershipLabel.style.display = previousDisplay;
     };
   }, []);
 
@@ -66,23 +67,26 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
     [book.customOwnershipCategoryId, categories],
   );
 
-  const selection: CategorySelection = selectedCategory
+  const selection: OwnershipSelection = book.ownership === 'custom' && selectedCategory
     ? `custom:${selectedCategory.id}`
-    : book.status;
+    : book.ownership === 'custom'
+      ? 'none'
+      : book.ownership;
 
-  const assignSelection = (next: CategorySelection) => {
+  const assignSelection = (next: OwnershipSelection) => {
     if (isCustomSelection(next)) {
       const customOwnershipCategoryId = next.slice('custom:'.length);
       onUpdateBook({
         ...book,
-        status: 'custom',
+        ownership: 'custom',
         customOwnershipCategoryId,
       });
       return;
     }
 
     onUpdateBook({
-      ...withReadingStatus(book, next),
+      ...book,
+      ownership: next,
       customOwnershipCategoryId: undefined,
     });
   };
@@ -100,7 +104,7 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
     <div ref={rootRef} className="sm:col-span-1">
       {!creating ? (
         <label className="text-xs font-bold text-[#f4efe6]">
-          Status / Category
+          Ownership
           <select
             value={selection}
             onChange={(event) => {
@@ -109,34 +113,34 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
                 setCreating(true);
                 return;
               }
-              assignSelection(value as CategorySelection);
+              assignSelection(value as OwnershipSelection);
             }}
             className="inkbound-select mt-2 w-full"
           >
-            <optgroup label="Reading status">
-              {READING_STATUS_OPTIONS.map((option) => (
+            <optgroup label="Ownership">
+              {BUILT_IN_OWNERSHIP_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </optgroup>
             {categories.length > 0 && (
-              <optgroup label="Custom categories">
+              <optgroup label="Custom ownership">
                 {categories.map((category) => (
                   <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>
                 ))}
               </optgroup>
             )}
-            <option value="__new__">+ Create new category</option>
+            <option value="__new__">+ Create custom ownership</option>
           </select>
         </label>
       ) : (
         <div className="rounded-xl border border-[#3d2448] bg-[#120817] p-3">
-          <p className="text-xs font-bold text-[#f4efe6]">Create custom category</p>
+          <p className="text-xs font-bold text-[#f4efe6]">Create custom ownership</p>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row">
             <input
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
               onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createAndAssign(); } }}
-              placeholder="e.g. Kids Books, Classroom, Family Library"
+              placeholder="e.g. Home Library, Classroom, Owned E-Book"
               className="inkbound-select min-w-0 flex-1"
               autoFocus
             />
