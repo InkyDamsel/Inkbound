@@ -64,6 +64,20 @@ service firebase.storage {
         && fileName.matches('[A-Za-z0-9_-]{1,128}\\.webp');
     }
 
+    // Collection banners are cropped and compressed client-side to a fixed
+    // 3:1 WebP before upload. Only the owning reader can read or write them.
+    match /users/{userId}/collection-banners/{collectionId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && collectionId.matches('[A-Za-z0-9_-]{1,160}')
+        && fileName.matches('[A-Za-z0-9_-]{1,128}\\.webp')
+        && request.resource.size < 500 * 1024
+        && request.resource.contentType == 'image/webp';
+      allow delete: if isOwner(userId)
+        && collectionId.matches('[A-Za-z0-9_-]{1,160}')
+        && fileName.matches('[A-Za-z0-9_-]{1,128}\\.webp');
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }
