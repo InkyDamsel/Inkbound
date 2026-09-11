@@ -14,10 +14,12 @@ import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
   INKBOUND_CLOUD_DATA_EVENT,
+  INKBOUND_CORE_RECONCILED_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   type BeforeSignOutDetail,
   type CloudDataUpdatedDetail,
   type CloudSyncedStorageKey,
+  type CoreCloudReconciledDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 import {
@@ -173,6 +175,11 @@ async function prepareCloudProfile(uid: string, profile: ReaderProfile): Promise
  * are uploaded from the durable pending queue. A full server comparison is only
  * done by CloudServerRefreshBridge when the reader explicitly asks for one.
  *
+ * Existing pending writes are deliberately held until CrossDeviceDeltaSyncBridge
+ * completes a successful cloud reconciliation for this foreground/open cycle.
+ * That ordering prevents a stale device from publishing old page/session state
+ * before it has first seen newer progress recorded on another device.
+ *
  * Retry-on-foreground is driven by runtimeLifecycle so browser visibility and
  * Android Capacitor appStateChange use the exact same persistence path. Partial
  * failures also retry with a bounded backoff while the app remains open so one
@@ -189,6 +196,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
 
     const uid = sync.user.uid;
     let disposed = false;
+    let coreReconciled = false;
     let flushTimer: number | undefined;
     let retryTimer: number | undefined;
     let retryAttempt = 0;
@@ -242,10 +250,6 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         const results = await Promise.allSettled(batch.map(async ([id, mutation]) => {
           const target = doc(db!, 'users', uid, kind, id);
           if (mutation.operation === 'delete') {
-            // Deletions must survive offline use. The pending mutation is durable,
-            // so publish its tombstone only when that same queued deletion reaches
-            // Firestore. Other devices can then remove the record even if the
-            // original delete happened with no network connection.
             await Promise.all([
               deleteDoc(target),
               setDoc(
@@ -278,9 +282,6 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
           }
         });
 
-        // Checkpoint every successful write immediately. A single bad document or
-        // transient request must not keep already-saved records in the pending
-        // queue or prevent later records in the same import from reaching cloud.
         if (successfulEntries.length > 0) checkpointRecordBatch(kind, successfulEntries);
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
       }
@@ -288,7 +289,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     };
 
     const performFlushPending = async (): Promise<boolean> => {
-      if (!navigator.onLine || disposed) return false;
+      if (!navigator.onLine || disposed || !coreReconciled) return false;
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
       removeNoOpMutations(pending.books, baseline.books);
@@ -342,7 +343,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
 
     let flushPending: () => Promise<void>;
     const scheduleRetry = () => {
-      if (disposed || !navigator.onLine || retryTimer !== undefined) return;
+      if (disposed || !navigator.onLine || retryTimer !== undefined || !coreReconciled) return;
       const retryIndex = Math.min(retryAttempt, SYNC_RETRY_DELAYS_MS.length - 1);
       const delay = SYNC_RETRY_DELAYS_MS[retryIndex];
       retryAttempt += 1;
@@ -353,11 +354,12 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     };
 
     flushPending = (): Promise<void> => {
+      if (!coreReconciled) return Promise.resolve();
       flushRequested = true;
       if (flushInFlight) return flushInFlight;
       flushInFlight = (async () => {
         let retryNeeded = false;
-        while (flushRequested && !disposed) {
+        while (flushRequested && !disposed && coreReconciled) {
           flushRequested = false;
           try {
             retryNeeded = (await performFlushPending()) || retryNeeded;
@@ -367,7 +369,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
           }
         }
 
-        if (retryNeeded && !disposed) {
+        if (retryNeeded && !disposed && coreReconciled) {
           scheduleRetry();
         } else {
           retryAttempt = 0;
@@ -404,6 +406,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     };
 
     const scheduleFlush = () => {
+      if (!coreReconciled) return;
       if (flushTimer !== undefined) window.clearTimeout(flushTimer);
       flushTimer = window.setTimeout(() => {
         flushTimer = undefined;
@@ -423,10 +426,21 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       resetWorkingFingerprints(detail?.keys);
     };
 
-    const resumePendingSync = () => {
-      if (disposed || !navigator.onLine) return;
+    const handleCoreReconciled = (event: Event) => {
+      const detail = (event as CustomEvent<CoreCloudReconciledDetail>).detail;
+      if (detail?.uid !== uid || disposed) return;
+      coreReconciled = true;
       clearRetryTimer();
       void flushPending();
+    };
+
+    const resumePendingSync = () => {
+      if (disposed || !navigator.onLine) return;
+      // Every foreground/reconnect cycle must reconcile cloud first. A stale
+      // device may have durable pending state from before another device advanced
+      // the same book; CrossDeviceDeltaSyncBridge decides which intent is newer.
+      coreReconciled = false;
+      clearRetryTimer();
     };
 
     const flushBeforeSignOut = (event: Event) => {
@@ -438,15 +452,14 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       }
       clearRetryTimer();
       captureCurrentChanges();
-      detail.waitUntil(flushPending());
+      if (coreReconciled) detail.waitUntil(flushPending());
     };
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
+    window.addEventListener(INKBOUND_CORE_RECONCILED_EVENT, handleCoreReconciled);
     window.addEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
     const unsubscribeRuntimeResume = subscribeToRuntimeResume(resumePendingSync);
-
-    if (navigator.onLine) void flushPending();
 
     return () => {
       disposed = true;
@@ -454,6 +467,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       clearRetryTimer();
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
+      window.removeEventListener(INKBOUND_CORE_RECONCILED_EVENT, handleCoreReconciled);
       window.removeEventListener(INKBOUND_BEFORE_SIGN_OUT_EVENT, flushBeforeSignOut);
       unsubscribeRuntimeResume();
     };
