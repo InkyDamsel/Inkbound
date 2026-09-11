@@ -3,6 +3,7 @@ import { BookOpen, CheckSquare, FolderHeart, Pencil, Plus, Search, Trash2, Undo2
 import { Format, ReadingStatus, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
+import { replaceCanonicalLibrary } from '../features/library/libraryMutations';
 import { getActiveEdition, getAverageBookProgress, getBookReadingState } from '../features/reading/bookReadingState';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { BookCover } from './BookCover';
@@ -37,7 +38,7 @@ const smartMatches = (book: UserBookRecord, rule?: SmartRule) => {
 };
 const booksForCollection = (collection: CollectionDefinition, books: UserBookRecord[]) => (collection.kind ?? 'manual') === 'smart' ? books.filter((book) => smartMatches(book, collection.rule)) : books.filter((book) => book.collections.includes(collection.name));
 
-export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onUpdateBook, onSelectBook }) => {
+export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onSelectBook }) => {
   const [collections, setCollections] = usePersistentState<CollectionDefinition[]>(COLLECTIONS_STORAGE_KEY, starterCollections);
   const [selectedCollectionId, setSelectedCollectionId] = usePersistentState<string | null>(COLLECTION_VIEW_STORAGE_KEY, null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -57,20 +58,26 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onU
   const pendingDeleteRef = useRef<CollectionDefinition | null>(null);
   const deleteTimerRef = useRef<number | null>(null);
   const booksRef = useRef(books);
-  const onUpdateBookRef = useRef(onUpdateBook);
 
-  useEffect(() => { booksRef.current = books; onUpdateBookRef.current = onUpdateBook; }, [books, onUpdateBook]);
+  useEffect(() => { booksRef.current = books; }, [books]);
   const clearDeleteTimer = () => { if (deleteTimerRef.current !== null) { window.clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null; } };
+  const removeManualMembershipEverywhere = (collectionName: string) => {
+    const currentBooks = booksRef.current;
+    const nextBooks = currentBooks.map((book) => book.collections.includes(collectionName)
+      ? { ...book, collections: book.collections.filter((item) => item !== collectionName) }
+      : book);
+    if (nextBooks.some((book, index) => book !== currentBooks[index])) replaceCanonicalLibrary(nextBooks);
+  };
   const commitCollectionDelete = (collection = pendingDeleteRef.current) => {
     if (!collection) return;
     clearDeleteTimer(); pendingDeleteRef.current = null; setPendingDelete(null);
     setCollections((current) => current.filter((item) => item.id !== collection.id));
-    if ((collection.kind ?? 'manual') === 'manual') booksRef.current.forEach((book) => { if (book.collections.includes(collection.name)) onUpdateBookRef.current({ ...book, collections: book.collections.filter((item) => item !== collection.name) }); });
+    if ((collection.kind ?? 'manual') === 'manual') removeManualMembershipEverywhere(collection.name);
     setSelectedCollectionId((current) => current === collection.id ? null : current);
   };
   const requestCollectionDelete = (collection: CollectionDefinition) => { if (pendingDeleteRef.current) commitCollectionDelete(); pendingDeleteRef.current = collection; setPendingDelete(collection); if (selectedCollectionId === collection.id) setSelectedCollectionId(null); deleteTimerRef.current = window.setTimeout(() => commitCollectionDelete(collection), COLLECTION_DELETE_UNDO_MS); };
   const undoCollectionDelete = () => { clearDeleteTimer(); const collection = pendingDeleteRef.current; pendingDeleteRef.current = null; setPendingDelete(null); if (collection) setSelectedCollectionId(collection.id); };
-  useEffect(() => () => { const collection = pendingDeleteRef.current; clearDeleteTimer(); pendingDeleteRef.current = null; if (!collection) return; setCollections((current) => current.filter((item) => item.id !== collection.id)); if ((collection.kind ?? 'manual') === 'manual') booksRef.current.forEach((book) => { if (book.collections.includes(collection.name)) onUpdateBookRef.current({ ...book, collections: book.collections.filter((item) => item !== collection.name) }); }); }, [setCollections]);
+  useEffect(() => () => { const collection = pendingDeleteRef.current; clearDeleteTimer(); pendingDeleteRef.current = null; if (!collection) return; setCollections((current) => current.filter((item) => item.id !== collection.id)); if ((collection.kind ?? 'manual') === 'manual') removeManualMembershipEverywhere(collection.name); }, [setCollections]);
 
   const visibleCollections = useMemo(() => pendingDelete ? collections.filter((collection) => collection.id !== pendingDelete.id) : collections, [collections, pendingDelete]);
   const selectedCollection = visibleCollections.find((collection) => collection.id === selectedCollectionId);
@@ -100,15 +107,42 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onU
     if (editingId) {
       const previous = visibleCollections.find((collection) => collection.id === editingId);
       setCollections((current) => current.map((collection) => collection.id === editingId ? { ...collection, name: trimmedName, description: description.trim(), emoji: nextEmoji, kind, rule: nextRule, coverBookId: coverBookId || undefined, updatedAt: now } : collection));
-      if (previous && previous.name !== trimmedName && (previous.kind ?? 'manual') === 'manual') books.forEach((book) => { if (book.collections.includes(previous.name)) onUpdateBook({ ...book, collections: [...new Set(book.collections.map((item) => item === previous.name ? trimmedName : item))] }); });
+      if (previous && previous.name !== trimmedName && (previous.kind ?? 'manual') === 'manual') {
+        const nextBooks = books.map((book) => book.collections.includes(previous.name)
+          ? { ...book, collections: [...new Set(book.collections.map((item) => item === previous.name ? trimmedName : item))] }
+          : book);
+        replaceCanonicalLibrary(nextBooks);
+      }
     } else {
       const newCollection: CollectionDefinition = { id: makeCollectionId(), name: trimmedName, description: description.trim(), emoji: nextEmoji, accent: 'from-[#76586a] to-[#382b40]', createdAt: now, updatedAt: now, kind, rule: nextRule, coverBookId: coverBookId || undefined };
       setCollections((current) => [...current, newCollection]); setSelectedCollectionId(newCollection.id);
     }
     setIsEditorOpen(false);
   };
-  const toggleBook = (book: UserBookRecord) => { if (!selectedCollection || (selectedCollection.kind ?? 'manual') === 'smart') return; const included = book.collections.includes(selectedCollection.name); onUpdateBook({ ...book, collections: included ? book.collections.filter((item) => item !== selectedCollection.name) : [...new Set([...book.collections, selectedCollection.name])] }); };
-  const bulkMembership = (mode: 'add' | 'remove') => { if (!selectedCollection || (selectedCollection.kind ?? 'manual') === 'smart' || selectedBookIds.length === 0) return; books.filter((book) => selectedBookIds.includes(book.id)).forEach((book) => { const has = book.collections.includes(selectedCollection.name); if (mode === 'add' && !has) onUpdateBook({ ...book, collections: [...new Set([...book.collections, selectedCollection.name])] }); if (mode === 'remove' && has) onUpdateBook({ ...book, collections: book.collections.filter((item) => item !== selectedCollection.name) }); }); setSelectedBookIds([]); };
+  const toggleBook = (book: UserBookRecord) => {
+    if (!selectedCollection || (selectedCollection.kind ?? 'manual') === 'smart') return;
+    const collectionName = selectedCollection.name;
+    const nextBooks = books.map((current) => {
+      if (current.id !== book.id) return current;
+      const included = current.collections.includes(collectionName);
+      return { ...current, collections: included ? current.collections.filter((item) => item !== collectionName) : [...new Set([...current.collections, collectionName])] };
+    });
+    replaceCanonicalLibrary(nextBooks);
+  };
+  const bulkMembership = (mode: 'add' | 'remove') => {
+    if (!selectedCollection || (selectedCollection.kind ?? 'manual') === 'smart' || selectedBookIds.length === 0) return;
+    const selectedIds = new Set(selectedBookIds);
+    const collectionName = selectedCollection.name;
+    const nextBooks = books.map((book) => {
+      if (!selectedIds.has(book.id)) return book;
+      const has = book.collections.includes(collectionName);
+      if (mode === 'add' && !has) return { ...book, collections: [...new Set([...book.collections, collectionName])] };
+      if (mode === 'remove' && has) return { ...book, collections: book.collections.filter((item) => item !== collectionName) };
+      return book;
+    });
+    replaceCanonicalLibrary(nextBooks);
+    setSelectedBookIds([]);
+  };
   const setCollectionCover = (bookId: string) => { if (selectedCollection) setCollections((current) => current.map((collection) => collection.id === selectedCollection.id ? { ...collection, coverBookId: bookId || undefined, updatedAt: new Date().toISOString() } : collection)); };
 
   return <div className="space-y-7 pb-24">
