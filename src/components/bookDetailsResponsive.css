@@ -1,3 +1,9 @@
+/* Nested Book Details tools need the full viewport. Floating deadline/reminder
+   actions belong to the parent editor and must not sit above child dialogs. */
+.book-details-modal-host:has([aria-label='Manage book cover']) > button.fixed {
+  display: none !important;
+}
+
 @media (max-width: 639px) {
   /* The native Android shell is edge-to-edge, so Book Details needs to own the
      entire mobile viewport instead of behaving like a desktop bottom sheet. */
