@@ -31,6 +31,7 @@ type PendingSearchEdition = { work: BookSearchWorkGroup; edition: BookSearchEdit
 type CustomCategorySelection = `custom:${string}`;
 type CategorySelection = ReadingStatus | CustomCategorySelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
+type IsbnInputSource = 'camera' | 'manual';
 
 type BarcodeDetectorLike = {
   detect(source: HTMLVideoElement): Promise<Array<{ rawValue?: string }>>;
@@ -50,6 +51,25 @@ const categoryStatus = (selection: CategorySelection): ReadingStatus => isCustom
 const categoryId = (selection: CategorySelection): string | undefined => isCustomCategorySelection(selection) ? selection.slice('custom:'.length) : undefined;
 const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
 const editionIsbnValues = (edition: BookSearchEdition) => [edition.isbn13, edition.isbn10].map((value) => normalizeIsbn(value ?? '')).filter(Boolean);
+
+const isValidIsbn10 = (value: string) => {
+  if (!/^\d{9}[\dX]$/.test(value)) return false;
+  const sum = value.split('').reduce((total, character, index) => {
+    const digit = character === 'X' ? 10 : Number(character);
+    return total + digit * (10 - index);
+  }, 0);
+  return sum % 11 === 0;
+};
+
+const isValidIsbn13 = (value: string) => {
+  if (!/^(978|979)\d{10}$/.test(value)) return false;
+  const digits = value.split('').map(Number);
+  const weighted = digits.slice(0, 12).reduce((total, digit, index) => total + digit * (index % 2 === 0 ? 1 : 3), 0);
+  const expectedCheckDigit = (10 - (weighted % 10)) % 10;
+  return digits[12] === expectedCheckDigit;
+};
+
+const isValidIsbn = (value: string) => isValidIsbn10(value) || isValidIsbn13(value);
 
 function readScannerDraft(): ScannedBook[] {
   try {
@@ -185,10 +205,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     onClose();
   };
 
-  const resolveScannedIsbn = async (rawValue: string) => {
+  const resolveScannedIsbn = async (rawValue: string, source: IsbnInputSource = 'manual') => {
     const isbn = normalizeIsbn(rawValue);
-    if (isbn.length !== 10 && isbn.length !== 13) {
-      setScannerError('That barcode does not look like a 10- or 13-digit ISBN.');
+    if (!isValidIsbn(isbn)) {
+      setScannerError(source === 'manual' ? 'Enter a valid ISBN-10 or ISBN-13. ISBN-13 barcodes begin with 978 or 979.' : null);
+      if (source === 'camera') setScannerMessage('Barcode detected, but it is not an ISBN. Aim at the 978/979 ISBN barcode.');
       return;
     }
     if (scannedBooksRef.current.some((item) => item.isbn === isbn)) {
@@ -199,7 +220,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     lookupBusyRef.current = true;
     setScanLookupBusy(true);
     setScannerError(null);
-    setScannerMessage(`Looking up ${isbn}…`);
+    setScannerMessage(`ISBN ${isbn} detected — looking it up…`);
     try {
       const response = await searchGoogleBooks(isbn);
       const candidates = response.groups.flatMap((work) => work.editions.map((edition) => ({ work, edition })));
@@ -218,7 +239,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       });
       setScannerMessage(`Added “${match.work.title}” to review. Keep scanning.`);
     } catch (error) {
-      setScannerError(error instanceof Error ? error.message : 'Inkbound could not look up that barcode.');
+      setScannerError(error instanceof Error ? error.message : 'Inkbound could not look up that ISBN.');
     } finally {
       lookupBusyRef.current = false;
       setScanLookupBusy(false);
@@ -232,13 +253,22 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     try {
       if (!lookupBusyRef.current && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
         const results = await detector.detect(video);
-        const value = results.find((result) => result.rawValue)?.rawValue;
-        if (value) {
-          const normalized = normalizeIsbn(value);
+        const detectedValues = results.map((result) => result.rawValue).filter((value): value is string => Boolean(value));
+        const normalizedValues = detectedValues.map(normalizeIsbn);
+        const isbn = normalizedValues.find(isValidIsbn);
+        if (isbn) {
           const recent = lastDetectedRef.current;
-          if (!recent || recent.value !== normalized || Date.now() - recent.at > 2500) {
-            lastDetectedRef.current = { value: normalized, at: Date.now() };
-            void resolveScannedIsbn(normalized);
+          if (!recent || recent.value !== isbn || Date.now() - recent.at > 2500) {
+            lastDetectedRef.current = { value: isbn, at: Date.now() };
+            void resolveScannedIsbn(isbn, 'camera');
+          }
+        } else if (normalizedValues.length > 0) {
+          const firstBarcode = normalizedValues[0];
+          const recent = lastDetectedRef.current;
+          if (!recent || recent.value !== firstBarcode || Date.now() - recent.at > 2500) {
+            lastDetectedRef.current = { value: firstBarcode, at: Date.now() };
+            setScannerError(null);
+            setScannerMessage('Barcode detected, but it is not an ISBN. Aim at the 978/979 ISBN barcode.');
           }
         }
       }
@@ -278,7 +308,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     const value = manualIsbn.trim();
     if (!value) return;
     setManualIsbn('');
-    void resolveScannedIsbn(value);
+    void resolveScannedIsbn(value, 'manual');
   };
 
   const saveScannedBooks = () => {
