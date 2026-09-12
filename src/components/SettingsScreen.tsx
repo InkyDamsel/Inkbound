@@ -20,6 +20,7 @@ import {
 import { PREMIUM_UPGRADE_REASON } from '../config/productPolicy';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
+import { formatTrialDaysRemaining } from '../features/billing/trialAccess';
 import { buildInkboundBackup, buildLibraryCsv } from '../features/export/libraryExport';
 import { localDateKey } from '../features/reading/sessionAnalytics';
 import {
@@ -55,7 +56,7 @@ const CLEAR_DEVICE_PHRASE = 'CLEAR THIS DEVICE';
 const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions, isDarkMode, setIsDarkMode, onResetData }) => {
-  const { userPlan, accessSource, openUpgradeModal } = useUserPlan();
+  const { userPlan, accessSource, trialPremiumUntil, openUpgradeModal } = useUserPlan();
   const { user, signOutAccount } = useAccountSync();
   const [annualGoal, setAnnualGoal] = usePersistentState('inkbound_annual_goal', '25');
   const [dailyGoalMins, setDailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
@@ -75,6 +76,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
   const deleteReauthenticationRequirement = user ? getRuntimeReauthenticationRequirement(user) : 'unsupported';
   const hasPaidSubscription = accessSource === 'subscription';
   const canManageSubscription = canManageRuntimeSubscription();
+  const trialAccessLabel = accessSource === 'trial' ? formatTrialDaysRemaining(trialPremiumUntil) : null;
 
   const markExported = () => { setExported(true); window.setTimeout(() => setExported(false), 3000); };
 
@@ -117,7 +119,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
     }
   };
 
-  const accessLabel = accessSource === 'subscription' ? 'Paid subscription' : accessSource === 'vip' ? 'VIP access' : accessSource === 'courtesy' ? 'Courtesy Premium' : 'Free plan';
+  const accessLabel = accessSource === 'subscription'
+    ? 'Paid subscription'
+    : accessSource === 'vip'
+      ? 'VIP access'
+      : accessSource === 'courtesy'
+        ? 'Courtesy Premium'
+        : accessSource === 'trial'
+          ? `Premium trial${trialAccessLabel ? ` · ${trialAccessLabel}` : ''}`
+          : 'Free plan';
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 pb-20">
@@ -126,7 +136,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
       <section className="inkbound-panel space-y-5 rounded-3xl p-6">
         <div className="flex flex-col justify-between gap-4 border-b border-[var(--ink-border-subtle)] pb-5 sm:flex-row sm:items-center">
           <div><p className="inkbound-eyebrow">Account access</p><h2 className="mt-2 flex items-center gap-2 font-serif text-2xl text-[var(--ink-ivory)]">{userPlan === 'premium' ? <><Crown className="h-5 w-5 text-[var(--ink-gold)]" /> Inkbound Premium</> : <><BookOpen className="h-5 w-5 text-[var(--ink-muted)]" /> Inkbound Free</>}</h2><p className="mt-1 text-xs text-[var(--ink-muted)]">{accessLabel}</p></div>
-          {userPlan === 'free' ? <button type="button" onClick={() => openUpgradeModal(PREMIUM_UPGRADE_REASON)} className="quiet-shelf-primary-action justify-center"><Sparkles className="h-4 w-4" /> View Premium</button> : <span className="inline-flex items-center gap-2 rounded-full border border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/10 px-4 py-2 text-xs font-bold text-[var(--ink-gold)]"><Check className="h-4 w-4" /> Active access</span>}
+          {userPlan === 'free' ? <button type="button" onClick={() => openUpgradeModal(PREMIUM_UPGRADE_REASON)} className="quiet-shelf-primary-action justify-center"><Sparkles className="h-4 w-4" /> View Premium</button> : <span className="inline-flex items-center gap-2 rounded-full border border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/10 px-4 py-2 text-xs font-bold text-[var(--ink-gold)]"><Check className="h-4 w-4" /> {accessSource === 'trial' ? 'Trial active' : 'Active access'}</span>}
         </div>
         <ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16}>
           <article className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4"><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Library capacity</span><p className="mt-2 font-semibold text-[var(--ink-ivory)]">Unlimited reading material and imports</p><p className="mt-1 text-xs text-[var(--ink-muted)]">{userPlan === 'premium' ? 'Premium adds deeper insights and extra tools, not extra library space.' : 'Included with Inkbound Free.'}</p></article>
