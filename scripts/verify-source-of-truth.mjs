@@ -174,14 +174,19 @@ for (const relative of [
 }
 
 const main = read('src/main.tsx');
-if (/from ['"].*CloudPersistenceBridge['"]/.test(main) && !main.includes('AdaptiveCloudPersistenceBridge')) {
-  violations.push('main.tsx: legacy CloudPersistenceBridge must not replace the adaptive canonical sync path');
+if (!main.includes("import('./applicationEntry.tsx')")) {
+  violations.push('main.tsx: the non-public runtime must lazy-load the canonical application entry');
 }
-if (!main.includes('<CanonicalLibraryNormalizationBridge />')) {
-  violations.push('main.tsx: canonical library normalization must run at the persistence boundary');
+
+const applicationEntry = read('src/applicationEntry.tsx');
+if (/from ['"].*CloudPersistenceBridge['"]/.test(applicationEntry) && !applicationEntry.includes('AdaptiveCloudPersistenceBridge')) {
+  violations.push('applicationEntry.tsx: legacy CloudPersistenceBridge must not replace the adaptive canonical sync path');
 }
-if (!main.includes('<CrossDeviceDeltaSyncBridge />') || !main.includes('<AuxiliaryAccountSyncBridge />')) {
-  violations.push('main.tsx: both canonical core and auxiliary cross-device sync bridges must remain mounted');
+if (!applicationEntry.includes('<CanonicalLibraryNormalizationBridge />')) {
+  violations.push('applicationEntry.tsx: canonical library normalization must run at the persistence boundary');
+}
+if (!applicationEntry.includes('<CrossDeviceDeltaSyncBridge />') || !applicationEntry.includes('<AuxiliaryAccountSyncBridge />')) {
+  violations.push('applicationEntry.tsx: both canonical core and auxiliary cross-device sync bridges must remain mounted');
 }
 
 const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');
