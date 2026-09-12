@@ -25,6 +25,7 @@ const formatMinutes = (minutes: number) => {
 export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, sessions, onUpdateBook }) => {
   const [open, setOpen] = useState(false);
   const [finishByDate, setFinishByDate] = useState(book.finishByDate ?? '');
+  const [blockedByChildDialog, setBlockedByChildDialog] = useState(false);
   const activeEdition = useMemo(
     () => book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0],
     [book],
@@ -35,6 +36,26 @@ export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, 
   useEffect(() => {
     setFinishByDate(book.finishByDate ?? '');
   }, [book.id, book.finishByDate]);
+
+  useEffect(() => {
+    const host = document.querySelector('.book-details-modal-host');
+    if (!host) return;
+
+    const updateBlockedState = () => {
+      const blockingDialog = Array.from(host.querySelectorAll<HTMLElement>('section[role="dialog"]')).some((dialog) => {
+        const label = dialog.getAttribute('aria-label');
+        return label === 'Manage book cover'
+          || label === 'Delete book confirmation'
+          || (label !== null && label !== 'Finish on time' && dialog.closest('.book-details-modal-host') === host);
+      });
+      setBlockedByChildDialog(blockingDialog);
+    };
+
+    updateBlockedState();
+    const observer = new MutationObserver(updateBlockedState);
+    observer.observe(host, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [book.id]);
 
   const save = () => {
     onUpdateBook({ ...book, finishByDate: finishByDate || undefined });
@@ -58,19 +79,21 @@ export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, 
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={`fixed left-1/2 z-[214] flex w-[min(calc(100vw-2rem),42rem)] -translate-x-1/2 items-center justify-center gap-3 rounded-2xl border border-[var(--ink-border)] bg-[#17101b]/96 px-5 py-3.5 text-sm font-semibold text-[var(--ink-ivory)] shadow-2xl backdrop-blur-md transition hover:border-[var(--ink-gold)]/55 ${book.ownership === 'borrowed-library' ? 'bottom-[calc(max(1rem,env(safe-area-inset-bottom))+5.4rem)] sm:bottom-[5.5rem]' : 'bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-6 sm:w-auto sm:min-w-[22rem] sm:rounded-full'}`}
-        aria-label={primaryText}
-      >
-        <Clock3 className="h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
-        <span className="min-w-0 text-center">
-          <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink-gold)]">Finish on time</span>
-          <span className="block truncate">{primaryText}</span>
-          {secondaryText && <span className="mt-0.5 block truncate text-[11px] font-normal text-[var(--ink-muted)]">{secondaryText}</span>}
-        </span>
-      </button>
+      {!blockedByChildDialog && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={`fixed left-1/2 z-[214] flex w-[min(calc(100vw-2rem),42rem)] -translate-x-1/2 items-center justify-center gap-3 rounded-2xl border border-[var(--ink-border)] bg-[#17101b]/96 px-5 py-3.5 text-sm font-semibold text-[var(--ink-ivory)] shadow-2xl backdrop-blur-md transition hover:border-[var(--ink-gold)]/55 ${book.ownership === 'borrowed-library' ? 'bottom-[calc(max(1rem,env(safe-area-inset-bottom))+5.4rem)] sm:bottom-[5.5rem]' : 'bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-6 sm:w-auto sm:min-w-[22rem] sm:rounded-full'}`}
+          aria-label={primaryText}
+        >
+          <Clock3 className="h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
+          <span className="min-w-0 text-center">
+            <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink-gold)]">Finish on time</span>
+            <span className="block truncate">{primaryText}</span>
+            {secondaryText && <span className="mt-0.5 block truncate text-[11px] font-normal text-[var(--ink-muted)]">{secondaryText}</span>}
+          </span>
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-[270] flex items-end justify-center bg-black/80 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
