@@ -44,6 +44,8 @@ export const PRODUCT_POLICY = {
     subscriptionsOpen,
     plannedMonthlyPrice: 6.99,
     plannedAnnualPrice: 59.99,
+    trialDays: 7,
+    trialRequiresPaymentMethod: false,
   },
   features: featurePolicy,
 } as const;
