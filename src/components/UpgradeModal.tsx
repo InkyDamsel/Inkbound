@@ -53,8 +53,8 @@ export const UpgradeModal: React.FC = () => {
     setBillingPlan('trial');
     setBillingError('');
     try {
-      const startPremiumTrial = httpsCallable<undefined, { success: boolean; trialDays: number; trialPremiumUntil: string }>(functions, 'startPremiumTrial');
-      await startPremiumTrial();
+      const getMyEntitlement = httpsCallable<{ action: 'startTrial' }, unknown>(functions, 'getMyEntitlement');
+      await getMyEntitlement({ action: 'startTrial' });
       window.dispatchEvent(new Event('inkbound:entitlement-refresh'));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Inkbound could not start the Premium trial.';
