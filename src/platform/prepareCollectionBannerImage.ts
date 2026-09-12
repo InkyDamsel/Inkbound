@@ -6,6 +6,12 @@ const BANNER_HEIGHT = 400;
 const MAX_BANNER_BLOB_BYTES = 450 * 1024;
 const MAX_LOCAL_DATA_LENGTH = 180_000;
 
+interface BannerCropOptions {
+  offsetX?: number;
+  offsetY?: number;
+  zoom?: number;
+}
+
 async function decodeImage(file: File): Promise<{
   source: CanvasImageSource;
   width: number;
@@ -51,37 +57,52 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-function drawCenterCrop(
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function drawCrop(
   context: CanvasRenderingContext2D,
   source: CanvasImageSource,
   sourceWidth: number,
   sourceHeight: number,
+  options: BannerCropOptions = {},
 ) {
   const targetAspect = BANNER_WIDTH / BANNER_HEIGHT;
   const sourceAspect = sourceWidth / sourceHeight;
-  let sx = 0;
-  let sy = 0;
-  let sw = sourceWidth;
-  let sh = sourceHeight;
+  let baseWidth = sourceWidth;
+  let baseHeight = sourceHeight;
 
   if (sourceAspect > targetAspect) {
-    sw = sourceHeight * targetAspect;
-    sx = (sourceWidth - sw) / 2;
+    baseWidth = sourceHeight * targetAspect;
   } else if (sourceAspect < targetAspect) {
-    sh = sourceWidth / targetAspect;
-    sy = (sourceHeight - sh) / 2;
+    baseHeight = sourceWidth / targetAspect;
   }
 
-  context.drawImage(source, sx, sy, sw, sh, 0, 0, BANNER_WIDTH, BANNER_HEIGHT);
+  const zoom = clamp(options.zoom ?? 1, 1, 2);
+  const cropWidth = baseWidth / zoom;
+  const cropHeight = baseHeight / zoom;
+  const maxX = Math.max(0, sourceWidth - cropWidth);
+  const maxY = Math.max(0, sourceHeight - cropHeight);
+  const normalizedX = clamp(options.offsetX ?? 0, -1, 1);
+  const normalizedY = clamp(options.offsetY ?? 0, -1, 1);
+  const sx = maxX * ((normalizedX + 1) / 2);
+  const sy = maxY * ((normalizedY + 1) / 2);
+
+  context.drawImage(source, sx, sy, cropWidth, cropHeight, 0, 0, BANNER_WIDTH, BANNER_HEIGHT);
 }
 
 /**
- * Converts any reader-selected image into Inkbound's fixed 3:1 collection
- * banner. The image is center-cropped rather than stretched, encoded as WebP,
- * and bounded before upload so collection customization cannot create runaway
- * Storage usage.
+ * Converts a reader-selected image into Inkbound's fixed 3:1 collection
+ * banner. Readers can position and zoom the crop before the final WebP is
+ * generated. The optimized result is bounded before upload so collection
+ * customization cannot create runaway Storage usage.
  */
-export async function prepareCollectionBannerImage(file: File, collectionId: string): Promise<string> {
+export async function prepareCollectionBannerImage(
+  file: File,
+  collectionId: string,
+  options: BannerCropOptions = {},
+): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Choose an image file for the collection banner.');
   const decoded = await decodeImage(file);
 
@@ -91,7 +112,7 @@ export async function prepareCollectionBannerImage(file: File, collectionId: str
     canvas.height = BANNER_HEIGHT;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Image processing is unavailable on this device.');
-    drawCenterCrop(context, decoded.source, decoded.width, decoded.height);
+    drawCrop(context, decoded.source, decoded.width, decoded.height, options);
 
     let quality = 0.82;
     let bannerBlob = await canvasToBlob(canvas, quality);
