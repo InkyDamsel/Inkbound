@@ -1,3 +1,32 @@
+/* Book Details owns several viewport-fixed planning controls. The scroll pane must
+   reserve the same space on web and native so its last real action can always be
+   scrolled completely above those controls instead of disappearing underneath. */
+.book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
+  min-height: 0;
+  padding-bottom: calc(8.5rem + env(safe-area-inset-bottom)) !important;
+  scroll-padding-bottom: calc(8.5rem + env(safe-area-inset-bottom));
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Library loans show both Finish on Time and Library Loan. Reserve the full
+   two-control stack, including breathing room between the last content action
+   and the floating controls. */
+.book-details-modal-host:has(> button[aria-label^='Edit library return date']) > div.fixed > section[role='dialog'] > div.flex-1,
+.book-details-modal-host:has(> button[aria-label^='Add required library return date']) > div.fixed > section[role='dialog'] > div.flex-1 {
+  padding-bottom: calc(14rem + env(safe-area-inset-bottom)) !important;
+  scroll-padding-bottom: calc(14rem + env(safe-area-inset-bottom));
+}
+
+/* When Book Details opens a child dialog (cover manager, delete confirmation,
+   Finish on Time, loan dates, etc.), background floating actions must get out of
+   the way completely. This prevents a second fixed layer from covering the
+   active dialog on phone or desktop. */
+.book-details-modal-host:has(section[role='dialog'][aria-label]) > button.fixed {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 @media (max-width: 639px) {
   /* The native Android shell is edge-to-edge, so Book Details needs to own the
      entire mobile viewport instead of behaving like a desktop bottom sheet. */
@@ -26,17 +55,6 @@
   /* Keep enough room for the actual book fields/tabs even on shorter phones. */
   .book-details-modal-host > div.fixed > section[role='dialog'] > nav {
     flex: 0 0 auto;
-  }
-
-  .book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
-    min-height: 0;
-    /* Fixed book-planning controls sit above the Android navigation area. Give
-       the editor enough real scroll room that its final fields and Save button
-       can move completely above those controls. */
-    padding-bottom: calc(8.5rem + env(safe-area-inset-bottom)) !important;
-    scroll-padding-bottom: calc(8.5rem + env(safe-area-inset-bottom));
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
   }
 
   /* The large desktop cover was consuming too much of the native phone header. */
