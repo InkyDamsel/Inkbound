@@ -26,6 +26,7 @@ import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import {
   hydrateDeferredLargeBrowserStorage,
   hydrateLargeBrowserStorage,
+  LARGE_BROWSER_STORAGE_HYDRATED_EVENT,
   prepareLargeBrowserStorageForStartup,
 } from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
@@ -122,6 +123,36 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
   return <>{children}</>;
 };
 
+/**
+ * Large browser libraries are restored from IndexedDB after first paint. The
+ * storage bridge deliberately rejects writes to books/pending/baseline while
+ * that restore is in progress so an empty first React render cannot erase a
+ * reader's library. Cloud sync must obey the same boundary: if it starts early,
+ * a valid server reconciliation is rejected by that protection and the older
+ * IndexedDB cache can appear to "win" after reload.
+ *
+ * Keep the application UI available immediately, but do not mount persistence
+ * bridges until the browser working copy is hydrated. Native Android does not
+ * use this IndexedDB startup path and may sync immediately.
+ */
+const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
+  const nativeRuntime = isNativeRuntime();
+  const [ready, setReady] = useState(nativeRuntime);
+
+  useEffect(() => {
+    if (nativeRuntime) {
+      setReady(true);
+      return undefined;
+    }
+
+    const handleHydrated = () => setReady(true);
+    window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
+    return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
+  }, [nativeRuntime]);
+
+  return ready ? <>{children}</> : null;
+};
+
 const InkboundApplication = () => (
   <BreakpointProvider>
     <NativeRuntimeGate>
@@ -129,16 +160,18 @@ const InkboundApplication = () => (
         <AccountSyncProvider>
           <AuthSessionGate>
             <SecurityBootstrap />
-            <LibrarySyncCheckpointBridge />
-            <AdaptiveCloudPersistenceBridge />
-            <CloudServerRefreshBridge />
-            <ManualCoverLedgerBridge />
-            <ProtectedBookDetailsLedgerBridge />
-            <AuxiliaryAccountSyncBridge />
-            <ReadingMemoryCloudSyncBridge />
-            <ReadOnlyCloudHydrationBridge />
-            <PhotoMemoryAutoSyncBridge />
-            <LegacyBookCoverMigrationBridge />
+            <BrowserStorageHydrationGate>
+              <LibrarySyncCheckpointBridge />
+              <AdaptiveCloudPersistenceBridge />
+              <CloudServerRefreshBridge />
+              <ManualCoverLedgerBridge />
+              <ProtectedBookDetailsLedgerBridge />
+              <AuxiliaryAccountSyncBridge />
+              <ReadingMemoryCloudSyncBridge />
+              <ReadOnlyCloudHydrationBridge />
+              <PhotoMemoryAutoSyncBridge />
+              <LegacyBookCoverMigrationBridge />
+            </BrowserStorageHydrationGate>
             <ThemePersistenceBridge />
             <CloudDataRefreshBoundary>
               <RecoverySafetyBridge />
@@ -182,7 +215,8 @@ async function bootstrap() {
   // First paint comes before IndexedDB/library restoration. Returning users must
   // always get a usable application shell even if Safari/Chrome has a blocked or
   // unhealthy browser database. Hydration refreshes App's canonical books state
-  // through the existing cloud-data event when it completes.
+  // through the existing cloud-data event when it completes. Persistence bridges
+  // now wait for that hydration boundary before comparing local and cloud state.
   createRoot(rootElement).render(
     <StrictMode>
       <AppErrorBoundary>
