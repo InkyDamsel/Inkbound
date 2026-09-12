@@ -49,11 +49,30 @@ for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(cand
   }
 }
 
+// The public website is intentionally code-split from the signed-in app so the
+// marketing surface does not download Firebase/persistence code. Web /app and
+// Android must still enter the exact same applicationEntry tree.
 const main = read('src/main.tsx');
-assert(main.includes('<App />'), 'src/main.tsx must mount the shared <App /> for the signed-in application.');
+const applicationEntry = read('src/applicationEntry.tsx');
 assert(
-  main.includes('{isPublicSurface ? <PublicSurface /> : <InkboundApplication />}'),
-  'src/main.tsx must mount the same InkboundApplication tree for web and Android; only public marketing/FAQ routes may bypass it.',
+  main.includes("import('./applicationEntry.tsx')"),
+  'src/main.tsx must lazy-load the shared signed-in application entry.',
+);
+assert(
+  main.includes("import('./publicEntry.tsx')") && main.includes("normalizedPath === '/'") && main.includes("normalizedPath === '/faq'"),
+  'src/main.tsx may bypass the application tree only for the public marketing and FAQ routes.',
+);
+assert(
+  main.includes('const publicSurface = !isNativeRuntime()'),
+  'src/main.tsx must never route the native Android runtime through the public website entry.',
+);
+assert(
+  applicationEntry.includes("import App from './App.tsx'") && applicationEntry.includes('<App />'),
+  'src/applicationEntry.tsx must mount the shared <App /> for the signed-in application.',
+);
+assert(
+  applicationEntry.includes('<InkboundApplication />'),
+  'src/applicationEntry.tsx must mount the same InkboundApplication tree for web and Android.',
 );
 
 const navbar = read('src/components/Navbar.tsx');
@@ -80,9 +99,10 @@ for (const id of navIds) {
 }
 
 // Responsive styles may compact top-bar chrome. Shared feature actions in the
-// page canvas must still win the cascade at every compact viewport.
+// page canvas must still win the cascade at every compact viewport. App-only
+// CSS now lives in applicationEntry so the public website stays lightweight.
 const responsiveParity = read('src/styles/responsive-parity.css');
-const parityImportedAfterAppShell = main.indexOf("./styles/responsive-parity.css") > main.indexOf("./styles/app-shell.css");
+const parityImportedAfterAppShell = applicationEntry.indexOf("./styles/responsive-parity.css") > applicationEntry.indexOf("./styles/app-shell.css");
 const hasCompactActionOverride = /@media\s*\(max-width:\s*1199px\)[\s\S]*?\.inkbound-main-content\s+\.quiet-shelf-primary-action,[\s\S]*?\.inkbound-main-content\s+\.quiet-shelf-secondary-action\s*\{[\s\S]*?display\s*:\s*inline-flex\s*!important/.test(responsiveParity);
 assert(parityImportedAfterAppShell, 'responsive-parity.css must load after app-shell.css so shared feature-action visibility wins the compact cascade.');
 assert(hasCompactActionOverride, 'responsive-parity.css must force shared primary/secondary feature actions visible through tablet and phone widths.');
