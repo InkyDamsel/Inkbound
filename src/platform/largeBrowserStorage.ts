@@ -242,6 +242,16 @@ export function hasPendingLargeBrowserStorageWrites(): boolean {
   return pendingWrites.size > 0;
 }
 
+/**
+ * Synchronous readiness probe for React gates. The hydration event can fire before
+ * a component effect subscribes on fast browsers (notably Safari/iPad). Consumers
+ * must be able to observe the already-completed state instead of waiting forever
+ * for an event that has already happened.
+ */
+export function isLargeBrowserStorageHydrated(): boolean {
+  return startupHydrationPromise !== null && !startupHydrationPending;
+}
+
 export async function flushLargeBrowserStorage(): Promise<void> {
   while (pendingWrites.size > 0) {
     await Promise.allSettled([...pendingWrites]);
