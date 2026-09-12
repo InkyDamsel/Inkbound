@@ -10,7 +10,7 @@ import { auth, functions, readDb } from '../lib/firebase';
 // lives in productPolicy.ts with the rest of the Free/Premium rules.
 export const FREE_BOOK_LIMIT = PRODUCT_POLICY.library.freeItemLimit;
 
-export type AccessSource = 'free' | 'subscription' | 'vip' | 'courtesy';
+export type AccessSource = 'free' | 'subscription' | 'vip' | 'courtesy' | 'trial';
 
 interface EntitlementRecord {
   subscriptionStatus?: 'none' | 'active' | 'trialing' | 'past_due' | 'canceled';
@@ -18,6 +18,9 @@ interface EntitlementRecord {
   paidPremiumUntil?: Timestamp | string | null;
   vipEnabled?: boolean;
   courtesyPremiumUntil?: Timestamp | string | null;
+  trialStartedAt?: Timestamp | string | null;
+  trialPremiumUntil?: Timestamp | string | null;
+  trialAvailable?: boolean;
 }
 
 interface UserPlanContextType {
@@ -26,6 +29,8 @@ interface UserPlanContextType {
   setUserPlan: (plan: UserPlan) => void;
   freeBookLimit: number;
   entitlementLoading: boolean;
+  trialAvailable: boolean;
+  trialPremiumUntil: string | null;
 
   canAddBook: (currentBookCount: number) => boolean;
   remainingBookSlots: (currentBookCount: number) => number;
@@ -49,6 +54,13 @@ function toMillis(value: Timestamp | string | null | undefined): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function toIso(value: Timestamp | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function paidAccessIsActive(entitlement: EntitlementRecord): boolean {
   const paidUntil = toMillis(entitlement.paidPremiumUntil);
   const now = Date.now();
@@ -66,10 +78,12 @@ function resolveAccess(entitlement: EntitlementRecord | undefined): { userPlan: 
 
   const now = Date.now();
   const courtesyIsActive = toMillis(entitlement.courtesyPremiumUntil) > now;
+  const trialIsActive = toMillis(entitlement.trialPremiumUntil) > now;
 
   if (entitlement.vipEnabled) return { userPlan: 'premium', accessSource: 'vip' };
   if (paidAccessIsActive(entitlement)) return { userPlan: 'premium', accessSource: 'subscription' };
   if (courtesyIsActive) return { userPlan: 'premium', accessSource: 'courtesy' };
+  if (trialIsActive) return { userPlan: 'premium', accessSource: 'trial' };
   return { userPlan: 'free', accessSource: 'free' };
 }
 
@@ -80,6 +94,7 @@ function nextTimedAccessExpiry(entitlement: EntitlementRecord | undefined): numb
   const futureExpiries = [
     paidAccessIsActive(entitlement) ? toMillis(entitlement.paidPremiumUntil) : 0,
     toMillis(entitlement.courtesyPremiumUntil),
+    toMillis(entitlement.trialPremiumUntil),
   ].filter((value) => value > now);
 
   return futureExpiries.length > 0 ? Math.min(...futureExpiries) : 0;
@@ -89,6 +104,8 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [userPlan, setUserPlanState] = useState<UserPlan>('free');
   const [accessSource, setAccessSource] = useState<AccessSource>('free');
   const [entitlementLoading, setEntitlementLoading] = useState(Boolean(auth));
+  const [trialAvailable, setTrialAvailable] = useState(false);
+  const [trialPremiumUntil, setTrialPremiumUntil] = useState<string | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<string | undefined>(undefined);
 
@@ -96,6 +113,8 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (!auth) {
       setUserPlanState('free');
       setAccessSource('free');
+      setTrialAvailable(false);
+      setTrialPremiumUntil(null);
       setEntitlementLoading(false);
       return;
     }
@@ -116,6 +135,8 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       const access = resolveAccess(entitlement);
       setUserPlanState(access.userPlan);
       setAccessSource(access.accessSource);
+      setTrialAvailable(Boolean(entitlement) && (entitlement?.trialAvailable ?? !entitlement?.trialStartedAt));
+      setTrialPremiumUntil(toIso(entitlement?.trialPremiumUntil));
       setEntitlementLoading(false);
 
       const expiresAt = nextTimedAccessExpiry(entitlement);
@@ -154,6 +175,8 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       setUserPlanState('free');
       setAccessSource('free');
+      setTrialAvailable(false);
+      setTrialPremiumUntil(null);
       setIsUpgradeModalOpen(false);
       setUpgradeReason(undefined);
 
@@ -212,6 +235,8 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       setUserPlan,
       freeBookLimit: PRODUCT_POLICY.library.freeItemLimit,
       entitlementLoading,
+      trialAvailable,
+      trialPremiumUntil,
       canAddBook: (currentBookCount) => currentBookCount < PRODUCT_POLICY.library.freeItemLimit,
       remainingBookSlots: (currentBookCount) => Number.isFinite(PRODUCT_POLICY.library.freeItemLimit)
         ? Math.max(0, PRODUCT_POLICY.library.freeItemLimit - currentBookCount)
@@ -225,7 +250,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       openUpgradeModal,
       closeUpgradeModal,
     };
-  }, [accessSource, entitlementLoading, isUpgradeModalOpen, upgradeReason, userPlan]);
+  }, [accessSource, entitlementLoading, isUpgradeModalOpen, trialAvailable, trialPremiumUntil, upgradeReason, userPlan]);
 
   return <UserPlanContext.Provider value={value}>{children}</UserPlanContext.Provider>;
 };
