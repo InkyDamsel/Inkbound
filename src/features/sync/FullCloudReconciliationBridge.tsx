@@ -112,10 +112,12 @@ function reconcileCollection<T extends { id: string }>(
 ): T[] {
   const next = new Map(localItems.map((item) => [item.id, item]));
   const latestCloudMillis = new Map<string, number>();
+  const cloudIds = new Set<string>();
 
   cloudRecords.forEach((record) => {
     const item = record.data;
     if (!item?.id) return;
+    cloudIds.add(item.id);
     const updatedMillis = record.updatedAt?.toMillis() ?? 0;
     latestCloudMillis.set(item.id, updatedMillis);
 
@@ -125,6 +127,16 @@ function reconcileCollection<T extends { id: string }>(
     delete pending[item.id];
     next.set(item.id, item);
     baseline[item.id] = fingerprint(item);
+  });
+
+  // DATA_OWNERSHIP rule: if a local record existed in the previous sync baseline
+  // but is now absent from Firestore, that absence is a remote deletion unless a
+  // durable local mutation says otherwise. This also repairs deletions made by an
+  // older build before sync tombstones existed.
+  localItems.forEach((item) => {
+    if (cloudIds.has(item.id) || pending[item.id] || baseline[item.id] === undefined) return;
+    next.delete(item.id);
+    delete baseline[item.id];
   });
 
   tombstones.forEach((record) => {
@@ -154,9 +166,10 @@ function reconcileCollection<T extends { id: string }>(
  * performs one bounded full reconciliation per account/device version.
  *
  * Cloud records replace stale local copies unless a durable local mutation is
- * newer. Cloud tombstones remove stale cached records under the same conflict
- * rule. Local-only records with no cloud record and no tombstone are preserved so
- * recovery cannot silently discard an unsynced legacy item.
+ * newer. Cloud tombstones and baseline-confirmed remote deletions remove stale
+ * cached records under the same conflict rule. Local-only records that never
+ * appeared in the baseline are preserved so recovery cannot silently discard an
+ * unsynced legacy item.
  */
 export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
   const { user } = useAccountSync();
