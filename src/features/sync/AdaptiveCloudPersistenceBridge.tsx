@@ -8,7 +8,7 @@ import { CostSafeCloudPersistenceBridge } from './CostSafeCloudPersistenceBridge
 
 const BOOKS_KEY = 'inkbound_books';
 const RECONCILE_COOLDOWN_MS = 30_000;
-const RECONCILE_SETTLE_MS = 1_500;
+const RECONCILE_SETTLE_MS = 8_000;
 
 /**
  * Cross-device sync has two jobs that must not be confused:
@@ -18,12 +18,15 @@ const RECONCILE_SETTLE_MS = 1_500;
  * 2. Stay local-first after reconciliation so a large library does not keep
  *    paying for continuous Firestore collection listeners.
  *
- * The previous implementation skipped step 1 whenever any local library was
- * already present. That made an existing browser cache look authoritative even
- * when Android had newer account data. We now run the canonical reconciliation
- * bridge once per open, then fall back to the cost-safe local-first bridge.
- * Returning to Inkbound after enough time (or reconnecting) runs another short
- * reconciliation pass so web and Android do not drift indefinitely.
+ * Run the canonical reconciliation bridge once per open, then fall back to the
+ * cost-safe local-first bridge. Returning to Inkbound after enough time (or
+ * reconnecting) runs another bounded reconciliation pass so web and Android do
+ * not drift indefinitely.
+ *
+ * The settle window intentionally remains long enough for the initial Firestore
+ * snapshot and durable pending queue to resolve on slower connections and larger
+ * libraries. Switching to the cost-safe bridge too quickly can unmount the
+ * listener before a newer record from another device is accepted.
  */
 export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   const [isReconciling, setIsReconciling] = useState(true);
@@ -37,9 +40,6 @@ export const AdaptiveCloudPersistenceBridge: React.FC = () => {
       if (detail?.keys && !detail.keys.includes(BOOKS_KEY)) return;
 
       if (settleTimer.current !== undefined) window.clearTimeout(settleTimer.current);
-      // Keep the canonical bridge alive briefly after hydration so its initial
-      // Firestore snapshots and durable pending queue have time to settle before
-      // we remove the collection listeners.
       settleTimer.current = window.setTimeout(() => {
         settleTimer.current = undefined;
         lastReconcileAt.current = Date.now();
