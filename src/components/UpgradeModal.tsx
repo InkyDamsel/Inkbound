@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Check, HeartHandshake, RotateCcw, Sparkles, X } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
 import { PRODUCT_POLICY } from '../config/productPolicy';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
+import { functions } from '../lib/firebase';
 import {
   PremiumBillingPlan,
   canPurchaseRuntimePremium,
@@ -15,9 +17,9 @@ const supportDeveloperUrl = import.meta.env.VITE_SUPPORT_DEVELOPER_URL?.trim();
 const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
 
 export const UpgradeModal: React.FC = () => {
-  const { isUpgradeModalOpen, closeUpgradeModal, userPlan } = useUserPlan();
+  const { isUpgradeModalOpen, closeUpgradeModal, userPlan, trialAvailable, entitlementLoading } = useUserPlan();
   const { user } = useAccountSync();
-  const [billingPlan, setBillingPlan] = useState<PremiumBillingPlan | 'restore' | null>(null);
+  const [billingPlan, setBillingPlan] = useState<PremiumBillingPlan | 'restore' | 'trial' | null>(null);
   const [billingError, setBillingError] = useState('');
 
   useEffect(() => {
@@ -42,6 +44,25 @@ export const UpgradeModal: React.FC = () => {
   const subscriptionsAvailable = (PRODUCT_POLICY.premium.subscriptionsOpen || sandboxBillingTest)
     && canPurchaseRuntimePremium();
   const restoreAvailable = PRODUCT_POLICY.premium.subscriptionsOpen && canRestoreRuntimePremium();
+
+  const beginTrial = async () => {
+    if (!functions) {
+      setBillingError('Premium trials are unavailable right now. Please try again later.');
+      return;
+    }
+    setBillingPlan('trial');
+    setBillingError('');
+    try {
+      const startPremiumTrial = httpsCallable<undefined, { success: boolean; trialDays: number; trialPremiumUntil: string }>(functions, 'startPremiumTrial');
+      await startPremiumTrial();
+      window.dispatchEvent(new Event('inkbound:entitlement-refresh'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Inkbound could not start the Premium trial.';
+      setBillingError(message.includes('already been used') ? 'This Inkbound account has already used its free Premium trial.' : message);
+    } finally {
+      setBillingPlan(null);
+    }
+  };
 
   const beginPurchase = async (plan: PremiumBillingPlan) => {
     setBillingPlan(plan);
@@ -97,6 +118,21 @@ export const UpgradeModal: React.FC = () => {
         </div>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:space-y-8 sm:px-8 sm:py-8">
+          {!entitlementLoading && trialAvailable && (
+            <div className="rounded-2xl border-2 border-[var(--ink-gold)]/50 bg-[var(--ink-gold)]/5 p-5 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="max-w-xl">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-gold-bright)]">Try Premium first</span>
+                  <h3 className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">7 days of Inkbound Premium, free</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">No card. No payment information. No automatic subscription. When the trial ends, your account simply returns to Free unless you choose a plan.</p>
+                </div>
+                <button type="button" disabled={billingPlan !== null} onClick={() => void beginTrial()} className="quiet-shelf-primary-action shrink-0 justify-center disabled:opacity-50">{billingPlan === 'trial' ? 'Starting trial…' : 'Start 7-day free trial'}</button>
+              </div>
+            </div>
+          )}
+
+          {!entitlementLoading && !trialAvailable && <p className="text-center text-xs text-[var(--ink-muted)]">This account has already used its one-time Premium trial.</p>}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col justify-between rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Monthly</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedMonthlyPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ month</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">Flexible monthly billing. Cancel anytime.</p></div>
