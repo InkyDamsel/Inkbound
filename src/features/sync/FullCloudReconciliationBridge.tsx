@@ -32,7 +32,9 @@ import {
 const BOOKS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.profile;
-const FULL_RECONCILIATION_VERSION = '1';
+// v2 deliberately forces one fresh repair pass for devices that may have marked
+// v1 complete before we had enough instrumentation to prove what happened.
+const FULL_RECONCILIATION_VERSION = '2';
 
 type RecordKind = 'books' | 'sessions';
 interface CloudRecord<T> {
@@ -61,6 +63,20 @@ interface SyncBaseline {
   sessions: Record<string, string>;
   profile?: string;
 }
+interface ReconciliationStats {
+  localCount: number;
+  cloudCount: number;
+  cloudRecordsApplied: number;
+  baselineDeletesApplied: number;
+  tombstonesApplied: number;
+  pendingLocalProtected: number;
+  localOnlyPreserved: number;
+  finalCount: number;
+}
+interface ReconciliationResult<T> {
+  items: T[];
+  stats: ReconciliationStats;
+}
 
 const storage = () => getRuntimeStorage();
 const stable = (value: unknown) => JSON.stringify(value);
@@ -73,6 +89,7 @@ const hashText = (value: string) => {
   return (hash >>> 0).toString(36);
 };
 const fingerprint = (value: unknown) => hashText(stable(value));
+const diagnosticKey = (uid: string) => `inkbound_full_reconciliation_diagnostic_${uid}_v2`;
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -109,10 +126,20 @@ function reconcileCollection<T extends { id: string }>(
   tombstones: TombstoneRecord[],
   pending: Record<string, RecordMutation<T>>,
   baseline: Record<string, string>,
-): T[] {
+): ReconciliationResult<T> {
   const next = new Map(localItems.map((item) => [item.id, item]));
   const latestCloudMillis = new Map<string, number>();
   const cloudIds = new Set<string>();
+  const stats: ReconciliationStats = {
+    localCount: localItems.length,
+    cloudCount: cloudRecords.length,
+    cloudRecordsApplied: 0,
+    baselineDeletesApplied: 0,
+    tombstonesApplied: 0,
+    pendingLocalProtected: 0,
+    localOnlyPreserved: 0,
+    finalCount: localItems.length,
+  };
 
   cloudRecords.forEach((record) => {
     const item = record.data;
@@ -122,8 +149,13 @@ function reconcileCollection<T extends { id: string }>(
     latestCloudMillis.set(item.id, updatedMillis);
 
     const localPending = pending[item.id];
-    if (localPending && !remoteWinsPending(record, localPending)) return;
+    if (localPending && !remoteWinsPending(record, localPending)) {
+      stats.pendingLocalProtected += 1;
+      return;
+    }
 
+    const previous = next.get(item.id);
+    if (!previous || fingerprint(previous) !== fingerprint(item)) stats.cloudRecordsApplied += 1;
     delete pending[item.id];
     next.set(item.id, item);
     baseline[item.id] = fingerprint(item);
@@ -134,8 +166,16 @@ function reconcileCollection<T extends { id: string }>(
   // durable local mutation says otherwise. This also repairs deletions made by an
   // older build before sync tombstones existed.
   localItems.forEach((item) => {
-    if (cloudIds.has(item.id) || pending[item.id] || baseline[item.id] === undefined) return;
-    next.delete(item.id);
+    if (cloudIds.has(item.id)) return;
+    if (pending[item.id]) {
+      stats.pendingLocalProtected += 1;
+      return;
+    }
+    if (baseline[item.id] === undefined) {
+      stats.localOnlyPreserved += 1;
+      return;
+    }
+    if (next.delete(item.id)) stats.baselineDeletesApplied += 1;
     delete baseline[item.id];
   });
 
@@ -149,14 +189,19 @@ function reconcileCollection<T extends { id: string }>(
     })) return;
 
     const localPending = pending[id];
-    if (localPending && !tombstoneWinsPending(record, localPending)) return;
+    if (localPending && !tombstoneWinsPending(record, localPending)) {
+      stats.pendingLocalProtected += 1;
+      return;
+    }
 
     delete pending[id];
-    next.delete(id);
+    if (next.delete(id)) stats.tombstonesApplied += 1;
     delete baseline[id];
   });
 
-  return [...next.values()];
+  const items = [...next.values()];
+  stats.finalCount = items.length;
+  return { items, stats };
 }
 
 /**
@@ -181,7 +226,9 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
     let disposed = false;
 
     const finishIfAlreadyComplete = () => {
-      if (storage().getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
+      const savedVersion = storage().getItem(fullReconciliationVersionKey(uid));
+      if (savedVersion !== FULL_RECONCILIATION_VERSION) return false;
+      console.info('[Inkbound sync] Full reconciliation already complete.', { version: savedVersion });
       onComplete();
       return true;
     };
@@ -189,6 +236,11 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
     const reconcile = async () => {
       if (disposed || running.current || !navigator.onLine || finishIfAlreadyComplete()) return;
       running.current = true;
+      const startedAt = new Date().toISOString();
+      console.info('[Inkbound sync] Full reconciliation started.', {
+        version: FULL_RECONCILIATION_VERSION,
+        startedAt,
+      });
 
       try {
         const [bookSnapshot, sessionSnapshot, tombstoneSnapshot, profileSnapshot] = await Promise.all([
@@ -203,6 +255,8 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         const baseline = readJson<SyncBaseline>(syncBaselineStateKey(uid), { books: {}, sessions: {} });
         const localBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const localSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
+        const pendingBooksBefore = Object.keys(pending.books).length;
+        const pendingSessionsBefore = Object.keys(pending.sessions).length;
 
         const cloudBooks = bookSnapshot.docs
           .map((item) => item.data() as CloudRecord<UserBookRecord>)
@@ -214,8 +268,10 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         const bookTombstones = tombstones.filter((item) => item.kind === 'books');
         const sessionTombstones = tombstones.filter((item) => item.kind === 'sessions');
 
-        const nextBooks = reconcileCollection(localBooks, cloudBooks, bookTombstones, pending.books, baseline.books);
-        const nextSessions = reconcileCollection(localSessions, cloudSessions, sessionTombstones, pending.sessions, baseline.sessions);
+        const bookResult = reconcileCollection(localBooks, cloudBooks, bookTombstones, pending.books, baseline.books);
+        const sessionResult = reconcileCollection(localSessions, cloudSessions, sessionTombstones, pending.sessions, baseline.sessions);
+        const nextBooks = bookResult.items;
+        const nextSessions = sessionResult.items;
         const changedKeys: CloudSyncedStorageKey[] = [];
 
         if (stable(localBooks) !== stable(nextBooks)) {
@@ -234,6 +290,8 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         cloudSessions.forEach((record) => { newestMillis = Math.max(newestMillis, record.updatedAt?.toMillis() ?? 0); });
         tombstones.forEach((record) => { newestMillis = Math.max(newestMillis, record.deletedAt?.toMillis() ?? 0); });
 
+        let profileApplied = false;
+        let profilePendingProtected = false;
         if (profileSnapshot.exists()) {
           const profileRecord = profileSnapshot.data() as CloudRecord<Record<string, unknown>>;
           newestMillis = Math.max(newestMillis, profileRecord.updatedAt?.toMillis() ?? 0);
@@ -245,7 +303,10 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
               storage().setItem(PROFILE_KEY, profileValue);
               notifyRuntimeStorageChanged(PROFILE_KEY);
               changedKeys.push(PROFILE_KEY);
+              profileApplied = true;
             }
+          } else if (pending.profile) {
+            profilePendingProtected = true;
           }
         }
 
@@ -257,11 +318,47 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         }
         if (newestMillis > 0) storage().setItem(crossDeviceCursorKey(uid), String(newestMillis));
 
+        const completedAt = new Date().toISOString();
+        const diagnostic = {
+          version: FULL_RECONCILIATION_VERSION,
+          startedAt,
+          completedAt,
+          books: bookResult.stats,
+          sessions: sessionResult.stats,
+          tombstonesRead: tombstones.length,
+          bookTombstonesRead: bookTombstones.length,
+          sessionTombstonesRead: sessionTombstones.length,
+          pendingBefore: {
+            books: pendingBooksBefore,
+            sessions: pendingSessionsBefore,
+            profile: Boolean(readJson<PendingSyncState>(syncPendingStateKey(uid), { books: {}, sessions: {} }).profile),
+          },
+          pendingAfter: {
+            books: Object.keys(pending.books).length,
+            sessions: Object.keys(pending.sessions).length,
+            profile: Boolean(pending.profile),
+          },
+          profileApplied,
+          profilePendingProtected,
+          changedKeys,
+          newestCloudMillis: newestMillis,
+        };
+
+        storage().setItem(diagnosticKey(uid), stable(diagnostic));
         storage().setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
+        console.info('[Inkbound sync] Full reconciliation complete.', diagnostic);
         notifyCloudDataUpdated(changedKeys.length ? changedKeys : [BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
         onComplete();
       } catch (error) {
-        console.warn('Inkbound full account reconciliation could not complete; it will retry.', error);
+        const failedAt = new Date().toISOString();
+        const diagnostic = {
+          version: FULL_RECONCILIATION_VERSION,
+          startedAt,
+          failedAt,
+          error: error instanceof Error ? error.message : String(error),
+        };
+        storage().setItem(diagnosticKey(uid), stable(diagnostic));
+        console.warn('[Inkbound sync] Full account reconciliation could not complete; it will retry.', diagnostic, error);
       } finally {
         running.current = false;
       }
