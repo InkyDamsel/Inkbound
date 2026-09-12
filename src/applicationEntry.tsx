@@ -27,6 +27,7 @@ import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import {
   hydrateDeferredLargeBrowserStorage,
   hydrateLargeBrowserStorage,
+  LARGE_BROWSER_STORAGE_HYDRATED_EVENT,
   prepareLargeBrowserStorageForStartup,
 } from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
@@ -135,6 +136,33 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
   return <>{children}</>;
 };
 
+/**
+ * Large browser libraries are restored from IndexedDB after first paint. The
+ * storage bridge rejects writes to sync-critical keys until that restore is done
+ * so an empty initial render cannot erase a reader's working copy. Sync bridges
+ * must respect the same boundary or their valid cloud writes can be discarded
+ * and then replaced by the older IndexedDB snapshot a moment later.
+ *
+ * Native Android does not use this browser IndexedDB startup path.
+ */
+const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
+  const nativeRuntime = isNativeRuntime();
+  const [ready, setReady] = useState(nativeRuntime);
+
+  useEffect(() => {
+    if (nativeRuntime) {
+      setReady(true);
+      return undefined;
+    }
+
+    const handleHydrated = () => setReady(true);
+    window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
+    return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
+  }, [nativeRuntime]);
+
+  return ready ? <>{children}</> : null;
+};
+
 const InkboundApplication = () => (
   <BreakpointProvider>
     <NativeRuntimeGate>
@@ -142,18 +170,20 @@ const InkboundApplication = () => (
         <AccountSyncProvider>
           <AuthSessionGate>
             <SecurityBootstrap />
-            <LibrarySyncCheckpointBridge />
-            <AdaptiveCloudPersistenceBridge />
-            <CloudServerRefreshBridge />
-            <CrossDeviceDeltaSyncBridge />
-            <ManualCoverLedgerBridge />
-            <ProtectedBookDetailsLedgerBridge />
-            <AuxiliaryAccountSyncBridge />
-            <ReadingMemoryCloudSyncBridge />
-            <ReadOnlyCloudHydrationBridge />
-            <PhotoMemoryAutoSyncBridge />
-            <LegacyBookCoverMigrationBridge />
-            <CanonicalLibraryNormalizationBridge />
+            <BrowserStorageHydrationGate>
+              <LibrarySyncCheckpointBridge />
+              <AdaptiveCloudPersistenceBridge />
+              <CloudServerRefreshBridge />
+              <CrossDeviceDeltaSyncBridge />
+              <ManualCoverLedgerBridge />
+              <ProtectedBookDetailsLedgerBridge />
+              <AuxiliaryAccountSyncBridge />
+              <ReadingMemoryCloudSyncBridge />
+              <ReadOnlyCloudHydrationBridge />
+              <PhotoMemoryAutoSyncBridge />
+              <LegacyBookCoverMigrationBridge />
+              <CanonicalLibraryNormalizationBridge />
+            </BrowserStorageHydrationGate>
             <ThemePersistenceBridge />
             <CloudDataRefreshBoundary>
               <RecoverySafetyBridge />
