@@ -1,118 +1,78 @@
-export interface HelpItem {
-  id: string;
-  question: string;
-  answer: string;
-}
-
-export interface HelpSection {
-  id: string;
-  title: string;
-  items: HelpItem[];
-}
+export interface HelpItem { id: string; question: string; answer: string; }
+export interface HelpSection { id: string; title: string; items: HelpItem[]; }
 
 export const HELP_SECTIONS: HelpSection[] = [
-  {
-    id: 'sync-devices',
-    title: 'Sync & devices',
-    items: [
-      { id: 'cross-device', question: 'Does Inkbound work across devices?', answer: 'Yes. Sign in with the same Inkbound account and your synced library, reading sessions, profile information, and supported account data can follow you to another device.' },
-      { id: 'sign-out', question: 'What happens when I sign out?', answer: 'Signing out removes signed-in account data from that device without deleting your Inkbound account or cloud library. Sign back into the same account to restore synced data.' },
-      { id: 'offline', question: 'Can I use Inkbound offline?', answer: 'Inkbound keeps locally available data usable where possible. Changes that need the cloud can continue syncing after your connection returns.' },
-      { id: 'sync-delay', question: 'Why can syncing sometimes take longer?', answer: 'A first sign-in, a fresh device, a very large library, or a slow connection can take longer to restore. Returning readers can keep working with saved local data while cloud updates catch up.' },
-      { id: 'navigation-downloads', question: 'Will moving around the app repeatedly download my whole library?', answer: 'No. Normal navigation is designed to work from the library already available on your device. A fresh device may need an initial cloud restore, but ordinary screen changes should not rebuild your library from scratch.' },
-      { id: 'stale-device', question: 'What should I do if another device looks out of date?', answer: 'Keep both devices online for a little while and make sure they are signed into the same Inkbound account. If a change still does not appear, close and reopen Inkbound before contacting support.' },
-    ],
-  },
-  {
-    id: 'library-ownership',
-    title: 'Library, status & ownership',
-    items: [
-      { id: 'tbr-ownership', question: 'Is TBR the same as not owning an item?', answer: 'No. Reading status and ownership are separate. A TBR title can be owned, borrowed, available through a subscription, on a wishlist, custom-categorized, or not owned at all.' },
-      { id: 'unread-owned', question: 'Can something be unread even if I own it?', answer: 'Yes. Ownership describes access or the ownership category you use; reading status describes your progress. An unread or TBR item can still be owned.' },
-      { id: 'ownership-options', question: 'What ownership options can Inkbound track?', answer: 'Inkbound includes Owned, Library loan, Borrowed from someone, Subscription access, Wishlist, Not owned, and Custom. Choose Custom when the standard choices do not fit how you organize your household or collection.' },
-      { id: 'custom-ownership', question: 'Can I create my own ownership categories?', answer: 'Yes. In Book Details, choose Ownership → Custom. You can select an existing custom category or create one such as Kids Books, Classroom, Family Library, or another label that fits your needs.' },
-      { id: 'manage-custom-ownership', question: 'How do I rename or remove a custom ownership category?', answer: 'Open Library Maintenance and use the Custom category manager. Renaming a category updates its name everywhere it is used. If you remove a category that still has library items assigned to it, those affected items are safely changed to Not owned so no book is left pointing to a deleted category.' },
-      { id: 'ownership-history', question: 'Will changing ownership change my reading history?', answer: 'No. Changing ownership does not erase reading sessions, ratings, reviews, notes, progress, or finished dates.' },
-      { id: 'batch-edit', question: 'Can I fix a lot of imported library items at once?', answer: 'Yes. Filter My Library, choose Select all to select every matching result, then use Batch Edit to update status, ownership, format, priority, ratings, dates, tags, or collections together. Basic batch library cleanup is included in the core Inkbound library and does not require Premium.' },
-      { id: 'collections', question: 'Can I organize items into personal collections?', answer: 'Yes. Collections can be used alongside reading status, ownership, custom ownership categories, tags, ratings, and other library details.' },
-      { id: 'library-filters', question: 'Can I search and filter a large library?', answer: 'Yes. Inkbound includes search and filters for reading state, reading material type, format, genre, ownership, rating, and other available metadata.' },
-    ],
-  },
-  {
-    id: 'reading-materials',
-    title: 'Reading material types',
-    items: [
-      { id: 'material-types', question: 'Does Inkbound only track traditional books?', answer: 'No. Inkbound can classify books, manga, comics, graphic novels, magazines, light novels, novellas, short stories, and anthologies.' },
-      { id: 'type-vs-format', question: 'Is reading material type the same as format?', answer: 'No. Type describes what you are reading; format describes the edition. A manga can be paperback or ebook, while a novella could be hardcover, paperback, ebook, or audiobook.' },
-      { id: 'legacy-material-type', question: 'What happens to older records without a reading material type?', answer: 'They remain compatible and are treated as books unless you choose a more specific type later.' },
-      { id: 'material-filter', question: 'Can I filter by reading material type?', answer: 'Yes. Reading type can be filtered independently from format, status, ownership, genre, and rating.' },
-    ],
-  },
-  {
-    id: 'series',
-    title: 'Series',
-    items: [
-      { id: 'series-location', question: 'Where do I find Series?', answer: 'Series lives inside My Library as an internal tab alongside Books and Collections.' },
-      { id: 'series-imports', question: 'Does Series work with imported books?', answer: 'Yes. Inkbound uses series metadata from imported and manually added records. Older imports with recognizable series information can also be grouped when that information can be identified reliably.' },
-      { id: 'series-correction', question: 'What if imported series information is wrong?', answer: 'Use Correct series to fix or reorganize series information without deleting the item or losing your reading data.' },
-      { id: 'series-order', question: 'How does Inkbound order a series?', answer: 'Inkbound uses the stored series position when available, including fractional positions such as 0.5 for prequels, novellas, or companion titles. Custom labels can be used when a simple number is not enough. Manga and light novels can display Volume positions, while comics and magazines can display Issue positions.' },
-      { id: 'untitled-series', question: 'Why do I see an Untitled entry?', answer: 'Some sources include placeholders for announced future installments before an official title is available. Inkbound keeps the placeholder in order as an upcoming item without treating an unpublished untitled entry as owned, borrowed, or subscription-access reading material.' },
-      { id: 'series-progress', question: 'What does series progress mean?', answer: 'Series progress is based on known installments you have marked finished. Ownership is separate, so owning an unread installment does not increase completion.' },
-      { id: 'series-core', question: 'What Series features are part of the core library?', answer: 'Core Series organization includes grouping, order, completion progress, ownership and access, unread counts, manual corrections, and the next known installment. Deeper journey analysis is reserved for Series Insights.' },
-      { id: 'series-pagination', question: 'How does Inkbound handle hundreds of series?', answer: 'Series results are paginated so large imported libraries remain manageable instead of becoming one endless scrolling list.' },
-    ],
-  },
-  {
-    id: 'imports',
-    title: 'Imports & library updates',
-    items: [
-      { id: 'large-imports', question: 'How does Inkbound handle large libraries?', answer: 'Inkbound is designed to import large libraries quickly, then fill in missing details gradually so you do not have to wait for every cover and summary before using your library.' },
-      { id: 'goodreads-dates', question: 'What happens to my Goodreads reading dates?', answer: 'When Goodreads includes a Date Read, Inkbound uses it as the finished date. Goodreads does not export a Date Started field, so Inkbound leaves the start date blank instead of inventing one. Titles without a Goodreads Date Read stay undated rather than being marked finished on the day you import them.' },
-      { id: 'duplicate-imports', question: 'Why did Inkbound skip some books during an import?', answer: 'Inkbound skips books that already exist in your library or appear more than once in the same upload so re-importing does not silently overwrite your current library records. Skipped items are reported after the import.' },
-      { id: 'metadata-updates', question: 'When are missing covers and summaries updated?', answer: 'Inkbound can check for missing details while the app is active. Very large libraries are handled in smaller batches so the app stays responsive.' },
-      { id: 'closed-app-enrichment', question: 'Does Inkbound keep checking after I close the app?', answer: 'Not continuously. Phones, tablets, and browsers can pause background work. Unfinished detail checks can remain queued so you can continue later.' },
-      { id: 'reimport', question: 'Do I need to re-import items with missing details?', answer: 'No. Missing covers and summaries can be retried without importing the library again.' },
-      { id: 'metadata-personal-data', question: 'Will metadata updates overwrite my reading data?', answer: 'No. Filling in missing metadata is kept separate from your personal reading data. A cover or summary update does not replace your rating, review, status, dates, progress, notes, tags, collections, or ownership.' },
-      { id: 'edit-imported', question: 'Can imported items be edited?', answer: 'Yes. Imported items become normal library records that you can review and correct when source metadata is missing or inaccurate.' },
-      { id: 'data-ownership', question: 'Does importing mean Inkbound owns my data?', answer: 'No. Your reading records remain yours, and Inkbound provides export tools so you can keep a portable copy.' },
-    ],
-  },
-  {
-    id: 'sessions',
-    title: 'Reading sessions',
-    items: [
-      { id: 'timer-priority', question: 'What happens to detail updates while I use the reading timer?', answer: 'Your reading session takes priority. Large-library detail updates can pause while the timer is active and continue later.' },
-      { id: 'session-offline', question: 'What if my connection drops during a session?', answer: 'The timer and session experience are designed to continue locally instead of requiring a constant connection. Cloud updates can catch up later.' },
-      { id: 'background-timer', question: 'What if I background Inkbound during a timer?', answer: 'Your active timer draft is preserved. When Inkbound becomes active again, elapsed time is restored from saved session timing.' },
-      { id: 'correct-progress', question: 'Can I correct my reading progress later?', answer: 'Yes. Session history and reading progress are editable so mistakes can be corrected without deleting the library item.' },
-      { id: 'sessions-stats', question: 'Do sessions affect statistics and streaks?', answer: 'Yes. Recorded Inkbound reading activity helps build reading history, streaks, goals, and activity-based insights. Imported library metadata does not pretend to be an Inkbound reading session.' },
-    ],
-  },
-  {
-    id: 'privacy-data',
-    title: 'Privacy, exports & your data',
-    items: [
-      { id: 'export-library', question: 'Can I export my library?', answer: 'Yes. Inkbound provides a Complete Inkbound Backup plus a spreadsheet-friendly Library CSV in Settings. Exporting your own data is part of data ownership, not a Premium lock.' },
-      { id: 'csv-json', question: 'What is the difference between the Complete Inkbound Backup and Library CSV?', answer: 'Library CSV is the easiest option if you want to view your library in Excel or Google Sheets. Complete Inkbound Backup saves richer Inkbound-specific data and structure, including reading sessions and manual Series organization, in a recovery-friendly file. You normally do not need to open that backup file yourself.' },
-      { id: 'clear-vs-delete', question: 'What is the difference between clearing this device and deleting my account?', answer: 'Clearing a device removes local Inkbound data while keeping your cloud account. Deleting your account permanently removes the account and its associated Inkbound cloud data.' },
-      { id: 'support-secrets', question: 'Should I email my password or sign-in code to support?', answer: 'No. Inkbound support will never need your password or a sign-in verification code.' },
-    ],
-  },
+  { id: 'sync-devices', title: 'Sync & devices', items: [
+    { id: 'cross-device', question: 'Does Inkbound work across devices?', answer: 'Yes. Sign in with the same Inkbound account and supported synced library data, reading sessions, profile information, collections, and other account data can follow you between the web and Android.' },
+    { id: 'sign-out', question: 'What happens when I sign out?', answer: 'Signing out removes signed-in account data from that device without deleting your Inkbound account or cloud library. Sign back into the same account to restore supported synced data.' },
+    { id: 'offline', question: 'Can I use Inkbound offline?', answer: 'Inkbound keeps locally available data usable where possible. Changes that need the cloud can continue syncing after your connection returns.' },
+    { id: 'sync-delay', question: 'Why can syncing sometimes take longer?', answer: 'A first sign-in, a fresh device, a very large library, or a slow connection can take longer to restore. Inkbound protects pending local changes while it reconciles with current cloud data.' },
+    { id: 'navigation-downloads', question: 'Will moving around the app repeatedly download my whole library?', answer: 'No. Normal navigation is designed to work from the library already available on your device. A fresh device may need an initial cloud restore, but ordinary screen changes should not rebuild your library from scratch.' },
+    { id: 'stale-device', question: 'What should I do if another device looks out of date?', answer: 'Confirm both devices are online and signed into the same Inkbound account, then reopen Inkbound if needed. If the newer change still does not appear, avoid making conflicting edits to that same item from the older device and contact support with the devices involved and which one last showed the correct data.' },
+  ]},
+  { id: 'library-ownership', title: 'Library, status & ownership', items: [
+    { id: 'tbr-ownership', question: 'Is TBR the same as not owning an item?', answer: 'No. Reading status and ownership are separate. A TBR title can be owned, borrowed, available through a subscription, on a wishlist, custom-categorized, or not owned at all.' },
+    { id: 'unread-owned', question: 'Can something be unread even if I own it?', answer: 'Yes. Ownership describes access or the ownership category you use; reading status describes your progress. An unread or TBR item can still be owned.' },
+    { id: 'ownership-options', question: 'What ownership options can Inkbound track?', answer: 'Inkbound includes Owned, Library loan, Borrowed from someone, Subscription access, Wishlist, Not owned, and Custom. Choose Custom when the standard choices do not fit how you organize your household or collection.' },
+    { id: 'custom-ownership', question: 'Can I create my own ownership categories?', answer: 'Yes. Custom ownership categories are managed through Inkbound’s Ownership tools and can be assigned to books when the standard ownership choices do not fit.' },
+    { id: 'manage-custom-ownership', question: 'How do I rename or remove a custom ownership category?', answer: 'Open the Ownership Manager in Library Maintenance. Renaming a category updates its name where it is used. If you remove a category that still has library items assigned to it, affected items are safely changed so they are not left pointing to a deleted category.' },
+    { id: 'ownership-history', question: 'Will changing ownership change my reading history?', answer: 'No. Changing ownership does not erase reading sessions, ratings, reviews, notes, progress, or finished dates.' },
+    { id: 'batch-edit', question: 'Can I fix a lot of imported library items at once?', answer: 'Yes. Filter My Library, select matching results, then use Batch Edit to update supported fields together. Core batch library cleanup is part of the Inkbound library and does not require Premium.' },
+    { id: 'collections', question: 'Can I organize items into personal collections?', answer: 'Yes. Collections work alongside reading status, ownership, custom ownership categories, tags, ratings, and other library details. Collections can also use a custom banner image.' },
+    { id: 'library-filters', question: 'Can I search and filter a large library?', answer: 'Yes. Inkbound includes search and filters for reading state, reading material type, format, genre, ownership, rating, and other available metadata.' },
+  ]},
+  { id: 'reading-materials', title: 'Reading material types', items: [
+    { id: 'material-types', question: 'Does Inkbound only track traditional books?', answer: 'No. Inkbound can classify books, manga, comics, graphic novels, magazines, light novels, novellas, short stories, and anthologies.' },
+    { id: 'type-vs-format', question: 'Is reading material type the same as format?', answer: 'No. Type describes what you are reading; format describes the edition. A manga can be paperback or ebook, while a novella could be hardcover, paperback, ebook, or audiobook.' },
+    { id: 'legacy-material-type', question: 'What happens to older records without a reading material type?', answer: 'They remain compatible and are treated as books unless you choose a more specific type later.' },
+    { id: 'material-filter', question: 'Can I filter by reading material type?', answer: 'Yes. Reading type can be filtered independently from format, status, ownership, genre, and rating.' },
+  ]},
+  { id: 'series', title: 'Series', items: [
+    { id: 'series-location', question: 'Where do I find Series?', answer: 'Series lives inside My Library alongside your other library organization views.' },
+    { id: 'series-imports', question: 'Does Series work with imported books?', answer: 'Yes. Inkbound uses series metadata from imported and manually added records. Older imports with recognizable series information can also be grouped when that information can be identified reliably.' },
+    { id: 'series-correction', question: 'What if imported series information is wrong?', answer: 'Use Inkbound’s series correction tools to fix or reorganize series information without deleting the item or losing your reading data.' },
+    { id: 'series-order', question: 'How does Inkbound order a series?', answer: 'Inkbound uses the stored series position when available, including fractional positions such as 0.5 for prequels, novellas, or companion titles. Custom labels can be used when a simple number is not enough.' },
+    { id: 'untitled-series', question: 'Why do I see an Untitled entry?', answer: 'Some sources include placeholders for announced future installments before an official title is available. Inkbound can keep the placeholder in order without treating an unpublished untitled entry as owned or read.' },
+    { id: 'series-progress', question: 'What does series progress mean?', answer: 'Series progress is based on known installments you have marked finished. Ownership is separate, so owning an unread installment does not increase completion.' },
+    { id: 'series-core', question: 'What Series features are part of the core library?', answer: 'Core Series organization includes grouping, order, completion progress, ownership and access, unread counts, manual corrections, and the next known installment. Deeper journey analysis is reserved for Premium Series Insights.' },
+    { id: 'series-pagination', question: 'How does Inkbound handle hundreds of series?', answer: 'Series results are paginated so large imported libraries remain manageable instead of becoming one endless scrolling list.' },
+  ]},
+  { id: 'imports', title: 'Imports & library updates', items: [
+    { id: 'large-imports', question: 'How does Inkbound handle large libraries?', answer: 'Inkbound is designed to import large libraries quickly, then fill in missing details gradually so you do not have to wait for every cover and summary before using your library.' },
+    { id: 'goodreads-dates', question: 'What happens to my Goodreads reading dates?', answer: 'When Goodreads includes a Date Read, Inkbound uses it as the finished date. Goodreads does not export a Date Started field, so Inkbound leaves the start date blank instead of inventing one. Titles without a Goodreads Date Read stay undated rather than being marked finished on the day you import them.' },
+    { id: 'duplicate-imports', question: 'Why did Inkbound skip some books during an import?', answer: 'Inkbound skips books that already exist in your library or appear more than once in the same upload so re-importing does not silently overwrite your current library records. Skipped items are reported after the import.' },
+    { id: 'metadata-updates', question: 'When are missing covers and summaries updated?', answer: 'Inkbound can check for missing details while the app is active. Very large libraries are handled in smaller batches so the app stays responsive.' },
+    { id: 'closed-app-enrichment', question: 'Does Inkbound keep checking after I close the app?', answer: 'Not continuously. Phones, tablets, and browsers can pause background work. Unfinished detail checks can remain queued so you can continue later.' },
+    { id: 'reimport', question: 'Do I need to re-import items with missing details?', answer: 'No. Missing covers and summaries can be retried without importing the library again.' },
+    { id: 'metadata-personal-data', question: 'Will metadata updates overwrite my reading data?', answer: 'No. Filling in missing metadata is kept separate from your personal reading data. A cover or summary update does not replace your rating, review, status, dates, progress, notes, tags, collections, or ownership.' },
+    { id: 'edit-imported', question: 'Can imported items be edited?', answer: 'Yes. Imported items become normal library records that you can review and correct when source metadata is missing or inaccurate.' },
+    { id: 'data-ownership', question: 'Does importing mean Inkbound owns my data?', answer: 'No. Your reading records remain yours, and Inkbound provides export tools so you can keep a portable copy.' },
+  ]},
+  { id: 'sessions', title: 'Reading sessions', items: [
+    { id: 'timer-priority', question: 'What happens to detail updates while I use the reading timer?', answer: 'Your reading session takes priority. Large-library detail updates can pause while the timer is active and continue later.' },
+    { id: 'session-offline', question: 'What if my connection drops during a session?', answer: 'The timer and session experience are designed to continue locally instead of requiring a constant connection. Cloud updates can catch up later.' },
+    { id: 'background-timer', question: 'What if I background Inkbound during a timer?', answer: 'Your active timer draft is preserved. When Inkbound becomes active again, elapsed time is restored from saved session timing.' },
+    { id: 'correct-progress', question: 'Can I correct my reading progress later?', answer: 'Yes. Session history and reading progress are editable so mistakes can be corrected without deleting the library item.' },
+    { id: 'sessions-stats', question: 'Do sessions affect statistics and streaks?', answer: 'Yes. Recorded Inkbound reading activity helps build reading history, streaks, goals, and activity-based insights. Imported library metadata does not pretend to be an Inkbound reading session.' },
+  ]},
+  { id: 'premium-billing', title: 'Premium, trial & billing', items: [
+    { id: 'premium-price', question: 'How much is Inkbound Premium?', answer: 'Inkbound Premium is $6.99 per month or $59.99 per year in the United States. The applicable purchase screen shows the final localized price, currency, taxes, billing period, and offer terms before you buy.' },
+    { id: 'premium-core', question: 'Do I need Premium to keep my library?', answer: 'No. The core Inkbound library remains available without Premium, including an unlimited library, imports, collections, reading progress, core Series organization, and supported exports. Premium is for deeper insights, reflections, and historical views.' },
+    { id: 'premium-trial', question: 'How does the 7-day Premium trial work?', answer: 'Eligible Inkbound accounts can activate a 7-day Premium trial with no card required. Inkbound’s no-card trial does not create a paid subscription, does not automatically charge you, and does not auto-renew. When it ends, your account returns to Free unless you separately purchase Premium.' },
+    { id: 'premium-platform', question: 'Where is my Premium subscription billed?', answer: 'Web subscriptions are processed by Stripe. Premium purchased through the Google Play-distributed Android app is processed by Google Play Billing. Premium access is tied to your Inkbound account after the purchase is verified.' },
+    { id: 'cancel-premium', question: 'How do I cancel Premium?', answer: 'Manage or cancel the subscription through the provider that processed it. Use Google Play subscription management for a Google Play purchase; web subscriptions are managed through the web billing provider. Canceling normally stops future renewal while access already paid for continues according to the provider’s terms.' },
+    { id: 'support-purchase', question: 'Does a one-time Support Developer purchase include Premium?', answer: 'No. A voluntary one-time support purchase is separate from Premium unless a purchase screen explicitly states otherwise.' },
+  ]},
+  { id: 'privacy-data', title: 'Privacy, exports & your data', items: [
+    { id: 'private-data', question: 'Is my reading data public?', answer: 'Your personal Inkbound account data is private account data unless you intentionally use a separate sharing or catalog-contribution action. Uploading a private cover, banner, memory, or library record does not by itself publish it.' },
+    { id: 'export-library', question: 'Can I export my library?', answer: 'Yes. Inkbound provides a Complete Inkbound Backup plus a spreadsheet-friendly Library CSV in Settings. Exporting your own supported data is part of data ownership, not a Premium lock.' },
+    { id: 'csv-json', question: 'What is the difference between the Complete Inkbound Backup and Library CSV?', answer: 'Library CSV is the easiest option if you want to view your library in Excel or Google Sheets. Complete Inkbound Backup preserves richer Inkbound-specific data and structure for recovery. Keep independent copies of especially important photos and records.' },
+    { id: 'clear-vs-delete', question: 'What is the difference between clearing this device and deleting my account?', answer: 'Clearing a device removes local Inkbound data while keeping your cloud account. Deleting your account permanently removes the live Inkbound account and associated cloud data, subject to the limited retention described in the Privacy Policy.' },
+    { id: 'delete-subscription', question: 'Does deleting my Inkbound account cancel Premium billing?', answer: 'Not automatically. A paid subscription must be canceled with the provider that manages it, such as Stripe for a web subscription or Google Play for a Play subscription. Inkbound’s no-card trial does not create a paid subscription to cancel.' },
+    { id: 'support-secrets', question: 'Should I email my password, sign-in code, or card number to support?', answer: 'No. Inkbound support will never need your password, a sign-in verification code, or your full payment-card number.' },
+  ]},
 ];
 
-export const QUICK_HELP_IDS = [
-  'cross-device',
-  'offline',
-  'large-imports',
-  'tbr-ownership',
-  'custom-ownership',
-  'series-imports',
-  'material-types',
-  'export-library',
-] as const;
-
-const HELP_ITEMS_BY_ID = new Map(
-  HELP_SECTIONS.flatMap((section) => section.items.map((item) => [item.id, item] as const)),
-);
-
+export const QUICK_HELP_IDS = ['cross-device','offline','large-imports','tbr-ownership','custom-ownership','series-imports','material-types','export-library'] as const;
+const HELP_ITEMS_BY_ID = new Map(HELP_SECTIONS.flatMap((section) => section.items.map((item) => [item.id, item] as const)));
 export const QUICK_HELP_ITEMS = QUICK_HELP_IDS.map((id) => HELP_ITEMS_BY_ID.get(id)).filter((item): item is HelpItem => Boolean(item));
