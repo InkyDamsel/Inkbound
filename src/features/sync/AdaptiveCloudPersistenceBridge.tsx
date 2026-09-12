@@ -10,12 +10,15 @@ import {
 import { CostSafeCloudPersistenceBridge } from './CostSafeCloudPersistenceBridge';
 import { FullCloudReconciliationBridge } from './FullCloudReconciliationBridge';
 import { OneShotCloudHydrationBridge } from './OneShotCloudHydrationBridge';
-import { fullReconciliationVersionKey, SYNC_STORAGE_KEYS } from './storageKeys';
+import {
+  FULL_RECONCILIATION_VERSION,
+  fullReconciliationVersionKey,
+  SYNC_STORAGE_KEYS,
+} from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
-const FULL_RECONCILIATION_VERSION = '1';
 
 function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   try {
