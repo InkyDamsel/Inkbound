@@ -23,6 +23,7 @@ import {
 } from './syncConflictPolicy';
 import {
   crossDeviceCursorKey,
+  FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
   syncBaselineStateKey,
   syncPendingStateKey,
@@ -32,9 +33,6 @@ import {
 const BOOKS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.profile;
-// v2 deliberately forces one fresh repair pass for devices that may have marked
-// v1 complete before we had enough instrumentation to prove what happened.
-const FULL_RECONCILIATION_VERSION = '2';
 
 type RecordKind = 'books' | 'sessions';
 interface CloudRecord<T> {
