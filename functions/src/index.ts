@@ -18,9 +18,11 @@ const OWNER_EMAILS = new Set([
 
 const IS_FUNCTIONS_EMULATOR = process.env.FUNCTIONS_EMULATOR === 'true';
 const ENFORCE_APP_CHECK = !IS_FUNCTIONS_EMULATOR;
+const PREMIUM_TRIAL_DAYS = 7;
+const PREMIUM_TRIAL_MS = PREMIUM_TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
-type EntitlementSource = 'free' | 'subscription' | 'vip' | 'courtesy';
+type EntitlementSource = 'free' | 'subscription' | 'vip' | 'courtesy' | 'trial';
 
 interface AdminRecord { enabled: boolean; role: AdminRole; email: string; }
 
@@ -59,6 +61,9 @@ function paidSubscriptionIsActive(entitlement: Record<string, unknown> | undefin
   const paidUntil = timestampLikeToMillis(entitlement.paidPremiumUntil);
   if (status === 'active' || status === 'trialing') return paidUntil === 0 || paidUntil > Date.now();
   return status === 'canceled' && paidUntil > Date.now();
+}
+function timedPremiumIsActive(value: unknown): boolean {
+  return timestampLikeToMillis(value) > Date.now();
 }
 
 async function eraseInkboundUser(uid: string) {
@@ -117,7 +122,40 @@ export const getMyEntitlement = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, a
     paidPremiumUntil: timestampToIso(entitlement.paidPremiumUntil),
     vipEnabled: entitlement.vipEnabled === true,
     courtesyPremiumUntil: timestampToIso(entitlement.courtesyPremiumUntil),
+    trialStartedAt: timestampToIso(entitlement.trialStartedAt),
+    trialPremiumUntil: timestampToIso(entitlement.trialPremiumUntil),
+    trialAvailable: !entitlement.trialStartedAt,
   };
+});
+
+export const startPremiumTrial = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+  const auth = requireAuthenticated(request);
+  const entitlementRef = db.doc(`entitlements/${auth.uid}`);
+  const trialPremiumUntil = await db.runTransaction<Timestamp>(async (transaction) => {
+    const snapshot = await transaction.get(entitlementRef);
+    const entitlement = snapshot.data() ?? {};
+
+    if (entitlement.trialStartedAt) {
+      throw new HttpsError('failed-precondition', 'Your Inkbound Premium trial has already been used.');
+    }
+    if (entitlement.vipEnabled === true || paidSubscriptionIsActive(entitlement) || timedPremiumIsActive(entitlement.courtesyPremiumUntil)) {
+      throw new HttpsError('failed-precondition', 'This account already has Premium access.');
+    }
+
+    const now = Timestamp.now();
+    const until = Timestamp.fromMillis(now.toMillis() + PREMIUM_TRIAL_MS);
+    transaction.set(entitlementRef, {
+      basePlan: 'premium',
+      trialStartedAt: now,
+      trialPremiumUntil: until,
+      effectiveSource: 'trial' satisfies EntitlementSource,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: snapshot.exists ? snapshot.get('createdAt') ?? FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return until;
+  });
+
+  return { success: true, trialDays: PREMIUM_TRIAL_DAYS, trialPremiumUntil: trialPremiumUntil.toDate().toISOString() };
 });
 
 export const deleteMyAccount = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
