@@ -12,6 +12,7 @@ import {
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { useAccountSync } from '../context/AccountSyncContext';
+import { formatTrialDaysRemaining } from '../features/billing/trialAccess';
 import { ResponsiveGrid } from '../layout/responsive';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
@@ -163,7 +164,7 @@ async function prepareProfileImage(file: File, kind: 'avatar' | 'banner'): Promi
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions }) => {
-  const { userPlan } = useUserPlan();
+  const { userPlan, accessSource, trialPremiumUntil } = useUserPlan();
   const sync = useAccountSync();
   const initialProfile = useMemo(readStoredProfile, []);
   const [displayName, setDisplayName] = useState(initialProfile.displayName);
@@ -183,6 +184,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
   const avatarPreviewUrlRef = useRef<string | null>(null);
   const bannerPreviewUrlRef = useRef<string | null>(null);
   const imageRequestRef = useRef(0);
+  const trialAccessLabel = accessSource === 'trial' ? formatTrialDaysRemaining(trialPremiumUntil) : null;
 
   const releasePreviewUrl = (previewRef: React.MutableRefObject<string | null>) => {
     if (!previewRef.current) return;
@@ -490,7 +492,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ books, sessions })
                 <p className="inkbound-kicker">Reader Profile</p>
                 <h1 className="break-words font-serif text-3xl font-bold text-[var(--ink-ivory)]">{displayName}</h1>
                 <p className="text-sm text-[var(--ink-muted)]">
-                  {userPlan === 'premium' ? 'Inkbound Premium' : 'Free Plan'}
+                  {accessSource === 'trial'
+                    ? `Premium trial${trialAccessLabel ? ` · ${trialAccessLabel}` : ''}`
+                    : userPlan === 'premium' ? 'Inkbound Premium' : 'Free Plan'}
                 </p>
               </div>
             </div>
