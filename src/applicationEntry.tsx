@@ -27,6 +27,7 @@ import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
 import {
   hydrateDeferredLargeBrowserStorage,
   hydrateLargeBrowserStorage,
+  isLargeBrowserStorageHydrated,
   LARGE_BROWSER_STORAGE_HYDRATED_EVENT,
   prepareLargeBrowserStorageForStartup,
 } from './platform/largeBrowserStorage.ts';
@@ -143,11 +144,18 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
  * must respect the same boundary or their valid cloud writes can be discarded
  * and then replaced by the older IndexedDB snapshot a moment later.
  *
+ * The event is only a wake-up signal; readiness is also queried synchronously.
+ * On fast browser instances (especially Safari/iPad) hydration can finish before
+ * React's effect subscribes. Without the state probe that browser would wait for
+ * an event that already fired and none of the cloud sync bridges would ever mount.
+ *
  * Native Android does not use this browser IndexedDB startup path.
  */
 const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
   const nativeRuntime = isNativeRuntime();
-  const [ready, setReady] = useState(nativeRuntime);
+  const [ready, setReady] = useState(
+    () => nativeRuntime || isLargeBrowserStorageHydrated(),
+  );
 
   useEffect(() => {
     if (nativeRuntime) {
@@ -157,6 +165,11 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
 
     const handleHydrated = () => setReady(true);
     window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
+
+    // Close the subscribe-after-event race. Hydration may have completed between
+    // the initial render and this effect attaching its listener.
+    if (isLargeBrowserStorageHydrated()) setReady(true);
+
     return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
   }, [nativeRuntime]);
 
