@@ -82,6 +82,33 @@ async function writeAudit(input: { action: string; targetUserId: string; targetE
   await db.collection('adminAudit').add({ ...input, createdAt: FieldValue.serverTimestamp() });
 }
 
+async function startPremiumTrialForUser(uid: string): Promise<Timestamp> {
+  const entitlementRef = db.doc(`entitlements/${uid}`);
+  return db.runTransaction<Timestamp>(async (transaction) => {
+    const snapshot = await transaction.get(entitlementRef);
+    const entitlement = snapshot.data() ?? {};
+
+    if (entitlement.trialStartedAt) {
+      throw new HttpsError('failed-precondition', 'Your Inkbound Premium trial has already been used.');
+    }
+    if (entitlement.vipEnabled === true || paidSubscriptionIsActive(entitlement) || timedPremiumIsActive(entitlement.courtesyPremiumUntil)) {
+      throw new HttpsError('failed-precondition', 'This account already has Premium access.');
+    }
+
+    const now = Timestamp.now();
+    const until = Timestamp.fromMillis(now.toMillis() + PREMIUM_TRIAL_MS);
+    transaction.set(entitlementRef, {
+      basePlan: 'premium',
+      trialStartedAt: now,
+      trialPremiumUntil: until,
+      effectiveSource: 'trial' satisfies EntitlementSource,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: snapshot.exists ? snapshot.get('createdAt') ?? FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return until;
+  });
+}
+
 export const bootstrapOwner = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request); const email = normalizeEmail(auth.token.email); const emailVerified = auth.token.email_verified === true;
   if (!emailVerified || !OWNER_EMAILS.has(email)) throw new HttpsError('permission-denied', 'This account is not approved for owner access.');
@@ -114,6 +141,12 @@ export const syncUserDirectory = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
 
 export const getMyEntitlement = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request);
+  const data = request.data as Record<string, unknown> | undefined;
+
+  if (data?.action === 'startTrial') {
+    await startPremiumTrialForUser(auth.uid);
+  }
+
   await refreshGooglePlayEntitlementForUser(auth.uid).catch((error) => console.warn('Could not refresh Google Play entitlement during account refresh.', error));
   const entitlement = (await db.doc(`entitlements/${auth.uid}`).get()).data() ?? {};
   return {
@@ -126,36 +159,6 @@ export const getMyEntitlement = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, a
     trialPremiumUntil: timestampToIso(entitlement.trialPremiumUntil),
     trialAvailable: !entitlement.trialStartedAt,
   };
-});
-
-export const startPremiumTrial = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
-  const auth = requireAuthenticated(request);
-  const entitlementRef = db.doc(`entitlements/${auth.uid}`);
-  const trialPremiumUntil = await db.runTransaction<Timestamp>(async (transaction) => {
-    const snapshot = await transaction.get(entitlementRef);
-    const entitlement = snapshot.data() ?? {};
-
-    if (entitlement.trialStartedAt) {
-      throw new HttpsError('failed-precondition', 'Your Inkbound Premium trial has already been used.');
-    }
-    if (entitlement.vipEnabled === true || paidSubscriptionIsActive(entitlement) || timedPremiumIsActive(entitlement.courtesyPremiumUntil)) {
-      throw new HttpsError('failed-precondition', 'This account already has Premium access.');
-    }
-
-    const now = Timestamp.now();
-    const until = Timestamp.fromMillis(now.toMillis() + PREMIUM_TRIAL_MS);
-    transaction.set(entitlementRef, {
-      basePlan: 'premium',
-      trialStartedAt: now,
-      trialPremiumUntil: until,
-      effectiveSource: 'trial' satisfies EntitlementSource,
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: snapshot.exists ? snapshot.get('createdAt') ?? FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
-    }, { merge: true });
-    return until;
-  });
-
-  return { success: true, trialDays: PREMIUM_TRIAL_DAYS, trialPremiumUntil: trialPremiumUntil.toDate().toISOString() };
 });
 
 export const deleteMyAccount = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
