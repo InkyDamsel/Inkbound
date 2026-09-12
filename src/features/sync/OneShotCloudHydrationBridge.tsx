@@ -6,7 +6,12 @@ import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
-import { crossDeviceCursorKey, fullReconciliationVersionKey, SYNC_STORAGE_KEYS } from './storageKeys';
+import {
+  crossDeviceCursorKey,
+  FULL_RECONCILIATION_VERSION,
+  fullReconciliationVersionKey,
+  SYNC_STORAGE_KEYS,
+} from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -14,7 +19,6 @@ const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 const LOCAL_HYDRATION_GRACE_MS = 1800;
-const FULL_RECONCILIATION_VERSION = '1';
 
 interface CloudRecord<T> {
   data: T;
