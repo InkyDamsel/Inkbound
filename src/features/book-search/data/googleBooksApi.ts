@@ -82,6 +82,19 @@ const shouldBackOffCatalog = (error: unknown): boolean => {
   return /\b(?:429|503)\b|resource-exhausted|unavailable/i.test(message);
 };
 
+const googleBooksErrorDetail = (body: string): string => {
+  const trimmed = body.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: { message?: unknown }; message?: unknown };
+    const message = parsed.error?.message ?? parsed.message;
+    if (typeof message === 'string' && message.trim()) return message.trim();
+  } catch {
+    // Fall through to a short plain-text response body.
+  }
+  return trimmed.replace(/\s+/g, ' ').slice(0, 300);
+};
+
 export const buildGoogleBooksQuery = (value: string): string => {
   const trimmed = value.trim();
   const compact = compactIsbn(trimmed);
@@ -237,13 +250,7 @@ async function requestProtectedGoogleBooks(
     { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
     GoogleVolumesResponse
   >(functions, 'searchHardcoverBooks');
-  const request: { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number } = {
-    query,
-    provider: 'google-books',
-    maxResults,
-  };
-  if (startIndex > 0) request.startIndex = startIndex;
-  const response = await callable(request);
+  const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
   return response.data;
 }
@@ -259,13 +266,16 @@ async function requestDirectGoogleBooks(
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
+    startIndex: String(startIndex),
     maxResults: String(maxResults),
   });
-  if (startIndex > 0) params.set('startIndex', String(startIndex));
   if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
 
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
-  if (!response.ok) throw new Error(`Google Books search failed (${response.status}).`);
+  if (!response.ok) {
+    const detail = googleBooksErrorDetail(await response.text());
+    throw new Error(`Google Books search failed (${response.status})${detail ? `: ${detail}` : '.'}`);
+  }
   return response.json() as Promise<GoogleVolumesResponse>;
 }
 
@@ -321,8 +331,32 @@ export async function searchGoogleBooksAuthorPage(
 ): Promise<GoogleBooksAuthorPage> {
   const trimmedAuthor = authorName.trim();
   if (!trimmedAuthor) return { groups: [], totalItems: 0, providerTotalItems: 0, nextStartIndex: startIndex, hasMore: false };
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  return searchGoogleBooksPage(trimmedAuthor, startIndex, signal);
+  await waitUntilAdministrationInactive(signal);
+  const query = `inauthor:${trimmedAuthor}`;
+  const payload = functions && auth?.currentUser
+    ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+    : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+
+  const rawItems = payload.items ?? [];
+  const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
+  const groups = groupGoogleEditions(editions);
+  const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
+  const nextStartIndex = startIndex + rawItems.length;
+  const hasMore = rawItems.length > 0 && (
+    providerTotalItems > 0
+      ? nextStartIndex < providerTotalItems
+      : rawItems.length === GOOGLE_BOOKS_PAGE_SIZE
+  );
+
+  return {
+    groups,
+    totalItems: providerTotalItems || groups.length,
+    providerTotalItems,
+    nextStartIndex,
+    hasMore,
+  };
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
