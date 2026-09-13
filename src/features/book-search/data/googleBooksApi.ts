@@ -4,7 +4,7 @@ import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
-import { searchOpenLibrary } from './openLibraryApi';
+import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 
 interface GoogleIndustryIdentifier {
@@ -79,6 +79,11 @@ const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<vo
 const shouldBackOffCatalog = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return /\b(?:429|503)\b|resource-exhausted|unavailable/i.test(message);
+};
+
+const isGoogleQuotaError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /\b429\b|quota exceeded|resource-exhausted|queries per day/i.test(message);
 };
 
 const googleBooksErrorDetail = (body: string): string => {
@@ -301,28 +306,36 @@ export async function searchGoogleBooksPage(
 
   await waitUntilAdministrationInactive(signal);
   const builtQuery = buildGoogleBooksQuery(trimmed);
-  const payload = functions && auth?.currentUser
-    ? await requestProtectedGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-    : await requestDirectGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
-  const rawItems = payload.items ?? [];
-  const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
-  const groups = groupGoogleEditions(editions);
-  const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
-  const nextStartIndex = startIndex + rawItems.length;
-  const hasMore = rawItems.length > 0 && (
-    providerTotalItems > 0
-      ? nextStartIndex < providerTotalItems
-      : rawItems.length === GOOGLE_BOOKS_PAGE_SIZE
-  );
+  try {
+    const payload = functions && auth?.currentUser
+      ? await requestProtectedGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+      : await requestDirectGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
-  return {
-    groups,
-    totalItems: providerTotalItems || groups.length,
-    providerTotalItems,
-    nextStartIndex,
-    hasMore,
-  };
+    const rawItems = payload.items ?? [];
+    const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
+    const groups = groupGoogleEditions(editions);
+    const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
+    const nextStartIndex = startIndex + rawItems.length;
+    const hasMore = rawItems.length > 0 && (
+      providerTotalItems > 0
+        ? nextStartIndex < providerTotalItems
+        : rawItems.length === GOOGLE_BOOKS_PAGE_SIZE
+    );
+
+    return {
+      groups,
+      totalItems: providerTotalItems || groups.length,
+      providerTotalItems,
+      nextStartIndex,
+      hasMore,
+    };
+  } catch (error) {
+    if (!isGoogleQuotaError(error)) throw error;
+    googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+    console.warn('Google Books quota is exhausted; using paged Open Library results instead.', error);
+    return searchOpenLibraryPage(builtQuery, startIndex, GOOGLE_BOOKS_PAGE_SIZE, signal);
+  }
 }
 
 export async function searchGoogleBooksAuthorPage(
@@ -336,28 +349,36 @@ export async function searchGoogleBooksAuthorPage(
 
   await waitUntilAdministrationInactive(signal);
   const query = `inauthor:${trimmedAuthor}`;
-  const payload = functions && auth?.currentUser
-    ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-    : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
-  const rawItems = payload.items ?? [];
-  const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
-  const groups = groupGoogleEditions(editions);
-  const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
-  const nextStartIndex = startIndex + rawItems.length;
-  const hasMore = rawItems.length > 0 && (
-    providerTotalItems > 0
-      ? nextStartIndex < providerTotalItems
-      : rawItems.length === GOOGLE_BOOKS_PAGE_SIZE
-  );
+  try {
+    const payload = functions && auth?.currentUser
+      ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+      : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
-  return {
-    groups,
-    totalItems: providerTotalItems || groups.length,
-    providerTotalItems,
-    nextStartIndex,
-    hasMore,
-  };
+    const rawItems = payload.items ?? [];
+    const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
+    const groups = groupGoogleEditions(editions);
+    const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
+    const nextStartIndex = startIndex + rawItems.length;
+    const hasMore = rawItems.length > 0 && (
+      providerTotalItems > 0
+        ? nextStartIndex < providerTotalItems
+        : rawItems.length === GOOGLE_BOOKS_PAGE_SIZE
+    );
+
+    return {
+      groups,
+      totalItems: providerTotalItems || groups.length,
+      providerTotalItems,
+      nextStartIndex,
+      hasMore,
+    };
+  } catch (error) {
+    if (!isGoogleQuotaError(error)) throw error;
+    googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+    console.warn('Google Books quota is exhausted for author lookup; using paged Open Library results instead.', error);
+    return searchOpenLibraryPage(query, startIndex, GOOGLE_BOOKS_PAGE_SIZE, signal);
+  }
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
