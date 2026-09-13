@@ -4,6 +4,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
 import { getSessionDurationMinutes, getSessionPagesRead, localDateKey } from '../features/reading/sessionAnalytics';
 
 type InsightRange = '30-days' | '90-days' | 'all-time';
@@ -24,13 +25,7 @@ const mostCommon = (values: string[]) => { const counts = new Map<string, number
 const percentChange = (current: number, previous: number) => previous === 0 ? (current > 0 ? null : 0) : Math.round(((current - previous) / previous) * 100);
 const shortDelta = (current: number, previous: number) => { const change = percentChange(current, previous); if (change === null) return 'New activity'; if (change === 0) return 'No change'; return `${change > 0 ? '↑' : '↓'} ${Math.abs(change)}%`; };
 const comparisonText = (current: number, previous: number, noun: string) => { const change = percentChange(current, previous); if (change === null) return `${current} ${noun} now; there were none in the previous period.`; if (change === 0) return `${current} ${noun}, unchanged from the previous period.`; return `${current} ${noun}, ${Math.abs(change)}% ${change > 0 ? 'higher' : 'lower'} than the previous period (${previous}).`; };
-const isImportedBook = (book: UserBookRecord) => Boolean(book.sourceOfImport);
 const importedMetadataIsUsable = (book: UserBookRecord) => !isImportedBook(book) || book.importMetadataReviewNeeded !== true;
-const hasTrustworthyFinishedHistory = (book: UserBookRecord) => {
-  if (book.status !== 'finished' || !parseLocalDateKey(book.dateFinished)) return false;
-  if (!isImportedBook(book)) return true;
-  return book.importFinishedDateProvided === true && book.importMetadataReviewNeeded !== true;
-};
 
 export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ books, sessions }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
@@ -158,7 +153,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
         ].map(([label, value, delta]) => <div key={label} className="inkbound-panel rounded-2xl p-5"><p className="text-xs font-semibold uppercase tracking-[0.15em] text-[var(--ink-muted)]">{label}</p><p className="mt-2 font-serif text-3xl font-bold text-[var(--ink-ivory)]">{value}</p><p className="mt-2 text-xs font-semibold text-[var(--ink-gold-bright)]">{delta}</p></div>)}
       </section>
 
-      {importedBooks.length > 0 && <section className="rounded-2xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 px-5 py-4"><p className="text-sm font-semibold text-[var(--ink-ivory)]">Insight data quality</p><p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Reading time, pages, days, pace, time-of-day and environment patterns use completed Inkbound sessions only. Imported finishes count only when the source supplied a valid historical finish date and the record is not marked for review. Taste signals exclude imported metadata that needs review.</p>{importedReviewCount > 0 && <p className="mt-2 text-xs font-semibold text-[var(--ink-gold-bright)]">{importedReviewCount.toLocaleString()} imported record{importedReviewCount === 1 ? '' : 's'} currently excluded from metadata-based insights until reviewed.</p>}</section>}
+      {importedBooks.length > 0 && <section className="rounded-2xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 px-5 py-4"><p className="text-sm font-semibold text-[var(--ink-ivory)]">Insight data quality</p><p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Reading time, pages, days, pace, time-of-day and environment patterns use completed Inkbound sessions only. Finished-book history uses the same canonical valid-finish rule as the rest of Inkbound. Taste signals exclude imported metadata that needs review.</p>{importedReviewCount > 0 && <p className="mt-2 text-xs font-semibold text-[var(--ink-gold-bright)]">{importedReviewCount.toLocaleString()} imported record{importedReviewCount === 1 ? '' : 's'} currently excluded from metadata-based insights until reviewed.</p>}</section>}
 
       <section className="inkbound-panel rounded-3xl p-6">
         <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ink-gold-bright)]">Reading pulse</p><h3 className="mt-2 font-serif text-2xl text-[var(--ink-ivory)]">Activity across the selected period</h3></div><p className="text-xs text-[var(--ink-muted)]">Bars represent reading minutes from completed sessions</p></div>
