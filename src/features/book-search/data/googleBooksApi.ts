@@ -237,7 +237,13 @@ async function requestProtectedGoogleBooks(
     { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
     GoogleVolumesResponse
   >(functions, 'searchHardcoverBooks');
-  const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
+  const request: { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number } = {
+    query,
+    provider: 'google-books',
+    maxResults,
+  };
+  if (startIndex > 0) request.startIndex = startIndex;
+  const response = await callable(request);
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
   return response.data;
 }
@@ -253,9 +259,9 @@ async function requestDirectGoogleBooks(
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
-    startIndex: String(startIndex),
     maxResults: String(maxResults),
   });
+  if (startIndex > 0) params.set('startIndex', String(startIndex));
   if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
 
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
@@ -316,10 +322,6 @@ export async function searchGoogleBooksAuthorPage(
   const trimmedAuthor = authorName.trim();
   if (!trimmedAuthor) return { groups: [], totalItems: 0, providerTotalItems: 0, nextStartIndex: startIndex, hasMore: false };
 
-  // The regular catalog transport already handles multi-word queries reliably.
-  // Author pages page through that same working query and the UI keeps only exact
-  // author matches. This avoids Google Books returning 400 for inauthor searches
-  // while preserving pagination and exact-author catalog behavior.
   return searchGoogleBooksPage(trimmedAuthor, startIndex, signal);
 }
 
@@ -388,9 +390,6 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const builtQuery = buildGoogleBooksQuery(trimmed);
   const isIsbnLookup = /^isbn:/i.test(builtQuery);
 
-  // ISBN lookups are cheap and high-confidence in the trusted catalog, so try
-  // Inkbound first. Title/author searches go to Google first to avoid turning
-  // every imported book into several Firebase catalog calls.
   if (isIsbnLookup) {
     const trusted = await searchTrustedCatalogBaseline(trimmed);
     if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
