@@ -4,6 +4,7 @@ import { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { ResponsiveGrid } from '../../layout/responsive';
 import { getBookReadingState } from '../../features/reading/bookReadingState';
+import { SYNC_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   getCloudDataRevision,
@@ -19,7 +20,6 @@ interface LibraryBookGridProps {
   onToggleSelectBook: (id: string) => void;
 }
 
-const LOCAL_DATA_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
 const HYDRATION_FALLBACK_MS = 4000;
 const INITIAL_RENDER_COUNT = 120;
 const RENDER_STEP = 120;
@@ -29,7 +29,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
   const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
   const [cloudLibraryReady, setCloudLibraryReady] = useState(() => {
     if (!user) return true;
-    return getCloudDataRevision() > 0 && getRuntimeStorage().getItem(LOCAL_DATA_OWNER_UID_KEY) === user.uid;
+    return getCloudDataRevision() > 0 && getRuntimeStorage().getItem(SYNC_STORAGE_KEYS.localOwnerUid) === user.uid;
   });
   const [hydrationTimedOut, setHydrationTimedOut] = useState(false);
 
@@ -37,7 +37,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
     setHydrationTimedOut(false);
     const handleCloudUpdate = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
-      if (detail?.keys.includes('inkbound_books')) {
+      if (detail?.keys.includes(SYNC_STORAGE_KEYS.books)) {
         setCloudLibraryReady(true);
         setHydrationTimedOut(false);
       }
@@ -45,7 +45,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
     if (!isAuthReady) setCloudLibraryReady(false);
     else if (!user) setCloudLibraryReady(true);
-    else setCloudLibraryReady(getCloudDataRevision() > 0 && getRuntimeStorage().getItem(LOCAL_DATA_OWNER_UID_KEY) === user.uid);
+    else setCloudLibraryReady(getCloudDataRevision() > 0 && getRuntimeStorage().getItem(SYNC_STORAGE_KEYS.localOwnerUid) === user.uid);
     const fallbackTimer = user ? window.setTimeout(() => setHydrationTimedOut(true), HYDRATION_FALLBACK_MS) : null;
     return () => {
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, handleCloudUpdate);
