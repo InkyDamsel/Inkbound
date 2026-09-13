@@ -36,9 +36,9 @@ for (const file of files) {
   }
 }
 
-// Ownership, format, priority, and reading-material dropdowns must not recreate
-// their labels locally. This catches the common failure mode where one screen
-// silently exposes a smaller or differently-labelled set than another screen.
+// Ownership, format, priority, and material selectors must not recreate their
+// labels locally. This catches the exact class of bug where one surface exposes a
+// smaller/different set than another surface.
 const hardCodedOptionGroups = [
   {
     label: 'ownership',
@@ -67,14 +67,19 @@ for (const file of files) {
   }
 }
 
-// The compatibility-only ReadingStatus 'custom' must never be assigned from an
-// ownership category. customOwnershipCategoryId belongs to ownership === custom.
+// customOwnershipCategoryId has exactly one meaning: the selected custom
+// ownership value. It must never be used as a second reading-status/category
+// system or as a Collections membership store.
 for (const file of files) {
   const name = rel(file);
   const source = read(file);
   if (/customOwnershipCategoryId[\s\S]{0,500}status\s*:\s*['"]custom['"]/.test(source)
       || /status\s*:\s*['"]custom['"][\s\S]{0,500}customOwnershipCategoryId/.test(source)) {
     violations.push(`${name}: couples custom ownership metadata to reading status; customOwnershipCategoryId belongs only to ownership === 'custom'`);
+  }
+  if (/customOwnershipCategoryId[\s\S]{0,500}(?:collection|Library categor)/i.test(source)
+      && !name.endsWith('types.ts')) {
+    violations.push(`${name}: treats customOwnershipCategoryId as collection/category membership; Collections belong to UserBookRecord.collections`);
   }
 }
 
@@ -89,15 +94,18 @@ for (const value of ['currently-reading', 'tbr', 'finished', 'paused', 'dnf']) {
     violations.push(`${taxonomyPath}: READING_STATUS_OPTIONS must expose ${value}`);
   }
 }
+if (!taxonomy.includes('COMPATIBILITY_READING_STATUS_OPTIONS')) {
+  violations.push(`${taxonomyPath}: compatibility-only statuses must remain explicit instead of silently joining reader-assignable status options`);
+}
 
-// High-risk screens: these are the places users can mutate/filter the same
-// library taxonomy. Requiring canonical imports makes omissions fail CI instead
-// of becoming another Play Store hotfix.
+// High-risk screens mutate/filter the same domain values. Make their canonical
+// imports a release requirement so omission becomes a failed verification, not a
+// Play Store hotfix.
 const requiredCanonicalConsumers = new Map([
-  ['src/components/AddBookModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS']],
-  ['src/components/BatchEditModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS']],
-  ['src/components/BookDetailsModalCore.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'PRIORITY_OPTIONS']],
-  ['src/components/LibraryScreen.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS']],
+  ['src/components/AddBookModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'readCustomOwnershipCategories', 'withReadingStatus']],
+  ['src/components/BatchEditModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'readCustomOwnershipCategories']],
+  ['src/components/BookDetailsModalCore.tsx', ['READING_STATUS_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'CustomOwnershipBookControl', 'getBookReadingState', 'withReadingStatus']],
+  ['src/components/LibraryScreen.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'readCustomOwnershipCategories', 'getCanonicalProgressPercentage']],
 ]);
 for (const [name, symbols] of requiredCanonicalConsumers) {
   const full = path.join(root, name);
@@ -111,14 +119,68 @@ for (const [name, symbols] of requiredCanonicalConsumers) {
   }
 }
 
-// Custom ownership is account-owned data. Any selector that exposes the Custom
-// ownership value must also have a path to the canonical custom category store.
+const addBook = read(path.join(root, 'src/components/AddBookModal.tsx'));
+if (/Reading status \/ category|Custom categories/.test(addBook)) {
+  violations.push('AddBookModal.tsx: custom ownership categories must not be presented as reading statuses/categories');
+}
+if (!addBook.includes("ownership: 'custom'") && !addBook.includes("customOwnership")) {
+  violations.push('AddBookModal.tsx: manual add must preserve custom ownership through the canonical ownership field');
+}
+
+const batchEdit = read(path.join(root, 'src/components/BatchEditModal.tsx'));
+if (!batchEdit.includes('customOwnershipCategories') || !batchEdit.includes('customOwnershipCategoryId')) {
+  violations.push('BatchEditModal.tsx: custom ownership must be offered from the canonical custom ownership store');
+}
+
+const libraryScreen = read(path.join(root, 'src/components/LibraryScreen.tsx'));
+if (!libraryScreen.includes("ownershipFilter.startsWith('custom:')")) {
+  violations.push('LibraryScreen.tsx: custom ownership values must be filterable through the Ownership filter');
+}
+if (/activeCategory\.startsWith\(['"]custom:/.test(libraryScreen)) {
+  violations.push('LibraryScreen.tsx: custom ownership must not masquerade as a reading-status/library-category filter');
+}
+
+const bookDetails = read(path.join(root, 'src/components/BookDetailsModalCore.tsx'));
+if (/querySelector\([\s\S]*option\[value=/.test(bookDetails)) {
+  violations.push('BookDetailsModalCore.tsx: must not hide/replace a competing selector through DOM inspection');
+}
+
+// Any derived component that displays/sorts raw stored progress must consume the
+// canonical reading-state resolver. Mutation owners/import translators are
+// intentionally excluded because they write/reconcile the canonical record.
+for (const file of files.filter((file) => rel(file).startsWith('src/components/'))) {
+  const name = rel(file);
+  const source = read(file);
+  if (!/\.progressPercentage\b/.test(source)) continue;
+  const canonical = source.includes('getCanonicalProgressPercentage')
+    || source.includes('getBookReadingState')
+    || source.includes('getAverageBookProgress');
+  const mutationEditor = name === 'src/components/BookDetailsModalCore.tsx';
+  if (!canonical && !mutationEditor) {
+    violations.push(`${name}: reads raw progressPercentage without the canonical reading-state resolver`);
+  }
+}
+
+// Custom ownership is account-owned data. Any selector that removes the generic
+// Custom placeholder must also consume the canonical category store.
 for (const file of files) {
   const name = rel(file);
   const source = read(file);
   const exposesCustomOwnership = source.includes('OWNERSHIP_OPTIONS') && source.includes("option.value !== 'custom'");
   if (exposesCustomOwnership && !source.includes('readCustomOwnershipCategories') && !name.endsWith('/OwnershipManager.tsx')) {
     violations.push(`${name}: filters the Custom ownership option without consuming the canonical custom ownership categories`);
+  }
+}
+
+// No UI component gets to invent a second local persistence key for domain data.
+// Canonical registered-key enforcement is also performed by verify-source-of-truth;
+// this catches ad-hoc component keys for books/sessions/profile/goals/categories.
+for (const file of files.filter((file) => rel(file).startsWith('src/components/'))) {
+  const name = rel(file);
+  const source = read(file);
+  const suspiciousKey = /const\s+[A-Z0-9_]*(?:BOOK|SESSION|PROFILE|GOAL|OWNERSHIP|COLLECTION)[A-Z0-9_]*_KEY\s*=\s*['"]inkbound_/;
+  if (suspiciousKey.test(source)) {
+    violations.push(`${name}: declares a domain persistence key locally; consume storageKeys.ts or the owning feature constant`);
   }
 }
 
