@@ -27,7 +27,7 @@ import {
   SERIES_OVERRIDES_STORAGE_KEY,
   type SeriesOverrides,
 } from '../features/series/seriesOverrides';
-import { localClearIntentKey } from '../features/sync/storageKeys';
+import { ACCOUNT_DATA_STORAGE_KEYS, localClearIntentKey } from '../features/sync/storageKeys';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
@@ -58,8 +58,8 @@ const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions, isDarkMode, setIsDarkMode, onResetData }) => {
   const { userPlan, accessSource, trialPremiumUntil, openUpgradeModal } = useUserPlan();
   const { user, signOutAccount } = useAccountSync();
-  const [annualGoal, setAnnualGoal] = usePersistentState('inkbound_annual_goal', '25');
-  const [dailyGoalMins, setDailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
+  const [annualGoal, setAnnualGoal] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal, '25');
+  const [dailyGoalMins, setDailyGoalMins] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes, '30');
   const [seriesOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [exported, setExported] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
