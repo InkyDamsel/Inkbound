@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Download, Share2, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 
@@ -28,6 +29,11 @@ const formatOptions: Record<WrappedFormat, { label: string; width: number; heigh
 const monthKeyFor = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 const monthChoices = Array.from({ length: 18 }, (_, index) => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - index); return { key: monthKeyFor(date), label: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }; });
 const previousMonthKey = (monthKey: string) => { const [year, month] = monthKey.split('-').map(Number); return monthKeyFor(new Date(year, month - 2, 1)); };
+const monthRange = (monthKey: string) => {
+  const [year, month] = monthKey.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  return { start: `${monthKey}-01`, end: `${monthKey}-${String(lastDay).padStart(2, '0')}` };
+};
 const isValidSessionDate = (value: string) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false; const [year, month, day] = value.split('-').map(Number); const parsed = new Date(year, month - 1, day, 12); return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day; };
 const escapeXml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const percentageChange = (current: number, previous: number) => previous <= 0 ? (current > 0 ? 100 : 0) : Math.round(((current - previous) / previous) * 100);
@@ -38,6 +44,8 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   const [message, setMessage] = useState('');
   const selectedMonth = monthChoices.find((month) => month.key === preferences.monthKey) ?? monthChoices[0];
   const priorMonthKey = previousMonthKey(preferences.monthKey);
+  const selectedRange = monthRange(preferences.monthKey);
+  const priorRange = monthRange(priorMonthKey);
   const monthSessions = sessions.filter((session) => session.date.startsWith(preferences.monthKey) && isValidSessionDate(session.date) && getSessionDurationMinutes(session) > 0);
   const priorSessions = sessions.filter((session) => session.date.startsWith(priorMonthKey) && isValidSessionDate(session.date) && getSessionDurationMinutes(session) > 0);
   const finishedBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && book.dateFinished?.startsWith(preferences.monthKey));
@@ -47,7 +55,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
 
   const stats = useMemo(() => {
     const totalMinutes = monthSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
-    const pagesRead = monthSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+    const pagesRead = getEffectivePagesReadForPeriod(books, sessions, selectedRange.start, selectedRange.end);
     const readingDays = new Set(monthSessions.map((session) => session.date)).size;
     const averageSession = monthSessions.length ? Math.round(totalMinutes / monthSessions.length) : 0;
     const longestSession = monthSessions.reduce((longest, session) => Math.max(longest, getSessionDurationMinutes(session)), 0);
@@ -60,10 +68,10 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     const formatCounts = activeBooks.reduce<Record<string, number>>((counts, book) => { const format = getActiveEdition(book)?.format ?? 'unknown'; counts[format] = (counts[format] ?? 0) + 1; return counts; }, {});
     const topFormat = Object.entries(formatCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'No dominant format';
     const priorMinutes = priorSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
-    const priorPages = priorSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+    const priorPages = getEffectivePagesReadForPeriod(books, sessions, priorRange.start, priorRange.end);
     const priorDays = new Set(priorSessions.map((session) => session.date)).size;
     return { totalMinutes, pagesRead, readingDays, averageSession, longestSession, favoriteGenre, highestRated, favoriteQuote, fiveStarReads, topFormat, changes: { pages: percentageChange(pagesRead, priorPages), minutes: percentageChange(totalMinutes, priorMinutes), days: percentageChange(readingDays, priorDays), finishes: percentageChange(finishedBooks.length, priorFinishedBooks.length) } };
-  }, [activeBooks, finishedBooks, monthSessions, priorFinishedBooks.length, priorSessions]);
+  }, [activeBooks, books, finishedBooks, monthSessions, priorFinishedBooks.length, priorRange.end, priorRange.start, priorSessions, selectedRange.end, selectedRange.start, sessions]);
 
   const cards: WrappedCard[] = [
     { eyebrow: `${selectedMonth.label} Reading Wrapped`, title: `${finishedBooks.length} ${finishedBooks.length === 1 ? 'book' : 'books'} finished`, body: `${stats.pagesRead.toLocaleString()} pages · ${formatMinutes(stats.totalMinutes)} · ${stats.readingDays} reading days`, footer: `${monthSessions.length} completed sessions · ${stats.fiveStarReads} five-star ${stats.fiveStarReads === 1 ? 'read' : 'reads'}` },
@@ -121,6 +129,6 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     <section className="inkbound-panel flex min-h-[620px] flex-col items-center justify-center rounded-3xl p-4 sm:p-8"><div className="mb-4 flex w-full max-w-[620px] items-center justify-between"><button type="button" onClick={() => changeCard(cardIndex - 1)} className="quiet-shelf-icon-button h-11 w-11" aria-label="Previous Wrapped card"><ChevronLeft /></button><span className="text-xs font-semibold text-[var(--ink-muted)]">Card {cardIndex + 1} of {cards.length}</span><button type="button" onClick={() => changeCard(cardIndex + 1)} className="quiet-shelf-icon-button h-11 w-11" aria-label="Next Wrapped card"><ChevronRight /></button></div>
       <div className={`relative flex w-full max-w-[620px] flex-col justify-between overflow-hidden rounded-[32px] border border-white/20 text-center shadow-2xl ${previewCardPadding}`} style={{ aspectRatio: `${format.width} / ${format.height}`, background: previewBackground, color: theme.text, boxShadow: '0 30px 80px rgba(0,0,0,.42), inset 0 0 80px rgba(0,0,0,.18)' }}><div><p className="text-[10px] font-bold uppercase tracking-[0.35em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p><p className={`${isSquare ? 'mt-2' : isStory ? 'mt-4' : 'mt-3'} text-[10px] font-bold uppercase tracking-[0.18em] opacity-80 sm:text-xs sm:tracking-[0.23em]`}>{currentCard.eyebrow}</p></div><div className="flex flex-1 flex-col items-center justify-center py-3 sm:py-5"><Sparkles className={`${isSquare ? 'mb-3 h-6 w-6' : isStory ? 'mb-8 h-10 w-10' : 'mb-4 h-7 w-7'} mx-auto drop-shadow`} style={{ color: theme.accent }} /><h2 className={`font-serif font-bold leading-[1.08] drop-shadow-lg ${previewTitleClass}`}>{currentCard.title}</h2><p className={`mx-auto max-w-xl opacity-90 drop-shadow ${previewBodyClass}`}>{currentCard.body}</p><div className={`mx-auto max-w-xl rounded-2xl border border-white/10 bg-black/[0.12] px-4 py-3 backdrop-blur-[2px] shadow-[0_8px_24px_rgba(0,0,0,0.12)] ${previewFooterClass}`}>{currentCard.footer}</div></div><p className={`${isSquare ? 'text-[10px]' : 'text-xs'} font-semibold drop-shadow`} style={{ color: theme.accent }}>{cardIndex + 1} / {cards.length} · Created with Inkbound</p></div>
     </section></div>
-    {dayChange !== 0 && <p className="text-center text-xs text-[var(--ink-muted)]">Monthly comparisons use the immediately preceding calendar month and only completed Inkbound reading sessions.</p>}
+    {dayChange !== 0 && <p className="text-center text-xs text-[var(--ink-muted)]">Monthly page totals use Inkbound's canonical reading-history calculation. Reading time and reading days use completed Inkbound sessions.</p>}
   </div>;
 };
