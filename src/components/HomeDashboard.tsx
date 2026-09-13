@@ -13,8 +13,9 @@ import {
 } from 'lucide-react';
 import { ReadingSession, ReadingStatus, UserBookRecord } from '../types';
 import { getBookReadingState } from '../features/reading/bookReadingState';
+import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { getAnnualReadingGoal, setAnnualReadingGoal } from '../features/reading/readingPreferences';
-import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
+import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { BookCover } from './BookCover';
 
@@ -87,7 +88,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 }) => {
   const now = new Date();
   const greeting = getGreeting(now.getHours());
-  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-`;
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthPrefix = `${monthKey}-`;
+  const monthStart = `${monthKey}-01`;
+  const monthEnd = `${monthKey}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
   const yearPrefix = `${now.getFullYear()}-`;
   const [annualGoal, setAnnualGoalState] = useState(() => getAnnualReadingGoal());
   const [isEditingAnnualGoal, setIsEditingAnnualGoal] = useState(false);
@@ -105,7 +109,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const monthSessions = sessions.filter((session) => session.date.startsWith(monthPrefix) && getSessionDurationMinutes(session) > 0);
   const monthFinished = finishedBooks.filter((book) => book.dateFinished?.startsWith(monthPrefix));
   const monthMinutes = monthSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
-  const monthPages = monthSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+  const monthPages = getEffectivePagesReadForPeriod(books, sessions, monthStart, monthEnd);
   const goalPercent = annualGoal > 0 ? Math.min(100, Math.round((finishedThisYear.length / annualGoal) * 100)) : 0;
 
   const saveAnnualGoal = () => {
