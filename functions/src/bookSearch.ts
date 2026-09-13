@@ -143,10 +143,11 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
-    startIndex: String(startIndex),
     maxResults: String(maxResults),
     key: apiKey,
   });
+  if (startIndex > 0) params.set('startIndex', String(startIndex));
+
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
   if (!response.ok) throw new Error(`Google Books returned ${response.status}.`);
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
@@ -269,15 +270,6 @@ async function hardcoverCatalog(query: string) {
   return { groups, totalItems: groups.length };
 }
 
-/**
- * Authenticated catalog gateway used by Inkbound's protected third-party search
- * integrations. The existing export name is retained for compatibility; Android
- * may request provider='google-books' so the Google API key stays off the WebView.
- *
- * Hardcover is supplemental metadata. Its upstream availability or credentials
- * must never turn an otherwise successful Inkbound book search into a failed
- * client request. Google Books remains the authoritative protected transport.
- */
 export const searchHardcoverBooks = onCall(
   { secrets: [HARDCOVER_API_TOKEN, GOOGLE_BOOKS_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
