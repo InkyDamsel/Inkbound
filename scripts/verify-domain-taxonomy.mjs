@@ -17,11 +17,30 @@ const files = walk(srcRoot);
 
 const taxonomyPath = 'src/domain/libraryTaxonomy.ts';
 const typesPath = 'src/types.ts';
+const storageKeysPath = 'src/features/sync/storageKeys.ts';
 const importMappingAllowlist = new Set([
   'src/features/import/spreadsheetImport.ts',
   'src/features/import/safeReimportMerge.ts',
   'src/features/library/libraryNormalization.ts',
 ]);
+
+// Every registered persistent key has exactly one literal declaration:
+// storageKeys.ts. Consumers import the registry instead of spelling the same key
+// again. A matching duplicate is still a second authority and is forbidden.
+const storageKeysSource = read(path.join(root, storageKeysPath));
+const registeredStorageKeyLiterals = [...new Set(
+  [...storageKeysSource.matchAll(/['"](inkbound_[a-z0-9_]+)['"]/gi)].map((match) => match[1]),
+)];
+for (const file of files) {
+  const name = rel(file);
+  if (name === storageKeysPath) continue;
+  const source = read(file);
+  for (const key of registeredStorageKeyLiterals) {
+    if (source.includes(`'${key}'`) || source.includes(`"${key}"`)) {
+      violations.push(`${name}: redefines registered storage key ${key}; import its owner from storageKeys.ts`);
+    }
+  }
+}
 
 // Reader-facing status selectors must come from the canonical taxonomy. External
 // import normalization may mention raw status values because it translates a
@@ -78,7 +97,8 @@ for (const file of files) {
     violations.push(`${name}: couples custom ownership metadata to reading status; customOwnershipCategoryId belongs only to ownership === 'custom'`);
   }
   if (/customOwnershipCategoryId[\s\S]{0,500}(?:collection|Library categor)/i.test(source)
-      && !name.endsWith('types.ts')) {
+      && !name.endsWith('types.ts')
+      && name !== 'src/features/library/libraryNormalization.ts') {
     violations.push(`${name}: treats customOwnershipCategoryId as collection/category membership; Collections belong to UserBookRecord.collections`);
   }
 }
@@ -106,11 +126,16 @@ const requiredCanonicalConsumers = new Map([
   ['src/components/BatchEditModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'readCustomOwnershipCategories']],
   ['src/components/BookDetailsModalCore.tsx', ['READING_STATUS_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'CustomOwnershipBookControl', 'getBookReadingState', 'withReadingStatus']],
   ['src/components/LibraryScreen.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'readCustomOwnershipCategories', 'getCanonicalProgressPercentage']],
+  ['src/components/HomeDashboard.tsx', ['getEffectivePagesReadForPeriod', 'getBookReadingState']],
+  ['src/components/MonthlyWrappedScreen.tsx', ['getEffectivePagesReadForPeriod']],
+  ['src/components/StatisticsScreen.tsx', ['getEffectivePagesReadForPeriod']],
+  ['src/components/YearInBooksScreen.tsx', ['getEffectivePagesReadForPeriod']],
+  ['src/components/ReadingInsightsScreen.tsx', ['hasTrustworthyFinishedHistory', 'isImportedBook']],
 ]);
 for (const [name, symbols] of requiredCanonicalConsumers) {
   const full = path.join(root, name);
   if (!fs.existsSync(full)) {
-    violations.push(`${name}: canonical taxonomy consumer is missing`);
+    violations.push(`${name}: canonical source-of-truth consumer is missing`);
     continue;
   }
   const source = read(full);
@@ -123,7 +148,7 @@ const addBook = read(path.join(root, 'src/components/AddBookModal.tsx'));
 if (/Reading status \/ category|Custom categories/.test(addBook)) {
   violations.push('AddBookModal.tsx: custom ownership categories must not be presented as reading statuses/categories');
 }
-if (!addBook.includes("ownership: 'custom'") && !addBook.includes("customOwnership")) {
+if (!addBook.includes("ownership: 'custom'") && !addBook.includes('customOwnership')) {
   violations.push('AddBookModal.tsx: manual add must preserve custom ownership through the canonical ownership field');
 }
 
@@ -138,6 +163,14 @@ if (!libraryScreen.includes("ownershipFilter.startsWith('custom:')")) {
 }
 if (/activeCategory\.startsWith\(['"]custom:/.test(libraryScreen)) {
   violations.push('LibraryScreen.tsx: custom ownership must not masquerade as a reading-status/library-category filter');
+}
+
+const normalization = read(path.join(root, 'src/features/library/libraryNormalization.ts'));
+if (!normalization.includes("normalized.status === 'wishlist'") || !normalization.includes("normalized.status === 'custom'")) {
+  violations.push('libraryNormalization.ts: must own legacy wishlist/custom reading-status migration before UI consumption');
+}
+if (!normalization.includes("normalized.ownership !== 'custom' && normalized.customOwnershipCategoryId")) {
+  violations.push('libraryNormalization.ts: must clear stale custom ownership ids when ownership is not custom');
 }
 
 const bookDetails = read(path.join(root, 'src/components/BookDetailsModalCore.tsx'));
@@ -161,6 +194,35 @@ for (const file of files.filter((file) => rel(file).startsWith('src/components/'
   }
 }
 
+// Pages shown as historical/reporting totals have a single owner. Session-only
+// features such as achievements/challenges/reading activity may intentionally
+// use getSessionPagesRead because their labels explicitly describe tracked
+// Inkbound activity; broad report surfaces may not recompute the metric.
+const canonicalPageReportConsumers = [
+  'src/components/HomeDashboard.tsx',
+  'src/components/MonthlyWrappedScreen.tsx',
+  'src/components/StatisticsScreen.tsx',
+  'src/components/YearInBooksScreen.tsx',
+];
+for (const name of canonicalPageReportConsumers) {
+  const source = read(path.join(root, name));
+  if (!source.includes('getEffectivePagesReadForPeriod')) {
+    violations.push(`${name}: historical page totals must use readingPageTotals.ts`);
+  }
+}
+
+// The canonical trustworthy-finish rule lives in inkboundActivity.ts. Screens
+// may consume it, but they may not silently redefine it with slightly different
+// import/date semantics.
+for (const file of files.filter((file) => rel(file).startsWith('src/components/'))) {
+  const name = rel(file);
+  const source = read(file);
+  if (name !== 'src/features/reading/inkboundActivity.ts'
+      && /(?:const|function)\s+hasTrustworthyFinishedHistory\b/.test(source)) {
+    violations.push(`${name}: redefines hasTrustworthyFinishedHistory; import it from inkboundActivity.ts`);
+  }
+}
+
 // Custom ownership is account-owned data. Any selector that removes the generic
 // Custom placeholder must also consume the canonical category store.
 for (const file of files) {
@@ -173,8 +235,8 @@ for (const file of files) {
 }
 
 // No UI component gets to invent a second local persistence key for domain data.
-// Canonical registered-key enforcement is also performed by verify-source-of-truth;
-// this catches ad-hoc component keys for books/sessions/profile/goals/categories.
+// UI-only preferences may own local keys, but books/sessions/profile/goals/
+// ownership/collections must use the registered owner.
 for (const file of files.filter((file) => rel(file).startsWith('src/components/'))) {
   const name = rel(file);
   const source = read(file);
@@ -185,9 +247,9 @@ for (const file of files.filter((file) => rel(file).startsWith('src/components/'
 }
 
 if (violations.length) {
-  console.error('Inkbound domain taxonomy verification failed.');
+  console.error('Inkbound domain/source-of-truth verification failed.');
   for (const violation of [...new Set(violations)].sort()) console.error(`- ${violation}`);
   process.exit(1);
 }
 
-console.log('Inkbound domain taxonomy source-of-truth verification passed.');
+console.log('Inkbound domain/source-of-truth verification passed.');
