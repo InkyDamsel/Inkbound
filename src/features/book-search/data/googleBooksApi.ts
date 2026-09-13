@@ -89,11 +89,6 @@ export const buildGoogleBooksQuery = (value: string): string => {
   return trimmed;
 };
 
-const buildGoogleBooksAuthorQuery = (authorName: string): string => {
-  const normalizedName = authorName.trim().replace(/"/g, '').replace(/\s+/g, ' ');
-  return `inauthor:${normalizedName}`;
-};
-
 const publicationYear = (value?: string): number => {
   const match = value?.match(/\d{4}/);
   return match ? Number(match[0]) : new Date().getFullYear();
@@ -320,7 +315,12 @@ export async function searchGoogleBooksAuthorPage(
 ): Promise<GoogleBooksAuthorPage> {
   const trimmedAuthor = authorName.trim();
   if (!trimmedAuthor) return { groups: [], totalItems: 0, providerTotalItems: 0, nextStartIndex: startIndex, hasMore: false };
-  return searchGoogleBooksPage(buildGoogleBooksAuthorQuery(trimmedAuthor), startIndex, signal);
+
+  // The regular catalog transport already handles multi-word queries reliably.
+  // Author pages page through that same working query and the UI keeps only exact
+  // author matches. This avoids Google Books returning 400 for inauthor searches
+  // while preserving pagination and exact-author catalog behavior.
+  return searchGoogleBooksPage(trimmedAuthor, startIndex, signal);
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
