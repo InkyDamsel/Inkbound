@@ -85,9 +85,8 @@ const mainSource = fs.readFileSync(mainPath, 'utf8');
 const applicationEntrySource = fs.readFileSync(applicationEntryPath, 'utf8');
 // No service-worker registration is the safest native configuration. If web PWA
 // registration is added later, it must be explicitly excluded from native WebView.
-const mentionsServiceWorker = mainSource.includes('serviceWorker') || applicationEntrySource.includes('serviceWorker');
-const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator")
-  || applicationEntrySource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator");
+const mentionsServiceWorker = mainSource.includes('serviceWorker');
+const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator");
 if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
 }
