@@ -44,11 +44,13 @@ interface GoogleVolumesResponse {
   items?: GoogleVolume[];
 }
 
-export interface GoogleBooksAuthorPage extends BookSearchResponse {
+export interface GoogleBooksCatalogPage extends BookSearchResponse {
   providerTotalItems: number;
   nextStartIndex: number;
   hasMore: boolean;
 }
+
+export type GoogleBooksAuthorPage = GoogleBooksCatalogPage;
 
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
@@ -85,6 +87,11 @@ export const buildGoogleBooksQuery = (value: string): string => {
   const compact = compactIsbn(trimmed);
   if (/^(?:97[89])?\d{9}[\dX]$/i.test(compact)) return `isbn:${compact}`;
   return trimmed;
+};
+
+const buildGoogleBooksAuthorQuery = (authorName: string): string => {
+  const exactName = authorName.trim().replace(/"/g, '').replace(/\s+/g, ' ');
+  return `inauthor:"${exactName}"`;
 };
 
 const publicationYear = (value?: string): number => {
@@ -271,20 +278,20 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
   return { groups, totalItems: payload.totalItems ?? groups.length };
 }
 
-export async function searchGoogleBooksAuthorPage(
-  authorName: string,
+export async function searchGoogleBooksPage(
+  query: string,
   startIndex = 0,
   signal?: AbortSignal,
-): Promise<GoogleBooksAuthorPage> {
-  const trimmedAuthor = authorName.trim();
-  if (!trimmedAuthor) return { groups: [], totalItems: 0, providerTotalItems: 0, nextStartIndex: startIndex, hasMore: false };
+): Promise<GoogleBooksCatalogPage> {
+  const trimmed = query.trim();
+  if (!trimmed) return { groups: [], totalItems: 0, providerTotalItems: 0, nextStartIndex: startIndex, hasMore: false };
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   await waitUntilAdministrationInactive(signal);
-  const query = `inauthor:${trimmedAuthor}`;
+  const builtQuery = buildGoogleBooksQuery(trimmed);
   const payload = functions && auth?.currentUser
-    ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-    : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    ? await requestProtectedGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+    : await requestDirectGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
   const rawItems = payload.items ?? [];
   const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
@@ -304,6 +311,16 @@ export async function searchGoogleBooksAuthorPage(
     nextStartIndex,
     hasMore,
   };
+}
+
+export async function searchGoogleBooksAuthorPage(
+  authorName: string,
+  startIndex = 0,
+  signal?: AbortSignal,
+): Promise<GoogleBooksAuthorPage> {
+  const trimmedAuthor = authorName.trim();
+  if (!trimmedAuthor) return { groups: [], totalItems: 0, providerTotalItems: 0, nextStartIndex: startIndex, hasMore: false };
+  return searchGoogleBooksPage(buildGoogleBooksAuthorQuery(trimmedAuthor), startIndex, signal);
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
