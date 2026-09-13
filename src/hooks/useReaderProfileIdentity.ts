@@ -6,9 +6,10 @@ import {
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from '../features/sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 
-const PROFILE_STORAGE_KEY = 'inkbound_reader_profile';
+const PROFILE_STORAGE_KEY = SYNC_STORAGE_KEYS.profile;
 
 interface StoredReaderIdentity {
   displayName?: string;

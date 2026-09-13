@@ -1,7 +1,8 @@
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../sync/storageKeys';
 import { readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
 
-export const ANNUAL_READING_GOAL_KEY = 'inkbound_annual_goal';
-export const DAILY_READING_GOAL_MINUTES_KEY = 'inkbound_daily_goal_minutes';
+export const ANNUAL_READING_GOAL_KEY = ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal;
+export const DAILY_READING_GOAL_MINUTES_KEY = ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes;
 
 const readPositiveInteger = (key: string, fallback: number, maximum: number): number => {
   const raw = readRuntimeJson<unknown>(key, fallback);
