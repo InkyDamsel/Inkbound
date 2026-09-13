@@ -6,18 +6,35 @@ import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
  * Imported catalog exports sometimes mark every row as owned, including
  * unpublished "Untitled (Series, #N)" placeholders. Those entries represent a
  * future installment, not something a reader can currently own/borrow/access.
- * Wishlist is preserved because that is an intentional reader choice.
  *
- * This boundary also applies canonical reading-state compatibility fixes before
- * the record is exposed to feature screens. Finished records are normalized
- * through bookReadingState.ts so every screen sees the same completion state.
+ * This boundary also owns legacy domain compatibility. Older Inkbound builds
+ * briefly represented Wishlist as a reading status and reused the custom
+ * ownership category id as a custom reading category. Current Inkbound keeps
+ * reading status and ownership separate, so those old records are migrated once
+ * here before any feature screen can see them.
  */
 export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
   let normalized = reconcileFinishedBookProgress(book);
 
-  // Ownership and reading status are independent facts. A reader can move a
-  // previously finished book to the Wishlist ownership bucket without erasing
-  // its finish date/history. Do not normalize one field by rewriting the other.
+  if (normalized.status === 'wishlist') {
+    normalized = {
+      ...normalized,
+      status: 'tbr',
+      ownership: 'wishlist',
+      customOwnershipCategoryId: undefined,
+    };
+  } else if (normalized.status === 'custom') {
+    normalized = normalized.customOwnershipCategoryId
+      ? {
+          ...normalized,
+          status: 'tbr',
+          ownership: 'custom',
+        }
+      : {
+          ...normalized,
+          status: 'tbr',
+        };
+  }
 
   // Library-loan dates only belong to actual library loans. If ownership moves to
   // owned, subscription, borrowed-from-person, wishlist, custom, or none, keeping
@@ -27,6 +44,13 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
     normalized = { ...normalized, libraryLoan: undefined };
   }
 
+  // A custom ownership id has no meaning unless ownership is actually custom.
+  // Clearing stale ids here prevents an old category from leaking into filters or
+  // future editors after the reader changes ownership.
+  if (normalized.ownership !== 'custom' && normalized.customOwnershipCategoryId) {
+    normalized = { ...normalized, customOwnershipCategoryId: undefined };
+  }
+
   const isFutureUntitledSeriesPlaceholder = /^untitled\b/i.test(normalized.work.title.trim())
     && Boolean(inferSeriesHintFromTitle(normalized.work.title))
     && normalized.status !== 'finished'
@@ -34,7 +58,7 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
 
   if (!isFutureUntitledSeriesPlaceholder) return normalized;
   if (normalized.ownership === 'none' || normalized.ownership === 'wishlist') return normalized;
-  return { ...normalized, ownership: 'none' };
+  return { ...normalized, ownership: 'none', customOwnershipCategoryId: undefined };
 }
 
 export function normalizeCanonicalLibraryRecords(books: UserBookRecord[]): {
