@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { OWNERSHIP_OPTIONS } from '../../domain/libraryTaxonomy';
 import type { OwnershipStatus, UserBookRecord } from '../../types';
@@ -17,13 +17,12 @@ interface CustomOwnershipBookControlProps {
 }
 
 type CustomOwnershipSelection = `custom:${string}`;
-type OwnershipSelection = OwnershipStatus | CustomOwnershipSelection;
+type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
 
 const BUILT_IN_OWNERSHIP_OPTIONS = OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom');
 const isCustomSelection = (value: OwnershipSelection): value is CustomOwnershipSelection => value.startsWith('custom:');
 
 export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProps> = ({ book, onUpdateBook }) => {
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const [categories, setCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -39,26 +38,6 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
     return () => {
       window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
       window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
-    };
-  }, []);
-
-  // Book Details still renders its historical built-in Ownership select next to
-  // this shared control. This control is now the one authoritative ownership
-  // picker because it includes both built-in and reader-defined values.
-  useEffect(() => {
-    const root = rootRef.current;
-    const grid = root?.parentElement;
-    if (!grid) return;
-    const labels = Array.from(grid.querySelectorAll(':scope > label'));
-    const legacyOwnershipLabel = labels.find((label) => {
-      const select = label.querySelector('select');
-      return Boolean(select?.querySelector('option[value="owned"]') && select?.querySelector('option[value="subscription"]'));
-    }) as HTMLElement | undefined;
-    if (!legacyOwnershipLabel) return;
-    const previousDisplay = legacyOwnershipLabel.style.display;
-    legacyOwnershipLabel.style.display = 'none';
-    return () => {
-      legacyOwnershipLabel.style.display = previousDisplay;
     };
   }, []);
 
@@ -101,7 +80,7 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
   };
 
   return (
-    <div ref={rootRef} className="sm:col-span-1">
+    <div className="sm:col-span-1">
       {!creating ? (
         <label className="text-xs font-bold text-[#f4efe6]">
           Ownership
