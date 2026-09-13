@@ -15,6 +15,7 @@ import { useAccountSync } from '../context/AccountSyncContext';
 import { formatTrialDaysRemaining } from '../features/billing/trialAccess';
 import { ResponsiveGrid } from '../layout/responsive';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import { readProfileMedia } from '../features/profile/profileMedia';
 import {
@@ -34,7 +35,7 @@ interface ProfileScreenProps {
   sessions: ReadingSession[];
 }
 
-const PROFILE_STORAGE_KEY = 'inkbound_reader_profile';
+const PROFILE_STORAGE_KEY = SYNC_STORAGE_KEYS.profile;
 const MAX_AVATAR_BYTES = 140_000;
 const MAX_BANNER_BYTES = 475_000;
 const MAX_PROFILE_SOURCE_BYTES = 12 * 1024 * 1024;
