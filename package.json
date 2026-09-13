@@ -13,7 +13,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:critical": "tsx scripts/critical-reading-regressions.ts",
-    "verify:source-of-truth": "node scripts/verify-source-of-truth.mjs",
+    "verify:source-of-truth": "node scripts/verify-source-of-truth.mjs && node scripts/verify-domain-taxonomy.mjs",
     "verify:parity": "node scripts/verify-cross-platform-parity.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
     "verify:release-artifacts": "node scripts/verify-release-artifacts.mjs",
