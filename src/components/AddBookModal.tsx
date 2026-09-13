@@ -7,7 +7,7 @@ import {
   PRIORITY_OPTIONS,
   READING_STATUS_OPTIONS,
 } from '../domain/libraryTaxonomy';
-import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../features/book-search/data/googleBooksApi';
+import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
@@ -40,6 +40,9 @@ type AuthorPageState = {
   previousQuery: string;
   previousResults: BookSearchWorkGroup[];
   previousHasSearched: boolean;
+  previousSearchNextStartIndex: number;
+  previousSearchProviderTotal: number | null;
+  previousSearchHasMore: boolean;
 };
 
 type BarcodeDetectorLike = {
@@ -81,7 +84,7 @@ const sameCatalogEdition = (left: BookSearchEdition, right: BookSearchEdition) =
   return leftIsbns.some((isbn) => rightIsbns.has(isbn));
 };
 
-const mergeAuthorResultGroups = (current: BookSearchWorkGroup[], incoming: BookSearchWorkGroup[]) => {
+const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: BookSearchWorkGroup[]) => {
   const merged = current.map((group) => ({ ...group, genres: [...group.genres], editions: [...group.editions] }));
   const byIdentity = new Map<string, BookSearchWorkGroup>();
   merged.forEach((group) => {
@@ -157,6 +160,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
   const [addedSearchBooks, setAddedSearchBooks] = useState<Map<string, UserBookRecord>>(() => new Map());
+  const [searchNextStartIndex, setSearchNextStartIndex] = useState(0);
+  const [searchProviderTotal, setSearchProviderTotal] = useState<number | null>(null);
+  const [searchHasMore, setSearchHasMore] = useState(false);
+  const [isLoadingSearchMore, setIsLoadingSearchMore] = useState(false);
   const [authorPage, setAuthorPage] = useState<AuthorPageState | null>(null);
   const [authorNextStartIndex, setAuthorNextStartIndex] = useState(0);
   const [authorProviderTotal, setAuthorProviderTotal] = useState<number | null>(null);
@@ -222,6 +229,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setQuery(authorPage.previousQuery);
         setResults(authorPage.previousResults);
         setHasSearched(authorPage.previousHasSearched);
+        setSearchNextStartIndex(authorPage.previousSearchNextStartIndex);
+        setSearchProviderTotal(authorPage.previousSearchProviderTotal);
+        setSearchHasMore(authorPage.previousSearchHasMore);
         setSearchError(null);
         setAuthorPage(null);
         setAuthorNextStartIndex(0);
@@ -260,18 +270,57 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setAuthorProviderTotal(null);
     setAuthorHasMore(false);
     setIsLoadingAuthorMore(false);
+    setSearchNextStartIndex(0);
+    setSearchProviderTotal(null);
+    setSearchHasMore(false);
+    setIsLoadingSearchMore(false);
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
-      const response = await searchGoogleBooks(trimmedQuery);
-      setResults(response.groups);
+      let googlePage = null;
+      try {
+        googlePage = await searchGoogleBooksPage(trimmedQuery, 0);
+      } catch (error) {
+        console.warn('Paged Google Books search unavailable; falling back to the standard catalog chain.', error);
+      }
+
+      if (googlePage && googlePage.groups.length > 0) {
+        setResults(googlePage.groups);
+        setSearchNextStartIndex(googlePage.nextStartIndex);
+        setSearchProviderTotal(googlePage.providerTotalItems || null);
+        setSearchHasMore(googlePage.hasMore);
+      } else {
+        const response = await searchGoogleBooks(trimmedQuery);
+        setResults(response.groups);
+        setSearchNextStartIndex(0);
+        setSearchProviderTotal(null);
+        setSearchHasMore(false);
+      }
     } catch (error) {
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const loadMoreSearchResults = async () => {
+    const trimmedQuery = query.trim();
+    if (authorPage || !trimmedQuery || !searchHasMore || isLoadingSearchMore) return;
+    setIsLoadingSearchMore(true);
+    setSearchError(null);
+    try {
+      const response = await searchGoogleBooksPage(trimmedQuery, searchNextStartIndex);
+      setResults((current) => mergeCatalogResultGroups(current, response.groups));
+      setSearchNextStartIndex(response.nextStartIndex);
+      setSearchProviderTotal(response.providerTotalItems || searchProviderTotal);
+      setSearchHasMore(response.hasMore && response.nextStartIndex > searchNextStartIndex);
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : 'Could not load more search results. Please try again.');
+    } finally {
+      setIsLoadingSearchMore(false);
     }
   };
 
@@ -282,6 +331,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       previousQuery: query,
       previousResults: results,
       previousHasSearched: hasSearched,
+      previousSearchNextStartIndex: searchNextStartIndex,
+      previousSearchProviderTotal: searchProviderTotal,
+      previousSearchHasMore: searchHasMore,
     };
     setAuthorPage(previousState);
     setAuthorNextStartIndex(0);
@@ -315,7 +367,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     try {
       const response = await searchGoogleBooksAuthorPage(authorPage.name, authorNextStartIndex);
       const exactAuthorResults = filterExactAuthorResults(response.groups, authorPage.name);
-      setResults((current) => mergeAuthorResultGroups(current, exactAuthorResults));
+      setResults((current) => mergeCatalogResultGroups(current, exactAuthorResults));
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || authorProviderTotal);
       setAuthorHasMore(response.hasMore && response.nextStartIndex > authorNextStartIndex);
@@ -331,6 +383,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setQuery(authorPage.previousQuery);
     setResults(authorPage.previousResults);
     setHasSearched(authorPage.previousHasSearched);
+    setSearchNextStartIndex(authorPage.previousSearchNextStartIndex);
+    setSearchProviderTotal(authorPage.previousSearchProviderTotal);
+    setSearchHasMore(authorPage.previousSearchHasMore);
     setSearchError(null);
     setAuthorPage(null);
     setAuthorNextStartIndex(0);
@@ -749,21 +804,33 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 </div>
               </section>
             ) : (
-              <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
-                <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
-                <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
-              </form>
+              <>
+                <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
+                  <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
+                  <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
+                </form>
+                {!isSearching && hasSearched && results.length > 0 && searchProviderTotal !== null && (
+                  <p className="text-xs text-[#776b78]">Showing {results.length} unique title{results.length === 1 ? '' : 's'}{searchHasMore ? ' so far' : ''}.</p>
+                )}
+              </>
             )}
             {searchError && <div className="rounded-xl border border-[#c97b7b]/40 bg-[#c97b7b]/10 p-4 text-sm text-[#efb6b6]">{searchError}</div>}
             {!authorPage && !hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65" /><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. Add books directly to TBR without leaving your results, or choose another list when you need it.</p></div>}
             {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">{authorPage ? `No books found for ${authorPage.name}` : 'No matching material found'}</p>{!authorPage && <button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button>}</div>}
             {isSearching && authorPage && <div className="grid place-items-center rounded-2xl border border-dashed border-[#c5a059]/20 py-12 text-[#ad9fac]"><Loader2 className="h-6 w-6 animate-spin text-[#c5a059]" /><span className="mt-3 text-sm">Loading {authorPage.name}'s catalog…</span></div>}
             {!isSearching && renderSearchResults()}
-            {!isSearching && authorPage && authorHasMore && (
+            {!isSearching && ((authorPage && authorHasMore) || (!authorPage && searchHasMore)) && (
               <div className="flex flex-col items-center gap-2 rounded-2xl border border-[#c5a059]/18 bg-[#120c15] px-5 py-5">
-                <button type="button" onClick={() => void loadMoreAuthorBooks()} disabled={isLoadingAuthorMore} className="quiet-shelf-secondary-action min-h-11 min-w-48 justify-center disabled:opacity-50">
-                  {isLoadingAuthorMore && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {isLoadingAuthorMore ? 'Loading more…' : 'Load more books'}
+                <button
+                  type="button"
+                  onClick={() => void (authorPage ? loadMoreAuthorBooks() : loadMoreSearchResults())}
+                  disabled={authorPage ? isLoadingAuthorMore : isLoadingSearchMore}
+                  className="quiet-shelf-secondary-action min-h-11 min-w-48 justify-center disabled:opacity-50"
+                >
+                  {(authorPage ? isLoadingAuthorMore : isLoadingSearchMore) && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {authorPage
+                    ? (isLoadingAuthorMore ? 'Loading more…' : 'Load more books')
+                    : (isLoadingSearchMore ? 'Loading more…' : 'Load more results')}
                 </button>
                 <p className="text-[11px] text-[#776b78]">Showing {results.length} unique title{results.length === 1 ? '' : 's'} so far.</p>
               </div>
