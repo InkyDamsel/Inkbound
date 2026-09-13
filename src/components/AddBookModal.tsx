@@ -16,7 +16,10 @@ import {
   readCustomOwnershipCategories,
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
-import { getRuntimeStorage } from '../platform/runtimeStorage';
+import { withReadingStatus } from '../features/reading/bookReadingState';
+import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { getRuntimeStorage, readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 
 interface AddBookModalProps {
@@ -41,6 +44,8 @@ type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => Barc
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const SCANNER_REVIEW_PAGE_SIZE = 6;
 const SCANNER_DRAFT_STORAGE_KEY = 'inkbound_scanner_review_draft_v1';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
+
 const today = () => {
   const value = new Date();
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
@@ -52,6 +57,7 @@ const categoryId = (selection: CategorySelection): string | undefined => isCusto
 const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
 const editionIsbnValues = (edition: BookSearchEdition) => [edition.isbn13, edition.isbn10].map((value) => normalizeIsbn(value ?? '')).filter(Boolean);
 const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) => `${work.key}:${edition.source}:${edition.externalEditionId}`;
+const statusLabel = (status: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
 
 const isValidIsbn10 = (value: string) => {
   if (!/^\d{9}[\dX]$/.test(value)) return false;
@@ -101,7 +107,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
-  const [addedSearchEditionKeys, setAddedSearchEditionKeys] = useState<Set<string>>(() => new Set());
+  const [addedSearchBooks, setAddedSearchBooks] = useState<Map<string, UserBookRecord>>(() => new Map());
   const [customCategories, setCustomCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [creatingCustomCategory, setCreatingCustomCategory] = useState(false);
   const [newCustomCategoryName, setNewCustomCategoryName] = useState('');
@@ -136,6 +142,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     scannedBooksRef.current = scannedBooks;
     persistScannerDraft(scannedBooks);
   }, [scannedBooks]);
+
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(scannedBooks.length / SCANNER_REVIEW_PAGE_SIZE));
     setScannerReviewPage((current) => Math.min(current, totalPages));
@@ -192,37 +199,80 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     } catch (error) {
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
-    } finally { setIsSearching(false); }
+    } finally {
+      setIsSearching(false);
+    }
   };
 
-  const chooseSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
-    if (addedSearchEditionKeys.has(searchEditionKey(work, edition))) return;
-    setPendingSearchEdition({ work, edition });
-  };
-
-  const markSearchEditionAdded = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
+  const storeAddedSearchBook = (work: BookSearchWorkGroup, edition: BookSearchEdition, book: UserBookRecord) => {
     const key = searchEditionKey(work, edition);
-    setAddedSearchEditionKeys((current) => {
-      const next = new Set(current);
-      next.add(key);
+    setAddedSearchBooks((current) => {
+      const next = new Map(current);
+      next.set(key, book);
       return next;
     });
   };
 
+  const removeStoredSearchBook = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
+    const key = searchEditionKey(work, edition);
+    const addedBook = addedSearchBooks.get(key);
+    if (!addedBook) return;
+
+    const currentBooks = readRuntimeJson<UserBookRecord[]>(BOOKS_STORAGE_KEY, []);
+    const nextBooks = currentBooks.filter((book) => book.id !== addedBook.id);
+    if (!writeRuntimeJson(BOOKS_STORAGE_KEY, nextBooks)) return;
+
+    notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
+    setAddedSearchBooks((current) => {
+      const next = new Map(current);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const replaceStoredSearchBook = (work: BookSearchWorkGroup, edition: BookSearchEdition, book: UserBookRecord) => {
+    const currentBooks = readRuntimeJson<UserBookRecord[]>(BOOKS_STORAGE_KEY, []);
+    const nextBooks = currentBooks.map((candidate) => candidate.id === book.id ? book : candidate);
+    if (!writeRuntimeJson(BOOKS_STORAGE_KEY, nextBooks)) return;
+    notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
+    storeAddedSearchBook(work, edition, book);
+  };
+
+  const chooseSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
+    setPendingSearchEdition({ work, edition });
+  };
+
   const quickAddSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
-    if (addedSearchEditionKeys.has(searchEditionKey(work, edition))) return;
-    onAddBook(createBookFromSearchEdition({ work, edition, status: 'tbr' }));
-    markSearchEditionAdded(work, edition);
+    const key = searchEditionKey(work, edition);
+    if (addedSearchBooks.has(key)) return;
+    const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
+    onAddBook(book);
+    storeAddedSearchBook(work, edition, book);
   };
 
   const addSearchEditionToList = (selection: CategorySelection) => {
     if (!pendingSearchEdition) return;
+    const { work, edition } = pendingSearchEdition;
+    const key = searchEditionKey(work, edition);
     const customCategoryId = categoryId(selection);
-    onAddBook({
-      ...createBookFromSearchEdition({ work: pendingSearchEdition.work, edition: pendingSearchEdition.edition, status: categoryStatus(selection) }),
-      customOwnershipCategoryId: customCategoryId,
-    });
-    markSearchEditionAdded(pendingSearchEdition.work, pendingSearchEdition.edition);
+    const status = categoryStatus(selection);
+    const existing = addedSearchBooks.get(key);
+
+    if (existing) {
+      const updated = {
+        ...withReadingStatus(existing, status),
+        customOwnershipCategoryId: customCategoryId,
+      };
+      replaceStoredSearchBook(work, edition, updated);
+    } else {
+      const book = {
+        ...createBookFromSearchEdition({ work, edition, status }),
+        customOwnershipCategoryId: customCategoryId,
+      };
+      onAddBook(book);
+      storeAddedSearchBook(work, edition, book);
+    }
+
     setPendingSearchEdition(null);
   };
 
@@ -357,16 +407,36 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     const addedOn = today();
     const newBook: UserBookRecord = {
       id: bookId,
-      work: { id: workId, title: title.trim(), author: author.trim(), summary: summary.trim() || 'No summary added yet.', publisherSummary: summary.trim() || undefined, materialType, genres: genres.split(',').map((genre) => genre.trim()).filter(Boolean), publicationYear: new Date().getFullYear() },
+      work: {
+        id: workId,
+        title: title.trim(),
+        author: author.trim(),
+        summary: summary.trim() || 'No summary added yet.',
+        publisherSummary: summary.trim() || undefined,
+        materialType,
+        genres: genres.split(',').map((genre) => genre.trim()).filter(Boolean),
+        publicationYear: new Date().getFullYear(),
+      },
       activeEditionId: editionId,
-      editions: [{ id: editionId, format, pageCount: format === 'audiobook' ? undefined : validPageCount, coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]' }],
+      editions: [{
+        id: editionId,
+        format,
+        pageCount: format === 'audiobook' ? undefined : validPageCount,
+        coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
+      }],
       status: selectedStatus,
       ownership,
       customOwnershipCategoryId: selectedCustomCategoryId,
       progressPages: isFinished && hasKnownPrintTotal ? validPageCount! : 0,
       progressMinutes: 0,
       progressPercentage: isFinished && hasKnownPrintTotal ? 100 : 0,
-      favoriteQuotes: [], privateTags: [], priority, moods: [], collections: [], sourceOfImport: 'Manual entry', dateAdded: addedOn,
+      favoriteQuotes: [],
+      privateTags: [],
+      priority,
+      moods: [],
+      collections: [],
+      sourceOfImport: 'Manual entry',
+      dateAdded: addedOn,
       dateStarted: selectedStatus === 'currently-reading' || isFinished ? addedOn : undefined,
       dateFinished: isFinished ? addedOn : undefined,
     };
@@ -382,48 +452,176 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="relative max-h-[100dvh] w-full max-w-5xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
         <button type="button" onClick={onClose} className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full bg-black/30 text-[#ad9fac]" aria-label="Close add reading material dialog"><X className="h-5 w-5" /></button>
-        <header className="pr-12"><p className="inkbound-kicker">Build your library</p><h2 id="add-book-title" className="mt-2 font-serif text-3xl text-[#f4efe6]">Add Reading Material</h2><p className="mt-2 text-sm text-[#ad9fac]">Search, scan a stack of books, or add something manually.</p></header>
+        <header className="pr-12">
+          <p className="inkbound-kicker">Build your library</p>
+          <h2 id="add-book-title" className="mt-2 font-serif text-3xl text-[#f4efe6]">Add Reading Material</h2>
+          <p className="mt-2 text-sm text-[#ad9fac]">Search, scan a stack of books, or add something manually.</p>
+        </header>
 
         <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
-          {([['search','Search'],['scan','Scan Books'],['manual','Add Manually']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setActiveTab(id)} className={`min-h-11 rounded-lg px-2 text-sm font-semibold ${activeTab === id ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>{label}</button>)}
+          {([['search', 'Search'], ['scan', 'Scan Books'], ['manual', 'Add Manually']] as const).map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setActiveTab(id)} className={`min-h-11 rounded-lg px-2 text-sm font-semibold ${activeTab === id ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>{label}</button>
+          ))}
         </div>
 
         {activeTab === 'scan' ? (
           <div className="mt-6 space-y-5">
             <section className="rounded-2xl border border-[#c5a059]/25 bg-[#120c15] p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="inkbound-kicker">Stack scanner</p><h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3><p className="mt-2 max-w-2xl text-sm text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Your review stack stays saved on this device until you save or clear it. When you are finished, save the whole stack to your TBR.</p></div><div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div></div>
-              <div className="relative mt-5 overflow-hidden rounded-2xl border border-white/10 bg-black aspect-[4/3] max-h-[420px]"><video ref={videoRef} muted playsInline className="h-full w-full object-cover" /><div className="pointer-events-none absolute inset-[18%] rounded-2xl border-2 border-[#e5c158]/80"><span className="absolute left-1/2 top-1/2 w-3/4 -translate-x-1/2 border-t border-[#e5c158]/70" /></div>{!cameraActive && <div className="absolute inset-0 grid place-items-center bg-[#120817]/90 text-center"><div><Camera className="mx-auto h-10 w-10 text-[#c5a059]"/><p className="mt-3 text-sm text-[#ad9fac]">Use your camera to scan the ISBN barcode.</p><button type="button" onClick={() => void startCamera()} className="quiet-shelf-primary-action mt-4"><ScanLine className="h-4 w-4"/> Start Scanner</button></div></div>}</div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="inkbound-kicker">Stack scanner</p>
+                  <h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3>
+                  <p className="mt-2 max-w-2xl text-sm text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Your review stack stays saved on this device until you save or clear it. When you are finished, save the whole stack to your TBR.</p>
+                </div>
+                <div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div>
+              </div>
+              <div className="relative mt-5 max-h-[420px] aspect-[4/3] overflow-hidden rounded-2xl border border-white/10 bg-black">
+                <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
+                <div className="pointer-events-none absolute inset-[18%] rounded-2xl border-2 border-[#e5c158]/80"><span className="absolute left-1/2 top-1/2 w-3/4 -translate-x-1/2 border-t border-[#e5c158]/70" /></div>
+                {!cameraActive && (
+                  <div className="absolute inset-0 grid place-items-center bg-[#120817]/90 text-center">
+                    <div>
+                      <Camera className="mx-auto h-10 w-10 text-[#c5a059]" />
+                      <p className="mt-3 text-sm text-[#ad9fac]">Use your camera to scan the ISBN barcode.</p>
+                      <button type="button" onClick={() => void startCamera()} className="quiet-shelf-primary-action mt-4"><ScanLine className="h-4 w-4" /> Start Scanner</button>
+                    </div>
+                  </div>
+                )}
+              </div>
               {cameraActive && <div className="mt-3 flex justify-end"><button type="button" onClick={stopCamera} className="quiet-shelf-secondary-action">Stop Camera</button></div>}
-              <form onSubmit={addManualIsbn} className="mt-4 flex flex-col gap-2 sm:flex-row"><input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-w-0 flex-1"/><button type="submit" disabled={!manualIsbn.trim() || scanLookupBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scanLookupBusy ? <Loader2 className="h-4 w-4 animate-spin"/> : <Search className="h-4 w-4"/>} Add ISBN</button></form>
+              <form onSubmit={addManualIsbn} className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-w-0 flex-1" />
+                <button type="submit" disabled={!manualIsbn.trim() || scanLookupBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scanLookupBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
+              </form>
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
               {scannerError && <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{scannerError}</p>}
             </section>
 
             <section className="rounded-2xl border border-[#3d2448] bg-[#1d1422] p-4 sm:p-5">
-              <div className="flex items-center justify-between gap-3"><div><p className="inkbound-kicker">Review before saving</p><h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scanned books</h3></div>{scannedBooks.length > 0 && <button type="button" onClick={() => { setScannedBooks([]); setScannerReviewPage(1); }} className="text-xs font-bold text-rose-300">Clear all</button>}</div>
-              {scannedBooks.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-[#c5a059]/20 px-5 py-10 text-center text-sm text-[#ad9fac]">Your scanned books will collect here until you are ready to save them.</div> : <>
-                <div className="mt-4 space-y-3">{scannerReviewBooks.map((item) => { const edition = item.book.editions.find((entry) => entry.id === item.book.activeEditionId) ?? item.book.editions[0]; return <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">{edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover"/> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5"/></span>}<div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p><p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · TBR</p></div><button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4"/></button></article>; })}</div>
-                {scannerReviewTotalPages > 1 && <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-[#120c15] p-2"><button type="button" onClick={() => setScannerReviewPage((current) => Math.max(1, current - 1))} disabled={scannerReviewPage === 1} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">← Previous</button><span className="text-xs font-semibold text-[#ad9fac]">Page {scannerReviewPage} of {scannerReviewTotalPages} · {scannedBooks.length} books</span><button type="button" onClick={() => setScannerReviewPage((current) => Math.min(scannerReviewTotalPages, current + 1))} disabled={scannerReviewPage === scannerReviewTotalPages} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">Next →</button></div>}
-              </>}
-              <button type="button" onClick={saveScannedBooks} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-5 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4"/> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to TBR</button>
+              <div className="flex items-center justify-between gap-3">
+                <div><p className="inkbound-kicker">Review before saving</p><h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scanned books</h3></div>
+                {scannedBooks.length > 0 && <button type="button" onClick={() => { setScannedBooks([]); setScannerReviewPage(1); }} className="text-xs font-bold text-rose-300">Clear all</button>}
+              </div>
+              {scannedBooks.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-dashed border-[#c5a059]/20 px-5 py-10 text-center text-sm text-[#ad9fac]">Your scanned books will collect here until you are ready to save them.</div>
+              ) : (
+                <>
+                  <div className="mt-4 space-y-3">
+                    {scannerReviewBooks.map((item) => {
+                      const edition = item.book.editions.find((entry) => entry.id === item.book.activeEditionId) ?? item.book.editions[0];
+                      return (
+                        <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">
+                          {edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover" /> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5" /></span>}
+                          <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p><p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · TBR</p></div>
+                          <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4" /></button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  {scannerReviewTotalPages > 1 && (
+                    <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-[#120c15] p-2">
+                      <button type="button" onClick={() => setScannerReviewPage((current) => Math.max(1, current - 1))} disabled={scannerReviewPage === 1} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">← Previous</button>
+                      <span className="text-xs font-semibold text-[#ad9fac]">Page {scannerReviewPage} of {scannerReviewTotalPages} · {scannedBooks.length} books</span>
+                      <button type="button" onClick={() => setScannerReviewPage((current) => Math.min(scannerReviewTotalPages, current + 1))} disabled={scannerReviewPage === scannerReviewTotalPages} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">Next →</button>
+                    </div>
+                  )}
+                </>
+              )}
+              <button type="button" onClick={saveScannedBooks} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-5 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to TBR</button>
             </section>
           </div>
         ) : activeTab === 'search' ? (
           <div className="mt-6 space-y-5">
-            <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row"><label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]"/><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none"/></label><button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin"/> : <Search className="h-4 w-4"/>}{isSearching ? 'Searching…' : 'Search'}</button></form>
+            <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
+              <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
+              <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
+            </form>
             {searchError && <div className="rounded-xl border border-[#c97b7b]/40 bg-[#c97b7b]/10 p-4 text-sm text-[#efb6b6]">{searchError}</div>}
-            {!hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65"/><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. Add books directly to TBR without leaving your results, or choose another list when you need it.</p></div>}
+            {!hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65" /><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. Add books directly to TBR without leaving your results, or choose another list when you need it.</p></div>}
             {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">No matching material found</p><button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button></div>}
-            {results.length > 0 && <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{results.map((work) => <article key={work.key} className="flex min-w-0 flex-col rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-4"><div className="min-w-0"><h3 className="line-clamp-2 font-serif text-xl leading-tight text-[#f4efe6]">{work.title}</h3><p className="mt-1 truncate text-xs text-[#ad9fac]">{work.authors.join(', ')}</p></div><div className="mt-4 grid gap-3">{work.editions.map((edition) => { const added = addedSearchEditionKeys.has(searchEditionKey(work, edition)); return <div key={edition.externalEditionId} className={`flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#1a1720]' : 'border-white/7 bg-[#120c15]'}`}>{edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover"/> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen/></span>}<div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]"><strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>{edition.pageCount && <span className="mt-1 block">{edition.pageCount} pages</span>}<div className="mt-auto flex flex-col gap-2 pt-3"><button type="button" onClick={() => quickAddSearchEdition(work, edition)} disabled={added} className="quiet-shelf-primary-action min-h-10 justify-center px-3 disabled:opacity-70">{added ? <><Check className="h-4 w-4"/> Added</> : '+ Add'}</button>{!added && <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>}</div></div></div>; })}</div></article>)}</div>}
+            {results.length > 0 && (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {results.map((work) => (
+                  <article key={work.key} className="flex min-w-0 flex-col rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-4">
+                    <div className="min-w-0"><h3 className="line-clamp-2 font-serif text-xl leading-tight text-[#f4efe6]">{work.title}</h3><p className="mt-1 truncate text-xs text-[#ad9fac]">{work.authors.join(', ')}</p></div>
+                    <div className="mt-4 grid gap-3">
+                      {work.editions.map((edition) => {
+                        const key = searchEditionKey(work, edition);
+                        const addedBook = addedSearchBooks.get(key);
+                        const added = Boolean(addedBook);
+                        return (
+                          <div key={edition.externalEditionId} className={`flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#1a1720]' : 'border-white/7 bg-[#120c15]'}`}>
+                            {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
+                            <div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]">
+                              <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
+                              {edition.pageCount && <span className="mt-1 block">{edition.pageCount} pages</span>}
+                              <div className="mt-auto pt-3">
+                                {addedBook ? (
+                                  <>
+                                    <div className="flex gap-2">
+                                      <div className="quiet-shelf-primary-action min-h-10 flex-1 justify-center px-3 opacity-75"><Check className="h-4 w-4" /> Added</div>
+                                      <button type="button" onClick={() => removeStoredSearchBook(work, edition)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-rose-400/60 text-rose-300 transition hover:bg-rose-500/10" aria-label={`Remove ${work.title} from your library`} title="Remove from library"><Trash2 className="h-4 w-4" /></button>
+                                    </div>
+                                    <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                                      <span className="min-w-0 truncate text-[#ad9fac]"><Check className="mr-1 inline h-3 w-3" />In your library · {statusLabel(addedBook.status)}</span>
+                                      <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="shrink-0 font-bold text-[#d8c28b] underline decoration-[#d8c28b]/45 underline-offset-2">Change list</button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex flex-col gap-2">
+                                    <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
+                                    <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="mt-6 space-y-4"><div className="grid gap-4 sm:grid-cols-2"><Field label="Title *"><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title"/></Field><Field label="Author / creator *"><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Author or creator"/></Field><Field label="Reading material"><select value={materialType} onChange={(event) => setMaterialType(event.target.value as ReadingMaterialType)}>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><Field label="Genres"><input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance"/></Field>{format !== 'audiobook' && <Field label="Page count"><input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional"/></Field>}<Field label="Format"><select value={format} onChange={(event) => setFormat(event.target.value as Format)}>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><div><Field label="Reading status / category"><select value={category} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomCategory(true); return; } setCategory(event.target.value as CategorySelection); setCreatingCustomCategory(false); }}><optgroup label="Reading status">{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}<option value="__new__">+ New custom category…</option></select></Field>{creatingCustomCategory && <div className="mt-2 flex gap-2"><input value={newCustomCategoryName} onChange={(event) => setNewCustomCategoryName(event.target.value)} placeholder="Category name" className="inkbound-select min-w-0 flex-1"/><button type="button" onClick={createAndSelectCustomCategory} className="quiet-shelf-secondary-action">Create</button></div>}</div><Field label="Ownership"><select value={ownership} onChange={(event) => setOwnership(event.target.value as OwnershipStatus)}>{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><Field label="Summary"><textarea rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Optional"/></Field><button type="button" onClick={handleManualAdd} disabled={!title.trim() || !author.trim()} className="quiet-shelf-primary-action w-full justify-center disabled:opacity-50">Add to Inkbound</button></div>
+          <div className="mt-6 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Title *"><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" /></Field>
+              <Field label="Author / creator *"><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Author or creator" /></Field>
+              <Field label="Reading material"><select value={materialType} onChange={(event) => setMaterialType(event.target.value as ReadingMaterialType)}>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+              <Field label="Genres"><input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance" /></Field>
+              {format !== 'audiobook' && <Field label="Page count"><input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" /></Field>}
+              <Field label="Format"><select value={format} onChange={(event) => setFormat(event.target.value as Format)}>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+              <div>
+                <Field label="Reading status / category"><select value={category} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomCategory(true); return; } setCategory(event.target.value as CategorySelection); setCreatingCustomCategory(false); }}><optgroup label="Reading status">{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}<option value="__new__">+ New custom category…</option></select></Field>
+                {creatingCustomCategory && <div className="mt-2 flex gap-2"><input value={newCustomCategoryName} onChange={(event) => setNewCustomCategoryName(event.target.value)} placeholder="Category name" className="inkbound-select min-w-0 flex-1" /><button type="button" onClick={createAndSelectCustomCategory} className="quiet-shelf-secondary-action">Create</button></div>}
+              </div>
+              <Field label="Ownership"><select value={ownership} onChange={(event) => setOwnership(event.target.value as OwnershipStatus)}>{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+              <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+            </div>
+            <Field label="Summary"><textarea rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Optional" /></Field>
+            <button type="button" onClick={handleManualAdd} disabled={!title.trim() || !author.trim()} className="quiet-shelf-primary-action w-full justify-center disabled:opacity-50">Add to Inkbound</button>
+          </div>
         )}
 
-        {pendingSearchEdition && <div className="fixed inset-0 z-[260] flex items-end justify-center bg-black/80 sm:items-center sm:p-4" onMouseDown={() => setPendingSearchEdition(null)}><section className="w-full max-w-md rounded-t-3xl border border-[#c5a059]/35 bg-[#17101b] p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}><h3 className="font-serif text-2xl text-[#f4efe6]">Add to which list?</h3><p className="mt-2 text-sm text-[#ad9fac]">Your search results will stay open so you can keep adding books.</p><div className="mt-5 grid gap-2">{ADD_TO_LIST_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => addSearchEditionToList(option.value as CategorySelection)} className="quiet-shelf-secondary-action justify-between">{option.label}<span>→</span></button>)}</div><button type="button" onClick={() => setPendingSearchEdition(null)} className="mt-4 min-h-11 w-full text-sm font-semibold text-[#ad9fac]">Cancel</button></section></div>}
+        {pendingSearchEdition && (
+          <div className="fixed inset-0 z-[260] flex items-end justify-center bg-black/80 sm:items-center sm:p-4" onMouseDown={() => setPendingSearchEdition(null)}>
+            <section className="w-full max-w-md rounded-t-3xl border border-[#c5a059]/35 bg-[#17101b] p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:rounded-3xl" onMouseDown={(event) => event.stopPropagation()}>
+              <h3 className="font-serif text-2xl text-[#f4efe6]">{addedSearchBooks.has(searchEditionKey(pendingSearchEdition.work, pendingSearchEdition.edition)) ? 'Change reading list' : 'Add to which list?'}</h3>
+              <p className="mt-2 text-sm text-[#ad9fac]">Your search results will stay open so you can keep building your library.</p>
+              <div className="mt-5 grid gap-2">
+                {ADD_TO_LIST_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => addSearchEditionToList(option.value as CategorySelection)} className="quiet-shelf-secondary-action justify-between">{option.label}<span>→</span></button>)}
+              </div>
+              <button type="button" onClick={() => setPendingSearchEdition(null)} className="mt-4 min-h-11 w-full text-sm font-semibold text-[#ad9fac]">Cancel</button>
+            </section>
+          </div>
+        )}
       </section>
     </div>
   );
 };
 
-const Field: React.FC<{ label: string; children: React.ReactElement }> = ({ label, children }) => <label className="block text-xs font-bold text-[#f4efe6]">{label}{React.cloneElement(children as React.ReactElement<{ className?: string }>, { className: `${(children.props as { className?: string }).className ?? ''} inkbound-select mt-2 w-full` })}</label>;
+const Field: React.FC<{ label: string; children: React.ReactElement }> = ({ label, children }) => (
+  <label className="block text-xs font-bold text-[#f4efe6]">{label}{React.cloneElement(children as React.ReactElement<{ className?: string }>, { className: `${(children.props as { className?: string }).className ?? ''} inkbound-select mt-2 w-full` })}</label>
+);
