@@ -16,6 +16,20 @@ const knownPrintPageCount = (book: UserBookRecord): number | undefined => {
 };
 
 /**
+ * Canonical display value for a book's page progress.
+ *
+ * A trustworthy finished print/ebook with a known page count should not present
+ * itself as "100% / 0 pages" merely because the historical page endpoint was not
+ * stored. This derives the visible value without rewriting the reader's history.
+ */
+export function getEffectiveBookProgressPages(book: UserBookRecord): number {
+  const recordedProgress = finiteNonnegative(book.progressPages);
+  if (!hasTrustworthyFinishedHistory(book)) return recordedProgress;
+  const pageCount = knownPrintPageCount(book);
+  return pageCount === undefined ? recordedProgress : Math.max(recordedProgress, pageCount);
+}
+
+/**
  * Canonical page total for historical/statistical reporting.
  *
  * Session endpoints remain the most precise source when readers log activity.
@@ -53,8 +67,6 @@ export function getEffectivePagesReadForPeriod(
     const pageCount = knownPrintPageCount(book);
     if (pageCount === undefined) return total + trackedPages;
 
-    // progressPages can contain a legitimate manually entered endpoint even when
-    // sessions are absent. Never reduce a larger real value to the edition total.
     const recordedProgress = finiteNonnegative(book.progressPages);
     return total + Math.max(trackedPages, recordedProgress, pageCount);
   }, 0);
