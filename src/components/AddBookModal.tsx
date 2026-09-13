@@ -550,23 +550,23 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                         const addedBook = addedSearchBooks.get(key);
                         const added = Boolean(addedBook);
                         return (
-                          <div key={edition.externalEditionId} className={`flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#1a1720]' : 'border-white/7 bg-[#120c15]'}`}>
+                          <div key={edition.externalEditionId} className={`flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#17131b]' : 'border-white/7 bg-[#120c15]'}`}>
                             {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
                             <div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]">
                               <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
                               {edition.pageCount && <span className="mt-1 block">{edition.pageCount} pages</span>}
                               <div className="mt-auto pt-3">
                                 {addedBook ? (
-                                  <>
-                                    <div className="flex gap-2">
-                                      <div className="quiet-shelf-primary-action min-h-10 flex-1 justify-center px-3 opacity-75"><Check className="h-4 w-4" /> Added</div>
-                                      <button type="button" onClick={() => removeStoredSearchBook(work, edition)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-rose-400/60 text-rose-300 transition hover:bg-rose-500/10" aria-label={`Remove ${work.title} from your library`} title="Remove from library"><Trash2 className="h-4 w-4" /></button>
+                                  <div className="rounded-xl border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2.5">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-2 font-semibold text-[#e5c158]"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15"><Check className="h-3.5 w-3.5" /></span><span>In your library</span></div>
+                                        <p className="mt-1.5 pl-8 text-[11px] font-medium text-[#bcaebe]">{statusLabel(addedBook.status)}</p>
+                                      </div>
+                                      <button type="button" onClick={() => removeStoredSearchBook(work, edition)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-[#8f8290] transition hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-300 focus:border-rose-400/50 focus:text-rose-300" aria-label={`Remove ${work.title} from your library`} title="Remove from library"><Trash2 className="h-3.5 w-3.5" /></button>
                                     </div>
-                                    <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-                                      <span className="min-w-0 truncate text-[#ad9fac]"><Check className="mr-1 inline h-3 w-3" />In your library · {statusLabel(addedBook.status)}</span>
-                                      <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="shrink-0 font-bold text-[#d8c28b] underline decoration-[#d8c28b]/45 underline-offset-2">Change list</button>
-                                    </div>
-                                  </>
+                                    <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="mt-2 min-h-8 w-full rounded-lg border border-[#c5a059]/15 bg-[#120c15]/70 px-2 text-[11px] font-bold text-[#d8c28b] transition hover:border-[#c5a059]/35 hover:bg-[#c5a059]/5">Change list</button>
+                                  </div>
                                 ) : (
                                   <div className="flex flex-col gap-2">
                                     <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
