@@ -16,6 +16,7 @@ import {
   readCustomOwnershipCategories,
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
+import { withReadingStatus } from '../features/reading/bookReadingState';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 
 interface AddBookModalProps {
@@ -27,18 +28,17 @@ interface AddBookModalProps {
 
 type AddBookTab = 'search' | 'manual';
 type PendingSearchEdition = { work: BookSearchWorkGroup; edition: BookSearchEdition };
-type CustomCategorySelection = `custom:${string}`;
-type CategorySelection = ReadingStatus | CustomCategorySelection;
+type CustomOwnershipSelection = `custom:${string}`;
+type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
+const BUILT_IN_OWNERSHIP_OPTIONS = OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom');
 const today = () => {
   const value = new Date();
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 };
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const isCustomCategorySelection = (selection: CategorySelection): selection is CustomCategorySelection => selection.startsWith('custom:');
-const categoryStatus = (selection: CategorySelection): ReadingStatus => isCustomCategorySelection(selection) ? 'custom' : selection;
-const categoryId = (selection: CategorySelection): string | undefined => isCustomCategorySelection(selection) ? selection.slice('custom:'.length) : undefined;
+const isCustomOwnershipSelection = (selection: OwnershipSelection): selection is CustomOwnershipSelection => selection.startsWith('custom:');
 
 export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }) => {
   const [activeTab, setActiveTab] = useState<AddBookTab>('search');
@@ -48,9 +48,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
-  const [customCategories, setCustomCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
-  const [creatingCustomCategory, setCreatingCustomCategory] = useState(false);
-  const [newCustomCategoryName, setNewCustomCategoryName] = useState('');
+  const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
+  const [creatingCustomOwnership, setCreatingCustomOwnership] = useState(false);
+  const [newCustomOwnershipName, setNewCustomOwnershipName] = useState('');
 
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -59,8 +59,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
   const [pageCount, setPageCount] = useState('');
   const [format, setFormat] = useState<Format>('hardcover');
   const [materialType, setMaterialType] = useState<ReadingMaterialType>('book');
-  const [category, setCategory] = useState<CategorySelection>('tbr');
-  const [ownership, setOwnership] = useState<OwnershipStatus>('owned');
+  const [status, setStatus] = useState<ReadingStatus>('tbr');
+  const [ownershipSelection, setOwnershipSelection] = useState<OwnershipSelection>('owned');
   const [priority, setPriority] = useState<Priority>('medium');
 
   useEffect(() => {
@@ -77,18 +77,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
   }, [onClose, pendingSearchEdition]);
 
   useEffect(() => {
-    const refresh = () => setCustomCategories(readCustomOwnershipCategories());
+    const refresh = () => setCustomOwnershipCategories(readCustomOwnershipCategories());
     window.addEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
   }, []);
 
-  const createAndSelectCustomCategory = () => {
-    const created = createCustomOwnershipCategory(newCustomCategoryName);
+  const createAndSelectCustomOwnership = () => {
+    const created = createCustomOwnershipCategory(newCustomOwnershipName);
     if (!created) return;
-    setCustomCategories(readCustomOwnershipCategories());
-    setCategory(`custom:${created.id}`);
-    setNewCustomCategoryName('');
-    setCreatingCustomCategory(false);
+    setCustomOwnershipCategories(readCustomOwnershipCategories());
+    setOwnershipSelection(`custom:${created.id}`);
+    setNewCustomOwnershipName('');
+    setCreatingCustomOwnership(false);
   };
 
   const handleSearch = async (event: FormEvent) => {
@@ -114,17 +114,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
     setPendingSearchEdition({ work, edition });
   };
 
-  const addSearchEditionToList = (selection: CategorySelection) => {
+  const addSearchEditionToList = (selectedStatus: ReadingStatus) => {
     if (!pendingSearchEdition) return;
-    const customCategoryId = categoryId(selection);
-    onAddBook({
-      ...createBookFromSearchEdition({
-        work: pendingSearchEdition.work,
-        edition: pendingSearchEdition.edition,
-        status: categoryStatus(selection),
-      }),
-      customOwnershipCategoryId: customCategoryId,
-    });
+    onAddBook(createBookFromSearchEdition({
+      work: pendingSearchEdition.work,
+      edition: pendingSearchEdition.edition,
+      status: selectedStatus,
+    }));
     onClose();
   };
 
@@ -136,12 +132,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
     const parsedPageCount = Number.parseInt(pageCount, 10);
     const validPageCount = Number.isFinite(parsedPageCount) && parsedPageCount > 0 ? parsedPageCount : undefined;
     const hasKnownPrintTotal = format !== 'audiobook' && validPageCount !== undefined;
-    const selectedStatus = categoryStatus(category);
-    const selectedCustomCategoryId = categoryId(category);
-    const isFinished = selectedStatus === 'finished';
+    const isFinished = status === 'finished';
     const addedOn = today();
+    const customOwnership = isCustomOwnershipSelection(ownershipSelection);
+    const ownership: OwnershipStatus = customOwnership ? 'custom' : ownershipSelection;
+    const customOwnershipCategoryId = customOwnership ? ownershipSelection.slice('custom:'.length) : undefined;
 
-    const newBook: UserBookRecord = {
+    const baseBook: UserBookRecord = {
       id: bookId,
       work: {
         id: workId,
@@ -160,12 +157,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
         pageCount: format === 'audiobook' ? undefined : validPageCount,
         coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
       }],
-      status: selectedStatus,
+      status: 'tbr',
       ownership,
-      customOwnershipCategoryId: selectedCustomCategoryId,
+      customOwnershipCategoryId,
       progressPages: isFinished && hasKnownPrintTotal ? validPageCount! : 0,
       progressMinutes: 0,
-      progressPercentage: isFinished && hasKnownPrintTotal ? 100 : 0,
+      progressPercentage: 0,
       favoriteQuotes: [],
       privateTags: [],
       priority,
@@ -173,11 +170,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
       collections: [],
       sourceOfImport: 'Manual entry',
       dateAdded: addedOn,
-      dateStarted: selectedStatus === 'currently-reading' || isFinished ? addedOn : undefined,
-      dateFinished: isFinished ? addedOn : undefined,
     };
 
-    onAddBook(newBook);
+    onAddBook(withReadingStatus(baseBook, status, addedOn));
     onClose();
   };
 
@@ -235,11 +230,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
               <Field label="Genres"><input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance" /></Field>
               {format !== 'audiobook' && <Field label="Page count"><input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" /></Field>}
               <Field label="Format"><select value={format} onChange={(event) => setFormat(event.target.value as Format)}>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+              <Field label="Reading status"><select value={status} onChange={(event) => setStatus(event.target.value as ReadingStatus)}>{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
               <div>
-                <Field label="Reading status / category"><select value={category} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomCategory(true); return; } setCategory(event.target.value as CategorySelection); setCreatingCustomCategory(false); }}><optgroup label="Reading status">{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}<option value="__new__">+ Create custom category…</option></select></Field>
-                {creatingCustomCategory && <div className="mt-2 flex gap-2"><input value={newCustomCategoryName} onChange={(event) => setNewCustomCategoryName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createAndSelectCustomCategory(); } }} placeholder="e.g. Kids Books" className="min-h-11 min-w-0 flex-1 rounded-xl border border-[#c5a059]/18 bg-[#0d0910] px-3 text-sm text-[#f4efe6] outline-none" autoFocus /><button type="button" onClick={createAndSelectCustomCategory} disabled={!newCustomCategoryName.trim()} className="quiet-shelf-secondary-action px-3 disabled:opacity-50">Create</button></div>}
+                <Field label="Ownership"><select value={ownershipSelection} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomOwnership(true); return; } setOwnershipSelection(event.target.value as OwnershipSelection); setCreatingCustomOwnership(false); }}><optgroup label="Ownership">{BUILT_IN_OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customOwnershipCategories.length > 0 && <optgroup label="Custom ownership">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}<option value="__new__">+ Create custom ownership…</option></select></Field>
+                {creatingCustomOwnership && <div className="mt-2 flex gap-2"><input value={newCustomOwnershipName} onChange={(event) => setNewCustomOwnershipName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createAndSelectCustomOwnership(); } }} placeholder="e.g. Home Library" className="min-h-11 min-w-0 flex-1 rounded-xl border border-[#c5a059]/18 bg-[#0d0910] px-3 text-sm text-[#f4efe6] outline-none" autoFocus /><button type="button" onClick={createAndSelectCustomOwnership} disabled={!newCustomOwnershipName.trim()} className="quiet-shelf-secondary-action px-3 disabled:opacity-50">Create</button></div>}
               </div>
-              <Field label="Ownership"><select value={ownership} onChange={(event) => setOwnership(event.target.value as OwnershipStatus)}>{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
               <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
             </div>
             <Field label="Summary"><textarea rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Optional description or notes" /></Field>
@@ -250,10 +245,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
         {pendingSearchEdition && (
           <div className="fixed inset-0 z-[220] grid place-items-center bg-black/70 p-4">
             <section className="w-full max-w-lg rounded-2xl border border-[#c5a059]/35 bg-[#17101b] p-6">
-              <div className="flex justify-between"><div><p className="inkbound-kicker">Add to your library</p><h3 className="mt-2 font-serif text-2xl text-[#f4efe6]">Which category?</h3><p className="mt-2 text-sm text-[#ad9fac]">{pendingSearchEdition.work.title}</p></div><button type="button" onClick={() => setPendingSearchEdition(null)} className="grid h-11 w-11 place-items-center"><X /></button></div>
+              <div className="flex justify-between"><div><p className="inkbound-kicker">Add to your library</p><h3 className="mt-2 font-serif text-2xl text-[#f4efe6]">Which reading status?</h3><p className="mt-2 text-sm text-[#ad9fac]">{pendingSearchEdition.work.title}</p></div><button type="button" onClick={() => setPendingSearchEdition(null)} className="grid h-11 w-11 place-items-center"><X /></button></div>
               <div className="mt-4 grid gap-2">
                 {ADD_TO_LIST_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => addSearchEditionToList(option.value)} className="min-h-12 rounded-xl border border-[#c5a059]/18 bg-[#120c15] px-4 py-3 text-left"><span className="block text-sm font-bold text-[#f4efe6]">{option.label}</span><span className="text-xs text-[#ad9fac]">{option.description}</span></button>)}
-                {customCategories.length > 0 && <div className="pt-2"><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8f8190]">Custom categories</p><div className="grid gap-2">{customCategories.map((customCategory) => <button key={customCategory.id} type="button" onClick={() => addSearchEditionToList(`custom:${customCategory.id}`)} className="min-h-12 rounded-xl border border-[#c5a059]/18 bg-[#120c15] px-4 py-3 text-left"><span className="block text-sm font-bold text-[#f4efe6]">{customCategory.name}</span><span className="text-xs text-[#ad9fac]">Reader-defined category</span></button>)}</div></div>}
               </div>
             </section>
           </div>
