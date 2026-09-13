@@ -10,6 +10,7 @@ import {
   getSessionDurationMinutes,
   getSevenDayAveragePace,
 } from '../features/reading/sessionAnalytics';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { removeRuntimeValue } from '../platform/runtimeStorage';
 
 interface ReadingSessionModalProps {
@@ -100,7 +101,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const requestedInitialBook = selectableBooks.find((book) => book.id === initialBookId);
   const initialBook = requestedInitialBook ?? selectableBooks[0];
   const [error, setError] = useState('');
-  const [dailyGoalMins] = usePersistentState('inkbound_daily_goal_minutes', '30');
+  const [dailyGoalMins] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes, '30');
   const [draft, setDraft] = usePersistentState<SessionDraft>(SESSION_DRAFT_KEY, () => ({
     selectedBookId: initialBook?.id ?? '',
     timerSeconds: 0,
