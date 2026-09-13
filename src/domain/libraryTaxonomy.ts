@@ -14,24 +14,29 @@ export interface LibraryOption<T extends string> {
   description?: string;
 }
 
-// New status assignments stay intentionally simple. Legacy values remain valid in
-// the persisted schema so existing/imported books are never rewritten just to
-// adopt the newer UI model.
+// One canonical reader-assignable reading-status list. Every status picker must
+// consume this list instead of defining its own subset. `wishlist` remains a
+// compatibility-only ReadingStatus because Wishlist is now an ownership value;
+// old imported/synced records are still valid and label correctly.
 export const READING_STATUS_OPTIONS: LibraryOption<ReadingStatus>[] = [
   { value: 'currently-reading', label: 'Currently Reading', description: 'Put it into your active reading list.' },
   { value: 'tbr', label: 'To Be Read', description: 'Save it for later.' },
   { value: 'finished', label: 'Read', description: 'Mark it as already read.' },
+  { value: 'paused', label: 'Paused', description: 'Keep your place without treating the title as finished.' },
+  { value: 'dnf', label: 'Did Not Finish', description: 'Keep the title in your history without marking it read.' },
 ];
 
-export const LEGACY_READING_STATUS_OPTIONS: LibraryOption<ReadingStatus>[] = [
-  { value: 'paused', label: 'Paused', description: 'Legacy status retained for existing library records.' },
-  { value: 'dnf', label: 'Did Not Finish', description: 'Legacy status retained for existing library records.' },
-  { value: 'wishlist', label: 'Wishlist', description: 'Legacy status retained for existing library records.' },
+export const COMPATIBILITY_READING_STATUS_OPTIONS: LibraryOption<ReadingStatus>[] = [
+  { value: 'wishlist', label: 'Wishlist', description: 'Compatibility value retained for older library records.' },
 ];
+
+// Backward-compatible export name for code that only needs to recognize legacy
+// persisted values. New selectors should use READING_STATUS_OPTIONS.
+export const LEGACY_READING_STATUS_OPTIONS = COMPATIBILITY_READING_STATUS_OPTIONS;
 
 export const ALL_READING_STATUS_OPTIONS: LibraryOption<ReadingStatus>[] = [
   ...READING_STATUS_OPTIONS,
-  ...LEGACY_READING_STATUS_OPTIONS,
+  ...COMPATIBILITY_READING_STATUS_OPTIONS,
 ];
 
 export const MATERIAL_TYPE_OPTIONS: LibraryOption<ReadingMaterialType>[] = [
