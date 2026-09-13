@@ -7,10 +7,10 @@ import {
   getReadingStreak,
   getSessionDurationMinutes,
   getSessionListeningMinutes,
-  getSessionPagesRead,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
 import { StatisticsGoalOverview } from './statistics/StatisticsGoalOverview';
@@ -61,7 +61,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     (book) => book.status === 'paused' || book.status === 'dnf',
   );
 
-  const totalPagesRead = filteredSessions.reduce((total, session) => total + getSessionPagesRead(session), 0);
+  const totalPagesRead = getEffectivePagesReadForPeriod(filteredBooks, filteredSessions, reportStart, reportEnd);
   const totalAudioMinutes = filteredSessions.reduce((total, session) => total + getSessionListeningMinutes(session), 0);
   const totalReadingMinutes = filteredSessions.reduce((total, session) => total + getSessionDurationMinutes(session), 0);
   const annualGoal = getAnnualReadingGoal();
@@ -173,7 +173,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
               <div className="min-w-0 flex-1">
                 <h3 className="font-serif text-base font-bold text-[#f4efe6]">Imported data coverage</h3>
                 <p className="mt-1 text-xs leading-5 text-stone-400">
-                  Finished-book counts include only trustworthy historical finish dates from imports. Pages, listening time, reading time, and streaks still use activity Inkbound can actually track, so those totals may be lower than your imported reading history.
+                  Finished-book counts include only trustworthy historical finish dates from imports. Page totals use tracked activity and, for trustworthy finished print/ebook records with known page counts, the edition page count when exact session pages are missing. Listening time, reading time, and streaks still require tracked Inkbound activity.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
                   <span className="rounded-full border border-[#3d2448] bg-[#120817]/70 px-3 py-1.5 text-stone-300">
