@@ -7,7 +7,7 @@ import {
   PRIORITY_OPTIONS,
   READING_STATUS_OPTIONS,
 } from '../domain/libraryTaxonomy';
-import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
+import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
@@ -65,6 +65,48 @@ const editionIsbnValues = (edition: BookSearchEdition) => [edition.isbn13, editi
 const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) => `${work.key}:${edition.source}:${edition.externalEditionId}`;
 const statusLabel = (status: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
 const normalizeAuthorName = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const normalizeCatalogText = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
+  const normalizedAuthor = normalizeAuthorName(authorName);
+  return groups.filter((work) =>
+    work.authors.some((candidate) => normalizeAuthorName(candidate) === normalizedAuthor),
+  );
+};
+
+const sameCatalogEdition = (left: BookSearchEdition, right: BookSearchEdition) => {
+  if (left.source === right.source && left.externalEditionId === right.externalEditionId) return true;
+  const leftIsbns = editionIsbnValues(left);
+  const rightIsbns = new Set(editionIsbnValues(right));
+  return leftIsbns.some((isbn) => rightIsbns.has(isbn));
+};
+
+const mergeAuthorResultGroups = (current: BookSearchWorkGroup[], incoming: BookSearchWorkGroup[]) => {
+  const merged = current.map((group) => ({ ...group, genres: [...group.genres], editions: [...group.editions] }));
+  const byIdentity = new Map<string, BookSearchWorkGroup>();
+  merged.forEach((group) => {
+    byIdentity.set(`${normalizeCatalogText(group.title)}::${normalizeAuthorName(group.authors[0] ?? '')}`, group);
+  });
+
+  incoming.forEach((group) => {
+    const identity = `${normalizeCatalogText(group.title)}::${normalizeAuthorName(group.authors[0] ?? '')}`;
+    const existing = byIdentity.get(identity);
+    if (!existing) {
+      const added = { ...group, genres: [...group.genres], editions: [...group.editions] };
+      merged.push(added);
+      byIdentity.set(identity, added);
+      return;
+    }
+
+    group.editions.forEach((edition) => {
+      if (!existing.editions.some((candidate) => sameCatalogEdition(candidate, edition))) existing.editions.push(edition);
+    });
+    existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
+    if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
+  });
+
+  return merged;
+};
 
 const isValidIsbn10 = (value: string) => {
   if (!/^\d{9}[\dX]$/.test(value)) return false;
@@ -116,6 +158,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
   const [addedSearchBooks, setAddedSearchBooks] = useState<Map<string, UserBookRecord>>(() => new Map());
   const [authorPage, setAuthorPage] = useState<AuthorPageState | null>(null);
+  const [authorNextStartIndex, setAuthorNextStartIndex] = useState(0);
+  const [authorProviderTotal, setAuthorProviderTotal] = useState<number | null>(null);
+  const [authorHasMore, setAuthorHasMore] = useState(false);
+  const [isLoadingAuthorMore, setIsLoadingAuthorMore] = useState(false);
   const [customCategories, setCustomCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [creatingCustomCategory, setCreatingCustomCategory] = useState(false);
   const [newCustomCategoryName, setNewCustomCategoryName] = useState('');
@@ -178,6 +224,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setHasSearched(authorPage.previousHasSearched);
         setSearchError(null);
         setAuthorPage(null);
+        setAuthorNextStartIndex(0);
+        setAuthorProviderTotal(null);
+        setAuthorHasMore(false);
+        setIsLoadingAuthorMore(false);
         return;
       }
       onClose();
@@ -206,6 +256,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     const trimmedQuery = query.trim();
     if (!trimmedQuery || isSearching) return;
     setAuthorPage(null);
+    setAuthorNextStartIndex(0);
+    setAuthorProviderTotal(null);
+    setAuthorHasMore(false);
+    setIsLoadingAuthorMore(false);
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
@@ -230,22 +284,45 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       previousHasSearched: hasSearched,
     };
     setAuthorPage(previousState);
+    setAuthorNextStartIndex(0);
+    setAuthorProviderTotal(null);
+    setAuthorHasMore(false);
+    setIsLoadingAuthorMore(false);
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
-      const response = await searchGoogleBooks(`inauthor:${authorName}`);
-      const normalizedAuthor = normalizeAuthorName(authorName);
-      const exactAuthorResults = response.groups.filter((work) =>
-        work.authors.some((candidate) => normalizeAuthorName(candidate) === normalizedAuthor),
-      );
-      setResults(exactAuthorResults.length > 0 ? exactAuthorResults : response.groups);
+      const response = await searchGoogleBooksAuthorPage(authorName, 0);
+      const exactAuthorResults = filterExactAuthorResults(response.groups, authorName);
+      setResults(exactAuthorResults);
+      setAuthorNextStartIndex(response.nextStartIndex);
+      setAuthorProviderTotal(response.providerTotalItems || null);
+      setAuthorHasMore(response.hasMore);
     } catch (error) {
       setResults([]);
+      setAuthorHasMore(false);
       setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const loadMoreAuthorBooks = async () => {
+    if (!authorPage || !authorHasMore || isLoadingAuthorMore) return;
+    setIsLoadingAuthorMore(true);
+    setSearchError(null);
+    try {
+      const response = await searchGoogleBooksAuthorPage(authorPage.name, authorNextStartIndex);
+      const exactAuthorResults = filterExactAuthorResults(response.groups, authorPage.name);
+      setResults((current) => mergeAuthorResultGroups(current, exactAuthorResults));
+      setAuthorNextStartIndex(response.nextStartIndex);
+      setAuthorProviderTotal(response.providerTotalItems || authorProviderTotal);
+      setAuthorHasMore(response.hasMore && response.nextStartIndex > authorNextStartIndex);
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : 'Could not load more books. Please try again.');
+    } finally {
+      setIsLoadingAuthorMore(false);
     }
   };
 
@@ -256,6 +333,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(authorPage.previousHasSearched);
     setSearchError(null);
     setAuthorPage(null);
+    setAuthorNextStartIndex(0);
+    setAuthorProviderTotal(null);
+    setAuthorHasMore(false);
+    setIsLoadingAuthorMore(false);
   };
 
   const storeAddedSearchBook = (work: BookSearchWorkGroup, edition: BookSearchEdition, book: UserBookRecord) => {
@@ -656,7 +737,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   <div className="min-w-0">
                     <p className="inkbound-kicker">Author catalog</p>
                     <h3 className="mt-1 truncate font-serif text-3xl text-[#f4efe6]">{authorPage.name}</h3>
-                    <p className="mt-1 text-sm text-[#ad9fac]">{isSearching ? 'Finding books…' : `${results.length} title${results.length === 1 ? '' : 's'} found`}</p>
+                    <p className="mt-1 text-sm text-[#ad9fac]">
+                      {isSearching
+                        ? 'Finding books…'
+                        : authorHasMore
+                          ? `${results.length}+ titles found`
+                          : `${results.length} title${results.length === 1 ? '' : 's'} found`}
+                    </p>
+                    {!isSearching && authorProviderTotal !== null && authorHasMore && <p className="mt-1 text-[11px] text-[#776b78]">More catalog matches are available — load another batch when you are ready.</p>}
                   </div>
                 </div>
               </section>
@@ -671,6 +759,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">{authorPage ? `No books found for ${authorPage.name}` : 'No matching material found'}</p>{!authorPage && <button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button>}</div>}
             {isSearching && authorPage && <div className="grid place-items-center rounded-2xl border border-dashed border-[#c5a059]/20 py-12 text-[#ad9fac]"><Loader2 className="h-6 w-6 animate-spin text-[#c5a059]" /><span className="mt-3 text-sm">Loading {authorPage.name}'s catalog…</span></div>}
             {!isSearching && renderSearchResults()}
+            {!isSearching && authorPage && authorHasMore && (
+              <div className="flex flex-col items-center gap-2 rounded-2xl border border-[#c5a059]/18 bg-[#120c15] px-5 py-5">
+                <button type="button" onClick={() => void loadMoreAuthorBooks()} disabled={isLoadingAuthorMore} className="quiet-shelf-secondary-action min-h-11 min-w-48 justify-center disabled:opacity-50">
+                  {isLoadingAuthorMore && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isLoadingAuthorMore ? 'Loading more…' : 'Load more books'}
+                </button>
+                <p className="text-[11px] text-[#776b78]">Showing {results.length} unique title{results.length === 1 ? '' : 's'} so far.</p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="mt-6 space-y-4">
