@@ -90,8 +90,8 @@ export const buildGoogleBooksQuery = (value: string): string => {
 };
 
 const buildGoogleBooksAuthorQuery = (authorName: string): string => {
-  const exactName = authorName.trim().replace(/"/g, '').replace(/\s+/g, ' ');
-  return `inauthor:"${exactName}"`;
+  const normalizedName = authorName.trim().replace(/"/g, '').replace(/\s+/g, ' ');
+  return `inauthor:${normalizedName}`;
 };
 
 const publicationYear = (value?: string): number => {
