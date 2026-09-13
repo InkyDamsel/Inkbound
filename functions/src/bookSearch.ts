@@ -148,24 +148,40 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
   const cached = readGoogleBooksCache(query, startIndex, maxResults);
   if (cached) return cached;
 
-  const apiKey = GOOGLE_BOOKS_API_KEY.value();
-  if (!apiKey) throw new HttpsError('failed-precondition', 'Google Books mobile search is not configured.');
-
-  const params = new URLSearchParams({
+  const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
+  const baseParams = new URLSearchParams({
     q: query,
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
     startIndex: String(startIndex),
     maxResults: String(maxResults),
-    key: apiKey,
   });
 
-  const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+  const runRequest = async (key?: string) => {
+    const params = new URLSearchParams(baseParams);
+    if (key) params.set('key', key);
+    return fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+  };
+
+  let response = await runRequest(apiKey || undefined);
+  if (!response.ok && apiKey) {
+    const body = await response.text();
+    const detail = googleBooksErrorDetail(body);
+    const invalidKey = response.status === 400 && /api key.*not valid|valid api key/i.test(detail);
+    if (invalidKey) {
+      console.warn('Configured Google Books API key was rejected; retrying public catalog request without a key.');
+      response = await runRequest();
+    } else {
+      throw new Error(`Google Books returned ${response.status}${detail ? `: ${detail}` : '.'}`);
+    }
+  }
+
   if (!response.ok) {
     const detail = googleBooksErrorDetail(await response.text());
     throw new Error(`Google Books returned ${response.status}${detail ? `: ${detail}` : '.'}`);
   }
+
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
