@@ -53,7 +53,6 @@ export interface GoogleBooksCatalogPage extends BookSearchResponse {
 export type GoogleBooksAuthorPage = GoogleBooksCatalogPage;
 
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
-const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
 const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
@@ -269,8 +268,10 @@ async function requestDirectGoogleBooks(
     startIndex: String(startIndex),
     maxResults: String(maxResults),
   });
-  if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
 
+  // Public Google Books catalog queries do not need the browser to carry an API
+  // key. Keeping VITE_GOOGLE_BOOKS_API_KEY out of this request prevents stale or
+  // invalid local env values from breaking search before Firebase auth is ready.
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
   if (!response.ok) {
     const detail = googleBooksErrorDetail(await response.text());
