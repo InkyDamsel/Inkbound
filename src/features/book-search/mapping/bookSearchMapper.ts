@@ -5,6 +5,7 @@ import {
   ReadingStatus,
   UserBookRecord,
 } from '../../../types';
+import { withReadingStatus } from '../../reading/bookReadingState';
 import { BookSearchEdition, BookSearchWorkGroup } from '../model/bookSearch';
 
 interface CreateBookFromEditionOptions {
@@ -52,13 +53,12 @@ export function createBookFromSearchEdition({
   const editionId = uniqueId('edition');
   const publisherSummary = edition.publisherSummary ?? work.publisherSummary;
   const addedOn = localDateKey();
-  const isFinished = status === 'finished';
   const hasKnownPrintTotal = format !== 'audiobook'
     && typeof edition.pageCount === 'number'
     && Number.isFinite(edition.pageCount)
     && edition.pageCount > 0;
 
-  return {
+  const baseBook: UserBookRecord = {
     id: bookId,
     work: {
       id: workId,
@@ -94,11 +94,11 @@ export function createBookFromSearchEdition({
         externalEditionId: edition.externalEditionId,
       },
     ],
-    status,
+    status: 'tbr',
     ownership,
-    progressPages: isFinished && hasKnownPrintTotal ? edition.pageCount! : 0,
+    progressPages: status === 'finished' && hasKnownPrintTotal ? edition.pageCount! : 0,
     progressMinutes: 0,
-    progressPercentage: isFinished && hasKnownPrintTotal ? 100 : 0,
+    progressPercentage: 0,
     favoriteQuotes: [],
     privateTags: [],
     priority,
@@ -106,7 +106,7 @@ export function createBookFromSearchEdition({
     collections: [],
     sourceOfImport: providerLabel(edition.source),
     dateAdded: addedOn,
-    dateStarted: status === 'currently-reading' || isFinished ? addedOn : undefined,
-    dateFinished: isFinished ? addedOn : undefined,
   };
+
+  return withReadingStatus(baseBook, status, addedOn);
 }
