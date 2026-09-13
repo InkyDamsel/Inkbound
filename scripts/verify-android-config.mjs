@@ -5,6 +5,7 @@ const cwd = process.cwd();
 const configPath = path.join(cwd, 'capacitor.config.json');
 const releaseMetadataPath = path.join(cwd, 'android-release.json');
 const mainPath = path.join(cwd, 'src/main.tsx');
+const applicationEntryPath = path.join(cwd, 'src/applicationEntry.tsx');
 const firebasePath = path.join(cwd, 'src/lib/firebase.ts');
 const googleBooksPath = path.join(cwd, 'src/features/book-search/data/googleBooksApi.ts');
 const runtimeSubscriptionPath = path.join(cwd, 'src/platform/runtimeSubscriptionManagement.ts');
@@ -26,6 +27,7 @@ for (const requiredPath of [
   configPath,
   releaseMetadataPath,
   mainPath,
+  applicationEntryPath,
   firebasePath,
   googleBooksPath,
   runtimePlatformPath,
@@ -80,6 +82,7 @@ if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication
 }
 
 const mainSource = fs.readFileSync(mainPath, 'utf8');
+const applicationEntrySource = fs.readFileSync(applicationEntryPath, 'utf8');
 // No service-worker registration is the safest native configuration. If web PWA
 // registration is added later, it must be explicitly excluded from native WebView.
 const mentionsServiceWorker = mainSource.includes('serviceWorker');
@@ -87,10 +90,10 @@ const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && 
 if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
 }
-if (!mainSource.includes('<NativeRuntimeGate>')) {
+if (!applicationEntrySource.includes('<NativeRuntimeGate>')) {
   fail('Android startup must gate account/security providers until native services are ready.');
 }
-if (!mainSource.includes('initializeAndroidRuntime().catch(markNativeRuntimeFailed)')) {
+if (!applicationEntrySource.includes('initializeAndroidRuntime().catch(markNativeRuntimeFailed)')) {
   fail('Android startup must initialize native services and surface initialization failures.');
 }
 
