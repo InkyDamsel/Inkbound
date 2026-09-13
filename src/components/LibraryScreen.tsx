@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, Square, Star, X } from 'lucide-react';
 import { useUserPlan } from '../context/UserPlanContext';
-import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
+import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, READING_STATUS_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
 import {
@@ -10,9 +10,10 @@ import {
   readCustomOwnershipCategories,
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
+import { getCanonicalProgressPercentage } from '../features/reading/bookReadingState';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../platform/runtimeStorage';
-import type { UserBookRecord } from '../types';
+import type { ReadingStatus, UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
 import { CollectionsScreen } from './CollectionsScreen';
 import { LibraryBookGrid } from './library/LibraryBookGrid';
@@ -37,19 +38,6 @@ type SortMode = 'recent' | 'title' | 'author' | 'rating' | 'progress';
 
 const LIBRARY_BANNER_ASSET = '/assets/library/cozy-library-background.png';
 const LIBRARY_PAGE_SIZE = 24;
-const libraryCategories = [
-  { id: 'all', label: 'All' },
-  { id: 'currently-reading', label: 'Reading' },
-  { id: 'tbr', label: 'TBR' },
-  { id: 'finished', label: 'Read' },
-  // Legacy filters remain available so existing records are still easy to find.
-  { id: 'paused', label: 'Paused' },
-  { id: 'dnf', label: 'DNF' },
-  { id: 'owned', label: 'Owned' },
-  { id: 'borrowed', label: 'Borrowed' },
-  { id: 'wishlist', label: 'Wishlist' },
-];
-
 const normalizeTag = (value: string) => value.trim().toLocaleLowerCase();
 
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
@@ -67,7 +55,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [section, setSection] = usePersistentState<LibrarySection>(LIBRARY_SECTION_STORAGE_KEY, DEFAULT_LIBRARY_SECTION);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [activeCategory, setActiveCategory] = useState('all');
-  const [customCategories, setCustomCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
+  const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [searchFilter, setSearchFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('all');
   const [materialFilter, setMaterialFilter] = useState('all');
@@ -79,7 +67,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const refresh = () => setCustomCategories(readCustomOwnershipCategories());
+    const refresh = () => setCustomOwnershipCategories(readCustomOwnershipCategories());
     const handleRuntimeRefresh = (event: Event) => {
       const key = (event as CustomEvent<{ key?: string }>).detail?.key;
       if (key === CUSTOM_OWNERSHIP_CATEGORIES_KEY) refresh();
@@ -113,18 +101,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   }, [allTags, tagFilter]);
 
   const filteredBooks = useMemo(() => books.filter((book) => {
-    if (activeCategory === 'currently-reading' && book.status !== 'currently-reading') return false;
-    if (activeCategory === 'tbr' && book.status !== 'tbr') return false;
-    if (activeCategory === 'finished' && book.status !== 'finished') return false;
-    if (activeCategory === 'paused' && book.status !== 'paused') return false;
-    if (activeCategory === 'dnf' && book.status !== 'dnf') return false;
-    if (activeCategory === 'owned' && book.ownership !== 'owned') return false;
-    if (activeCategory === 'borrowed' && !['borrowed-library', 'borrowed-person'].includes(book.ownership)) return false;
-    if (activeCategory === 'wishlist' && book.ownership !== 'wishlist' && book.status !== 'wishlist') return false;
-    if (activeCategory.startsWith('custom:')) {
-      const categoryId = activeCategory.slice('custom:'.length);
-      if (book.customOwnershipCategoryId !== categoryId) return false;
-    }
+    if (activeCategory !== 'all' && book.status !== activeCategory as ReadingStatus) return false;
 
     if (searchFilter.trim()) {
       const query = searchFilter.toLowerCase();
@@ -138,7 +115,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
     if (materialFilter !== 'all' && (book.work.materialType ?? 'book') !== materialFilter) return false;
     if (formatFilter !== 'all' && !book.editions.some((edition) => edition.format === formatFilter)) return false;
     if (genreFilter !== 'all' && !book.work.genres.includes(genreFilter)) return false;
-    if (ownershipFilter !== 'all' && book.ownership !== ownershipFilter) return false;
+    if (ownershipFilter.startsWith('custom:')) {
+      const categoryId = ownershipFilter.slice('custom:'.length);
+      if (book.ownership !== 'custom' || book.customOwnershipCategoryId !== categoryId) return false;
+    } else if (ownershipFilter !== 'all' && book.ownership !== ownershipFilter) return false;
     if (ratingFilter !== 'all' && (book.rating || 0) < Number(ratingFilter)) return false;
     return true;
   }).sort((a, b) => sortBy === 'title'
@@ -148,7 +128,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       : sortBy === 'rating'
         ? (b.rating || 0) - (a.rating || 0)
         : sortBy === 'progress'
-          ? b.progressPercentage - a.progressPercentage
+          ? getCanonicalProgressPercentage(b) - getCanonicalProgressPercentage(a)
           : new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
@@ -201,15 +181,15 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <section className="inkbound-panel p-4 sm:p-5">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-9">
             <label className="relative xl:col-span-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#807482]" /><input type="search" placeholder="Search title, author, series, or tag" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} className="h-11 w-full rounded-xl border border-[#c5a059]/18 bg-[#0d0910] pl-10 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
-            <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)} className="inkbound-select" aria-label="Library category">
-              <optgroup label="Library categories">{libraryCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</optgroup>
-              {customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}
+            <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)} className="inkbound-select" aria-label="Reading status filter">
+              <option value="all">All reading statuses</option>
+              {READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
             <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} className="inkbound-select" aria-label="Tag filter"><option value="all">All tags</option>{allTags.map(([normalized, label]) => <option key={normalized} value={normalized}>{label}</option>)}</select>
             <select value={materialFilter} onChange={(event) => setMaterialFilter(event.target.value)} className="inkbound-select"><option value="all">All reading types</option>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.pluralLabel ?? option.label}</option>)}</select>
             <select value={formatFilter} onChange={(event) => setFormatFilter(event.target.value)} className="inkbound-select"><option value="all">All formats</option>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
             <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)} className="inkbound-select"><option value="all">All genres</option>{allGenres.map((genre) => <option key={genre}>{genre}</option>)}</select>
-            <select value={ownershipFilter} onChange={(event) => setOwnershipFilter(event.target.value)} className="inkbound-select"><option value="all">Any ownership</option>{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+            <select value={ownershipFilter} onChange={(event) => setOwnershipFilter(event.target.value)} className="inkbound-select"><option value="all">Any ownership</option><optgroup label="Ownership">{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customOwnershipCategories.length > 0 && <optgroup label="Custom ownership">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>
             <select value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)} className="inkbound-select"><option value="all">Any rating</option><option value="5">5 stars</option><option value="4">4+ stars</option><option value="3">3+ stars</option></select>
             <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select"><option value="recent">Recently added</option><option value="title">Title</option><option value="author">Author</option><option value="rating">Rating</option><option value="progress">Progress</option></select>
           </div>
@@ -223,11 +203,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <div className="text-xs text-[#807482]">{filteredBooks.length.toLocaleString()} matching items · {books.length.toLocaleString()} total</div>
 
         {filteredBooks.length === 0 ? (
-          <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another category, tag, reading type, format, or search.</p></div>
+          <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another status, tag, reading type, format, ownership, or search.</p></div>
         ) : viewMode === 'grid' ? (
           <LibraryBookGrid books={paginatedBooks} selectedBookIds={selectedBookIds} onToggleSelectBook={onToggleSelectBook} onSelectBook={onSelectBook} />
         ) : (
-          <div className="space-y-3">{paginatedBooks.map((book) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="inkbound-panel flex w-full items-center gap-4 p-4 text-left"><BookCover work={book.work} edition={book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0]} size="sm" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-serif text-lg text-[#f4efe6]">{book.work.title}</h3><span className="rounded-full border border-[#c5a059]/20 px-2 py-0.5 text-[10px] font-bold uppercase text-[#cdbbca]">{materialTypeLabel(book.work.materialType ?? 'book', true)}</span></div><p className="text-xs text-[#ad9fac]">{book.work.author}</p></div><div className="hidden text-right sm:block"><p className="text-sm font-bold text-[#e2bd66]">{book.progressPercentage}%</p>{book.rating && <p className="flex items-center justify-end gap-1 text-xs text-[#ad9fac]"><Star className="h-3 w-3 fill-[#e2bd66] text-[#e2bd66]" />{book.rating}</p>}</div></button>)}</div>
+          <div className="space-y-3">{paginatedBooks.map((book) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="inkbound-panel flex w-full items-center gap-4 p-4 text-left"><BookCover work={book.work} edition={book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0]} size="sm" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-serif text-lg text-[#f4efe6]">{book.work.title}</h3><span className="rounded-full border border-[#c5a059]/20 px-2 py-0.5 text-[10px] font-bold uppercase text-[#cdbbca]">{materialTypeLabel(book.work.materialType ?? 'book', true)}</span></div><p className="text-xs text-[#ad9fac]">{book.work.author}</p></div><div className="hidden text-right sm:block"><p className="text-sm font-bold text-[#e2bd66]">{getCanonicalProgressPercentage(book)}%</p>{book.rating && <p className="flex items-center justify-end gap-1 text-xs text-[#ad9fac]"><Star className="h-3 w-3 fill-[#e2bd66] text-[#e2bd66]" />{book.rating}</p>}</div></button>)}</div>
         )}
 
         <PaginationControls page={safePage} totalItems={filteredBooks.length} pageSize={LIBRARY_PAGE_SIZE} onPageChange={setPage} itemLabel="items" />
