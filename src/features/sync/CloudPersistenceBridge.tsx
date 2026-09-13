@@ -25,6 +25,7 @@ import {
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 import { shouldPromoteLocalRecordMissingFromCloud } from './syncConflictPolicy';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const localStorage = {
   getItem: (key: string) => getRuntimeStorage().getItem(key),
@@ -34,7 +35,7 @@ const localStorage = {
 
 const BOOKS_KEY: CloudSyncedStorageKey = 'inkbound_books';
 const SESSIONS_KEY: CloudSyncedStorageKey = 'inkbound_sessions';
-const PROFILE_KEY: CloudSyncedStorageKey = 'inkbound_reader_profile';
+const PROFILE_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.profile;
 const BRIDGE_VERSION_KEY = 'inkbound_cloud_bridge_version';
 const BRIDGE_VERSION = '11';
 const SYNC_FLUSH_DEBOUNCE_MS = 3000;
