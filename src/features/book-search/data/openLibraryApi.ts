@@ -45,7 +45,14 @@ interface OpenLibraryWorkDetails {
   description?: string | { value?: string };
 }
 
+export interface OpenLibraryCatalogPage extends BookSearchResponse {
+  providerTotalItems: number;
+  nextStartIndex: number;
+  hasMore: boolean;
+}
+
 const OPEN_LIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
+const DEFAULT_PAGE_SIZE = 40;
 const FIELDS = [
   'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language',
   'isbn', 'cover_i', 'cover_edition_key', 'number_of_pages_median', 'editions', 'editions.key',
@@ -140,10 +147,10 @@ const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
   };
 };
 
-function buildSearchParams(query: string): URLSearchParams {
+function buildSearchParams(query: string, page = 1, limit = DEFAULT_PAGE_SIZE): URLSearchParams {
   const trimmed = query.trim();
   const operator = trimmed.match(/^(inauthor|intitle|isbn):\s*(.+)$/i);
-  const params = new URLSearchParams({ limit: '40', fields: FIELDS });
+  const params = new URLSearchParams({ limit: String(limit), page: String(page), fields: FIELDS });
   if (!operator) {
     params.set('q', trimmed);
     return params;
@@ -157,11 +164,20 @@ function buildSearchParams(query: string): URLSearchParams {
   return params;
 }
 
-export async function searchOpenLibrary(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
+export async function searchOpenLibraryPage(
+  query: string,
+  startIndex = 0,
+  pageSize = DEFAULT_PAGE_SIZE,
+  signal?: AbortSignal,
+): Promise<OpenLibraryCatalogPage> {
   const trimmed = query.trim();
-  if (!trimmed) return { groups: [], totalItems: 0 };
+  if (!trimmed) {
+    return { groups: [], totalItems: 0, providerTotalItems: 0, nextStartIndex: startIndex, hasMore: false };
+  }
 
-  const params = buildSearchParams(trimmed);
+  const safePageSize = Math.max(1, Math.min(pageSize, 100));
+  const page = Math.floor(Math.max(0, startIndex) / safePageSize) + 1;
+  const params = buildSearchParams(trimmed, page, safePageSize);
   const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
     signal,
     headers: { Accept: 'application/json' },
@@ -169,10 +185,26 @@ export async function searchOpenLibrary(query: string, signal?: AbortSignal): Pr
   if (!response.ok) throw new Error(`Open Library search failed (${response.status}).`);
 
   const payload = (await response.json()) as OpenLibraryResponse;
-  const groups = (payload.docs ?? [])
+  const rawDocs = payload.docs ?? [];
+  const groups = rawDocs
     .map(mapWork)
     .filter((group): group is BookSearchWorkGroup => Boolean(group));
-  return { groups, totalItems: payload.numFound ?? payload.num_found ?? groups.length };
+  const providerTotalItems = payload.numFound ?? payload.num_found ?? groups.length;
+  const nextStartIndex = Math.max(0, startIndex) + rawDocs.length;
+  const hasMore = rawDocs.length > 0 && nextStartIndex < providerTotalItems;
+
+  return {
+    groups,
+    totalItems: providerTotalItems,
+    providerTotalItems,
+    nextStartIndex,
+    hasMore,
+  };
+}
+
+export async function searchOpenLibrary(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
+  const page = await searchOpenLibraryPage(query, 0, DEFAULT_PAGE_SIZE, signal);
+  return { groups: page.groups, totalItems: page.totalItems };
 }
 
 export async function fetchOpenLibrarySummary(title: string, author: string, signal?: AbortSignal): Promise<string | undefined> {
