@@ -131,6 +131,19 @@ function writeGoogleBooksCache(query: string, startIndex: number, maxResults: nu
   }
 }
 
+const googleBooksErrorDetail = (body: string): string => {
+  const trimmed = body.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: { message?: unknown }; message?: unknown };
+    const message = parsed.error?.message ?? parsed.message;
+    if (typeof message === 'string' && message.trim()) return message.trim();
+  } catch {
+    // Fall through to a short plain-text response body.
+  }
+  return trimmed.replace(/\s+/g, ' ').slice(0, 300);
+};
+
 async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40): Promise<GoogleBooksCatalogPayload> {
   const cached = readGoogleBooksCache(query, startIndex, maxResults);
   if (cached) return cached;
@@ -143,13 +156,16 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
+    startIndex: String(startIndex),
     maxResults: String(maxResults),
     key: apiKey,
   });
-  if (startIndex > 0) params.set('startIndex', String(startIndex));
 
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
-  if (!response.ok) throw new Error(`Google Books returned ${response.status}.`);
+  if (!response.ok) {
+    const detail = googleBooksErrorDetail(await response.text());
+    throw new Error(`Google Books returned ${response.status}${detail ? `: ${detail}` : '.'}`);
+  }
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
