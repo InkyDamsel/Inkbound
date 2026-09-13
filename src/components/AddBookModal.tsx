@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
-import { BookOpen, Camera, Check, Loader2, ScanLine, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Camera, Check, Loader2, ScanLine, Search, Trash2, UserRound, X } from 'lucide-react';
 import {
   FORMAT_OPTIONS,
   MATERIAL_TYPE_OPTIONS,
@@ -35,6 +35,12 @@ type CustomCategorySelection = `custom:${string}`;
 type CategorySelection = ReadingStatus | CustomCategorySelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
 type IsbnInputSource = 'camera' | 'manual';
+type AuthorPageState = {
+  name: string;
+  previousQuery: string;
+  previousResults: BookSearchWorkGroup[];
+  previousHasSearched: boolean;
+};
 
 type BarcodeDetectorLike = {
   detect(source: HTMLVideoElement): Promise<Array<{ rawValue?: string }>>;
@@ -58,6 +64,7 @@ const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperC
 const editionIsbnValues = (edition: BookSearchEdition) => [edition.isbn13, edition.isbn10].map((value) => normalizeIsbn(value ?? '')).filter(Boolean);
 const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) => `${work.key}:${edition.source}:${edition.externalEditionId}`;
 const statusLabel = (status: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+const normalizeAuthorName = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const isValidIsbn10 = (value: string) => {
   if (!/^\d{9}[\dX]$/.test(value)) return false;
@@ -108,6 +115,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
   const [addedSearchBooks, setAddedSearchBooks] = useState<Map<string, UserBookRecord>>(() => new Map());
+  const [authorPage, setAuthorPage] = useState<AuthorPageState | null>(null);
   const [customCategories, setCustomCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [creatingCustomCategory, setCreatingCustomCategory] = useState(false);
   const [newCustomCategoryName, setNewCustomCategoryName] = useState('');
@@ -164,11 +172,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (pendingSearchEdition) { setPendingSearchEdition(null); return; }
+      if (authorPage) {
+        setQuery(authorPage.previousQuery);
+        setResults(authorPage.previousResults);
+        setHasSearched(authorPage.previousHasSearched);
+        setSearchError(null);
+        setAuthorPage(null);
+        return;
+      }
       onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, pendingSearchEdition]);
+  }, [onClose, pendingSearchEdition, authorPage]);
 
   useEffect(() => {
     const refresh = () => setCustomCategories(readCustomOwnershipCategories());
@@ -189,6 +205,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     event.preventDefault();
     const trimmedQuery = query.trim();
     if (!trimmedQuery || isSearching) return;
+    setAuthorPage(null);
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
@@ -202,6 +219,43 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const openAuthorPage = async (authorName: string) => {
+    if (isSearching) return;
+    const previousState: AuthorPageState = {
+      name: authorName,
+      previousQuery: query,
+      previousResults: results,
+      previousHasSearched: hasSearched,
+    };
+    setAuthorPage(previousState);
+    setIsSearching(true);
+    setSearchError(null);
+    setHasSearched(true);
+    setPendingSearchEdition(null);
+    try {
+      const response = await searchGoogleBooks(`inauthor:${authorName}`);
+      const normalizedAuthor = normalizeAuthorName(authorName);
+      const exactAuthorResults = response.groups.filter((work) =>
+        work.authors.some((candidate) => normalizeAuthorName(candidate) === normalizedAuthor),
+      );
+      setResults(exactAuthorResults.length > 0 ? exactAuthorResults : response.groups);
+    } catch (error) {
+      setResults([]);
+      setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const closeAuthorPage = () => {
+    if (!authorPage) return;
+    setQuery(authorPage.previousQuery);
+    setResults(authorPage.previousResults);
+    setHasSearched(authorPage.previousHasSearched);
+    setSearchError(null);
+    setAuthorPage(null);
   };
 
   const storeAddedSearchBook = (work: BookSearchWorkGroup, edition: BookSearchEdition, book: UserBookRecord) => {
@@ -323,8 +377,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     if (!video || !detector || !streamRef.current) return;
     try {
       if (!lookupBusyRef.current && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        const results = await detector.detect(video);
-        const detectedValues = results.map((result) => result.rawValue).filter((value): value is string => Boolean(value));
+        const detected = await detector.detect(video);
+        const detectedValues = detected.map((result) => result.rawValue).filter((value): value is string => Boolean(value));
         const normalizedValues = detectedValues.map(normalizeIsbn);
         const isbn = normalizedValues.find(isValidIsbn);
         if (isbn) {
@@ -448,6 +502,68 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const scannerReviewStart = (scannerReviewPage - 1) * SCANNER_REVIEW_PAGE_SIZE;
   const scannerReviewBooks = scannedBooks.slice(scannerReviewStart, scannerReviewStart + SCANNER_REVIEW_PAGE_SIZE);
 
+  const renderSearchResults = () => results.length > 0 && (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {results.map((work) => (
+        <article key={work.key} className="flex min-w-0 flex-col rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-4">
+          <div className="min-w-0">
+            <h3 className="line-clamp-2 font-serif text-xl leading-tight text-[#f4efe6]">{work.title}</h3>
+            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs">
+              {work.authors.map((authorName, index) => (
+                <React.Fragment key={`${work.key}-${authorName}`}>
+                  {index > 0 && <span className="text-[#6f6370]">·</span>}
+                  <button
+                    type="button"
+                    onClick={() => void openAuthorPage(authorName)}
+                    className="font-medium text-[#b9a9ba] underline decoration-transparent underline-offset-2 transition hover:text-[#e5c158] hover:decoration-[#c5a059]/45"
+                    title={`View books by ${authorName}`}
+                  >
+                    {authorName}
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3">
+            {work.editions.map((edition) => {
+              const key = searchEditionKey(work, edition);
+              const addedBook = addedSearchBooks.get(key);
+              const added = Boolean(addedBook);
+              return (
+                <div key={edition.externalEditionId} className={`flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#17131b]' : 'border-white/7 bg-[#120c15]'}`}>
+                  {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
+                  <div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]">
+                    <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
+                    {edition.pageCount && <span className="mt-1 block">{edition.pageCount} pages</span>}
+                    <div className="mt-auto pt-3">
+                      {addedBook ? (
+                        <div className="rounded-xl border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2.5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 font-semibold text-[#e5c158]"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15"><Check className="h-3.5 w-3.5" /></span><span>In your library</span></div>
+                              <p className="mt-1.5 pl-8 text-[11px] font-medium text-[#bcaebe]">{statusLabel(addedBook.status)}</p>
+                            </div>
+                            <button type="button" onClick={() => removeStoredSearchBook(work, edition)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-[#8f8290] transition hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-300 focus:border-rose-400/50 focus:text-rose-300" aria-label={`Remove ${work.title} from your library`} title="Remove from library"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                          <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="mt-2 min-h-8 w-full rounded-lg border border-[#c5a059]/15 bg-[#120c15]/70 px-2 text-[11px] font-bold text-[#d8c28b] transition hover:border-[#c5a059]/35 hover:bg-[#c5a059]/5">Change list</button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
+                          <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="relative max-h-[100dvh] w-full max-w-5xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
@@ -460,7 +576,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
           {([['search', 'Search'], ['scan', 'Scan Books'], ['manual', 'Add Manually']] as const).map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setActiveTab(id)} className={`min-h-11 rounded-lg px-2 text-sm font-semibold ${activeTab === id ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>{label}</button>
+            <button key={id} type="button" onClick={() => { setActiveTab(id); if (id !== 'search') setAuthorPage(null); }} className={`min-h-11 rounded-lg px-2 text-sm font-semibold ${activeTab === id ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>{label}</button>
           ))}
         </div>
 
@@ -532,57 +648,29 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           </div>
         ) : activeTab === 'search' ? (
           <div className="mt-6 space-y-5">
-            <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
-              <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
-              <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
-            </form>
-            {searchError && <div className="rounded-xl border border-[#c97b7b]/40 bg-[#c97b7b]/10 p-4 text-sm text-[#efb6b6]">{searchError}</div>}
-            {!hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65" /><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. Add books directly to TBR without leaving your results, or choose another list when you need it.</p></div>}
-            {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">No matching material found</p><button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button></div>}
-            {results.length > 0 && (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {results.map((work) => (
-                  <article key={work.key} className="flex min-w-0 flex-col rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-4">
-                    <div className="min-w-0"><h3 className="line-clamp-2 font-serif text-xl leading-tight text-[#f4efe6]">{work.title}</h3><p className="mt-1 truncate text-xs text-[#ad9fac]">{work.authors.join(', ')}</p></div>
-                    <div className="mt-4 grid gap-3">
-                      {work.editions.map((edition) => {
-                        const key = searchEditionKey(work, edition);
-                        const addedBook = addedSearchBooks.get(key);
-                        const added = Boolean(addedBook);
-                        return (
-                          <div key={edition.externalEditionId} className={`flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#17131b]' : 'border-white/7 bg-[#120c15]'}`}>
-                            {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
-                            <div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]">
-                              <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
-                              {edition.pageCount && <span className="mt-1 block">{edition.pageCount} pages</span>}
-                              <div className="mt-auto pt-3">
-                                {addedBook ? (
-                                  <div className="rounded-xl border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2.5">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <div className="flex items-center gap-2 font-semibold text-[#e5c158]"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15"><Check className="h-3.5 w-3.5" /></span><span>In your library</span></div>
-                                        <p className="mt-1.5 pl-8 text-[11px] font-medium text-[#bcaebe]">{statusLabel(addedBook.status)}</p>
-                                      </div>
-                                      <button type="button" onClick={() => removeStoredSearchBook(work, edition)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-[#8f8290] transition hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-300 focus:border-rose-400/50 focus:text-rose-300" aria-label={`Remove ${work.title} from your library`} title="Remove from library"><Trash2 className="h-3.5 w-3.5" /></button>
-                                    </div>
-                                    <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="mt-2 min-h-8 w-full rounded-lg border border-[#c5a059]/15 bg-[#120c15]/70 px-2 text-[11px] font-bold text-[#d8c28b] transition hover:border-[#c5a059]/35 hover:bg-[#c5a059]/5">Change list</button>
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col gap-2">
-                                    <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
-                                    <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </article>
-                ))}
-              </div>
+            {authorPage ? (
+              <section className="overflow-hidden rounded-2xl border border-[#c5a059]/25 bg-gradient-to-br from-[#241726] via-[#1d1422] to-[#120c15] p-5 sm:p-6">
+                <button type="button" onClick={closeAuthorPage} className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs font-bold text-[#d8c28b] transition hover:bg-white/5 hover:text-[#f1d37b]"><ArrowLeft className="h-4 w-4" /> Back to search results</button>
+                <div className="mt-4 flex items-center gap-4">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-[#c5a059]/30 bg-[#c5a059]/10 text-[#e5c158]"><UserRound className="h-6 w-6" /></div>
+                  <div className="min-w-0">
+                    <p className="inkbound-kicker">Author catalog</p>
+                    <h3 className="mt-1 truncate font-serif text-3xl text-[#f4efe6]">{authorPage.name}</h3>
+                    <p className="mt-1 text-sm text-[#ad9fac]">{isSearching ? 'Finding books…' : `${results.length} title${results.length === 1 ? '' : 's'} found`}</p>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
+                <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
+                <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
+              </form>
             )}
+            {searchError && <div className="rounded-xl border border-[#c97b7b]/40 bg-[#c97b7b]/10 p-4 text-sm text-[#efb6b6]">{searchError}</div>}
+            {!authorPage && !hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65" /><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. Add books directly to TBR without leaving your results, or choose another list when you need it.</p></div>}
+            {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">{authorPage ? `No books found for ${authorPage.name}` : 'No matching material found'}</p>{!authorPage && <button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button>}</div>}
+            {isSearching && authorPage && <div className="grid place-items-center rounded-2xl border border-dashed border-[#c5a059]/20 py-12 text-[#ad9fac]"><Loader2 className="h-6 w-6 animate-spin text-[#c5a059]" /><span className="mt-3 text-sm">Loading {authorPage.name}'s catalog…</span></div>}
+            {!isSearching && renderSearchResults()}
           </div>
         ) : (
           <div className="mt-6 space-y-4">
