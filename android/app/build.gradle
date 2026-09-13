@@ -1,43 +1,8 @@
 apply plugin: 'com.android.application'
 
-def releaseRequested = gradle.startParameter.taskNames.any { taskName ->
-    taskName.toLowerCase().contains('release')
-}
-
-def keystorePropertiesFile = rootProject.file('keystore.properties')
-def keystoreProperties = new Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-}
-
-def firstEnvironmentValue = { List<String> names ->
-    names.collect { System.getenv(it)?.trim() }.find { it }
-}
-
-def releaseStorePassword = firstEnvironmentValue([
-    'INKBOUND_STORE_PASSWORD',
-    'INKBOUND_UPLOAD_STORE_PASSWORD',
-    'ANDROID_STORE_PASSWORD',
-    'KEYSTORE_PASSWORD',
-])
-def releaseKeyPassword = firstEnvironmentValue([
-    'INKBOUND_KEY_PASSWORD',
-    'INKBOUND_UPLOAD_KEY_PASSWORD',
-    'ANDROID_KEY_PASSWORD',
-    'KEY_PASSWORD',
-])
-def releaseStoreFile = keystoreProperties['storeFile']?.toString()?.trim()
-def releaseKeyAlias = keystoreProperties['keyAlias']?.toString()?.trim()
-
-def hasReleaseSigningConfig = releaseStoreFile && releaseKeyAlias && releaseStorePassword && releaseKeyPassword
-
-if (releaseRequested && !hasReleaseSigningConfig) {
-    throw new GradleException('Inkbound release signing is incomplete. android/keystore.properties must contain storeFile and keyAlias, and the signing passwords must be available through the existing Windows environment variables (supported names: INKBOUND_STORE_PASSWORD / INKBOUND_UPLOAD_STORE_PASSWORD / ANDROID_STORE_PASSWORD / KEYSTORE_PASSWORD and INKBOUND_KEY_PASSWORD / INKBOUND_UPLOAD_KEY_PASSWORD / ANDROID_KEY_PASSWORD / KEY_PASSWORD).')
-}
-
 android {
     namespace = "com.inkydameinteractive.inkbound"
-    compileSdk = rootProject.ext.compileSdkVersion
+    compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.inkydameinteractive.inkbound"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -47,34 +12,13 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
-             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72a6a34fa1e8ff0c6f85b0b88995/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
-        }
-    }
-    signingConfigs {
-        release {
-            if (hasReleaseSigningConfig) {
-                storeFile rootProject.file(releaseStoreFile)
-                storePassword releaseStorePassword
-                keyAlias releaseKeyAlias
-                keyPassword releaseKeyPassword
-            }
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/tools/aapt2/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
     buildTypes {
-        debug {
-            // Keep local Android testing completely separate from the Google Play
-            // install so a debug APK can live beside the production/beta app.
-            applicationIdSuffix ".debug"
-            versionNameSuffix "-debug"
-        }
         release {
-            // Release-only shrinking keeps the tester bundle lean without changing
-            // debug behavior. R8 removes unused bytecode and Android's resource
-            // shrinker drops resources no longer referenced after minification.
-            minifyEnabled true
-            shrinkResources true
-            signingConfig signingConfigs.release
+            minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -95,7 +39,7 @@ dependencies {
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
-    androidTestImplementation "androidx.test.espresso:espresso-core:$espressoCoreVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
 }
 
@@ -108,11 +52,4 @@ if (hasFirebaseAndroidConfig) {
     apply plugin: 'com.google.gms.google-services'
 } else {
     logger.lifecycle('Inkbound Android: google-services.json is not installed. Firebase native Auth/App Check will be unavailable.')
-
-    // Debug/IDE work may intentionally begin before Firebase Android credentials
-    // are installed, but never allow a Play/release artifact to be produced in
-    // that state.
-    if (releaseRequested) {
-        throw new GradleException('Inkbound release builds require android/app/google-services.json. Download it from the Firebase Android app configuration before building an AAB/APK.')
-    }
 }
