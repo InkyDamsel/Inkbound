@@ -47,6 +47,31 @@ Use this module for status, ownership, reading-material type, format, priority, 
 
 New status-changing, progress-presenting, aggregate-progress, or session-reconciliation surfaces must call these helpers rather than inventing a second set of finish/start/progress rules.
 
+## Historical reading and reporting math
+
+**Canonical historical finish/import semantics:** `src/features/reading/inkboundActivity.ts`
+
+- `isImportedBook()` is the single import-identity rule.
+- `hasTrustworthyFinishedHistory()` is the single historical-finish rule. A book belongs in dated historical reporting when it is Finished and has a valid persisted `dateFinished`.
+- A valid imported finish date is reading history even when unrelated imported metadata still needs review. Metadata-quality flags may gate genre/format/taste conclusions; they must not erase a valid finish date from historical counts.
+- `isInkboundFinishedBook()`, `isInkboundActiveBook()`, and `isInkboundStartedBook()` are stricter activity/achievement helpers. Imported history alone does not earn Inkbound activity achievements or challenges.
+
+**Canonical historical page math:** `src/features/reading/readingPageTotals.ts`
+
+- `getEffectivePagesReadForPeriod()` owns pages-read totals for dashboard/history/statistics surfaces.
+- Real Inkbound page sessions are authoritative when page activity was tracked through the original finish date. Reports count only the tracked pages that fall inside the requested period.
+- A trustworthy historical Finished record with a known print/ebook page count and no original tracked page-session history may use that page count as the historical fallback in the period containing `dateFinished`.
+- Never add the tracked-session path and the whole-book fallback for the same original read. That would double count a book read across multiple months.
+- A later reread/session does not erase a valid imported historical finish from its original month.
+- These are derived report values. They do not create synthetic sessions or rewrite stored progress.
+
+**Time and session-count rule:** `src/features/reading/sessionAnalytics.ts`
+
+- Reading time, reading-session counts, streaks, and reading days come from persisted Inkbound session records.
+- Imported finish dates do **not** fabricate hours, sessions, streak days, or achievement activity.
+
+Therefore a monthly dashboard may correctly show an imported book in **books finished** and include its known page count in **pages read** when the imported end date is valid, while **hours read** and **reading sessions** remain based only on real persisted Inkbound sessions.
+
 ## Product / Free vs Premium policy
 
 **Canonical policy:** `src/config/productPolicy.ts`
@@ -164,6 +189,8 @@ A different implementation is not permission to omit the capability.
 Statistics, Insights, Timeline, Series, TBR, Achievements, Studio, Memories, and dashboard widgets can calculate different presentations from the canonical library/session data. They should not persist a second copy of facts such as status, ownership, progress, series assignment, or session history merely to render a screen.
 
 Derived screens that present progress must use `getBookReadingState()`, `getCanonicalProgressPercentage()`, or `getAverageBookProgress()` from the canonical reading-state module. They must not redefine Finished/100% semantics locally.
+
+Historical reporting screens that count finished books or pages must use `hasTrustworthyFinishedHistory()` and `getEffectivePagesReadForPeriod()` rather than rebuilding import/date/page rules locally. Activity-only screens may use the stricter `isInkbound*` helpers and session analytics when their labels explicitly describe tracked Inkbound behavior.
 
 ## Rule for new features
 
