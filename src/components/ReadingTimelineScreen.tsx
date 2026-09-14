@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
 import {
   getSessionDurationMinutes,
   getSessionListeningMinutes,
   getSessionPagesRead,
 } from '../features/reading/sessionAnalytics';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface ReadingTimelineScreenProps {
   books: UserBookRecord[];
@@ -58,7 +60,7 @@ interface TimelineEvent {
 const FILTER_KEY = 'inkbound_timeline_filter';
 const SEARCH_KEY = 'inkbound_timeline_search';
 const COLLAPSED_KEY = 'inkbound_timeline_collapsed_months';
-const MEMORIES_KEY = 'inkbound_timeline_memories';
+const MEMORIES_KEY = ACCOUNT_DATA_STORAGE_KEYS.timelineMemories;
 const UNDO_DELETE_MS = 7000;
 
 const filterOptions: Array<{ id: TimelineFilter; label: string }> = [
@@ -121,9 +123,9 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
     const nextEvents: TimelineEvent[] = [];
 
     books.forEach((book) => {
-      const isImported = Boolean(book.sourceOfImport);
+      const isImported = isImportedBook(book);
       const added = normalizeDate(book.dateAdded);
-      const finished = book.status === 'finished' ? normalizeDate(book.dateFinished) : null;
+      const finished = hasTrustworthyFinishedHistory(book) ? normalizeDate(book.dateFinished) : null;
 
       // Imported library dates describe the source library, not necessarily actions
       // that happened inside Inkbound. Keep native chronology clean instead of
@@ -163,20 +165,20 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
           bookId: book.id,
           meta: book.rating ? `${book.rating.toFixed(1)} stars` : 'Finished book',
         });
-      } else if (finished && isImported && book.importFinishedDateProvided) {
+      } else if (finished && isImported && book.importFinishedDateProvided === true) {
         nextEvents.push({
           id: `imported-finished-${book.id}`,
           date: finished.toISOString(),
           type: 'books',
           title: `Imported history: Finished ${book.work.title}`,
-          description: `This finish date came from ${book.sourceOfImport || 'your imported library'} and is shown as historical context, not tracked Inkbound activity.`,
+          description: `This valid finish date came from ${book.sourceOfImport || 'your imported library'} and is shown as historical context, not tracked Inkbound activity.`,
           bookId: book.id,
           meta: 'Imported history',
         });
-      } else if (finished && isImported && !book.importFinishedDateProvided) {
-        // An imported book without a trustworthy historical finish date only gets a
-        // dated finish event once Inkbound has a real date to work with (for example,
-        // after the reader marks it finished in Inkbound).
+      } else if (finished && isImported) {
+        // The record is imported, but the valid persisted finish date was not
+        // supplied as imported history. Treat it as a normal finish (for example,
+        // when the reader later marks the book Finished inside Inkbound).
         nextEvents.push({
           id: `finished-${book.id}`,
           date: finished.toISOString(),
