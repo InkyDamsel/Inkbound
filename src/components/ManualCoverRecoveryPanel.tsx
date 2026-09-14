@@ -5,6 +5,7 @@ import type { UserBookRecord } from '../types';
 import { auth, storage } from '../lib/firebase';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
 import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readImportEnrichmentQueue, writeImportEnrichmentQueue } from '../features/import/libraryEnrichment';
 import { PaginationControls } from './PaginationControls';
 
@@ -19,7 +20,7 @@ interface ManualCoverRecoveryPanelProps {
   books: UserBookRecord[];
 }
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const COVER_PAGE_SIZE = 20;
 const BOOK_PAGE_SIZE = 20;
 
