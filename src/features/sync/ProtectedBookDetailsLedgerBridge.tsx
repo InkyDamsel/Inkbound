@@ -10,8 +10,9 @@ import {
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_KEY = 'inkbound_books';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const LEDGER_COLLECTION = 'protectedBookDetails';
 
 interface ProtectedBookDetails {
@@ -98,16 +99,7 @@ function signaturesFor(books: UserBookRecord[]): Map<string, string> {
   return new Map(books.map((book) => [book.id, JSON.stringify(detailsFor(book))]));
 }
 
-/**
- * Reader-entered book details are durable data, not disposable metadata.
- *
- * This ledger intentionally starts with the current library as its baseline and
- * only writes entries after a book changes locally. A cloud hydration event
- * refreshes the baseline without writing, so an older server snapshot cannot
- * teach the safety ledger that stale data is the reader's newest edit.
- *
- * Covers are excluded because ManualCoverLedgerBridge protects those separately.
- */
+/** Reader-entered book details are durable data, not disposable metadata. */
 export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
   const { user } = useAccountSync();
   const baseline = useRef(new Map<string, string>());
@@ -133,9 +125,6 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
         for (const book of books) {
           const previousSignature = baseline.current.get(book.id);
           const currentSignature = currentSignatures.get(book.id);
-
-          // A brand-new book establishes its baseline first. Once the reader or
-          // local metadata tools change it, subsequent edits are protected.
           if (previousSignature === undefined || previousSignature === currentSignature) continue;
 
           await setDoc(doc(db, 'users', uid, LEDGER_COLLECTION, book.id), {
@@ -165,7 +154,6 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
     const onCloudChange = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
       if (!detail?.keys?.includes(BOOKS_KEY)) return;
-      // Cloud-originated refreshes are canonical hydration, not a new reader edit.
       baseline.current = signaturesFor(readBooks());
     };
 
