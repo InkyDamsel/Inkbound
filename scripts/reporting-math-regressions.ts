@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
-import { getEffectivePagesReadForPeriod } from '../src/features/reading/readingPageTotals';
+import { getEffectiveBookProgressPages, getEffectivePagesReadForPeriod } from '../src/features/reading/readingPageTotals';
 import { hasTrustworthyFinishedHistory } from '../src/features/reading/inkboundActivity';
 
 const book = (overrides: Partial<UserBookRecord> = {}): UserBookRecord => ({
@@ -70,6 +70,8 @@ const pageSession = (
   });
 
   assert.equal(hasTrustworthyFinishedHistory(imported), true);
+  assert.equal(getEffectiveBookProgressPages(imported), 500);
+  assert.equal(imported.progressPages, 0, 'effective display pages must not rewrite persisted progress');
   assert.equal(
     getEffectivePagesReadForPeriod([imported], [], '2026-08-01', '2026-08-31'),
     500,
@@ -85,6 +87,7 @@ const pageSession = (
 {
   const missingEndDate = book({ dateFinished: undefined });
   assert.equal(hasTrustworthyFinishedHistory(missingEndDate), false);
+  assert.equal(getEffectiveBookProgressPages(missingEndDate), 0);
   assert.equal(
     getEffectivePagesReadForPeriod([missingEndDate], [], '2026-08-01', '2026-08-31'),
     0,
