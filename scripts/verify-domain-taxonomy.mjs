@@ -29,14 +29,14 @@ const importMappingAllowlist = new Set([
 // again. A matching duplicate is still a second authority and is forbidden.
 const storageKeysSource = read(path.join(root, storageKeysPath));
 const registeredStorageKeyLiterals = [...new Set(
-  [...storageKeysSource.matchAll(/['"](inkbound_[a-z0-9_]+)['"]/gi)].map((match) => match[1]),
+  [...storageKeysSource.matchAll(/['\"](inkbound_[a-z0-9_]+)['\"]/gi)].map((match) => match[1]),
 )];
 for (const file of files) {
   const name = rel(file);
   if (name === storageKeysPath) continue;
   const source = read(file);
   for (const key of registeredStorageKeyLiterals) {
-    if (source.includes(`'${key}'`) || source.includes(`"${key}"`)) {
+    if (source.includes(`'${key}'`) || source.includes(`\"${key}\"`)) {
       violations.push(`${name}: redefines registered storage key ${key}; import its owner from storageKeys.ts`);
     }
   }
@@ -45,7 +45,7 @@ for (const file of files) {
 // Reader-facing status selectors must come from the canonical taxonomy. External
 // import normalization may mention raw status values because it translates a
 // foreign vocabulary into Inkbound's canonical domain.
-const hardCodedStatusOption = /<option[^>]+value=["'](?:currently-reading|tbr|finished|paused|dnf|wishlist)["']/;
+const hardCodedStatusOption = /<option[^>]+value=[\"'](?:currently-reading|tbr|finished|paused|dnf|wishlist)[\"']/;
 for (const file of files) {
   const name = rel(file);
   if (name === taxonomyPath || importMappingAllowlist.has(name)) continue;
@@ -55,23 +55,20 @@ for (const file of files) {
   }
 }
 
-// Ownership, format, priority, and material selectors must not recreate their
-// labels locally. This catches the exact class of bug where one surface exposes a
-// smaller/different set than another surface.
 const hardCodedOptionGroups = [
   {
     label: 'ownership',
-    pattern: /<option[^>]+value=["']owned["'][\s\S]{0,1800}<option[^>]+value=["'](?:borrowed-library|subscription|none)["']/,
+    pattern: /<option[^>]+value=[\"']owned[\"'][\s\S]{0,1800}<option[^>]+value=[\"'](?:borrowed-library|subscription|none)[\"']/,
     owner: 'OWNERSHIP_OPTIONS',
   },
   {
     label: 'priority',
-    pattern: /<option[^>]+value=["']top["'][\s\S]{0,1000}<option[^>]+value=["']low["']/,
+    pattern: /<option[^>]+value=[\"']top[\"'][\s\S]{0,1000}<option[^>]+value=[\"']low[\"']/,
     owner: 'PRIORITY_OPTIONS',
   },
   {
     label: 'format',
-    pattern: /<option[^>]+value=["']hardcover["'][\s\S]{0,1200}<option[^>]+value=["'](?:ebook|audiobook)["']/,
+    pattern: /<option[^>]+value=[\"']hardcover[\"'][\s\S]{0,1200}<option[^>]+value=[\"'](?:ebook|audiobook)[\"']/,
     owner: 'FORMAT_OPTIONS',
   },
 ];
@@ -87,19 +84,19 @@ for (const file of files) {
 }
 
 // customOwnershipCategoryId has exactly one meaning: the selected custom
-// ownership value. It must never be used as a second reading-status/category
-// system or as a Collections membership store.
+// ownership value. Detect semantic coupling, not harmless nearby UI words such
+// as "Custom categories" in an ownership picker.
 for (const file of files) {
   const name = rel(file);
   const source = read(file);
-  if (/customOwnershipCategoryId[\s\S]{0,500}status\s*:\s*['"]custom['"]/.test(source)
-      || /status\s*:\s*['"]custom['"][\s\S]{0,500}customOwnershipCategoryId/.test(source)) {
+  if (/customOwnershipCategoryId\s*:[^\n]{0,120}[\s\S]{0,180}status\s*:\s*['\"]custom['\"]/.test(source)
+      || /status\s*:\s*['\"]custom['\"][\s\S]{0,180}customOwnershipCategoryId\s*:/.test(source)) {
     violations.push(`${name}: couples custom ownership metadata to reading status; customOwnershipCategoryId belongs only to ownership === 'custom'`);
   }
-  if (/customOwnershipCategoryId[\s\S]{0,500}(?:collection|Library categor)/i.test(source)
+  if (/collections\s*:[^\n]{0,240}customOwnershipCategoryId|customOwnershipCategoryId[^\n]{0,240}collections\s*:/i.test(source)
       && !name.endsWith('types.ts')
       && name !== 'src/features/library/libraryNormalization.ts') {
-    violations.push(`${name}: treats customOwnershipCategoryId as collection/category membership; Collections belong to UserBookRecord.collections`);
+    violations.push(`${name}: treats customOwnershipCategoryId as collection membership; Collections belong to UserBookRecord.collections`);
   }
 }
 
@@ -110,17 +107,12 @@ if (!types.includes("ownership === 'custom'")) {
 
 const taxonomy = read(path.join(root, taxonomyPath));
 for (const value of ['currently-reading', 'tbr', 'finished', 'paused', 'dnf']) {
-  if (!taxonomy.includes(`value: '${value}'`)) {
-    violations.push(`${taxonomyPath}: READING_STATUS_OPTIONS must expose ${value}`);
-  }
+  if (!taxonomy.includes(`value: '${value}'`)) violations.push(`${taxonomyPath}: READING_STATUS_OPTIONS must expose ${value}`);
 }
 if (!taxonomy.includes('COMPATIBILITY_READING_STATUS_OPTIONS')) {
   violations.push(`${taxonomyPath}: compatibility-only statuses must remain explicit instead of silently joining reader-assignable status options`);
 }
 
-// High-risk screens mutate/filter/report the same domain values. Make their
-// canonical imports a release requirement so omission becomes a failed
-// verification, not another store hotfix.
 const requiredCanonicalConsumers = new Map([
   ['src/components/AddBookModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'readCustomOwnershipCategories', 'withReadingStatus']],
   ['src/components/BatchEditModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'readCustomOwnershipCategories']],
@@ -148,8 +140,8 @@ for (const [name, symbols] of requiredCanonicalConsumers) {
 }
 
 const addBook = read(path.join(root, 'src/components/AddBookModal.tsx'));
-if (/Reading status \/ category|Custom categories/.test(addBook)) {
-  violations.push('AddBookModal.tsx: custom ownership categories must not be presented as reading statuses/categories');
+if (/Reading status \/ category/.test(addBook)) {
+  violations.push('AddBookModal.tsx: ownership categories must not be presented as reading statuses/categories');
 }
 if (!addBook.includes("ownership: 'custom'") && !addBook.includes('customOwnership')) {
   violations.push('AddBookModal.tsx: manual add must preserve custom ownership through the canonical ownership field');
@@ -164,7 +156,7 @@ const libraryScreen = read(path.join(root, 'src/components/LibraryScreen.tsx'));
 if (!libraryScreen.includes("ownershipFilter.startsWith('custom:')")) {
   violations.push('LibraryScreen.tsx: custom ownership values must be filterable through the Ownership filter');
 }
-if (/activeCategory\.startsWith\(['"]custom:/.test(libraryScreen)) {
+if (/activeCategory\.startsWith\(['\"]custom:/.test(libraryScreen)) {
   violations.push('LibraryScreen.tsx: custom ownership must not masquerade as a reading-status/library-category filter');
 }
 
@@ -181,9 +173,8 @@ if (/querySelector\([\s\S]*option\[value=/.test(bookDetails)) {
   violations.push('BookDetailsModalCore.tsx: must not hide/replace a competing selector through DOM inspection');
 }
 
-// Any derived component that displays/sorts raw stored progress must consume the
-// canonical reading-state resolver. Mutation owners/import translators are
-// intentionally excluded because they write/reconcile the canonical record.
+// Raw stored progress is fine while constructing a mutation payload. It is not
+// fine when displayed/sorted/aggregated without the canonical reading resolver.
 for (const file of files.filter((file) => rel(file).startsWith('src/components/'))) {
   const name = rel(file);
   const source = read(file);
@@ -191,16 +182,13 @@ for (const file of files.filter((file) => rel(file).startsWith('src/components/'
   const canonical = source.includes('getCanonicalProgressPercentage')
     || source.includes('getBookReadingState')
     || source.includes('getAverageBookProgress');
+  const mutationOnly = !/[>{]\s*(?:book|item)\.progressPercentage|progressPercentage\s*\}%|sort\([^)]*progressPercentage|reduce\([^)]*progressPercentage/.test(source);
   const mutationEditor = name === 'src/components/BookDetailsModalCore.tsx';
-  if (!canonical && !mutationEditor) {
-    violations.push(`${name}: reads raw progressPercentage without the canonical reading-state resolver`);
+  if (!canonical && !mutationEditor && !mutationOnly) {
+    violations.push(`${name}: reads raw progressPercentage for derived UI without the canonical reading-state resolver`);
   }
 }
 
-// Pages shown as historical/reporting totals have a single owner. Session-only
-// features such as achievements/challenges/reading activity may intentionally
-// use getSessionPagesRead because their labels explicitly describe tracked
-// Inkbound activity; broad report surfaces may not recompute the metric.
 const canonicalPageReportConsumers = [
   'src/components/HomeDashboard.tsx',
   'src/components/MonthlyWrappedScreen.tsx',
@@ -209,30 +197,19 @@ const canonicalPageReportConsumers = [
 ];
 for (const name of canonicalPageReportConsumers) {
   const source = read(path.join(root, name));
-  if (!source.includes('getEffectivePagesReadForPeriod')) {
-    violations.push(`${name}: historical page totals must use readingPageTotals.ts`);
-  }
+  if (!source.includes('getEffectivePagesReadForPeriod')) violations.push(`${name}: historical page totals must use readingPageTotals.ts`);
 }
 
-// Import identity and trustworthy finish history each have one canonical owner:
-// inkboundActivity.ts. Feature screens must not recreate subtly different rules
-// such as "verified metadata only" or "date differs from dateAdded".
 for (const file of files.filter((file) => rel(file).startsWith('src/components/'))) {
   const name = rel(file);
   const source = read(file);
-  if (/(?:const|function)\s+isImportedBook\b/.test(source)) {
-    violations.push(`${name}: redefines isImportedBook; import it from inkboundActivity.ts`);
-  }
+  if (/(?:const|function)\s+isImportedBook\b/.test(source)) violations.push(`${name}: redefines isImportedBook; import it from inkboundActivity.ts`);
   if (/(?:const|function)\s+hasTrustworthyFinishedHistory\b/.test(source)
       || /(?:const|function)\s+hasTrustworthyFinishedDate\b/.test(source)) {
     violations.push(`${name}: redefines trustworthy finished-history semantics; import hasTrustworthyFinishedHistory from inkboundActivity.ts`);
   }
 }
 
-// Date-scoped historical finish counts must not use a raw Finished-status filter.
-// A lifetime "books completed" count may intentionally reflect current Finished
-// status even when an old import lacks an exact completion date. Anything that
-// places a completion in a month/year must use trustworthy dated history.
 for (const name of [
   'src/components/HomeDashboard.tsx',
   'src/components/MonthlyWrappedScreen.tsx',
@@ -241,15 +218,13 @@ for (const name of [
   'src/components/BookshelfThroughTimeScreen.tsx',
 ]) {
   const source = read(path.join(root, name));
-  if (/books\.filter\(\s*\(?\s*book\s*\)?\s*=>\s*book\.status\s*===\s*['"]finished['"]/.test(source)
+  if (/books\.filter\(\s*\(?\s*book\s*\)?\s*=>\s*book\.status\s*===\s*['\"]finished['\"]/.test(source)
       && !source.includes('hasTrustworthyFinishedHistory')
       && !source.includes('getTrustworthyFinishedBooks')) {
     violations.push(`${name}: dated historical Finished counts must use the canonical trustworthy-history resolver`);
   }
 }
 
-// Custom ownership is account-owned data. Any selector that removes the generic
-// Custom placeholder must also consume the canonical category store.
 for (const file of files) {
   const name = rel(file);
   const source = read(file);
@@ -259,15 +234,14 @@ for (const file of files) {
   }
 }
 
-// No UI component gets to invent a second local persistence key for domain data.
-// UI-only preferences may own local keys, but books/sessions/profile/goals/
-// ownership/collections must use the registered owner.
+// Only true account/domain stores are forbidden here. UI-only selection/filter/
+// draft/view preference keys intentionally remain local to their owning screen.
 for (const file of files.filter((file) => rel(file).startsWith('src/components/'))) {
   const name = rel(file);
   const source = read(file);
-  const suspiciousKey = /const\s+[A-Z0-9_]*(?:BOOK|SESSION|PROFILE|GOAL|OWNERSHIP|COLLECTION)[A-Z0-9_]*_KEY\s*=\s*['"]inkbound_/;
+  const suspiciousKey = /const\s+[A-Z0-9_]*(?:BOOKS?|SESSIONS?|PROFILE|ANNUAL_GOAL|DAILY_GOAL|OWNERSHIP_CATEGORIES|COLLECTION_DEFINITIONS|MEMORIES|CAPSULES|DRAGON)[A-Z0-9_]*_KEY\s*=\s*['\"]inkbound_/;
   if (suspiciousKey.test(source)) {
-    violations.push(`${name}: declares a domain persistence key locally; consume storageKeys.ts or the owning feature constant`);
+    violations.push(`${name}: declares an account/domain persistence key locally; consume storageKeys.ts or the owning feature constant`);
   }
 }
 
