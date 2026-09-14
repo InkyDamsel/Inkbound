@@ -45,7 +45,7 @@ interface SessionDraft {
   location: string;
 }
 
-const SESSION_DRAFT_KEY = 'inkbound_active_session_draft';
+const ACTIVE_READING_DRAFT_KEY = 'inkbound_active_session_draft';
 const MAX_BACKGROUND_RECOVERY_SECONDS = 8 * 60 * 60;
 
 const localDateKey = (timestamp: number) => {
@@ -102,7 +102,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const initialBook = requestedInitialBook ?? selectableBooks[0];
   const [error, setError] = useState('');
   const [dailyGoalMins] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes, '30');
-  const [draft, setDraft] = usePersistentState<SessionDraft>(SESSION_DRAFT_KEY, () => ({
+  const [draft, setDraft] = usePersistentState<SessionDraft>(ACTIVE_READING_DRAFT_KEY, () => ({
     selectedBookId: initialBook?.id ?? '',
     timerSeconds: 0,
     isActive: false,
@@ -230,7 +230,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
     setEndingProgressInput(null);
     setDraft((current) => ({ ...current, isActive: false, isFinished: true, lastActiveAt: undefined, endedAt: Date.now() }));
   };
-  const clearDraft = () => removeRuntimeValue(SESSION_DRAFT_KEY);
+  const clearDraft = () => removeRuntimeValue(ACTIVE_READING_DRAFT_KEY);
   const discardSession = () => {
     if (!window.confirm('Discard this reading session? The timer and unsaved notes will be removed.')) return;
     clearDraft();
