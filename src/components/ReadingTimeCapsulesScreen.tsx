@@ -3,6 +3,7 @@ import { CalendarClock, LockKeyhole, MailOpen, Plus, Trash2, Undo2 } from 'lucid
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 type CapsuleStatus = 'sealed' | 'ready' | 'opened';
 
@@ -25,7 +26,7 @@ interface DeletedTimeCapsule {
   index: number;
 }
 
-const CAPSULES_KEY = 'inkbound_reading_time_capsules';
+const CAPSULES_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingTimeCapsules;
 const CAPSULE_FILTER_KEY = 'inkbound_time_capsule_filter';
 const UNDO_DELETE_MS = 7000;
 const TIME_CAPSULE_BACKGROUND_URL = '/assets/time-capsules/cozy-time-capsule-background.png';
@@ -75,7 +76,6 @@ export const ReadingTimeCapsulesScreen: React.FC<ReadingTimeCapsulesScreenProps>
         bookId,
         message: message.trim(),
         createdAt: new Date().toISOString(),
-        // 9 AM local time avoids UTC date shifts while preserving an exact reveal instant.
         revealAt: new Date(`${revealAt}T09:00:00`).toISOString(),
       },
     ]);
