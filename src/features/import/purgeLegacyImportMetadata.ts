@@ -1,7 +1,8 @@
 import type { UserBookRecord } from '../../types';
+import { LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
-const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
+const LEGACY_BOOKS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.books;
 const PURGE_VERSION_KEY = 'inkbound_legacy_import_metadata_purge_v1';
 const EXTERNAL_METADATA_SOURCES = new Set(['google-books', 'open-library', 'hardcover']);
 
