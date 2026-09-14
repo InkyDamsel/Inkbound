@@ -132,9 +132,8 @@ const requiredCanonicalConsumers = new Map([
   ['src/components/YearInBooksScreen.tsx', ['getEffectivePagesReadForPeriod', 'hasTrustworthyFinishedHistory']],
   ['src/components/ReadingInsightsScreen.tsx', ['hasTrustworthyFinishedHistory', 'isImportedBook']],
   ['src/components/ReaderPersonalityScreen.tsx', ['hasTrustworthyFinishedHistory', 'isImportedBook', 'isInkboundFinishedBook']],
-  ['src/components/BookshelfThroughTimeScreen.tsx', ['hasTrustworthyFinishedHistory']],
+  ['src/components/BookshelfThroughTimeScreen.tsx', ['getTrustworthyFinishedBooks', 'readingMonthKey', 'canonicalReadingDateKey']],
   ['src/components/ReadingTimelineScreen.tsx', ['hasTrustworthyFinishedHistory', 'isImportedBook']],
-  ['src/components/ProfileScreen.tsx', ['hasTrustworthyFinishedHistory']],
 ]);
 for (const [name, symbols] of requiredCanonicalConsumers) {
   const full = path.join(root, name);
@@ -230,22 +229,22 @@ for (const file of files.filter((file) => rel(file).startsWith('src/components/'
   }
 }
 
-// Broad historical finish counts must not use a raw Finished-status filter. A
-// stored status without a valid end date is not enough to place a book in a
-// monthly/yearly historical report. Activity-only features are intentionally
-// excluded because isInkboundFinishedBook has different earned-activity rules.
+// Date-scoped historical finish counts must not use a raw Finished-status filter.
+// A lifetime "books completed" count may intentionally reflect current Finished
+// status even when an old import lacks an exact completion date. Anything that
+// places a completion in a month/year must use trustworthy dated history.
 for (const name of [
   'src/components/HomeDashboard.tsx',
   'src/components/MonthlyWrappedScreen.tsx',
   'src/components/StatisticsScreen.tsx',
   'src/components/YearInBooksScreen.tsx',
-  'src/components/ProfileScreen.tsx',
   'src/components/BookshelfThroughTimeScreen.tsx',
 ]) {
   const source = read(path.join(root, name));
   if (/books\.filter\(\s*\(?\s*book\s*\)?\s*=>\s*book\.status\s*===\s*['"]finished['"]/.test(source)
-      && !source.includes('hasTrustworthyFinishedHistory')) {
-    violations.push(`${name}: historical Finished counts must use hasTrustworthyFinishedHistory`);
+      && !source.includes('hasTrustworthyFinishedHistory')
+      && !source.includes('getTrustworthyFinishedBooks')) {
+    violations.push(`${name}: dated historical Finished counts must use the canonical trustworthy-history resolver`);
   }
 }
 
