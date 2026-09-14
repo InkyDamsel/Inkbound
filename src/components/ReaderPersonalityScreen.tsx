@@ -4,10 +4,11 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { hasTrustworthyFinishedHistory, isImportedBook, isInkboundFinishedBook } from '../features/reading/inkboundActivity';
 
 type PersonalityView = 'overview' | 'traits' | 'evidence';
 type ConfidenceLevel = 'Still learning' | 'Emerging' | 'Good confidence' | 'High confidence';
-type EvidenceSource = 'Inkbound activity' | 'Library metadata' | 'Verified import history';
+type EvidenceSource = 'Inkbound activity' | 'Library metadata' | 'Historical import';
 
 interface ReaderPersonalityScreenProps {
   books: UserBookRecord[];
@@ -59,15 +60,6 @@ const dayKey = (session: ReadingSession) => {
   return match?.[0] ?? null;
 };
 
-const isImportedBook = (book: UserBookRecord) =>
-  Boolean(book.sourceOfImport)
-  || book.editions.some((edition) => edition.externalSource === 'import');
-
-const hasTrustworthyImportedMetadata = (book: UserBookRecord) =>
-  isImportedBook(book)
-  && book.importMetadataVerified === true
-  && book.importMetadataReviewNeeded !== true;
-
 export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = ({ books, sessions }) => {
   const [view, setView] = usePersistentState<PersonalityView>(VIEW_KEY, 'overview');
   const [hiddenTraits, setHiddenTraits] = usePersistentState<string[]>(HIDDEN_KEY, []);
@@ -79,8 +71,9 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
     const readingLifecycleBooks = books.filter((book) => ['currently-reading', 'finished', 'paused', 'dnf'].includes(book.status));
     const reviewNeededImports = books.filter((book) => isImportedBook(book) && book.importMetadataReviewNeeded === true);
 
-    // Taste can use library metadata, including verified imports, but records explicitly
-    // marked for review are excluded so questionable imported metadata cannot dominate traits.
+    // Taste may use library metadata, but records explicitly marked for metadata
+    // review are excluded so questionable genre/format metadata cannot dominate a
+    // trait. This is independent from historical finish-date trust.
     const tasteBooks = books.filter((book) => book.importMetadataReviewNeeded !== true);
     const genres = tasteBooks.flatMap((book) => book.work.genres).filter(Boolean);
     const genreLeader = topEntry(countBy(genres));
@@ -96,24 +89,24 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
     const averageMinutes = completedSessions.length ? Math.round(totalSessionMinutes / completedSessions.length) : 0;
     const sessionDays = new Set(completedSessions.map(dayKey).filter(Boolean)).size;
 
-    // Format preference is a taste signal, so reviewed/usable library metadata is allowed.
+    // Format preference is a taste signal, so usable library metadata is allowed.
     const audioBooks = tasteBooks.filter((book) => getActiveEdition(book)?.format === 'audiobook').length;
 
-    // Completion behavior must not be inferred from an unverified imported status. We trust
-    // native/manual Inkbound records, books with actual Inkbound sessions, and verified imports
-    // only when the source export supplied a real historical finished date.
+    // Completion history has one canonical owner. Imported books without observed
+    // Inkbound activity enter this calculation only when they have a trustworthy
+    // persisted finish date. Metadata-review flags do not erase valid history.
     const completionBooks = readingLifecycleBooks.filter((book) => {
       if (!isImportedBook(book)) return true;
       if (sessionBookIds.has(book.id)) return true;
-      return hasTrustworthyImportedMetadata(book)
-        && book.importFinishedDateProvided === true
-        && Boolean(book.dateFinished);
+      return hasTrustworthyFinishedHistory(book);
     });
-    const finished = completionBooks.filter((book) => book.status === 'finished');
+    const finished = completionBooks.filter((book) =>
+      hasTrustworthyFinishedHistory(book) || isInkboundFinishedBook(book, sessionBookIds),
+    );
     const completionRate = completionBooks.length ? Math.round((finished.length / completionBooks.length) * 100) : 0;
 
-    // Parallel-reading behavior should reflect books Inkbound has actually seen in active use,
-    // not a bulk-imported currently-reading shelf.
+    // Parallel-reading behavior should reflect books Inkbound has actually seen in
+    // active use, not a bulk-imported currently-reading shelf.
     const activeBooks = readingLifecycleBooks.filter((book) =>
       book.status === 'currently-reading'
       && (!isImportedBook(book) || sessionBookIds.has(book.id)),
@@ -126,7 +119,9 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
     }, {});
     const repeatBooks = Object.values(repeatSessionBooks).filter((count) => count >= 3).length;
 
-    const trustedImportedHistory = completionBooks.filter((book) => hasTrustworthyImportedMetadata(book)).length;
+    const trustedImportedHistory = completionBooks.filter((book) =>
+      isImportedBook(book) && hasTrustworthyFinishedHistory(book),
+    ).length;
     const nativeLifecycleBooks = completionBooks.filter((book) => !isImportedBook(book)).length;
 
     const traits: TraitResult[] = [
@@ -148,14 +143,14 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
         id: 'story-explorer', name: `${genreLeader?.[0] ?? 'Story'} Explorer`,
         description: 'You repeatedly return to the worlds and themes that feel most like home.',
         score: genres.length && genreLeader ? Math.round((genreLeader[1] / genres.length) * 100) : 0,
-        evidence: genreLeader ? `${genreLeader[0]} appears across ${genreLeader[1]} of ${genres.length} usable genre tags. Imported records marked for review are excluded.` : 'Not enough trustworthy genre metadata yet.',
+        evidence: genreLeader ? `${genreLeader[0]} appears across ${genreLeader[1]} of ${genres.length} usable genre tags. Imported records marked for metadata review are excluded from taste math.` : 'Not enough trustworthy genre metadata yet.',
         sampleSize: tasteBooks.length, confidence: confidenceFor(tasteBooks.length, 10, 30), source: 'Library metadata', icon: Compass,
       },
       {
         id: 'genre-hopper', name: 'Genre Hopper',
         description: 'You like moving between different kinds of stories instead of staying in one lane.',
         score: tasteBooks.length ? Math.min(100, Math.round((distinctGenres / Math.max(1, Math.min(tasteBooks.length, 10))) * 100)) : 0,
-        evidence: tasteBooks.length ? `${distinctGenres} distinct genres appear across ${tasteBooks.length} books with usable metadata. Imported records marked for review are excluded.` : 'Add books with trustworthy genre metadata to reveal how widely you roam.',
+        evidence: tasteBooks.length ? `${distinctGenres} distinct genres appear across ${tasteBooks.length} books with usable metadata. Imported records marked for metadata review are excluded from taste math.` : 'Add books with trustworthy genre metadata to reveal how widely you roam.',
         sampleSize: tasteBooks.length, confidence: confidenceFor(tasteBooks.length, 10, 30), source: 'Library metadata', icon: Layers3,
       },
       {
@@ -169,8 +164,8 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
         id: 'completionist', name: completionRate >= 60 ? 'Story Completionist' : 'Curious Sampler',
         description: completionRate >= 60 ? 'You like seeing the journeys you begin through to the final page.' : 'You give yourself permission to explore widely and move on when needed.',
         score: completionRate,
-        evidence: completionBooks.length ? `${finished.length} of ${completionBooks.length} books with trustworthy reading-history evidence are finished. Unverified imported finish statuses are excluded.` : 'Inkbound needs tracked reading activity or verified historical finish dates before estimating your completion pattern.',
-        sampleSize: completionBooks.length, confidence: confidenceFor(completionBooks.length, 10, 30), source: trustedImportedHistory > 0 ? 'Verified import history' : 'Inkbound activity', icon: BookOpen,
+        evidence: completionBooks.length ? `${finished.length} of ${completionBooks.length} books with trustworthy reading-history evidence are finished. Imported finishes count when their persisted end date is valid.` : 'Inkbound needs tracked reading activity or trustworthy historical finish dates before estimating your completion pattern.',
+        sampleSize: completionBooks.length, confidence: confidenceFor(completionBooks.length, 10, 30), source: trustedImportedHistory > 0 ? 'Historical import' : 'Inkbound activity', icon: BookOpen,
       },
       {
         id: 'audio-companion', name: 'Audiobook Companion',
@@ -221,8 +216,8 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
   const primaryTrait = [...eligiblePrimaryTraits].sort((a, b) => b.score - a.score)[0];
 
   // Overall personality confidence is intentionally anchored to observed Inkbound behavior.
-  // A giant imported library can strengthen taste traits, but it cannot make the user's
-  // behavioral profile "High confidence" by itself.
+  // Imported historical finishes can contribute a small amount of reading-history evidence,
+  // but a giant imported library cannot manufacture high behavioral confidence.
   const behaviorEvidencePoints = profile.completedSessions
     + profile.sessionDays
     + Math.min(profile.nativeLifecycleBooks, 5)
@@ -292,12 +287,12 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
       {view === 'evidence' && (
         <section className="inkbound-panel rounded-3xl p-6 sm:p-8">
           <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">How Inkbound reached this profile</h2>
-          <p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Taste traits may use trustworthy library metadata. Habit traits use completed Inkbound sessions. Imported records marked for review do not strengthen personality confidence or behavior claims.</p>
+          <p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Taste traits may use trustworthy library metadata. Habit traits use completed Inkbound sessions. Historical completion uses the canonical persisted finish date; metadata-review flags affect taste metadata, not valid reading history.</p>
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
             <span className="rounded-full border border-[var(--ink-border)] px-3 py-2 text-[var(--ink-muted)]">{profile.completedSessions} Inkbound sessions</span>
             <span className="rounded-full border border-[var(--ink-border)] px-3 py-2 text-[var(--ink-muted)]">{profile.trustworthyReadingBooks} trustworthy reading-history books</span>
-            <span className="rounded-full border border-[var(--ink-border)] px-3 py-2 text-[var(--ink-muted)]">{profile.trustedImportedHistory} verified imported finishes</span>
-            {profile.reviewNeededImports > 0 && <span className="rounded-full border border-[var(--ink-gold)] px-3 py-2 text-[var(--ink-gold)]">{profile.reviewNeededImports} imported records excluded pending review</span>}
+            <span className="rounded-full border border-[var(--ink-border)] px-3 py-2 text-[var(--ink-muted)]">{profile.trustedImportedHistory} imported finishes with valid end dates</span>
+            {profile.reviewNeededImports > 0 && <span className="rounded-full border border-[var(--ink-gold)] px-3 py-2 text-[var(--ink-gold)]">{profile.reviewNeededImports} imported records excluded from metadata-based taste traits pending review</span>}
           </div>
           <div className="mt-5 space-y-3">
             {profile.traits.map((trait) => (
