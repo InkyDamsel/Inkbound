@@ -1,6 +1,6 @@
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { getActiveEdition } from './bookReadingState';
-import { hasTrustworthyFinishedHistory } from './inkboundActivity';
+import { canonicalReadingDateKey, hasTrustworthyFinishedHistory } from './inkboundActivity';
 import { getSessionPagesRead } from './sessionAnalytics';
 
 const finiteNonnegative = (value?: number) =>
@@ -56,6 +56,10 @@ export function getEffectivePagesReadForPeriod(
   startDate: string,
   endDate: string,
 ): number {
+  const normalizedStartDate = canonicalReadingDateKey(startDate);
+  const normalizedEndDate = canonicalReadingDateKey(endDate);
+  if (!normalizedStartDate || !normalizedEndDate || normalizedStartDate > normalizedEndDate) return 0;
+
   const eligibleBookIds = new Set(books.map((book) => book.id));
   const trackedPagesInPeriodByBook = new Map<string, number>();
   const trackedPageDatesByBook = new Map<string, string[]>();
@@ -65,12 +69,15 @@ export function getEffectivePagesReadForPeriod(
     const pages = getSessionPagesRead(session);
     if (pages <= 0) return;
 
+    const sessionDate = canonicalReadingDateKey(session.date);
+    if (!sessionDate) return;
+
     trackedPageDatesByBook.set(
       session.bookId,
-      [...(trackedPageDatesByBook.get(session.bookId) ?? []), session.date],
+      [...(trackedPageDatesByBook.get(session.bookId) ?? []), sessionDate],
     );
 
-    if (session.date < startDate || session.date > endDate) return;
+    if (sessionDate < normalizedStartDate || sessionDate > normalizedEndDate) return;
     trackedPagesInPeriodByBook.set(
       session.bookId,
       (trackedPagesInPeriodByBook.get(session.bookId) ?? 0) + pages,
@@ -79,14 +86,17 @@ export function getEffectivePagesReadForPeriod(
 
   return books.reduce((total, book) => {
     const trackedPagesInPeriod = trackedPagesInPeriodByBook.get(book.id) ?? 0;
-    const finishedInPeriod = hasTrustworthyFinishedHistory(book)
-      && book.dateFinished! >= startDate
-      && book.dateFinished! <= endDate;
+    const finishedDate = hasTrustworthyFinishedHistory(book)
+      ? canonicalReadingDateKey(book.dateFinished)
+      : null;
+    const finishedInPeriod = finishedDate !== null
+      && finishedDate >= normalizedStartDate
+      && finishedDate <= normalizedEndDate;
 
     if (!finishedInPeriod) return total + trackedPagesInPeriod;
 
     const trackedDates = trackedPageDatesByBook.get(book.id) ?? [];
-    const hasTrackedPageHistoryThroughFinish = trackedDates.some((date) => date <= book.dateFinished!);
+    const hasTrackedPageHistoryThroughFinish = trackedDates.some((date) => date <= finishedDate);
 
     // Once Inkbound has real page history for the original read, that history is
     // authoritative. Do not drop a whole-book fallback into the finish month.
