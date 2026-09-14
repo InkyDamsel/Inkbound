@@ -7,9 +7,10 @@ import {
   writeImportEnrichmentQueue,
 } from './libraryEnrichment';
 import { notifyLocalDataChanged } from '../sync/cloudSyncEvents';
+import { LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
-const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
+const LEGACY_BOOKS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.books;
 const RECOVERY_KEY_PREFIX = 'inkbound_import_hydration_recovery_v3_';
 
 function readStoredBooks(): UserBookRecord[] {
@@ -99,9 +100,6 @@ export function recoverIncompleteLatestImport(): number {
     const latestTargetIds = new Set(latest.items.map((item) => item.targetBookId));
     const preexistingBooks = books.filter((book) => !latestTargetIds.has(book.id));
 
-    // If a previous broken recovery appended a fresh-ID copy of a book that was
-    // already in the library, remove only the newer latest-import copy. The older
-    // copy wins so existing covers, notes, progress, and metadata are preserved.
     const duplicateLatestIds = new Set(
       latest.items
         .filter((item) => preexistingBooks.some((book) => historyItemMatchesBook(item, book)))
@@ -110,9 +108,6 @@ export function recoverIncompleteLatestImport(): number {
 
     let workingBooks = books.filter((book) => !duplicateLatestIds.has(book.id));
 
-    // Reconcile the latest import history to what should actually have happened:
-    // rows already represented in the preexisting library were duplicates, not
-    // newly imported books.
     if (duplicateLatestIds.size > 0) {
       const keptItems = latest.items.filter((item) => !duplicateLatestIds.has(item.targetBookId));
       const reconciledLatest = {
@@ -148,11 +143,8 @@ export function recoverIncompleteLatestImport(): number {
     writeImportEnrichmentQueue([...queueByBookId.values()]);
 
     localStorage.setItem(recoveryKey, 'done');
-    if (restored.length > 0 || duplicateLatestIds.size > 0) {
-      notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
-    }
+    if (restored.length > 0 || duplicateLatestIds.size > 0) notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
 
-    // Positive means the library grew; negative means duplicate rows were removed.
     return restored.length - duplicateLatestIds.size;
   } catch (error) {
     console.warn('Inkbound could not recover the incomplete import safely.', error);
