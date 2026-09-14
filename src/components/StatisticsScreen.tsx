@@ -3,6 +3,7 @@ import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, Clock, Filter, Flame,
 import { ReadingSession, UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
 import { ResponsiveGrid } from '../layout/responsive';
+import { FORMAT_OPTIONS } from '../domain/libraryTaxonomy';
 import {
   getReadingStreak,
   getSessionDurationMinutes,
@@ -227,10 +228,9 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                 className="min-h-11 rounded-lg border border-[#3d2448] bg-[#120817] px-3 text-[#f4efe6]"
               >
                 <option value="all">All Formats</option>
-                <option value="hardcover">Hardcover</option>
-                <option value="paperback">Paperback</option>
-                <option value="ebook">Ebook</option>
-                <option value="audiobook">Audiobook</option>
+                {FORMAT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </div>
           ) : (
