@@ -1,5 +1,6 @@
 import { firebaseRuntimeMode } from '../../lib/firebase';
 import { getRuntimeStorage, readRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const RUNTIME_MODE_STORAGE_KEY = 'inkbound_runtime_storage_mode_v1';
 const RUNTIME_MODE_ARCHIVE_PREFIX = 'inkbound_runtime_mode_archive_v2_';
@@ -17,7 +18,7 @@ interface RuntimeModeArchive {
 // safe to carry between emulator development and intentional live-cloud checks.
 const PRESERVED_LOCAL_KEYS = new Set([
   RUNTIME_MODE_STORAGE_KEY,
-  'inkbound_theme',
+  SYNC_STORAGE_KEYS.theme,
   'inkbound_active_tab',
   'inkbound_navigation_collapsed_groups',
   'inkbound_notifications_read',
