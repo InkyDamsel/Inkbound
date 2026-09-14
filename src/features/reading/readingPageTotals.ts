@@ -32,13 +32,23 @@ export function getEffectiveBookProgressPages(book: UserBookRecord): number {
 /**
  * Canonical page total for historical/statistical reporting.
  *
- * Session endpoints remain the most precise source when readers log activity.
- * But a trustworthy Finished record with a known print/ebook page count must not
- * contribute zero pages simply because its exact historical sessions were never
- * recorded in Inkbound. In that case we use the edition page count as the floor.
+ * There are two legitimate evidence paths and they must never be added together
+ * for the same finished book:
  *
- * This is a derived reporting value only. It never rewrites progressPages or
- * creates synthetic sessions, so the reader's stored history remains untouched.
+ * 1. Tracked Inkbound page sessions are authoritative for period math. If Inkbound
+ *    has page-session history through a book's finish date, a monthly/yearly report
+ *    uses only the pages actually tracked inside that requested period.
+ * 2. Historical imports/manual history may have a trustworthy finish date and a
+ *    known print/ebook page count but no session history. In that case the edition
+ *    page count is used as the historical floor in the period containing the finish.
+ *
+ * This prevents the old double-count failure where a 500-page book read across two
+ * months could contribute its tracked pages in month one and then another full 500
+ * pages in the finish month. It also preserves imported reading history when the
+ * source supplied a real finish date but Inkbound never observed the original read.
+ *
+ * This is derived reporting only. It never rewrites progressPages or creates
+ * synthetic sessions, so persistence remains the canonical stored history.
  */
 export function getEffectivePagesReadForPeriod(
   books: UserBookRecord[],
@@ -47,27 +57,45 @@ export function getEffectivePagesReadForPeriod(
   endDate: string,
 ): number {
   const eligibleBookIds = new Set(books.map((book) => book.id));
-  const trackedPagesByBook = new Map<string, number>();
+  const trackedPagesInPeriodByBook = new Map<string, number>();
+  const trackedPageDatesByBook = new Map<string, string[]>();
 
   sessions.forEach((session) => {
     if (!eligibleBookIds.has(session.bookId)) return;
-    if (session.date < startDate || session.date > endDate) return;
     const pages = getSessionPagesRead(session);
-    trackedPagesByBook.set(session.bookId, (trackedPagesByBook.get(session.bookId) ?? 0) + pages);
+    if (pages <= 0) return;
+
+    trackedPageDatesByBook.set(
+      session.bookId,
+      [...(trackedPageDatesByBook.get(session.bookId) ?? []), session.date],
+    );
+
+    if (session.date < startDate || session.date > endDate) return;
+    trackedPagesInPeriodByBook.set(
+      session.bookId,
+      (trackedPagesInPeriodByBook.get(session.bookId) ?? 0) + pages,
+    );
   });
 
   return books.reduce((total, book) => {
-    const trackedPages = trackedPagesByBook.get(book.id) ?? 0;
+    const trackedPagesInPeriod = trackedPagesInPeriodByBook.get(book.id) ?? 0;
     const finishedInPeriod = hasTrustworthyFinishedHistory(book)
       && book.dateFinished! >= startDate
       && book.dateFinished! <= endDate;
 
-    if (!finishedInPeriod) return total + trackedPages;
+    if (!finishedInPeriod) return total + trackedPagesInPeriod;
+
+    const trackedDates = trackedPageDatesByBook.get(book.id) ?? [];
+    const hasTrackedPageHistoryThroughFinish = trackedDates.some((date) => date <= book.dateFinished!);
+
+    // Once Inkbound has real page history for the original read, that history is
+    // authoritative. Do not drop a whole-book fallback into the finish month.
+    if (hasTrackedPageHistoryThroughFinish) return total + trackedPagesInPeriod;
 
     const pageCount = knownPrintPageCount(book);
-    if (pageCount === undefined) return total + trackedPages;
+    if (pageCount === undefined) return total + trackedPagesInPeriod;
 
     const recordedProgress = finiteNonnegative(book.progressPages);
-    return total + Math.max(trackedPages, recordedProgress, pageCount);
+    return total + Math.max(trackedPagesInPeriod, recordedProgress, pageCount);
   }, 0);
 }
