@@ -21,7 +21,7 @@ interface ReadingMemoriesScreenProps {
 }
 
 const MEMORIES_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingMemories;
-const SELECTED_BOOK_STORAGE_KEY = 'inkbound_memory_selected_book';
+const SELECTED_MEMORY_VIEW_KEY = 'inkbound_memory_selected_book';
 const MEMORIES_BANNER_URL = '/assets/memories/cozy-memories-banner.png';
 
 const emptyMemory = (): ReadingMemoryEntry => ({
@@ -48,7 +48,7 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
     (book) => book.status === 'finished' || book.status === 'currently-reading',
   );
   const [selectedBookId, setSelectedBookId] = usePersistentState<string>(
-    SELECTED_BOOK_STORAGE_KEY,
+    SELECTED_MEMORY_VIEW_KEY,
     eligibleBooks[0]?.id ?? '',
   );
   const [memories, setMemories] = usePersistentState<Record<string, ReadingMemoryEntry>>(
