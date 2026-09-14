@@ -21,7 +21,7 @@ const managedPrefixes = [
   'inkbound_sync_baseline_',
 ];
 
-const STARTUP_EXACT_KEYS = new Set([SYNC_STORAGE_KEYS.books]);
+const STARTUP_EXACT_KEYS = new Set<string>([SYNC_STORAGE_KEYS.books]);
 const STARTUP_PREFIXES = [
   'inkbound_pending_sync_',
   'inkbound_sync_baseline_',
