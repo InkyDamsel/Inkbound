@@ -118,19 +118,23 @@ if (!taxonomy.includes('COMPATIBILITY_READING_STATUS_OPTIONS')) {
   violations.push(`${taxonomyPath}: compatibility-only statuses must remain explicit instead of silently joining reader-assignable status options`);
 }
 
-// High-risk screens mutate/filter the same domain values. Make their canonical
-// imports a release requirement so omission becomes a failed verification, not a
-// Play Store hotfix.
+// High-risk screens mutate/filter/report the same domain values. Make their
+// canonical imports a release requirement so omission becomes a failed
+// verification, not another store hotfix.
 const requiredCanonicalConsumers = new Map([
   ['src/components/AddBookModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'readCustomOwnershipCategories', 'withReadingStatus']],
   ['src/components/BatchEditModal.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'readCustomOwnershipCategories']],
   ['src/components/BookDetailsModalCore.tsx', ['READING_STATUS_OPTIONS', 'FORMAT_OPTIONS', 'PRIORITY_OPTIONS', 'CustomOwnershipBookControl', 'getBookReadingState', 'withReadingStatus']],
   ['src/components/LibraryScreen.tsx', ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'FORMAT_OPTIONS', 'readCustomOwnershipCategories', 'getCanonicalProgressPercentage']],
-  ['src/components/HomeDashboard.tsx', ['getEffectivePagesReadForPeriod', 'getBookReadingState']],
-  ['src/components/MonthlyWrappedScreen.tsx', ['getEffectivePagesReadForPeriod']],
-  ['src/components/StatisticsScreen.tsx', ['getEffectivePagesReadForPeriod']],
-  ['src/components/YearInBooksScreen.tsx', ['getEffectivePagesReadForPeriod']],
+  ['src/components/HomeDashboard.tsx', ['getEffectivePagesReadForPeriod', 'getBookReadingState', 'hasTrustworthyFinishedHistory']],
+  ['src/components/MonthlyWrappedScreen.tsx', ['getEffectivePagesReadForPeriod', 'hasTrustworthyFinishedHistory']],
+  ['src/components/StatisticsScreen.tsx', ['getEffectivePagesReadForPeriod', 'hasTrustworthyFinishedHistory']],
+  ['src/components/YearInBooksScreen.tsx', ['getEffectivePagesReadForPeriod', 'hasTrustworthyFinishedHistory']],
   ['src/components/ReadingInsightsScreen.tsx', ['hasTrustworthyFinishedHistory', 'isImportedBook']],
+  ['src/components/ReaderPersonalityScreen.tsx', ['hasTrustworthyFinishedHistory', 'isImportedBook', 'isInkboundFinishedBook']],
+  ['src/components/BookshelfThroughTimeScreen.tsx', ['hasTrustworthyFinishedHistory']],
+  ['src/components/ReadingTimelineScreen.tsx', ['hasTrustworthyFinishedHistory', 'isImportedBook']],
+  ['src/components/ProfileScreen.tsx', ['hasTrustworthyFinishedHistory']],
 ]);
 for (const [name, symbols] of requiredCanonicalConsumers) {
   const full = path.join(root, name);
@@ -211,15 +215,37 @@ for (const name of canonicalPageReportConsumers) {
   }
 }
 
-// The canonical trustworthy-finish rule lives in inkboundActivity.ts. Screens
-// may consume it, but they may not silently redefine it with slightly different
-// import/date semantics.
+// Import identity and trustworthy finish history each have one canonical owner:
+// inkboundActivity.ts. Feature screens must not recreate subtly different rules
+// such as "verified metadata only" or "date differs from dateAdded".
 for (const file of files.filter((file) => rel(file).startsWith('src/components/'))) {
   const name = rel(file);
   const source = read(file);
-  if (name !== 'src/features/reading/inkboundActivity.ts'
-      && /(?:const|function)\s+hasTrustworthyFinishedHistory\b/.test(source)) {
-    violations.push(`${name}: redefines hasTrustworthyFinishedHistory; import it from inkboundActivity.ts`);
+  if (/(?:const|function)\s+isImportedBook\b/.test(source)) {
+    violations.push(`${name}: redefines isImportedBook; import it from inkboundActivity.ts`);
+  }
+  if (/(?:const|function)\s+hasTrustworthyFinishedHistory\b/.test(source)
+      || /(?:const|function)\s+hasTrustworthyFinishedDate\b/.test(source)) {
+    violations.push(`${name}: redefines trustworthy finished-history semantics; import hasTrustworthyFinishedHistory from inkboundActivity.ts`);
+  }
+}
+
+// Broad historical finish counts must not use a raw Finished-status filter. A
+// stored status without a valid end date is not enough to place a book in a
+// monthly/yearly historical report. Activity-only features are intentionally
+// excluded because isInkboundFinishedBook has different earned-activity rules.
+for (const name of [
+  'src/components/HomeDashboard.tsx',
+  'src/components/MonthlyWrappedScreen.tsx',
+  'src/components/StatisticsScreen.tsx',
+  'src/components/YearInBooksScreen.tsx',
+  'src/components/ProfileScreen.tsx',
+  'src/components/BookshelfThroughTimeScreen.tsx',
+]) {
+  const source = read(path.join(root, name));
+  if (/books\.filter\(\s*\(?\s*book\s*\)?\s*=>\s*book\.status\s*===\s*['"]finished['"]/.test(source)
+      && !source.includes('hasTrustworthyFinishedHistory')) {
+    violations.push(`${name}: historical Finished counts must use hasTrustworthyFinishedHistory`);
   }
 }
 
