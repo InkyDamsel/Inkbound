@@ -100,7 +100,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   const [bannerBusy, setBannerBusy] = useState(false);
   const [kind, setKind] = useState<CollectionKind>('manual');
   const [smartField, setSmartField] = useState<SmartField>('status');
-  const [smartValue, setSmartValue] = useState(READING_STATUS_OPTIONS[0].value);
+  const [smartValue, setSmartValue] = useState<string>(READING_STATUS_OPTIONS[0].value);
   const [coverBookId, setCoverBookId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('title');
@@ -203,7 +203,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
       });
   }, [books, searchQuery, selectedBooks, selectedCollection, sortMode, statusFilter]);
 
-  const resetSmartValueForField = (field: SmartField) => {
+  const resetSmartValueForField = (field: SmartField): string => {
     if (field === 'status') return READING_STATUS_OPTIONS[0].value;
     if (field === 'format') return FORMAT_OPTIONS[0].value;
     return '';
