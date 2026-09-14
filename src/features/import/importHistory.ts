@@ -5,14 +5,15 @@ import {
   type ImportEnrichmentQueueItem,
 } from './libraryEnrichment';
 import { readImportMetadataPending } from './importVerificationJob';
+import { LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
 export const IMPORT_HISTORY_STORAGE_KEY = 'inkbound_import_history_v1';
-export const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v1';
+export const IMPORT_ENRICHMENT_PAUSED_KEY = SYNC_STORAGE_KEYS.importEnrichmentPaused;
 // Kept only so older recovery snapshots containing this retired key can still
 // be restored/cleared safely. Foreground retries no longer use this handoff.
 export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = 'inkbound_import_enrichment_retry_request_v1';
-export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = 'inkbound_import_enrichment_retry_progress_v1';
-export const IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY = 'inkbound_import_enrichment_active_retry_v1';
+export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = SYNC_STORAGE_KEYS.importEnrichmentRetryProgress;
+export const IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY = SYNC_STORAGE_KEYS.importEnrichmentActiveRetry;
 
 export interface ImportHistoryItem {
   recordId: string;
@@ -83,7 +84,8 @@ function isValidHistoryEntry(value: unknown): value is ImportHistoryEntry {
 
 function readCurrentLibrary(): UserBookRecord[] {
   try {
-    const stored = localStorage.getItem('inkbound_books') ?? localStorage.getItem('bookhaven_books');
+    const stored = localStorage.getItem(SYNC_STORAGE_KEYS.books)
+      ?? localStorage.getItem(LEGACY_SYNC_STORAGE_KEYS.books);
     if (!stored) return [];
     const parsed = JSON.parse(stored) as unknown;
     return Array.isArray(parsed) ? parsed as UserBookRecord[] : [];
@@ -327,9 +329,6 @@ export function readImportEnrichmentRetryProgress(): ImportEnrichmentRetryProgre
       updatedAt: parsed.updatedAt ?? new Date().toISOString(),
     });
 
-    // Self-heal older/stale retry state that reached 100% but never received its
-    // terminal write. This prevents a completed pass from appearing to run forever
-    // after navigation, refresh, or a worker hand-off race.
     if (progress.status === 'complete' && (parsed.status === 'queued' || parsed.status === 'running')) {
       localStorage.setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(progress));
       writeImportEnrichmentActiveRetry(null);
@@ -396,10 +395,6 @@ export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRet
  * automatic metadata repair.
  */
 export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds?: string[]): string[] {
-  // Fast path for a bounded manual batch. These IDs already come from the durable
-  // enrichment queue shown on the History screen, so rebuilding and serializing a
-  // 40k+ item queue here only blocks the browser. The worker will read the durable
-  // queue once and process exactly these IDs.
   if (targetBookIds?.length) {
     const requestedIds = [...new Set(targetBookIds.filter(Boolean))];
     if (requestedIds.length > 0) {
@@ -412,8 +407,6 @@ export function retryImportHistoryItems(entry: ImportHistoryEntry, targetBookIds
     return requestedIds;
   }
 
-  // Full rebuild remains available for repair/recovery flows that explicitly ask
-  // for the whole import. This path is not used by the 100-book manual detail pass.
   const existing = readImportEnrichmentQueue();
   const byBookId = new Map(existing.map((item) => [item.targetBookId, item]));
   const currentBooksById = new Map(readCurrentLibrary().map((book) => [book.id, book]));
