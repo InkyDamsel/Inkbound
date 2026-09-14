@@ -3,6 +3,7 @@ import { CheckCircle2, ChevronDown, Copy, Merge, Search, ShieldCheck } from 'luc
 import type { Edition, UserBookRecord } from '../types';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { getBookReadingState } from '../features/reading/bookReadingState';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { BookCover } from './BookCover';
 import { ManualCoverRecoveryPanel } from './ManualCoverRecoveryPanel';
@@ -303,12 +304,13 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
           return <article key={group.id} className="inkbound-panel rounded-3xl p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><Copy className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><h2 className="min-w-0 truncate font-serif text-xl font-bold text-[var(--ink-ivory)]">{group.books[0].work.title}</h2></div><p className="mt-1 text-xs text-[var(--ink-muted)]">{group.reason === 'isbn' ? 'Exact ISBN match' : 'Exact normalized title + author'} · {group.books.length} copies</p></div><div className="flex flex-col gap-2 min-[430px]:flex-row"><button type="button" onClick={() => ignoreGroup(group.id)} className="quiet-shelf-secondary-action justify-center">Not Duplicates</button><button type="button" onClick={() => mergeGroup(group)} className="quiet-shelf-primary-action justify-center"><Merge className="h-4 w-4" /> Merge Group</button></div></div>
             <div className="mt-5 grid gap-3 lg:grid-cols-2">{group.books.map((book) => {
-              const edition = activeEdition(book);
+              const readingState = getBookReadingState(book);
+              const edition = readingState.activeEdition ?? activeEdition(book);
               const selected = selectedKeeper === book.id;
               return <label key={book.id} className={`flex min-w-0 cursor-pointer gap-3 rounded-2xl border p-3 sm:gap-4 sm:p-4 ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}>
                 <input type="radio" name={`keeper-${group.id}`} value={book.id} checked={selected} onChange={() => setKeeperByGroup((current) => ({ ...current, [group.id]: book.id }))} className="mt-1 h-5 w-5 shrink-0" />
                 <BookCover work={book.work} edition={edition} size="sm" />
-                <span className="min-w-0 flex-1"><strong className="block break-words text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><small className="block break-words text-[var(--ink-muted)]">{book.work.author}</small><span className="mt-2 block text-xs text-[var(--ink-muted)]">{book.status} · {book.progressPercentage}% · {book.rating ? `${book.rating}★` : 'unrated'}</span><span className="mt-1 block break-words text-xs text-[var(--ink-faint)]">ISBN {edition?.isbn13 || edition?.isbn10 || edition?.isbn || 'unknown'} · {edition?.format || 'unknown format'}</span><button type="button" onClick={(event) => { event.preventDefault(); onSelectBook(book); }} className="mt-3 min-h-11 text-xs font-bold text-[var(--ink-mauve)]">Open book details</button>{selected && <span className="mt-2 block text-xs font-bold text-[var(--ink-gold)]">Keep this copy</span>}</span>
+                <span className="min-w-0 flex-1"><strong className="block break-words text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><small className="block break-words text-[var(--ink-muted)]">{book.work.author}</small><span className="mt-2 block text-xs text-[var(--ink-muted)]">{readingState.status} · {readingState.progressPercentage}% · {book.rating ? `${book.rating}★` : 'unrated'}</span><span className="mt-1 block break-words text-xs text-[var(--ink-faint)]">ISBN {edition?.isbn13 || edition?.isbn10 || edition?.isbn || 'unknown'} · {edition?.format || 'unknown format'}</span><button type="button" onClick={(event) => { event.preventDefault(); onSelectBook(book); }} className="mt-3 min-h-11 text-xs font-bold text-[var(--ink-mauve)]">Open book details</button>{selected && <span className="mt-2 block text-xs font-bold text-[var(--ink-gold)]">Keep this copy</span>}</span>
               </label>;
             })}</div>
           </article>;
