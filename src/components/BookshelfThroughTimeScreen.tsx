@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Eye, Sparkles } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import {
+  canonicalReadingDateKey,
+  getTrustworthyFinishedBooks,
+  readingMonthKey,
+} from '../features/reading/inkboundActivity';
 import { localDateKey } from '../features/reading/sessionAnalytics';
 
 interface BookshelfThroughTimeScreenProps {
@@ -42,44 +47,6 @@ const shelfWoodClasses: Record<ShelfTheme, string> = {
   'midnight-study': 'from-[#5d493e] via-[#42352f] to-[#2d2726]',
 };
 
-function validLocalDate(year: number, month: number, day: number): Date | null {
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
-  if (year < 1000 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) return null;
-  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
-}
-
-function parseFinishedDate(value?: string): Date | null {
-  const raw = value?.trim();
-  if (!raw) return null;
-
-  const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:$|[T\s])/);
-  if (isoMatch) {
-    return validLocalDate(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
-  }
-
-  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:$|[T\s])/);
-  if (slashMatch) {
-    return validLocalDate(Number(slashMatch[3]), Number(slashMatch[1]), Number(slashMatch[2]));
-  }
-
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function canonicalDateKey(value?: string): string | null {
-  const date = parseFinishedDate(value);
-  if (!date) return null;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function monthKey(value?: string): string | null {
-  return canonicalDateKey(value)?.slice(0, 7) ?? null;
-}
-
 function monthLabel(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})$/);
   if (!match) return 'Reading Shelf';
@@ -90,26 +57,6 @@ function monthLabel(value: string) {
     month: 'long',
     year: 'numeric',
   });
-}
-
-function isImportedBook(book: UserBookRecord): boolean {
-  return Boolean(
-    book.sourceOfImport?.toLowerCase().includes('import')
-    || book.privateTags?.includes('imported')
-    || book.id.startsWith('book-import-'),
-  );
-}
-
-function hasTrustworthyFinishedDate(book: UserBookRecord): boolean {
-  const finished = canonicalDateKey(book.dateFinished);
-  if (!finished) return false;
-  if (!isImportedBook(book)) return true;
-
-  if (book.importFinishedDateProvided === true) return true;
-  if (book.importFinishedDateProvided === false) return false;
-
-  const added = canonicalDateKey(book.dateAdded);
-  return !added || finished !== added;
 }
 
 function getShelfBookDimensions(book: UserBookRecord, index: number) {
@@ -129,9 +76,8 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
 }) => {
   const finishedBooks = useMemo(
     () =>
-      books
-        .filter((book) => book.status === 'finished' && hasTrustworthyFinishedDate(book))
-        .sort((a, b) => (canonicalDateKey(a.dateFinished) ?? '').localeCompare(canonicalDateKey(b.dateFinished) ?? '')),
+      getTrustworthyFinishedBooks(books)
+        .sort((a, b) => (canonicalReadingDateKey(a.dateFinished) ?? '').localeCompare(canonicalReadingDateKey(b.dateFinished) ?? '')),
     [books],
   );
 
@@ -139,7 +85,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     const months = Array.from(
       new Set(
         finishedBooks
-          .map((book) => monthKey(book.dateFinished))
+          .map((book) => readingMonthKey(book.dateFinished))
           .filter((month): month is string => Boolean(month)),
       ),
     ).sort();
@@ -160,7 +106,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     ? preferences.month
     : availableMonths[availableMonths.length - 1];
   const selectedIndex = Math.max(0, availableMonths.indexOf(selectedMonth));
-  const shelfBooks = finishedBooks.filter((book) => monthKey(book.dateFinished) === selectedMonth);
+  const shelfBooks = finishedBooks.filter((book) => readingMonthKey(book.dateFinished) === selectedMonth);
   const booksFinishedThisMonth = shelfBooks;
   const shelfRowCount = Math.max(MINIMUM_SHELF_ROWS, Math.ceil(shelfBooks.length / BOOKS_PER_SHELF));
   const shelfPageCount = Math.max(1, Math.ceil(shelfRowCount / SHELVES_PER_PAGE));
@@ -247,7 +193,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                   <div className="overflow-x-auto overflow-y-visible overscroll-x-contain px-1 pb-1 sm:px-2">
                     <div className="bookshelf-row flex min-h-36 min-w-full w-max items-end gap-2 sm:gap-3">
                       {shelfSlice.map((book, index) => {
-                        const isNewThisMonth = monthKey(book.dateFinished) === selectedMonth;
+                        const isNewThisMonth = readingMonthKey(book.dateFinished) === selectedMonth;
                         const { height, width } = getShelfBookDimensions(book, index);
                         const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
                         const coverUrl = edition?.coverUrl;
