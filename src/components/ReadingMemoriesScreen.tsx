@@ -4,6 +4,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionListeningMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface ReadingMemoryEntry {
   feeling: string;
@@ -19,7 +20,7 @@ interface ReadingMemoriesScreenProps {
   onSelectBook: (book: UserBookRecord) => void;
 }
 
-const MEMORIES_STORAGE_KEY = 'inkbound_book_memories';
+const MEMORIES_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingMemories;
 const SELECTED_BOOK_STORAGE_KEY = 'inkbound_memory_selected_book';
 const MEMORIES_BANNER_URL = '/assets/memories/cozy-memories-banner.png';
 
@@ -55,9 +56,6 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
     {},
   );
 
-  // Memories intentionally belong to books that have entered the active reading
-  // lifecycle. Never fall back to an unrelated TBR/library record just because
-  // a previously-selected book is no longer eligible.
   const selectedBook = eligibleBooks.find((book) => book.id === selectedBookId) ?? eligibleBooks[0];
   const memory = selectedBook ? memories[selectedBook.id] ?? emptyMemory() : emptyMemory();
   const activeEdition = selectedBook ? getActiveEdition(selectedBook) : undefined;
