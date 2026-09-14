@@ -5,11 +5,12 @@ import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { isInkboundFinishedBook } from '../features/reading/inkboundActivity';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface DragonProfile { id: string; name: string; }
 interface MyDragonScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; }
 
-const DRAGON_KEY = 'inkbound_dragon';
+const DRAGON_KEY = ACCOUNT_DATA_STORAGE_KEYS.dragonProfile;
 const AWAKE_LUMIS_ASSET = '/assets/lumis/lumis-awake.svg';
 const SLEEPING_LUMIS_ASSET = '/assets/lumis/lumis-sleeping.svg';
 const LUMIS_BANNER_ASSET = '/assets/lumis/cozy-lumis-background.png';
