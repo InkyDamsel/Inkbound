@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock3, RefreshCw, RotateCcw, ShieldCheck,
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import {
   createRecoveryPoint,
   listRecoveryPoints,
@@ -12,8 +13,8 @@ import {
 import { analyzeLibraryIntegrity } from './libraryIntegrity';
 
 const RESTORE_PHRASE = 'RESTORE';
-const BOOKS_KEY = 'inkbound_books';
-const SESSIONS_KEY = 'inkbound_sessions';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
+const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
 
 function formatRecoveryDate(value: string) {
@@ -68,9 +69,6 @@ export const RecoveryCenter: React.FC = () => {
 
   if (!user) return null;
 
-  // Owner accounts use the Administration recovery workflow instead of the
-  // personal floating shortcut. RecoverySafetyBridge still creates owner
-  // snapshots normally, so owner data remains protected and recoverable.
   const isOwnerAccount = Boolean(user.email && OWNER_EMAILS.has(user.email.toLowerCase()));
   if (isOwnerAccount) return null;
 
