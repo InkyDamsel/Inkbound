@@ -1,4 +1,5 @@
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 const DB_NAME = 'inkbound-large-storage';
 const STORE_NAME = 'entries';
@@ -8,8 +9,8 @@ const LOCAL_STORAGE_SOFT_LIMIT = 1_500_000;
 export const LARGE_BROWSER_STORAGE_HYDRATED_EVENT = 'inkbound:large-browser-storage-hydrated';
 
 const exactManagedKeys = new Set([
-  'inkbound_books',
-  'inkbound_import_enrichment_queue_v3',
+  SYNC_STORAGE_KEYS.books,
+  SYNC_STORAGE_KEYS.importEnrichmentQueue,
   'inkbound_import_history_v1',
   'inkbound_import_metadata_pending_v1',
   'inkbound_import_verification_result_v2',
@@ -20,7 +21,7 @@ const managedPrefixes = [
   'inkbound_sync_baseline_',
 ];
 
-const STARTUP_EXACT_KEYS = new Set(['inkbound_books']);
+const STARTUP_EXACT_KEYS = new Set([SYNC_STORAGE_KEYS.books]);
 const STARTUP_PREFIXES = [
   'inkbound_pending_sync_',
   'inkbound_sync_baseline_',
@@ -56,10 +57,7 @@ function isWindowLocalStorage(storage: Storage) {
 function announceStartupHydrated() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event(LARGE_BROWSER_STORAGE_HYDRATED_EVENT));
-  // App already listens for cloud-data updates and reloads its canonical books
-  // collection. Reuse that path so a library restored from IndexedDB appears as
-  // soon as background hydration finishes, without reloading the page.
-  notifyCloudDataUpdated(['inkbound_books']);
+  notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
 }
 
 function openDatabase(): Promise<IDBDatabase | null> {
@@ -149,9 +147,7 @@ async function readMatchingLargeValues(predicate: (key: string) => boolean): Pro
           return;
         }
         const key = String(cursor.key);
-        if (predicate(key) && typeof cursor.value === 'string' && cursor.value.length > 0) {
-          entries.push([key, cursor.value]);
-        }
+        if (predicate(key) && typeof cursor.value === 'string' && cursor.value.length > 0) entries.push([key, cursor.value]);
         cursor.continue();
       };
       request.onerror = () => resolve(entries);
@@ -182,9 +178,6 @@ function installStorageBridge() {
       return;
     }
 
-    // React mounts before IndexedDB restoration now. During that brief window the
-    // app may try to persist its initial empty state. Never let that overwrite the
-    // reader's authoritative IndexedDB library or sync baselines.
     if (startupHydrationPending && isStartupKey(key)) return;
 
     const normalized = String(value);
@@ -242,37 +235,20 @@ export function hasPendingLargeBrowserStorageWrites(): boolean {
   return pendingWrites.size > 0;
 }
 
-/**
- * Synchronous readiness probe for React gates. The hydration event can fire before
- * a component effect subscribes on fast browsers (notably Safari/iPad). Consumers
- * must be able to observe the already-completed state instead of waiting forever
- * for an event that has already happened.
- */
 export function isLargeBrowserStorageHydrated(): boolean {
   return startupHydrationPromise !== null && !startupHydrationPending;
 }
 
 export async function flushLargeBrowserStorage(): Promise<void> {
-  while (pendingWrites.size > 0) {
-    await Promise.allSettled([...pendingWrites]);
-  }
+  while (pendingWrites.size > 0) await Promise.allSettled([...pendingWrites]);
 }
 
-/**
- * Install the localStorage bridge synchronously so React can render immediately.
- * Startup-managed writes are temporarily protected until IndexedDB restoration
- * completes, preventing an empty first render from clobbering an existing library.
- */
 export function prepareLargeBrowserStorageForStartup(): void {
   if (typeof window === 'undefined' || typeof Storage === 'undefined') return;
   startupHydrationPending = true;
   installStorageBridge();
 }
 
-/**
- * Restore the working library and sync-critical values after the application shell
- * is already visible. Nothing in this path is allowed to gate first paint.
- */
 export function hydrateLargeBrowserStorage(): Promise<void> {
   if (startupHydrationPromise) return startupHydrationPromise;
   if (typeof window === 'undefined' || typeof Storage === 'undefined') return Promise.resolve();
@@ -297,7 +273,6 @@ export function hydrateLargeBrowserStorage(): Promise<void> {
   return startupHydrationPromise;
 }
 
-/** Load non-critical import/history caches after the app is already visible. */
 export function hydrateDeferredLargeBrowserStorage(): Promise<void> {
   if (deferredHydrationPromise) return deferredHydrationPromise;
   if (typeof window === 'undefined' || typeof Storage === 'undefined' || typeof indexedDB === 'undefined') return Promise.resolve();
