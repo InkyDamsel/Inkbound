@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BookHeart, Feather, Pencil, Sparkles } from 'lucide-react';
 import { Format, ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
+import { formatLabel } from '../domain/libraryTaxonomy';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { isInkboundFinishedBook } from '../features/reading/inkboundActivity';
@@ -16,7 +17,6 @@ const SLEEPING_LUMIS_ASSET = '/assets/lumis/lumis-sleeping.svg';
 const LUMIS_BANNER_ASSET = '/assets/lumis/cozy-lumis-background.png';
 const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_DRAGON: DragonProfile = { id: 'library-dragon', name: 'Lumis' };
-const FORMAT_LABELS: Record<Format, string> = { hardcover: 'Hardcover', paperback: 'Paperback', ebook: 'eBook', audiobook: 'Audiobook' };
 
 const timeToMinutes = (value?: string): number | null => {
   if (!value) return null;
@@ -54,7 +54,7 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
   const finishedBooks = useMemo(() => books.filter((book) => isInkboundFinishedBook(book, trackedBookIds)), [books, trackedBookIds]);
   const totalPages = completedSessions.reduce((sum, session) => sum + getSessionPagesRead(session), 0);
   const favoriteGenre = useMemo(() => { const counts = new Map<string, number>(); finishedBooks.flatMap((book) => book.work.genres).forEach((genre) => counts.set(genre, (counts.get(genre) ?? 0) + 1)); return [...counts.entries()].sort((a,b) => b[1]-a[1])[0]?.[0] ?? 'Still discovering'; }, [finishedBooks]);
-  const favoriteFormat = useMemo(() => { const counts = new Map<Format, number>(); finishedBooks.forEach((book) => { const edition = getActiveEdition(book); if (edition) counts.set(edition.format, (counts.get(edition.format) ?? 0) + 1); }); const format = [...counts.entries()].sort((a,b) => b[1]-a[1])[0]?.[0]; return format ? FORMAT_LABELS[format] : 'Still discovering'; }, [finishedBooks]);
+  const favoriteFormat = useMemo(() => { const counts = new Map<Format, number>(); finishedBooks.forEach((book) => { const edition = getActiveEdition(book); if (edition) counts.set(edition.format, (counts.get(edition.format) ?? 0) + 1); }); const format = [...counts.entries()].sort((a,b) => b[1]-a[1])[0]?.[0]; return format ? formatLabel(format) : 'Still discovering'; }, [finishedBooks]);
   const favoriteReadingTime = useMemo(() => { const counts = new Map<string, number>(); completedSessions.forEach((session) => { const part = getReadingDaypart(session.startTime); if (part !== 'Still discovering') counts.set(part, (counts.get(part) ?? 0) + 1); }); return [...counts.entries()].sort((a,b) => b[1]-a[1])[0]?.[0] ?? 'Still discovering'; }, [completedSessions]);
   const longestReadingSession = useMemo(() => formatSessionDuration(Math.max(0, ...completedSessions.map(getSessionDurationMinutes))), [completedSessions]);
   const recentSession = useMemo(() => [...completedSessions].sort((a,b) => getSessionTimestamp(b)-getSessionTimestamp(a))[0], [completedSessions]);
