@@ -9,9 +9,10 @@ import {
   notifyCloudDataUpdated,
   notifyLocalDataChanged,
 } from './cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
-const LOCAL_DATA_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
+const LOCAL_DATA_OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const LEGACY_COVER_PREFIX = 'data:image/';
 
 const readBooks = (): UserBookRecord[] => {
@@ -75,8 +76,6 @@ export const LegacyBookCoverMigrationBridge: React.FC = () => {
       try {
         const replacements = new Map<string, string>();
 
-        // Keep migration deliberately sequential. A large imported library can
-        // contain many legacy covers and should not spike phone memory/network.
         for (const candidate of candidates) {
           if (disposed || !navigator.onLine || !currentAccountLibraryIsVerified()) break;
           try {
@@ -86,8 +85,7 @@ export const LegacyBookCoverMigrationBridge: React.FC = () => {
               replacements.set(`${candidate.bookId}:${candidate.editionId}`, uploadedUrl);
             }
           } catch {
-            // Preserve the embedded image and retry on the next online/cloud
-            // refresh instead of partially damaging the canonical book record.
+            // Preserve the embedded image and retry on the next online/cloud refresh.
           }
         }
 
