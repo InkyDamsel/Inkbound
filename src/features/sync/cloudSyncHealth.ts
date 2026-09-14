@@ -1,4 +1,5 @@
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 export const INKBOUND_CLOUD_SYNC_HEALTH_EVENT = 'inkbound:cloud-sync-health';
 export const INKBOUND_FORCE_CLOUD_REFRESH_EVENT = 'inkbound:force-cloud-refresh';
@@ -11,8 +12,8 @@ export interface CloudSyncHealth {
   message: string;
 }
 
-const BOOKS_KEY = 'inkbound_books';
-const LAST_SYNC_STORAGE_KEY = 'inkbound_last_cloud_sync_at';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
+const LAST_SYNC_STORAGE_KEY = SYNC_STORAGE_KEYS.lastCloudSyncAt;
 const LARGE_LIBRARY_FULL_REFRESH_LIMIT = 5_000;
 
 let currentHealth: CloudSyncHealth = {
