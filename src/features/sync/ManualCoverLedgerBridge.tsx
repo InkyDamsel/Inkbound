@@ -10,8 +10,9 @@ import {
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_KEY = 'inkbound_books';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const LEDGER_BASELINE_PREFIX = 'inkbound_manual_cover_ledger_baseline_v1_';
 
 interface ManualCoverLedgerEntry {
@@ -135,9 +136,6 @@ export const ManualCoverLedgerBridge: React.FC = () => {
       if (detail?.keys?.includes(BOOKS_KEY)) void persist();
     };
 
-    // This startup pass is now cheap after the first successful checkpoint: it
-    // compares local signatures and performs zero Firestore writes when nothing
-    // changed since the prior launch.
     void persist();
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, onCloudChange);
