@@ -9,12 +9,34 @@ export function isImportedBook(book: UserBookRecord): boolean {
   );
 }
 
-const hasValidDateKey = (value?: string): boolean => {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  const parsed = new Date(year, month - 1, day, 12);
-  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
-};
+/**
+ * Canonical reader-history date parser. Historical reporting must not invent,
+ * coerce, or infer dates from dateAdded/import timestamps. Only an explicit
+ * valid calendar date is allowed to place reading history on a timeline.
+ */
+export function canonicalReadingDateKey(value?: string): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (
+    parsed.getFullYear() !== year
+    || parsed.getMonth() !== month - 1
+    || parsed.getDate() !== day
+  ) return null;
+
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+export function readingMonthKey(value?: string): string | null {
+  return canonicalReadingDateKey(value)?.slice(0, 7) ?? null;
+}
 
 /**
  * Historical/library reporting trusts an explicit Finished status plus a valid
@@ -23,7 +45,11 @@ const hasValidDateKey = (value?: string): boolean => {
  * not erase valid reading history from dashboards, reports, or annual goals.
  */
 export function hasTrustworthyFinishedHistory(book: UserBookRecord): boolean {
-  return book.status === 'finished' && hasValidDateKey(book.dateFinished);
+  return book.status === 'finished' && canonicalReadingDateKey(book.dateFinished) !== null;
+}
+
+export function getTrustworthyFinishedBooks(books: readonly UserBookRecord[]): UserBookRecord[] {
+  return books.filter(hasTrustworthyFinishedHistory);
 }
 
 /**
@@ -61,6 +87,6 @@ export function isInkboundStartedBook(
   book: UserBookRecord,
   trackedBookIds: ReadonlySet<string>,
 ): boolean {
-  if (!hasValidDateKey(book.dateStarted)) return false;
+  if (canonicalReadingDateKey(book.dateStarted) === null) return false;
   return !isImportedBook(book) || trackedBookIds.has(book.id);
 }
