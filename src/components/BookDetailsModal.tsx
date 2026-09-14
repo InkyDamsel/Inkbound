@@ -8,6 +8,7 @@ import { LibraryLoanReminderControl } from './library/LibraryLoanReminderControl
 import { FinishOnTimeControl } from './reading/FinishOnTimeControl';
 import { normalizeLibraryRecord } from '../features/library/libraryNormalization';
 import { openLibrarySeriesForBook } from '../features/library/libraryNavigation';
+import { getEffectiveBookProgressPages } from '../features/reading/readingPageTotals';
 import { resolveEffectiveSeriesMetadata, seriesPositionLabel } from '../features/series/seriesLibrary';
 import { readSeriesOverrides } from '../features/series/seriesOverrides';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
@@ -65,12 +66,23 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   }, [normalizedBook?.id, normalizedBook?.privateTags?.join('|')]);
 
   const displayBook = useMemo<UserBookRecord | null>(() => {
-    if (!normalizedBook || !effectiveSeries) return normalizedBook;
-    if (normalizedBook.work.seriesName?.trim()) return normalizedBook;
-    return {
+    if (!normalizedBook) return null;
+
+    // Book Details is a view over canonical reading state. Historical finished
+    // books may legitimately have no persisted progressPages because Inkbound did
+    // not observe the original sessions. Show the canonical effective page value
+    // without rewriting the stored reading history.
+    const effectiveProgressPages = getEffectiveBookProgressPages(normalizedBook);
+    const baseDisplayBook: UserBookRecord = {
       ...normalizedBook,
+      progressPages: effectiveProgressPages,
+    };
+
+    if (!effectiveSeries || normalizedBook.work.seriesName?.trim()) return baseDisplayBook;
+    return {
+      ...baseDisplayBook,
       work: {
-        ...normalizedBook.work,
+        ...baseDisplayBook.work,
         seriesName: effectiveSeries.name,
         seriesOrder: effectiveSeries.position ?? undefined,
       },
@@ -100,10 +112,18 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   }, [displayBook?.id, displayBook?.privateTags?.join('|')]);
 
   const handleUpdateBook = (updatedBook: UserBookRecord) => {
+    // progressPages on displayBook may be an effective historical display value.
+    // Explicit progress edits travel through onCorrectProgress, so never let a
+    // display-only fallback leak back into persisted book state during unrelated
+    // Book Details edits.
+    const persistenceSafeUpdate = normalizedBook
+      ? { ...updatedBook, progressPages: normalizedBook.progressPages }
+      : updatedBook;
+
     // Reuse the canonical library normalizer so Book Details cannot invent a
     // second ownership/status coupling. Wishlist ownership must never erase a
     // legitimate Finished status or finish date.
-    const normalizedUpdate = normalizeLibraryRecord(updatedBook);
+    const normalizedUpdate = normalizeLibraryRecord(persistenceSafeUpdate);
 
     if (!normalizedBook || !effectiveSeries || normalizedBook.work.seriesName?.trim()) {
       props.onUpdateBook(normalizedUpdate);
