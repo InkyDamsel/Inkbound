@@ -43,6 +43,8 @@ const COLLECTIONS_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions;
 // Device-only view preference. Collection definitions/membership remain account-owned.
 const COLLECTION_VIEW_STORAGE_KEY = 'inkbound_collection_view';
 const COLLECTION_DELETE_UNDO_MS = 7000;
+const COLLECTION_PAGE_SIZE = 24;
+const MANAGEMENT_PAGE_SIZE = 24;
 const starterCollections: CollectionDefinition[] = [
   {
     id: 'comfort-reads',
@@ -106,6 +108,8 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   const [sortMode, setSortMode] = useState<SortMode>('title');
   const [statusFilter, setStatusFilter] = useState<'all' | ReadingStatus>('all');
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
+  const [collectionPage, setCollectionPage] = useState(1);
+  const [managementPage, setManagementPage] = useState(1);
   const [pendingDelete, setPendingDelete] = useState<CollectionDefinition | null>(null);
   const pendingDeleteRef = useRef<CollectionDefinition | null>(null);
   const deleteTimerRef = useRef<number | null>(null);
@@ -180,6 +184,11 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   const selectedBooks = selectedCollection ? booksForCollection(selectedCollection, books) : [];
   const finishedCount = selectedBooks.filter((book) => getBookReadingState(book).isFinished).length;
   const averageProgress = getAverageBookProgress(selectedBooks);
+  const collectionPageCount = Math.max(1, Math.ceil(selectedBooks.length / COLLECTION_PAGE_SIZE));
+  const pagedSelectedBooks = useMemo(
+    () => selectedBooks.slice((collectionPage - 1) * COLLECTION_PAGE_SIZE, collectionPage * COLLECTION_PAGE_SIZE),
+    [collectionPage, selectedBooks],
+  );
 
   const visibleBooks = useMemo(() => {
     const query = normalized(searchQuery);
@@ -202,6 +211,28 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
         return a.work.title.localeCompare(b.work.title);
       });
   }, [books, searchQuery, selectedBooks, selectedCollection, sortMode, statusFilter]);
+  const managementPageCount = Math.max(1, Math.ceil(visibleBooks.length / MANAGEMENT_PAGE_SIZE));
+  const pagedVisibleBooks = useMemo(
+    () => visibleBooks.slice((managementPage - 1) * MANAGEMENT_PAGE_SIZE, managementPage * MANAGEMENT_PAGE_SIZE),
+    [managementPage, visibleBooks],
+  );
+
+  useEffect(() => {
+    setCollectionPage(1);
+    setManagementPage(1);
+  }, [selectedCollectionId]);
+
+  useEffect(() => {
+    setCollectionPage((current) => Math.min(Math.max(current, 1), collectionPageCount));
+  }, [collectionPageCount]);
+
+  useEffect(() => {
+    setManagementPage(1);
+  }, [searchQuery, sortMode, statusFilter]);
+
+  useEffect(() => {
+    setManagementPage((current) => Math.min(Math.max(current, 1), managementPageCount));
+  }, [managementPageCount]);
 
   const resetSmartValueForField = (field: SmartField): string => {
     if (field === 'status') return READING_STATUS_OPTIONS[0].value;
@@ -387,6 +418,8 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                   setSelectedCollectionId(collection.id);
                   setSelectedBookIds([]);
                   setSearchQuery('');
+                  setCollectionPage(1);
+                  setManagementPage(1);
                 }}
                 className={`relative block h-32 w-full overflow-hidden bg-gradient-to-br ${collection.accent} text-left`}
               >
@@ -437,7 +470,12 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
           {selectedBooks.length > 0 && (
             <div className="mt-6">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Collection books</p>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Collection books</p>
+                  <p className="mt-1 text-[11px] text-[var(--ink-muted)]">
+                    Showing {(collectionPage - 1) * COLLECTION_PAGE_SIZE + 1}–{Math.min(collectionPage * COLLECTION_PAGE_SIZE, selectedBooks.length)} of {selectedBooks.length}
+                  </p>
+                </div>
                 {(selectedCollection.kind ?? 'manual') === 'manual' && (
                   <label className="text-xs text-[var(--ink-muted)]">
                     Cover book
@@ -449,7 +487,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                 )}
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {selectedBooks.map((book) => {
+                {pagedSelectedBooks.map((book) => {
                   const readingState = getBookReadingState(book);
                   return (
                     <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-left">
@@ -465,6 +503,15 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                   );
                 })}
               </div>
+              {collectionPageCount > 1 && (
+                <div className="mt-5 flex flex-col gap-3 border-t border-[var(--ink-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-[var(--ink-muted)]">Page {collectionPage} of {collectionPageCount}</p>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={collectionPage <= 1} onClick={() => setCollectionPage((page) => Math.max(1, page - 1))} className="quiet-shelf-secondary-action flex-1 justify-center disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none">Previous</button>
+                    <button type="button" disabled={collectionPage >= collectionPageCount} onClick={() => setCollectionPage((page) => Math.min(collectionPageCount, page + 1))} className="quiet-shelf-secondary-action flex-1 justify-center disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none">Next</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -492,8 +539,13 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
               <button type="button" onClick={() => bulkMembership('remove')} className="quiet-shelf-secondary-action"><X className="h-4 w-4" /> Remove selected</button>
             </div>
           )}
+          {visibleBooks.length > 0 && (
+            <p className="mt-4 text-xs text-[var(--ink-muted)]">
+              Showing {(managementPage - 1) * MANAGEMENT_PAGE_SIZE + 1}–{Math.min(managementPage * MANAGEMENT_PAGE_SIZE, visibleBooks.length)} of {visibleBooks.length}
+            </p>
+          )}
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {visibleBooks.map((book) => {
+            {pagedVisibleBooks.map((book) => {
               const inCollection = selectedBooks.some((item) => item.id === book.id);
               const selected = selectedBookIds.includes(book.id);
               const readingState = getBookReadingState(book);
@@ -515,6 +567,15 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
               );
             })}
           </div>
+          {managementPageCount > 1 && (
+            <div className="mt-5 flex flex-col gap-3 border-t border-[var(--ink-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-[var(--ink-muted)]">Page {managementPage} of {managementPageCount}</p>
+              <div className="flex gap-2">
+                <button type="button" disabled={managementPage <= 1} onClick={() => setManagementPage((page) => Math.max(1, page - 1))} className="quiet-shelf-secondary-action flex-1 justify-center disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none">Previous</button>
+                <button type="button" disabled={managementPage >= managementPageCount} onClick={() => setManagementPage((page) => Math.min(managementPageCount, page + 1))} className="quiet-shelf-secondary-action flex-1 justify-center disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none">Next</button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
