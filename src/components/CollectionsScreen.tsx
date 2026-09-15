@@ -424,7 +424,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
               <p className="inkbound-kicker">Open Collection</p>
               <h2 className="break-words font-serif text-2xl font-bold text-[var(--ink-ivory)]">{selectedCollection.name}</h2>
               <p className="mt-1 text-sm text-[var(--ink-muted)]">
-                {(selectedCollection.kind ?? 'manual') === 'smart' ? 'This shelf updates automatically from its rule.' : 'Select books below to add or remove them.'}
+                {(selectedCollection.kind ?? 'manual') === 'smart' ? 'This shelf updates automatically from its rule.' : 'All books in this collection are shown below.'}
               </p>
             </div>
             <button type="button" onClick={() => setSelectedCollectionId(null)} className="quiet-shelf-secondary-action w-full justify-center lg:w-auto">Close</button>
@@ -437,7 +437,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
           {selectedBooks.length > 0 && (
             <div className="mt-6">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Shelf preview</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Collection books</p>
                 {(selectedCollection.kind ?? 'manual') === 'manual' && (
                   <label className="text-xs text-[var(--ink-muted)]">
                     Cover book
@@ -449,13 +449,17 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                 )}
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {selectedBooks.slice(0, 8).map((book) => {
+                {selectedBooks.map((book) => {
                   const readingState = getBookReadingState(book);
                   return (
                     <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-left">
                       <div className="flex gap-3">
                         <BookCover work={book.work} edition={readingState.activeEdition} progressPercentage={readingState.progressPercentage} isFinished={readingState.isFinished} rating={book.rating} className="h-20 w-14 shrink-0" />
-                        <div className="min-w-0"><p className="line-clamp-2 font-serif text-sm font-bold text-[var(--ink-ivory)]">{book.work.title}</p><p className="mt-1 truncate text-[11px] text-[var(--ink-muted)]">{book.work.author}</p></div>
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 font-serif text-sm font-bold text-[var(--ink-ivory)]">{book.work.title}</p>
+                          <p className="mt-1 truncate text-[11px] text-[var(--ink-muted)]">{book.work.author}</p>
+                          <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-gold-bright)]">{readingState.status.replaceAll('-', ' ')} · {readingState.progressPercentage}%</p>
+                        </div>
                       </div>
                     </button>
                   );
