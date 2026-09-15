@@ -28,8 +28,8 @@
 }
 
 @media (max-width: 639px) {
-  /* The native Android shell is edge-to-edge, so Book Details needs to own the
-     entire mobile viewport instead of behaving like a desktop bottom sheet. */
+  /* The native Android shell and mobile web are edge-to-edge, so Book Details
+     owns the full viewport instead of behaving like a desktop bottom sheet. */
   .book-details-modal-host > div.fixed {
     align-items: stretch !important;
     padding: 0 !important;
@@ -43,13 +43,16 @@
     border-right: 0;
   }
 
+  /* Keep the complete header action row reachable on narrow mobile-web widths.
+     The old 44dvh scrolling cap could place Cover / Sync / Delete inside a
+     separate scroll area that looked like the buttons were missing. Let the
+     header take its natural (bounded) height; the actual tab content below is
+     already the flexing/scrolling region. */
   .book-details-modal-host > div.fixed > section[role='dialog'] > header {
     flex: 0 0 auto;
-    max-height: 44dvh;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    max-height: none !important;
+    overflow: visible !important;
     padding-top: max(1rem, env(safe-area-inset-top)) !important;
-    -webkit-overflow-scrolling: touch;
   }
 
   /* Keep enough room for the actual book fields/tabs even on shorter phones. */
@@ -65,6 +68,7 @@
 
   /* Cover, metadata sync, and Delete must all remain reachable on a phone. */
   .book-details-modal-host > div.fixed > section[role='dialog'] > header .quiet-shelf-secondary-action {
+    display: inline-flex !important;
     min-height: 44px;
     flex: 1 1 auto;
     justify-content: center;
