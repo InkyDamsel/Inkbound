@@ -54,7 +54,7 @@ import './styles/responsive-parity.css';
 import './styles/light-theme-contrast.css';
 
 const AUTH_OPEN_GRACE_MS = 1800;
-const NATIVE_RUNTIME_TIMEOUT_MS = 15000;
+const NATIVE_SERVICES_FAIL_OPEN_MS = 2500;
 
 type OpeningScreenProps = {
   message: string;
@@ -77,7 +77,19 @@ const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) =
   </main>
 );
 
-const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
+/**
+ * Android native services may initialize a fraction later than the WebView.
+ * They must never hold the entire application behind a startup screen: a slow or
+ * missed readiness signal previously left production installs on "Opening
+ * Inkbound" forever even though MainActivity, Firebase, Capacitor and the WebView
+ * were already alive.
+ *
+ * Protected/cloud bridges still get a short head start so App Check can finish
+ * wiring normally. If the readiness signal is delayed or lost, fail open after a
+ * bounded delay and let the bridges use their own error/retry behavior. The main
+ * UI, local library and sign-in surface are never blocked by this adapter state.
+ */
+const NativeServicesGate = ({ children }: PropsWithChildren) => {
   const ready = useSyncExternalStore(
     subscribeNativeRuntimeReadiness,
     isNativeRuntimeReady,
@@ -88,29 +100,24 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
     getNativeRuntimeError,
     getNativeRuntimeError,
   );
+  const [failOpen, setFailOpen] = useState(false);
 
   useEffect(() => {
-    if (ready || error || !isAndroidRuntime()) return undefined;
+    if (!isAndroidRuntime() || ready || error) {
+      setFailOpen(false);
+      return undefined;
+    }
 
     const timer = window.setTimeout(() => {
-      markNativeRuntimeFailed(new Error('Secure Android services took too long to respond. Check your connection and try again.'));
-    }, NATIVE_RUNTIME_TIMEOUT_MS);
+      console.warn('Inkbound Android native-service readiness was delayed; continuing startup and allowing normal cloud retry behavior.');
+      setFailOpen(true);
+    }, NATIVE_SERVICES_FAIL_OPEN_MS);
 
     return () => window.clearTimeout(timer);
   }, [ready, error]);
 
-  if (error) {
-    return (
-      <OpeningScreen
-        message={`Android services could not start: ${error}`}
-        actionLabel="Try Again"
-        onAction={() => window.location.reload()}
-      />
-    );
-  }
-
-  if (!ready) return <OpeningScreen message="Preparing secure Android services..." />;
-  return <>{children}</>;
+  if (!isAndroidRuntime() || ready || error || failOpen) return <>{children}</>;
+  return null;
 };
 
 const AuthSessionGate = ({ children }: PropsWithChildren) => {
@@ -166,8 +173,6 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
     const handleHydrated = () => setReady(true);
     window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
 
-    // Close the subscribe-after-event race. Hydration may have completed between
-    // the initial render and this effect attaching its listener.
     if (isLargeBrowserStorageHydrated()) setReady(true);
 
     return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
@@ -178,10 +183,10 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
 
 const InkboundApplication = () => (
   <BreakpointProvider>
-    <NativeRuntimeGate>
-      <UserPlanProvider>
-        <AccountSyncProvider>
-          <AuthSessionGate>
+    <UserPlanProvider>
+      <AccountSyncProvider>
+        <AuthSessionGate>
+          <NativeServicesGate>
             <SecurityBootstrap />
             <BrowserStorageHydrationGate>
               <LibrarySyncCheckpointBridge />
@@ -197,16 +202,16 @@ const InkboundApplication = () => (
               <LegacyBookCoverMigrationBridge />
               <CanonicalLibraryNormalizationBridge />
             </BrowserStorageHydrationGate>
-            <ThemePersistenceBridge />
-            <CloudDataRefreshBoundary>
-              <RecoverySafetyBridge />
-              <App />
-            </CloudDataRefreshBoundary>
-            <UpgradeModal />
-          </AuthSessionGate>
-        </AccountSyncProvider>
-      </UserPlanProvider>
-    </NativeRuntimeGate>
+          </NativeServicesGate>
+          <ThemePersistenceBridge />
+          <CloudDataRefreshBoundary>
+            <RecoverySafetyBridge />
+            <App />
+          </CloudDataRefreshBoundary>
+          <UpgradeModal />
+        </AuthSessionGate>
+      </AccountSyncProvider>
+    </UserPlanProvider>
   </BreakpointProvider>
 );
 
@@ -226,7 +231,10 @@ export async function mountApplication(rootElement: HTMLElement) {
   }
 
   if (isAndroidRuntime()) {
-    void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
+    void initializeAndroidRuntime().catch((error) => {
+      console.error('Inkbound Android native services could not initialize. Continuing with local UI and normal retry behavior.', error);
+      markNativeRuntimeFailed(error);
+    });
   }
 
   createRoot(rootElement).render(
