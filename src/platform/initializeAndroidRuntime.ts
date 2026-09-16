@@ -45,6 +45,7 @@ interface InkboundPlayBillingPlugin {
 }
 
 const PlayBilling = registerPlugin<InkboundPlayBillingPlugin>('InkboundPlayBilling');
+const NATIVE_APP_CHECK_TIMEOUT_MS = 5000;
 
 const sanitizeExportFilename = (filename: string) => {
   const cleaned = filename.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+/, '');
@@ -77,6 +78,24 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
     dialogTitle: title ?? 'Share Inkbound export',
   });
 };
+
+const withNativeSecurityTimeout = <T>(operation: Promise<T>, label: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} timed out before Android security services responded.`));
+    }, NATIVE_APP_CHECK_TIMEOUT_MS);
+
+    operation.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 
 const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInWithGoogle({
   skipNativeAuth: true,
@@ -271,22 +290,30 @@ export async function initializeAndroidRuntime() {
     },
   });
 
-  const nativeAppCheckReady = FirebaseAppCheck.initialize({
-    isTokenAutoRefreshEnabled: true,
-  });
+  // Do not activate the Firebase JS App Check bridge until the native Android
+  // layer has both initialized and returned a real token. If Play Integrity is
+  // unavailable (common for sideloaded release APKs), activating the JS bridge
+  // first can make Firebase Auth wait forever for an App Check token. Auth must
+  // remain usable even when protected background services cannot start.
+  await withNativeSecurityTimeout(
+    FirebaseAppCheck.initialize({ isTokenAutoRefreshEnabled: true }),
+    'Android App Check initialization',
+  );
+  await withNativeSecurityTimeout(
+    FirebaseAppCheck.getToken({ forceRefresh: false }),
+    'Android App Check token',
+  );
 
   initializeNativeSecurityRuntime({
     getToken: async (forceRefresh = false) => {
-      await nativeAppCheckReady;
-      const result = await FirebaseAppCheck.getToken({ forceRefresh });
+      const result = await withNativeSecurityTimeout(
+        FirebaseAppCheck.getToken({ forceRefresh }),
+        'Android App Check token',
+      );
       return {
         token: result.token,
         expireTimeMillis: result.expireTimeMillis,
       };
     },
-  });
-
-  void nativeAppCheckReady.catch((error) => {
-    console.error('Inkbound Android App Check could not initialize.', error);
   });
 }
