@@ -22,12 +22,48 @@ const normalizeStoredLibrary = () => {
 /**
  * Applies narrow legacy/import corrections to the canonical library itself.
  * Feature screens never need to invent a competing view of ownership.
+ *
+ * Large libraries can contain tens of thousands of records. Normalization is
+ * maintenance work, not startup-critical work, so coalesce requests and run the
+ * pass only when the main thread is idle (with a bounded timeout fallback).
  */
 export const CanonicalLibraryNormalizationBridge = () => {
   useEffect(() => {
-    normalizeStoredLibrary();
-    window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, normalizeStoredLibrary);
-    return () => window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, normalizeStoredLibrary);
+    let cancelled = false;
+    let scheduled = false;
+    let idleId: number | undefined;
+    let timerId: number | undefined;
+
+    const run = () => {
+      scheduled = false;
+      idleId = undefined;
+      timerId = undefined;
+      if (!cancelled) normalizeStoredLibrary();
+    };
+
+    const scheduleNormalization = () => {
+      if (cancelled || scheduled) return;
+      scheduled = true;
+
+      if (typeof window.requestIdleCallback === 'function') {
+        idleId = window.requestIdleCallback(run, { timeout: 2500 });
+        return;
+      }
+
+      timerId = window.setTimeout(run, 750);
+    };
+
+    scheduleNormalization();
+    window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, scheduleNormalization);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, scheduleNormalization);
+      if (idleId !== undefined && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timerId !== undefined) window.clearTimeout(timerId);
+    };
   }, []);
 
   return null;
