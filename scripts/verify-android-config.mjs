@@ -89,10 +89,6 @@ if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
 }
 
-// Native readiness protects cloud/background operations, but it must never own
-// first paint. Google Play review uses stress accounts with very large libraries;
-// a full-app NativeRuntimeGate can strand the UI on Opening Inkbound while Play
-// Integrity or cloud hydration is still starting.
 if (applicationEntrySource.includes('<NativeRuntimeGate>')) {
   fail('Android startup must not block the entire application on native security readiness.');
 }
@@ -158,7 +154,7 @@ for (const requiredSnippet of [
   'FirebaseAppCheck.initialize',
   'FirebaseAuthentication.signInWithGoogle',
   'skipNativeAuth: true',
-  'useCredentialManager: true',
+  'useCredentialManager: false',
   'signInWithCredential',
   'reauthenticateWithCredential',
   "CapacitorApp.addListener('appStateChange'",
