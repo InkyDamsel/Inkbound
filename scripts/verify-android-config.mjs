@@ -90,11 +90,33 @@ const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && 
 if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
 }
-if (!applicationEntrySource.includes('<NativeRuntimeGate>')) {
-  fail('Android startup must gate account/security providers until native services are ready.');
+
+// Android native security services must protect cloud bridges without ever
+// holding the entire product UI behind a readiness flag. A lost native-ready
+// signal previously stranded valid installs on "Opening Inkbound" indefinitely.
+if (!applicationEntrySource.includes('<NativeServicesGate>')) {
+  fail('Android startup must keep protected/cloud bridges behind NativeServicesGate.');
 }
-if (!applicationEntrySource.includes('initializeAndroidRuntime().catch(markNativeRuntimeFailed)')) {
-  fail('Android startup must initialize native services and surface initialization failures.');
+if (!applicationEntrySource.includes('NATIVE_SERVICES_FAIL_OPEN_MS')) {
+  fail('Android native-service gating must retain a bounded fail-open watchdog.');
+}
+if (!applicationEntrySource.includes('setFailOpen(true)')) {
+  fail('Android native-service gating must release protected bridges after its bounded watchdog.');
+}
+const nativeServicesOpenIndex = applicationEntrySource.indexOf('<NativeServicesGate>');
+const nativeServicesCloseIndex = applicationEntrySource.indexOf('</NativeServicesGate>');
+const appRenderIndex = applicationEntrySource.indexOf('<App />');
+if (nativeServicesOpenIndex < 0 || nativeServicesCloseIndex < 0 || appRenderIndex < 0) {
+  fail('Android startup structure is incomplete.');
+}
+if (appRenderIndex > nativeServicesOpenIndex && appRenderIndex < nativeServicesCloseIndex) {
+  fail('The main Inkbound UI must never be blocked by Android native-service readiness.');
+}
+if (!applicationEntrySource.includes('initializeAndroidRuntime().catch((error) =>')) {
+  fail('Android startup must initialize native services and handle initialization failures.');
+}
+if (!applicationEntrySource.includes('markNativeRuntimeFailed(error)')) {
+  fail('Android startup must preserve native initialization failures for diagnostics/retry behavior.');
 }
 
 const nativeReadinessSource = fs.readFileSync(runtimeNativeReadinessPath, 'utf8');
