@@ -6,6 +6,7 @@ const googleServicesPath = path.join(root, 'android', 'app', 'google-services.js
 const gradlePath = path.join(root, 'android', 'app', 'build.gradle');
 const mainActivityPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
 const billingPluginPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
+const runtimeReadinessPath = path.join(root, 'src', 'platform', 'runtimeNativeReadiness.ts');
 const expectedPackage = 'com.inkydameinteractive.inkbound';
 
 const fail = (message) => {
@@ -51,6 +52,18 @@ if (!fs.existsSync(mainActivityPath) || !fs.readFileSync(mainActivityPath, 'utf8
   fail('MainActivity does not register PlayBillingPlugin.');
 }
 
+if (!fs.existsSync(runtimeReadinessPath)) {
+  fail('runtimeNativeReadiness.ts is missing. Android startup cannot verify its native-service boundary.');
+}
+const runtimeReadiness = fs.readFileSync(runtimeReadinessPath, 'utf8');
+if (!runtimeReadiness.includes('NATIVE_RUNTIME_FAIL_OPEN_MS')) {
+  fail('Android native startup has no fail-open watchdog and could strand the app on the opening screen.');
+}
+if (!/markNativeRuntimeFailed[\s\S]*nativeRuntimeReady\s*=\s*true/.test(runtimeReadiness)) {
+  fail('Android native startup failures do not release the application UI.');
+}
+
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
+console.log('Inkbound Android startup fail-open watchdog verified.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
