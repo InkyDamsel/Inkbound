@@ -1,4 +1,4 @@
-import React, { PropsWithChildren, useEffect, useState } from 'react';
+import React, { PropsWithChildren, useEffect } from 'react';
 import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
@@ -27,64 +27,80 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
     if (!raw || !raw.trim().startsWith('[')) return false;
     const ownerUid = storage.getItem(OWNER_UID_KEY);
     if (ownerUid) return ownerUid === uid;
-    // Upgrade path for pre-owner-marker builds. A legacy non-empty library is a
-    // real working copy; a bare [] can be App's fresh initialization and must
-    // still wait for first-device hydration.
     return raw.trim() !== '[]';
   } catch {
     return false;
   }
 }
 
+/**
+ * Cloud hydration is background work. A fresh device with a very large account
+ * can take seconds (or longer) to download and merge its library, and the reader
+ * must never be trapped behind "Opening Inkbound" while that work completes.
+ *
+ * The boundary now always renders its children. It still performs recovery and
+ * maintenance after hydration events, but expensive whole-library maintenance is
+ * coalesced into idle time so a 50k-book account does not freeze first paint.
+ */
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
   const { user } = useAccountSync();
   const uid = user?.uid;
-  const [readyUid, setReadyUid] = useState<string | null>(null);
 
   useEffect(() => {
     if (!uid) {
-      setReadyUid(null);
-      // AccountSync removes signed-in records from runtime storage before Auth
-      // transitions to signed-out. Refresh App's in-memory core collections now
-      // so the previous reader's books/sessions cannot remain visible until a
-      // reload even though the durable device copy has already been cleared.
       notifyCloudDataUpdated([BOOKS_STORAGE_KEY, SESSIONS_STORAGE_KEY, PROFILE_STORAGE_KEY]);
       return undefined;
     }
 
-    if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
-    else setReadyUid(null);
+    let cancelled = false;
+    let maintenanceScheduled = false;
+    let idleId: number | undefined;
+    let timerId: number | undefined;
 
-    // This boundary only gates a genuinely new/unhydrated account. Existing
-    // devices are local-first and must open immediately even when there are no
-    // remote changes to generate a cloud event. A cloud event by itself is not
-    // enough to open the app: auxiliary sync can emit one before core library
-    // hydration finishes, so readiness always comes from the canonical owner +
-    // hydration marker state.
-    const refresh = () => {
+    const runMaintenance = () => {
+      maintenanceScheduled = false;
+      idleId = undefined;
+      timerId = undefined;
+      if (cancelled) return;
+
       recoverIncompleteLatestImport();
       reconcileRepeatedImportHistory(readStoredBooks());
-
-      if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
-
-      void synchronizeProfileMedia(uid).catch(() => {
-        // Offline/background failures are expected. The durable media queue will
-        // retry on the next foreground/online refresh without blocking the app.
-      });
+      void synchronizeProfileMedia(uid).catch(() => undefined);
     };
 
-    void synchronizeProfileMedia(uid).catch(() => undefined);
+    const scheduleMaintenance = () => {
+      if (cancelled || maintenanceScheduled) return;
+      maintenanceScheduled = true;
+
+      if (typeof window.requestIdleCallback === 'function') {
+        idleId = window.requestIdleCallback(runMaintenance, { timeout: 3000 });
+      } else {
+        timerId = window.setTimeout(runMaintenance, 1000);
+      }
+    };
+
+    const refresh = () => {
+      // Readiness is diagnostic only now; hydration must never own the UI gate.
+      if (hasEstablishedLocalWorkingCopy(uid)) {
+        console.info('[Inkbound startup] Local account working copy is ready.');
+      }
+      scheduleMaintenance();
+    };
+
+    scheduleMaintenance();
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
     const unsubscribeResume = subscribeToRuntimeResume(refresh);
+
     return () => {
+      cancelled = true;
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
       unsubscribeResume();
+      if (idleId !== undefined && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timerId !== undefined) window.clearTimeout(timerId);
     };
   }, [uid]);
-
-  if (uid && readyUid !== uid) {
-    return <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-6 text-center text-[var(--ink-ivory)]">Opening Inkbound...</main>;
-  }
 
   return <>{children}</>;
 };
