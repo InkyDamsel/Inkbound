@@ -78,10 +78,32 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
   });
 };
 
-const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInWithGoogle({
-  skipNativeAuth: true,
-  useCredentialManager: true,
-});
+/**
+ * Google Credential Manager is the preferred Android path, but it has produced
+ * device/Play-services-specific failures in real-world builds. Inkbound must not
+ * turn that provider implementation detail into a broken sign-in button.
+ *
+ * Keep a single native Google credential boundary and fall back to the plugin's
+ * legacy Google sign-in implementation only when Credential Manager itself
+ * fails. Firebase JS Auth remains the canonical account/session owner either way.
+ */
+const requestNativeGoogleCredential = async () => {
+  try {
+    return await FirebaseAuthentication.signInWithGoogle({
+      skipNativeAuth: true,
+      useCredentialManager: true,
+    });
+  } catch (credentialManagerError) {
+    console.warn(
+      'Inkbound Android Google Credential Manager failed; retrying with the compatibility sign-in flow.',
+      credentialManagerError,
+    );
+    return FirebaseAuthentication.signInWithGoogle({
+      skipNativeAuth: true,
+      useCredentialManager: false,
+    });
+  }
+};
 
 const sha256Hex = async (value: string) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
@@ -125,10 +147,9 @@ export async function initializeAndroidRuntime() {
   });
 
   configureRuntimeAuthentication({
-    // Android Firebase Auth persistence is now configured when the Auth instance
-    // is created in lib/firebase.ts. Re-running setPersistence here can race the
-    // startup restoration inside a Capacitor WebView and falsely report that the
-    // account cannot be kept signed in.
+    // Android Firebase Auth persistence is configured when the Auth instance is
+    // created in lib/firebase.ts. Re-running setPersistence here can race startup
+    // restoration inside a Capacitor WebView.
     preparePersistence: async () => undefined,
     signInWithGoogle: async (firebaseAuth) => {
       const result = await requestNativeGoogleCredential();
