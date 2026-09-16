@@ -7,8 +7,10 @@ import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
-  CLOUD_HYDRATION_VERSION,
-  cloudHydrationVersionKey,
+  hasEstablishedLocalWorkingCopy,
+  markCloudHydrationComplete,
+} from './cloudHydrationState';
+import {
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -48,36 +50,6 @@ function writeJson(key: string, value: unknown) {
   getRuntimeStorage().setItem(key, JSON.stringify(value));
 }
 
-function hasEstablishedLocalWorkingCopy(uid: string): boolean {
-  try {
-    const storage = getRuntimeStorage();
-    if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
-
-    const raw = storage.getItem(BOOKS_KEY);
-    if (!raw) return false;
-    const trimmed = raw.trim();
-    if (!trimmed.startsWith('[')) return false;
-
-    const ownerUid = storage.getItem(OWNER_UID_KEY);
-    if (ownerUid) {
-      if (ownerUid !== uid) return false;
-
-      // Empty local state is only established after a successful cloud snapshot
-      // has been observed on this device. Reconciliation alone is insufficient:
-      // older Android builds could mark reconciliation complete while still
-      // showing the startup default [].
-      if (trimmed === '[]') {
-        return storage.getItem(cloudHydrationVersionKey(uid)) === CLOUD_HYDRATION_VERSION;
-      }
-      return true;
-    }
-
-    return trimmed !== '[]';
-  } catch {
-    return false;
-  }
-}
-
 function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): T[] {
   const merged = new Map(localItems.map((item) => [item.id, item]));
   cloudItems.forEach((item) => merged.set(item.id, item));
@@ -97,13 +69,8 @@ function newestSnapshotUpdateMillis(
 /**
  * Restores a genuinely new device exactly once without installing collection
  * listeners. Established local working copies, including intentionally empty
- * libraries, stay local-first after their independent cloud hydration proof has
- * been recorded.
- *
- * Account ownership is checked before local records are merged. A switched
- * account is explicitly marked as requiring hydration so local edits made while
- * offline can be preserved and merged when connectivity returns instead of being
- * mistaken for a fully hydrated library.
+ * libraries, stay local-first after the canonical hydration-state owner confirms
+ * this device has actually observed a cloud snapshot.
  */
 export const OneShotCloudHydrationBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -159,11 +126,6 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
           storage.removeItem(PROFILE_KEY);
         }
 
-        // Delta sync starts immediately after hydration. Seed its cursor from the
-        // newest server timestamp actually present in this full snapshot so it
-        // does not reread a very large library from the beginning. Reduce rather
-        // than spreading tens of thousands of timestamps into Math.max; large
-        // libraries can exceed JavaScript's function-argument limit.
         let hydrationCursorMillis = newestSnapshotUpdateMillis(bookSnapshot.docs);
         hydrationCursorMillis = newestSnapshotUpdateMillis(sessionSnapshot.docs, hydrationCursorMillis);
         if (profileSnapshot.exists()) {
@@ -177,7 +139,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
-        storage.setItem(cloudHydrationVersionKey(uid), CLOUD_HYDRATION_VERSION);
+        markCloudHydrationComplete(uid, storage);
         storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
         if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) {
           storage.removeItem(HYDRATION_REQUIRED_UID_KEY);
