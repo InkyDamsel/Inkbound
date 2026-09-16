@@ -200,14 +200,37 @@ if (!applicationEntry.includes('<CrossDeviceDeltaSyncBridge />') || !application
   violations.push('applicationEntry.tsx: both canonical core and auxiliary cross-device sync bridges must remain mounted');
 }
 
+const cloudHydrationState = read('src/features/sync/cloudHydrationState.ts');
+for (const required of [
+  'SYNC_STORAGE_KEYS.books',
+  'SYNC_STORAGE_KEYS.localOwnerUid',
+  'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid',
+  'cloudHydrationVersionKey',
+  'CLOUD_HYDRATION_VERSION',
+  'hasEstablishedLocalWorkingCopy',
+  'markCloudHydrationComplete',
+]) {
+  if (!cloudHydrationState.includes(required)) {
+    violations.push(`cloudHydrationState.ts: canonical hydration owner is missing ${required}`);
+  }
+}
+
 const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');
-for (const required of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'OneShotCloudHydrationBridge', 'CostSafeCloudPersistenceBridge']) {
-  if (!adaptiveSync.includes(required)) violations.push(`AdaptiveCloudPersistenceBridge.tsx: missing safe hydration boundary ${required}`);
+for (const required of ['hasEstablishedLocalWorkingCopy', 'OneShotCloudHydrationBridge', 'CostSafeCloudPersistenceBridge']) {
+  if (!adaptiveSync.includes(required)) violations.push(`AdaptiveCloudPersistenceBridge.tsx: missing canonical hydration boundary ${required}`);
+}
+for (const forbidden of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'cloudHydrationVersionKey', 'CLOUD_HYDRATION_VERSION']) {
+  if (adaptiveSync.includes(forbidden)) {
+    violations.push(`AdaptiveCloudPersistenceBridge.tsx: hydration-state ownership belongs to cloudHydrationState.ts; found ${forbidden}`);
+  }
 }
 
 const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
-for (const required of ['subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'crossDeviceCursorKey', 'newestSnapshotUpdateMillis']) {
+for (const required of ['subscribeToRuntimeResume', 'hasEstablishedLocalWorkingCopy', 'markCloudHydrationComplete', 'crossDeviceCursorKey', 'newestSnapshotUpdateMillis']) {
   if (!oneShotHydration.includes(required)) violations.push(`OneShotCloudHydrationBridge.tsx: missing safe first-device hydration behavior ${required}`);
+}
+if (/function\s+hasEstablishedLocalWorkingCopy\s*\(/.test(oneShotHydration)) {
+  violations.push('OneShotCloudHydrationBridge.tsx: must not maintain a second hydration-state resolver');
 }
 if (/Math\.max\(\s*0\s*,\s*\.\.\./.test(oneShotHydration)) {
   violations.push('OneShotCloudHydrationBridge.tsx: large-library cursor calculation must not spread an unbounded snapshot into Math.max');
