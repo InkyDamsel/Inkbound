@@ -110,25 +110,16 @@ const verifyPlayPurchase = async (purchase: PlayPurchaseResult) => {
  * Installs Android-native service adapters while preserving Inkbound's existing
  * Firebase JS clients as the single auth/App Check/session/entitlement authority.
  *
- * Native plugins supply device capabilities only:
- * - Play Integrity -> Firebase JS App Check CustomProvider
- * - Google native sign-in -> Firebase JS Auth credential
- * - Google Play Billing -> verified Firebase Premium entitlement
- * - Capacitor App lifecycle -> Inkbound runtime resume signal
- * - Filesystem/Share -> user-owned export/share flows
+ * Authentication/lifecycle/export adapters are installed before App Check is
+ * started. A Play Integrity/App Check failure must never prevent email auth or
+ * native Google auth from being wired into the already-open application shell.
  */
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
-  const nativeAppCheckReady = FirebaseAppCheck.initialize({
-    isTokenAutoRefreshEnabled: true,
-  });
-
   configureRuntimeAuthentication({
-    // Android Firebase Auth persistence is now configured when the Auth instance
-    // is created in lib/firebase.ts. Re-running setPersistence here can race the
-    // startup restoration inside a Capacitor WebView and falsely report that the
-    // account cannot be kept signed in.
+    // Android Firebase Auth persistence is configured when Auth is created in
+    // lib/firebase.ts. Do not switch persistence during startup restoration.
     preparePersistence: async () => undefined,
     signInWithGoogle: async (firebaseAuth) => {
       const result = await requestNativeGoogleCredential();
@@ -275,6 +266,17 @@ export async function initializeAndroidRuntime() {
       };
     },
   });
+
+  // App Check is intentionally last. If this native plugin is slow, unavailable,
+  // or rejects on a sideloaded/reviewer device, authentication is already wired.
+  let nativeAppCheckReady: Promise<unknown>;
+  try {
+    nativeAppCheckReady = FirebaseAppCheck.initialize({
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (error) {
+    nativeAppCheckReady = Promise.reject(error);
+  }
 
   initializeNativeSecurityRuntime({
     getToken: async (forceRefresh = false) => {
