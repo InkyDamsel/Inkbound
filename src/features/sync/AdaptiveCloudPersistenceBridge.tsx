@@ -31,7 +31,19 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
     if (!trimmed.startsWith('[')) return false;
 
     const ownerUid = storage.getItem(OWNER_UID_KEY);
-    if (ownerUid) return ownerUid === uid;
+    if (ownerUid) {
+      if (ownerUid !== uid) return false;
+
+      // A matching owner marker by itself does NOT prove a fresh device has
+      // hydrated. App startup can create [] before cloud restore and account
+      // setup may already know the UID. Only treat an empty library as an
+      // established intentional empty state after this account has completed a
+      // canonical full hydration/reconciliation at least once.
+      if (trimmed === '[]') {
+        return storage.getItem(fullReconciliationVersionKey(uid)) === FULL_RECONCILIATION_VERSION;
+      }
+      return true;
+    }
 
     // Legacy local libraries predate the explicit owner marker. A non-empty
     // library is strong evidence of a real local working copy; an empty array is
