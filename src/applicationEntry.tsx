@@ -54,7 +54,7 @@ import './styles/responsive-parity.css';
 import './styles/light-theme-contrast.css';
 
 const AUTH_OPEN_GRACE_MS = 1800;
-const NATIVE_RUNTIME_TIMEOUT_MS = 15000;
+const BACKGROUND_START_DELAY_MS = 1200;
 
 type OpeningScreenProps = {
   message: string;
@@ -76,42 +76,6 @@ const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) =
     </div>
   </main>
 );
-
-const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
-  const ready = useSyncExternalStore(
-    subscribeNativeRuntimeReadiness,
-    isNativeRuntimeReady,
-    isNativeRuntimeReady,
-  );
-  const error = useSyncExternalStore(
-    subscribeNativeRuntimeReadiness,
-    getNativeRuntimeError,
-    getNativeRuntimeError,
-  );
-
-  useEffect(() => {
-    if (ready || error || !isAndroidRuntime()) return undefined;
-
-    const timer = window.setTimeout(() => {
-      markNativeRuntimeFailed(new Error('Secure Android services took too long to respond. Check your connection and try again.'));
-    }, NATIVE_RUNTIME_TIMEOUT_MS);
-
-    return () => window.clearTimeout(timer);
-  }, [ready, error]);
-
-  if (error) {
-    return (
-      <OpeningScreen
-        message={`Android services could not start: ${error}`}
-        actionLabel="Try Again"
-        onAction={() => window.location.reload()}
-      />
-    );
-  }
-
-  if (!ready) return <OpeningScreen message="Preparing secure Android services..." />;
-  return <>{children}</>;
-};
 
 const AuthSessionGate = ({ children }: PropsWithChildren) => {
   const { isAuthReady } = useAccountSync();
@@ -143,13 +107,6 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
  * so an empty initial render cannot erase a reader's working copy. Sync bridges
  * must respect the same boundary or their valid cloud writes can be discarded
  * and then replaced by the older IndexedDB snapshot a moment later.
- *
- * The event is only a wake-up signal; readiness is also queried synchronously.
- * On fast browser instances (especially Safari/iPad) hydration can finish before
- * React's effect subscribes. Without the state probe that browser would wait for
- * an event that already fired and none of the cloud sync bridges would ever mount.
- *
- * Native Android does not use this browser IndexedDB startup path.
  */
 const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
   const nativeRuntime = isNativeRuntime();
@@ -165,9 +122,6 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
 
     const handleHydrated = () => setReady(true);
     window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
-
-    // Close the subscribe-after-event race. Hydration may have completed between
-    // the initial render and this effect attaching its listener.
     if (isLargeBrowserStorageHydrated()) setReady(true);
 
     return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
@@ -176,37 +130,103 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
   return ready ? <>{children}</> : null;
 };
 
+/**
+ * Android native security protects cloud operations, not first paint. A Play
+ * Integrity/App Check delay must never strand the reader on "Opening Inkbound".
+ * When native services are unavailable we simply withhold protected background
+ * bridges; the local UI remains usable and the services can recover later.
+ */
+const NativeBackgroundServicesGate = ({ children }: PropsWithChildren) => {
+  const ready = useSyncExternalStore(
+    subscribeNativeRuntimeReadiness,
+    isNativeRuntimeReady,
+    isNativeRuntimeReady,
+  );
+  const error = useSyncExternalStore(
+    subscribeNativeRuntimeReadiness,
+    getNativeRuntimeError,
+    getNativeRuntimeError,
+  );
+
+  if (!isAndroidRuntime()) return <>{children}</>;
+  if (error) {
+    console.warn('[Inkbound startup] Android secure background services are unavailable; opening local UI.', error);
+    return null;
+  }
+  return ready ? <>{children}</> : null;
+};
+
+/**
+ * Large accounts can contain tens of thousands of books. Sync reconciliation,
+ * migrations, ledgers, and normalization are background work and must not all
+ * compete with React's first useful paint. Give the shell a full frame plus a
+ * short grace period before mounting those bridges.
+ */
+const DeferredBackgroundBridges = () => {
+  const [start, setStart] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let idleId: number | undefined;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      const requestIdle = window.requestIdleCallback;
+      if (typeof requestIdle === 'function') {
+        idleId = requestIdle(() => {
+          if (!cancelled) setStart(true);
+        }, { timeout: 1200 });
+      } else {
+        setStart(true);
+      }
+    }, BACKGROUND_START_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (idleId !== undefined && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+    };
+  }, []);
+
+  if (!start) return null;
+
+  return (
+    <NativeBackgroundServicesGate>
+      <SecurityBootstrap />
+      <BrowserStorageHydrationGate>
+        <LibrarySyncCheckpointBridge />
+        <AdaptiveCloudPersistenceBridge />
+        <CloudServerRefreshBridge />
+        <CrossDeviceDeltaSyncBridge />
+        <ManualCoverLedgerBridge />
+        <ProtectedBookDetailsLedgerBridge />
+        <AuxiliaryAccountSyncBridge />
+        <ReadingMemoryCloudSyncBridge />
+        <ReadOnlyCloudHydrationBridge />
+        <PhotoMemoryAutoSyncBridge />
+        <LegacyBookCoverMigrationBridge />
+        <CanonicalLibraryNormalizationBridge />
+      </BrowserStorageHydrationGate>
+    </NativeBackgroundServicesGate>
+  );
+};
+
 const InkboundApplication = () => (
   <BreakpointProvider>
-    <NativeRuntimeGate>
-      <UserPlanProvider>
-        <AccountSyncProvider>
-          <AuthSessionGate>
-            <SecurityBootstrap />
-            <BrowserStorageHydrationGate>
-              <LibrarySyncCheckpointBridge />
-              <AdaptiveCloudPersistenceBridge />
-              <CloudServerRefreshBridge />
-              <CrossDeviceDeltaSyncBridge />
-              <ManualCoverLedgerBridge />
-              <ProtectedBookDetailsLedgerBridge />
-              <AuxiliaryAccountSyncBridge />
-              <ReadingMemoryCloudSyncBridge />
-              <ReadOnlyCloudHydrationBridge />
-              <PhotoMemoryAutoSyncBridge />
-              <LegacyBookCoverMigrationBridge />
-              <CanonicalLibraryNormalizationBridge />
-            </BrowserStorageHydrationGate>
-            <ThemePersistenceBridge />
-            <CloudDataRefreshBoundary>
-              <RecoverySafetyBridge />
-              <App />
-            </CloudDataRefreshBoundary>
-            <UpgradeModal />
-          </AuthSessionGate>
-        </AccountSyncProvider>
-      </UserPlanProvider>
-    </NativeRuntimeGate>
+    <UserPlanProvider>
+      <AccountSyncProvider>
+        <AuthSessionGate>
+          <DeferredBackgroundBridges />
+          <ThemePersistenceBridge />
+          <CloudDataRefreshBoundary>
+            <RecoverySafetyBridge />
+            <App />
+          </CloudDataRefreshBoundary>
+          <UpgradeModal />
+        </AuthSessionGate>
+      </AccountSyncProvider>
+    </UserPlanProvider>
   </BreakpointProvider>
 );
 
