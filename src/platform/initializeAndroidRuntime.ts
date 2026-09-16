@@ -7,6 +7,7 @@ import { Share } from '@capacitor/share';
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
+  onAuthStateChanged,
   reauthenticateWithCredential,
   signInWithCredential,
 } from 'firebase/auth';
@@ -290,11 +291,11 @@ export async function initializeAndroidRuntime() {
     },
   });
 
-  // Do not activate the Firebase JS App Check bridge until the native Android
-  // layer has both initialized and returned a real token. If Play Integrity is
-  // unavailable (common for sideloaded release APKs), activating the JS bridge
-  // first can make Firebase Auth wait forever for an App Check token. Auth must
-  // remain usable even when protected background services cannot start.
+  // Preflight only the native Android App Check layer here. Do NOT initialize
+  // Firebase JS App Check while the reader is signed out. In a Capacitor WebView
+  // the JS App Check bridge can block Firebase JS Auth requests even though the
+  // native Play Integrity token itself is valid. Authentication must complete
+  // first; protected Firestore/Functions work starts immediately afterward.
   await withNativeSecurityTimeout(
     FirebaseAppCheck.initialize({ isTokenAutoRefreshEnabled: true }),
     'Android App Check initialization',
@@ -304,7 +305,7 @@ export async function initializeAndroidRuntime() {
     'Android App Check token',
   );
 
-  initializeNativeSecurityRuntime({
+  const appCheckAdapter = {
     getToken: async (forceRefresh = false) => {
       const result = await withNativeSecurityTimeout(
         FirebaseAppCheck.getToken({ forceRefresh }),
@@ -315,5 +316,28 @@ export async function initializeAndroidRuntime() {
         expireTimeMillis: result.expireTimeMillis,
       };
     },
-  });
+  };
+
+  let protectedRuntimeActivated = false;
+  const activateProtectedRuntime = () => {
+    if (protectedRuntimeActivated) return;
+    protectedRuntimeActivated = true;
+    try {
+      initializeNativeSecurityRuntime(appCheckAdapter);
+      console.info('[Inkbound startup] Android protected Firebase services activated after authentication.');
+    } catch (error) {
+      protectedRuntimeActivated = false;
+      console.error('Inkbound Android protected Firebase services could not activate after authentication.', error);
+    }
+  };
+
+  // Existing persisted sessions activate protected services as soon as Firebase
+  // restores the user. Fresh installs stay auth-only until email/Google sign-in
+  // has completely succeeded, preventing App Check from deadlocking that request.
+  if (auth?.currentUser) activateProtectedRuntime();
+  if (auth) {
+    onAuthStateChanged(auth, (user) => {
+      if (user) activateProtectedRuntime();
+    });
+  }
 }
