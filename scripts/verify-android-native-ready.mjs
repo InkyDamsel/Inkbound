@@ -37,6 +37,27 @@ if (!services.project_info?.project_number || !services.project_info?.project_id
   fail('google-services.json is missing Firebase project metadata.');
 }
 
+// Google sign-in on Android is not configured by the web OAuth client alone.
+// The downloaded Firebase Android config must contain an Android OAuth client
+// tied to Inkbound's package/SHA-1, plus a web OAuth client used as the server
+// client ID. Without these, browser Google sign-in can work perfectly while the
+// installed Android app fails before Firebase JS Auth ever receives a credential.
+const oauthClients = Array.isArray(matchingClient?.oauth_client) ? matchingClient.oauth_client : [];
+const androidOauthClients = oauthClients.filter((client) =>
+  client?.client_type === 1
+  && client?.android_info?.package_name === expectedPackage
+  && typeof client?.android_info?.certificate_hash === 'string'
+  && client.android_info.certificate_hash.trim().length > 0,
+);
+const webOauthClients = oauthClients.filter((client) => client?.client_type === 3 && client?.client_id);
+
+if (androidOauthClients.length === 0) {
+  fail(`google-services.json is missing an Android Google OAuth client for ${expectedPackage}. Add the SHA-1 fingerprint for the certificate signing this build in Firebase, then download a fresh google-services.json.`);
+}
+if (webOauthClients.length === 0) {
+  fail('google-services.json is missing the Google web OAuth client required to issue Android ID tokens. Re-download google-services.json after enabling Google sign-in in Firebase Authentication.');
+}
+
 if (!fs.existsSync(gradlePath) || !fs.readFileSync(gradlePath, 'utf8').includes('com.android.billingclient:billing:9.1.0')) {
   fail('Google Play Billing Library 9.1.0 is not wired into the Android app.');
 }
@@ -52,5 +73,6 @@ if (!fs.existsSync(mainActivityPath) || !fs.readFileSync(mainActivityPath, 'utf8
 }
 
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
+console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
