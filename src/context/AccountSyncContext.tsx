@@ -43,6 +43,7 @@ type SyncStatus = 'idle' | 'working' | 'success' | 'error';
 interface AccountSyncContextValue { user: User | null; isConfigured: boolean; isAuthReady: boolean; status: SyncStatus; message: string; lastSyncedAt: string | null; signInWithGoogle: () => Promise<void>; signInWithEmail: (email: string, password: string) => Promise<void>; createEmailAccount: (email: string, password: string) => Promise<void>; sendPasswordReset: (email: string) => Promise<void>; linkEmailPassword: (email: string, password: string) => Promise<void>; resendVerificationEmail: () => Promise<void>; signOutAccount: () => Promise<void>; uploadSnapshot: () => Promise<void>; restoreSnapshot: () => Promise<void>; }
 const AccountSyncContext = createContext<AccountSyncContextValue | undefined>(undefined);
 const LAST_SYNC_STORAGE_KEY = SYNC_STORAGE_KEYS.lastCloudSyncAt;
+const AUTH_OPERATION_TIMEOUT_MS = 15000;
 const SIGNED_IN_DATA_KEYS = [
   SYNC_STORAGE_KEYS.books,
   SYNC_STORAGE_KEYS.sessions,
@@ -78,6 +79,25 @@ function clearSignedInDataFromDevice(uid: string) {
   removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`);
 }
 
+function withAuthTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} timed out before Firebase responded.`));
+    }, AUTH_OPERATION_TIMEOUT_MS);
+
+    operation.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 function friendlyAuthMessage(error: unknown, fallback: string): string {
   const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
   const rawMessage = error instanceof Error ? error.message.trim() : '';
@@ -97,7 +117,10 @@ function friendlyAuthMessage(error: unknown, fallback: string): string {
   if (code.includes('auth/operation-not-allowed')) return 'Google sign-in is temporarily unavailable. Please use email sign-in for now.';
 
   if (/^10\s*:?.*$/i.test(rawMessage) || normalized.includes('developer_error') || normalized.includes('developer error')) {
-    return 'Google sign-in is not available in this version of Inkbound. Install the latest beta from Google Play and try again.';
+    return 'Google sign-in is not available in this version of Inkbound. Install the latest version from Google Play and try again.';
+  }
+  if (normalized.includes('timed out')) {
+    return 'Inkbound reached the sign-in service, but it did not respond in time. Close Inkbound, reopen it, and try once more.';
   }
   if (normalized.includes('network') || normalized.includes('offline')) {
     return 'Inkbound could not reach sign-in services. Check your internet connection and try again.';
@@ -106,35 +129,38 @@ function friendlyAuthMessage(error: unknown, fallback: string): string {
     return 'Google sign-in was canceled.';
   }
 
-  return fallback;
+  return rawMessage || fallback;
 }
 
 async function requestBrandedVerificationEmail(): Promise<void> {
   if (!functions) throw new Error('Email messages are not available right now.');
   const callable = httpsCallable<undefined, { success: boolean; alreadyVerified: boolean }>(functions, 'sendVerificationEmail');
-  await callable();
+  await withAuthTimeout(callable(), 'Verification email');
 }
 
 async function requestPasswordResetEmail(email: string): Promise<void> {
   const trimmedEmail = email.trim();
   if (!trimmedEmail) throw new Error('Enter your email address first.');
+  if (!auth) throw new Error('Password reset is not available right now.');
+
+  // Account recovery on Android must never depend on App Check or Cloud
+  // Functions becoming ready. Firebase Auth owns password recovery directly.
+  if (isNativeRuntime()) {
+    await withAuthTimeout(sendPasswordResetEmail(auth, trimmedEmail), 'Password reset');
+    return;
+  }
 
   if (functions) {
     try {
       const callable = httpsCallable<{ email: string }, { success: boolean }>(functions, 'sendPasswordResetEmail');
-      await callable({ email: trimmedEmail });
+      await withAuthTimeout(callable({ email: trimmedEmail }), 'Branded password reset');
       return;
     } catch (error) {
-      // Android App Check/Functions can be temporarily unavailable even while
-      // Firebase Auth itself is healthy. Password recovery is an account-access
-      // path, so fall back to Firebase Auth rather than making recovery depend on
-      // protected background services.
       console.warn('Inkbound branded password reset was unavailable; using Firebase Auth fallback.', error);
     }
   }
 
-  if (!auth) throw new Error('Password reset is not available right now.');
-  await sendPasswordResetEmail(auth, trimmedEmail);
+  await withAuthTimeout(sendPasswordResetEmail(auth, trimmedEmail), 'Password reset');
 }
 
 export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
@@ -156,9 +182,6 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setIsAuthReady(true);
     });
 
-    // Native persistence is already configured in initializeAuth(). Calling
-    // setPersistence again during Android startup can race WebView auth restore
-    // and strand account actions before credentials are even submitted.
     if (!isNativeRuntime()) {
       void prepareRuntimeAuthPersistence(auth).catch((error) => {
         console.error('Inkbound Firebase auth persistence setup failed.', error);
@@ -179,7 +202,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setStatus('working');
       setMessage('Opening Google sign-in...');
       if (!isNativeRuntime()) await prepareRuntimeAuthPersistence(auth);
-      await signInRuntimeWithGoogle(auth);
+      await withAuthTimeout(signInRuntimeWithGoogle(auth), 'Google sign-in');
       setStatus('success');
       setMessage('Google account connected. Inkbound will remember this account on this device until you sign out.');
     } catch (error) {
@@ -199,7 +222,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setStatus('working');
       setMessage('Signing in...');
       if (!isNativeRuntime()) await prepareRuntimeAuthPersistence(auth);
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      await withAuthTimeout(signInWithEmailAndPassword(auth, email.trim(), password), 'Email sign-in');
       setStatus('success');
       setMessage('Signed in. Your Inkbound library and reading history are being restored on this device.');
     } catch (error) {
@@ -219,7 +242,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setStatus('working');
       setMessage('Creating your Inkbound account...');
       if (!isNativeRuntime()) await prepareRuntimeAuthPersistence(auth);
-      await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await withAuthTimeout(createUserWithEmailAndPassword(auth, email.trim(), password), 'Account creation');
       await requestBrandedVerificationEmail();
       setStatus('success');
       setMessage('Account created. Check your inbox to verify your email. Your library and reading history will follow this account across devices.');
@@ -254,7 +277,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       setStatus('working');
       setMessage('Adding email sign-in to this Inkbound account...');
       const credential = EmailAuthProvider.credential(email.trim(), password);
-      const result = await linkWithCredential(auth.currentUser, credential);
+      const result = await withAuthTimeout(linkWithCredential(auth.currentUser, credential), 'Adding email sign-in');
       if (!result.user.emailVerified) await requestBrandedVerificationEmail();
       setUser({ ...result.user } as User);
       setStatus('success');
