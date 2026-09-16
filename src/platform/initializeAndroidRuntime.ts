@@ -79,31 +79,20 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
 };
 
 /**
- * Google Credential Manager is the preferred Android path, but it has produced
- * device/Play-services-specific failures in real-world builds. Inkbound must not
- * turn that provider implementation detail into a broken sign-in button.
+ * Inkbound deliberately uses the plugin's established Google sign-in flow on
+ * Android instead of Credential Manager. Credential Manager is optional in the
+ * upstream plugin and has been unreliable on the physical devices that exposed
+ * this release regression. Do not try one provider implementation and then retry
+ * another in the same sign-in attempt; a failed first flow can leave Google Play
+ * services in a transient state and make the fallback fail too.
  *
- * Keep a single native Google credential boundary and fall back to the plugin's
- * legacy Google sign-in implementation only when Credential Manager itself
- * fails. Firebase JS Auth remains the canonical account/session owner either way.
+ * Firebase JS Auth remains the canonical Inkbound account/session owner. The
+ * native plugin supplies only the Google credential.
  */
-const requestNativeGoogleCredential = async () => {
-  try {
-    return await FirebaseAuthentication.signInWithGoogle({
-      skipNativeAuth: true,
-      useCredentialManager: true,
-    });
-  } catch (credentialManagerError) {
-    console.warn(
-      'Inkbound Android Google Credential Manager failed; retrying with the compatibility sign-in flow.',
-      credentialManagerError,
-    );
-    return FirebaseAuthentication.signInWithGoogle({
-      skipNativeAuth: true,
-      useCredentialManager: false,
-    });
-  }
-};
+const requestNativeGoogleCredential = () => FirebaseAuthentication.signInWithGoogle({
+  skipNativeAuth: true,
+  useCredentialManager: false,
+});
 
 const sha256Hex = async (value: string) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
