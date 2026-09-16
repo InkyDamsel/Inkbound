@@ -57,7 +57,19 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
     if (!trimmed.startsWith('[')) return false;
 
     const ownerUid = storage.getItem(OWNER_UID_KEY);
-    if (ownerUid) return ownerUid === uid;
+    if (ownerUid) {
+      if (ownerUid !== uid) return false;
+
+      // A fresh install can already know the signed-in UID while the local books
+      // key is still the startup default []. That is not an established library.
+      // Preserve genuinely empty libraries only after a successful canonical
+      // hydration/reconciliation has marked this account complete.
+      if (trimmed === '[]') {
+        return storage.getItem(fullReconciliationVersionKey(uid)) === FULL_RECONCILIATION_VERSION;
+      }
+      return true;
+    }
+
     return trimmed !== '[]';
   } catch {
     return false;
