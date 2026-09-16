@@ -48,11 +48,20 @@ export const syncBaselineStateKey = (uid: string) => `inkbound_sync_baseline_${u
 export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 export const fullReconciliationVersionKey = (uid: string) => `inkbound_full_reconciliation_${uid}_v1`;
+export const cloudHydrationVersionKey = (uid: string) => `inkbound_cloud_hydration_${uid}_v1`;
 
 // Single source of truth for the one-time full account reconciliation. Bumping
 // this value deliberately forces existing browser/device working copies through
 // one fresh full comparison before returning to low-cost delta sync.
 export const FULL_RECONCILIATION_VERSION = '2';
+
+// Separate proof that this device has actually observed a complete cloud
+// snapshot for the account. Reconciliation and hydration are different facts:
+// older broken Android builds could stamp reconciliation complete while still
+// holding an empty pre-hydration library. Keeping this marker independent lets
+// those devices recover without treating a genuine, verified empty library as
+// perpetually unhydrated.
+export const CLOUD_HYDRATION_VERSION = '1';
 
 /**
  * Runtime keys whose local mutations should emit the debounced Inkbound change
