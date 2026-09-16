@@ -80,7 +80,11 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
 
 const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInWithGoogle({
   skipNativeAuth: true,
-  useCredentialManager: true,
+  // Credential Manager can return NoCredentialException even when a Google
+  // account exists on the device. Use the established Google account picker
+  // instead; the returned token still becomes the canonical Firebase JS
+  // credential below.
+  useCredentialManager: false,
 });
 
 const sha256Hex = async (value: string) => {
@@ -267,16 +271,9 @@ export async function initializeAndroidRuntime() {
     },
   });
 
-  // App Check is intentionally last. If this native plugin is slow, unavailable,
-  // or rejects on a sideloaded/reviewer device, authentication is already wired.
-  let nativeAppCheckReady: Promise<unknown>;
-  try {
-    nativeAppCheckReady = FirebaseAppCheck.initialize({
-      isTokenAutoRefreshEnabled: true,
-    });
-  } catch (error) {
-    nativeAppCheckReady = Promise.reject(error);
-  }
+  const nativeAppCheckReady = FirebaseAppCheck.initialize({
+    isTokenAutoRefreshEnabled: true,
+  });
 
   initializeNativeSecurityRuntime({
     getToken: async (forceRefresh = false) => {
