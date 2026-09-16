@@ -7,6 +7,8 @@ const gradlePath = path.join(root, 'android', 'app', 'build.gradle');
 const mainActivityPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
 const billingPluginPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
 const runtimeReadinessPath = path.join(root, 'src', 'platform', 'runtimeNativeReadiness.ts');
+const applicationEntryPath = path.join(root, 'src', 'applicationEntry.tsx');
+const cloudRefreshBoundaryPath = path.join(root, 'src', 'features', 'sync', 'CloudDataRefreshBoundary.tsx');
 const expectedPackage = 'com.inkydameinteractive.inkbound';
 
 const fail = (message) => {
@@ -57,13 +59,36 @@ if (!fs.existsSync(runtimeReadinessPath)) {
 }
 const runtimeReadiness = fs.readFileSync(runtimeReadinessPath, 'utf8');
 if (!runtimeReadiness.includes('NATIVE_RUNTIME_FAIL_OPEN_MS')) {
-  fail('Android native startup has no fail-open watchdog and could strand the app on the opening screen.');
+  fail('Android native startup has no fail-open watchdog.');
 }
 if (!/markNativeRuntimeFailed[\s\S]*nativeRuntimeReady\s*=\s*true/.test(runtimeReadiness)) {
   fail('Android native startup failures do not release the application UI.');
 }
 
+if (!fs.existsSync(applicationEntryPath)) {
+  fail('applicationEntry.tsx is missing.');
+}
+const applicationEntry = fs.readFileSync(applicationEntryPath, 'utf8');
+if (!applicationEntry.includes('DeferredBackgroundBridges')) {
+  fail('Android startup no longer defers sync/reconciliation bridges until after first paint.');
+}
+if (/NativeRuntimeGate[\s\S]*<App\s*\/>/.test(applicationEntry)) {
+  fail('Android native services are gating the whole application UI again.');
+}
+
+if (!fs.existsSync(cloudRefreshBoundaryPath)) {
+  fail('CloudDataRefreshBoundary.tsx is missing.');
+}
+const cloudRefreshBoundary = fs.readFileSync(cloudRefreshBoundaryPath, 'utf8');
+if (/readyUid[\s\S]*Opening Inkbound/.test(cloudRefreshBoundary)) {
+  fail('Cloud hydration is gating the application UI; large reviewer libraries can be rejected as non-loading.');
+}
+if (!cloudRefreshBoundary.includes('return <>{children}</>;')) {
+  fail('CloudDataRefreshBoundary must always render the local application while hydration continues in the background.');
+}
+
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
 console.log('Inkbound Android startup fail-open watchdog verified.');
+console.log('Inkbound large-library first-paint protection verified.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
