@@ -83,17 +83,12 @@ if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication
 
 const mainSource = fs.readFileSync(mainPath, 'utf8');
 const applicationEntrySource = fs.readFileSync(applicationEntryPath, 'utf8');
-// No service-worker registration is the safest native configuration. If web PWA
-// registration is added later, it must be explicitly excluded from native WebView.
 const mentionsServiceWorker = mainSource.includes('serviceWorker');
 const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator");
 if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
 }
 
-// Android native security services must protect cloud bridges without ever
-// holding the entire product UI behind a readiness flag. A lost native-ready
-// signal previously stranded valid installs on "Opening Inkbound" indefinitely.
 if (!applicationEntrySource.includes('<NativeServicesGate>')) {
   fail('Android startup must keep protected/cloud bridges behind NativeServicesGate.');
 }
@@ -162,7 +157,7 @@ for (const requiredSnippet of [
   'FirebaseAppCheck.initialize',
   'FirebaseAuthentication.signInWithGoogle',
   'skipNativeAuth: true',
-  'useCredentialManager: true',
+  'useCredentialManager: false',
   'signInWithCredential',
   'reauthenticateWithCredential',
   "CapacitorApp.addListener('appStateChange'",
@@ -171,6 +166,9 @@ for (const requiredSnippet of [
   if (!androidRuntimeSource.includes(requiredSnippet)) {
     fail(`Android runtime adapter is missing required native integration: ${requiredSnippet}`);
   }
+}
+if (androidRuntimeSource.includes('useCredentialManager: true')) {
+  fail('Android Google sign-in must not re-enable Credential Manager until the physical-device regression is resolved.');
 }
 const authConfigIndex = androidRuntimeSource.indexOf('configureRuntimeAuthentication');
 const reauthConfigIndex = androidRuntimeSource.indexOf('configureRuntimeReauthentication');
