@@ -83,15 +83,30 @@ if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication
 
 const mainSource = fs.readFileSync(mainPath, 'utf8');
 const applicationEntrySource = fs.readFileSync(applicationEntryPath, 'utf8');
-// No service-worker registration is the safest native configuration. If web PWA
-// registration is added later, it must be explicitly excluded from native WebView.
 const mentionsServiceWorker = mainSource.includes('serviceWorker');
 const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator");
 if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
   fail('PWA service workers must remain disabled inside the native Android WebView.');
 }
-if (!applicationEntrySource.includes('<NativeRuntimeGate>')) {
-  fail('Android startup must gate account/security providers until native services are ready.');
+
+// Native readiness protects cloud/background operations, but it must never own
+// first paint. Google Play review uses stress accounts with very large libraries;
+// a full-app NativeRuntimeGate can strand the UI on Opening Inkbound while Play
+// Integrity or cloud hydration is still starting.
+if (applicationEntrySource.includes('<NativeRuntimeGate>')) {
+  fail('Android startup must not block the entire application on native security readiness.');
+}
+if (!applicationEntrySource.includes('const NativeBackgroundServicesGate')) {
+  fail('Android protected background services must retain a native-readiness gate.');
+}
+if (!applicationEntrySource.includes('<NativeBackgroundServicesGate>')) {
+  fail('Android sync/security bridges must remain behind the background native-readiness gate.');
+}
+if (!applicationEntrySource.includes('const DeferredBackgroundBridges')) {
+  fail('large-library sync and reconciliation must remain deferred until after first paint.');
+}
+if (!applicationEntrySource.includes('BACKGROUND_START_DELAY_MS')) {
+  fail('Android background startup must retain a first-paint grace period for large libraries.');
 }
 if (!applicationEntrySource.includes('initializeAndroidRuntime().catch(markNativeRuntimeFailed)')) {
   fail('Android startup must initialize native services and surface initialization failures.');
@@ -103,6 +118,9 @@ if (!nativeReadinessSource.includes('markNativeRuntimeReady')) {
 }
 if (!nativeReadinessSource.includes('markNativeRuntimeFailed')) {
   fail('native adapter bootstrap must surface startup failures instead of hanging indefinitely.');
+}
+if (!nativeReadinessSource.includes('NATIVE_RUNTIME_FAIL_OPEN_MS')) {
+  fail('Android native startup must retain its fail-open watchdog.');
 }
 
 const firebaseSource = fs.readFileSync(firebasePath, 'utf8');
