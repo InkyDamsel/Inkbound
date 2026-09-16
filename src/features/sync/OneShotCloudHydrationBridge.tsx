@@ -7,6 +7,8 @@ import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
+  CLOUD_HYDRATION_VERSION,
+  cloudHydrationVersionKey,
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -60,12 +62,12 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
     if (ownerUid) {
       if (ownerUid !== uid) return false;
 
-      // A fresh install can already know the signed-in UID while the local books
-      // key is still the startup default []. That is not an established library.
-      // Preserve genuinely empty libraries only after a successful canonical
-      // hydration/reconciliation has marked this account complete.
+      // Empty local state is only established after a successful cloud snapshot
+      // has been observed on this device. Reconciliation alone is insufficient:
+      // older Android builds could mark reconciliation complete while still
+      // showing the startup default [].
       if (trimmed === '[]') {
-        return storage.getItem(fullReconciliationVersionKey(uid)) === FULL_RECONCILIATION_VERSION;
+        return storage.getItem(cloudHydrationVersionKey(uid)) === CLOUD_HYDRATION_VERSION;
       }
       return true;
     }
@@ -95,7 +97,8 @@ function newestSnapshotUpdateMillis(
 /**
  * Restores a genuinely new device exactly once without installing collection
  * listeners. Established local working copies, including intentionally empty
- * libraries, stay local-first.
+ * libraries, stay local-first after their independent cloud hydration proof has
+ * been recorded.
  *
  * Account ownership is checked before local records are merged. A switched
  * account is explicitly marked as requiring hydration so local edits made while
@@ -174,6 +177,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
+        storage.setItem(cloudHydrationVersionKey(uid), CLOUD_HYDRATION_VERSION);
         storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
         if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) {
           storage.removeItem(HYDRATION_REQUIRED_UID_KEY);
