@@ -10,7 +10,6 @@ import {
   browserLocalPersistence,
   connectAuthEmulator,
   getAuth,
-  indexedDBLocalPersistence,
   initializeAuth,
 } from 'firebase/auth';
 import {
@@ -124,14 +123,14 @@ if (isFirebaseConfigured) {
     });
   }
 
-  // Configure native auth persistence at Firebase Auth creation time instead of
-  // trying to switch persistence after the WebView has already started restoring
-  // a session. IndexedDB is preferred in Capacitor because it survives process
-  // restarts reliably; localStorage remains a durable fallback for WebViews that
-  // cannot open IndexedDB. Web continues using Firebase's normal getAuth setup.
+  // Inkbound owns the durable library state. Android Firebase Auth only needs a
+  // small durable session marker, and browser local persistence is sufficient
+  // for that. Do not put Android auth restoration behind IndexedDB: a WebView
+  // IndexedDB open/restore stall must never prevent sign-in, password recovery,
+  // or first-run account access.
   auth = isNativeRuntime()
     ? initializeAuth(app, {
-        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+        persistence: browserLocalPersistence,
       })
     : getAuth(app);
 
