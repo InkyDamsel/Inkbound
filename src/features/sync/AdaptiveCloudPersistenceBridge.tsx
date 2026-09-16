@@ -11,6 +11,8 @@ import { CostSafeCloudPersistenceBridge } from './CostSafeCloudPersistenceBridge
 import { FullCloudReconciliationBridge } from './FullCloudReconciliationBridge';
 import { OneShotCloudHydrationBridge } from './OneShotCloudHydrationBridge';
 import {
+  CLOUD_HYDRATION_VERSION,
+  cloudHydrationVersionKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
   SYNC_STORAGE_KEYS,
@@ -34,13 +36,12 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
     if (ownerUid) {
       if (ownerUid !== uid) return false;
 
-      // A matching owner marker by itself does NOT prove a fresh device has
-      // hydrated. App startup can create [] before cloud restore and account
-      // setup may already know the UID. Only treat an empty library as an
-      // established intentional empty state after this account has completed a
-      // canonical full hydration/reconciliation at least once.
+      // Empty local state is only authoritative after this exact device/account
+      // has actually observed a complete cloud snapshot. Older Android builds
+      // could stamp reconciliation complete without ever hydrating, so the
+      // reconciliation marker must never stand in for hydration proof.
       if (trimmed === '[]') {
-        return storage.getItem(fullReconciliationVersionKey(uid)) === FULL_RECONCILIATION_VERSION;
+        return storage.getItem(cloudHydrationVersionKey(uid)) === CLOUD_HYDRATION_VERSION;
       }
       return true;
     }
@@ -68,9 +69,9 @@ function hasCompletedFullReconciliation(uid: string): boolean {
  * newer than its cursor, so an older stale browser record would otherwise never
  * be reconsidered even though newly-added Android books sync correctly.
  *
- * New devices still use the one-shot cloud restore. That restore marks the full
- * reconciliation version complete because its first working copy came directly
- * from the current cloud snapshot.
+ * New devices still use the one-shot cloud restore. That restore marks both the
+ * full reconciliation version and the independent cloud hydration proof because
+ * its first working copy came directly from the current cloud snapshot.
  */
 export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   const { user } = useAccountSync();
