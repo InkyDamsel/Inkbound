@@ -5,6 +5,7 @@ import {
   createUserWithEmailAndPassword,
   linkWithCredential,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
@@ -34,6 +35,7 @@ import {
 } from '../features/sync/storageKeys';
 import { auth, functions, isFirebaseConfigured } from '../lib/firebase';
 import { prepareRuntimeAuthPersistence, signInRuntimeWithGoogle } from '../platform/runtimeAuthentication';
+import { isNativeRuntime } from '../platform/runtimePlatform';
 import { removeRuntimeMediaByPrefix } from '../platform/runtimeMediaStorage';
 import { readRuntimeValue, removeRuntimeValue, writeRuntimeValue } from '../platform/runtimeStorage';
 
@@ -61,10 +63,6 @@ const SIGNED_IN_DATA_KEYS = [
 ] as const;
 
 function clearSignedInDataFromDevice(uid: string) {
-  // Keep the clear-intent flag set while removal events fire so persistence
-  // bridges do not interpret sign-out cleanup as a user request to delete the
-  // reader's cloud library. signOutAccount removes the flag after Firebase Auth
-  // has completed the account transition.
   writeRuntimeValue(localClearIntentKey(uid), '1');
   SIGNED_IN_DATA_KEYS.forEach((key) => removeRuntimeValue(key));
   removeRuntimeValue(getProfileMediaSyncQueueKey(uid));
@@ -77,8 +75,6 @@ function clearSignedInDataFromDevice(uid: string) {
   removeRuntimeValue(syncPendingStateKey(uid));
   removeRuntimeValue(syncBaselineStateKey(uid));
   removeRuntimeValue(crossDeviceCursorKey(uid));
-  // Older beta metadata is cleared too so returning accounts cannot inherit a
-  // stale baseline from a pre-v2 build.
   removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`);
 }
 
@@ -100,15 +96,11 @@ function friendlyAuthMessage(error: unknown, fallback: string): string {
   if (code.includes('auth/popup-blocked')) return 'Your browser blocked the Google sign-in window. Allow pop-ups for Inkbound and try again.';
   if (code.includes('auth/operation-not-allowed')) return 'Google sign-in is temporarily unavailable. Please use email sign-in for now.';
 
-  // Android/Google sign-in can surface terse native status codes (for example
-  // "10:") instead of a useful Firebase error. Never expose those raw provider
-  // strings in the UI; translate known configuration failures and use a safe
-  // Inkbound message for everything else.
   if (/^10\s*:?.*$/i.test(rawMessage) || normalized.includes('developer_error') || normalized.includes('developer error')) {
     return 'Google sign-in is not available in this version of Inkbound. Install the latest beta from Google Play and try again.';
   }
   if (normalized.includes('network') || normalized.includes('offline')) {
-    return 'Inkbound could not reach Google sign-in. Check your internet connection and try again.';
+    return 'Inkbound could not reach sign-in services. Check your internet connection and try again.';
   }
   if (normalized.includes('cancel') || normalized.includes('canceled')) {
     return 'Google sign-in was canceled.';
@@ -116,21 +108,251 @@ function friendlyAuthMessage(error: unknown, fallback: string): string {
 
   return fallback;
 }
-async function requestBrandedVerificationEmail(): Promise<void> { if (!functions) throw new Error('Email messages are not available right now.'); const callable = httpsCallable<undefined, { success: boolean; alreadyVerified: boolean }>(functions, 'sendVerificationEmail'); await callable(); }
-async function requestBrandedPasswordResetEmail(email: string): Promise<void> { if (!functions) throw new Error('Email messages are not available right now.'); const callable = httpsCallable<{ email: string }, { success: boolean }>(functions, 'sendPasswordResetEmail'); await callable({ email: email.trim() }); }
+
+async function requestBrandedVerificationEmail(): Promise<void> {
+  if (!functions) throw new Error('Email messages are not available right now.');
+  const callable = httpsCallable<undefined, { success: boolean; alreadyVerified: boolean }>(functions, 'sendVerificationEmail');
+  await callable();
+}
+
+async function requestPasswordResetEmail(email: string): Promise<void> {
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) throw new Error('Enter your email address first.');
+
+  if (functions) {
+    try {
+      const callable = httpsCallable<{ email: string }, { success: boolean }>(functions, 'sendPasswordResetEmail');
+      await callable({ email: trimmedEmail });
+      return;
+    } catch (error) {
+      // Android App Check/Functions can be temporarily unavailable even while
+      // Firebase Auth itself is healthy. Password recovery is an account-access
+      // path, so fall back to Firebase Auth rather than making recovery depend on
+      // protected background services.
+      console.warn('Inkbound branded password reset was unavailable; using Firebase Auth fallback.', error);
+    }
+  }
+
+  if (!auth) throw new Error('Password reset is not available right now.');
+  await sendPasswordResetEmail(auth, trimmedEmail);
+}
 
 export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null); const [isAuthReady, setIsAuthReady] = useState(() => !auth || Boolean(auth.currentUser)); const [status, setStatus] = useState<SyncStatus>('idle'); const [message, setMessage] = useState(''); const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => readRuntimeValue(LAST_SYNC_STORAGE_KEY));
-  useEffect(() => { if (!auth) return undefined; const unsubscribe = onAuthStateChanged(auth, (nextUser) => { setUser(nextUser); setIsAuthReady(true); }, (error) => { console.error('Inkbound Firebase auth state restoration failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not sign you back in. Please try again.')); setIsAuthReady(true); }); void prepareRuntimeAuthPersistence(auth).catch((error) => { console.error('Inkbound Firebase auth persistence setup failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not keep you signed in on this device.')); }); return unsubscribe; }, []);
-  const signInWithGoogle = async () => { if (!auth) { setStatus('error'); setMessage('Sign-in is not available right now.'); return; } try { setStatus('working'); setMessage('Opening Google sign-in...'); await prepareRuntimeAuthPersistence(auth); await signInRuntimeWithGoogle(auth); setStatus('success'); setMessage('Google account connected. Inkbound will remember this account on this device until you sign out.'); } catch (error) { console.error('Inkbound Google sign-in failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Google sign-in could not be completed. Please try again.')); } };
-  const signInWithEmail = async (email: string, password: string) => { if (!auth) return; try { setStatus('working'); setMessage('Signing in...'); await prepareRuntimeAuthPersistence(auth); await signInWithEmailAndPassword(auth, email.trim(), password); setStatus('success'); setMessage('Signed in. Your Inkbound library and reading history are being restored on this device.'); } catch (error) { console.error('Inkbound email sign-in failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Email sign-in failed.')); } };
-  const createEmailAccount = async (email: string, password: string) => { if (!auth) return; try { setStatus('working'); setMessage('Creating your Inkbound account...'); await prepareRuntimeAuthPersistence(auth); await createUserWithEmailAndPassword(auth, email.trim(), password); await requestBrandedVerificationEmail(); setStatus('success'); setMessage('Account created. Check your inbox to verify your email. Your library and reading history will follow this account across devices.'); } catch (error) { console.error('Inkbound account creation failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not create the account.')); } };
-  const sendPasswordReset = async (email: string) => { try { setStatus('working'); setMessage('Sending password reset email...'); await requestBrandedPasswordResetEmail(email); setStatus('success'); setMessage('If an Inkbound account uses that email, a password reset message is on its way.'); } catch (error) { setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not send the reset email.')); } };
-  const linkEmailPassword = async (email: string, password: string) => { if (!auth?.currentUser) { setStatus('error'); setMessage('Sign in first before adding an email login.'); return; } try { setStatus('working'); setMessage('Adding email sign-in to this Inkbound account...'); const credential = EmailAuthProvider.credential(email.trim(), password); const result = await linkWithCredential(auth.currentUser, credential); if (!result.user.emailVerified) await requestBrandedVerificationEmail(); setUser({ ...result.user } as User); setStatus('success'); setMessage('Email sign-in added to this same Inkbound account. Check your inbox to verify the email.'); } catch (error) { setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not add email sign-in.')); } };
-  const resendVerificationEmail = async () => { if (!auth?.currentUser) return; try { setStatus('working'); await requestBrandedVerificationEmail(); setStatus('success'); setMessage('Verification email sent.'); } catch (error) { setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not send the verification email.')); } };
-  const synchronizePhotosWithFeedback = async (workingMessage: string) => { if (!user) { setStatus('error'); setMessage('Sign in before updating Photo Memories across devices.'); return; } try { setStatus('working'); setMessage(workingMessage); await synchronizePhotoMemories(user.uid); const syncedAt = new Date().toISOString(); writeRuntimeValue(LAST_SYNC_STORAGE_KEY, syncedAt); setLastSyncedAt(syncedAt); setStatus('success'); setMessage('Your Photo Memories are up to date on your Inkbound devices.'); } catch { setStatus('error'); setMessage('Inkbound could not update Photo Memories right now. It will try again automatically.'); } };
-  const uploadSnapshot = async () => synchronizePhotosWithFeedback('Updating Photo Memories...'); const restoreSnapshot = async () => synchronizePhotosWithFeedback('Checking Photo Memories across your devices...');
-  const value = useMemo<AccountSyncContextValue>(() => ({ user, isConfigured: isFirebaseConfigured, isAuthReady, status, message, lastSyncedAt, signInWithGoogle, signInWithEmail, createEmailAccount, sendPasswordReset, linkEmailPassword, resendVerificationEmail, signOutAccount: async () => { if (!auth) return; const signingOutUid = user?.uid ?? auth.currentUser?.uid; if (signingOutUid) { setStatus('working'); setMessage('Saving your latest changes before signing out...'); try { await flushCloudDataBeforeSignOut(signingOutUid); await synchronizePhotoMemories(signingOutUid); await synchronizeProfileMedia(signingOutUid); await flushCloudDataBeforeSignOut(signingOutUid); } catch { setStatus('error'); setMessage('Inkbound could not finish saving your latest changes before signing out. Try again when you are online.'); return; } await clearPhotoMemoriesFromDevice(); await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`); clearSignedInDataFromDevice(signingOutUid); } try { await signOut(auth); } finally { if (signingOutUid) removeRuntimeValue(localClearIntentKey(signingOutUid)); } setLastSyncedAt(null); setStatus('idle'); setMessage('Signed out. Account data was removed from this device.'); }, uploadSnapshot, restoreSnapshot }), [isAuthReady, lastSyncedAt, message, status, user]);
+  const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null);
+  const [isAuthReady, setIsAuthReady] = useState(() => !auth || Boolean(auth.currentUser));
+  const [status, setStatus] = useState<SyncStatus>('idle');
+  const [message, setMessage] = useState('');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => readRuntimeValue(LAST_SYNC_STORAGE_KEY));
+
+  useEffect(() => {
+    if (!auth) return undefined;
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      setUser(nextUser);
+      setIsAuthReady(true);
+    }, (error) => {
+      console.error('Inkbound Firebase auth state restoration failed.', error);
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not sign you back in. Please try again.'));
+      setIsAuthReady(true);
+    });
+
+    // Native persistence is already configured in initializeAuth(). Calling
+    // setPersistence again during Android startup can race WebView auth restore
+    // and strand account actions before credentials are even submitted.
+    if (!isNativeRuntime()) {
+      void prepareRuntimeAuthPersistence(auth).catch((error) => {
+        console.error('Inkbound Firebase auth persistence setup failed.', error);
+        setStatus('error');
+        setMessage(friendlyAuthMessage(error, 'Inkbound could not keep you signed in on this device.'));
+      });
+    }
+    return unsubscribe;
+  }, []);
+
+  const signInWithGoogle = async () => {
+    if (!auth) {
+      setStatus('error');
+      setMessage('Sign-in is not available right now.');
+      return;
+    }
+    try {
+      setStatus('working');
+      setMessage('Opening Google sign-in...');
+      if (!isNativeRuntime()) await prepareRuntimeAuthPersistence(auth);
+      await signInRuntimeWithGoogle(auth);
+      setStatus('success');
+      setMessage('Google account connected. Inkbound will remember this account on this device until you sign out.');
+    } catch (error) {
+      console.error('Inkbound Google sign-in failed.', error);
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Google sign-in could not be completed. Please try again.'));
+    }
+  };
+
+  const signInWithEmail = async (email: string, password: string) => {
+    if (!auth) {
+      setStatus('error');
+      setMessage('Email sign-in is not available right now.');
+      return;
+    }
+    try {
+      setStatus('working');
+      setMessage('Signing in...');
+      if (!isNativeRuntime()) await prepareRuntimeAuthPersistence(auth);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      setStatus('success');
+      setMessage('Signed in. Your Inkbound library and reading history are being restored on this device.');
+    } catch (error) {
+      console.error('Inkbound email sign-in failed.', error);
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Email sign-in failed.'));
+    }
+  };
+
+  const createEmailAccount = async (email: string, password: string) => {
+    if (!auth) {
+      setStatus('error');
+      setMessage('Account creation is not available right now.');
+      return;
+    }
+    try {
+      setStatus('working');
+      setMessage('Creating your Inkbound account...');
+      if (!isNativeRuntime()) await prepareRuntimeAuthPersistence(auth);
+      await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await requestBrandedVerificationEmail();
+      setStatus('success');
+      setMessage('Account created. Check your inbox to verify your email. Your library and reading history will follow this account across devices.');
+    } catch (error) {
+      console.error('Inkbound account creation failed.', error);
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not create the account.'));
+    }
+  };
+
+  const sendPasswordReset = async (email: string) => {
+    try {
+      setStatus('working');
+      setMessage('Sending password reset email...');
+      await requestPasswordResetEmail(email);
+      setStatus('success');
+      setMessage('If an Inkbound account uses that email, a password reset message is on its way.');
+    } catch (error) {
+      console.error('Inkbound password reset failed.', error);
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not send the reset email.'));
+    }
+  };
+
+  const linkEmailPassword = async (email: string, password: string) => {
+    if (!auth?.currentUser) {
+      setStatus('error');
+      setMessage('Sign in first before adding an email login.');
+      return;
+    }
+    try {
+      setStatus('working');
+      setMessage('Adding email sign-in to this Inkbound account...');
+      const credential = EmailAuthProvider.credential(email.trim(), password);
+      const result = await linkWithCredential(auth.currentUser, credential);
+      if (!result.user.emailVerified) await requestBrandedVerificationEmail();
+      setUser({ ...result.user } as User);
+      setStatus('success');
+      setMessage('Email sign-in added to this same Inkbound account. Check your inbox to verify the email.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not add email sign-in.'));
+    }
+  };
+
+  const resendVerificationEmail = async () => {
+    if (!auth?.currentUser) return;
+    try {
+      setStatus('working');
+      await requestBrandedVerificationEmail();
+      setStatus('success');
+      setMessage('Verification email sent.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(friendlyAuthMessage(error, 'Inkbound could not send the verification email.'));
+    }
+  };
+
+  const synchronizePhotosWithFeedback = async (workingMessage: string) => {
+    if (!user) {
+      setStatus('error');
+      setMessage('Sign in before updating Photo Memories across devices.');
+      return;
+    }
+    try {
+      setStatus('working');
+      setMessage(workingMessage);
+      await synchronizePhotoMemories(user.uid);
+      const syncedAt = new Date().toISOString();
+      writeRuntimeValue(LAST_SYNC_STORAGE_KEY, syncedAt);
+      setLastSyncedAt(syncedAt);
+      setStatus('success');
+      setMessage('Your Photo Memories are up to date on your Inkbound devices.');
+    } catch {
+      setStatus('error');
+      setMessage('Inkbound could not update Photo Memories right now. It will try again automatically.');
+    }
+  };
+
+  const uploadSnapshot = async () => synchronizePhotosWithFeedback('Updating Photo Memories...');
+  const restoreSnapshot = async () => synchronizePhotosWithFeedback('Checking Photo Memories across your devices...');
+
+  const value = useMemo<AccountSyncContextValue>(() => ({
+    user,
+    isConfigured: isFirebaseConfigured,
+    isAuthReady,
+    status,
+    message,
+    lastSyncedAt,
+    signInWithGoogle,
+    signInWithEmail,
+    createEmailAccount,
+    sendPasswordReset,
+    linkEmailPassword,
+    resendVerificationEmail,
+    signOutAccount: async () => {
+      if (!auth) return;
+      const signingOutUid = user?.uid ?? auth.currentUser?.uid;
+      if (signingOutUid) {
+        setStatus('working');
+        setMessage('Saving your latest changes before signing out...');
+        try {
+          await flushCloudDataBeforeSignOut(signingOutUid);
+          await synchronizePhotoMemories(signingOutUid);
+          await synchronizeProfileMedia(signingOutUid);
+          await flushCloudDataBeforeSignOut(signingOutUid);
+        } catch {
+          setStatus('error');
+          setMessage('Inkbound could not finish saving your latest changes before signing out. Try again when you are online.');
+          return;
+        }
+        await clearPhotoMemoriesFromDevice();
+        await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`);
+        clearSignedInDataFromDevice(signingOutUid);
+      }
+      try {
+        await signOut(auth);
+      } finally {
+        if (signingOutUid) removeRuntimeValue(localClearIntentKey(signingOutUid));
+      }
+      setLastSyncedAt(null);
+      setStatus('idle');
+      setMessage('Signed out. Account data was removed from this device.');
+    },
+    uploadSnapshot,
+    restoreSnapshot,
+  }), [isAuthReady, lastSyncedAt, message, status, user]);
+
   return <AccountSyncContext.Provider value={value}>{children}</AccountSyncContext.Provider>;
 };
-export const useAccountSync = () => { const context = useContext(AccountSyncContext); if (!context) throw new Error('useAccountSync must be used within AccountSyncProvider.'); return context; };
+
+export const useAccountSync = () => {
+  const context = useContext(AccountSyncContext);
+  if (!context) throw new Error('useAccountSync must be used within AccountSyncProvider.');
+  return context;
+};
