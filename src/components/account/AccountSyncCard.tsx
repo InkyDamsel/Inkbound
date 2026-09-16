@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import {
@@ -41,6 +41,9 @@ export const AccountSyncCard: React.FC = () => {
   const [authMode, setAuthMode] = useState<'signin' | 'create'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [localAuthMessage, setLocalAuthMessage] = useState('');
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [linkPassword, setLinkPassword] = useState('');
   const [cloudHealth, setCloudHealth] = useState<CloudSyncHealth>(() => getCloudSyncHealth());
@@ -71,11 +74,47 @@ export const AccountSyncCard: React.FC = () => {
   );
   const partialBackup = isPartialBackup(cloudHealth);
 
-  const submitEmailAuth = (event: FormEvent) => {
+  const currentEmail = () => (emailInputRef.current?.value ?? email).trim();
+  const currentPassword = () => passwordInputRef.current?.value ?? password;
+
+  const submitEmailAuth = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!email.trim() || !password) return;
-    if (authMode === 'signin') void sync.signInWithEmail(email, password);
-    else void sync.createEmailAccount(email, password);
+    const formData = new FormData(event.currentTarget);
+    const submittedEmail = String(formData.get('email') ?? currentEmail()).trim();
+    const submittedPassword = String(formData.get('password') ?? currentPassword());
+
+    // Some Android autofill providers update the visible WebView fields without
+    // firing React's change event. Read the DOM/form values at submit time so a
+    // visually filled form can never silently hit an empty-state guard.
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
+
+    if (!submittedEmail) {
+      setLocalAuthMessage('Enter your email address.');
+      emailInputRef.current?.focus();
+      return;
+    }
+    if (!submittedPassword) {
+      setLocalAuthMessage('Enter your password.');
+      passwordInputRef.current?.focus();
+      return;
+    }
+
+    setLocalAuthMessage('');
+    if (authMode === 'signin') void sync.signInWithEmail(submittedEmail, submittedPassword);
+    else void sync.createEmailAccount(submittedEmail, submittedPassword);
+  };
+
+  const requestPasswordReset = () => {
+    const submittedEmail = currentEmail();
+    setEmail(submittedEmail);
+    if (!submittedEmail) {
+      setLocalAuthMessage('Enter your email address first, then tap Forgot password.');
+      emailInputRef.current?.focus();
+      return;
+    }
+    setLocalAuthMessage('');
+    void sync.sendPasswordReset(submittedEmail);
   };
 
   const renderSignedOutAccount = () => (
@@ -83,7 +122,7 @@ export const AccountSyncCard: React.FC = () => {
       <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 sm:p-5">
         <button
           type="button"
-          onClick={() => void sync.signInWithGoogle()}
+          onClick={() => { setLocalAuthMessage(''); void sync.signInWithGoogle(); }}
           disabled={!sync.isConfigured || isWorking}
           className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-border-strong)] disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -96,10 +135,10 @@ export const AccountSyncCard: React.FC = () => {
         </div>
 
         <div className="mb-4 grid grid-cols-2 rounded-xl bg-[var(--ink-page)] p-1">
-          <button type="button" onClick={() => setAuthMode('signin')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'signin' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
+          <button type="button" onClick={() => { setAuthMode('signin'); setLocalAuthMessage(''); }} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'signin' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
             Sign in
           </button>
-          <button type="button" onClick={() => setAuthMode('create')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'create' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
+          <button type="button" onClick={() => { setAuthMode('create'); setLocalAuthMessage(''); }} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${authMode === 'create' ? 'bg-[var(--ink-surface)] text-[var(--ink-ivory)]' : 'text-[var(--ink-muted)]'}`}>
             Create account
           </button>
         </div>
@@ -107,11 +146,11 @@ export const AccountSyncCard: React.FC = () => {
         <form className="space-y-3" onSubmit={submitEmailAuth}>
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-muted)]">Email</span>
-            <input type="email" inputMode="email" autoCapitalize="none" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="reader@example.com" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
+            <input ref={emailInputRef} name="email" type="email" inputMode="email" autoCapitalize="none" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setLocalAuthMessage(''); }} placeholder="reader@example.com" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-muted)]">Password</span>
-            <input type="password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
+            <input ref={passwordInputRef} name="password" type="password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(event) => { setPassword(event.target.value); setLocalAuthMessage(''); }} minLength={6} className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-border-strong)]" required />
           </label>
           <button type="submit" disabled={!sync.isConfigured || isWorking} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink-gold)] px-4 text-sm font-bold text-[#20170d] disabled:cursor-not-allowed disabled:opacity-50">
             <Mail className="h-4 w-4" />
@@ -120,9 +159,15 @@ export const AccountSyncCard: React.FC = () => {
         </form>
 
         {authMode === 'signin' && (
-          <button type="button" onClick={() => email.trim() && void sync.sendPasswordReset(email)} disabled={!email.trim() || isWorking} className="mt-3 min-h-11 px-1 text-xs font-semibold text-[var(--ink-muted)] underline decoration-[var(--ink-border)] underline-offset-4 disabled:opacity-40">
+          <button type="button" onClick={requestPasswordReset} disabled={isWorking} className="mt-3 min-h-11 px-1 text-xs font-semibold text-[var(--ink-muted)] underline decoration-[var(--ink-border)] underline-offset-4 disabled:opacity-40">
             Forgot password?
           </button>
+        )}
+
+        {(localAuthMessage || sync.message) && (
+          <p className={`mt-3 break-words rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-3 py-2 text-xs leading-5 ${localAuthMessage || sync.status === 'error' ? 'text-rose-400' : 'text-[var(--ink-muted)]'}`} role="status" aria-live="polite">
+            {localAuthMessage || sync.message}
+          </p>
         )}
       </div>
 
@@ -247,7 +292,7 @@ export const AccountSyncCard: React.FC = () => {
         </div>
       )}
 
-      {sync.message && (
+      {sync.user && sync.message && (
         <p className={`mt-4 break-words text-sm ${sync.status === 'error' ? 'text-rose-500' : 'text-[var(--ink-muted)]'}`} role="status">
           {sync.message}
         </p>
