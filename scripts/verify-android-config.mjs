@@ -67,16 +67,35 @@ const applicationEntrySource = fs.readFileSync(applicationEntryPath, 'utf8');
 const mentionsServiceWorker = mainSource.includes('serviceWorker');
 const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator");
 if (mentionsServiceWorker && !nativeGuardedServiceWorker) fail('PWA service workers must remain disabled inside the native Android WebView.');
-if (!applicationEntrySource.includes('<NativeServicesGate>')) fail('Android startup must keep protected/cloud bridges behind NativeServicesGate.');
-if (!applicationEntrySource.includes('NATIVE_SERVICES_FAIL_OPEN_MS')) fail('Android native-service gating must retain a bounded fail-open watchdog.');
-if (!applicationEntrySource.includes('setFailOpen(true)')) fail('Android native-service gating must release protected bridges after its bounded watchdog.');
-const nativeServicesOpenIndex = applicationEntrySource.indexOf('<NativeServicesGate>');
-const nativeServicesCloseIndex = applicationEntrySource.indexOf('</NativeServicesGate>');
+
+// Build 26 physical-device behavior: Android cloud/auth consumers stay behind one
+// native-readiness gate until Play Integrity/App Check wiring is complete. Do not
+// fail open into Firestore; Auth can succeed while protected hydration is rejected.
+if (!applicationEntrySource.includes('const NativeRuntimeGate')) fail('Android startup must retain the Build 26 NativeRuntimeGate.');
+if (!applicationEntrySource.includes('<NativeRuntimeGate>')) fail('Android startup must mount the application behind NativeRuntimeGate.');
+if (!applicationEntrySource.includes('NATIVE_RUNTIME_TIMEOUT_MS')) fail('Android native readiness must retain a bounded diagnostic timeout.');
+if (!applicationEntrySource.includes('markNativeRuntimeFailed(new Error(')) fail('Android native readiness timeout must surface an explicit startup failure.');
+if (applicationEntrySource.includes('setFailOpen(true)') || applicationEntrySource.includes('NATIVE_SERVICES_FAIL_OPEN_MS')) {
+  fail('Android startup must not fail open into protected cloud hydration before native App Check is ready.');
+}
+const nativeRuntimeOpenIndex = applicationEntrySource.indexOf('<NativeRuntimeGate>');
+const nativeRuntimeCloseIndex = applicationEntrySource.indexOf('</NativeRuntimeGate>');
+const accountProviderIndex = applicationEntrySource.indexOf('<AccountSyncProvider>');
+const adaptiveHydrationIndex = applicationEntrySource.indexOf('<AdaptiveCloudPersistenceBridge />');
 const appRenderIndex = applicationEntrySource.indexOf('<App />');
-if (nativeServicesOpenIndex < 0 || nativeServicesCloseIndex < 0 || appRenderIndex < 0) fail('Android startup structure is incomplete.');
-if (appRenderIndex > nativeServicesOpenIndex && appRenderIndex < nativeServicesCloseIndex) fail('The main Inkbound UI must never be blocked by Android native-service readiness.');
-if (!applicationEntrySource.includes('initializeAndroidRuntime().catch((error) =>')) fail('Android startup must initialize native services and handle initialization failures.');
-if (!applicationEntrySource.includes('markNativeRuntimeFailed(error)')) fail('Android startup must preserve native initialization failures for diagnostics/retry behavior.');
+if ([nativeRuntimeOpenIndex, nativeRuntimeCloseIndex, accountProviderIndex, adaptiveHydrationIndex, appRenderIndex].some((index) => index < 0)) {
+  fail('Android startup structure is incomplete.');
+}
+for (const [label, index] of [
+  ['AccountSyncProvider', accountProviderIndex],
+  ['AdaptiveCloudPersistenceBridge', adaptiveHydrationIndex],
+  ['App', appRenderIndex],
+]) {
+  if (!(index > nativeRuntimeOpenIndex && index < nativeRuntimeCloseIndex)) {
+    fail(`${label} must remain inside NativeRuntimeGate so Android cannot enter account/cloud startup before native security is ready.`);
+  }
+}
+if (!applicationEntrySource.includes('initializeAndroidRuntime().catch(markNativeRuntimeFailed)')) fail('Android startup must initialize native services and surface initialization failures.');
 
 const nativeReadinessSource = fs.readFileSync(runtimeNativeReadinessPath, 'utf8');
 if (!nativeReadinessSource.includes('markNativeRuntimeReady')) fail('native adapter bootstrap must retain an explicit readiness completion signal.');
@@ -193,4 +212,4 @@ if (fs.existsSync(androidDir)) {
   if (versionNameMatch?.[1] !== releaseMetadata.versionName) fail('generated Android versionName does not match android-release.json.');
 }
 
-console.log(`Inkbound Android configuration verified (com.inkydameinteractive.inkbound, ${releaseMetadata.versionName} (${releaseMetadata.versionCode}), API 36 baseline, Build 26 single-source Firebase JS Auth).`);
+console.log(`Inkbound Android configuration verified (com.inkydameinteractive.inkbound, ${releaseMetadata.versionName} (${releaseMetadata.versionCode}), API 36 baseline, Build 26 single-source Firebase JS Auth + native security gate).`);
