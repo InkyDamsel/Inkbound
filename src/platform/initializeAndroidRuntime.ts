@@ -39,7 +39,13 @@ interface InkboundPlayBillingPlugin {
   openExternal(options: { url: string }): Promise<void>;
 }
 
+interface NativeAuthBridgeResponse {
+  customToken?: string;
+  uid?: string;
+}
+
 const PlayBilling = registerPlugin<InkboundPlayBillingPlugin>('InkboundPlayBilling');
+const NATIVE_AUTH_BRIDGE_URL = 'https://us-central1-inkbound-app.cloudfunctions.net/exchangeNativeAuthSession';
 
 const sanitizeExportFilename = (filename: string) => {
   const cleaned = filename.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+/, '');
@@ -76,9 +82,48 @@ const sha256Hex = async (value: string) => {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 };
 
-async function bridgeNativeFirebaseSessionToJs(firebaseAuth: NonNullable<typeof auth>): Promise<void> {
-  if (!functions) throw new Error('Inkbound account services are unavailable right now.');
+function readBridgeResult(payload: unknown): NativeAuthBridgeResponse {
+  if (!payload || typeof payload !== 'object') return {};
+  const body = payload as Record<string, unknown>;
+  const candidate = body.result ?? body.data;
+  return candidate && typeof candidate === 'object'
+    ? candidate as NativeAuthBridgeResponse
+    : {};
+}
 
+async function exchangeNativeIdToken(nativeIdToken: string): Promise<NativeAuthBridgeResponse> {
+  // Do not use the Firebase Functions JS client for this bootstrap call. The JS
+  // client automatically attaches an App Check token when App Check is present;
+  // a sideloaded release can receive a dummy/invalid Play Integrity token, and
+  // callable infrastructure rejects an invalid App Check header even when this
+  // one bootstrap function does not enforce App Check. A plain callable-protocol
+  // POST sends only the native Firebase ID token that the server verifies.
+  const response = await fetch(NATIVE_AUTH_BRIDGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { nativeIdToken } }),
+  });
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // Keep the user-facing error stable below if the backend returned non-JSON.
+  }
+
+  if (!response.ok) {
+    const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+    const error = body.error && typeof body.error === 'object' ? body.error as Record<string, unknown> : {};
+    const message = typeof error.message === 'string' && error.message.trim()
+      ? error.message.trim()
+      : 'Inkbound could not verify the Android sign-in session.';
+    throw new Error(message);
+  }
+
+  return readBridgeResult(payload);
+}
+
+async function bridgeNativeFirebaseSessionToJs(firebaseAuth: NonNullable<typeof auth>): Promise<void> {
   const nativeUser = (await FirebaseAuthentication.getCurrentUser()).user;
   if (!nativeUser?.uid) throw new Error('Android authentication did not create a Firebase user session.');
 
@@ -86,13 +131,9 @@ async function bridgeNativeFirebaseSessionToJs(firebaseAuth: NonNullable<typeof 
   const nativeIdToken = tokenResult.token?.trim() ?? '';
   if (!nativeIdToken) throw new Error('Android authentication did not return a Firebase identity token.');
 
-  const exchange = httpsCallable<{ nativeIdToken: string }, { customToken: string; uid: string }>(
-    functions,
-    'exchangeNativeAuthSession',
-  );
-  const response = await exchange({ nativeIdToken });
-  const customToken = response.data.customToken?.trim() ?? '';
-  const bridgedUid = response.data.uid?.trim() ?? '';
+  const bridgeResult = await exchangeNativeIdToken(nativeIdToken);
+  const customToken = bridgeResult.customToken?.trim() ?? '';
+  const bridgedUid = bridgeResult.uid?.trim() ?? '';
 
   if (!customToken || bridgedUid !== nativeUser.uid) {
     throw new Error('Inkbound could not verify the Android Firebase account handoff.');
@@ -104,6 +145,9 @@ async function bridgeNativeFirebaseSessionToJs(firebaseAuth: NonNullable<typeof 
     throw new Error('Inkbound blocked an Android account handoff with a mismatched Firebase user.');
   }
 
+  // Native Firebase is only the credential verifier. Once the canonical JS Auth
+  // session exists, clear the temporary native session so Inkbound never has two
+  // independently authoritative account states.
   await FirebaseAuthentication.signOut().catch((error) => {
     console.warn('Inkbound could not clear the temporary native Firebase auth session.', error);
   });
@@ -129,6 +173,9 @@ export async function initializeAndroidRuntime() {
   const nativeAppCheckReady = FirebaseAppCheck.initialize({ isTokenAutoRefreshEnabled: true });
 
   configureRuntimeAuthentication({
+    // Android credential verification is native. The JS Firebase Auth instance
+    // remains the only session consumed by Inkbound after the verified native
+    // UID is exchanged for a custom token.
     preparePersistence: async () => undefined,
     signInWithEmail: async (firebaseAuth, email, password) => {
       await FirebaseAuthentication.signOut().catch(() => undefined);
