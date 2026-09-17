@@ -1,17 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const root = process.cwd();
-const googleServicesPath = path.join(root, 'android', 'app', 'google-services.json');
-const gradlePath = path.join(root, 'android', 'app', 'build.gradle');
-const mainActivityPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
-const billingPluginPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
+const androidDir = path.join(root, 'android');
+const googleServicesPath = path.join(androidDir, 'app', 'google-services.json');
+const gradlePath = path.join(androidDir, 'app', 'build.gradle');
+const mainActivityPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
+const billingPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
+const keystorePropertiesPath = path.join(androidDir, 'keystore.properties');
 const expectedPackage = 'com.inkydameinteractive.inkbound';
 
 const fail = (message) => {
   console.error(`Inkbound Android native readiness failed: ${message}`);
   process.exit(1);
 };
+
+const normalizeSha1 = (value) => String(value ?? '')
+  .replace(/[^0-9a-f]/gi, '')
+  .toUpperCase();
 
 if (!fs.existsSync(googleServicesPath)) {
   fail('android/app/google-services.json is missing. Add the Firebase Android app configuration before native Firebase testing or release builds.');
@@ -37,11 +44,6 @@ if (!services.project_info?.project_number || !services.project_info?.project_id
   fail('google-services.json is missing Firebase project metadata.');
 }
 
-// Google sign-in on Android is not configured by the web OAuth client alone.
-// The downloaded Firebase Android config must contain an Android OAuth client
-// tied to Inkbound's package/SHA-1, plus a web OAuth client used as the server
-// client ID. Without these, browser Google sign-in can work perfectly while the
-// installed Android app fails before Firebase JS Auth ever receives a credential.
 const oauthClients = Array.isArray(matchingClient?.oauth_client) ? matchingClient.oauth_client : [];
 const androidOauthClients = oauthClients.filter((client) =>
   client?.client_type === 1
@@ -56,6 +58,52 @@ if (androidOauthClients.length === 0) {
 }
 if (webOauthClients.length === 0) {
   fail('google-services.json is missing the Google web OAuth client required to issue Android ID tokens. Re-download google-services.json after enabling Google sign-in in Firebase Authentication.');
+}
+
+// Existence of an Android OAuth client is not enough: it must match the
+// certificate that signs THIS local release. A stale google-services.json can
+// contain a perfectly valid Android client for an older/debug/Play certificate
+// while a locally installed release APK still fails Google sign-in.
+if (fs.existsSync(keystorePropertiesPath)) {
+  const windows = process.platform === 'win32';
+  const signingReport = windows
+    ? spawnSync('gradlew.bat', ['signingReport'], {
+        cwd: androidDir,
+        encoding: 'utf8',
+        shell: true,
+      })
+    : spawnSync('./gradlew', ['signingReport'], {
+        cwd: androidDir,
+        encoding: 'utf8',
+      });
+
+  if (signingReport.status !== 0) {
+    const details = (signingReport.stderr || signingReport.stdout || '').trim();
+    fail(`could not read the Android signing report${details ? `: ${details}` : '.'}`);
+  }
+
+  const report = signingReport.stdout ?? '';
+  const releaseSectionMatch = report.match(/Variant:\s*release\b[\s\S]*?(?=\nVariant:\s|\n----------|$)/i);
+  const releaseSection = releaseSectionMatch?.[0] ?? '';
+  const releaseShaMatch = /SHA1:\s*([0-9A-F:]+)/i.exec(releaseSection);
+  const releaseSha1 = normalizeSha1(releaseShaMatch?.[1]);
+
+  if (!releaseSha1) {
+    fail('the local release signing certificate SHA-1 could not be determined from Gradle signingReport.');
+  }
+
+  const configuredSha1s = androidOauthClients
+    .map((client) => normalizeSha1(client.android_info.certificate_hash))
+    .filter(Boolean);
+
+  if (!configuredSha1s.includes(releaseSha1)) {
+    const formattedReleaseSha1 = releaseSha1.match(/.{1,2}/g)?.join(':') ?? releaseSha1;
+    fail(`google-services.json does not contain an OAuth client for the certificate signing this local release (${formattedReleaseSha1}). Add this SHA-1 to the Firebase Android app, download a fresh google-services.json, then rebuild.`);
+  }
+
+  console.log(`Inkbound local release signing certificate verified for Google auth (${releaseSha1.match(/.{1,2}/g)?.join(':') ?? releaseSha1}).`);
+} else {
+  console.log('Inkbound Android signing-certificate match not checked because android/keystore.properties is not present in this environment.');
 }
 
 if (!fs.existsSync(gradlePath) || !fs.readFileSync(gradlePath, 'utf8').includes('com.android.billingclient:billing:9.1.0')) {
