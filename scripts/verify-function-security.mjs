@@ -5,6 +5,7 @@ const root = process.cwd();
 const functionsSource = path.join(root, 'functions', 'src');
 const failures = [];
 let callableCount = 0;
+let nativeAuthBridgeCount = 0;
 
 const normalizePath = (value) => value.split(path.sep).join('/');
 
@@ -75,6 +76,8 @@ function visit(directory) {
     if (!entry.name.endsWith('.ts')) return;
 
     const source = fs.readFileSync(fullPath, 'utf8');
+    const relativePath = normalizePath(path.relative(root, fullPath));
+    const isNativeAuthBridge = relativePath === 'functions/src/nativeAuthBridge.ts';
     const matcher = /\bonCall\s*\(/g;
     let match;
 
@@ -87,10 +90,26 @@ function visit(directory) {
       callableCount += 1;
       const openParenIndex = source.indexOf('(', match.index);
       const firstArgument = readFirstArgument(source, openParenIndex);
+      const location = `${relativePath}:${lineNumberAt(source, match.index)}`;
+
       if (!/\benforceAppCheck\s*:/.test(firstArgument)) {
-        failures.push(
-          `${normalizePath(path.relative(root, fullPath))}:${lineNumberAt(source, match.index)} callable must explicitly configure enforceAppCheck`,
-        );
+        failures.push(`${location} callable must explicitly configure enforceAppCheck`);
+        continue;
+      }
+
+      if (isNativeAuthBridge) {
+        nativeAuthBridgeCount += 1;
+        if (!/\benforceAppCheck\s*:\s*false\b/.test(firstArgument)) {
+          failures.push(`${location} native auth bootstrap must explicitly use enforceAppCheck: false because the pre-JS-session bridge cannot depend on Play Integrity.`);
+        }
+        if (!source.includes('verifyIdToken(nativeIdToken, true)') || !source.includes('createCustomToken(decoded.uid)')) {
+          failures.push(`${location} native auth bootstrap must verify the native Firebase ID token with revocation checking and mint only the verified UID.`);
+        }
+        continue;
+      }
+
+      if (/\benforceAppCheck\s*:\s*false\b/.test(firstArgument)) {
+        failures.push(`${location} is not allowed to disable App Check. Only the native auth bootstrap bridge may do so.`);
       }
     }
   });
@@ -101,6 +120,9 @@ visit(functionsSource);
 if (callableCount === 0) {
   failures.push('No Firebase callable functions were found; security verification cannot confirm the callable boundary.');
 }
+if (nativeAuthBridgeCount !== 1) {
+  failures.push(`Expected exactly one native auth bootstrap callable, found ${nativeAuthBridgeCount}.`);
+}
 
 if (failures.length > 0) {
   console.error('Inkbound function security verification failed:');
@@ -108,4 +130,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Inkbound function security verified (${callableCount} App Check-configured callables).`);
+console.log(`Inkbound function security verified (${callableCount} callables; exactly one token-verified native auth bootstrap exception).`);
