@@ -6,12 +6,7 @@ import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
-import {
-  crossDeviceCursorKey,
-  FULL_RECONCILIATION_VERSION,
-  fullReconciliationVersionKey,
-  SYNC_STORAGE_KEYS,
-} from './storageKeys';
+import { crossDeviceCursorKey, SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -162,7 +157,6 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
-        storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
         if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) {
           storage.removeItem(HYDRATION_REQUIRED_UID_KEY);
         }
