@@ -54,7 +54,7 @@ import './styles/responsive-parity.css';
 import './styles/light-theme-contrast.css';
 
 const AUTH_OPEN_GRACE_MS = 1800;
-const NATIVE_SERVICES_FAIL_OPEN_MS = 2500;
+const NATIVE_RUNTIME_TIMEOUT_MS = 15000;
 
 type OpeningScreenProps = {
   message: string;
@@ -78,18 +78,13 @@ const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) =
 );
 
 /**
- * Android native services may initialize a fraction later than the WebView.
- * They must never hold the entire application behind a startup screen: a slow or
- * missed readiness signal previously left production installs on "Opening
- * Inkbound" forever even though MainActivity, Firebase, Capacitor and the WebView
- * were already alive.
- *
- * Protected/cloud bridges still get a short head start so App Check can finish
- * wiring normally. If the readiness signal is delayed or lost, fail open after a
- * bounded delay and let the bridges use their own error/retry behavior. The main
- * UI, local library and sign-in surface are never blocked by this adapter state.
+ * Android cloud/auth consumers must not mount until the native security runtime
+ * has finished wiring Play Integrity into Firebase App Check. Build 26 used this
+ * ordering successfully on physical devices. Never fail open into Firestore:
+ * email/password Auth can succeed without App Check while the subsequent cloud
+ * hydration is rejected, leaving CloudDataRefreshBoundary stuck forever.
  */
-const NativeServicesGate = ({ children }: PropsWithChildren) => {
+const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
   const ready = useSyncExternalStore(
     subscribeNativeRuntimeReadiness,
     isNativeRuntimeReady,
@@ -100,24 +95,31 @@ const NativeServicesGate = ({ children }: PropsWithChildren) => {
     getNativeRuntimeError,
     getNativeRuntimeError,
   );
-  const [failOpen, setFailOpen] = useState(false);
 
   useEffect(() => {
-    if (!isAndroidRuntime() || ready || error) {
-      setFailOpen(false);
-      return undefined;
-    }
+    if (!isAndroidRuntime() || ready || error) return undefined;
 
     const timer = window.setTimeout(() => {
-      console.warn('Inkbound Android native-service readiness was delayed; continuing startup and allowing normal cloud retry behavior.');
-      setFailOpen(true);
-    }, NATIVE_SERVICES_FAIL_OPEN_MS);
+      markNativeRuntimeFailed(new Error('Secure Android services took too long to respond. Check your connection and try again.'));
+    }, NATIVE_RUNTIME_TIMEOUT_MS);
 
     return () => window.clearTimeout(timer);
   }, [ready, error]);
 
-  if (!isAndroidRuntime() || ready || error || failOpen) return <>{children}</>;
-  return null;
+  if (!isAndroidRuntime()) return <>{children}</>;
+
+  if (error) {
+    return (
+      <OpeningScreen
+        message={`Android services could not start: ${error}`}
+        actionLabel="Try Again"
+        onAction={() => window.location.reload()}
+      />
+    );
+  }
+
+  if (!ready) return <OpeningScreen message="Preparing secure Android services..." />;
+  return <>{children}</>;
 };
 
 const AuthSessionGate = ({ children }: PropsWithChildren) => {
@@ -151,11 +153,6 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
  * must respect the same boundary or their valid cloud writes can be discarded
  * and then replaced by the older IndexedDB snapshot a moment later.
  *
- * The event is only a wake-up signal; readiness is also queried synchronously.
- * On fast browser instances (especially Safari/iPad) hydration can finish before
- * React's effect subscribes. Without the state probe that browser would wait for
- * an event that already fired and none of the cloud sync bridges would ever mount.
- *
  * Native Android does not use this browser IndexedDB startup path.
  */
 const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
@@ -172,7 +169,6 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
 
     const handleHydrated = () => setReady(true);
     window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
-
     if (isLargeBrowserStorageHydrated()) setReady(true);
 
     return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
@@ -183,10 +179,10 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
 
 const InkboundApplication = () => (
   <BreakpointProvider>
-    <UserPlanProvider>
-      <AccountSyncProvider>
-        <AuthSessionGate>
-          <NativeServicesGate>
+    <NativeRuntimeGate>
+      <UserPlanProvider>
+        <AccountSyncProvider>
+          <AuthSessionGate>
             <SecurityBootstrap />
             <BrowserStorageHydrationGate>
               <LibrarySyncCheckpointBridge />
@@ -202,16 +198,16 @@ const InkboundApplication = () => (
               <LegacyBookCoverMigrationBridge />
               <CanonicalLibraryNormalizationBridge />
             </BrowserStorageHydrationGate>
-          </NativeServicesGate>
-          <ThemePersistenceBridge />
-          <CloudDataRefreshBoundary>
-            <RecoverySafetyBridge />
-            <App />
-          </CloudDataRefreshBoundary>
-          <UpgradeModal />
-        </AuthSessionGate>
-      </AccountSyncProvider>
-    </UserPlanProvider>
+            <ThemePersistenceBridge />
+            <CloudDataRefreshBoundary>
+              <RecoverySafetyBridge />
+              <App />
+            </CloudDataRefreshBoundary>
+            <UpgradeModal />
+          </AuthSessionGate>
+        </AccountSyncProvider>
+      </UserPlanProvider>
+    </NativeRuntimeGate>
   </BreakpointProvider>
 );
 
@@ -231,10 +227,7 @@ export async function mountApplication(rootElement: HTMLElement) {
   }
 
   if (isAndroidRuntime()) {
-    void initializeAndroidRuntime().catch((error) => {
-      console.error('Inkbound Android native services could not initialize. Continuing with local UI and normal retry behavior.', error);
-      markNativeRuntimeFailed(error);
-    });
+    void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
   }
 
   createRoot(rootElement).render(
