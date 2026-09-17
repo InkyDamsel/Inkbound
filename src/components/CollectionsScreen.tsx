@@ -437,7 +437,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
           {selectedBooks.length > 0 && (
             <div className="mt-6">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Shelf preview</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">On this shelf</p>
                 {(selectedCollection.kind ?? 'manual') === 'manual' && (
                   <label className="text-xs text-[var(--ink-muted)]">
                     Cover book
@@ -449,7 +449,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                 )}
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {selectedBooks.slice(0, 8).map((book) => {
+                {selectedBooks.slice(0, 18).map((book) => {
                   const readingState = getBookReadingState(book);
                   return (
                     <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-left">
@@ -461,6 +461,9 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                   );
                 })}
               </div>
+              {selectedBooks.length > 18 && (
+                <p className="mt-3 text-xs text-[var(--ink-muted)]">+{selectedBooks.length - 18} more books are available in the list below.</p>
+              )}
             </div>
           )}
         </section>
