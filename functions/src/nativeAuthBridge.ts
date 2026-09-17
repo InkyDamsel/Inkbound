@@ -10,16 +10,14 @@ const adminAuth = getAuth(adminApp);
  *
  * This callable deliberately does not require App Check because it is used to
  * bootstrap the JS Firebase session after the native Firebase SDK has already
- * authenticated the user. Sideloaded physical-device release builds are not
- * guaranteed to receive a Play Integrity verdict, so requiring App Check here
- * would make local release verification impossible.
- *
- * Security comes from the native Firebase ID token itself: it is verified by the
- * Admin SDK with revocation checking enabled, and the returned custom token is
- * minted only for that exact same Firebase UID. The caller cannot choose another
- * UID or gain privileges by using this bridge.
+ * authenticated the user. Security comes from the native Firebase ID token: the
+ * caller never supplies a UID and the custom token is minted only for the UID
+ * verified from that signed Firebase token.
  */
-export const exchangeNativeAuthSession = onCall({ enforceAppCheck: false }, async (request) => {
+export const exchangeNativeAuthSession = onCall({
+  enforceAppCheck: false,
+  timeoutSeconds: 15,
+}, async (request) => {
   const data = request.data as Record<string, unknown> | undefined;
   const nativeIdToken = typeof data?.nativeIdToken === 'string' ? data.nativeIdToken.trim() : '';
 
@@ -27,12 +25,20 @@ export const exchangeNativeAuthSession = onCall({ enforceAppCheck: false }, asyn
     throw new HttpsError('invalid-argument', 'A valid native Firebase session is required.');
   }
 
+  let uid: string;
   try {
     const decoded = await adminAuth.verifyIdToken(nativeIdToken, true);
-    const customToken = await adminAuth.createCustomToken(decoded.uid);
-    return { customToken, uid: decoded.uid };
+    uid = decoded.uid;
   } catch (error) {
-    console.warn('Inkbound native auth bridge rejected a token.', error);
+    console.warn('Inkbound native auth bridge rejected the Firebase ID token.', error);
     throw new HttpsError('unauthenticated', 'The Android sign-in session could not be verified. Please sign in again.');
+  }
+
+  try {
+    const customToken = await adminAuth.createCustomToken(uid);
+    return { customToken, uid };
+  } catch (error) {
+    console.error('Inkbound native auth bridge could not mint the canonical JS session token. Verify the runtime service account has iam.serviceAccounts.signBlob (Service Account Token Creator).', error);
+    throw new HttpsError('internal', 'Inkbound could not finish creating the Android account session.');
   }
 });
