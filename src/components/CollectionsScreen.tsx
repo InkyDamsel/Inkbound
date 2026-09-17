@@ -9,6 +9,7 @@ import { getActiveEdition, getAverageBookProgress, getBookReadingState } from '.
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { BookCover } from './BookCover';
 import { CollectionBannerAdjuster } from './CollectionBannerAdjuster';
+import { PaginationControls } from './PaginationControls';
 
 type CollectionKind = 'manual' | 'smart';
 type SmartField = 'status' | 'format' | 'rating' | 'tag' | 'author' | 'year';
@@ -43,6 +44,7 @@ const COLLECTIONS_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions;
 // Device-only view preference. Collection definitions/membership remain account-owned.
 const COLLECTION_VIEW_STORAGE_KEY = 'inkbound_collection_view';
 const COLLECTION_DELETE_UNDO_MS = 7000;
+const COLLECTION_SHELF_PAGE_SIZE = 18;
 const starterCollections: CollectionDefinition[] = [
   {
     id: 'comfort-reads',
@@ -106,6 +108,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   const [sortMode, setSortMode] = useState<SortMode>('title');
   const [statusFilter, setStatusFilter] = useState<'all' | ReadingStatus>('all');
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
+  const [collectionShelfPage, setCollectionShelfPage] = useState(1);
   const [pendingDelete, setPendingDelete] = useState<CollectionDefinition | null>(null);
   const pendingDeleteRef = useRef<CollectionDefinition | null>(null);
   const deleteTimerRef = useRef<number | null>(null);
@@ -180,6 +183,20 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   const selectedBooks = selectedCollection ? booksForCollection(selectedCollection, books) : [];
   const finishedCount = selectedBooks.filter((book) => getBookReadingState(book).isFinished).length;
   const averageProgress = getAverageBookProgress(selectedBooks);
+  const totalCollectionShelfPages = Math.max(1, Math.ceil(selectedBooks.length / COLLECTION_SHELF_PAGE_SIZE));
+  const safeCollectionShelfPage = Math.min(collectionShelfPage, totalCollectionShelfPages);
+  const paginatedSelectedBooks = selectedBooks.slice(
+    (safeCollectionShelfPage - 1) * COLLECTION_SHELF_PAGE_SIZE,
+    safeCollectionShelfPage * COLLECTION_SHELF_PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    setCollectionShelfPage(1);
+  }, [selectedCollectionId]);
+
+  useEffect(() => {
+    if (collectionShelfPage > totalCollectionShelfPages) setCollectionShelfPage(totalCollectionShelfPages);
+  }, [collectionShelfPage, totalCollectionShelfPages]);
 
   const visibleBooks = useMemo(() => {
     const query = normalized(searchQuery);
@@ -387,6 +404,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                   setSelectedCollectionId(collection.id);
                   setSelectedBookIds([]);
                   setSearchQuery('');
+                  setCollectionShelfPage(1);
                 }}
                 className={`relative block h-32 w-full overflow-hidden bg-gradient-to-br ${collection.accent} text-left`}
               >
@@ -449,7 +467,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                 )}
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {selectedBooks.slice(0, 18).map((book) => {
+                {paginatedSelectedBooks.map((book) => {
                   const readingState = getBookReadingState(book);
                   return (
                     <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-left">
@@ -461,9 +479,15 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                   );
                 })}
               </div>
-              {selectedBooks.length > 18 && (
-                <p className="mt-3 text-xs text-[var(--ink-muted)]">+{selectedBooks.length - 18} more books are available in the list below.</p>
-              )}
+              <div className="mt-4">
+                <PaginationControls
+                  page={safeCollectionShelfPage}
+                  totalItems={selectedBooks.length}
+                  pageSize={COLLECTION_SHELF_PAGE_SIZE}
+                  onPageChange={setCollectionShelfPage}
+                  itemLabel="books"
+                />
+              </div>
             </div>
           )}
         </section>
