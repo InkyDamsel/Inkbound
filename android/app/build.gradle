@@ -28,7 +28,7 @@ android {
         if (hasReleaseSigningConfig) {
             release {
                 storeFile file(keystoreProperties['storeFile'])
-                storePassword keystoreProperties['storePassword'])
+                storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
             }
