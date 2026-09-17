@@ -79,6 +79,10 @@ const navbar = read('src/components/Navbar.tsx');
 const app = read('src/App.tsx');
 assert(navbar.includes('mobileNavigationGroups = visibleNavigationGroups'), 'Mobile navigation must be derived from the same visibleNavigationGroups used by desktop.');
 assert(navbar.includes('mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 2)]'), 'Mobile primary navigation must be derived from the canonical navigation groups.');
+assert(
+  !navbar.includes("{ id: 'collections', label: 'Collections'"),
+  'Collections belongs inside My Library and must not drift into a separate web/Android navigation destination.',
+);
 
 // Every canonical navigation item must be handled by the shared App. Parse only
 // item arrays so group IDs such as "reading" and "journal" are not mistaken for
@@ -148,6 +152,21 @@ assert(androidRuntime.includes('PlayBilling.manage'), 'Android subscription mana
 const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
 assert(bookDetailsCore.includes('onUpdateSession'), 'Book Details must expose reading-session editing on every viewport.');
 assert(bookDetailsCore.includes('onDeleteSession'), 'Book Details must expose reading-session deletion on every viewport.');
+
+const libraryScreen = read('src/components/LibraryScreen.tsx');
+assert(
+  libraryScreen.includes("['books', 'series', 'collections', 'loans']") && libraryScreen.includes("section === 'collections'") && libraryScreen.includes('<CollectionsScreen'),
+  'Collections must remain reachable through the canonical My Library Books/Series/Collections/Loans tabs on both web and Android.',
+);
+
+const collectionsScreen = read('src/components/CollectionsScreen.tsx');
+assert(collectionsScreen.includes("import { PaginationControls } from './PaginationControls'"), 'Collections must use shared pagination on web and Android.');
+assert(collectionsScreen.includes('const COLLECTION_SHELF_PAGE_SIZE = 24'), 'Open Collection must expose collection books in the same 24-item pages used by the live web experience.');
+assert(collectionsScreen.includes('totalItems={selectedBooks.length}'), 'Open Collection pagination must use the complete canonical collection membership.');
+assert(collectionsScreen.includes('const COLLECTION_MANAGER_PAGE_SIZE = 24'), 'Manage Books must use 24-item pages so large libraries remain usable on Android.');
+assert(collectionsScreen.includes('paginatedVisibleBooks.map'), 'Manage Books must render the paginated library slice rather than the entire library at once.');
+assert(collectionsScreen.includes('totalItems={visibleBooks.length}'), 'Manage Books pagination must be based on the full filtered library result set.');
+assert(!/selectedBooks\.slice\(0,\s*\d+\)/.test(collectionsScreen), 'Collections must not hide books behind a fixed preview-only slice.');
 
 const batchEdit = read('src/components/BatchEditModal.tsx');
 assert(batchEdit.includes('readCustomOwnershipCategories'), 'Batch Edit must load the same custom ownership categories available in single-book editing.');
