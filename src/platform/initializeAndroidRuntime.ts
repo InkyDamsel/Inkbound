@@ -7,7 +7,9 @@ import { Share } from '@capacitor/share';
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
+  browserLocalPersistence,
   reauthenticateWithCredential,
+  setPersistence,
   signInWithCredential,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
@@ -79,19 +81,15 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
 };
 
 /**
- * Inkbound deliberately uses the plugin's established Google sign-in flow on
- * Android instead of Credential Manager. Credential Manager is optional in the
- * upstream plugin and has been unreliable on the physical devices that exposed
- * this release regression. Do not try one provider implementation and then retry
- * another in the same sign-in attempt; a failed first flow can leave Google Play
- * services in a transient state and make the fallback fail too.
- *
- * Firebase JS Auth remains the canonical Inkbound account/session owner. The
- * native plugin supplies only the Google credential.
+ * Google is the only Android sign-in method that needs a native credential
+ * acquisition step. Firebase JS Auth remains the canonical Inkbound session
+ * owner. Credential Manager is the current Android provider path; the legacy
+ * play-services-auth flow was only introduced as a workaround while the signing
+ * certificate/OAuth configuration was incomplete and must not remain the default.
  */
 const requestNativeGoogleCredential = () => FirebaseAuthentication.signInWithGoogle({
   skipNativeAuth: true,
-  useCredentialManager: false,
+  useCredentialManager: true,
 });
 
 const sha256Hex = async (value: string) => {
@@ -136,10 +134,14 @@ export async function initializeAndroidRuntime() {
   });
 
   configureRuntimeAuthentication({
-    // Android Firebase Auth persistence is configured when the Auth instance is
-    // created in lib/firebase.ts. Re-running setPersistence here can race startup
-    // restoration inside a Capacitor WebView.
-    preparePersistence: async () => undefined,
+    // Firebase JS Auth is the single account/session authority. Android uses the
+    // same Auth instance as web and asks Firebase to persist that session in
+    // browserLocalPersistence before credentials are checked. This was the
+    // working pre-regression boundary and avoids a separate native initializeAuth
+    // path inside the WebView.
+    preparePersistence: async (firebaseAuth) => {
+      await setPersistence(firebaseAuth, browserLocalPersistence);
+    },
     signInWithGoogle: async (firebaseAuth) => {
       const result = await requestNativeGoogleCredential();
       const idToken = result.credential?.idToken ?? '';
