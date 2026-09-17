@@ -77,13 +77,6 @@ const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) =
   </main>
 );
 
-/**
- * Android cloud/auth consumers must not mount until the native security runtime
- * has finished wiring Play Integrity into Firebase App Check. Build 26 used this
- * ordering successfully on physical devices. Never fail open into Firestore:
- * email/password Auth can succeed without App Check while the subsequent cloud
- * hydration is rejected, leaving CloudDataRefreshBoundary stuck forever.
- */
 const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
   const ready = useSyncExternalStore(
     subscribeNativeRuntimeReadiness,
@@ -97,7 +90,7 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
   );
 
   useEffect(() => {
-    if (!isAndroidRuntime() || ready || error) return undefined;
+    if (ready || error || !isAndroidRuntime()) return undefined;
 
     const timer = window.setTimeout(() => {
       markNativeRuntimeFailed(new Error('Secure Android services took too long to respond. Check your connection and try again.'));
@@ -105,8 +98,6 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
 
     return () => window.clearTimeout(timer);
   }, [ready, error]);
-
-  if (!isAndroidRuntime()) return <>{children}</>;
 
   if (error) {
     return (
@@ -153,6 +144,11 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
  * must respect the same boundary or their valid cloud writes can be discarded
  * and then replaced by the older IndexedDB snapshot a moment later.
  *
+ * The event is only a wake-up signal; readiness is also queried synchronously.
+ * On fast browser instances (especially Safari/iPad) hydration can finish before
+ * React's effect subscribes. Without the state probe that browser would wait for
+ * an event that already fired and none of the cloud sync bridges would ever mount.
+ *
  * Native Android does not use this browser IndexedDB startup path.
  */
 const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
@@ -169,6 +165,9 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
 
     const handleHydrated = () => setReady(true);
     window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
+
+    // Close the subscribe-after-event race. Hydration may have completed between
+    // the initial render and this effect attaching its listener.
     if (isLargeBrowserStorageHydrated()) setReady(true);
 
     return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
