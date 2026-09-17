@@ -134,21 +134,15 @@ export async function initializeAndroidRuntime() {
   });
 
   configureRuntimeAuthentication({
-    // Authentication must never be blocked by a storage-persistence preference.
-    // Some Android WebViews can reject setPersistence even though Firebase Auth
-    // itself is fully able to sign in. Previously both email/password and Google
-    // called this before checking credentials, so one persistence exception made
-    // every sign-in method fail without ever reaching Firebase Auth. Ask for
-    // durable local persistence, but fail open and let Firebase keep its current
-    // persistence if the WebView cannot switch storage backends.
+    // Firebase JS Auth is the single account/session authority. Persistence is
+    // best-effort on Android: some WebViews reject setPersistence even though
+    // Firebase Auth itself can still authenticate normally. Never let a storage
+    // preference prevent the reviewer from signing in.
     preparePersistence: async (firebaseAuth) => {
       try {
         await setPersistence(firebaseAuth, browserLocalPersistence);
       } catch (error) {
-        console.warn(
-          'Inkbound Android could not switch Firebase auth persistence; continuing sign-in with the current Firebase persistence.',
-          error,
-        );
+        console.warn('Inkbound Android could not change Firebase auth persistence; continuing sign-in with Firebase current persistence.', error);
       }
     },
     signInWithGoogle: async (firebaseAuth) => {
