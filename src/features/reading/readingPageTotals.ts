@@ -15,6 +15,13 @@ const knownPrintPageCount = (book: UserBookRecord): number | undefined => {
     : undefined;
 };
 
+/**
+ * Canonical display value for a book's page progress.
+ *
+ * A trustworthy finished print/ebook with a known page count should not present
+ * itself as "100% / 0 pages" merely because the historical page endpoint was not
+ * stored. This derives the visible value without rewriting the reader's history.
+ */
 export function getEffectiveBookProgressPages(book: UserBookRecord): number {
   const recordedProgress = finiteNonnegative(book.progressPages);
   if (!hasTrustworthyFinishedHistory(book)) return recordedProgress;
@@ -22,6 +29,27 @@ export function getEffectiveBookProgressPages(book: UserBookRecord): number {
   return pageCount === undefined ? recordedProgress : Math.max(recordedProgress, pageCount);
 }
 
+/**
+ * Canonical page total for historical/statistical reporting.
+ *
+ * There are two legitimate evidence paths and they must never be added together
+ * for the same finished book:
+ *
+ * 1. Tracked Inkbound page sessions are authoritative for period math. If Inkbound
+ *    has page-session history through a book's finish date, a monthly/yearly report
+ *    uses only the pages actually tracked inside that requested period.
+ * 2. Historical imports/manual history may have a trustworthy finish date and a
+ *    known print/ebook page count but no session history. In that case the edition
+ *    page count is used as the historical floor in the period containing the finish.
+ *
+ * This prevents the old double-count failure where a 500-page book read across two
+ * months could contribute its tracked pages in month one and then another full 500
+ * pages in the finish month. It also preserves imported reading history when the
+ * source supplied a real finish date but Inkbound never observed the original read.
+ *
+ * This is derived reporting only. It never rewrites progressPages or creates
+ * synthetic sessions, so persistence remains the canonical stored history.
+ */
 export function getEffectivePagesReadForPeriod(
   books: UserBookRecord[],
   sessions: ReadingSession[],
@@ -69,6 +97,9 @@ export function getEffectivePagesReadForPeriod(
 
     const trackedDates = trackedPageDatesByBook.get(book.id) ?? [];
     const hasTrackedPageHistoryThroughFinish = trackedDates.some((date) => date <= finishedDate);
+
+    // Once Inkbound has real page history for the original read, that history is
+    // authoritative. Do not drop a whole-book fallback into the finish month.
     if (hasTrackedPageHistoryThroughFinish) return total + trackedPagesInPeriod;
 
     const pageCount = knownPrintPageCount(book);
