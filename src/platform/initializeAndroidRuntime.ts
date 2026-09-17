@@ -134,13 +134,22 @@ export async function initializeAndroidRuntime() {
   });
 
   configureRuntimeAuthentication({
-    // Firebase JS Auth is the single account/session authority. Android uses the
-    // same Auth instance as web and asks Firebase to persist that session in
-    // browserLocalPersistence before credentials are checked. This was the
-    // working pre-regression boundary and avoids a separate native initializeAuth
-    // path inside the WebView.
+    // Authentication must never be blocked by a storage-persistence preference.
+    // Some Android WebViews can reject setPersistence even though Firebase Auth
+    // itself is fully able to sign in. Previously both email/password and Google
+    // called this before checking credentials, so one persistence exception made
+    // every sign-in method fail without ever reaching Firebase Auth. Ask for
+    // durable local persistence, but fail open and let Firebase keep its current
+    // persistence if the WebView cannot switch storage backends.
     preparePersistence: async (firebaseAuth) => {
-      await setPersistence(firebaseAuth, browserLocalPersistence);
+      try {
+        await setPersistence(firebaseAuth, browserLocalPersistence);
+      } catch (error) {
+        console.warn(
+          'Inkbound Android could not switch Firebase auth persistence; continuing sign-in with the current Firebase persistence.',
+          error,
+        );
+      }
     },
     signInWithGoogle: async (firebaseAuth) => {
       const result = await requestNativeGoogleCredential();
