@@ -7,9 +7,10 @@ import {
 } from 'firebase/app-check';
 import {
   Auth,
+  browserLocalPersistence,
   connectAuthEmulator,
   getAuth,
-  inMemoryPersistence,
+  indexedDBLocalPersistence,
   initializeAuth,
 } from 'firebase/auth';
 import {
@@ -62,6 +63,10 @@ export const allowProductionFirebaseWrites =
   explicitProductionMode ||
   readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
 
+// Local development should not silently invoke production Cloud Functions. A
+// 50k-book stress test can turn automatic metadata work into tens of thousands
+// of billable Cloud Run/Functions invocations. Production builds, emulators, and
+// an explicitly requested live-production dev session retain function access.
 export const allowProductionFirebaseFunctions =
   useFirebaseEmulators ||
   !import.meta.env.DEV ||
@@ -119,16 +124,22 @@ if (isFirebaseConfigured) {
     });
   }
 
-  // Web owns its normal durable Firebase JS Auth session. Android deliberately
-  // keeps the JS mirror in memory only: native Firebase Auth owns durable device
-  // persistence, and initializeAndroidRuntime restores that verified native UID
-  // into this JS session on every launch. This avoids WebView IndexedDB/local
-  // persistence deadlocks while preserving one JS Auth identity for Firestore,
-  // Functions and the rest of Inkbound during the running app session.
+  // Configure native auth persistence at Firebase Auth creation time instead of
+  // trying to switch persistence after the WebView has already started restoring
+  // a session. IndexedDB is preferred in Capacitor because it survives process
+  // restarts reliably; localStorage remains a durable fallback for WebViews that
+  // cannot open IndexedDB. Web continues using Firebase's normal getAuth setup.
   auth = isNativeRuntime()
-    ? initializeAuth(app, { persistence: inMemoryPersistence })
+    ? initializeAuth(app, {
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      })
     : getAuth(app);
 
+  // Inkbound owns durable local state, so Firestore only needs an in-memory
+  // transport cache. iPadOS browsers (including Chrome, which uses WebKit on
+  // iPadOS) additionally use long-polling. This avoids WebChannel connections
+  // that can remain open without delivering fresh snapshots on some WebKit and
+  // network combinations. Desktop browsers retain Firebase's normal transport.
   const forceIosLongPolling = !isNativeRuntime() && isIosBrowserRuntime();
   readDb = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
