@@ -79,6 +79,10 @@ const navbar = read('src/components/Navbar.tsx');
 const app = read('src/App.tsx');
 assert(navbar.includes('mobileNavigationGroups = visibleNavigationGroups'), 'Mobile navigation must be derived from the same visibleNavigationGroups used by desktop.');
 assert(navbar.includes('mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 2)]'), 'Mobile primary navigation must be derived from the canonical navigation groups.');
+assert(
+  navbar.includes("{ id: 'collections', label: 'Collections'"),
+  'Collections must remain reachable from the canonical shared navigation on both web and Android.',
+);
 
 // Every canonical navigation item must be handled by the shared App. Parse only
 // item arrays so group IDs such as "reading" and "journal" are not mistaken for
@@ -148,6 +152,11 @@ assert(androidRuntime.includes('PlayBilling.manage'), 'Android subscription mana
 const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
 assert(bookDetailsCore.includes('onUpdateSession'), 'Book Details must expose reading-session editing on every viewport.');
 assert(bookDetailsCore.includes('onDeleteSession'), 'Book Details must expose reading-session deletion on every viewport.');
+
+const collectionsScreen = read('src/components/CollectionsScreen.tsx');
+assert(collectionsScreen.includes("import { PaginationControls } from './PaginationControls'"), 'Collections must use shared pagination so every collection book remains reachable on web and Android.');
+assert(collectionsScreen.includes('totalItems={selectedBooks.length}'), 'Collection shelf pagination must be based on the complete canonical collection membership.');
+assert(!/selectedBooks\.slice\(0,\s*\d+\)/.test(collectionsScreen), 'Collections must not hide books behind a fixed preview-only slice.');
 
 const batchEdit = read('src/components/BatchEditModal.tsx');
 assert(batchEdit.includes('readCustomOwnershipCategories'), 'Batch Edit must load the same custom ownership categories available in single-book editing.');
