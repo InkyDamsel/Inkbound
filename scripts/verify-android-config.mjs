@@ -18,8 +18,6 @@ const runtimeNativeAppCheckPath = path.join(cwd, 'src/platform/runtimeNativeAppC
 const runtimeNativeReadinessPath = path.join(cwd, 'src/platform/runtimeNativeReadiness.ts');
 const runtimeNativeSecurityBootstrapPath = path.join(cwd, 'src/platform/runtimeNativeSecurityBootstrap.ts');
 const initializeAndroidRuntimePath = path.join(cwd, 'src/platform/initializeAndroidRuntime.ts');
-const nativeAuthBridgePath = path.join(cwd, 'functions/src/nativeAuthBridge.ts');
-const functionsIndexPath = path.join(cwd, 'functions/src/index.ts');
 
 const fail = (message) => {
   console.error(`Inkbound Android verification failed: ${message}`);
@@ -43,8 +41,6 @@ for (const requiredPath of [
   runtimeNativeReadinessPath,
   runtimeNativeSecurityBootstrapPath,
   initializeAndroidRuntimePath,
-  nativeAuthBridgePath,
-  functionsIndexPath,
 ]) {
   if (!fs.existsSync(requiredPath)) fail(`required Android boundary is missing: ${path.relative(cwd, requiredPath)}`);
 }
@@ -63,7 +59,7 @@ if (config.android?.allowMixedContent !== false) fail('Android mixed-content acc
 if (config.android?.webContentsDebuggingEnabled !== false) fail('Android WebView debugging must remain disabled in the release configuration.');
 
 const firebaseAuthentication = config.plugins?.FirebaseAuthentication;
-if (firebaseAuthentication?.skipNativeAuth !== false) fail('FirebaseAuthentication must keep native authentication enabled on Android.');
+if (firebaseAuthentication?.skipNativeAuth !== true) fail('FirebaseAuthentication must keep skipNativeAuth enabled so Firebase JS Auth remains the single session authority.');
 if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication.providers.includes('google.com')) fail('FirebaseAuthentication must keep the native Google provider enabled.');
 
 const mainSource = fs.readFileSync(mainPath, 'utf8');
@@ -91,8 +87,8 @@ if (!firebaseSource.includes('new CustomProvider')) fail('Android Firebase App C
 if (!firebaseSource.includes('getNativeAppCheckToken')) fail('Android Firebase App Check must obtain tokens from the native Play Integrity adapter.');
 if (!firebaseSource.includes('export function initializeNativeFirebaseAppCheck()')) fail('Android Firebase App Check must remain explicitly deferred until native Play Integrity is configured.');
 if (!firebaseSource.includes('!useFirebaseEmulators && !isNativeRuntime() && appCheckSiteKey')) fail('web reCAPTCHA App Check must remain excluded from native Android builds.');
-if (!firebaseSource.includes('initializeAuth(app, { persistence: inMemoryPersistence })')) fail('Android JS Auth must use in-memory persistence so WebView storage cannot block native-auth handoff.');
-if (!firebaseSource.includes(': getAuth(app)')) fail('Web Firebase Auth must retain its normal durable Firebase JS Auth instance.');
+if (!firebaseSource.includes('persistence: [indexedDBLocalPersistence, browserLocalPersistence]')) fail('Android Firebase JS Auth must retain the Build 26 durable persistence order.');
+if (!firebaseSource.includes(': getAuth(app)')) fail('Web Firebase Auth must retain its normal getAuth(app) path.');
 
 const nativeAppCheckSource = fs.readFileSync(runtimeNativeAppCheckPath, 'utf8');
 if (!nativeAppCheckSource.includes('configureNativeAppCheck')) fail('the native Play Integrity App Check adapter registration point is missing.');
@@ -105,55 +101,50 @@ const readyIndex = nativeSecurityBootstrapSource.indexOf('markNativeRuntimeReady
 if (configureIndex < 0 || initializeIndex < 0 || readyIndex < 0 || !(configureIndex < initializeIndex && initializeIndex < readyIndex)) fail('Android security startup must remain ordered: configure Play Integrity, initialize JS App Check, then mark native runtime ready.');
 
 const authenticationSource = fs.readFileSync(runtimeAuthenticationPath, 'utf8');
-for (const requiredSnippet of ['signInRuntimeWithEmail', 'createRuntimeEmailAccount', 'signInRuntimeWithGoogle', 'restoreRuntimeAuthSession', 'signOutRuntime']) {
-  if (!authenticationSource.includes(requiredSnippet)) fail(`runtime authentication boundary is missing ${requiredSnippet}.`);
+if (!authenticationSource.includes('signInRuntimeWithGoogle')) fail('runtime authentication boundary is missing signInRuntimeWithGoogle.');
+if (authenticationSource.includes('signInRuntimeWithEmail') || authenticationSource.includes('createRuntimeEmailAccount') || authenticationSource.includes('restoreRuntimeAuthSession')) {
+  fail('Android must not reintroduce parallel native email/session ownership; Firebase JS Auth is canonical.');
 }
 
 const accountSyncSource = fs.readFileSync(accountSyncPath, 'utf8');
-for (const requiredSnippet of ['signInRuntimeWithEmail(auth, email, password)', 'createRuntimeEmailAccount(auth, email, password)', 'signInRuntimeWithGoogle(auth)', 'restoreRuntimeAuthSession(auth)', 'signOutRuntime(auth)']) {
-  if (!accountSyncSource.includes(requiredSnippet)) fail(`AccountSyncContext must route authentication through the canonical runtime adapter: ${requiredSnippet}`);
+for (const requiredSnippet of [
+  'signInWithEmailAndPassword(auth, email.trim(), password)',
+  'createUserWithEmailAndPassword(auth, email.trim(), password)',
+  'signInRuntimeWithGoogle(auth)',
+]) {
+  if (!accountSyncSource.includes(requiredSnippet)) fail(`AccountSyncContext must preserve the Build 26 auth path: ${requiredSnippet}`);
 }
-if (accountSyncSource.includes('signInWithEmailAndPassword(auth') || accountSyncSource.includes('createUserWithEmailAndPassword(auth')) fail('AccountSyncContext must not bypass the runtime authentication boundary with direct Firebase JS email credential calls.');
+if (accountSyncSource.includes('signInRuntimeWithEmail') || accountSyncSource.includes('createRuntimeEmailAccount') || accountSyncSource.includes('restoreRuntimeAuthSession')) {
+  fail('AccountSyncContext must not route email/password through a second Android auth owner.');
+}
 
 const androidRuntimeSource = fs.readFileSync(initializeAndroidRuntimePath, 'utf8');
 for (const requiredSnippet of [
   'FirebaseAppCheck.initialize',
-  'FirebaseAuthentication.signInWithEmailAndPassword',
-  'FirebaseAuthentication.createUserWithEmailAndPassword',
   'FirebaseAuthentication.signInWithGoogle',
-  'FirebaseAuthentication.getIdToken',
-  'signInWithCustomToken',
-  'NATIVE_AUTH_BRIDGE_URL',
-  'NATIVE_AUTH_STEP_TIMEOUT_MS',
-  'NATIVE_AUTH_BRIDGE_TIMEOUT_MS',
-  'withTimeout(',
-  'exchangeNativeAuthSession',
-  'fetch(NATIVE_AUTH_BRIDGE_URL',
-  'body: JSON.stringify({ data: { nativeIdToken } })',
-  'skipNativeAuth: false',
-  'useCredentialManager: false',
-  'restoreSession:',
-  'signOut:',
+  'skipNativeAuth: true',
+  'useCredentialManager: true',
+  'signInWithCredential',
+  'reauthenticateWithCredential',
   "CapacitorApp.addListener('appStateChange'",
   'initializeNativeSecurityRuntime',
 ]) {
-  if (!androidRuntimeSource.includes(requiredSnippet)) fail(`Android runtime adapter is missing required native integration: ${requiredSnippet}`);
+  if (!androidRuntimeSource.includes(requiredSnippet)) fail(`Android runtime adapter is missing required Build 26 native integration: ${requiredSnippet}`);
 }
-if (androidRuntimeSource.includes('useCredentialManager: true')) fail('Android Google sign-in must not re-enable Credential Manager until the physical-device regression is resolved.');
-if (androidRuntimeSource.includes('signInWithEmailAndPassword(firebaseAuth') || androidRuntimeSource.includes('createUserWithEmailAndPassword(firebaseAuth')) fail('Android email credentials must be verified by native Firebase Authentication, not by the WebView Firebase JS SDK.');
+for (const forbiddenSnippet of [
+  'FirebaseAuthentication.signInWithEmailAndPassword',
+  'FirebaseAuthentication.createUserWithEmailAndPassword',
+  'signInWithCustomToken',
+  'exchangeNativeAuthSession',
+  'NATIVE_AUTH_BRIDGE_URL',
+]) {
+  if (androidRuntimeSource.includes(forbiddenSnippet)) fail(`Android auth must not reintroduce parallel session ownership: ${forbiddenSnippet}`);
+}
 const authConfigIndex = androidRuntimeSource.indexOf('configureRuntimeAuthentication');
 const reauthConfigIndex = androidRuntimeSource.indexOf('configureRuntimeReauthentication');
 const lifecycleConfigIndex = androidRuntimeSource.indexOf('configureRuntimeLifecycle');
 const securityReadyIndex = androidRuntimeSource.lastIndexOf('initializeNativeSecurityRuntime');
 if ([authConfigIndex, reauthConfigIndex, lifecycleConfigIndex, securityReadyIndex].some((index) => index < 0) || !(authConfigIndex < securityReadyIndex && reauthConfigIndex < securityReadyIndex && lifecycleConfigIndex < securityReadyIndex)) fail('Android runtime must configure auth, reauthentication, and lifecycle before releasing native readiness.');
-
-const nativeAuthBridgeSource = fs.readFileSync(nativeAuthBridgePath, 'utf8');
-for (const requiredSnippet of ['exchangeNativeAuthSession', 'enforceAppCheck: false', 'verifyIdToken(nativeIdToken, true)', 'uid = decoded.uid', 'createCustomToken(uid)']) {
-  if (!nativeAuthBridgeSource.includes(requiredSnippet)) fail(`native auth bootstrap bridge is missing required security invariant: ${requiredSnippet}`);
-}
-if (nativeAuthBridgeSource.includes('createCustomToken(data') || nativeAuthBridgeSource.includes('createCustomToken(request')) fail('native auth bridge must mint a custom token only for the UID verified from the native Firebase ID token.');
-const functionsIndexSource = fs.readFileSync(functionsIndexPath, 'utf8');
-if (!functionsIndexSource.includes("export { exchangeNativeAuthSession } from './nativeAuthBridge.js';")) fail('native auth bootstrap bridge must be exported from the Firebase Functions entrypoint.');
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');
 if (!subscriptionSource.includes('isAvailable: () => !isNativeRuntime()')) fail('browser subscription management must remain unavailable inside native builds.');
@@ -202,4 +193,4 @@ if (fs.existsSync(androidDir)) {
   if (versionNameMatch?.[1] !== releaseMetadata.versionName) fail('generated Android versionName does not match android-release.json.');
 }
 
-console.log(`Inkbound Android configuration verified (com.inkydameinteractive.inkbound, ${releaseMetadata.versionName} (${releaseMetadata.versionCode}), API 36 baseline, native durable auth -> in-memory canonical JS session bridge).`);
+console.log(`Inkbound Android configuration verified (com.inkydameinteractive.inkbound, ${releaseMetadata.versionName} (${releaseMetadata.versionCode}), API 36 baseline, Build 26 single-source Firebase JS Auth).`);
