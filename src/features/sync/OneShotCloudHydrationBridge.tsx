@@ -121,6 +121,9 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
       hydrationRunning = true;
       try {
+        // A large Android library may have been moved out of raw localStorage on
+        // a previous run. Restore that canonical IndexedDB-backed value before
+        // deciding that this device needs another full cloud download.
         if (isNativeRuntime()) {
           await hydrateLargeBrowserStorage();
           if (disposed) return;
@@ -161,11 +164,20 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
           storage.removeItem(PROFILE_KEY);
         }
 
+        // If the books payload crossed the large-storage threshold, wait until
+        // the IndexedDB write is durable before publishing the owner marker. A
+        // device must never claim hydration completed while its canonical library
+        // is still only an in-memory/cache write.
         if (isNativeRuntime()) {
           await flushLargeBrowserStorage();
           if (disposed) return;
         }
 
+        // Delta sync starts immediately after hydration. Seed its cursor from the
+        // newest server timestamp actually present in this full snapshot so it
+        // does not reread a very large library from the beginning. Reduce rather
+        // than spreading tens of thousands of timestamps into Math.max; large
+        // libraries can exceed JavaScript's function-argument limit.
         let hydrationCursorMillis = newestSnapshotUpdateMillis(bookSnapshot.docs);
         hydrationCursorMillis = newestSnapshotUpdateMillis(sessionSnapshot.docs, hydrationCursorMillis);
         if (profileSnapshot.exists()) {
