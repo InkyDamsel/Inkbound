@@ -69,19 +69,15 @@ if (typeof releaseMetadata.versionName !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0
   fail('android-release.json versionName must use semantic version format.');
 }
 
-if (config.appId !== 'com.inkydameinteractive.inkbound') {
-  fail(`unexpected Android application ID: ${String(config.appId ?? '')}`);
-}
+if (config.appId !== 'com.inkydameinteractive.inkbound') fail(`unexpected Android application ID: ${String(config.appId ?? '')}`);
 if (config.appName !== 'Inkbound') fail('Capacitor appName must remain Inkbound.');
 if (config.webDir !== 'dist') fail('Capacitor webDir must remain dist.');
 if (config.android?.allowMixedContent !== false) fail('Android mixed-content access must remain disabled.');
-if (config.android?.webContentsDebuggingEnabled !== false) {
-  fail('Android WebView debugging must remain disabled in the release configuration.');
-}
+if (config.android?.webContentsDebuggingEnabled !== false) fail('Android WebView debugging must remain disabled in the release configuration.');
 
 const firebaseAuthentication = config.plugins?.FirebaseAuthentication;
 if (firebaseAuthentication?.skipNativeAuth !== false) {
-  fail('FirebaseAuthentication must keep native authentication enabled on Android. Email/password and Google credentials are verified by the native Firebase SDK before the canonical JS session is created.');
+  fail('FirebaseAuthentication must keep native authentication enabled on Android.');
 }
 if (!Array.isArray(firebaseAuthentication?.providers) || !firebaseAuthentication.providers.includes('google.com')) {
   fail('FirebaseAuthentication must keep the native Google provider enabled.');
@@ -91,70 +87,38 @@ const mainSource = fs.readFileSync(mainPath, 'utf8');
 const applicationEntrySource = fs.readFileSync(applicationEntryPath, 'utf8');
 const mentionsServiceWorker = mainSource.includes('serviceWorker');
 const nativeGuardedServiceWorker = mainSource.includes("import.meta.env.PROD && !isNativeRuntime() && 'serviceWorker' in navigator");
-if (mentionsServiceWorker && !nativeGuardedServiceWorker) {
-  fail('PWA service workers must remain disabled inside the native Android WebView.');
-}
+if (mentionsServiceWorker && !nativeGuardedServiceWorker) fail('PWA service workers must remain disabled inside the native Android WebView.');
 
-if (!applicationEntrySource.includes('<NativeServicesGate>')) {
-  fail('Android startup must keep protected/cloud bridges behind NativeServicesGate.');
-}
-if (!applicationEntrySource.includes('NATIVE_SERVICES_FAIL_OPEN_MS')) {
-  fail('Android native-service gating must retain a bounded fail-open watchdog.');
-}
-if (!applicationEntrySource.includes('setFailOpen(true)')) {
-  fail('Android native-service gating must release protected bridges after its bounded watchdog.');
-}
+if (!applicationEntrySource.includes('<NativeServicesGate>')) fail('Android startup must keep protected/cloud bridges behind NativeServicesGate.');
+if (!applicationEntrySource.includes('NATIVE_SERVICES_FAIL_OPEN_MS')) fail('Android native-service gating must retain a bounded fail-open watchdog.');
+if (!applicationEntrySource.includes('setFailOpen(true)')) fail('Android native-service gating must release protected bridges after its bounded watchdog.');
 const nativeServicesOpenIndex = applicationEntrySource.indexOf('<NativeServicesGate>');
 const nativeServicesCloseIndex = applicationEntrySource.indexOf('</NativeServicesGate>');
 const appRenderIndex = applicationEntrySource.indexOf('<App />');
-if (nativeServicesOpenIndex < 0 || nativeServicesCloseIndex < 0 || appRenderIndex < 0) {
-  fail('Android startup structure is incomplete.');
-}
-if (appRenderIndex > nativeServicesOpenIndex && appRenderIndex < nativeServicesCloseIndex) {
-  fail('The main Inkbound UI must never be blocked by Android native-service readiness.');
-}
-if (!applicationEntrySource.includes('initializeAndroidRuntime().catch((error) =>')) {
-  fail('Android startup must initialize native services and handle initialization failures.');
-}
-if (!applicationEntrySource.includes('markNativeRuntimeFailed(error)')) {
-  fail('Android startup must preserve native initialization failures for diagnostics/retry behavior.');
-}
+if (nativeServicesOpenIndex < 0 || nativeServicesCloseIndex < 0 || appRenderIndex < 0) fail('Android startup structure is incomplete.');
+if (appRenderIndex > nativeServicesOpenIndex && appRenderIndex < nativeServicesCloseIndex) fail('The main Inkbound UI must never be blocked by Android native-service readiness.');
+if (!applicationEntrySource.includes('initializeAndroidRuntime().catch((error) =>')) fail('Android startup must initialize native services and handle initialization failures.');
+if (!applicationEntrySource.includes('markNativeRuntimeFailed(error)')) fail('Android startup must preserve native initialization failures for diagnostics/retry behavior.');
 
 const nativeReadinessSource = fs.readFileSync(runtimeNativeReadinessPath, 'utf8');
-if (!nativeReadinessSource.includes('markNativeRuntimeReady')) {
-  fail('native adapter bootstrap must retain an explicit readiness completion signal.');
-}
-if (!nativeReadinessSource.includes('markNativeRuntimeFailed')) {
-  fail('native adapter bootstrap must surface startup failures instead of hanging indefinitely.');
-}
+if (!nativeReadinessSource.includes('markNativeRuntimeReady')) fail('native adapter bootstrap must retain an explicit readiness completion signal.');
+if (!nativeReadinessSource.includes('markNativeRuntimeFailed')) fail('native adapter bootstrap must surface startup failures instead of hanging indefinitely.');
 
 const firebaseSource = fs.readFileSync(firebasePath, 'utf8');
-if (!firebaseSource.includes('new CustomProvider')) {
-  fail('Android Firebase App Check must use the JS CustomProvider bridge.');
+if (!firebaseSource.includes('new CustomProvider')) fail('Android Firebase App Check must use the JS CustomProvider bridge.');
+if (!firebaseSource.includes('getNativeAppCheckToken')) fail('Android Firebase App Check must obtain tokens from the native Play Integrity adapter.');
+if (!firebaseSource.includes('export function initializeNativeFirebaseAppCheck()')) fail('Android Firebase App Check must remain explicitly deferred until native Play Integrity is configured.');
+if (!firebaseSource.includes('!useFirebaseEmulators && !isNativeRuntime() && appCheckSiteKey')) fail('web reCAPTCHA App Check must remain excluded from native Android builds.');
+if (!firebaseSource.includes('initializeAuth(app, { persistence: inMemoryPersistence })')) {
+  fail('Android JS Auth must use in-memory persistence so WebView storage cannot block native-auth handoff.');
 }
-if (!firebaseSource.includes('getNativeAppCheckToken')) {
-  fail('Android Firebase App Check must obtain tokens from the native Play Integrity adapter.');
-}
-if (!firebaseSource.includes('export function initializeNativeFirebaseAppCheck()')) {
-  fail('Android Firebase App Check must remain explicitly deferred until native Play Integrity is configured.');
-}
-if (!firebaseSource.includes('!useFirebaseEmulators && !isNativeRuntime() && appCheckSiteKey')) {
-  fail('web reCAPTCHA App Check must remain excluded from native Android builds.');
-}
-if (!firebaseSource.includes('auth = getAuth(app)')) {
-  fail('Firebase JS Auth must retain one canonical Auth instance on web and Android.');
-}
-if (firebaseSource.includes('initializeAuth(app')) {
-  fail('Android must not restore the split initializeAuth path that previously diverged from web authentication.');
+if (!firebaseSource.includes(': getAuth(app)')) {
+  fail('Web Firebase Auth must retain its normal durable Firebase JS Auth instance.');
 }
 
 const nativeAppCheckSource = fs.readFileSync(runtimeNativeAppCheckPath, 'utf8');
-if (!nativeAppCheckSource.includes('configureNativeAppCheck')) {
-  fail('the native Play Integrity App Check adapter registration point is missing.');
-}
-if (!nativeAppCheckSource.includes('expireTimeMillis')) {
-  fail('native App Check tokens must include an explicit expiration time.');
-}
+if (!nativeAppCheckSource.includes('configureNativeAppCheck')) fail('the native Play Integrity App Check adapter registration point is missing.');
+if (!nativeAppCheckSource.includes('expireTimeMillis')) fail('native App Check tokens must include an explicit expiration time.');
 
 const nativeSecurityBootstrapSource = fs.readFileSync(runtimeNativeSecurityBootstrapPath, 'utf8');
 const configureIndex = nativeSecurityBootstrapSource.indexOf('configureNativeAppCheck(appCheckAdapter)');
@@ -169,10 +133,10 @@ for (const requiredSnippet of [
   'signInRuntimeWithEmail',
   'createRuntimeEmailAccount',
   'signInRuntimeWithGoogle',
+  'restoreRuntimeAuthSession',
+  'signOutRuntime',
 ]) {
-  if (!authenticationSource.includes(requiredSnippet)) {
-    fail(`runtime authentication boundary is missing ${requiredSnippet}.`);
-  }
+  if (!authenticationSource.includes(requiredSnippet)) fail(`runtime authentication boundary is missing ${requiredSnippet}.`);
 }
 
 const accountSyncSource = fs.readFileSync(accountSyncPath, 'utf8');
@@ -180,10 +144,10 @@ for (const requiredSnippet of [
   'signInRuntimeWithEmail(auth, email, password)',
   'createRuntimeEmailAccount(auth, email, password)',
   'signInRuntimeWithGoogle(auth)',
+  'restoreRuntimeAuthSession(auth)',
+  'signOutRuntime(auth)',
 ]) {
-  if (!accountSyncSource.includes(requiredSnippet)) {
-    fail(`AccountSyncContext must route authentication through the canonical runtime adapter: ${requiredSnippet}`);
-  }
+  if (!accountSyncSource.includes(requiredSnippet)) fail(`AccountSyncContext must route authentication through the canonical runtime adapter: ${requiredSnippet}`);
 }
 if (accountSyncSource.includes('signInWithEmailAndPassword(auth') || accountSyncSource.includes('createUserWithEmailAndPassword(auth')) {
   fail('AccountSyncContext must not bypass the runtime authentication boundary with direct Firebase JS email credential calls.');
@@ -198,20 +162,22 @@ for (const requiredSnippet of [
   'FirebaseAuthentication.getIdToken',
   'signInWithCustomToken',
   'NATIVE_AUTH_BRIDGE_URL',
+  'NATIVE_AUTH_STEP_TIMEOUT_MS',
+  'NATIVE_AUTH_BRIDGE_TIMEOUT_MS',
+  'withTimeout(',
   'exchangeNativeAuthSession',
   'fetch(NATIVE_AUTH_BRIDGE_URL',
   'body: JSON.stringify({ data: { nativeIdToken } })',
+  'skipNativeAuth: false',
   'useCredentialManager: false',
+  'restoreSession:',
+  'signOut:',
   "CapacitorApp.addListener('appStateChange'",
   'initializeNativeSecurityRuntime',
 ]) {
-  if (!androidRuntimeSource.includes(requiredSnippet)) {
-    fail(`Android runtime adapter is missing required native integration: ${requiredSnippet}`);
-  }
+  if (!androidRuntimeSource.includes(requiredSnippet)) fail(`Android runtime adapter is missing required native integration: ${requiredSnippet}`);
 }
-if (androidRuntimeSource.includes('useCredentialManager: true')) {
-  fail('Android Google sign-in must not re-enable Credential Manager until the physical-device regression is resolved.');
-}
+if (androidRuntimeSource.includes('useCredentialManager: true')) fail('Android Google sign-in must not re-enable Credential Manager until the physical-device regression is resolved.');
 if (androidRuntimeSource.includes('signInWithEmailAndPassword(firebaseAuth') || androidRuntimeSource.includes('createUserWithEmailAndPassword(firebaseAuth')) {
   fail('Android email credentials must be verified by native Firebase Authentication, not by the WebView Firebase JS SDK.');
 }
@@ -231,9 +197,7 @@ for (const requiredSnippet of [
   'verifyIdToken(nativeIdToken, true)',
   'createCustomToken(decoded.uid)',
 ]) {
-  if (!nativeAuthBridgeSource.includes(requiredSnippet)) {
-    fail(`native auth bootstrap bridge is missing required security invariant: ${requiredSnippet}`);
-  }
+  if (!nativeAuthBridgeSource.includes(requiredSnippet)) fail(`native auth bootstrap bridge is missing required security invariant: ${requiredSnippet}`);
 }
 if (nativeAuthBridgeSource.includes('createCustomToken(data') || nativeAuthBridgeSource.includes('createCustomToken(request')) {
   fail('native auth bridge must mint a custom token only for the UID verified from the native Firebase ID token.');
@@ -244,36 +208,20 @@ if (!functionsIndexSource.includes("export { exchangeNativeAuthSession } from '.
 }
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');
-if (!subscriptionSource.includes('isAvailable: () => !isNativeRuntime()')) {
-  fail('browser subscription management must remain unavailable inside native builds.');
-}
-if (!subscriptionSource.includes("if (isNativeRuntime()) throw new Error('Subscription management is not connected to this app store build yet.')")) {
-  fail('browser subscription management must fail closed if invoked from a native runtime.');
-}
-if (!androidRuntimeSource.includes('configureRuntimeSubscriptionManagement')) {
-  fail('Android must install its native subscription-management adapter.');
-}
+if (!subscriptionSource.includes('isAvailable: () => !isNativeRuntime()')) fail('browser subscription management must remain unavailable inside native builds.');
+if (!subscriptionSource.includes("if (isNativeRuntime()) throw new Error('Subscription management is not connected to this app store build yet.')")) fail('browser subscription management must fail closed if invoked from a native runtime.');
+if (!androidRuntimeSource.includes('configureRuntimeSubscriptionManagement')) fail('Android must install its native subscription-management adapter.');
 
 const reauthenticationSource = fs.readFileSync(runtimeReauthenticationPath, 'utf8');
-if (!reauthenticationSource.includes('nativeSafeReauthenticationAdapter')) {
-  fail('security-sensitive reauthentication must fail closed until the native Android adapter is installed.');
-}
+if (!reauthenticationSource.includes('nativeSafeReauthenticationAdapter')) fail('security-sensitive reauthentication must fail closed until the native Android adapter is installed.');
 
 const exportSource = fs.readFileSync(runtimeExportPath, 'utf8');
-if (!exportSource.includes('nativeSafeExportAdapter')) {
-  fail('native exports must not fall back to browser download behavior.');
-}
+if (!exportSource.includes('nativeSafeExportAdapter')) fail('native exports must not fall back to browser download behavior.');
 
 const googleBooksSource = fs.readFileSync(googleBooksPath, 'utf8');
-if (!googleBooksSource.includes("provider: 'google-books'")) {
-  fail('Android Google Books traffic must stay behind the protected Firebase catalog gateway.');
-}
-if (!googleBooksSource.includes("httpsCallable<") || !googleBooksSource.includes("'searchHardcoverBooks'")) {
-  fail('Google Books must retain the App Check-protected Firebase catalog transport used by Android.');
-}
-if (!googleBooksSource.includes('functions && auth?.currentUser')) {
-  fail('signed-in catalog enrichment must prefer the protected Firebase transport before any web-only direct fallback.');
-}
+if (!googleBooksSource.includes("provider: 'google-books'")) fail('Android Google Books traffic must stay behind the protected Firebase catalog gateway.');
+if (!googleBooksSource.includes("httpsCallable<") || !googleBooksSource.includes("'searchHardcoverBooks'")) fail('Google Books must retain the App Check-protected Firebase catalog transport used by Android.');
+if (!googleBooksSource.includes('functions && auth?.currentUser')) fail('signed-in catalog enrichment must prefer the protected Firebase transport before any web-only direct fallback.');
 
 const androidDir = path.join(cwd, 'android');
 if (fs.existsSync(androidDir)) {
@@ -284,41 +232,27 @@ if (fs.existsSync(androidDir)) {
   if (!/compileSdkVersion\s*=\s*36/.test(variables)) fail('generated Android compileSdkVersion must remain 36.');
   if (!/targetSdkVersion\s*=\s*36/.test(variables)) fail('generated Android targetSdkVersion must remain 36.');
   if (!/rgcfaIncludeGoogle\s*=\s*true/.test(variables)) fail('native Google sign-in dependencies must remain enabled.');
-  if (!/androidxCredentialsVersion\s*=\s*["']1\.3\.0["']/.test(variables)) {
-    fail('native Google Credential Manager dependency baseline is missing.');
-  }
+  if (!/androidxCredentialsVersion\s*=\s*["']1\.3\.0["']/.test(variables)) fail('native Google Credential Manager dependency baseline is missing.');
 
   const manifestPath = path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
   if (!fs.existsSync(manifestPath)) fail('generated Android main manifest is missing.');
   const manifest = fs.readFileSync(manifestPath, 'utf8');
-  if (!/android:allowBackup=["']false["']/.test(manifest)) {
-    fail('Android production backups must remain disabled for account-owned local data.');
-  }
-  if (!/android:usesCleartextTraffic=["']false["']/.test(manifest)) {
-    fail('Android production cleartext traffic must remain disabled.');
-  }
+  if (!/android:allowBackup=["']false["']/.test(manifest)) fail('Android production backups must remain disabled for account-owned local data.');
+  if (!/android:usesCleartextTraffic=["']false["']/.test(manifest)) fail('Android production cleartext traffic must remain disabled.');
 
   const debugManifestPath = path.join(androidDir, 'app', 'src', 'debug', 'AndroidManifest.xml');
   if (!fs.existsSync(debugManifestPath)) fail('Android debug manifest is missing.');
   const debugManifest = fs.readFileSync(debugManifestPath, 'utf8');
-  if (!/android:usesCleartextTraffic=["']true["']/.test(debugManifest)) {
-    fail('Android debug builds must retain explicit HTTP support for local emulator/LAN development.');
-  }
+  if (!/android:usesCleartextTraffic=["']true["']/.test(debugManifest)) fail('Android debug builds must retain explicit HTTP support for local emulator/LAN development.');
 
   const appGradlePath = path.join(androidDir, 'app', 'build.gradle');
   if (!fs.existsSync(appGradlePath)) fail('generated Android app/build.gradle is missing.');
   const appGradle = fs.readFileSync(appGradlePath, 'utf8');
-  if (!/applicationId\s+["']com\.inkydameinteractive\.inkbound["']/.test(appGradle)) {
-    fail('generated Android applicationId must remain com.inkydameinteractive.inkbound.');
-  }
+  if (!/applicationId\s+["']com\.inkydameinteractive\.inkbound["']/.test(appGradle)) fail('generated Android applicationId must remain com.inkydameinteractive.inkbound.');
   const versionCodeMatch = /versionCode\s+(\d+)/.exec(appGradle);
   const versionNameMatch = /versionName\s+["']([^"']+)["']/.exec(appGradle);
-  if (Number(versionCodeMatch?.[1]) !== releaseMetadata.versionCode) {
-    fail('generated Android versionCode does not match android-release.json.');
-  }
-  if (versionNameMatch?.[1] !== releaseMetadata.versionName) {
-    fail('generated Android versionName does not match android-release.json.');
-  }
+  if (Number(versionCodeMatch?.[1]) !== releaseMetadata.versionCode) fail('generated Android versionCode does not match android-release.json.');
+  if (versionNameMatch?.[1] !== releaseMetadata.versionName) fail('generated Android versionName does not match android-release.json.');
 }
 
-console.log(`Inkbound Android configuration verified (com.inkydameinteractive.inkbound, ${releaseMetadata.versionName} (${releaseMetadata.versionCode}), API 36 baseline, native auth -> canonical JS session bridge).`);
+console.log(`Inkbound Android configuration verified (com.inkydameinteractive.inkbound, ${releaseMetadata.versionName} (${releaseMetadata.versionCode}), API 36 baseline, native durable auth -> in-memory canonical JS session bridge).`);
