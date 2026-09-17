@@ -3,7 +3,12 @@ import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
+import {
+  flushLargeBrowserStorage,
+  hydrateLargeBrowserStorage,
+} from '../../platform/largeBrowserStorage';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
+import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
@@ -89,6 +94,12 @@ function newestSnapshotUpdateMillis(
  * account is explicitly marked as requiring hydration so local edits made while
  * offline can be preserved and merged when connectivity returns instead of being
  * mistaken for a fully hydrated library.
+ *
+ * Android keeps the normal Build 27.6 startup/auth path. Only after a signed-in
+ * account actually needs first-device hydration do we restore/install the same
+ * canonical large-library storage bridge used by web. This avoids WebView
+ * localStorage quota failures for very large libraries without adding a second
+ * Android persistence owner or gating authentication on IndexedDB startup.
  */
 export const OneShotCloudHydrationBridge: React.FC = () => {
   const { user } = useAccountSync();
@@ -107,13 +118,19 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
     const hydrate = async () => {
       if (disposed || hydrationRunning || !navigator.onLine) return;
-      if (hasEstablishedLocalWorkingCopy(uid)) {
-        openFromLocal();
-        return;
-      }
 
       hydrationRunning = true;
       try {
+        if (isNativeRuntime()) {
+          await hydrateLargeBrowserStorage();
+          if (disposed) return;
+        }
+
+        if (hasEstablishedLocalWorkingCopy(uid)) {
+          openFromLocal();
+          return;
+        }
+
         const booksRef = collection(db!, 'users', uid, 'books');
         const sessionsRef = collection(db!, 'users', uid, 'sessions');
         const profileRef = doc(db!, 'users', uid, 'profile', 'current');
@@ -144,11 +161,11 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
           storage.removeItem(PROFILE_KEY);
         }
 
-        // Delta sync starts immediately after hydration. Seed its cursor from the
-        // newest server timestamp actually present in this full snapshot so it
-        // does not reread a very large library from the beginning. Reduce rather
-        // than spreading tens of thousands of timestamps into Math.max; large
-        // libraries can exceed JavaScript's function-argument limit.
+        if (isNativeRuntime()) {
+          await flushLargeBrowserStorage();
+          if (disposed) return;
+        }
+
         let hydrationCursorMillis = newestSnapshotUpdateMillis(bookSnapshot.docs);
         hydrationCursorMillis = newestSnapshotUpdateMillis(sessionSnapshot.docs, hydrationCursorMillis);
         if (profileSnapshot.exists()) {
