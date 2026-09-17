@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
@@ -8,13 +8,8 @@ import {
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 import { CostSafeCloudPersistenceBridge } from './CostSafeCloudPersistenceBridge';
-import { FullCloudReconciliationBridge } from './FullCloudReconciliationBridge';
 import { OneShotCloudHydrationBridge } from './OneShotCloudHydrationBridge';
-import {
-  FULL_RECONCILIATION_VERSION,
-  fullReconciliationVersionKey,
-  SYNC_STORAGE_KEYS,
-} from './storageKeys';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
@@ -42,40 +37,30 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   }
 }
 
-function hasCompletedFullReconciliation(uid: string): boolean {
-  try {
-    return getRuntimeStorage().getItem(fullReconciliationVersionKey(uid)) === FULL_RECONCILIATION_VERSION;
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Existing devices keep a local-first working copy, but they must first perform
- * the one-time Build 27 full reconciliation. Delta sync can only see records
- * newer than its cursor, so an older stale browser record would otherwise never
- * be reconsidered even though newly-added Android books sync correctly.
+ * Existing devices already have a durable local working copy, so they should not
+ * pay for a full Firestore library read every time Inkbound opens. New devices
+ * get one guarded cloud restore with no collection listeners.
  *
- * New devices still use the one-shot cloud restore. That restore marks the full
- * reconciliation version complete because its first working copy came directly
- * from the current cloud snapshot.
+ * An established empty library is still a valid working copy. Treating [] as a
+ * brand-new device used to rehydrate books after an offline "delete everything"
+ * action and could also cause repeated full reads for readers whose library was
+ * intentionally empty. A separate hydration-required marker keeps account
+ * switches from accidentally skipping the new reader's first cloud reconciliation.
  */
 export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   const { user } = useAccountSync();
   const uid = user?.uid;
   const [localLibraryReady, setLocalLibraryReady] = useState(false);
-  const [fullReconciliationComplete, setFullReconciliationComplete] = useState(false);
 
   useEffect(() => {
     if (!uid) {
       setLocalLibraryReady(false);
-      setFullReconciliationComplete(false);
       return undefined;
     }
 
     const refreshReadiness = () => {
       setLocalLibraryReady(hasEstablishedLocalWorkingCopy(uid));
-      setFullReconciliationComplete(hasCompletedFullReconciliation(uid));
     };
     refreshReadiness();
 
@@ -93,14 +78,8 @@ export const AdaptiveCloudPersistenceBridge: React.FC = () => {
     };
   }, [uid]);
 
-  const handleFullReconciliationComplete = useCallback(() => {
-    setFullReconciliationComplete(true);
-  }, []);
-
   if (!uid) return null;
-  if (!localLibraryReady) return <OneShotCloudHydrationBridge />;
-  if (!fullReconciliationComplete) {
-    return <FullCloudReconciliationBridge onComplete={handleFullReconciliationComplete} />;
-  }
-  return <CostSafeCloudPersistenceBridge />;
+  return localLibraryReady
+    ? <CostSafeCloudPersistenceBridge />
+    : <OneShotCloudHydrationBridge />;
 };
