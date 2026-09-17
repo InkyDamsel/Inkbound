@@ -4,7 +4,7 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { signInWithCustomToken } from 'firebase/auth';
+import { signInWithCustomToken, signOut as signOutJsAuth } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
 import { configureRuntimeAuthentication } from './runtimeAuthentication';
@@ -46,6 +46,24 @@ interface NativeAuthBridgeResponse {
 
 const PlayBilling = registerPlugin<InkboundPlayBillingPlugin>('InkboundPlayBilling');
 const NATIVE_AUTH_BRIDGE_URL = 'https://us-central1-inkbound-app.cloudfunctions.net/exchangeNativeAuthSession';
+const NATIVE_AUTH_STEP_TIMEOUT_MS = 15000;
+const NATIVE_AUTH_BRIDGE_TIMEOUT_MS = 15000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 const sanitizeExportFilename = (filename: string) => {
   const cleaned = filename.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+/, '');
@@ -69,12 +87,7 @@ const blobToBase64 = async (blob: Blob): Promise<string> => {
 const shareCachedFile = async (uri: string, title?: string, text?: string) => {
   const supported = await Share.canShare();
   if (!supported.value) throw new Error('Android sharing is unavailable on this device.');
-  await Share.share({
-    files: [uri],
-    title,
-    text,
-    dialogTitle: title ?? 'Share Inkbound export',
-  });
+  await Share.share({ files: [uri], title, text, dialogTitle: title ?? 'Share Inkbound export' });
 };
 
 const sha256Hex = async (value: string) => {
@@ -86,71 +99,77 @@ function readBridgeResult(payload: unknown): NativeAuthBridgeResponse {
   if (!payload || typeof payload !== 'object') return {};
   const body = payload as Record<string, unknown>;
   const candidate = body.result ?? body.data;
-  return candidate && typeof candidate === 'object'
-    ? candidate as NativeAuthBridgeResponse
-    : {};
+  return candidate && typeof candidate === 'object' ? candidate as NativeAuthBridgeResponse : {};
 }
 
 async function exchangeNativeIdToken(nativeIdToken: string): Promise<NativeAuthBridgeResponse> {
-  // Do not use the Firebase Functions JS client for this bootstrap call. The JS
-  // client automatically attaches an App Check token when App Check is present;
-  // a sideloaded release can receive a dummy/invalid Play Integrity token, and
-  // callable infrastructure rejects an invalid App Check header even when this
-  // one bootstrap function does not enforce App Check. A plain callable-protocol
-  // POST sends only the native Firebase ID token that the server verifies.
-  const response = await fetch(NATIVE_AUTH_BRIDGE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: { nativeIdToken } }),
-  });
-
-  let payload: unknown = null;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), NATIVE_AUTH_BRIDGE_TIMEOUT_MS);
   try {
-    payload = await response.json();
-  } catch {
-    // Keep the user-facing error stable below if the backend returned non-JSON.
-  }
+    const response = await fetch(NATIVE_AUTH_BRIDGE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: { nativeIdToken } }),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
-    const error = body.error && typeof body.error === 'object' ? body.error as Record<string, unknown> : {};
-    const message = typeof error.message === 'string' && error.message.trim()
-      ? error.message.trim()
-      : 'Inkbound could not verify the Android sign-in session.';
-    throw new Error(message);
-  }
+    let payload: unknown = null;
+    try { payload = await response.json(); } catch { /* handled below */ }
 
-  return readBridgeResult(payload);
+    if (!response.ok) {
+      const body = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+      const error = body.error && typeof body.error === 'object' ? body.error as Record<string, unknown> : {};
+      const message = typeof error.message === 'string' && error.message.trim()
+        ? error.message.trim()
+        : 'Inkbound could not verify the Android sign-in session.';
+      throw new Error(message);
+    }
+
+    return readBridgeResult(payload);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Inkbound account verification timed out. Please try again.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 async function bridgeNativeFirebaseSessionToJs(firebaseAuth: NonNullable<typeof auth>): Promise<void> {
-  const nativeUser = (await FirebaseAuthentication.getCurrentUser()).user;
+  const nativeUser = (await withTimeout(
+    FirebaseAuthentication.getCurrentUser(),
+    NATIVE_AUTH_STEP_TIMEOUT_MS,
+    'Inkbound could not read the Android account session.',
+  )).user;
   if (!nativeUser?.uid) throw new Error('Android authentication did not create a Firebase user session.');
 
-  const tokenResult = await FirebaseAuthentication.getIdToken({ forceRefresh: true });
+  if (firebaseAuth.currentUser?.uid === nativeUser.uid) return;
+
+  const tokenResult = await withTimeout(
+    FirebaseAuthentication.getIdToken({ forceRefresh: true }),
+    NATIVE_AUTH_STEP_TIMEOUT_MS,
+    'Inkbound could not obtain the Android account token.',
+  );
   const nativeIdToken = tokenResult.token?.trim() ?? '';
   if (!nativeIdToken) throw new Error('Android authentication did not return a Firebase identity token.');
 
   const bridgeResult = await exchangeNativeIdToken(nativeIdToken);
   const customToken = bridgeResult.customToken?.trim() ?? '';
   const bridgedUid = bridgeResult.uid?.trim() ?? '';
-
   if (!customToken || bridgedUid !== nativeUser.uid) {
     throw new Error('Inkbound could not verify the Android Firebase account handoff.');
   }
 
-  const jsResult = await signInWithCustomToken(firebaseAuth, customToken);
+  const jsResult = await withTimeout(
+    signInWithCustomToken(firebaseAuth, customToken),
+    NATIVE_AUTH_STEP_TIMEOUT_MS,
+    'Inkbound could not finish the Android account handoff.',
+  );
   if (jsResult.user.uid !== nativeUser.uid) {
-    await firebaseAuth.signOut();
+    await signOutJsAuth(firebaseAuth).catch(() => undefined);
     throw new Error('Inkbound blocked an Android account handoff with a mismatched Firebase user.');
   }
-
-  // Native Firebase is only the credential verifier. Once the canonical JS Auth
-  // session exists, clear the temporary native session so Inkbound never has two
-  // independently authoritative account states.
-  await FirebaseAuthentication.signOut().catch((error) => {
-    console.warn('Inkbound could not clear the temporary native Firebase auth session.', error);
-  });
 }
 
 async function verifyPlayPurchase(purchase: PlayPurchaseResult) {
@@ -173,26 +192,57 @@ export async function initializeAndroidRuntime() {
   const nativeAppCheckReady = FirebaseAppCheck.initialize({ isTokenAutoRefreshEnabled: true });
 
   configureRuntimeAuthentication({
-    // Android credential verification is native. The JS Firebase Auth instance
-    // remains the only session consumed by Inkbound after the verified native
-    // UID is exchanged for a custom token.
     preparePersistence: async () => undefined,
+    restoreSession: async (firebaseAuth) => {
+      const nativeUser = (await FirebaseAuthentication.getCurrentUser()).user;
+      if (!nativeUser?.uid) return;
+      await bridgeNativeFirebaseSessionToJs(firebaseAuth);
+    },
     signInWithEmail: async (firebaseAuth, email, password) => {
-      await FirebaseAuthentication.signOut().catch(() => undefined);
-      await FirebaseAuthentication.signInWithEmailAndPassword({ email: email.trim(), password });
+      await withTimeout(
+        FirebaseAuthentication.signInWithEmailAndPassword({
+          email: email.trim(),
+          password,
+          skipNativeAuth: false,
+        }),
+        NATIVE_AUTH_STEP_TIMEOUT_MS,
+        'Email sign-in timed out before Firebase responded.',
+      );
       await bridgeNativeFirebaseSessionToJs(firebaseAuth);
     },
     createEmailAccount: async (firebaseAuth, email, password) => {
-      await FirebaseAuthentication.signOut().catch(() => undefined);
-      await FirebaseAuthentication.createUserWithEmailAndPassword({ email: email.trim(), password });
+      await withTimeout(
+        FirebaseAuthentication.createUserWithEmailAndPassword({
+          email: email.trim(),
+          password,
+          skipNativeAuth: false,
+        }),
+        NATIVE_AUTH_STEP_TIMEOUT_MS,
+        'Account creation timed out before Firebase responded.',
+      );
       await bridgeNativeFirebaseSessionToJs(firebaseAuth);
     },
     signInWithGoogle: async (firebaseAuth) => {
-      await FirebaseAuthentication.signOut().catch(() => undefined);
-      await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
+      await withTimeout(
+        FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: false, useCredentialManager: false }),
+        NATIVE_AUTH_STEP_TIMEOUT_MS,
+        'Google sign-in timed out before Firebase responded.',
+      );
       await bridgeNativeFirebaseSessionToJs(firebaseAuth);
     },
+    signOut: async (firebaseAuth) => {
+      await Promise.allSettled([
+        FirebaseAuthentication.signOut(),
+        signOutJsAuth(firebaseAuth),
+      ]);
+    },
   });
+
+  if (auth) {
+    void bridgeNativeFirebaseSessionToJs(auth).catch((error) => {
+      console.warn('Inkbound Android could not restore the native Firebase account into the JS session.', error);
+    });
+  }
 
   configureRuntimeReauthentication({
     getRequirement: (user) => {
@@ -205,21 +255,27 @@ export async function initializeAndroidRuntime() {
       if (!auth) throw new Error('Inkbound authentication is unavailable.');
       const providers = new Set(user.providerData.map((provider) => provider.providerId));
 
-      await FirebaseAuthentication.signOut().catch(() => undefined);
       if (providers.has('google.com')) {
-        await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
+        await withTimeout(
+          FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: false, useCredentialManager: false }),
+          NATIVE_AUTH_STEP_TIMEOUT_MS,
+          'Google verification timed out.',
+        );
       } else if (providers.has('password')) {
         const email = user.email?.trim();
         const password = options.password ?? '';
         if (!email || !password) throw new Error('Enter your password to verify this account before deleting it.');
-        await FirebaseAuthentication.signInWithEmailAndPassword({ email, password });
+        await withTimeout(
+          FirebaseAuthentication.signInWithEmailAndPassword({ email, password, skipNativeAuth: false }),
+          NATIVE_AUTH_STEP_TIMEOUT_MS,
+          'Password verification timed out.',
+        );
       } else {
         throw new Error('This sign-in method cannot be verified on Android yet.');
       }
 
       const nativeUser = (await FirebaseAuthentication.getCurrentUser()).user;
       if (nativeUser?.uid !== user.uid) {
-        await FirebaseAuthentication.signOut().catch(() => undefined);
         throw new Error('The verified Android account does not match the signed-in Inkbound account.');
       }
       await bridgeNativeFirebaseSessionToJs(auth);
