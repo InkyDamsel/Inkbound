@@ -138,21 +138,31 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
 };
 
 /**
- * Large libraries must use the same IndexedDB-backed storage boundary on web and
- * Android. Keeping Android on raw localStorage made a fresh device fail forever
- * at "Opening Inkbound" when a monster cloud library exceeded WebView storage
- * quota: cloud hydration succeeded, but persisting inkbound_books threw before
- * the canonical owner/hydration markers could be completed.
+ * Large browser libraries are restored from IndexedDB after first paint. The
+ * storage bridge rejects writes to sync-critical keys until that restore is done
+ * so an empty initial render cannot erase a reader's working copy. Sync bridges
+ * must respect the same boundary or their valid cloud writes can be discarded
+ * and then replaced by the older IndexedDB snapshot a moment later.
  *
- * Install the bridge before React mounts, hydrate the startup keys, then release
- * every cloud consumer through this one gate. The bridge keeps a synchronous
- * cache in front of IndexedDB, so existing runtime-storage consumers retain one
- * source of truth without an Android-specific library implementation.
+ * The event is only a wake-up signal; readiness is also queried synchronously.
+ * On fast browser instances (especially Safari/iPad) hydration can finish before
+ * React's effect subscribes. Without the state probe that browser would wait for
+ * an event that already fired and none of the cloud sync bridges would ever mount.
+ *
+ * Native Android does not use this browser IndexedDB startup path.
  */
-const RuntimeStorageHydrationGate = ({ children }: PropsWithChildren) => {
-  const [ready, setReady] = useState(() => isLargeBrowserStorageHydrated());
+const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
+  const nativeRuntime = isNativeRuntime();
+  const [ready, setReady] = useState(
+    () => nativeRuntime || isLargeBrowserStorageHydrated(),
+  );
 
   useEffect(() => {
+    if (nativeRuntime) {
+      setReady(true);
+      return undefined;
+    }
+
     const handleHydrated = () => setReady(true);
     window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
 
@@ -161,7 +171,7 @@ const RuntimeStorageHydrationGate = ({ children }: PropsWithChildren) => {
     if (isLargeBrowserStorageHydrated()) setReady(true);
 
     return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
-  }, []);
+  }, [nativeRuntime]);
 
   return ready ? <>{children}</> : null;
 };
@@ -173,7 +183,7 @@ const InkboundApplication = () => (
         <AccountSyncProvider>
           <AuthSessionGate>
             <SecurityBootstrap />
-            <RuntimeStorageHydrationGate>
+            <BrowserStorageHydrationGate>
               <LibrarySyncCheckpointBridge />
               <AdaptiveCloudPersistenceBridge />
               <CloudServerRefreshBridge />
@@ -186,7 +196,7 @@ const InkboundApplication = () => (
               <PhotoMemoryAutoSyncBridge />
               <LegacyBookCoverMigrationBridge />
               <CanonicalLibraryNormalizationBridge />
-            </RuntimeStorageHydrationGate>
+            </BrowserStorageHydrationGate>
             <ThemePersistenceBridge />
             <CloudDataRefreshBoundary>
               <RecoverySafetyBridge />
@@ -201,10 +211,7 @@ const InkboundApplication = () => (
 );
 
 export async function mountApplication(rootElement: HTMLElement) {
-  // The same large-library storage owner is used by web and the Android WebView.
-  // This must run before React so an empty initial state cannot overwrite a
-  // durable IndexedDB copy while startup hydration is still in flight.
-  prepareLargeBrowserStorageForStartup();
+  if (!isNativeRuntime()) prepareLargeBrowserStorageForStartup();
 
   isolateDevelopmentBrowserStorage();
   purgeUnverifiedLegacyImportMetadata();
@@ -230,9 +237,11 @@ export async function mountApplication(rootElement: HTMLElement) {
     </StrictMode>,
   );
 
-  window.setTimeout(() => {
-    void hydrateLargeBrowserStorage().finally(() => {
-      void hydrateDeferredLargeBrowserStorage();
-    });
-  }, 0);
+  if (!isNativeRuntime()) {
+    window.setTimeout(() => {
+      void hydrateLargeBrowserStorage().finally(() => {
+        void hydrateDeferredLargeBrowserStorage();
+      });
+    }, 0);
+  }
 }
