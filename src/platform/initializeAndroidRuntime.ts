@@ -4,14 +4,7 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import {
-  EmailAuthProvider,
-  GoogleAuthProvider,
-  browserLocalPersistence,
-  reauthenticateWithCredential,
-  setPersistence,
-  signInWithCredential,
-} from 'firebase/auth';
+import { signInWithCustomToken } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
 import { configureRuntimeAuthentication } from './runtimeAuthentication';
@@ -69,9 +62,7 @@ const blobToBase64 = async (blob: Blob): Promise<string> => {
 
 const shareCachedFile = async (uri: string, title?: string, text?: string) => {
   const supported = await Share.canShare();
-  if (!supported.value) {
-    throw new Error('Android sharing is unavailable on this device.');
-  }
+  if (!supported.value) throw new Error('Android sharing is unavailable on this device.');
   await Share.share({
     files: [uri],
     title,
@@ -80,82 +71,79 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
   });
 };
 
-/**
- * Google is the only Android sign-in method that needs a native credential
- * acquisition step. Firebase JS Auth remains the canonical Inkbound session
- * owner. Keep the currently verified provider implementation isolated here while
- * the shared JS Auth initialization/persistence boundary is restored; do not mix
- * two native Google implementations in the same sign-in attempt.
- */
-const requestNativeGoogleCredential = () => FirebaseAuthentication.signInWithGoogle({
-  skipNativeAuth: true,
-  useCredentialManager: false,
-});
-
 const sha256Hex = async (value: string) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 };
 
-const verifyPlayPurchase = async (purchase: PlayPurchaseResult) => {
+async function bridgeNativeFirebaseSessionToJs(firebaseAuth: NonNullable<typeof auth>): Promise<void> {
+  if (!functions) throw new Error('Inkbound account services are unavailable right now.');
+
+  const nativeUser = (await FirebaseAuthentication.getCurrentUser()).user;
+  if (!nativeUser?.uid) throw new Error('Android authentication did not create a Firebase user session.');
+
+  const tokenResult = await FirebaseAuthentication.getIdToken({ forceRefresh: true });
+  const nativeIdToken = tokenResult.token?.trim() ?? '';
+  if (!nativeIdToken) throw new Error('Android authentication did not return a Firebase identity token.');
+
+  const exchange = httpsCallable<{ nativeIdToken: string }, { customToken: string; uid: string }>(
+    functions,
+    'exchangeNativeAuthSession',
+  );
+  const response = await exchange({ nativeIdToken });
+  const customToken = response.data.customToken?.trim() ?? '';
+  const bridgedUid = response.data.uid?.trim() ?? '';
+
+  if (!customToken || bridgedUid !== nativeUser.uid) {
+    throw new Error('Inkbound could not verify the Android Firebase account handoff.');
+  }
+
+  const jsResult = await signInWithCustomToken(firebaseAuth, customToken);
+  if (jsResult.user.uid !== nativeUser.uid) {
+    await firebaseAuth.signOut();
+    throw new Error('Inkbound blocked an Android account handoff with a mismatched Firebase user.');
+  }
+
+  await FirebaseAuthentication.signOut().catch((error) => {
+    console.warn('Inkbound could not clear the temporary native Firebase auth session.', error);
+  });
+}
+
+async function verifyPlayPurchase(purchase: PlayPurchaseResult) {
   const purchaseToken = purchase.purchaseToken?.trim() ?? '';
   if (!purchaseToken) throw new Error('Google Play did not return a purchase token.');
   if (purchase.pending && !purchase.purchased) throw new Error('Your Google Play purchase is pending. Premium will unlock after Google confirms payment.');
   if (!purchase.purchased) throw new Error('Google Play has not completed this Premium purchase.');
   if (!functions) throw new Error('Inkbound billing verification is unavailable right now.');
 
-  const verifySubscription = httpsCallable<{ purchaseToken: string }, { verified: boolean }>(
-    functions,
-    'verifyGooglePlaySubscription',
-  );
+  const verifySubscription = httpsCallable<{ purchaseToken: string }, { verified: boolean }>(functions, 'verifyGooglePlaySubscription');
   const response = await verifySubscription({ purchaseToken });
   if (!response.data.verified) throw new Error('Google Play could not verify Inkbound Premium.');
-
   if (!purchase.acknowledged) await PlayBilling.acknowledge({ purchaseToken });
   signalPremiumEntitlementRefresh();
-};
+}
 
-/**
- * Installs Android-native service adapters while preserving Inkbound's existing
- * Firebase JS clients as the single auth/App Check/session/entitlement authority.
- *
- * Native plugins supply device capabilities only:
- * - Play Integrity -> Firebase JS App Check CustomProvider
- * - Google native sign-in -> Firebase JS Auth credential
- * - Google Play Billing -> verified Firebase Premium entitlement
- * - Capacitor App lifecycle -> Inkbound runtime resume signal
- * - Filesystem/Share -> user-owned export/share flows
- */
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
-  const nativeAppCheckReady = FirebaseAppCheck.initialize({
-    isTokenAutoRefreshEnabled: true,
-  });
+  const nativeAppCheckReady = FirebaseAppCheck.initialize({ isTokenAutoRefreshEnabled: true });
 
   configureRuntimeAuthentication({
-    // Firebase JS Auth is the single account/session authority. Persistence is
-    // best-effort on Android: some WebViews reject setPersistence even though
-    // Firebase Auth itself can still authenticate normally. Never let a storage
-    // preference prevent the reviewer from signing in.
-    preparePersistence: async (firebaseAuth) => {
-      try {
-        await setPersistence(firebaseAuth, browserLocalPersistence);
-      } catch (error) {
-        console.warn('Inkbound Android could not change Firebase auth persistence; continuing sign-in with Firebase current persistence.', error);
-      }
+    preparePersistence: async () => undefined,
+    signInWithEmail: async (firebaseAuth, email, password) => {
+      await FirebaseAuthentication.signOut().catch(() => undefined);
+      await FirebaseAuthentication.signInWithEmailAndPassword({ email: email.trim(), password });
+      await bridgeNativeFirebaseSessionToJs(firebaseAuth);
+    },
+    createEmailAccount: async (firebaseAuth, email, password) => {
+      await FirebaseAuthentication.signOut().catch(() => undefined);
+      await FirebaseAuthentication.createUserWithEmailAndPassword({ email: email.trim(), password });
+      await bridgeNativeFirebaseSessionToJs(firebaseAuth);
     },
     signInWithGoogle: async (firebaseAuth) => {
-      const result = await requestNativeGoogleCredential();
-      const idToken = result.credential?.idToken ?? '';
-      const accessToken = result.credential?.accessToken ?? '';
-      if (!idToken) {
-        throw new Error('Google sign-in did not return an Android identity token.');
-      }
-      await signInWithCredential(
-        firebaseAuth,
-        GoogleAuthProvider.credential(idToken, accessToken || undefined),
-      );
+      await FirebaseAuthentication.signOut().catch(() => undefined);
+      await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
+      await bridgeNativeFirebaseSessionToJs(firebaseAuth);
     },
   });
 
@@ -167,35 +155,28 @@ export async function initializeAndroidRuntime() {
       return 'unsupported';
     },
     reauthenticate: async (user, options = {}) => {
+      if (!auth) throw new Error('Inkbound authentication is unavailable.');
       const providers = new Set(user.providerData.map((provider) => provider.providerId));
 
+      await FirebaseAuthentication.signOut().catch(() => undefined);
       if (providers.has('google.com')) {
-        const result = await requestNativeGoogleCredential();
-        const idToken = result.credential?.idToken ?? '';
-        const accessToken = result.credential?.accessToken ?? '';
-        if (!idToken) {
-          throw new Error('Google verification did not return an Android identity token.');
-        }
-        await reauthenticateWithCredential(
-          user,
-          GoogleAuthProvider.credential(idToken, accessToken || undefined),
-        );
-        await user.getIdToken(true);
-        return;
-      }
-
-      if (providers.has('password')) {
+        await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
+      } else if (providers.has('password')) {
         const email = user.email?.trim();
         const password = options.password ?? '';
-        if (!email || !password) {
-          throw new Error('Enter your password to verify this account before deleting it.');
-        }
-        await reauthenticateWithCredential(user, EmailAuthProvider.credential(email, password));
-        await user.getIdToken(true);
-        return;
+        if (!email || !password) throw new Error('Enter your password to verify this account before deleting it.');
+        await FirebaseAuthentication.signInWithEmailAndPassword({ email, password });
+      } else {
+        throw new Error('This sign-in method cannot be verified on Android yet.');
       }
 
-      throw new Error('This sign-in method cannot be verified on Android yet.');
+      const nativeUser = (await FirebaseAuthentication.getCurrentUser()).user;
+      if (nativeUser?.uid !== user.uid) {
+        await FirebaseAuthentication.signOut().catch(() => undefined);
+        throw new Error('The verified Android account does not match the signed-in Inkbound account.');
+      }
+      await bridgeNativeFirebaseSessionToJs(auth);
+      await auth.currentUser?.getIdToken(true);
     },
   });
 
@@ -205,10 +186,7 @@ export async function initializeAndroidRuntime() {
     purchase: async (plan) => {
       const uid = auth?.currentUser?.uid;
       if (!uid) throw new Error('Sign in before starting a Premium subscription.');
-      const purchase = await PlayBilling.purchase({
-        basePlanId: plan,
-        obfuscatedAccountId: await sha256Hex(uid),
-      });
+      const purchase = await PlayBilling.purchase({ basePlanId: plan, obfuscatedAccountId: await sha256Hex(uid) });
       if (purchase.canceled) return;
       await verifyPlayPurchase(purchase);
     },
@@ -241,33 +219,17 @@ export async function initializeAndroidRuntime() {
   configureRuntimeExport({
     exportTextFile: async ({ filename, contents }) => {
       const path = exportCachePath(filename);
-      const result = await Filesystem.writeFile({
-        path,
-        data: contents,
-        directory: Directory.Cache,
-        encoding: Encoding.UTF8,
-        recursive: true,
-      });
+      const result = await Filesystem.writeFile({ path, data: contents, directory: Directory.Cache, encoding: Encoding.UTF8, recursive: true });
       await shareCachedFile(result.uri, `Export ${sanitizeExportFilename(filename)}`);
     },
     exportBinaryFile: async ({ filename, contents }) => {
       const path = exportCachePath(filename);
-      const result = await Filesystem.writeFile({
-        path,
-        data: await blobToBase64(contents),
-        directory: Directory.Cache,
-        recursive: true,
-      });
+      const result = await Filesystem.writeFile({ path, data: await blobToBase64(contents), directory: Directory.Cache, recursive: true });
       await shareCachedFile(result.uri, `Export ${sanitizeExportFilename(filename)}`);
     },
     shareBinaryFile: async ({ filename, contents, title, text }) => {
       const path = exportCachePath(filename);
-      const result = await Filesystem.writeFile({
-        path,
-        data: await blobToBase64(contents),
-        directory: Directory.Cache,
-        recursive: true,
-      });
+      const result = await Filesystem.writeFile({ path, data: await blobToBase64(contents), directory: Directory.Cache, recursive: true });
       await shareCachedFile(result.uri, title ?? sanitizeExportFilename(filename), text);
       return 'shared';
     },
@@ -279,10 +241,8 @@ export async function initializeAndroidRuntime() {
       const handlePromise = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
         if (isActive && !removed) listener();
       });
-
       const handleOnline = () => listener();
       window.addEventListener('online', handleOnline);
-
       return () => {
         removed = true;
         window.removeEventListener('online', handleOnline);
@@ -295,10 +255,7 @@ export async function initializeAndroidRuntime() {
     getToken: async (forceRefresh = false) => {
       await nativeAppCheckReady;
       const result = await FirebaseAppCheck.getToken({ forceRefresh });
-      return {
-        token: result.token,
-        expireTimeMillis: result.expireTimeMillis,
-      };
+      return { token: result.token, expireTimeMillis: result.expireTimeMillis };
     },
   });
 
