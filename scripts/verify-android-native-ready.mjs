@@ -20,6 +20,8 @@ const normalizeSha1 = (value) => String(value ?? '')
   .replace(/[^0-9a-f]/gi, '')
   .toUpperCase();
 
+const formatSha1 = (value) => normalizeSha1(value).match(/.{1,2}/g)?.join(':') ?? normalizeSha1(value);
+
 if (!fs.existsSync(googleServicesPath)) {
   fail('android/app/google-services.json is missing. Add the Firebase Android app configuration before native Firebase testing or release builds.');
 }
@@ -61,9 +63,9 @@ if (webOauthClients.length === 0) {
 }
 
 // Existence of an Android OAuth client is not enough: it must match the
-// certificate that signs THIS local release. A stale google-services.json can
-// contain a perfectly valid Android client for an older/debug/Play certificate
-// while a locally installed release APK still fails Google sign-in.
+// certificate that signs THIS local release. Gradle may render fingerprint bytes
+// with whitespace around separators on some Windows/JDK combinations, so parse
+// the complete SHA1 line and normalize it instead of stopping at the first space.
 if (fs.existsSync(keystorePropertiesPath)) {
   const windows = process.platform === 'win32';
   const signingReport = windows
@@ -85,23 +87,23 @@ if (fs.existsSync(keystorePropertiesPath)) {
   const report = signingReport.stdout ?? '';
   const releaseSectionMatch = report.match(/Variant:\s*release\b[\s\S]*?(?=\nVariant:\s|\n----------|$)/i);
   const releaseSection = releaseSectionMatch?.[0] ?? '';
-  const releaseShaMatch = /SHA1:\s*([0-9A-F:]+)/i.exec(releaseSection);
-  const releaseSha1 = normalizeSha1(releaseShaMatch?.[1]);
+  const releaseShaLineMatch = /^SHA1:\s*(.+)$/im.exec(releaseSection);
+  const releaseSha1 = normalizeSha1(releaseShaLineMatch?.[1]);
 
-  if (!releaseSha1) {
-    fail('the local release signing certificate SHA-1 could not be determined from Gradle signingReport.');
+  if (!releaseSha1 || releaseSha1.length !== 40) {
+    const rawShaLine = releaseShaLineMatch?.[1]?.trim() || '(missing)';
+    fail(`the local release signing certificate SHA-1 could not be parsed from Gradle signingReport (raw SHA1 line: ${rawShaLine}).`);
   }
 
   const configuredSha1s = androidOauthClients
     .map((client) => normalizeSha1(client.android_info.certificate_hash))
-    .filter(Boolean);
+    .filter((value) => value.length === 40);
 
   if (!configuredSha1s.includes(releaseSha1)) {
-    const formattedReleaseSha1 = releaseSha1.match(/.{1,2}/g)?.join(':') ?? releaseSha1;
-    fail(`google-services.json does not contain an OAuth client for the certificate signing this local release (${formattedReleaseSha1}). Add this SHA-1 to the Firebase Android app, download a fresh google-services.json, then rebuild.`);
+    fail(`google-services.json does not contain an OAuth client for the certificate signing this local release (${formatSha1(releaseSha1)}). Firebase currently contains: ${configuredSha1s.map(formatSha1).join(', ') || '(none)'}. Add the local release SHA-1 to the Firebase Android app, download a fresh google-services.json, then rebuild.`);
   }
 
-  console.log(`Inkbound local release signing certificate verified for Google auth (${releaseSha1.match(/.{1,2}/g)?.join(':') ?? releaseSha1}).`);
+  console.log(`Inkbound local release signing certificate verified for Google auth (${formatSha1(releaseSha1)}).`);
 } else {
   console.log('Inkbound Android signing-certificate match not checked because android/keystore.properties is not present in this environment.');
 }
