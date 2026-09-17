@@ -83,13 +83,13 @@ const shareCachedFile = async (uri: string, title?: string, text?: string) => {
 /**
  * Google is the only Android sign-in method that needs a native credential
  * acquisition step. Firebase JS Auth remains the canonical Inkbound session
- * owner. Credential Manager is the current Android provider path; the legacy
- * play-services-auth flow was only introduced as a workaround while the signing
- * certificate/OAuth configuration was incomplete and must not remain the default.
+ * owner. Keep the currently verified provider implementation isolated here while
+ * the shared JS Auth initialization/persistence boundary is restored; do not mix
+ * two native Google implementations in the same sign-in attempt.
  */
 const requestNativeGoogleCredential = () => FirebaseAuthentication.signInWithGoogle({
   skipNativeAuth: true,
-  useCredentialManager: true,
+  useCredentialManager: false,
 });
 
 const sha256Hex = async (value: string) => {
