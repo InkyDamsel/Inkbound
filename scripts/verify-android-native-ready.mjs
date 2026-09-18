@@ -6,6 +6,8 @@ const googleServicesPath = path.join(root, 'android', 'app', 'google-services.js
 const gradlePath = path.join(root, 'android', 'app', 'build.gradle');
 const mainActivityPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
 const billingPluginPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
+const loanReminderPluginPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'LoanReminderPlugin.java');
+const loanReminderReceiverPath = path.join(root, 'android', 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'LoanReminderReceiver.java');
 const expectedPackage = 'com.inkydameinteractive.inkbound';
 
 const fail = (message) => {
@@ -50,7 +52,25 @@ for (const required of ['queryProductDetailsAsync', 'launchBillingFlow', 'queryP
 if (!fs.existsSync(mainActivityPath) || !fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(PlayBillingPlugin.class)')) {
   fail('MainActivity does not register PlayBillingPlugin.');
 }
+if (!fs.existsSync(loanReminderPluginPath)) {
+  fail('LoanReminderPlugin.java is missing. Android due-date and reading activity notifications are unavailable.');
+}
+const loanReminderPlugin = fs.readFileSync(loanReminderPluginPath, 'utf8');
+for (const required of ['schedule(PluginCall call)', 'notifyNow(PluginCall call)', 'inkbound_library_loans', 'inkbound_reading_activity']) {
+  if (!loanReminderPlugin.includes(required)) fail(`LoanReminderPlugin.java is missing ${required}.`);
+}
+if (!fs.existsSync(loanReminderReceiverPath)) {
+  fail('LoanReminderReceiver.java is missing. Android cannot display scheduled notifications.');
+}
+const loanReminderReceiver = fs.readFileSync(loanReminderReceiverPath, 'utf8');
+if (!loanReminderReceiver.includes('channelId') || !loanReminderReceiver.includes('NotificationManagerCompat')) {
+  fail('LoanReminderReceiver.java is not configured for Inkbound notification channels.');
+}
+if (!fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(LoanReminderPlugin.class)')) {
+  fail('MainActivity does not register LoanReminderPlugin.');
+}
 
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
+console.log('Inkbound Android notification wiring verified for library due dates and reading activity.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
