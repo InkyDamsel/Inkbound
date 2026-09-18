@@ -325,3 +325,31 @@ html:not(.dark) main .inkbound-artwork-hero .quiet-shelf-icon-button {
   border-color: rgba(255, 255, 255, 0.14) !important;
   color: #fff8f0 !important;
 }
+
+
+/* Studio theme swatches are intentional design previews, not app chrome. */
+html:not(.dark) main .inkbound-studio-theme-swatch {
+  background: var(--studio-theme-background) !important;
+  color: var(--studio-theme-text) !important;
+  border-color: color-mix(in srgb, var(--studio-theme-accent) 55%, transparent) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+
+html:not(.dark) main .inkbound-studio-preview {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+html:not(.dark) main .inkbound-studio-preview-panel {
+  background: rgba(8, 5, 10, 0.45) !important;
+  border-color: rgba(255,255,255,.12) !important;
+  color: inherit !important;
+  box-shadow: none !important;
+}
+
+/* Warning/review chips need readable contrast on parchment. */
+html:not(.dark) main .inkbound-light-warning-chip {
+  background: #f6ead2 !important;
+  border-color: #c7983f !important;
+  color: #6f4a0b !important;
+}
