@@ -127,6 +127,24 @@ for (const file of sourceFiles.filter((candidate) => candidate.endsWith('.css'))
   }
 }
 
+// Light mode is a release surface, not a best-effort skin. Dark-only shared
+// form rules must be scoped to .dark, and the final light-theme layer must
+// contain explicit contrast guardrails for legacy hard-coded utilities.
+const corePagesCss = read('src/styles/core-pages.css');
+const lightThemeCss = read('src/styles/light-theme-2.css');
+assert(
+  !/(^|\n)main input\[type='search'\],[\s\S]*?background-color:\s*rgba\(13,\s*9,\s*16/.test(corePagesCss),
+  'core-pages.css must not apply dark form surfaces to light mode; scope dark form rules under :root.dark.',
+);
+for (const requiredLightGuard of [
+  "html:not(.dark) main .inkbound-kicker",
+  "html:not(.dark) main [class*='text-[#f4efe6]']",
+  "html:not(.dark) main .text-stone-400",
+  "html:not(.dark) main header[class*='overflow-hidden'] [class*='text-white']",
+]) {
+  assert(lightThemeCss.includes(requiredLightGuard), `Light Theme 2.0 is missing contrast guardrail: ${requiredLightGuard}`);
+}
+
 const androidRuntime = read('src/platform/initializeAndroidRuntime.ts');
 for (const capability of [
   'configureRuntimeAuthentication',
