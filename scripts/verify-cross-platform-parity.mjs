@@ -80,6 +80,10 @@ const app = read('src/App.tsx');
 assert(navbar.includes('mobileNavigationGroups = visibleNavigationGroups'), 'Mobile navigation must be derived from the same visibleNavigationGroups used by desktop.');
 assert(navbar.includes('mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 2)]'), 'Mobile primary navigation must be derived from the canonical navigation groups.');
 assert(
+  navbar.includes("Switch to Light Mode") && navbar.includes("Switch to Dark Mode"),
+  'Compact/mobile navigation must expose the same light/dark theme control available in the desktop top bar.',
+);
+assert(
   !navbar.includes("{ id: 'collections', label: 'Collections'"),
   'Collections belongs inside My Library and must not drift into a separate web/Android navigation destination.',
 );
