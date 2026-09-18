@@ -168,6 +168,17 @@ assert(collectionsScreen.includes('paginatedVisibleBooks.map'), 'Manage Books mu
 assert(collectionsScreen.includes('totalItems={visibleBooks.length}'), 'Manage Books pagination must be based on the full filtered library result set.');
 assert(!/selectedBooks\.slice\(0,\s*\d+\)/.test(collectionsScreen), 'Collections must not hide books behind a fixed preview-only slice.');
 
+const readingSessionsScreen = read('src/components/ReadingSessionsScreen.tsx');
+const sessionEditor = read('src/components/SessionEditorModal.tsx');
+const bulkHistoricalSessions = read('src/components/BulkHistoricalSessionsModal.tsx');
+assert(readingSessionsScreen.includes('Add Past Session'), 'Reading Sessions must expose historical single-session entry on web and Android.');
+assert(readingSessionsScreen.includes('Add Multiple'), 'Reading Sessions must expose bulk historical-session entry on web and Android.');
+assert(sessionEditor.includes('date > localDateKey()'), 'Historical session entry must reject future dates.');
+assert(sessionEditor.includes('parsedEndProgress < parsedStartProgress'), 'Historical session entry must keep canonical progress endpoints ordered.');
+assert(bulkHistoricalSessions.includes('const nextSessions: ReadingSession[] = []'), 'Bulk historical entry must create canonical ReadingSession records.');
+assert(bulkHistoricalSessions.includes('pagesRead: isAudiobook ? undefined : Math.max(0, endProgress - startProgress)'), 'Bulk historical page totals must derive from start/end endpoints.');
+assert(bulkHistoricalSessions.includes('minutesListened: isAudiobook ? Math.max(0, endProgress - startProgress) : undefined'), 'Bulk historical audiobook totals must derive from timestamp endpoints.');
+
 const batchEdit = read('src/components/BatchEditModal.tsx');
 assert(batchEdit.includes('readCustomOwnershipCategories'), 'Batch Edit must load the same custom ownership categories available in single-book editing.');
 assert(batchEdit.includes('Custom categories'), 'Batch Edit must expose custom ownership categories in its shared UI.');
