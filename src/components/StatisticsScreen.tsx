@@ -187,7 +187,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                     {importedCompletedThisYear.length} trusted imported finishes
                   </span>
                   {importedRecordsNeedingReview.length > 0 && (
-                    <span className="rounded-full border border-amber-400/25 bg-amber-400/[0.08] px-3 py-1.5 text-amber-200">
+                    <span className="inkbound-light-warning-chip rounded-full border border-amber-400/25 bg-amber-400/[0.08] px-3 py-1.5 text-amber-200">
                       {importedRecordsNeedingReview.length} imported records may need review
                     </span>
                   )}
