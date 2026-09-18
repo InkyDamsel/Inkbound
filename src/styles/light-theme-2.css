@@ -194,11 +194,6 @@ html:not(.dark) main button.absolute.right-4.top-4 {
   backdrop-filter: blur(18px);
 }
 
-/* Profile header footer remains parchment instead of stark white. */
-html:not(.dark) main section.overflow-hidden > div:last-child {
-  background-color: #f9f4ef;
-}
-
 /* Status colors stay muted and readable on parchment. */
 html:not(.dark) .inkbound-status-success {
   color: #526b55;
@@ -231,3 +226,154 @@ html:not(.dark) ::-webkit-scrollbar-thumb {
     box-shadow: 0 9px 22px rgba(66, 45, 61, 0.065) !important;
   }
 }
+
+/*
+ * Release hotfix: light-mode page contrast audit.
+ * These rules deliberately sit at the end of Light Theme 2.0 so legacy
+ * dark-only utility colors cannot leak through on secondary pages.
+ */
+html:not(.dark) main .inkbound-kicker,
+html:not(.dark) main .inkbound-eyebrow,
+html:not(.dark) main [class*='text-[#e5c158]'],
+html:not(.dark) main [class*='text-[#c5a059]'],
+html:not(.dark) main [class*='text-[#e2bd66]'] {
+  color: #75586f !important;
+}
+
+html:not(.dark) main .inkbound-page-title,
+html:not(.dark) main .inkbound-page-copy,
+html:not(.dark) main [class*='text-[#f4efe6]'],
+html:not(.dark) main [class*='text-[#f3ede2]'],
+html:not(.dark) main [class*='text-[#e8ded3]'],
+html:not(.dark) main [class*='text-[#d8cec2]'],
+html:not(.dark) main [class*='text-[#d8cdd6]'],
+html:not(.dark) main [class*='text-[#cdbfb3]'],
+html:not(.dark) main [class*='text-[#cfc2b6]'],
+html:not(.dark) main .text-stone-100,
+html:not(.dark) main .text-stone-200,
+html:not(.dark) main .text-stone-300 {
+  color: #342936 !important;
+  text-shadow: none;
+}
+
+html:not(.dark) main [class*='text-[#ad9fac]'],
+html:not(.dark) main [class*='text-[#a99baa]'],
+html:not(.dark) main [class*='text-[#948984]'],
+html:not(.dark) main .text-stone-400,
+html:not(.dark) main .text-stone-500,
+html:not(.dark) main .text-stone-600 {
+  color: #685d68 !important;
+  text-shadow: none;
+}
+
+html:not(.dark) main [class*='bg-[#c5a059]'],
+html:not(.dark) main [class*='bg-[#e5c158]'] {
+  color: #49384a !important;
+}
+
+html:not(.dark) main .inkbound-panel::before {
+  opacity: 0.45;
+}
+
+/* Hero artwork remains artwork: restore light text over photographic/dark banners. */
+html:not(.dark) main header[class*='overflow-hidden'] [class*='text-white'],
+html:not(.dark) main header[class*='overflow-hidden'] [class*='text-[#f1e8df]'],
+html:not(.dark) main header[class*='overflow-hidden'] [class*='text-[#e0c77c]'] {
+  color: #fff8f0 !important;
+  text-shadow: 0 1px 2px rgba(16, 8, 18, 0.52);
+}
+
+html:not(.dark) main header[class*='overflow-hidden'] [class*='text-white/'] {
+  color: rgba(255, 248, 240, 0.82) !important;
+  text-shadow: 0 1px 2px rgba(16, 8, 18, 0.46);
+}
+
+
+/*
+ * Artwork heroes keep their imagery and dark translucent overlays in both
+ * themes. Light mode changes the surrounding application chrome, not artwork.
+ */
+html:not(.dark) main .inkbound-artwork-hero {
+  background-color: transparent !important;
+}
+
+html:not(.dark) main .inkbound-artwork-hero::before {
+  opacity: 1;
+}
+
+html:not(.dark) main .inkbound-artwork-hero [class*='bg-black'] {
+  background-color: rgba(8, 5, 10, 0.32) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) main .inkbound-artwork-hero [class*='text-white'],
+html:not(.dark) main .inkbound-artwork-hero [class*='text-[#f1e8df]'],
+html:not(.dark) main .inkbound-artwork-hero [class*='text-[#e0c77c]'],
+html:not(.dark) main .inkbound-artwork-hero [class*='text-[var(--ink-ivory)]'] {
+  color: #fff8f0 !important;
+  text-shadow: 0 1px 2px rgba(16, 8, 18, 0.52);
+}
+
+html:not(.dark) main .inkbound-artwork-hero [class*='text-[var(--ink-muted)]'] {
+  color: rgba(255, 248, 240, 0.76) !important;
+}
+
+html:not(.dark) main .inkbound-artwork-hero .quiet-shelf-icon-button {
+  background: rgba(8, 5, 10, 0.32) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #fff8f0 !important;
+}
+
+
+/* Studio theme swatches are intentional design previews, not app chrome. */
+html:not(.dark) main .inkbound-studio-theme-swatch {
+  background: var(--studio-theme-background) !important;
+  color: var(--studio-theme-text) !important;
+  border-color: color-mix(in srgb, var(--studio-theme-accent) 55%, transparent) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+
+html:not(.dark) main .inkbound-studio-preview {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+html:not(.dark) main .inkbound-studio-preview-panel {
+  background: rgba(8, 5, 10, 0.45) !important;
+  border-color: rgba(255,255,255,.12) !important;
+  color: inherit !important;
+  box-shadow: none !important;
+}
+
+/* Warning/review chips need readable contrast on parchment. */
+html:not(.dark) main .inkbound-light-warning-chip {
+  background: #f6ead2 !important;
+  border-color: #c7983f !important;
+  color: #6f4a0b !important;
+}
+
+
+/* Export/recap previews are authored themes. App light mode must not recolor them. */
+html:not(.dark) main button.inkbound-themed-preview-swatch {
+  background: var(--preview-theme-background) !important;
+  color: var(--preview-theme-text) !important;
+  border-color: color-mix(in srgb, var(--preview-theme-accent) 55%, transparent) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+
+html:not(.dark) main .inkbound-themed-preview {
+  background-color: transparent !important;
+  color: var(--preview-theme-text) !important;
+}
+
+html:not(.dark) main .inkbound-themed-preview [class*='bg-black'] {
+  background-color: rgba(8,5,10,.28) !important;
+  border-color: rgba(255,255,255,.12) !important;
+}
+
+html:not(.dark) main .inkbound-themed-preview [class*='text-white'] {
+  color: #fff8f0 !important;
+  text-shadow: 0 1px 2px rgba(16,8,18,.52);
+}
+
