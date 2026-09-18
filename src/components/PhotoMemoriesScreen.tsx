@@ -165,7 +165,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
   return (
     <section className="space-y-6 pb-12">
       <header
-        className="inkbound-panel relative overflow-hidden rounded-3xl p-6 sm:p-8"
+        className="inkbound-artwork-hero inkbound-panel relative overflow-hidden rounded-3xl p-6 sm:p-8"
         style={{
           backgroundImage: `linear-gradient(90deg, rgba(12,8,15,.86) 0%, rgba(12,8,15,.62) 42%, rgba(12,8,15,.22) 76%, rgba(12,8,15,.12) 100%), url("${PHOTO_MEMORIES_BACKGROUND_URL}")`,
           backgroundPosition: 'center center',
