@@ -156,6 +156,20 @@ assert(studioScreen.includes('inkbound-studio-theme-swatch'), 'Studio theme swat
 assert(studioScreen.includes('inkbound-studio-preview') && studioScreen.includes('inkbound-studio-preview-panel'), 'Studio share-card preview must remain theme-authentic in app light mode.');
 assert(lightThemeCss.includes('html:not(.dark) main .inkbound-studio-theme-swatch'), 'Light theme must preserve Studio theme swatch backgrounds.');
 assert(lightThemeCss.includes('html:not(.dark) main .inkbound-studio-preview-panel'), 'Light theme must preserve Studio preview contrast.');
+for (const themedPreviewFile of [
+  'src/components/MonthlyWrappedScreen.tsx',
+  'src/components/YearInBooksScreen.tsx',
+  'src/components/BookshelfThroughTimeScreen.tsx',
+]) {
+  const themedPreviewSource = read(themedPreviewFile);
+  assert(
+    themedPreviewSource.includes('inkbound-themed-preview'),
+    `${themedPreviewFile} must mark its authored preview/scene so app light mode cannot recolor it.`,
+  );
+}
+assert(lightThemeCss.includes('html:not(.dark) main .inkbound-themed-preview-swatch'), 'Light theme must preserve authored recap theme swatches.');
+assert(lightThemeCss.includes('html:not(.dark) main .inkbound-themed-preview [class*=\'text-white\']'), 'Light theme must preserve white text inside authored recap/shelf previews.');
+
 const statisticsScreen = read('src/components/StatisticsScreen.tsx');
 assert(statisticsScreen.includes('inkbound-light-warning-chip'), 'Statistics review warning must use the shared light-mode warning contrast treatment.');
 
