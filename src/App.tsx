@@ -71,6 +71,7 @@ import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, lo
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
 import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
 import { subscribeToRuntimeResume } from './platform/runtimeLifecycle';
+import { notifyNativeBookFinished, notifyNativeReadingSessionFinished } from './features/notifications/nativeInkboundNotifications';
 import {
   getRuntimeStorage,
   readRuntimeValue,
@@ -332,10 +333,26 @@ export default function App() {
   const openTimer = (bookId?: string) => { setTimerInitialBookId(bookId); setIsTimerOpen(true); };
   const closeTimer = () => setIsTimerOpen(false);
   const handleToggleSelectBook = (id: string) => setSelectedBookIds((current) => current.includes(id) ? current.filter((bookId) => bookId !== id) : [...current, id]);
-  const handleUpdateBook = (updatedBook: UserBookRecord) => { setBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book))); setSelectedBookForDetails((current) => (current?.id === updatedBook.id ? updatedBook : current)); };
+  const handleUpdateBook = (updatedBook: UserBookRecord) => {
+    const previous = books.find((book) => book.id === updatedBook.id);
+    setBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book)));
+    setSelectedBookForDetails((current) => (current?.id === updatedBook.id ? updatedBook : current));
+    if (previous?.status !== 'finished' && updatedBook.status === 'finished') {
+      void notifyNativeBookFinished(updatedBook);
+    }
+  };
   const handleDeleteBook = (bookToDelete: UserBookRecord) => { setBooks((current) => current.filter((book) => book.id !== bookToDelete.id)); setSessions((current) => current.filter((session) => session.bookId !== bookToDelete.id)); setSelectedBookIds((current) => current.filter((id) => id !== bookToDelete.id)); setSelectedBookForDetails(null); showToast(`Deleted “${bookToDelete.work.title}” and its reading sessions.`); };
   const handleMergeDuplicateGroup = ({ keepBookId, removeBookIds, mergedBook }: DuplicateMergeRequest) => { const removeIds = new Set(removeBookIds); setPreviousBooksState(null); setPreviousSessionsState(null); setBooks((current) => current.filter((book) => !removeIds.has(book.id)).map((book) => book.id === keepBookId ? mergedBook : book)); setSessions((current) => current.map((session) => removeIds.has(session.bookId) ? { ...session, bookId: keepBookId } : session)); setSelectedBookIds((current) => current.filter((id) => !removeIds.has(id))); setSelectedBookForDetails((current) => current && removeIds.has(current.id) ? mergedBook : current?.id === keepBookId ? mergedBook : current); writeImportEnrichmentQueue(readImportEnrichmentQueue().filter((item) => !removeIds.has(item.targetBookId))); showToast(`Merged ${removeBookIds.length + 1} copies of “${mergedBook.work.title}” into one library record.`); };
-  const handleUpdateStatus = (bookId: string, status: ReadingStatus) => { const today = localDateKey(); setBooks((current) => current.map((book) => book.id !== bookId ? book : withReadingStatus(book, status, today))); showToast(`Updated reading status to ${status}.`); };
+  const handleUpdateStatus = (bookId: string, status: ReadingStatus) => {
+    const today = localDateKey();
+    const previous = books.find((book) => book.id === bookId);
+    const updated = previous ? withReadingStatus(previous, status, today) : undefined;
+    if (updated) {
+      setBooks((current) => current.map((book) => book.id === bookId ? updated : book));
+      if (previous?.status !== 'finished' && updated.status === 'finished') void notifyNativeBookFinished(updated);
+    }
+    showToast(`Updated reading status to ${status}.`);
+  };
 
   const handleCorrectBookProgress = (bookId: string, correction: BookProgressCorrection) => {
     const sourceBook = books.find((book) => book.id === bookId);
@@ -408,7 +425,22 @@ export default function App() {
   };
 
   const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessions]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
-  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => { maybeShowFirstSessionMilestone(newSession); setSessions((current) => [newSession, ...current]); updateBookFromSession(newSession, updatedPages, updatedMinutes); setTimerInitialBookId(undefined); setIsTimerOpen(false); showToast(`Saved a ${getSessionDurationMinutes(newSession)}-minute reading session.`); };
+  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
+    maybeShowFirstSessionMilestone(newSession);
+    const previousBook = books.find((book) => book.id === newSession.bookId);
+    const updatedBook = previousBook
+      ? applySessionProgressToBook(previousBook, newSession, updatedPages, updatedMinutes)
+      : undefined;
+    setSessions((current) => [newSession, ...current]);
+    updateBookFromSession(newSession, updatedPages, updatedMinutes);
+    setTimerInitialBookId(undefined);
+    setIsTimerOpen(false);
+    void notifyNativeReadingSessionFinished(newSession, updatedBook ?? previousBook);
+    if (previousBook?.status !== 'finished' && updatedBook?.status === 'finished') {
+      void notifyNativeBookFinished(updatedBook);
+    }
+    showToast(`Saved a ${getSessionDurationMinutes(newSession)}-minute reading session.`);
+  };
   const handleSaveManualSession = (session: ReadingSession) => {
     const nextSessions = [session, ...sessions];
     setSessions(nextSessions);
