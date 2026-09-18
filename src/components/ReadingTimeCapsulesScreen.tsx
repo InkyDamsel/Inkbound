@@ -115,7 +115,7 @@ export const ReadingTimeCapsulesScreen: React.FC<ReadingTimeCapsulesScreenProps>
   return (
     <div className="space-y-6 pb-20">
       <section
-        className="relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] bg-cover bg-center shadow-2xl"
+        className="inkbound-artwork-hero relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] bg-cover bg-center shadow-2xl"
         style={{ backgroundImage: `url("${TIME_CAPSULE_BACKGROUND_URL}")` }}
       >
         <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/30 to-black/20" />
