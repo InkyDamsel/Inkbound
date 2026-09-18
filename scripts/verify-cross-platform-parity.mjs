@@ -145,6 +145,8 @@ for (const requiredLightGuard of [
   "html:not(.dark) main [class*='text-[#f4efe6]']",
   "html:not(.dark) main .text-stone-400",
   "html:not(.dark) main header[class*='overflow-hidden'] [class*='text-white']",
+  "html:not(.dark) main .inkbound-artwork-hero",
+  "html:not(.dark) main .inkbound-artwork-hero [class*='bg-black']",
 ]) {
   assert(lightThemeCss.includes(requiredLightGuard), `Light Theme 2.0 is missing contrast guardrail: ${requiredLightGuard}`);
 }
@@ -182,6 +184,15 @@ assert(
 );
 
 const collectionsScreen = read('src/components/CollectionsScreen.tsx');
+for (const artworkHeroFile of [
+  'src/components/LibraryScreen.tsx',
+  'src/components/ReadingMemoriesScreen.tsx',
+  'src/components/PhotoMemoriesScreen.tsx',
+  'src/components/ReadingTimeCapsulesScreen.tsx',
+  'src/components/MyDragonScreen.tsx',
+]) {
+  assert(read(artworkHeroFile).includes('inkbound-artwork-hero'), `${artworkHeroFile} must mark its artwork banner so light mode cannot replace it with a parchment surface.`);
+}
 assert(collectionsScreen.includes("import { PaginationControls } from './PaginationControls'"), 'Collections must use shared pagination on web and Android.');
 assert(collectionsScreen.includes('const COLLECTION_SHELF_PAGE_SIZE = 24'), 'Open Collection must expose collection books in the same 24-item pages used by the live web experience.');
 assert(collectionsScreen.includes('totalItems={selectedBooks.length}'), 'Open Collection pagination must use the complete canonical collection membership.');
