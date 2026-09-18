@@ -20,6 +20,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
 import { ResponsiveGrid } from '../layout/responsive';
 import { SessionEditorModal } from './SessionEditorModal';
+import { BulkHistoricalSessionsModal } from './BulkHistoricalSessionsModal';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getDailyReadingGoalMinutes } from '../features/reading/readingPreferences';
 import {
@@ -40,6 +41,7 @@ interface ReadingSessionsScreenProps {
   onOpenTimer: (bookId?: string) => void;
   onSelectBook: (book: UserBookRecord) => void;
   onSaveManualSession: (session: ReadingSession) => void;
+  onSaveManualSessions: (sessions: ReadingSession[]) => void;
   onUpdateSession: (session: ReadingSession) => void;
   onDeleteSession: (sessionId: string) => void;
 }
@@ -61,6 +63,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
   onOpenTimer,
   onSelectBook,
   onSaveManualSession,
+  onSaveManualSessions,
   onUpdateSession,
   onDeleteSession,
 }) => {
@@ -68,6 +71,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
   const [bookFilter, setBookFilter] = useState('all');
   const [editingSession, setEditingSession] = useState<ReadingSession | null>(null);
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
+  const [isBulkManualEntryOpen, setIsBulkManualEntryOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ReadingSession | null>(null);
   const pendingDeleteRef = useRef<ReadingSession | null>(null);
   const deleteTimerRef = useRef<number | null>(null);
@@ -193,7 +197,10 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
 
           <div className="flex w-full flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 backdrop-blur-[3px] sm:w-auto sm:flex-row sm:flex-wrap">
             <button type="button" onClick={() => setIsManualEntryOpen(true)} className="quiet-shelf-secondary-action w-full justify-center border-white/10 bg-black/20 text-white sm:w-auto">
-              <Plus className="h-4 w-4" /> Add Manually
+              <Plus className="h-4 w-4" /> Add Past Session
+            </button>
+            <button type="button" onClick={() => setIsBulkManualEntryOpen(true)} className="quiet-shelf-secondary-action w-full justify-center border-white/10 bg-black/20 text-white sm:w-auto">
+              <NotebookPen className="h-4 w-4" /> Add Multiple
             </button>
             <button type="button" onClick={() => onOpenTimer()} className="quiet-shelf-primary-action w-full justify-center sm:w-auto">
               <Clock3 className="h-4 w-4" /> Start a Session
@@ -339,6 +346,7 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
       )}
 
       {isManualEntryOpen && <SessionEditorModal books={books} onClose={() => setIsManualEntryOpen(false)} onSave={onSaveManualSession} />}
+      {isBulkManualEntryOpen && <BulkHistoricalSessionsModal books={books} onClose={() => setIsBulkManualEntryOpen(false)} onSave={onSaveManualSessions} />}
       {editingSession && <SessionEditorModal books={books} session={editingSession} onClose={() => setEditingSession(null)} onSave={onUpdateSession} onDelete={requestSessionDelete} />}
 
       {pendingDelete && (
