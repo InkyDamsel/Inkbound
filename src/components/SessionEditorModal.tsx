@@ -43,6 +43,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
     : initialProgress;
 
   const [bookId, setBookId] = useState(session?.bookId ?? initialBook?.id ?? '');
+  const [bookSearch, setBookSearch] = useState('');
   const [date, setDate] = useState(session?.date ?? localDateKey());
   const [startTime, setStartTime] = useState(session?.startTime ?? '19:00');
   const [endTime, setEndTime] = useState(session?.endTime ?? '19:30');
@@ -54,6 +55,17 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   const [error, setError] = useState('');
 
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
+  const matchingBooks = useMemo(() => {
+    const query = bookSearch.trim().toLowerCase();
+    if (!query) return books.slice(0, 100);
+    return books
+      .filter((book) =>
+        book.work.title.toLowerCase().includes(query)
+        || book.work.author.toLowerCase().includes(query)
+        || book.work.seriesName?.toLowerCase().includes(query),
+      )
+      .slice(0, 100);
+  }, [bookSearch, books]);
   const edition = selectedBook ? getActiveEdition(selectedBook) : undefined;
   const isAudiobook = edition?.format === 'audiobook';
   const durationMinutes = useMemo(() => minutesBetween(startTime, endTime), [startTime, endTime]);
@@ -137,16 +149,20 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="inkbound-kicker">Reading journal</p>
-            <h3 id="session-editor-title" className="font-serif text-2xl text-[var(--ink-text-primary)]">{session ? 'Edit Session' : 'Add Session Manually'}</h3>
+            <h3 id="session-editor-title" className="font-serif text-2xl text-[var(--ink-text-primary)]">{session ? 'Edit Session' : 'Add Past Session'}</h3>
             <p className="mt-1 text-xs text-[var(--ink-text-muted)]">Only activity you record in Inkbound is saved to your reading tracker.</p>
           </div>
           <button type="button" onClick={onClose} className="quiet-shelf-secondary-action h-11 w-11 shrink-0 p-0" aria-label="Close"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Find book
+            <input value={bookSearch} onChange={(event) => setBookSearch(event.target.value)} placeholder="Search title, author, or series" className="inkbound-select mt-1 w-full" />
+          </label>
           <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Book
             <select value={bookId} onChange={(event) => handleBookChange(event.target.value)} className="inkbound-select mt-1 w-full">
-              {books.map((book) => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}
+              {!matchingBooks.some((book) => book.id === bookId) && selectedBook && <option value={selectedBook.id}>{selectedBook.work.title} — {selectedBook.work.author}</option>}
+              {matchingBooks.map((book) => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}
             </select>
           </label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Date<input type="date" max={localDateKey()} value={date} onChange={(event) => setDate(event.target.value)} className="inkbound-select mt-1 w-full" /></label>
@@ -164,7 +180,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
           {session && onDelete ? <button type="button" onClick={() => { onDelete(session.id); onClose(); }} className="quiet-shelf-secondary-action w-full justify-center text-rose-300 sm:w-auto"><Trash2 className="h-4 w-4" /> Delete</button> : <span />}
-          <button type="button" onClick={save} className="quiet-shelf-primary-action w-full justify-center sm:w-auto"><Save className="h-4 w-4" /> {session ? 'Save Changes' : 'Add Session'}</button>
+          <button type="button" onClick={save} className="quiet-shelf-primary-action w-full justify-center sm:w-auto"><Save className="h-4 w-4" /> {session ? 'Save Changes' : 'Add Past Session'}</button>
         </div>
       </section>
     </div>
