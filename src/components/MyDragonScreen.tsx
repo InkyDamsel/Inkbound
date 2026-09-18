@@ -63,7 +63,7 @@ export const MyDragonScreen: React.FC<MyDragonScreenProps> = ({ books, sessions 
   const saveName = () => { const name = draftName.trim(); if (!name) return; setDragon((current) => ({ ...current, name })); setIsRenaming(false); };
 
   return <section className="space-y-6 pb-12">
-    <header className="relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
+    <header className="inkbound-artwork-hero relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
       <div aria-hidden="true" className="pointer-events-none absolute -inset-3 scale-[1.035] bg-cover bg-center bg-no-repeat blur-[3px]" style={{ backgroundImage: `url("${LUMIS_BANNER_ASSET}")` }} />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(9,8,18,.86)_0%,rgba(9,8,18,.68)_42%,rgba(9,8,18,.30)_72%,rgba(9,8,18,.18)_100%)]" />
       <div className="relative z-10 grid min-h-[430px] gap-7 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(340px,430px)] lg:items-center lg:p-10">
