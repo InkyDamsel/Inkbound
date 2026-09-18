@@ -167,7 +167,8 @@ for (const themedPreviewFile of [
     `${themedPreviewFile} must mark its authored preview/scene so app light mode cannot recolor it.`,
   );
 }
-assert(lightThemeCss.includes('html:not(.dark) main .inkbound-themed-preview-swatch'), 'Light theme must preserve authored recap theme swatches.');
+assert(lightThemeCss.includes('html:not(.dark) main button.inkbound-themed-preview-swatch'), 'Light theme must preserve authored recap theme swatches even when the selected-state rule also matches.');
+assert(lightThemeCss.includes("color: var(--preview-theme-text) !important"), 'Authored recap previews must retain their selected theme text color in app light mode.');
 assert(lightThemeCss.includes('html:not(.dark) main .inkbound-themed-preview [class*=\'text-white\']'), 'Light theme must preserve white text inside authored recap/shelf previews.');
 
 const statisticsScreen = read('src/components/StatisticsScreen.tsx');
