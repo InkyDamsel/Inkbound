@@ -231,3 +231,65 @@ html:not(.dark) ::-webkit-scrollbar-thumb {
     box-shadow: 0 9px 22px rgba(66, 45, 61, 0.065) !important;
   }
 }
+
+
+/*
+ * Release hotfix: light-mode page contrast audit.
+ * These rules deliberately sit at the end of Light Theme 2.0 so legacy
+ * dark-only utility colors cannot leak through on secondary pages.
+ */
+html:not(.dark) main .inkbound-kicker,
+html:not(.dark) main .inkbound-eyebrow,
+html:not(.dark) main [class*='text-[#e5c158]'],
+html:not(.dark) main [class*='text-[#c5a059]'],
+html:not(.dark) main [class*='text-[#e2bd66]'] {
+  color: #75586f !important;
+}
+
+html:not(.dark) main .inkbound-page-title,
+html:not(.dark) main .inkbound-page-copy,
+html:not(.dark) main [class*='text-[#f4efe6]'],
+html:not(.dark) main [class*='text-[#f3ede2]'],
+html:not(.dark) main [class*='text-[#e8ded3]'],
+html:not(.dark) main [class*='text-[#d8cec2]'],
+html:not(.dark) main [class*='text-[#d8cdd6]'],
+html:not(.dark) main [class*='text-[#cdbfb3]'],
+html:not(.dark) main [class*='text-[#cfc2b6]'],
+html:not(.dark) main .text-stone-100,
+html:not(.dark) main .text-stone-200,
+html:not(.dark) main .text-stone-300 {
+  color: #342936 !important;
+  text-shadow: none;
+}
+
+html:not(.dark) main [class*='text-[#ad9fac]'],
+html:not(.dark) main [class*='text-[#a99baa]'],
+html:not(.dark) main [class*='text-[#948984]'],
+html:not(.dark) main .text-stone-400,
+html:not(.dark) main .text-stone-500,
+html:not(.dark) main .text-stone-600 {
+  color: #685d68 !important;
+  text-shadow: none;
+}
+
+html:not(.dark) main [class*='bg-[#c5a059]'],
+html:not(.dark) main [class*='bg-[#e5c158]'] {
+  color: #49384a !important;
+}
+
+html:not(.dark) main .inkbound-panel::before {
+  opacity: 0.45;
+}
+
+/* Hero artwork remains artwork: restore light text over photographic/dark banners. */
+html:not(.dark) main header[class*='overflow-hidden'] [class*='text-white'],
+html:not(.dark) main header[class*='overflow-hidden'] [class*='text-[#f1e8df]'],
+html:not(.dark) main header[class*='overflow-hidden'] [class*='text-[#e0c77c]'] {
+  color: #fff8f0 !important;
+  text-shadow: 0 1px 2px rgba(16, 8, 18, 0.52);
+}
+
+html:not(.dark) main header[class*='overflow-hidden'] [class*='text-white/'] {
+  color: rgba(255, 248, 240, 0.82) !important;
+  text-shadow: 0 1px 2px rgba(16, 8, 18, 0.46);
+}
