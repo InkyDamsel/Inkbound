@@ -151,6 +151,14 @@ for (const requiredLightGuard of [
   assert(lightThemeCss.includes(requiredLightGuard), `Light Theme 2.0 is missing contrast guardrail: ${requiredLightGuard}`);
 }
 
+const studioScreen = read('src/components/InkboundStudioScreen.tsx');
+assert(studioScreen.includes('inkbound-studio-theme-swatch'), 'Studio theme swatches must be explicitly protected from app light-mode remapping.');
+assert(studioScreen.includes('inkbound-studio-preview') && studioScreen.includes('inkbound-studio-preview-panel'), 'Studio share-card preview must remain theme-authentic in app light mode.');
+assert(lightThemeCss.includes('html:not(.dark) main .inkbound-studio-theme-swatch'), 'Light theme must preserve Studio theme swatch backgrounds.');
+assert(lightThemeCss.includes('html:not(.dark) main .inkbound-studio-preview-panel'), 'Light theme must preserve Studio preview contrast.');
+const statisticsScreen = read('src/components/StatisticsScreen.tsx');
+assert(statisticsScreen.includes('inkbound-light-warning-chip'), 'Statistics review warning must use the shared light-mode warning contrast treatment.');
+
 const androidRuntime = read('src/platform/initializeAndroidRuntime.ts');
 for (const capability of [
   'configureRuntimeAuthentication',
