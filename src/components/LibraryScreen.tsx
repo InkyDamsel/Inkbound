@@ -178,7 +178,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   return (
     <div className="min-w-0 space-y-6 overflow-x-hidden pb-24">
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
+      <section className="inkbound-artwork-hero relative overflow-hidden rounded-3xl border border-[var(--ink-border-subtle)] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
         <div aria-hidden="true" className="pointer-events-none absolute -inset-3 scale-[1.035] bg-cover bg-center blur-[3px]" style={{ backgroundImage: `url(\"${LIBRARY_BANNER_ASSET}\")` }} />
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(9,8,18,.88),rgba(9,8,18,.36))]" />
         <div className="relative z-10 flex min-h-[260px] flex-col justify-between gap-6 p-6 sm:p-8 xl:flex-row xl:items-end">
