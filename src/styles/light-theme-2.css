@@ -356,7 +356,7 @@ html:not(.dark) main .inkbound-light-warning-chip {
 
 
 /* Export/recap previews are authored themes. App light mode must not recolor them. */
-html:not(.dark) main .inkbound-themed-preview-swatch {
+html:not(.dark) main button.inkbound-themed-preview-swatch {
   background: var(--preview-theme-background) !important;
   color: var(--preview-theme-text) !important;
   border-color: color-mix(in srgb, var(--preview-theme-accent) 55%, transparent) !important;
@@ -365,7 +365,7 @@ html:not(.dark) main .inkbound-themed-preview-swatch {
 
 html:not(.dark) main .inkbound-themed-preview {
   background-color: transparent !important;
-  color: inherit !important;
+  color: var(--preview-theme-text) !important;
 }
 
 html:not(.dark) main .inkbound-themed-preview [class*='bg-black'] {
