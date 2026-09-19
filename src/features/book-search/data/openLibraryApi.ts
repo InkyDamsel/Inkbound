@@ -18,6 +18,7 @@ interface OpenLibraryEdition {
   cover_edition_key?: string;
   language?: string[];
   ebook_access?: string;
+  series?: string[];
 }
 
 interface OpenLibraryWork {
@@ -33,6 +34,7 @@ interface OpenLibraryWork {
   cover_i?: number;
   cover_edition_key?: string;
   number_of_pages_median?: number;
+  series?: string[];
   editions?: { docs?: OpenLibraryEdition[] };
 }
 
@@ -55,12 +57,12 @@ export interface OpenLibraryCatalogPage extends BookSearchResponse {
 const OPEN_LIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
 const DEFAULT_PAGE_SIZE = 40;
 const FIELDS = [
-  'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language',
+  'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language', 'series',
   'isbn', 'cover_i', 'cover_edition_key', 'number_of_pages_median', 'editions', 'editions.key',
   'editions.title', 'editions.subtitle', 'editions.publisher', 'editions.publish_date', 'editions.publish_year',
   'editions.isbn', 'editions.isbn_10', 'editions.isbn_13', 'editions.number_of_pages',
   'editions.number_of_pages_median', 'editions.cover_i', 'editions.cover_edition_key',
-  'editions.language', 'editions.ebook_access',
+  'editions.language', 'editions.ebook_access', 'editions.series',
 ].join(',');
 
 const stringValue = (value: unknown): string | undefined => {
@@ -104,6 +106,15 @@ const coverUrl = (edition: OpenLibraryEdition, work: OpenLibraryWork): string | 
   return isbn ? `https://covers.openlibrary.org/b/isbn/${compactIsbn(isbn)}-L.jpg` : undefined;
 };
 
+const parseSeries = (values?: string[]): { name?: string; order?: number } => {
+  const raw = values?.find((value) => value?.trim())?.trim();
+  if (!raw) return {};
+  const match = raw.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*)(\d+(?:\.\d+)?)\s*$/i);
+  if (!match) return { name: raw };
+  const order = Number(match[2]);
+  return { name: match[1].replace(/[,:;\-]+$/g, '').trim() || raw, order: Number.isFinite(order) ? order : undefined };
+};
+
 const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: number): BookSearchEdition | null => {
   const title = edition.title ?? work.title;
   if (!title) return null;
@@ -111,6 +122,7 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
   const isbn10 = edition.isbn_10?.[0] ?? edition.isbn?.find((value) => compactIsbn(value).length === 10);
   const publicationDate = stringValue(edition.publish_date);
   const publishers = edition.publisher ?? work.publisher;
+  const series = parseSeries(edition.series ?? work.series);
   return {
     source: 'open-library',
     externalEditionId: edition.key ?? `${work.key ?? title}-${index}`,
@@ -122,6 +134,8 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
     publicationDate,
     publicationYear: publicationYear(publicationDate, edition.publish_year ?? work.first_publish_year),
     language: edition.language?.[0] ?? work.language?.[0],
+    seriesName: series.name,
+    seriesOrder: series.order,
     format: inferFormat(edition),
     isbn10,
     isbn13,
