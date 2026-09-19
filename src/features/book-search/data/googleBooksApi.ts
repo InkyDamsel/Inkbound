@@ -109,7 +109,7 @@ export const buildGoogleBooksQuery = (value: string): string => {
 
 const publicationYear = (value?: string): number => {
   const match = value?.match(/\d{4}/);
-  return match ? Number(match[0]) : new Date().getFullYear();
+  return match ? Number(match[0]) : 0;
 };
 
 const inferFormat = (volume: GoogleVolume): Format => volume.saleInfo?.isEbook ? 'ebook' : 'hardcover';
