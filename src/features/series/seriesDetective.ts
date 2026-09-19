@@ -22,7 +22,7 @@ const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
-interface SeriesEvidence {
+export interface SeriesEvidence {
   name: string;
   position: number | null;
   edition: BookSearchEdition;
@@ -34,7 +34,7 @@ interface SeriesEvidence {
   score: number;
 }
 
-const scoreSeriesEvidence = (
+export const scoreSeriesEvidence = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
   book: UserBookRecord,
@@ -75,7 +75,7 @@ const scoreSeriesEvidence = (
   return { name, position, edition, work, structured, exactIdentifier, exactTitle, exactAuthor, score };
 };
 
-const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): SeriesEvidence | null => {
+export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): SeriesEvidence | null => {
   const eligible = evidence.filter((item) => item.exactAuthor && (item.exactTitle || item.exactIdentifier));
   if (!eligible.length) return null;
 
