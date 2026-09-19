@@ -315,7 +315,7 @@ export async function searchGoogleBooksPage(
 
     const rawItems = payload.items ?? [];
     const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
-    const groups = hardenCatalogGroups(groupGoogleEditions(editions));
+    const groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
     const hasMore = rawItems.length > 0 && (
