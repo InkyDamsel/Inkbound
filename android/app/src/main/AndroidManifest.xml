@@ -41,8 +41,10 @@
     </application>
 
     <!-- Camera access is optional and used only when the reader starts the ISBN scanner. -->
-    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <!-- Network access is required for Firebase and catalog services. Production
          cleartext traffic remains disabled at the application level above. -->
