@@ -1,5 +1,5 @@
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
-import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Search, Star, Trash2, Upload, X } from 'lucide-react';
+import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Search, Sparkles, Star, Trash2, Upload, X } from 'lucide-react';
 import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
@@ -18,6 +18,7 @@ import { BookCover } from './BookCover';
 import { SessionEditorModal } from './SessionEditorModal';
 import { BulkHistoricalSessionsModal } from './BulkHistoricalSessionsModal';
 import { CustomOwnershipBookControl } from './ownership/CustomOwnershipBookControl';
+import { detectSeriesForBook } from '../features/series/seriesDetective';
 
 interface BookProgressCorrection {
   progressPages?: number;
@@ -90,6 +91,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
   const [coverError, setCoverError] = useState<string | null>(null);
   const [isSyncingBook, setIsSyncingBook] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [seriesDetecting, setSeriesDetecting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<ReadingSession | null>(null);
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
@@ -222,6 +224,41 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
     updateBook({ progressPercentage: safePercentage });
   };
 
+  const detectBookSeries = async () => {
+    if (seriesDetecting) return;
+    if (!navigator.onLine) {
+      setSyncMessage('Inkbound needs an internet connection to check series metadata.');
+      return;
+    }
+    setSeriesDetecting(true);
+    setSyncMessage(null);
+    try {
+      const detected = await detectSeriesForBook(book);
+      if (!detected) {
+        setSyncMessage('Series Detective could not verify a series for this book. Inkbound will not guess.');
+        return;
+      }
+      const updated: UserBookRecord = {
+        ...book,
+        work: {
+          ...book.work,
+          seriesName: detected.name,
+          seriesOrder: detected.position ?? book.work.seriesOrder,
+        },
+      };
+      onUpdateBook(updated);
+      setSeriesName(detected.name);
+      setSeriesOrder(typeof detected.position === 'number' ? String(detected.position) : '');
+      setSyncMessage(detected.position === null
+        ? `Series Detective found “${detected.name}”.`
+        : `Series Detective found “${detected.name}” · Book ${detected.position}.`);
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : 'Series Detective could not check this book.');
+    } finally {
+      setSeriesDetecting(false);
+    }
+  };
+
   const syncBookMetadata = async () => {
     if (isSyncingBook) return;
     if (!navigator.onLine) return setSyncMessage('Inkbound needs an internet connection to sync metadata.');
@@ -346,7 +383,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       <section className="flex max-h-[96dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[92dvh] sm:max-w-5xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <header className="relative border-b border-[#3d2448] bg-gradient-to-r from-[#281333] via-[#1d0e26] to-[#140a1a] p-4 sm:p-6">
           <button type="button" onClick={onClose} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-300" aria-label="Close book details"><X className="h-5 w-5" /></button>
-          <div className="flex items-start gap-4 pr-10 sm:gap-6"><button type="button" onClick={() => { setCoverManagerOpen(true); setCoverMode('choices'); }} className="shrink-0"><BookCover work={book.work} edition={activeEdition} size="lg" /></button><div className="min-w-0 flex-1"><span className="inline-flex rounded bg-[#c5a059] px-2 py-1 text-[10px] font-bold uppercase text-[#120817]">{activeEdition.format}</span><h2 className="mt-3 line-clamp-2 font-serif text-2xl font-bold text-[#f4efe6] sm:text-4xl">{book.work.title}</h2><p className="mt-1 text-sm italic text-stone-400">by {book.work.author}</p><p className="mt-2 text-xs text-[#b9aaba]">Metadata: <strong className="text-[#e5c158]">{metadataLabel}</strong></p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => setCoverManagerOpen(true)} className="quiet-shelf-secondary-action"><ImagePlus className="h-4 w-4" /> Cover</button><button type="button" onClick={() => void syncBookMetadata()} disabled={isSyncingBook} className="quiet-shelf-secondary-action"><RefreshCw className={`h-4 w-4 ${isSyncingBook ? 'animate-spin' : ''}`} /> Sync Metadata</button><button type="button" onClick={() => setDeleteConfirmOpen(true)} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" /> Delete</button></div>{syncMessage && <p className="mt-2 text-xs text-[#b9aaba]">{syncMessage}</p>}</div></div>
+          <div className="flex items-start gap-4 pr-10 sm:gap-6"><button type="button" onClick={() => { setCoverManagerOpen(true); setCoverMode('choices'); }} className="shrink-0"><BookCover work={book.work} edition={activeEdition} size="lg" /></button><div className="min-w-0 flex-1"><span className="inline-flex rounded bg-[#c5a059] px-2 py-1 text-[10px] font-bold uppercase text-[#120817]">{activeEdition.format}</span><h2 className="mt-3 line-clamp-2 font-serif text-2xl font-bold text-[#f4efe6] sm:text-4xl">{book.work.title}</h2><p className="mt-1 text-sm italic text-stone-400">by {book.work.author}</p><p className="mt-2 text-xs text-[#b9aaba]">Metadata: <strong className="text-[#e5c158]">{metadataLabel}</strong></p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => setCoverManagerOpen(true)} className="quiet-shelf-secondary-action"><ImagePlus className="h-4 w-4" /> Cover</button><button type="button" onClick={() => void syncBookMetadata()} disabled={isSyncingBook} className="quiet-shelf-secondary-action"><RefreshCw className={`h-4 w-4 ${isSyncingBook ? 'animate-spin' : ''}`} /> Sync Metadata</button><button type="button" onClick={() => void detectBookSeries()} disabled={seriesDetecting} className="quiet-shelf-secondary-action"><Sparkles className={`h-4 w-4 ${seriesDetecting ? 'animate-pulse' : ''}`} /> {seriesDetecting ? 'Checking Series…' : 'Series Detective'}</button><button type="button" onClick={() => setDeleteConfirmOpen(true)} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" /> Delete</button></div>{syncMessage && <p className="mt-2 text-xs text-[#b9aaba]">{syncMessage}</p>}</div></div>
         </header>
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#3d2448] bg-[#120817] px-3 py-2 text-xs font-semibold">{tabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`min-h-11 whitespace-nowrap rounded-xl px-4 ${activeTab === tab.id ? 'bg-[#c5a059] font-bold text-[#120817]' : 'text-stone-400 hover:bg-[#25132f]'}`}>{tab.label}</button>)}</nav>
         <div className="flex-1 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-6">
