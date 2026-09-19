@@ -323,7 +323,9 @@ async function hardcoverCatalog(query: string) {
 export const searchHardcoverBooks = onCall(
   { secrets: [HARDCOVER_API_TOKEN, GOOGLE_BOOKS_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
-    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use protected book search.');
+    if (!request.auth && process.env.FUNCTIONS_EMULATOR !== 'true') {
+      throw new HttpsError('unauthenticated', 'Sign in to use protected book search.');
+    }
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
     const provider = request.data?.provider === 'google-books' ? 'google-books' : 'hardcover';
