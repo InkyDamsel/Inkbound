@@ -168,9 +168,24 @@ const mergeEditionData = (left: BookSearchEdition, right: BookSearchEdition): Bo
 const workIdentity = (group: BookSearchWorkGroup): string =>
   `${normalizeKey(group.title)}::${normalizeKey(group.authors[0])}`;
 
+export const inferCatalogAuthorIntent = (
+  groups: BookSearchWorkGroup[],
+  query?: string,
+): string | undefined => {
+  const candidate = compact(query);
+  const normalizedCandidate = normalizeKey(candidate);
+  if (!normalizedCandidate || /\d/.test(candidate) || candidate.split(/\s+/).length > 5) return undefined;
+
+  const exactMatches = groups.filter((group) =>
+    cleanAuthors(group.authors).some((author) => normalizeKey(author) === normalizedCandidate),
+  ).length;
+
+  return exactMatches >= 2 ? candidate : undefined;
+};
+
 export const hardenCatalogGroups = (
   groups: BookSearchWorkGroup[],
-  options: { preferredAuthor?: string } = {},
+  options: { preferredAuthor?: string; searchQuery?: string } = {},
 ): BookSearchWorkGroup[] => {
   const merged = new Map<string, BookSearchWorkGroup>();
   const order: string[] = [];
@@ -199,13 +214,29 @@ export const hardenCatalogGroups = (
     }
     hardened.editions.sort((a, b) => catalogEditionQualityScore(b) - catalogEditionQualityScore(a));
 
-    const identity = workIdentity(hardened);
+    let identity = workIdentity(hardened);
     if (!identity.replace(/[:]/g, '')) continue;
+
+    const titleKey = normalizeKey(hardened.title);
+    const primaryAuthorKey = normalizeKey(hardened.authors[0]);
+    const authorIsUnknown = primaryAuthorKey === 'unknown author';
+    const compatibleIdentity = order.find((candidateKey) => {
+      const candidate = merged.get(candidateKey);
+      if (!candidate || normalizeKey(candidate.title) !== titleKey) return false;
+      const candidateAuthorKey = normalizeKey(candidate.authors[0]);
+      return authorIsUnknown || candidateAuthorKey === 'unknown author';
+    });
+    if (compatibleIdentity) identity = compatibleIdentity;
+
     const existing = merged.get(identity);
     if (!existing) {
       merged.set(identity, hardened);
       order.push(identity);
       continue;
+    }
+
+    if (normalizeKey(existing.authors[0]) === 'unknown author' && !authorIsUnknown) {
+      existing.authors = hardened.authors;
     }
 
     existing.genres = cleanGenres([...existing.genres, ...hardened.genres]);
@@ -219,23 +250,38 @@ export const hardenCatalogGroups = (
     existing.editions.sort((a, b) => catalogEditionQualityScore(b) - catalogEditionQualityScore(a));
   }
 
-  const preferredAuthor = normalizeKey(options.preferredAuthor);
-  return order
+  const hardenedGroups = order
     .map((key) => merged.get(key))
-    .filter((group): group is BookSearchWorkGroup => Boolean(group))
-    .sort((left, right) => {
-      const authorBoost = (group: BookSearchWorkGroup) =>
-        preferredAuthor && group.authors.some((author) => normalizeKey(author) === preferredAuthor) ? 40 : 0;
-      const supplementPenalty = (group: BookSearchWorkGroup) => SUPPLEMENT_PATTERN.test(group.title) ? 25 : 0;
-      const leftScore = authorBoost(left) + catalogEditionQualityScore(left.editions[0]) - supplementPenalty(left);
-      const rightScore = authorBoost(right) + catalogEditionQualityScore(right.editions[0]) - supplementPenalty(right);
-      return rightScore - leftScore;
-    });
+    .filter((group): group is BookSearchWorkGroup => Boolean(group));
+
+  const preferredAuthorValue = options.preferredAuthor || inferCatalogAuthorIntent(hardenedGroups, options.searchQuery);
+  const preferredAuthor = normalizeKey(preferredAuthorValue);
+
+  return hardenedGroups.sort((left, right) => {
+    const authorScore = (group: BookSearchWorkGroup) => {
+      if (!preferredAuthor) return 0;
+      const normalizedAuthors = group.authors.map(normalizeKey);
+      const exactIndex = normalizedAuthors.indexOf(preferredAuthor);
+      if (exactIndex < 0) return normalizedAuthors.includes('unknown author') ? -80 : -120;
+      if (normalizedAuthors.length === 1) return 90;
+      return exactIndex === 0 ? 55 : 35;
+    };
+    const supplementPenalty = (group: BookSearchWorkGroup) => SUPPLEMENT_PATTERN.test(group.title) ? 90 : 0;
+    const authorNamedTitlePenalty = (group: BookSearchWorkGroup) =>
+      preferredAuthor && normalizeKey(group.title) === preferredAuthor && group.authors.length > 1 ? 70 : 0;
+    const score = (group: BookSearchWorkGroup) =>
+      authorScore(group)
+      + catalogEditionQualityScore(group.editions[0])
+      - supplementPenalty(group)
+      - authorNamedTitlePenalty(group);
+
+    return score(right) - score(left);
+  });
 };
 
 export const hardenCatalogResponse = (
   response: BookSearchResponse,
-  options: { preferredAuthor?: string } = {},
+  options: { preferredAuthor?: string; searchQuery?: string } = {},
 ): BookSearchResponse => {
   const groups = hardenCatalogGroups(response.groups ?? [], options);
   return { groups, totalItems: response.totalItems };
