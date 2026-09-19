@@ -107,6 +107,8 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
     publicationDate: compact(edition.publicationDate) || undefined,
     publicationYear: cleanPublicationYear(edition.publicationYear),
     language: cleanLanguage(edition.language),
+    seriesName: compact(edition.seriesName) || undefined,
+    seriesOrder: typeof edition.seriesOrder === 'number' && Number.isFinite(edition.seriesOrder) && edition.seriesOrder >= 0 ? edition.seriesOrder : undefined,
     isbn10,
     isbn13,
     asin: compact(edition.asin)?.toUpperCase() || undefined,
@@ -129,6 +131,8 @@ export const catalogEditionQualityScore = (edition: BookSearchEdition): number =
   if (edition.publicationDate) score += 5;
   if (edition.publicationYear > 0) score += 4;
   if (edition.language) score += 4;
+  if (edition.seriesName) score += 8;
+  if (typeof edition.seriesOrder === 'number') score += 6;
   if (edition.publisherSummary) score += 4;
   if (edition.binding) score += 2;
   return score;
@@ -154,6 +158,8 @@ const mergeEditionData = (left: BookSearchEdition, right: BookSearchEdition): Bo
     publicationDate: preferred.publicationDate || supplement.publicationDate,
     publicationYear: preferred.publicationYear || supplement.publicationYear,
     language: preferred.language || supplement.language,
+    seriesName: preferred.seriesName || supplement.seriesName,
+    seriesOrder: typeof preferred.seriesOrder === 'number' ? preferred.seriesOrder : supplement.seriesOrder,
     isbn10: preferred.isbn10 || supplement.isbn10,
     isbn13: preferred.isbn13 || supplement.isbn13,
     asin: preferred.asin || supplement.asin,
