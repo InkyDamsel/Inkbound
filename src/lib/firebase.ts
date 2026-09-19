@@ -52,7 +52,7 @@ export const missingFirebaseEnvironmentVariables = Object.entries(requiredFireba
 export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length === 0;
 
 const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
-const effectiveFirebaseMode = requestedFirebaseMode || 'emulator';
+const effectiveFirebaseMode = requestedFirebaseMode || 'local';
 
 export const useFirebaseEmulators = import.meta.env.DEV && effectiveFirebaseMode === 'emulator';
 export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
