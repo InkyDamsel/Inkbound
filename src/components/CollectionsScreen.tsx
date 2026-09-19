@@ -462,7 +462,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
           </div>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <label className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)]">
+          <label className="flex items-center gap-3 text-sm font-medium text-[var(--ink-muted)]">
             Sort
             <select
               value={collectionSortMode}
