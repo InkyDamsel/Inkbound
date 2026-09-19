@@ -131,6 +131,7 @@ for (const required of [
   'isValidCatalogIsbn10',
   'isValidCatalogIsbn13',
   'catalogEditionQualityScore',
+  'inferCatalogAuthorIntent',
 ]) {
   if (!catalogHardening.includes(`export const ${required}`)) {
     violations.push(`catalogHardening.ts: missing canonical ${required}`);
