@@ -187,9 +187,15 @@ export async function searchOpenLibraryPage(
 
   const payload = (await response.json()) as OpenLibraryResponse;
   const rawDocs = payload.docs ?? [];
-  const groups = hardenCatalogGroups(rawDocs
-    .map(mapWork)
-    .filter((group): group is BookSearchWorkGroup => Boolean(group)));
+  const authorOperator = trimmed.match(/^inauthor:\s*(.+)$/i);
+  const groups = hardenCatalogGroups(
+    rawDocs
+      .map(mapWork)
+      .filter((group): group is BookSearchWorkGroup => Boolean(group)),
+    authorOperator
+      ? { preferredAuthor: stripQuotes(authorOperator[1]) }
+      : { searchQuery: trimmed },
+  );
   const providerTotalItems = payload.numFound ?? payload.num_found ?? groups.length;
   const nextStartIndex = Math.max(0, startIndex) + rawDocs.length;
   const hasMore = rawDocs.length > 0 && nextStartIndex < providerTotalItems;
