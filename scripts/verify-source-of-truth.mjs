@@ -321,6 +321,20 @@ if (/ownership\s*:\s*['"]none['"]/.test(seriesLibrary)) {
   violations.push('seriesLibrary.ts: Series derivation must not invent a second ownership value');
 }
 
+const seriesDetective = read('src/features/series/seriesDetective.ts');
+for (const required of ['resolveEffectiveSeriesMetadata', 'searchGoogleBooksPage', 'searchGoogleBooksAuthorPage']) {
+  if (!seriesDetective.includes(required)) {
+    violations.push(`seriesDetective.ts: Series Detective must consume canonical ${required}`);
+  }
+}
+const searchModel = read('src/features/book-search/model/bookSearch.ts');
+for (const required of ['seriesName?: string', 'seriesOrder?: number']) {
+  if (!searchModel.includes(required)) violations.push(`bookSearch.ts: missing canonical series metadata field ${required}`);
+}
+if (!bookSearchMapper.includes('hardenedEdition.seriesName') || !bookSearchMapper.includes('hardenedEdition.seriesOrder')) {
+  violations.push('bookSearchMapper.ts: catalog series metadata must persist through the canonical library mapper');
+}
+
 const normalizer = read('src/features/library/libraryNormalization.ts');
 if (!normalizer.includes('normalizeCanonicalLibraryRecords')) {
   violations.push('libraryNormalization.ts: canonical library record normalizer is missing');
