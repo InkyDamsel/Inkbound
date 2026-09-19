@@ -81,7 +81,7 @@ const numericYear = (value: unknown): number | undefined => {
 };
 
 const publicationYear = (value: unknown, fallback?: unknown): number =>
-  numericYear(value) ?? numericYear(fallback) ?? new Date().getFullYear();
+  numericYear(value) ?? numericYear(fallback) ?? 0;
 
 const first = (value?: string[] | string): string | undefined =>
   Array.isArray(value) ? value.find(Boolean) : value || undefined;
