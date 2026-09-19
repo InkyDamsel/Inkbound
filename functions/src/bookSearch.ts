@@ -33,6 +33,10 @@ interface HardcoverBook {
   description?: string;
   release_year?: number;
   image?: { url?: string };
+  book_series?: Array<{
+    position?: number;
+    series?: { id?: number | string; name?: string };
+  }>;
 }
 
 interface HardcoverEdition {
@@ -214,12 +218,16 @@ async function hardcoverCatalog(query: string) {
         `query SearchBookDetails($ids: [Int!]!) {
           books(where: { id: { _in: $ids } }, limit: 80) {
             id title subtitle description release_year image { url }
+            book_series { position series { id name } }
           }
           editions(where: { book_id: { _in: $ids } }, limit: 80) {
             id book_id title pages isbn_10 isbn_13 release_date edition_format
             image { url }
             publisher { name }
-            book { id title subtitle description release_year image { url } }
+            book {
+              id title subtitle description release_year image { url }
+              book_series { position series { id name } }
+            }
           }
         }`,
         { ids },
@@ -249,6 +257,12 @@ async function hardcoverCatalog(query: string) {
     const authors = authorNames(result);
     const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
     const matchedBook = booksById.get(String(result.id ?? ''));
+    const seriesMembership = matchedBook?.book_series?.find((membership) => membership.series?.name?.trim())
+      ?? matchedEditions.map((edition) => edition.book?.book_series?.find((membership) => membership.series?.name?.trim())).find(Boolean);
+    const seriesName = seriesMembership?.series?.name?.trim();
+    const seriesOrder = typeof seriesMembership?.position === 'number' && Number.isFinite(seriesMembership.position)
+      ? seriesMembership.position
+      : undefined;
     const publisherSummary = matchedBook?.description
       ?? result.description
       ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
@@ -260,6 +274,8 @@ async function hardcoverCatalog(query: string) {
           subtitle: edition.book?.subtitle ?? matchedBook?.subtitle ?? result.subtitle,
           authors,
           publisherSummary: matchedBook?.description ?? edition.book?.description ?? publisherSummary,
+          seriesName: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.series?.name?.trim() ?? seriesName,
+          seriesOrder: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.position ?? seriesOrder,
           genres: [],
           publisher: edition.publisher?.name,
           publicationDate: edition.release_date,
@@ -280,6 +296,8 @@ async function hardcoverCatalog(query: string) {
           subtitle: matchedBook?.subtitle ?? result.subtitle,
           authors,
           publisherSummary,
+          seriesName,
+          seriesOrder,
           genres: [],
           publicationYear: matchedBook?.release_year || result.release_year || new Date().getFullYear(),
           format: 'hardcover' as const,
