@@ -228,16 +228,16 @@ const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWork
         return;
       }
       const current = existing.editions[duplicateIndex];
-      if (current.source === 'inkbound-catalog') {
-        existing.editions[duplicateIndex] = {
-          ...edition,
-          ...current,
-          coverUrl: current.coverUrl || edition.coverUrl,
-          publisherSummary: current.publisherSummary || edition.publisherSummary,
-          binding: current.binding || edition.binding,
-          specialFeatures: current.specialFeatures.length ? current.specialFeatures : edition.specialFeatures,
-        };
-      }
+      existing.editions[duplicateIndex] = {
+        ...edition,
+        ...current,
+        coverUrl: current.coverUrl || edition.coverUrl,
+        publisherSummary: current.publisherSummary || edition.publisherSummary,
+        seriesName: current.seriesName || edition.seriesName,
+        seriesOrder: typeof current.seriesOrder === 'number' ? current.seriesOrder : edition.seriesOrder,
+        binding: current.binding || edition.binding,
+        specialFeatures: current.specialFeatures.length ? current.specialFeatures : edition.specialFeatures,
+      };
     });
   };
 
@@ -327,7 +327,22 @@ export async function searchGoogleBooksPage(
 
     const rawItems = payload.items ?? [];
     const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
-    const groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
+    let groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
+
+    // The Add Reading Material screen prefers this paged path. Enrich the first
+    // page with the same supplemental metadata sources used by the standard
+    // catalog chain so pagination does not silently lose series metadata.
+    if (startIndex === 0 && groups.length > 0) {
+      const [trusted, hardcover] = await Promise.all([
+        searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+        searchHardcoverWithBackoff(trimmed),
+      ]);
+      groups = hardenCatalogGroups(
+        mergeGroups(groups, [trusted.groups, hardcover.groups]),
+        { searchQuery: trimmed },
+      );
+    }
+
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
     const hasMore = rawItems.length > 0 && (
