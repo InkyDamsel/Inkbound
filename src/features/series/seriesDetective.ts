@@ -1,6 +1,8 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../book-search/data/googleBooksApi';
+import { searchHardcover } from '../book-search/data/hardcoverApi';
+import { searchInkboundTrustedCatalog } from '../catalog/metadataContributions';
 import { searchOpenLibraryPage } from '../book-search/data/openLibraryApi';
 import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata } from './seriesLibrary';
@@ -84,8 +86,12 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
   const identifiers = [activeEdition?.isbn13, activeEdition?.isbn10].filter((value): value is string => Boolean(value?.trim()));
 
   const searches = await Promise.all([
+    searchInkboundTrustedCatalog({ title: book.work.title, author: book.work.author }),
+    searchHardcover(`${book.work.title} ${book.work.author}`),
     searchGoogleBooks(`${book.work.title} ${book.work.author}`),
     searchOpenLibraryPage(`intitle:"${book.work.title}"`, 0, SERIES_DISCOVERY_PAGE_SIZE),
+    ...identifiers.map((isbn) => searchInkboundTrustedCatalog({ isbn })),
+    ...identifiers.map((isbn) => searchHardcover(isbn)),
     ...identifiers.map((isbn) => searchGoogleBooks(`isbn:${isbn}`)),
     ...identifiers.map((isbn) => searchOpenLibraryPage(`isbn:${isbn}`, 0, SERIES_DISCOVERY_PAGE_SIZE)),
   ]);
@@ -99,7 +105,7 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
     .filter((group) => normalize(group.title) === wantedTitle || normalize(group.title).includes(wantedTitle) || wantedTitle.includes(normalize(group.title)))
     .filter((group) => !wantedAuthor || exactAuthorMatch(group, book.work.author))
     .flatMap((group) => group.editions)
-    .filter((edition) => edition.seriesName)
+    .filter((edition) => edition.seriesName || inferSeriesHintFromTitle(edition.title))
     .sort((a, b) => catalogEditionQualityScore(b) - catalogEditionQualityScore(a));
 
   const preferredLanguage = activeEditionLanguage(book);
@@ -107,8 +113,12 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
     ? candidates.find((edition) => edition.language?.toLocaleLowerCase() === preferredLanguage)
     : undefined;
   const match = exactLanguage ?? candidates[0];
-  if (!match?.seriesName) return null;
-  return { name: match.seriesName, position: typeof match.seriesOrder === 'number' ? match.seriesOrder : null };
+  if (!match) return null;
+  if (match.seriesName) {
+    return { name: match.seriesName, position: typeof match.seriesOrder === 'number' ? match.seriesOrder : null };
+  }
+  const inferred = inferSeriesHintFromTitle(match.title);
+  return inferred ? { name: inferred.name, position: inferred.position } : null;
 }
 
 export async function findMissingSeriesBooks(
