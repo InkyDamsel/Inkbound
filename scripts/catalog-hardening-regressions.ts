@@ -123,3 +123,16 @@ const coauthorNoise = hardenCatalogGroups([
   work('Revival', { ...goodEdition, externalEditionId: 'revival', title: 'Revival', authors: ['Stephen King'] }),
 ], { preferredAuthor: 'Stephen King' });
 assert.equal(coauthorNoise[0].title, 'Revival');
+
+
+const seriesEdition = hardenCatalogEdition({
+  ...goodEdition,
+  externalEditionId: 'series-edition',
+  title: 'The Cinnamon Bun Book Store',
+  authors: ['Laurie Gilmore'],
+  seriesName: ' Dream   Harbor ',
+  seriesOrder: 2,
+});
+assert.equal(seriesEdition.seriesName, 'Dream Harbor');
+assert.equal(seriesEdition.seriesOrder, 2);
+assert.ok(catalogEditionQualityScore(seriesEdition) > catalogEditionQualityScore({ ...seriesEdition, seriesName: undefined, seriesOrder: undefined }));
