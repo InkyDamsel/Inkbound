@@ -1,6 +1,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../../lib/firebase';
 import type { BookSearchResponse } from '../model/bookSearch';
+import { hardenCatalogGroups } from '../catalogHardening';
 
 interface HardcoverSearchPayload {
   groups?: BookSearchResponse['groups'];
@@ -14,7 +15,7 @@ export async function searchHardcover(query: string): Promise<BookSearchResponse
   try {
     const callable = httpsCallable<{ query: string }, HardcoverSearchPayload>(functions, 'searchHardcoverBooks');
     const response = await callable({ query: trimmed });
-    const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
+    const groups = hardenCatalogGroups(Array.isArray(response.data.groups) ? response.data.groups : []);
     return {
       groups,
       totalItems: typeof response.data.totalItems === 'number' ? response.data.totalItems : groups.length,
