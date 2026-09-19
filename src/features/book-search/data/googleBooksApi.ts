@@ -6,6 +6,7 @@ import { searchInkboundTrustedCatalog } from '../../catalog/metadataContribution
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
+import { hardenCatalogGroups, hardenCatalogResponse } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -291,7 +292,7 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
     : await requestDirectGoogleBooks(query, signal);
 
   const editions = (payload.items ?? []).map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
-  const groups = groupGoogleEditions(editions);
+  const groups = hardenCatalogGroups(groupGoogleEditions(editions));
   return { groups, totalItems: payload.totalItems ?? groups.length };
 }
 
@@ -314,7 +315,7 @@ export async function searchGoogleBooksPage(
 
     const rawItems = payload.items ?? [];
     const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
-    const groups = groupGoogleEditions(editions);
+    const groups = hardenCatalogGroups(groupGoogleEditions(editions));
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
     const hasMore = rawItems.length > 0 && (
@@ -357,7 +358,7 @@ export async function searchGoogleBooksAuthorPage(
 
     const rawItems = payload.items ?? [];
     const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
-    const groups = groupGoogleEditions(editions);
+    const groups = hardenCatalogGroups(groupGoogleEditions(editions), { preferredAuthor: trimmedAuthor });
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
     const hasMore = rawItems.length > 0 && (
@@ -425,10 +426,11 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
 }
 
 function cacheSearchResponse(cacheKey: string, response: BookSearchResponse): BookSearchResponse {
-  if (response.groups.length > 0) {
-    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
+  const hardened = hardenCatalogResponse(response);
+  if (hardened.groups.length > 0) {
+    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response: hardened });
   }
-  return response;
+  return hardened;
 }
 
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
