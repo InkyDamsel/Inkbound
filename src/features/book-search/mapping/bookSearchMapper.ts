@@ -6,6 +6,7 @@ import {
   UserBookRecord,
 } from '../../../types';
 import { BookSearchEdition, BookSearchWorkGroup } from '../model/bookSearch';
+import { hardenCatalogEdition } from '../catalogHardening';
 
 interface CreateBookFromEditionOptions {
   work: BookSearchWorkGroup;
@@ -47,16 +48,17 @@ export function createBookFromSearchEdition({
   binding = edition.binding,
   specialFeatures = edition.specialFeatures,
 }: CreateBookFromEditionOptions): UserBookRecord {
+  const hardenedEdition = hardenCatalogEdition(edition);
   const bookId = uniqueId('book');
   const workId = uniqueId('work');
   const editionId = uniqueId('edition');
-  const publisherSummary = edition.publisherSummary ?? work.publisherSummary;
+  const publisherSummary = hardenedEdition.publisherSummary ?? work.publisherSummary;
   const addedOn = localDateKey();
   const isFinished = status === 'finished';
   const hasKnownPrintTotal = format !== 'audiobook'
-    && typeof edition.pageCount === 'number'
-    && Number.isFinite(edition.pageCount)
-    && edition.pageCount > 0;
+    && typeof hardenedEdition.pageCount === 'number'
+    && Number.isFinite(hardenedEdition.pageCount)
+    && hardenedEdition.pageCount > 0;
 
   return {
     id: bookId,
@@ -65,11 +67,11 @@ export function createBookFromSearchEdition({
       title: work.title,
       subtitle: work.subtitle,
       author: work.authors.join(', '),
-      summary: publisherSummary ?? 'No publisher summary was available for this edition.',
+      summary: publisherSummary ?? 'No publisher summary was available for this hardenedEdition.',
       publisherSummary,
-      genres: edition.genres.length > 0 ? edition.genres : work.genres,
-      publicationYear: edition.publicationYear,
-      originalLanguage: edition.language,
+      genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : work.genres,
+      publicationYear: hardenedEdition.publicationYear,
+      originalLanguage: hardenedEdition.language,
       externalWorkId: work.key,
     },
     activeEditionId: editionId,
@@ -77,26 +79,26 @@ export function createBookFromSearchEdition({
       {
         id: editionId,
         format,
-        isbn: edition.isbn13 ?? edition.isbn10,
-        isbn10: edition.isbn10,
-        isbn13: edition.isbn13,
-        asin: edition.asin,
-        pageCount: edition.pageCount,
-        publisher: edition.publisher,
-        publicationDate: edition.publicationDate,
+        isbn: hardenedEdition.isbn13 ?? hardenedEdition.isbn10,
+        isbn10: hardenedEdition.isbn10,
+        isbn13: hardenedEdition.isbn13,
+        asin: hardenedEdition.asin,
+        pageCount: hardenedEdition.pageCount,
+        publisher: hardenedEdition.publisher,
+        publicationDate: hardenedEdition.publicationDate,
         coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
-        coverUrl: edition.coverUrl,
-        language: edition.language,
+        coverUrl: hardenedEdition.coverUrl,
+        language: hardenedEdition.language,
         editionName,
         binding,
         specialFeatures: specialFeatures.filter(Boolean),
-        externalSource: edition.source,
-        externalEditionId: edition.externalEditionId,
+        externalSource: hardenedEdition.source,
+        externalEditionId: hardenedEdition.externalEditionId,
       },
     ],
     status,
     ownership,
-    progressPages: isFinished && hasKnownPrintTotal ? edition.pageCount! : 0,
+    progressPages: isFinished && hasKnownPrintTotal ? hardenedEdition.pageCount! : 0,
     progressMinutes: 0,
     progressPercentage: isFinished && hasKnownPrintTotal ? 100 : 0,
     favoriteQuotes: [],
@@ -104,7 +106,7 @@ export function createBookFromSearchEdition({
     priority,
     moods: [],
     collections: [],
-    sourceOfImport: providerLabel(edition.source),
+    sourceOfImport: providerLabel(hardenedEdition.source),
     dateAdded: addedOn,
     dateStarted: status === 'currently-reading' || isFinished ? addedOn : undefined,
     dateFinished: isFinished ? addedOn : undefined,
