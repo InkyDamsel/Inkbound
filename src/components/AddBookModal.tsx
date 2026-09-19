@@ -9,7 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { hardenCatalogGroups } from '../features/book-search/catalogHardening';
+import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -112,24 +112,7 @@ const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: Book
   return hardenCatalogGroups(merged);
 };
 
-const isValidIsbn10 = (value: string) => {
-  if (!/^\d{9}[\dX]$/.test(value)) return false;
-  const sum = value.split('').reduce((total, character, index) => {
-    const digit = character === 'X' ? 10 : Number(character);
-    return total + digit * (10 - index);
-  }, 0);
-  return sum % 11 === 0;
-};
-
-const isValidIsbn13 = (value: string) => {
-  if (!/^(978|979)\d{10}$/.test(value)) return false;
-  const digits = value.split('').map(Number);
-  const weighted = digits.slice(0, 12).reduce((total, digit, index) => total + digit * (index % 2 === 0 ? 1 : 3), 0);
-  const expectedCheckDigit = (10 - (weighted % 10)) % 10;
-  return digits[12] === expectedCheckDigit;
-};
-
-const isValidIsbn = (value: string) => isValidIsbn10(value) || isValidIsbn13(value);
+const isValidIsbn = (value: string) => isValidCatalogIsbn10(value) || isValidCatalogIsbn13(value);
 
 function readScannerDraft(): ScannedBook[] {
   try {
