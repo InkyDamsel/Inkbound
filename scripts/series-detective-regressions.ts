@@ -4,7 +4,7 @@ import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/boo
 import {
   scoreSeriesEvidence,
   selectVerifiedSeriesEvidence,
-} from '../src/features/series/seriesDetective';
+} from '../src/features/series/seriesDetectiveEvidence';
 
 const book = {
   id: 'book-1',
