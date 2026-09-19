@@ -1,5 +1,6 @@
 import { Format } from '../../../types';
 import type { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
+import { hardenCatalogGroups } from '../catalogHardening';
 
 interface OpenLibraryEdition {
   key?: string;
@@ -186,9 +187,9 @@ export async function searchOpenLibraryPage(
 
   const payload = (await response.json()) as OpenLibraryResponse;
   const rawDocs = payload.docs ?? [];
-  const groups = rawDocs
+  const groups = hardenCatalogGroups(rawDocs
     .map(mapWork)
-    .filter((group): group is BookSearchWorkGroup => Boolean(group));
+    .filter((group): group is BookSearchWorkGroup => Boolean(group)));
   const providerTotalItems = payload.numFound ?? payload.num_found ?? groups.length;
   const nextStartIndex = Math.max(0, startIndex) + rawDocs.length;
   const hasMore = rawDocs.length > 0 && nextStartIndex < providerTotalItems;
