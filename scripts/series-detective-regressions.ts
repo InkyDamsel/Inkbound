@@ -69,7 +69,19 @@ const weakGoogleEdition = edition('google-books', {
 const weakGoogle = scoreSeriesEvidence(work(weakGoogleEdition), weakGoogleEdition, book);
 assert.ok(weakGoogle);
 assert.equal(weakGoogle?.structured, false);
-assert.equal(selectVerifiedSeriesEvidence([weakGoogle!]), null);
+assert.equal(selectVerifiedSeriesEvidence([weakGoogle!])?.name, 'Dream Harbor');
+assert.equal(selectVerifiedSeriesEvidence([weakGoogle!])?.position, 2);
+
+
+const vagueTitleEdition = edition('google-books', {
+  seriesName: undefined,
+  seriesOrder: undefined,
+  title: 'The Cinnamon Bun Book Store (Dream Harbor)',
+  isbn13: undefined,
+  isbn10: undefined,
+});
+const vagueTitle = scoreSeriesEvidence(work(vagueTitleEdition), vagueTitleEdition, book);
+assert.equal(vagueTitle, null);
 
 const weakOpenLibraryEdition = edition('open-library', {
   seriesName: undefined,
