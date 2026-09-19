@@ -78,15 +78,29 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
   const existing = resolveEffectiveSeriesMetadata(book);
   if (existing) return { name: existing.name, position: existing.position };
 
-  const response = await searchGoogleBooks(`${book.work.title} ${book.work.author}`);
   const wantedTitle = normalize(book.work.title);
   const wantedAuthor = normalize(book.work.author);
+  const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+  const identifiers = [activeEdition?.isbn13, activeEdition?.isbn10].filter((value): value is string => Boolean(value?.trim()));
 
-  const candidates = response.groups
+  const searches = await Promise.all([
+    searchGoogleBooks(`${book.work.title} ${book.work.author}`),
+    searchOpenLibraryPage(`intitle:"${book.work.title}"`, 0, SERIES_DISCOVERY_PAGE_SIZE),
+    ...identifiers.map((isbn) => searchGoogleBooks(`isbn:${isbn}`)),
+    ...identifiers.map((isbn) => searchOpenLibraryPage(`isbn:${isbn}`, 0, SERIES_DISCOVERY_PAGE_SIZE)),
+  ]);
+
+  const groups = hardenCatalogGroups(
+    searches.flatMap((response) => response.groups),
+    { preferredAuthor: book.work.author },
+  );
+
+  const candidates = groups
     .filter((group) => normalize(group.title) === wantedTitle || normalize(group.title).includes(wantedTitle) || wantedTitle.includes(normalize(group.title)))
     .filter((group) => !wantedAuthor || exactAuthorMatch(group, book.work.author))
     .flatMap((group) => group.editions)
-    .filter((edition) => edition.seriesName);
+    .filter((edition) => edition.seriesName)
+    .sort((a, b) => catalogEditionQualityScore(b) - catalogEditionQualityScore(a));
 
   const preferredLanguage = activeEditionLanguage(book);
   const exactLanguage = preferredLanguage
