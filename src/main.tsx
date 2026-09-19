@@ -16,6 +16,14 @@ const publicSurface = !isNativeRuntime()
       : null
   : null;
 
+// Load the canonical Firebase module on production web surfaces so Firebase
+// Analytics is initialized even for public marketing/FAQ pages that do not mount
+// the signed-in application tree. Local development and native builds stay out of
+// production analytics.
+if (!isNativeRuntime() && import.meta.env.PROD) {
+  void import('./lib/firebase.ts');
+}
+
 async function bootstrap() {
   if (publicSurface) {
     const { mountPublicSurface } = await import('./publicEntry.tsx');
