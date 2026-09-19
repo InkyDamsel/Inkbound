@@ -79,6 +79,14 @@ const navbar = read('src/components/Navbar.tsx');
 const app = read('src/App.tsx');
 assert(navbar.includes('mobileNavigationGroups = visibleNavigationGroups'), 'Mobile navigation must be derived from the same visibleNavigationGroups used by desktop.');
 assert(navbar.includes('mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 2)]'), 'Mobile primary navigation must be derived from the canonical navigation groups.');
+assert(
+  navbar.includes("Switch to Light Mode") && navbar.includes("Switch to Dark Mode"),
+  'Compact/mobile navigation must expose the same light/dark theme control available in the desktop top bar.',
+);
+assert(
+  !navbar.includes("{ id: 'collections', label: 'Collections'"),
+  'Collections belongs inside My Library and must not drift into a separate web/Android navigation destination.',
+);
 
 // Every canonical navigation item must be handled by the shared App. Parse only
 // item arrays so group IDs such as "reading" and "journal" are not mistaken for
@@ -123,6 +131,49 @@ for (const file of sourceFiles.filter((candidate) => candidate.endsWith('.css'))
   }
 }
 
+// Light mode is a release surface, not a best-effort skin. Dark-only shared
+// form rules must be scoped to .dark, and the final light-theme layer must
+// contain explicit contrast guardrails for legacy hard-coded utilities.
+const corePagesCss = read('src/styles/core-pages.css');
+const lightThemeCss = read('src/styles/light-theme-2.css');
+assert(
+  !/(^|\n)main input\[type='search'\],[\s\S]*?background-color:\s*rgba\(13,\s*9,\s*16/.test(corePagesCss),
+  'core-pages.css must not apply dark form surfaces to light mode; scope dark form rules under :root.dark.',
+);
+for (const requiredLightGuard of [
+  "html:not(.dark) main .inkbound-kicker",
+  "html:not(.dark) main [class*='text-[#f4efe6]']",
+  "html:not(.dark) main .text-stone-400",
+  "html:not(.dark) main header[class*='overflow-hidden'] [class*='text-white']",
+  "html:not(.dark) main .inkbound-artwork-hero",
+  "html:not(.dark) main .inkbound-artwork-hero [class*='bg-black']",
+]) {
+  assert(lightThemeCss.includes(requiredLightGuard), `Light Theme 2.0 is missing contrast guardrail: ${requiredLightGuard}`);
+}
+
+const studioScreen = read('src/components/InkboundStudioScreen.tsx');
+assert(studioScreen.includes('inkbound-studio-theme-swatch'), 'Studio theme swatches must be explicitly protected from app light-mode remapping.');
+assert(studioScreen.includes('inkbound-studio-preview') && studioScreen.includes('inkbound-studio-preview-panel'), 'Studio share-card preview must remain theme-authentic in app light mode.');
+assert(lightThemeCss.includes('html:not(.dark) main .inkbound-studio-theme-swatch'), 'Light theme must preserve Studio theme swatch backgrounds.');
+assert(lightThemeCss.includes('html:not(.dark) main .inkbound-studio-preview-panel'), 'Light theme must preserve Studio preview contrast.');
+for (const themedPreviewFile of [
+  'src/components/MonthlyWrappedScreen.tsx',
+  'src/components/YearInBooksScreen.tsx',
+  'src/components/BookshelfThroughTimeScreen.tsx',
+]) {
+  const themedPreviewSource = read(themedPreviewFile);
+  assert(
+    themedPreviewSource.includes('inkbound-themed-preview'),
+    `${themedPreviewFile} must mark its authored preview/scene so app light mode cannot recolor it.`,
+  );
+}
+assert(lightThemeCss.includes('html:not(.dark) main button.inkbound-themed-preview-swatch'), 'Light theme must preserve authored recap theme swatches even when the selected-state rule also matches.');
+assert(lightThemeCss.includes("color: var(--preview-theme-text) !important"), 'Authored recap previews must retain their selected theme text color in app light mode.');
+assert(lightThemeCss.includes('html:not(.dark) main .inkbound-themed-preview [class*=\'text-white\']'), 'Light theme must preserve white text inside authored recap/shelf previews.');
+
+const statisticsScreen = read('src/components/StatisticsScreen.tsx');
+assert(statisticsScreen.includes('inkbound-light-warning-chip'), 'Statistics review warning must use the shared light-mode warning contrast treatment.');
+
 const androidRuntime = read('src/platform/initializeAndroidRuntime.ts');
 for (const capability of [
   'configureRuntimeAuthentication',
@@ -148,6 +199,30 @@ assert(androidRuntime.includes('PlayBilling.manage'), 'Android subscription mana
 const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
 assert(bookDetailsCore.includes('onUpdateSession'), 'Book Details must expose reading-session editing on every viewport.');
 assert(bookDetailsCore.includes('onDeleteSession'), 'Book Details must expose reading-session deletion on every viewport.');
+
+const libraryScreen = read('src/components/LibraryScreen.tsx');
+assert(
+  libraryScreen.includes("['books', 'series', 'collections', 'loans']") && libraryScreen.includes("section === 'collections'") && libraryScreen.includes('<CollectionsScreen'),
+  'Collections must remain reachable through the canonical My Library Books/Series/Collections/Loans tabs on both web and Android.',
+);
+
+const collectionsScreen = read('src/components/CollectionsScreen.tsx');
+for (const artworkHeroFile of [
+  'src/components/LibraryScreen.tsx',
+  'src/components/ReadingMemoriesScreen.tsx',
+  'src/components/PhotoMemoriesScreen.tsx',
+  'src/components/ReadingTimeCapsulesScreen.tsx',
+  'src/components/MyDragonScreen.tsx',
+]) {
+  assert(read(artworkHeroFile).includes('inkbound-artwork-hero'), `${artworkHeroFile} must mark its artwork banner so light mode cannot replace it with a parchment surface.`);
+}
+assert(collectionsScreen.includes("import { PaginationControls } from './PaginationControls'"), 'Collections must use shared pagination on web and Android.');
+assert(collectionsScreen.includes('const COLLECTION_SHELF_PAGE_SIZE = 24'), 'Open Collection must expose collection books in the same 24-item pages used by the live web experience.');
+assert(collectionsScreen.includes('totalItems={selectedBooks.length}'), 'Open Collection pagination must use the complete canonical collection membership.');
+assert(collectionsScreen.includes('const COLLECTION_MANAGER_PAGE_SIZE = 24'), 'Manage Books must use 24-item pages so large libraries remain usable on Android.');
+assert(collectionsScreen.includes('paginatedVisibleBooks.map'), 'Manage Books must render the paginated library slice rather than the entire library at once.');
+assert(collectionsScreen.includes('totalItems={visibleBooks.length}'), 'Manage Books pagination must be based on the full filtered library result set.');
+assert(!/selectedBooks\.slice\(0,\s*\d+\)/.test(collectionsScreen), 'Collections must not hide books behind a fixed preview-only slice.');
 
 const batchEdit = read('src/components/BatchEditModal.tsx');
 assert(batchEdit.includes('readCustomOwnershipCategories'), 'Batch Edit must load the same custom ownership categories available in single-book editing.');

@@ -129,7 +129,7 @@ export const ReadingMemoriesScreen: React.FC<ReadingMemoriesScreenProps> = ({
         </select>
       </header>
 
-      <section className="inkbound-panel overflow-hidden rounded-3xl">
+      <section className="inkbound-artwork-hero inkbound-panel overflow-hidden rounded-3xl">
         <div
           className="relative flex min-h-[210px] items-center overflow-hidden p-6 sm:min-h-[250px] sm:p-8"
           style={{

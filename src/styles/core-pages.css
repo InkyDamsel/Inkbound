@@ -76,18 +76,18 @@
   box-shadow: 0 0 0 3px rgba(167, 128, 151, 0.12);
 }
 
-main input[type='search'],
-main input[type='text'],
-main input[type='date'],
-main textarea {
+:root.dark main input[type='search'],
+:root.dark main input[type='text'],
+:root.dark main input[type='date'],
+:root.dark main textarea {
   border-color: rgba(167, 128, 151, 0.18) !important;
   background-color: rgba(13, 9, 16, 0.74) !important;
   color: var(--ink-ivory) !important;
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
-main input:focus,
-main textarea:focus {
+:root.dark main input:focus,
+:root.dark main textarea:focus {
   border-color: rgba(194, 151, 176, 0.7) !important;
   box-shadow: 0 0 0 3px rgba(167, 128, 151, 0.11);
   background-color: rgba(18, 12, 21, 0.96) !important;
