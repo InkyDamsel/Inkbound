@@ -20,6 +20,86 @@ const sameSeries = (edition: BookSearchEdition, seriesName: string) =>
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
 
+const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
+
+interface SeriesEvidence {
+  name: string;
+  position: number | null;
+  edition: BookSearchEdition;
+  work: BookSearchWorkGroup;
+  structured: boolean;
+  exactIdentifier: boolean;
+  exactTitle: boolean;
+  exactAuthor: boolean;
+  score: number;
+}
+
+const scoreSeriesEvidence = (
+  work: BookSearchWorkGroup,
+  edition: BookSearchEdition,
+  book: UserBookRecord,
+): SeriesEvidence | null => {
+  const structuredName = edition.seriesName?.trim();
+  const inferred = inferSeriesHintFromTitle(edition.title) ?? inferSeriesHintFromTitle(work.title);
+  const name = structuredName || inferred?.name;
+  if (!name) return null;
+
+  const position = typeof edition.seriesOrder === 'number'
+    ? edition.seriesOrder
+    : inferred?.position ?? null;
+  const activeEdition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+  const activeIdentifiers = new Set(
+    [activeEdition?.isbn13, activeEdition?.isbn10, activeEdition?.isbn]
+      .map(compactIsbn)
+      .filter(Boolean),
+  );
+  const candidateIdentifiers = [edition.isbn13, edition.isbn10].map(compactIsbn).filter(Boolean);
+  const exactIdentifier = candidateIdentifiers.some((identifier) => activeIdentifiers.has(identifier));
+  const exactTitle = normalize(work.title) === normalize(book.work.title) || normalize(edition.title) === normalize(book.work.title);
+  const exactAuthor = exactAuthorMatch(work, book.work.author);
+  const structured = Boolean(structuredName);
+
+  let score = 0;
+  if (structured) score += 100;
+  else score += 40;
+  if (exactIdentifier) score += 120;
+  if (exactTitle) score += 35;
+  if (exactAuthor) score += 35;
+  if (edition.source === 'inkbound-catalog') score += 35;
+  else if (edition.source === 'hardcover') score += 20;
+  else if (edition.source === 'google-books') score += 15;
+  else if (edition.source === 'open-library') score += 10;
+  if (typeof position === 'number') score += 10;
+  if (edition.language && edition.language === activeEditionLanguage(book)) score += 5;
+
+  return { name, position, edition, work, structured, exactIdentifier, exactTitle, exactAuthor, score };
+};
+
+const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): SeriesEvidence | null => {
+  const eligible = evidence.filter((item) => item.exactAuthor && (item.exactTitle || item.exactIdentifier));
+  if (!eligible.length) return null;
+
+  const bySeries = new Map<string, SeriesEvidence[]>();
+  for (const item of eligible) {
+    const key = `${normalize(item.name)}::${item.position ?? 'unknown'}`;
+    const current = bySeries.get(key) ?? [];
+    current.push(item);
+    bySeries.set(key, current);
+  }
+
+  const ranked = [...bySeries.values()].map((group) => {
+    const distinctSources = new Set(group.map((item) => item.edition.source)).size;
+    const best = [...group].sort((a, b) => b.score - a.score)[0];
+    const verified =
+      best.exactIdentifier && best.structured
+      || best.structured && best.score >= 150
+      || distinctSources >= 2 && best.score >= 110;
+    return { best, distinctSources, verified };
+  }).filter((item) => item.verified)
+    .sort((a, b) => b.best.score - a.best.score || b.distinctSources - a.distinctSources);
+
+  return ranked[0]?.best ?? null;
+};
 
 const SERIES_DISCOVERY_MAX_PAGES = 4;
 const SERIES_DISCOVERY_PAGE_SIZE = 40;
@@ -85,7 +165,9 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
   const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
   const identifiers = [activeEdition?.isbn13, activeEdition?.isbn10].filter((value): value is string => Boolean(value?.trim()));
 
-  const searches = await Promise.all([
+  const [googleAuthorGroups, openLibraryAuthorGroups, ...searches] = await Promise.all([
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(book.work.author, startIndex)),
+    collectPagedGroups((startIndex) => searchOpenLibraryPage(`inauthor:${book.work.author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
     searchInkboundTrustedCatalog({ title: book.work.title, author: book.work.author }),
     searchHardcover(`${book.work.title} ${book.work.author}`),
     searchGoogleBooks(`${book.work.title} ${book.work.author}`),
@@ -97,28 +179,26 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
   ]);
 
   const groups = hardenCatalogGroups(
-    searches.flatMap((response) => response.groups),
+    [
+      ...searches.flatMap((response) => response.groups),
+      ...googleAuthorGroups,
+      ...openLibraryAuthorGroups,
+    ],
     { preferredAuthor: book.work.author },
   );
 
-  const candidates = groups
-    .filter((group) => normalize(group.title) === wantedTitle || normalize(group.title).includes(wantedTitle) || wantedTitle.includes(normalize(group.title)))
+  const evidence = groups
+    .filter((group) =>
+      normalize(group.title) === wantedTitle
+      || normalize(group.title).includes(wantedTitle)
+      || wantedTitle.includes(normalize(group.title)),
+    )
     .filter((group) => !wantedAuthor || exactAuthorMatch(group, book.work.author))
-    .flatMap((group) => group.editions)
-    .filter((edition) => edition.seriesName || inferSeriesHintFromTitle(edition.title))
-    .sort((a, b) => catalogEditionQualityScore(b) - catalogEditionQualityScore(a));
+    .flatMap((group) => group.editions.map((edition) => scoreSeriesEvidence(group, edition, book)))
+    .filter((item): item is SeriesEvidence => Boolean(item));
 
-  const preferredLanguage = activeEditionLanguage(book);
-  const exactLanguage = preferredLanguage
-    ? candidates.find((edition) => edition.language?.toLocaleLowerCase() === preferredLanguage)
-    : undefined;
-  const match = exactLanguage ?? candidates[0];
-  if (!match) return null;
-  if (match.seriesName) {
-    return { name: match.seriesName, position: typeof match.seriesOrder === 'number' ? match.seriesOrder : null };
-  }
-  const inferred = inferSeriesHintFromTitle(match.title);
-  return inferred ? { name: inferred.name, position: inferred.position } : null;
+  const match = selectVerifiedSeriesEvidence(evidence);
+  return match ? { name: match.name, position: match.position } : null;
 }
 
 export async function findMissingSeriesBooks(
@@ -126,16 +206,26 @@ export async function findMissingSeriesBooks(
   author: string,
   libraryBooks: UserBookRecord[],
 ): Promise<SeriesDetectiveResult> {
-  const [googleSeriesGroups, googleExactSeriesGroups, googleAuthorGroups, openLibrarySeriesGroups, openLibraryAuthorGroups] = await Promise.all([
+  const [googleSeriesGroups, googleExactSeriesGroups, googleAuthorGroups, openLibrarySeriesGroups, openLibraryAuthorGroups, hardcoverSeries, hardcoverAuthor] = await Promise.all([
     collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex)),
     collectPagedGroups((startIndex) => searchGoogleBooksPage(`"${seriesName}" inauthor:${author}`, startIndex)),
     collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
     collectPagedGroups((startIndex) => searchOpenLibraryPage(`${seriesName} ${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
     collectPagedGroups((startIndex) => searchOpenLibraryPage(`inauthor:${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
+    searchHardcover(`${seriesName} ${author}`),
+    searchHardcover(author),
   ]);
 
   const merged = hardenCatalogGroups(
-    [...googleSeriesGroups, ...googleExactSeriesGroups, ...googleAuthorGroups, ...openLibrarySeriesGroups, ...openLibraryAuthorGroups],
+    [
+      ...googleSeriesGroups,
+      ...googleExactSeriesGroups,
+      ...googleAuthorGroups,
+      ...openLibrarySeriesGroups,
+      ...openLibraryAuthorGroups,
+      ...hardcoverSeries.groups,
+      ...hardcoverAuthor.groups,
+    ],
     { preferredAuthor: author },
   );
   const seen = new Map<string, SeriesDetectiveCandidate>();
