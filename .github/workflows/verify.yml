@@ -5,6 +5,9 @@ on:
     branches:
       - design/quiet-shelf-dashboard
       - feature/series-library
+      - feature/build-27-reading-source-of-truth
+      - feature/build-28-library-building
+      - feature/build-29-social
       - main
   pull_request:
 
