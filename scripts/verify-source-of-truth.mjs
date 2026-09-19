@@ -123,6 +123,41 @@ if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"
   violations.push('BookDetailsModal.tsx: Wishlist ownership must not rewrite reading status/history');
 }
 
+const catalogHardening = read('src/features/book-search/catalogHardening.ts');
+for (const required of [
+  'hardenCatalogEdition',
+  'hardenCatalogGroups',
+  'hardenCatalogResponse',
+  'isValidCatalogIsbn10',
+  'isValidCatalogIsbn13',
+  'catalogEditionQualityScore',
+]) {
+  if (!catalogHardening.includes(`export const ${required}`)) {
+    violations.push(`catalogHardening.ts: missing canonical ${required}`);
+  }
+}
+for (const providerFile of [
+  'src/features/book-search/data/googleBooksApi.ts',
+  'src/features/book-search/data/openLibraryApi.ts',
+  'src/features/book-search/data/hardcoverApi.ts',
+  'src/features/catalog/metadataContributions.ts',
+]) {
+  if (!read(providerFile).includes('catalogHardening')) {
+    violations.push(`${providerFile}: catalog data must pass through the canonical catalogHardening boundary`);
+  }
+}
+const bookSearchMapper = read('src/features/book-search/mapping/bookSearchMapper.ts');
+if (!bookSearchMapper.includes('hardenCatalogEdition') || !bookSearchMapper.includes('hardenCatalogGroups')) {
+  violations.push('bookSearchMapper.ts: external catalog data must be hardened again at the library persistence boundary');
+}
+const addBookModal = read('src/components/AddBookModal.tsx');
+if (!addBookModal.includes('isValidCatalogIsbn10') || !addBookModal.includes('isValidCatalogIsbn13')) {
+  violations.push('AddBookModal.tsx: scanner ISBN validation must use canonical catalog hardening rules');
+}
+if (/const\s+isValidIsbn10\s*=|const\s+isValidIsbn13\s*=/.test(addBookModal)) {
+  violations.push('AddBookModal.tsx: must not maintain duplicate ISBN checksum implementations');
+}
+
 const sessionEditor = read('src/components/SessionEditorModal.tsx');
 if (!sessionEditor.includes('localDateKey')) violations.push('SessionEditorModal.tsx: must use the canonical reading date helper');
 if (/const\s+localDate\s*=/.test(sessionEditor)) violations.push('SessionEditorModal.tsx: must not maintain a second local-date formatter');
