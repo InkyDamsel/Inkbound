@@ -5,6 +5,16 @@ import { inferSeriesHintFromTitle } from './seriesLibrary';
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
+const comparableTitle = (value?: string) => {
+  const title = value?.trim() ?? '';
+  if (!title) return '';
+  const inferred = inferSeriesHintFromTitle(title);
+  const withoutSeriesSuffix = inferred
+    ? title.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim()
+    : title;
+  return normalize(withoutSeriesSuffix);
+};
+
 const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
   const wanted = normalize(author);
   return !wanted || group.authors.some((candidate) => normalize(candidate) === wanted);
@@ -46,7 +56,8 @@ export const scoreSeriesEvidence = (
   );
   const candidateIdentifiers = [edition.isbn13, edition.isbn10].map(compactIsbn).filter(Boolean);
   const exactIdentifier = candidateIdentifiers.some((identifier) => activeIdentifiers.has(identifier));
-  const exactTitle = normalize(work.title) === normalize(book.work.title) || normalize(edition.title) === normalize(book.work.title);
+  const bookTitle = comparableTitle(book.work.title);
+  const exactTitle = comparableTitle(work.title) === bookTitle || comparableTitle(edition.title) === bookTitle;
   const exactAuthor = exactAuthorMatch(work, book.work.author);
   const structured = Boolean(structuredName);
 
