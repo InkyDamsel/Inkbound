@@ -30,6 +30,7 @@ interface LibraryScreenProps {
   onUpdateBook?: (book: UserBookRecord) => void;
   onOpenBatchEdit: () => void;
   onOpenAddBook: () => void;
+  onAddBook: (book: UserBookRecord) => void;
 }
 
 type ViewMode = 'grid' | 'list';
@@ -62,6 +63,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   onUpdateBook,
   onOpenBatchEdit,
   onOpenAddBook,
+  onAddBook,
 }) => {
   const { canUseBatchEdit, openUpgradeModal } = useUserPlan();
   const [section, setSection] = usePersistentState<LibrarySection>(LIBRARY_SECTION_STORAGE_KEY, DEFAULT_LIBRARY_SECTION);
@@ -192,7 +194,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       </nav>
 
       {section === 'series' ? (
-        <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} />
+        <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} onAddBook={onAddBook} />
       ) : section === 'collections' ? (
         <CollectionsScreen books={books} onUpdateBook={updateLibraryBook} onSelectBook={onSelectBook} />
       ) : section === 'loans' ? (
