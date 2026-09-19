@@ -102,15 +102,16 @@ export async function findMissingSeriesBooks(
   author: string,
   libraryBooks: UserBookRecord[],
 ): Promise<SeriesDetectiveResult> {
-  const [googleSeriesGroups, googleAuthorGroups, openLibrarySeriesGroups, openLibraryAuthorGroups] = await Promise.all([
+  const [googleSeriesGroups, googleExactSeriesGroups, googleAuthorGroups, openLibrarySeriesGroups, openLibraryAuthorGroups] = await Promise.all([
     collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex)),
+    collectPagedGroups((startIndex) => searchGoogleBooksPage(`"${seriesName}" inauthor:${author}`, startIndex)),
     collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
     collectPagedGroups((startIndex) => searchOpenLibraryPage(`${seriesName} ${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
     collectPagedGroups((startIndex) => searchOpenLibraryPage(`inauthor:${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
   ]);
 
   const merged = hardenCatalogGroups(
-    [...googleSeriesGroups, ...googleAuthorGroups, ...openLibrarySeriesGroups, ...openLibraryAuthorGroups],
+    [...googleSeriesGroups, ...googleExactSeriesGroups, ...googleAuthorGroups, ...openLibrarySeriesGroups, ...openLibraryAuthorGroups],
     { preferredAuthor: author },
   );
   const seen = new Map<string, SeriesDetectiveCandidate>();
