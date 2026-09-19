@@ -9,6 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
+import { hardenCatalogGroups } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -108,7 +109,7 @@ const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: Book
     if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
   });
 
-  return merged;
+  return hardenCatalogGroups(merged);
 };
 
 const isValidIsbn10 = (value: string) => {
