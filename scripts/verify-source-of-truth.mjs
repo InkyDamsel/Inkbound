@@ -322,7 +322,16 @@ if (/ownership\s*:\s*['"]none['"]/.test(seriesLibrary)) {
 }
 
 const seriesDetective = read('src/features/series/seriesDetective.ts');
-for (const required of ['resolveEffectiveSeriesMetadata', 'searchGoogleBooksPage', 'searchGoogleBooksAuthorPage']) {
+for (const required of [
+  'resolveEffectiveSeriesMetadata',
+  'searchGoogleBooksPage',
+  'searchGoogleBooksAuthorPage',
+  'searchOpenLibraryPage',
+  'searchHardcover',
+  'searchInkboundTrustedCatalog',
+  'scoreSeriesEvidence',
+  'selectVerifiedSeriesEvidence',
+]) {
   if (!seriesDetective.includes(required)) {
     violations.push(`seriesDetective.ts: Series Detective must consume canonical ${required}`);
   }
@@ -333,6 +342,19 @@ for (const required of ['seriesName?: string', 'seriesOrder?: number']) {
 }
 if (!bookSearchMapper.includes('hardenedEdition.seriesName') || !bookSearchMapper.includes('hardenedEdition.seriesOrder')) {
   violations.push('bookSearchMapper.ts: catalog series metadata must persist through the canonical library mapper');
+}
+
+const collectionsScreen = read('src/components/CollectionsScreen.tsx');
+for (const required of [
+  "type CollectionSortMode = 'az' | 'za' | 'newest' | 'oldest' | 'custom'",
+  "COLLECTION_SORT_STORAGE_KEY",
+  "sortOrder?: number",
+  "sortCollectionsForView",
+  "moveCollection",
+]) {
+  if (!collectionsScreen.includes(required)) {
+    violations.push(`CollectionsScreen.tsx: missing canonical collection sort behavior ${required}`);
+  }
 }
 
 const normalizer = read('src/features/library/libraryNormalization.ts');
