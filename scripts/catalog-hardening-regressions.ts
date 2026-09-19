@@ -75,3 +75,51 @@ assert.ok(groups[0].genres.includes('Fiction'));
 assert.equal(groups.at(-1)?.title, 'Stephen King Box Set');
 
 console.log('Inkbound catalog hardening regressions passed.');
+
+
+const authorIntentGroups = hardenCatalogGroups([
+  {
+    key: 'unknown-gunslinger',
+    title: 'The Gunslinger',
+    authors: ['Unknown author'],
+    genres: [],
+    editions: [{ ...goodEdition, externalEditionId: 'unknown-gunslinger', title: 'The Gunslinger', authors: ['Unknown author'] }],
+  },
+  {
+    key: 'known-gunslinger',
+    title: 'The Gunslinger',
+    authors: ['Stephen King'],
+    genres: ['Fantasy'],
+    editions: [{ ...goodEdition, externalEditionId: 'known-gunslinger', title: 'The Gunslinger', authors: ['Stephen King'] }],
+  },
+  {
+    key: 'king-box',
+    title: 'Stephen King 2 Box Set (Carrie, Misery And Pet Sematary)',
+    authors: ['Stephen King'],
+    genres: [],
+    editions: [{ ...goodEdition, externalEditionId: 'king-box', title: 'Stephen King 2 Box Set (Carrie, Misery And Pet Sematary)', authors: ['Stephen King'] }],
+  },
+  {
+    key: 'it',
+    title: 'It',
+    authors: ['Stephen King'],
+    genres: ['Horror'],
+    editions: [{ ...goodEdition, externalEditionId: 'it', title: 'It', authors: ['Stephen King'] }],
+  },
+], { searchQuery: 'Stephen King' });
+
+assert.equal(authorIntentGroups.filter((group) => group.title === 'The Gunslinger').length, 1);
+assert.deepEqual(authorIntentGroups.find((group) => group.title === 'The Gunslinger')?.authors, ['Stephen King']);
+assert.ok(authorIntentGroups.findIndex((group) => group.title === 'It') < authorIntentGroups.findIndex((group) => /Box Set/i.test(group.title)));
+
+const coauthorNoise = hardenCatalogGroups([
+  {
+    key: 'noise',
+    title: 'Stephen King',
+    authors: ['Rocky Wood', 'Stephen King'],
+    genres: [],
+    editions: [{ ...goodEdition, externalEditionId: 'noise', title: 'Stephen King', authors: ['Rocky Wood', 'Stephen King'] }],
+  },
+  work('Revival', { ...goodEdition, externalEditionId: 'revival', title: 'Revival', authors: ['Stephen King'] }),
+], { preferredAuthor: 'Stephen King' });
+assert.equal(coauthorNoise[0].title, 'Revival');
