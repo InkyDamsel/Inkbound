@@ -85,7 +85,7 @@ const sameCatalogEdition = (left: BookSearchEdition, right: BookSearchEdition) =
   return leftIsbns.some((isbn) => rightIsbns.has(isbn));
 };
 
-const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: BookSearchWorkGroup[]) => {
+const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: BookSearchWorkGroup[], searchQuery?: string, preferredAuthor?: string) => {
   const merged = current.map((group) => ({ ...group, genres: [...group.genres], editions: [...group.editions] }));
   const byIdentity = new Map<string, BookSearchWorkGroup>();
   merged.forEach((group) => {
@@ -109,7 +109,7 @@ const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: Book
     if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
   });
 
-  return hardenCatalogGroups(merged);
+  return hardenCatalogGroups(merged, { searchQuery, preferredAuthor });
 };
 
 const isValidIsbn = (value: string) => isValidCatalogIsbn10(value) || isValidCatalogIsbn13(value);
@@ -297,7 +297,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setSearchError(null);
     try {
       const response = await searchGoogleBooksPage(trimmedQuery, searchNextStartIndex);
-      setResults((current) => mergeCatalogResultGroups(current, response.groups));
+      setResults((current) => mergeCatalogResultGroups(current, response.groups, trimmedQuery));
       setSearchNextStartIndex(response.nextStartIndex);
       setSearchProviderTotal(response.providerTotalItems || searchProviderTotal);
       setSearchHasMore(response.hasMore && response.nextStartIndex > searchNextStartIndex);
@@ -351,7 +351,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     try {
       const response = await searchGoogleBooksAuthorPage(authorPage.name, authorNextStartIndex);
       const exactAuthorResults = filterExactAuthorResults(response.groups, authorPage.name);
-      setResults((current) => mergeCatalogResultGroups(current, exactAuthorResults));
+      setResults((current) => mergeCatalogResultGroups(current, exactAuthorResults, undefined, authorPage.name));
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || authorProviderTotal);
       setAuthorHasMore(response.hasMore && response.nextStartIndex > authorNextStartIndex);
@@ -654,7 +654,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
                   <div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]">
                     <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
-                    {edition.pageCount && <span className="mt-1 block">{edition.pageCount} pages</span>}
+                    {typeof edition.pageCount === 'number' && edition.pageCount > 0 ? <span className="mt-1 block">{edition.pageCount} pages</span> : <span className="mt-1 block text-[#776b78]">Page count unavailable</span>}
                     <div className="mt-auto pt-3">
                       {addedBook ? (
                         <div className="rounded-xl border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2.5">
