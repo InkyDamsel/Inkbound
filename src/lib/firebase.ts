@@ -21,6 +21,7 @@ import {
 } from 'firebase/firestore';
 import { Functions, connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 import { FirebaseStorage, connectStorageEmulator, getStorage } from 'firebase/storage';
+import { Analytics, getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 import { getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
 import { isNativeRuntime } from '../platform/runtimePlatform';
 
@@ -34,6 +35,7 @@ const firebaseConfig = {
   storageBucket: readEnv(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET),
   messagingSenderId: readEnv(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
   appId: readEnv(import.meta.env.VITE_FIREBASE_APP_ID),
+  measurementId: readEnv(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) || undefined,
 };
 
 const appCheckSiteKey = readEnv(import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY);
@@ -80,6 +82,7 @@ let readDb: Firestore | null = null;
 let db: Firestore | null = null;
 let functions: Functions | null = null;
 let storage: FirebaseStorage | null = null;
+let analytics: Analytics | null = null;
 
 function isIosBrowserRuntime(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -153,6 +156,19 @@ if (isFirebaseConfigured) {
   functions = allowProductionFirebaseFunctions ? getFunctions(app) : null;
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
 
+  // Analytics is intentionally web-only. Android has its own native app/runtime
+  // concerns, while this property is used to understand Inkbound web traffic and
+  // privacy-safe product usage. Never enable analytics for local/emulator sessions.
+  if (!useFirebaseEmulators && !isNativeRuntime() && !import.meta.env.DEV) {
+    void isAnalyticsSupported()
+      .then((supported) => {
+        if (supported && app) analytics = getAnalytics(app);
+      })
+      .catch((error) => {
+        console.warn('Inkbound web analytics could not initialize.', error);
+      });
+  }
+
   if (useFirebaseEmulators) {
     const emulatorHost = window.location.hostname || '127.0.0.1';
 
@@ -188,4 +204,4 @@ if (isFirebaseConfigured) {
   }
 }
 
-export { app, appCheck, auth, readDb, db, functions, storage };
+export { app, appCheck, auth, readDb, db, functions, storage, analytics };
