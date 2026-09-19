@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:critical": "tsx scripts/critical-reading-regressions.ts && tsx scripts/reporting-math-regressions.ts && tsx scripts/catalog-hardening-regressions.ts",
+    "test:critical": "tsx scripts/critical-reading-regressions.ts && tsx scripts/reporting-math-regressions.ts && tsx scripts/catalog-hardening-regressions.ts && tsx scripts/series-detective-regressions.ts",
     "verify:source-of-truth": "node scripts/verify-source-of-truth.mjs",
     "verify:parity": "node scripts/verify-cross-platform-parity.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
