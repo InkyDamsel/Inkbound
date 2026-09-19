@@ -114,6 +114,16 @@ const parityImportedAfterAppShell = applicationEntry.indexOf("./styles/responsiv
 const hasCompactActionOverride = /@media\s*\(max-width:\s*1199px\)[\s\S]*?\.inkbound-main-content\s+\.quiet-shelf-primary-action,[\s\S]*?\.inkbound-main-content\s+\.quiet-shelf-secondary-action\s*\{[\s\S]*?display\s*:\s*inline-flex\s*!important/.test(responsiveParity);
 assert(parityImportedAfterAppShell, 'responsive-parity.css must load after app-shell.css so shared feature-action visibility wins the compact cascade.');
 assert(hasCompactActionOverride, 'responsive-parity.css must force shared primary/secondary feature actions visible through tablet and phone widths.');
+const bookDetailsResponsive = read('src/components/bookDetailsResponsive.css');
+assert(
+  bookDetailsResponsive.includes('--book-details-safe-top: max(env(safe-area-inset-top), 24px)'),
+  'Book Details mobile layout must keep a minimum Android status-bar safe inset even when WebView reports zero.',
+);
+assert(
+  bookDetailsResponsive.includes("button[aria-label='Close book details']") &&
+  bookDetailsResponsive.includes('top: calc(var(--book-details-safe-top) + 0.75rem) !important'),
+  'Book Details close control must be anchored below the canonical mobile safe-top inset.',
+);
 
 for (const file of sourceFiles.filter((candidate) => candidate.endsWith('.css'))) {
   const relative = rel(file);
