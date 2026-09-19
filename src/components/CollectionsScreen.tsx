@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckSquare, FolderHeart, Pencil, Plus, Search, Trash2, Undo2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CheckSquare, FolderHeart, Pencil, Plus, Search, Trash2, Undo2, X } from 'lucide-react';
 import type { Format, ReadingStatus, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
@@ -14,6 +14,7 @@ import { PaginationControls } from './PaginationControls';
 type CollectionKind = 'manual' | 'smart';
 type SmartField = 'status' | 'format' | 'rating' | 'tag' | 'author' | 'year';
 type SortMode = 'title' | 'author' | 'rating' | 'progress' | 'recent';
+type CollectionSortMode = 'az' | 'za' | 'newest' | 'oldest' | 'custom';
 
 interface SmartRule {
   field: SmartField;
@@ -32,6 +33,7 @@ interface CollectionDefinition {
   kind?: CollectionKind;
   rule?: SmartRule;
   coverBookId?: string;
+  sortOrder?: number;
 }
 
 interface CollectionsScreenProps {
@@ -43,6 +45,7 @@ interface CollectionsScreenProps {
 const COLLECTIONS_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions;
 // Device-only view preference. Collection definitions/membership remain account-owned.
 const COLLECTION_VIEW_STORAGE_KEY = 'inkbound_collection_view';
+const COLLECTION_SORT_STORAGE_KEY = 'inkbound_collection_sort';
 const COLLECTION_DELETE_UNDO_MS = 7000;
 const COLLECTION_SHELF_PAGE_SIZE = 24;
 const COLLECTION_MANAGER_PAGE_SIZE = 24;
@@ -69,7 +72,21 @@ const makeCollectionId = () => `collection-${crypto.randomUUID()}`;
 const normalized = (value?: string) => value?.trim().toLowerCase() ?? '';
 const compareCollectionsByName = (a: CollectionDefinition, b: CollectionDefinition) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
-const sortCollectionsByName = (items: CollectionDefinition[]) => [...items].sort(compareCollectionsByName);
+
+const sortCollectionsForView = (items: CollectionDefinition[], mode: CollectionSortMode) => {
+  const sorted = [...items];
+  if (mode === 'za') return sorted.sort((a, b) => compareCollectionsByName(b, a));
+  if (mode === 'newest') return sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || compareCollectionsByName(a, b));
+  if (mode === 'oldest') return sorted.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || compareCollectionsByName(a, b));
+  if (mode === 'custom') {
+    return sorted.sort((a, b) => {
+      const aOrder = typeof a.sortOrder === 'number' ? a.sortOrder : Number.MAX_SAFE_INTEGER;
+      const bOrder = typeof b.sortOrder === 'number' ? b.sortOrder : Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder || a.createdAt.localeCompare(b.createdAt) || compareCollectionsByName(a, b);
+    });
+  }
+  return sorted.sort(compareCollectionsByName);
+};
 
 const smartMatches = (book: UserBookRecord, rule?: SmartRule) => {
   if (!rule || !rule.value.trim()) return false;
@@ -96,6 +113,10 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   const [selectedCollectionId, setSelectedCollectionId] = usePersistentState<string | null>(
     COLLECTION_VIEW_STORAGE_KEY,
     null,
+  );
+  const [collectionSortMode, setCollectionSortMode] = usePersistentState<CollectionSortMode>(
+    COLLECTION_SORT_STORAGE_KEY,
+    'az',
   );
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -181,10 +202,11 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   );
 
   const visibleCollections = useMemo(
-    () => sortCollectionsByName(
+    () => sortCollectionsForView(
       pendingDelete ? collections.filter((collection) => collection.id !== pendingDelete.id) : collections,
+      collectionSortMode,
     ),
-    [collections, pendingDelete],
+    [collections, pendingDelete, collectionSortMode],
   );
   const selectedCollection = visibleCollections.find((collection) => collection.id === selectedCollectionId);
   const selectedBooks = selectedCollection ? booksForCollection(selectedCollection, books) : [];
@@ -288,7 +310,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     const nextRule = kind === 'smart' ? { field: smartField, value: smartValue.trim() } : undefined;
     if (editingId) {
       const previous = visibleCollections.find((collection) => collection.id === editingId);
-      setCollections((current) => sortCollectionsByName(current.map((collection) => collection.id === editingId
+      setCollections((current) => current.map((collection) => collection.id === editingId
         ? {
             ...collection,
             name: trimmedName,
@@ -299,7 +321,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
             coverBookId: coverBookId || undefined,
             updatedAt: now,
           }
-        : collection)));
+        : collection));
       if (previous && previous.name !== trimmedName && (previous.kind ?? 'manual') === 'manual') {
         const nextBooks = books.map((book) => book.collections.includes(previous.name)
           ? {
@@ -321,8 +343,11 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
         kind,
         rule: nextRule,
         coverBookId: coverBookId || undefined,
+        ...(collectionSortMode === 'custom'
+          ? { sortOrder: Math.max(-1, ...collections.map((item) => typeof item.sortOrder === 'number' ? item.sortOrder : -1)) + 1 }
+          : {}),
       };
-      setCollections((current) => sortCollectionsByName([...current, newCollection]));
+      setCollections((current) => [...current, newCollection]);
       setSelectedCollectionId(newCollection.id);
     }
     setIsEditorOpen(false);
@@ -355,6 +380,35 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
       return book;
     }));
     setSelectedBookIds([]);
+  };
+
+  const handleCollectionSortModeChange = (nextMode: CollectionSortMode) => {
+    if (nextMode === 'custom') {
+      const currentOrder = sortCollectionsForView(
+        pendingDelete ? collections.filter((collection) => collection.id !== pendingDelete.id) : collections,
+        collectionSortMode,
+      );
+      const orderById = new Map(currentOrder.map((collection, index) => [collection.id, index]));
+      setCollections((current) => current.map((collection) => ({
+        ...collection,
+        sortOrder: orderById.get(collection.id) ?? current.length,
+      })));
+    }
+    setCollectionSortMode(nextMode);
+  };
+
+  const moveCollection = (collectionId: string, direction: -1 | 1) => {
+    const ordered = sortCollectionsForView(collections, 'custom');
+    const index = ordered.findIndex((collection) => collection.id === collectionId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= ordered.length) return;
+    const nextOrder = [...ordered];
+    [nextOrder[index], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[index]];
+    const orderById = new Map(nextOrder.map((collection, order) => [collection.id, order]));
+    setCollections((current) => current.map((collection) => ({
+      ...collection,
+      sortOrder: orderById.get(collection.id) ?? collection.sortOrder,
+    })));
   };
 
   const setCollectionCover = (bookId: string) => {
@@ -407,9 +461,26 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
             </span>
           </div>
         </div>
-        <button type="button" onClick={openNewCollection} className="quiet-shelf-primary-action w-full justify-center px-5 sm:w-auto">
-          <Plus className="h-4 w-4" /> New Collection
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <label className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)]">
+            Sort
+            <select
+              value={collectionSortMode}
+              onChange={(event) => handleCollectionSortModeChange(event.target.value as CollectionSortMode)}
+              className="inkbound-select min-h-11 min-w-[150px]"
+              aria-label="Sort collections"
+            >
+              <option value="az">A–Z</option>
+              <option value="za">Z–A</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <button type="button" onClick={openNewCollection} className="quiet-shelf-primary-action w-full justify-center px-5 sm:w-auto">
+            <Plus className="h-4 w-4" /> New Collection
+          </button>
+        </div>
       </header>
 
       <ResponsiveGrid minItemWidth={240} maxColumns={3} gap={16}>
@@ -448,6 +519,12 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                     <p className="mt-1 text-xs text-[var(--ink-muted)]">{collectionBooks.length} {collectionBooks.length === 1 ? 'book' : 'books'}</p>
                   </div>
                   <div className="flex shrink-0 gap-1">
+                    {collectionSortMode === 'custom' && (
+                      <>
+                        <button type="button" onClick={() => moveCollection(collection.id, -1)} className="quiet-shelf-icon-button" aria-label={`Move ${collection.name} up`}><ArrowUp className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => moveCollection(collection.id, 1)} className="quiet-shelf-icon-button" aria-label={`Move ${collection.name} down`}><ArrowDown className="h-4 w-4" /></button>
+                      </>
+                    )}
                     <button type="button" onClick={() => openEditCollection(collection)} className="quiet-shelf-icon-button" aria-label={`Edit ${collection.name}`}><Pencil className="h-4 w-4" /></button>
                     <button type="button" onClick={() => requestCollectionDelete(collection)} className="quiet-shelf-icon-button" aria-label={`Delete ${collection.name}`}><Trash2 className="h-4 w-4" /></button>
                   </div>
