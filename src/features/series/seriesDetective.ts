@@ -1,7 +1,9 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../book-search/data/googleBooksApi';
-import { resolveEffectiveSeriesMetadata } from './seriesLibrary';
+import { searchOpenLibraryPage } from '../book-search/data/openLibraryApi';
+import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
+import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata } from './seriesLibrary';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
@@ -15,6 +17,48 @@ const sameSeries = (edition: BookSearchEdition, seriesName: string) =>
 
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
+
+
+const SERIES_DISCOVERY_MAX_PAGES = 4;
+const SERIES_DISCOVERY_PAGE_SIZE = 40;
+
+const candidateSeriesMetadata = (
+  work: BookSearchWorkGroup,
+  edition: BookSearchEdition,
+  wantedSeriesName: string,
+): { name: string; position: number | null } | null => {
+  if (sameSeries(edition, wantedSeriesName)) {
+    return {
+      name: edition.seriesName!,
+      position: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : null,
+    };
+  }
+
+  for (const title of [edition.title, work.title]) {
+    const inferred = inferSeriesHintFromTitle(title);
+    if (inferred && normalize(inferred.name) === normalize(wantedSeriesName)) {
+      return { name: inferred.name, position: inferred.position };
+    }
+  }
+
+  return null;
+};
+
+const collectPagedGroups = async (
+  fetchPage: (startIndex: number) => Promise<{ groups: BookSearchWorkGroup[]; nextStartIndex: number; hasMore: boolean }>,
+): Promise<BookSearchWorkGroup[]> => {
+  const groups: BookSearchWorkGroup[] = [];
+  let startIndex = 0;
+
+  for (let pageNumber = 0; pageNumber < SERIES_DISCOVERY_MAX_PAGES; pageNumber += 1) {
+    const page = await fetchPage(startIndex);
+    groups.push(...page.groups);
+    if (!page.hasMore || page.nextStartIndex <= startIndex) break;
+    startIndex = page.nextStartIndex;
+  }
+
+  return groups;
+};
 
 export interface SeriesDetectiveCandidate {
   work: BookSearchWorkGroup;
@@ -58,13 +102,18 @@ export async function findMissingSeriesBooks(
   author: string,
   libraryBooks: UserBookRecord[],
 ): Promise<SeriesDetectiveResult> {
-  const [seriesSearch, authorSearch] = await Promise.all([
-    searchGoogleBooksPage(`${seriesName} ${author}`, 0),
-    searchGoogleBooksAuthorPage(author, 0),
+  const [googleSeriesGroups, googleAuthorGroups, openLibrarySeriesGroups, openLibraryAuthorGroups] = await Promise.all([
+    collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex)),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
+    collectPagedGroups((startIndex) => searchOpenLibraryPage(`${seriesName} ${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
+    collectPagedGroups((startIndex) => searchOpenLibraryPage(`inauthor:${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
   ]);
 
-  const merged = [...seriesSearch.groups, ...authorSearch.groups];
-  const seen = new Set<string>();
+  const merged = hardenCatalogGroups(
+    [...googleSeriesGroups, ...googleAuthorGroups, ...openLibrarySeriesGroups, ...openLibraryAuthorGroups],
+    { preferredAuthor: author },
+  );
+  const seen = new Map<string, SeriesDetectiveCandidate>();
   const candidates: SeriesDetectiveCandidate[] = [];
 
   const seriesBooks = libraryBooks.filter((book) => {
@@ -75,16 +124,27 @@ export async function findMissingSeriesBooks(
 
   for (const work of merged) {
     if (!exactAuthorMatch(work, author)) continue;
+
     for (const edition of work.editions) {
-      if (!sameSeries(edition, seriesName)) continue;
+      const metadata = candidateSeriesMetadata(work, edition, seriesName);
+      if (!metadata) continue;
       if (preferredLanguages.size > 0 && edition.language && !preferredLanguages.has(edition.language.toLocaleLowerCase())) continue;
-      const position = typeof edition.seriesOrder === 'number' ? edition.seriesOrder : null;
-      const key = position !== null ? `position:${position}` : `title:${normalize(work.title)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      candidates.push({ work, edition, seriesName: edition.seriesName!, position });
+
+      const candidate: SeriesDetectiveCandidate = {
+        work,
+        edition,
+        seriesName: metadata.name,
+        position: metadata.position,
+      };
+      const key = metadata.position !== null ? `position:${metadata.position}` : `title:${normalize(work.title)}`;
+      const current = seen.get(key);
+      if (!current || catalogEditionQualityScore(candidate.edition) > catalogEditionQualityScore(current.edition)) {
+        seen.set(key, candidate);
+      }
     }
   }
+
+  candidates.push(...seen.values());
 
   const existingPositions = new Set<number>();
   const existingTitles = new Set<string>();
