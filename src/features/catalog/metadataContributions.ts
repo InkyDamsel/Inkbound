@@ -2,7 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 import type { UserBookRecord } from '../../types';
 import type { BookSearchResponse } from '../book-search/model/bookSearch';
-import { hardenCatalogResponse } from '../book-search/catalogHardening';
+import { hardenCatalogResponse, isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../book-search/catalogHardening';
 
 export interface CatalogContributionFields {
   title: string;
@@ -64,8 +64,10 @@ export function buildCatalogContributionFields(book: UserBookRecord): CatalogCon
   if (!edition || !title || !author) return null;
 
   const genericIsbn = normalizeIsbn(edition.isbn);
-  const isbn10 = normalizeIsbn(edition.isbn10) ?? (genericIsbn?.length === 10 ? genericIsbn : undefined);
-  const isbn13 = normalizeIsbn(edition.isbn13) ?? (genericIsbn?.length === 13 ? genericIsbn : undefined);
+  const isbn10Candidate = normalizeIsbn(edition.isbn10) ?? (genericIsbn?.length === 10 ? genericIsbn : undefined);
+  const isbn13Candidate = normalizeIsbn(edition.isbn13) ?? (genericIsbn?.length === 13 ? genericIsbn : undefined);
+  const isbn10 = isValidCatalogIsbn10(isbn10Candidate) ? isbn10Candidate : undefined;
+  const isbn13 = isValidCatalogIsbn13(isbn13Candidate) ? isbn13Candidate : undefined;
   const asin = normalizeAsin(edition.asin);
   const publisher = edition.publisher?.trim();
   const publicationDate = edition.publicationDate?.trim();
