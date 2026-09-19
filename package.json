@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=127.0.0.1",
+    "dev": "node scripts/start-dev.mjs",
+    "dev:web": "vite --port=3000 --host=127.0.0.1",
     "dev:lan": "vite --port=3000 --host=0.0.0.0",
     "dev:firebase": "npm run functions:build && node scripts/start-firebase-emulators.mjs",
     "build": "npm run verify:production-env && vite build",
