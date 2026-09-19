@@ -6,7 +6,7 @@ import {
   UserBookRecord,
 } from '../../../types';
 import { BookSearchEdition, BookSearchWorkGroup } from '../model/bookSearch';
-import { hardenCatalogEdition } from '../catalogHardening';
+import { hardenCatalogEdition, hardenCatalogGroups } from '../catalogHardening';
 
 interface CreateBookFromEditionOptions {
   work: BookSearchWorkGroup;
@@ -48,11 +48,12 @@ export function createBookFromSearchEdition({
   binding = edition.binding,
   specialFeatures = edition.specialFeatures,
 }: CreateBookFromEditionOptions): UserBookRecord {
+  const hardenedWork = hardenCatalogGroups([work])[0] ?? work;
   const hardenedEdition = hardenCatalogEdition(edition);
   const bookId = uniqueId('book');
   const workId = uniqueId('work');
   const editionId = uniqueId('edition');
-  const publisherSummary = hardenedEdition.publisherSummary ?? work.publisherSummary;
+  const publisherSummary = hardenedEdition.publisherSummary ?? hardenedWork.publisherSummary;
   const addedOn = localDateKey();
   const isFinished = status === 'finished';
   const hasKnownPrintTotal = format !== 'audiobook'
@@ -64,15 +65,15 @@ export function createBookFromSearchEdition({
     id: bookId,
     work: {
       id: workId,
-      title: work.title,
-      subtitle: work.subtitle,
-      author: work.authors.join(', '),
-      summary: publisherSummary ?? 'No publisher summary was available for this hardenedEdition.',
+      title: hardenedWork.title,
+      subtitle: hardenedWork.subtitle,
+      author: hardenedWork.authors.join(', '),
+      summary: publisherSummary ?? 'No publisher summary was available for this edition.',
       publisherSummary,
-      genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : work.genres,
+      genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : hardenedWork.genres,
       publicationYear: hardenedEdition.publicationYear,
       originalLanguage: hardenedEdition.language,
-      externalWorkId: work.key,
+      externalWorkId: hardenedWork.key,
     },
     activeEditionId: editionId,
     editions: [
