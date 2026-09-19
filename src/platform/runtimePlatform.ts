@@ -3,7 +3,10 @@ type CapacitorRuntime = {
   getPlatform?: () => string;
 };
 
-const buildRuntimeTarget = import.meta.env.VITE_RUNTIME_TARGET;
+const buildRuntimeTarget =
+  typeof import.meta.env !== 'undefined'
+    ? import.meta.env.VITE_RUNTIME_TARGET
+    : undefined;
 
 function getCapacitorRuntime(): CapacitorRuntime | undefined {
   if (typeof globalThis === 'undefined') return undefined;
