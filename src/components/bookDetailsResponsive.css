@@ -44,12 +44,18 @@
   }
 
   .book-details-modal-host > div.fixed > section[role='dialog'] > header {
+    --book-details-safe-top: max(env(safe-area-inset-top), 24px);
     flex: 0 0 auto;
     max-height: 44dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-top: max(1rem, env(safe-area-inset-top)) !important;
+    padding-top: calc(var(--book-details-safe-top) + 1rem) !important;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header > button[aria-label='Close book details'] {
+    top: calc(var(--book-details-safe-top) + 0.75rem) !important;
+    right: max(0.75rem, env(safe-area-inset-right)) !important;
   }
 
   /* Keep enough room for the actual book fields/tabs even on shorter phones. */
