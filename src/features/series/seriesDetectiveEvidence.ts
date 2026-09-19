@@ -92,9 +92,16 @@ export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): Series
   const ranked = [...bySeries.values()].map((group) => {
     const distinctSources = new Set(group.map((item) => item.edition.source)).size;
     const best = [...group].sort((a, b) => b.score - a.score)[0];
+    const explicitTitleSeries =
+      !best.structured
+      && best.exactTitle
+      && best.exactAuthor
+      && typeof best.position === 'number';
+
     const verified =
       best.exactIdentifier && best.structured
       || best.structured && best.score >= 150
+      || explicitTitleSeries
       || distinctSources >= 2 && best.score >= 110;
     return { best, distinctSources, verified };
   }).filter((item) => item.verified)
