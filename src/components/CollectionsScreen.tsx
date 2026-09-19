@@ -67,6 +67,9 @@ const starterCollections: CollectionDefinition[] = [
 
 const makeCollectionId = () => `collection-${crypto.randomUUID()}`;
 const normalized = (value?: string) => value?.trim().toLowerCase() ?? '';
+const compareCollectionsByName = (a: CollectionDefinition, b: CollectionDefinition) =>
+  a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+const sortCollectionsByName = (items: CollectionDefinition[]) => [...items].sort(compareCollectionsByName);
 
 const smartMatches = (book: UserBookRecord, rule?: SmartRule) => {
   if (!rule || !rule.value.trim()) return false;
@@ -178,7 +181,9 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   );
 
   const visibleCollections = useMemo(
-    () => pendingDelete ? collections.filter((collection) => collection.id !== pendingDelete.id) : collections,
+    () => sortCollectionsByName(
+      pendingDelete ? collections.filter((collection) => collection.id !== pendingDelete.id) : collections,
+    ),
     [collections, pendingDelete],
   );
   const selectedCollection = visibleCollections.find((collection) => collection.id === selectedCollectionId);
@@ -283,7 +288,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     const nextRule = kind === 'smart' ? { field: smartField, value: smartValue.trim() } : undefined;
     if (editingId) {
       const previous = visibleCollections.find((collection) => collection.id === editingId);
-      setCollections((current) => current.map((collection) => collection.id === editingId
+      setCollections((current) => sortCollectionsByName(current.map((collection) => collection.id === editingId
         ? {
             ...collection,
             name: trimmedName,
@@ -294,7 +299,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
             coverBookId: coverBookId || undefined,
             updatedAt: now,
           }
-        : collection));
+        : collection)));
       if (previous && previous.name !== trimmedName && (previous.kind ?? 'manual') === 'manual') {
         const nextBooks = books.map((book) => book.collections.includes(previous.name)
           ? {
@@ -317,7 +322,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
         rule: nextRule,
         coverBookId: coverBookId || undefined,
       };
-      setCollections((current) => [...current, newCollection]);
+      setCollections((current) => sortCollectionsByName([...current, newCollection]));
       setSelectedCollectionId(newCollection.id);
     }
     setIsEditorOpen(false);
