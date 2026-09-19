@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 import type { UserBookRecord } from '../../types';
 import type { BookSearchResponse } from '../book-search/model/bookSearch';
+import { hardenCatalogResponse } from '../book-search/catalogHardening';
 
 export interface CatalogContributionFields {
   title: string;
@@ -152,7 +153,7 @@ export async function searchInkboundTrustedCatalog(input: { isbn?: string; asin?
   try {
     if (input.isbn || input.asin) {
       const response = await callable({ action: 'searchTrustedCatalog', ...input });
-      return response.data ?? { groups: [], totalItems: 0 };
+      return hardenCatalogResponse(response.data ?? { groups: [], totalItems: 0 });
     }
 
     const rawTitle = input.title?.trim() ?? '';
@@ -161,7 +162,7 @@ export async function searchInkboundTrustedCatalog(input: { isbn?: string; asin?
     const variants = [...new Set(Array.from({ length: Math.min(5, words.length) }, (_, index) => words.slice(0, words.length - index).join(' ')).filter(Boolean))];
     for (const title of variants) {
       const response = await callable({ action: 'searchTrustedCatalog', title, author: input.author });
-      if ((response.data?.groups?.length ?? 0) > 0) return response.data;
+      if ((response.data?.groups?.length ?? 0) > 0) return hardenCatalogResponse(response.data);
     }
     return { groups: [], totalItems: 0 };
   } catch (error) {
