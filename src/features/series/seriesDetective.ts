@@ -126,7 +126,19 @@ export async function findMissingSeriesBooks(
   author: string,
   libraryBooks: UserBookRecord[],
 ): Promise<SeriesDetectiveResult> {
-  const [googleSeriesGroups, googleExactSeriesGroups, googleAuthorGroups, googleSeriesOnlyGroups, openLibrarySeriesGroups, openLibraryAuthorGroups, openLibrarySeriesOnlyGroups, hardcoverSeries, hardcoverAuthor, hardcoverSeriesOnly] = await Promise.all([
+  const seriesBooks = libraryBooks.filter((book) => {
+    const metadata = resolveEffectiveSeriesMetadata(book);
+    return metadata && normalize(metadata.name) === normalize(seriesName);
+  });
+  const knownWholePositions = seriesBooks
+    .map((book) => resolveEffectiveSeriesMetadata(book)?.position)
+    .filter((position): position is number => typeof position === 'number' && Number.isInteger(position) && position > 0);
+  const highestKnownPosition = knownWholePositions.length ? Math.max(...knownWholePositions) : 0;
+  const knownPositionSet = new Set(knownWholePositions);
+  const missingKnownGaps = Array.from({ length: highestKnownPosition }, (_, index) => index + 1)
+    .filter((position) => !knownPositionSet.has(position));
+
+  const [googleSeriesGroups, googleExactSeriesGroups, googleAuthorGroups, googleSeriesOnlyGroups, openLibrarySeriesGroups, openLibraryAuthorGroups, openLibrarySeriesOnlyGroups, hardcoverSeries, hardcoverAuthor, hardcoverSeriesOnly, positionalDiscovery] = await Promise.all([
     collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex)),
     collectPagedGroups((startIndex) => searchGoogleBooksPage(`"${seriesName}" inauthor:${author}`, startIndex)),
     collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
@@ -137,6 +149,15 @@ export async function findMissingSeriesBooks(
     searchHardcover(`${seriesName} ${author}`),
     searchHardcover(author),
     searchHardcover(seriesName),
+    Promise.all(missingKnownGaps.map(async (position) => {
+      const query = `${seriesName} book ${position} ${author}`;
+      const [google, openLibrary, hardcover] = await Promise.all([
+        searchGoogleBooks(query),
+        searchOpenLibraryPage(query, 0, SERIES_DISCOVERY_PAGE_SIZE),
+        searchHardcover(query),
+      ]);
+      return [...google.groups, ...openLibrary.groups, ...hardcover.groups];
+    })),
   ]);
 
   const merged = hardenCatalogGroups(
@@ -151,16 +172,13 @@ export async function findMissingSeriesBooks(
       ...hardcoverSeries.groups,
       ...hardcoverAuthor.groups,
       ...hardcoverSeriesOnly.groups,
+      ...positionalDiscovery.flat(),
     ],
     { preferredAuthor: author },
   );
   const seen = new Map<string, SeriesDetectiveCandidate>();
   const candidates: SeriesDetectiveCandidate[] = [];
 
-  const seriesBooks = libraryBooks.filter((book) => {
-    const metadata = resolveEffectiveSeriesMetadata(book);
-    return metadata && normalize(metadata.name) === normalize(seriesName);
-  });
   const preferredLanguages = new Set(seriesBooks.map(activeEditionLanguage).filter((value): value is string => Boolean(value)));
 
   for (const work of merged) {
