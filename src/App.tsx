@@ -461,7 +461,7 @@ export default function App() {
   const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessions]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
   const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
     maybeShowFirstSessionMilestone(newSession);
-    const previousBook = books.find((book) => book.id === newSession.bookId);
+    const previousBook = booksRef.current.find((book) => book.id === newSession.bookId);
     const updatedBook = previousBook
       ? applySessionProgressToBook(previousBook, newSession, updatedPages, updatedMinutes)
       : undefined;
@@ -476,7 +476,7 @@ export default function App() {
     showToast(`Saved a ${getSessionDurationMinutes(newSession)}-minute reading session.`);
   };
   const handleSaveManualSession = (session: ReadingSession) => {
-    const nextSessions = [session, ...sessions];
+    const nextSessions = [session, ...sessionsRef.current];
     commitCanonicalSessions(nextSessions);
     commitCanonicalBooks((current) => current.map((book) =>
       book.id === session.bookId ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
@@ -485,7 +485,7 @@ export default function App() {
   };
   const handleSaveManualSessions = (newSessions: ReadingSession[]) => {
     if (newSessions.length === 0) return;
-    const nextSessions = [...newSessions, ...sessions];
+    const nextSessions = [...newSessions, ...sessionsRef.current];
     const affectedBookIds = new Set(newSessions.map((session) => session.bookId));
     setSessions(nextSessions);
     commitCanonicalBooks((current) => current.map((book) =>
@@ -493,18 +493,18 @@ export default function App() {
     ));
     showToast(`Added ${newSessions.length} past reading session${newSessions.length === 1 ? '' : 's'}.`);
   };
-  const handleUpdateSession = (session: ReadingSession) => { const previous = sessions.find((item) => item.id === session.id); const nextSessions = sessionsRef.current.map((item) => item.id === session.id ? session : item); commitCanonicalSessions(nextSessions); if (previous && previous.bookId !== session.bookId) { reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous); reconcileBookProgressFromSessions(session.bookId, nextSessions); } else reconcileBookProgressFromSessions(session.bookId, nextSessions, previous); showToast('Updated reading session and reconciled book progress.'); };
-  const handleDeleteSession = (sessionId: string) => { const removed = sessions.find((session) => session.id === sessionId); const nextSessions = sessionsRef.current.filter((session) => session.id !== sessionId); commitCanonicalSessions(nextSessions); if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed); showToast('Deleted reading session and reconciled book progress.'); };
+  const handleUpdateSession = (session: ReadingSession) => { const previous = sessionsRef.current.find((item) => item.id === session.id); const nextSessions = sessionsRef.current.map((item) => item.id === session.id ? session : item); commitCanonicalSessions(nextSessions); if (previous && previous.bookId !== session.bookId) { reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous); reconcileBookProgressFromSessions(session.bookId, nextSessions); } else reconcileBookProgressFromSessions(session.bookId, nextSessions, previous); showToast('Updated reading session and reconciled book progress.'); };
+  const handleDeleteSession = (sessionId: string) => { const removed = sessionsRef.current.find((session) => session.id === sessionId); const nextSessions = sessionsRef.current.filter((session) => session.id !== sessionId); commitCanonicalSessions(nextSessions); if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed); showToast('Deleted reading session and reconciled book progress.'); };
 
   const handleExecuteImport = async (importedItems: ImportRecordItem[]): Promise<ImportRecordItem[]> => {
     const currentLibrary = booksRef.current; const { unique: acceptedItems, duplicates: writeDuplicates } = analyzeImportDuplicates(importedItems, currentLibrary);
     if (acceptedItems.length === 0) { showToast('No books were added because they already exist in your library.'); return []; }
-    setPreviousBooksState(currentLibrary); setPreviousSessionsState(null); const immediateBooks = acceptedItems.map(createFallbackImportedBook); const nextLibrary = [...currentLibrary, ...immediateBooks]; booksRef.current = nextLibrary; setBooks(nextLibrary);
+    setPreviousBooksState(currentLibrary); setPreviousSessionsState(null); const immediateBooks = acceptedItems.map(createFallbackImportedBook); const nextLibrary = [...currentLibrary, ...immediateBooks]; commitCanonicalBooks(nextLibrary);
     const existingQueue = readImportEnrichmentQueue(); const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item])); queueImportedItems(acceptedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item)); writeImportEnrichmentQueue([...queuedByBookId.values()]);
     const verificationSnapshot = getImportVerificationSnapshot(); appendImportHistory(acceptedItems, verificationSnapshot.duplicates.length + writeDuplicates.length); const skippedAtWrite = importedItems.length - acceptedItems.length; showToast(navigator.onLine ? `Added ${immediateBooks.length} books${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will update when Inkbound is online.`); void processImportEnrichmentQueue(); return acceptedItems;
   };
 
-  const handleResetData = () => { booksRef.current = []; setBooks([]); commitCanonicalSessions([]); setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY); removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY); removeRuntimeValue(DAYTIME_MAINTENANCE_KEY); writeImportEnrichmentQueue([]); writeImportHistory([]); writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared all Inkbound books and reading sessions.'); };
+  const handleResetData = () => { commitCanonicalBooks([]); commitCanonicalSessions([]); setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY); removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY); removeRuntimeValue(DAYTIME_MAINTENANCE_KEY); writeImportEnrichmentQueue([]); writeImportHistory([]); writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared all Inkbound books and reading sessions.'); };
   const currentSelectedBook = selectedBookForDetails ? books.find((book) => book.id === selectedBookForDetails.id) ?? selectedBookForDetails : null;
 
   return (
