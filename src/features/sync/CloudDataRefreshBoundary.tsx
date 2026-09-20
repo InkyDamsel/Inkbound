@@ -3,7 +3,6 @@ import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage, readRuntimeJson } from '../../platform/runtimeStorage';
-import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
 import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
 import { INKBOUND_CLOUD_DATA_EVENT, notifyCloudDataUpdated } from './cloudSyncEvents';
@@ -62,7 +61,6 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
     // hydration finishes, so readiness always comes from the canonical owner +
     // hydration marker state.
     const refresh = () => {
-      recoverIncompleteLatestImport();
       reconcileRepeatedImportHistory(readStoredBooks());
 
       if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
