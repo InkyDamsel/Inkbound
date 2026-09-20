@@ -165,7 +165,10 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     clearDeleteTimer();
     pendingDeleteRef.current = null;
     setPendingDelete(null);
-    setCollections((current) => current.filter((item) => item.id !== collection.id));
+    // The definition is removed synchronously when Delete is tapped. Waiting
+    // here only postpones membership cleanup for the Undo window; otherwise a
+    // suspended/backgrounded mobile timer can make a visibly deleted collection
+    // reappear on the next launch.
     if ((collection.kind ?? 'manual') === 'manual') removeManualMembershipEverywhere(collection.name);
     setSelectedCollectionId((current) => current === collection.id ? null : current);
   };
@@ -174,6 +177,9 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     if (pendingDeleteRef.current) commitCollectionDelete();
     pendingDeleteRef.current = collection;
     setPendingDelete(collection);
+    // Persist the actual deletion immediately. Undo restores this exact
+    // definition; it does not rely on a delayed write surviving app background.
+    setCollections((current) => current.filter((item) => item.id !== collection.id));
     if (selectedCollectionId === collection.id) setSelectedCollectionId(null);
     deleteTimerRef.current = window.setTimeout(
       () => commitCollectionDelete(collection),
@@ -186,7 +192,9 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     const collection = pendingDeleteRef.current;
     pendingDeleteRef.current = null;
     setPendingDelete(null);
-    if (collection) setSelectedCollectionId(collection.id);
+    if (!collection) return;
+    setCollections((current) => current.some((item) => item.id === collection.id) ? current : [...current, collection]);
+    setSelectedCollectionId(collection.id);
   };
 
   useEffect(
@@ -195,7 +203,6 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
       clearDeleteTimer();
       pendingDeleteRef.current = null;
       if (!collection) return;
-      setCollections((current) => current.filter((item) => item.id !== collection.id));
       if ((collection.kind ?? 'manual') === 'manual') removeManualMembershipEverywhere(collection.name);
     },
     [setCollections],
