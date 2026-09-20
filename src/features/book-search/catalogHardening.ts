@@ -120,6 +120,25 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
   };
 };
 
+export const selectExactIsbnEdition = (
+  groups: BookSearchWorkGroup[],
+  isbn: string,
+): { work: BookSearchWorkGroup; edition: BookSearchEdition } | null => {
+  const wanted = compactIsbn(isbn);
+  if (!wanted) return null;
+
+  const exact = groups.flatMap((work) =>
+    work.editions
+      .map(hardenCatalogEdition)
+      .filter((edition) => [edition.isbn13, edition.isbn10].map(compactIsbn).includes(wanted))
+      .map((edition) => ({ work, edition })),
+  );
+  if (!exact.length) return null;
+
+  exact.sort((left, right) => catalogEditionQualityScore(right.edition) - catalogEditionQualityScore(left.edition));
+  return exact[0];
+};
+
 export const catalogEditionQualityScore = (edition: BookSearchEdition): number => {
   let score = 0;
   if (edition.source === 'inkbound-catalog') score += 30;
