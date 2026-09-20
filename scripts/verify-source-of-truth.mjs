@@ -106,9 +106,17 @@ for (const required of ['applySessionProgressToBook', 'reconcileBookAfterSession
   }
 }
 
+const canonicalInputSource = read('src/components/form/CanonicalInput.tsx');
+if (!canonicalInputSource.includes('CanonicalNumberInput')) {
+  violations.push('CanonicalInput.tsx: canonical numeric draft/commit editor is missing');
+}
+
 const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
 for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_KEYS', 'localDateKey']) {
   if (!bookDetailsCore.includes(required)) violations.push(`BookDetailsModalCore.tsx: missing canonical ${required} consumer`);
+}
+if (!bookDetailsCore.includes('CanonicalNumberInput')) {
+  violations.push('BookDetailsModalCore.tsx: editable numeric progress/edition fields must use the canonical numeric input boundary');
 }
 if (/const\s+localDateKey\s*=/.test(bookDetailsCore)) {
   violations.push('BookDetailsModalCore.tsx: must use the canonical reading date helper');
@@ -359,7 +367,7 @@ if (!bookSearchMapper.includes('hardenedEdition.seriesName') || !bookSearchMappe
   violations.push('bookSearchMapper.ts: catalog series metadata must persist through the canonical library mapper');
 }
 
-const collectionsScreen = read('src/components/CollectionsScreen.tsx');
+const collectionsSortSource = read('src/components/CollectionsScreen.tsx');
 for (const required of [
   "type CollectionSortMode = 'az' | 'za' | 'newest' | 'oldest' | 'custom'",
   "COLLECTION_SORT_STORAGE_KEY",
@@ -367,7 +375,7 @@ for (const required of [
   "sortCollectionsForView",
   "moveCollection",
 ]) {
-  if (!collectionsScreen.includes(required)) {
+  if (!collectionsSortSource.includes(required)) {
     violations.push(`CollectionsScreen.tsx: missing canonical collection sort behavior ${required}`);
   }
 }
