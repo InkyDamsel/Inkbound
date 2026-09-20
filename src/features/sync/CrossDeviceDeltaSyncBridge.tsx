@@ -43,7 +43,11 @@ const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 const FOREGROUND_FALLBACK_MS = 120000;
 const QUERY_OVERLAP_MS = 5000;
-const LIVE_SIGNAL_DEBOUNCE_MS = 175;
+// Collapse bursts of Firestore signal updates into a bounded reconciliation
+// cadence. This prevents a large import/sync from repeatedly rereading the same
+// overlap window hundreds of times while preserving near-real-time sync.
+const MIN_DELTA_PULL_INTERVAL_MS = 5000;
+const LIVE_SIGNAL_DEBOUNCE_MS = 750;
 
 type RecordKind = 'books' | 'sessions';
 interface CloudRecord<T> {
@@ -175,6 +179,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     let disposed = false;
     let initialRetryTimer: number | undefined;
     let liveSignalTimer: number | undefined;
+    let lastDeltaPullStartedAt = 0;
 
     knownBookIds.current = idsFromStored<UserBookRecord>(BOOKS_KEY);
 
@@ -187,6 +192,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
       if (disposed || pullRunning.current || !navigator.onLine || !coreHydrationComplete()) return;
 
       pullRunning.current = true;
+      lastDeltaPullStartedAt = Date.now();
       try {
         const cursor = readCursor(uid);
         const lowerBound = Timestamp.fromMillis(Math.max(0, cursor - QUERY_OVERLAP_MS));
@@ -332,10 +338,15 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     const scheduleLivePull = () => {
       if (disposed || !coreHydrationComplete()) return;
       if (liveSignalTimer !== undefined) window.clearTimeout(liveSignalTimer);
+
+      const elapsed = Date.now() - lastDeltaPullStartedAt;
+      const throttleDelay = Math.max(0, MIN_DELTA_PULL_INTERVAL_MS - elapsed);
+      const delay = Math.max(LIVE_SIGNAL_DEBOUNCE_MS, throttleDelay);
+
       liveSignalTimer = window.setTimeout(() => {
         liveSignalTimer = undefined;
         void pullDeltas();
-      }, LIVE_SIGNAL_DEBOUNCE_MS);
+      }, delay);
     };
 
     const handleCoreCloudUpdate = (event: Event) => {
