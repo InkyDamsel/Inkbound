@@ -3,7 +3,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { Save, Trash2, X } from 'lucide-react';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
-import { CanonicalInput } from './form/CanonicalInput';
+import { CanonicalInput, CanonicalTextarea } from './form/CanonicalInput';
 
 interface SessionEditorModalProps {
   books: UserBookRecord[];
@@ -174,7 +174,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Ending minute' : 'Ending page'}<CanonicalInput type="number" inputMode="numeric" min={0} value={endProgress} onValueChange={(value) => { setEndProgress(value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Mood <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalInput value={mood} onValueChange={setMood} placeholder="e.g. Cozy, tense, emotional" className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Location <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalInput value={location} onValueChange={setLocation} placeholder="e.g. Home, commute, café" className="inkbound-select mt-1 w-full" /></label>
-          <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} className="inkbound-select mt-1 w-full resize-y" /></label>
+          <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalTextarea rows={4} value={notes} onValueChange={setNotes} className="inkbound-select mt-1 w-full resize-y" /></label>
         </div>
 
         {error && <p className="mt-4 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>}
