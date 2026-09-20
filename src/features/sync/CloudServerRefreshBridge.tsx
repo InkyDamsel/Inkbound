@@ -18,6 +18,7 @@ import {
   INKBOUND_FORCE_CLOUD_REFRESH_EVENT,
   publishCloudSyncHealth,
 } from './cloudSyncHealth';
+import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import { SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
@@ -76,6 +77,7 @@ function reconcileServerRecords<T extends { id: string }>(
   baseline: Record<string, string>,
 ): T[] {
   const currentById = new Map(current.map((item) => [item.id, item]));
+  const serverIds = new Set(server.map((item) => item.id));
   const next = new Map<string, T>();
 
   server.forEach((item) => {
@@ -89,7 +91,7 @@ function reconcileServerRecords<T extends { id: string }>(
   });
 
   currentById.forEach((item, id) => {
-    if (next.has(id) || server.some((candidate) => candidate.id === id)) return;
+    if (next.has(id) || serverIds.has(id)) return;
     const mutation = pending[id];
     if (mutation?.operation === 'delete') return;
     if (mutation?.operation === 'upsert' && mutation.data) {
@@ -402,6 +404,14 @@ export const CloudServerRefreshBridge: React.FC = () => {
         const currentSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
         const nextBooks = mergeBooksFromServer(currentBooks, serverBooks, pending.books ?? {}, baseline.books ?? {});
         const nextSessions = reconcileServerRecords(currentSessions, serverSessions, pending.sessions ?? {}, baseline.sessions ?? {});
+
+        // This is a verified complete server snapshot. Refresh the canonical
+        // baseline from what actually exists in cloud so later deletes cannot be
+        // mistaken for never-synced local-only records. Pending mutations remain
+        // separate durable intent and are deliberately not written into baseline.
+        baseline.books = Object.fromEntries(serverBooks.map((book) => [book.id, fingerprintSyncValue(book)]));
+        baseline.sessions = Object.fromEntries(serverSessions.map((session) => [session.id, fingerprintSyncValue(session)]));
+
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (JSON.stringify(currentBooks) !== JSON.stringify(nextBooks)) {
@@ -416,14 +426,19 @@ export const CloudServerRefreshBridge: React.FC = () => {
         if (!pending.profile && profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<Record<string, unknown>>).data;
           if (cloudProfile) {
-            const serialized = JSON.stringify(compactProfileForRuntime(cloudProfile));
+            const compactProfile = compactProfileForRuntime(cloudProfile);
+            const serialized = stableSyncValue(compactProfile);
+            baseline.profile = stableSyncValue(cloudProfile);
             if (storage.getItem(PROFILE_KEY) !== serialized) {
               storage.setItem(PROFILE_KEY, serialized);
               changedKeys.push(PROFILE_KEY);
             }
           }
+        } else if (!profileSnapshot.exists() && !pending.profile) {
+          delete baseline.profile;
         }
 
+        writeJson(syncBaselineStateKey(uid), baseline);
         if (changedKeys.length) notifyCloudDataUpdated(changedKeys);
         const syncedAt = new Date().toISOString();
         storage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);
