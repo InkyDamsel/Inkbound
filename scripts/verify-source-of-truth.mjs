@@ -118,6 +118,10 @@ for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_K
 if (!bookDetailsCore.includes('CanonicalNumberInput')) {
   violations.push('BookDetailsModalCore.tsx: editable numeric progress/edition fields must use the canonical numeric input boundary');
 }
+if (!bookDetailsCore.includes('isValidCatalogIsbn10') || !bookDetailsCore.includes('isValidCatalogIsbn13')) {
+  violations.push('BookDetailsModalCore.tsx: metadata refresh must prefer canonical exact-ISBN edition identity when available');
+}
+
 for (const required of ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'PRIORITY_OPTIONS', 'FORMAT_OPTIONS']) {
   if (!bookDetailsCore.includes(required)) {
     violations.push(`BookDetailsModalCore.tsx: library selector options must consume canonical libraryTaxonomy ${required}`);
