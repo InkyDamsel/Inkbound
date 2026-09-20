@@ -22,6 +22,7 @@ import {
   type CoreCloudReconciledDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import {
   SYNC_STORAGE_KEYS,
   localClearIntentKey,
@@ -63,16 +64,8 @@ interface PendingSyncState {
 interface SyncBaseline { books: Record<string, string>; sessions: Record<string, string>; profile?: string }
 
 const runtimeStorage = () => getRuntimeStorage();
-const stable = (value: unknown) => JSON.stringify(value);
-const hashText = (value: string) => {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-};
-const fingerprint = (value: unknown) => hashText(stable(value));
+const stable = stableSyncValue;
+const fingerprint = fingerprintSyncValue;
 const emptyPending = (): PendingSyncState => ({ books: {}, sessions: {} });
 const emptyBaseline = (): SyncBaseline => ({ books: {}, sessions: {} });
 
@@ -159,7 +152,7 @@ async function optimizeProfileImage(value: string, kind: 'avatar' | 'banner'): P
 async function uploadProfileImage(uid: string, kind: 'avatar' | 'banner', value?: string) {
   if (!value || !isDataImage(value) || !storage) return value;
   const blob = await optimizeProfileImage(value, kind);
-  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${hashText(value)}.webp`);
+  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${fingerprintSyncValue(value)}.webp`);
   await uploadBytes(imageRef, blob, { contentType: 'image/webp', cacheControl: 'public,max-age=31536000,immutable' });
   return getDownloadURL(imageRef);
 }
