@@ -60,6 +60,7 @@ import {
   writeImportHistory,
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
+import { normalizeLibraryRecord } from './features/library/libraryNormalization';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
 import {
   applySessionProgressToBook,
@@ -411,7 +412,7 @@ export default function App() {
       if (changes.removeTag) updatedBook.privateTags = updatedBook.privateTags.filter((tag) => tag.toLowerCase() !== changes.removeTag!.toLowerCase());
       if (changes.addCollection && !updatedBook.collections.includes(changes.addCollection)) updatedBook.collections = [...updatedBook.collections, changes.addCollection];
       if (changes.removeCollection) updatedBook.collections = updatedBook.collections.filter((collection) => collection.toLowerCase() !== changes.removeCollection!.toLowerCase());
-      return updatedBook;
+      return normalizeLibraryRecord(updatedBook);
     }));
     const count = selectedBookIds.length; setSelectedBookIds([]); setIsBatchEditOpen(false); showToast(`Applied batch changes to ${count} books.`);
   };
