@@ -126,14 +126,17 @@ export async function findMissingSeriesBooks(
   author: string,
   libraryBooks: UserBookRecord[],
 ): Promise<SeriesDetectiveResult> {
-  const [googleSeriesGroups, googleExactSeriesGroups, googleAuthorGroups, openLibrarySeriesGroups, openLibraryAuthorGroups, hardcoverSeries, hardcoverAuthor] = await Promise.all([
+  const [googleSeriesGroups, googleExactSeriesGroups, googleAuthorGroups, googleSeriesOnlyGroups, openLibrarySeriesGroups, openLibraryAuthorGroups, openLibrarySeriesOnlyGroups, hardcoverSeries, hardcoverAuthor, hardcoverSeriesOnly] = await Promise.all([
     collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex)),
     collectPagedGroups((startIndex) => searchGoogleBooksPage(`"${seriesName}" inauthor:${author}`, startIndex)),
     collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
+    collectPagedGroups((startIndex) => searchGoogleBooksPage(`"${seriesName}"`, startIndex)),
     collectPagedGroups((startIndex) => searchOpenLibraryPage(`${seriesName} ${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
     collectPagedGroups((startIndex) => searchOpenLibraryPage(`inauthor:${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
+    collectPagedGroups((startIndex) => searchOpenLibraryPage(`"${seriesName}"`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
     searchHardcover(`${seriesName} ${author}`),
     searchHardcover(author),
+    searchHardcover(seriesName),
   ]);
 
   const merged = hardenCatalogGroups(
@@ -141,10 +144,13 @@ export async function findMissingSeriesBooks(
       ...googleSeriesGroups,
       ...googleExactSeriesGroups,
       ...googleAuthorGroups,
+      ...googleSeriesOnlyGroups,
       ...openLibrarySeriesGroups,
       ...openLibraryAuthorGroups,
+      ...openLibrarySeriesOnlyGroups,
       ...hardcoverSeries.groups,
       ...hardcoverAuthor.groups,
+      ...hardcoverSeriesOnly.groups,
     ],
     { preferredAuthor: author },
   );
@@ -153,16 +159,21 @@ export async function findMissingSeriesBooks(
 
   const seriesBooks = libraryBooks.filter((book) => {
     const metadata = resolveEffectiveSeriesMetadata(book);
-    return metadata && normalize(metadata.name) === normalize(seriesName) && normalize(book.work.author) === normalize(author);
+    return metadata && normalize(metadata.name) === normalize(seriesName);
   });
   const preferredLanguages = new Set(seriesBooks.map(activeEditionLanguage).filter((value): value is string => Boolean(value)));
 
   for (const work of merged) {
-    if (!exactAuthorMatch(work, author)) continue;
-
     for (const edition of work.editions) {
       const metadata = candidateSeriesMetadata(work, edition, seriesName);
       if (!metadata) continue;
+
+      // A provider's structured exact series name is stronger evidence than an
+      // author match because legitimate series can span multiple authors (for
+      // example anthology/shared-world lines). Title-inferred series membership
+      // remains author-gated so a generic parenthetical title cannot pull in an
+      // unrelated same-named series.
+      if (!sameSeries(edition, seriesName) && !exactAuthorMatch(work, author)) continue;
       if (preferredLanguages.size > 0 && edition.language && !preferredLanguages.has(edition.language.toLocaleLowerCase())) continue;
 
       const candidate: SeriesDetectiveCandidate = {
