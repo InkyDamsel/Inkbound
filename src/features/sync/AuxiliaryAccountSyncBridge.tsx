@@ -267,18 +267,13 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
 
         if (cloudRecord) {
           const cloudFingerprint = stable(cloudRecord.data);
-          const localChangedAgainstKnownCloud = sameAccountLocalData
-            && localFingerprint !== undefined
-            && previousBaseline !== undefined
-            && previousBaseline === cloudFingerprint
-            && localFingerprint !== previousBaseline;
-
-          if (localChangedAgainstKnownCloud) {
-            pending[name] = { data: localValue, clientUpdatedAt: now };
-            fingerprints.current[name] = localFingerprint;
-            return;
-          }
-
+          // A local value that differs from the last acknowledged baseline but
+          // has no durable pending mutation is not enough evidence of fresh user
+          // intent. Large-storage restore, an interrupted old build, or a stale
+          // browser cache can all produce that shape. Real mutations are captured
+          // synchronously into the pending queue by runtimeStorage while this
+          // bridge is hydrated, so startup must not invent a fresh "now" timestamp
+          // and make stale auxiliary state look newer than cloud.
           writeLocalValue(key, cloudRecord.data, true);
           fingerprints.current[name] = cloudFingerprint;
           return;
@@ -347,6 +342,11 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
           }
 
           const record = change.doc.data() as CloudAuxiliaryRecord;
+          const remoteFingerprint = stable(record.data);
+          // Same baseline rule as core sync: an unchanged cloud payload cannot
+          // defeat a later durable local edit merely because its server timestamp
+          // is numerically newer than the client clock.
+          if (localPending && baseline[name] === remoteFingerprint) return;
           if (localPending && !remoteWinsConflict(record, localPending)) return;
           if (localPending) {
             delete pending[name];
