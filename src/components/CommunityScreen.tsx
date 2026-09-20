@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, Eye, EyeOff, MessageCircle, Music2, Search, Send, ShieldCheck, Sparkles, TriangleAlert, Tv2 } from 'lucide-react';
+import { BookOpen, Eye, EyeOff, MessageCircle, Music2, Search, Send, ShieldCheck, Sparkles, TriangleAlert, Tv2, X } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useReaderProfileIdentity } from '../hooks/useReaderProfileIdentity';
@@ -243,38 +243,73 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
                 </div>
               </div>
 
-              <select
-                id="community-book-attachment"
-                value={draft.bookId ?? ''}
-                onChange={(event) => updateDraft('bookId', event.target.value || undefined)}
-                className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"
-              >
-                <option value="">No book attached</option>
-                {filteredBooks.map((book) => (
-                  <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>
-                ))}
-              </select>
-
-              {normalizedBookSearch && filteredBooks.length === 0 && (
-                <p className="text-xs text-[var(--ink-muted)]">No books in your library match “{bookSearch.trim()}”.</p>
+              {!selectedBook && (
+                <div className="max-h-72 overflow-y-auto overscroll-contain rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-2">
+                  {filteredBooks.length === 0 ? (
+                    <p className="px-3 py-4 text-xs text-[var(--ink-muted)]">
+                      {normalizedBookSearch ? `No books in your library match “${bookSearch.trim()}”.` : 'No books found in your library.'}
+                    </p>
+                  ) : (
+                    <div className="grid gap-1">
+                      {filteredBooks.map((book) => {
+                        const coverUrl = getActiveEdition(book)?.coverUrl;
+                        return (
+                          <button
+                            key={book.id}
+                            type="button"
+                            onClick={() => {
+                              updateDraft('bookId', book.id);
+                              setBookSearch('');
+                            }}
+                            className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-[var(--ink-surface-raised)]"
+                          >
+                            <div className="grid h-14 w-10 shrink-0 place-items-center overflow-hidden rounded-md bg-[var(--ink-surface-raised)]">
+                              {coverUrl
+                                ? <img src={coverUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                                : <BookOpen className="h-4 w-4 text-[var(--ink-mauve)]" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-[var(--ink-ivory)]">{book.work.title}</p>
+                              <p className="truncate text-xs text-[var(--ink-muted)]">{book.work.author}</p>
+                              {book.work.seriesName && (
+                                <p className="mt-0.5 truncate text-[11px] text-[var(--ink-muted)]">
+                                  {book.work.seriesName}{book.work.seriesOrder ? ` · Book ${book.work.seriesOrder}` : ''}
+                                </p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          {selectedBook && (
-            <div className="flex items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3">
-              <div className="grid h-20 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--ink-surface-raised)]">
-                {selectedBookCover
-                  ? <img src={selectedBookCover} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                  : <BookOpen className="h-5 w-5 text-[var(--ink-mauve)]" />}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-[var(--ink-ivory)]">{selectedBook.work.title}</p>
-                <p className="truncate text-xs text-[var(--ink-muted)]">{selectedBook.work.author}</p>
-                {selectedBook.work.seriesName && (
-                  <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{selectedBook.work.seriesName}{selectedBook.work.seriesOrder ? ` · Book ${selectedBook.work.seriesOrder}` : ''}</p>
-                )}
-              </div>
+              {selectedBook && (
+                <div className="flex items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3">
+                  <div className="grid h-20 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--ink-surface-raised)]">
+                    {selectedBookCover
+                      ? <img src={selectedBookCover} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                      : <BookOpen className="h-5 w-5 text-[var(--ink-mauve)]" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-[var(--ink-ivory)]">{selectedBook.work.title}</p>
+                    <p className="truncate text-xs text-[var(--ink-muted)]">{selectedBook.work.author}</p>
+                    {selectedBook.work.seriesName && (
+                      <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{selectedBook.work.seriesName}{selectedBook.work.seriesOrder ? ` · Book ${selectedBook.work.seriesOrder}` : ''}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => updateDraft('bookId', undefined)}
+                    className="quiet-shelf-icon-button shrink-0"
+                    aria-label="Remove attached book"
+                    title="Remove attached book"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
