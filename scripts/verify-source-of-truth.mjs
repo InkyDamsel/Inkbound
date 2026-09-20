@@ -111,6 +111,27 @@ if (!canonicalInputSource.includes('CanonicalNumberInput')) {
   violations.push('CanonicalInput.tsx: canonical numeric draft/commit editor is missing');
 }
 
+const readingSessionsScreen = read('src/components/ReadingSessionsScreen.tsx');
+const sessionEditor = read('src/components/SessionEditorModal.tsx');
+const bulkHistoricalSessions = read('src/components/BulkHistoricalSessionsModal.tsx');
+const appSource = read('src/App.tsx');
+
+for (const required of ['Add Past Session', 'Add Multiple', 'SessionEditorModal', 'BulkHistoricalSessionsModal']) {
+  if (!readingSessionsScreen.includes(required)) {
+    violations.push(`ReadingSessionsScreen.tsx: manual session entry is a Build 28 capability and must remain visible (${required})`);
+  }
+}
+for (const relativeSource of [sessionEditor, bulkHistoricalSessions, readingSessionsScreen]) {
+  if (!relativeSource.includes('CanonicalInput')) {
+    violations.push('Manual session and reading-journal editable fields must consume CanonicalInput');
+  }
+}
+for (const required of ['onSaveManualSession={handleSaveManualSession}', 'onSaveManualSessions={handleSaveManualSessions}']) {
+  if (!appSource.includes(required)) {
+    violations.push(`App.tsx: manual session persistence wiring missing (${required})`);
+  }
+}
+
 const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
 for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_KEYS', 'localDateKey']) {
   if (!bookDetailsCore.includes(required)) violations.push(`BookDetailsModalCore.tsx: missing canonical ${required} consumer`);
