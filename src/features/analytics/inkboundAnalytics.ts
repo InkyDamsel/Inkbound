@@ -1,5 +1,5 @@
 import { logEvent } from 'firebase/analytics';
-import { analytics } from '../../lib/firebase';
+import { analyticsReady } from '../../lib/firebase';
 
 type AnalyticsParameter = string | number | boolean;
 type AnalyticsParameters = Record<string, AnalyticsParameter>;
@@ -17,11 +17,14 @@ export function trackInkboundEvent(
   eventName: string,
   parameters: AnalyticsParameters = {},
 ): void {
-  if (!analytics || !SAFE_EVENT_NAME.test(eventName)) return;
+  if (!SAFE_EVENT_NAME.test(eventName)) return;
 
-  try {
-    logEvent(analytics, eventName, parameters);
-  } catch (error) {
-    console.warn('Inkbound analytics event could not be recorded.', error);
-  }
+  void analyticsReady.then((analytics) => {
+    if (!analytics) return;
+    try {
+      logEvent(analytics, eventName, parameters);
+    } catch (error) {
+      console.warn('Inkbound analytics event could not be recorded.', error);
+    }
+  });
 }
