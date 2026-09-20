@@ -12,7 +12,7 @@ import { CollectionBannerAdjuster } from './CollectionBannerAdjuster';
 import { PaginationControls } from './PaginationControls';
 
 type CollectionKind = 'manual' | 'smart';
-type SmartField = 'status' | 'format' | 'rating' | 'tag' | 'author' | 'title' | 'year';
+type SmartField = 'status' | 'format' | 'rating' | 'tag' | 'author' | 'year';
 type SortMode = 'title' | 'author' | 'rating' | 'progress' | 'recent';
 
 interface SmartRule {
@@ -76,7 +76,6 @@ const smartMatches = (book: UserBookRecord, rule?: SmartRule) => {
   if (rule.field === 'rating') return (book.rating ?? 0) >= Number(rule.value || 0);
   if (rule.field === 'tag') return book.privateTags.some((tag) => normalized(tag) === value);
   if (rule.field === 'author') return normalized(book.work.author).includes(value);
-  if (rule.field === 'title') return normalized(book.work.title).includes(value);
   if (rule.field === 'year') return book.work.publicationYear === Number(rule.value);
   return false;
 };
@@ -587,7 +586,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
               <label className="text-xs font-semibold text-[var(--ink-muted)]">Type<select value={kind} onChange={(event) => setKind(event.target.value as CollectionKind)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="manual">Manual</option><option value="smart">Smart</option></select></label>
               {kind === 'smart' && (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-xs font-semibold text-[var(--ink-muted)]">Rule field<select value={smartField} onChange={(event) => { const field = event.target.value as SmartField; setSmartField(field); setSmartValue(resetSmartValueForField(field)); }} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="status">Status</option><option value="format">Format</option><option value="rating">Rating at least</option><option value="tag">Tag equals</option><option value="author">Author contains</option><option value="title">Title contains</option><option value="year">Publication year</option></select></label>
+                  <label className="text-xs font-semibold text-[var(--ink-muted)]">Rule field<select value={smartField} onChange={(event) => { const field = event.target.value as SmartField; setSmartField(field); setSmartValue(resetSmartValueForField(field)); }} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="status">Status</option><option value="format">Format</option><option value="rating">Rating at least</option><option value="tag">Tag equals</option><option value="author">Author contains</option><option value="year">Publication year</option></select></label>
                   <label className="text-xs font-semibold text-[var(--ink-muted)]">Rule value{smartRuleValueControl}</label>
                 </div>
               )}
