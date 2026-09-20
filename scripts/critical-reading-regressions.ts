@@ -252,6 +252,7 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   const auxiliarySource = fs.readFileSync(new URL('../src/features/sync/AuxiliaryAccountSyncBridge.tsx', import.meta.url), 'utf8');
   const collectionsSource = fs.readFileSync(new URL('../src/components/CollectionsScreen.tsx', import.meta.url), 'utf8');
   const cloudRefreshBoundarySource = fs.readFileSync(new URL('../src/features/sync/CloudDataRefreshBoundary.tsx', import.meta.url), 'utf8');
+  const enrichmentSource = fs.readFileSync(new URL('../src/features/import/libraryEnrichment.ts', import.meta.url), 'utf8');
 
   assert.match(costSafeSource, /INKBOUND_CORE_RECONCILED_EVENT/);
   assert.match(costSafeSource, /let coreReconciled = false/);
@@ -267,6 +268,8 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.match(collectionsSource, /Persist the actual deletion immediately/);
   assert.match(collectionsSource, /setCollections\(\(current\) => current\.filter\(\(item\) => item\.id !== collection\.id\)\)/);
   assert.doesNotMatch(cloudRefreshBoundarySource, /recoverIncompleteLatestImport/);
+  assert.match(enrichmentSource, /function needsPageCount\(/);
+  assert.match(enrichmentSource, /!needsPageCount\(book\)/);
 }
 
 console.log('Inkbound critical reading regressions passed.');
