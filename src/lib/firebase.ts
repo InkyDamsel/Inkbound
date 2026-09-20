@@ -54,7 +54,11 @@ export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length =
 const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
 
 export const useFirebaseEmulators = import.meta.env.DEV && requestedFirebaseMode === 'emulator';
-export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
+export const firebaseRuntimeMode = useFirebaseEmulators
+  ? 'emulator'
+  : import.meta.env.DEV && requestedFirebaseMode === 'protected'
+    ? 'protected'
+    : 'production';
 
 const explicitProductionMode = import.meta.env.DEV && requestedFirebaseMode === 'production';
 export const allowProductionFirebaseWrites =
@@ -176,7 +180,7 @@ if (isFirebaseConfigured) {
 
     if (import.meta.env.DEV && !allowProductionFirebaseWrites) {
       console.info(
-        'Inkbound protected DEV mode: production Firestore writes and production Cloud Functions are blocked. The local working copy is used without production Firestore collection reads. Set VITE_FIREBASE_MODE=production only for intentional live-cloud beta verification.',
+        'Inkbound protected DEV mode: production Firebase Auth is available, while production Firestore writes/collection reads and production Cloud Functions are blocked. Set VITE_FIREBASE_MODE=production only for intentional live-cloud beta verification.',
       );
     }
 
