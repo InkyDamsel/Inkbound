@@ -164,7 +164,7 @@ const sameEdition = (left: BookSearchEdition, right: BookSearchEdition): boolean
   return false;
 };
 
-const mergeEditionData = (left: BookSearchEdition, right: BookSearchEdition): BookSearchEdition => {
+export const mergeCatalogEditionData = (left: BookSearchEdition, right: BookSearchEdition): BookSearchEdition => {
   const preferred = catalogEditionQualityScore(right) > catalogEditionQualityScore(left) ? right : left;
   const supplement = preferred === left ? right : left;
   return {
@@ -209,7 +209,7 @@ export const selectExactIsbnEdition = (
   exact.sort((left, right) => catalogEditionQualityScore(right.edition) - catalogEditionQualityScore(left.edition));
   const preferred = exact[0];
   const mergedEdition = exact.slice(1).reduce(
-    (current, candidate) => mergeEditionData(current, candidate.edition),
+    (current, candidate) => mergeCatalogEditionData(current, candidate.edition),
     preferred.edition,
   );
   return { work: preferred.work, edition: mergedEdition };
@@ -260,7 +260,7 @@ export const hardenCatalogGroups = (
     for (const edition of editions) {
       const duplicateIndex = hardened.editions.findIndex((candidate) => sameEdition(candidate, edition));
       if (duplicateIndex < 0) hardened.editions.push(edition);
-      else hardened.editions[duplicateIndex] = mergeEditionData(hardened.editions[duplicateIndex], edition);
+      else hardened.editions[duplicateIndex] = mergeCatalogEditionData(hardened.editions[duplicateIndex], edition);
     }
     hardened.editions.sort((a, b) => catalogEditionQualityScore(b) - catalogEditionQualityScore(a));
 
@@ -295,7 +295,7 @@ export const hardenCatalogGroups = (
     for (const edition of hardened.editions) {
       const duplicateIndex = existing.editions.findIndex((candidate) => sameEdition(candidate, edition));
       if (duplicateIndex < 0) existing.editions.push(edition);
-      else existing.editions[duplicateIndex] = mergeEditionData(existing.editions[duplicateIndex], edition);
+      else existing.editions[duplicateIndex] = mergeCatalogEditionData(existing.editions[duplicateIndex], edition);
     }
     existing.editions.sort((a, b) => catalogEditionQualityScore(b) - catalogEditionQualityScore(a));
   }
