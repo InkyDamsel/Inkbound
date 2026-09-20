@@ -143,11 +143,23 @@ function removeIds<T extends { id: string }>(current: T[], removed: Set<string>)
   return current.filter((item) => !removed.has(item.id));
 }
 
-function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpdatedAt: string }): boolean {
+function cloudRecordWinsPending<T>(
+  record: CloudRecord<T>,
+  pending: { clientUpdatedAt: string } | undefined,
+  baselineFingerprint?: string,
+): boolean {
+  if (!pending) return true;
+
+  // If the cloud payload is exactly the state this device already acknowledged
+  // in its baseline, it is not a competing newer edit. A durable pending
+  // mutation was made after that baseline and must win even when Firestore's
+  // server timestamp is later than the reader device's wall clock.
+  if (baselineFingerprint !== undefined && baselineFingerprint === fingerprint(record.data)) return false;
+
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
-    pendingClientUpdatedAt: pending?.clientUpdatedAt,
+    pendingClientUpdatedAt: pending.clientUpdatedAt,
   });
 }
 
@@ -233,7 +245,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const id = record.data?.id;
           if (!id) return;
           bookUpdateMillis.set(id, updatedMillis);
-          if (!cloudRecordWinsPending(record, pending.books[id])) return;
+          if (!cloudRecordWinsPending(record, pending.books[id], baseline.books[id])) return;
           delete pending.books[id];
           acceptedBooks.push(record.data);
           baseline.books[id] = fingerprint(record.data);
@@ -246,7 +258,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const id = record.data?.id;
           if (!id) return;
           sessionUpdateMillis.set(id, updatedMillis);
-          if (!cloudRecordWinsPending(record, pending.sessions[id])) return;
+          if (!cloudRecordWinsPending(record, pending.sessions[id], baseline.sessions[id])) return;
           delete pending.sessions[id];
           acceptedSessions.push(record.data);
           baseline.sessions[id] = fingerprint(record.data);
@@ -287,7 +299,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const profileRecord = profileSnapshot.data() as CloudRecord<Record<string, unknown>>;
           const updatedMillis = profileRecord.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
-          if (updatedMillis > lowerBound.toMillis() && cloudRecordWinsPending(profileRecord, pending.profile)) {
+          if (updatedMillis > lowerBound.toMillis() && cloudRecordWinsPending(profileRecord, pending.profile, baseline.profile)) {
             acceptedProfile = profileRecord.data;
             delete pending.profile;
             baseline.profile = stable(profileRecord.data);
