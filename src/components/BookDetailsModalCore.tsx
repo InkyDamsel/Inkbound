@@ -22,7 +22,7 @@ import { BulkHistoricalSessionsModal } from './BulkHistoricalSessionsModal';
 import { CustomOwnershipBookControl } from './ownership/CustomOwnershipBookControl';
 import { detectSeriesForBook } from '../features/series/seriesDetective';
 import { getEffectiveBookProgressPages } from '../features/reading/readingPageTotals';
-import { CanonicalInput, CanonicalNumberInput, CanonicalTextarea } from './form/CanonicalInput';
+import { CanonicalInput, CanonicalNumberInput } from './form/CanonicalInput';
 
 interface BookProgressCorrection {
   progressPages?: number;
