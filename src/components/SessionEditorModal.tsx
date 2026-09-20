@@ -3,6 +3,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { Save, Trash2, X } from 'lucide-react';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
+import { CanonicalInput } from './form/CanonicalInput';
 
 interface SessionEditorModalProps {
   books: UserBookRecord[];
@@ -157,7 +158,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Find book
-            <input value={bookSearch} onChange={(event) => setBookSearch(event.target.value)} placeholder="Search title, author, or series" className="inkbound-select mt-1 w-full" />
+            <CanonicalInput value={bookSearch} onValueChange={setBookSearch} placeholder="Search title, author, or series" className="inkbound-select mt-1 w-full" />
           </label>
           <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Book
             <select value={bookId} onChange={(event) => handleBookChange(event.target.value)} className="inkbound-select mt-1 w-full">
@@ -169,10 +170,10 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Duration (minutes)<input type="number" value={durationMinutes ?? ''} readOnly className="inkbound-select mt-1 w-full cursor-default opacity-80" aria-describedby="session-duration-help" /><span id="session-duration-help" className="mt-1 block font-normal text-[var(--ink-text-muted)]">Calculated from start and end time.</span></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Start time<input type="time" value={startTime} onChange={(event) => { setStartTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">End time<input type="time" value={endTime} onChange={(event) => { setEndTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Starting minute' : 'Starting page'}<input type="number" inputMode="numeric" min={0} value={startProgress} onChange={(event) => { setStartProgress(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Ending minute' : 'Ending page'}<input type="number" inputMode="numeric" min={0} value={endProgress} onChange={(event) => { setEndProgress(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Mood <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><input value={mood} onChange={(event) => setMood(event.target.value)} placeholder="e.g. Cozy, tense, emotional" className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Location <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="e.g. Home, commute, café" className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Starting minute' : 'Starting page'}<CanonicalInput type="number" inputMode="numeric" min={0} value={startProgress} onValueChange={(value) => { setStartProgress(value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Ending minute' : 'Ending page'}<CanonicalInput type="number" inputMode="numeric" min={0} value={endProgress} onValueChange={(value) => { setEndProgress(value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Mood <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalInput value={mood} onValueChange={setMood} placeholder="e.g. Cozy, tense, emotional" className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Location <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalInput value={location} onValueChange={setLocation} placeholder="e.g. Home, commute, café" className="inkbound-select mt-1 w-full" /></label>
           <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} className="inkbound-select mt-1 w-full resize-y" /></label>
         </div>
 
