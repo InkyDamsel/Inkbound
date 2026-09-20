@@ -120,6 +120,25 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
   };
 };
 
+export const catalogEditionQualityScore = (edition: BookSearchEdition): number => {
+  let score = 0;
+  if (edition.source === 'inkbound-catalog') score += 30;
+  if (isValidCatalogIsbn13(edition.isbn13)) score += 18;
+  else if (isValidCatalogIsbn10(edition.isbn10)) score += 12;
+  if (edition.coverUrl) score += 12;
+  if (edition.pageCount) score += 10;
+  if (edition.publisher) score += 6;
+  if (edition.publicationDate) score += 5;
+  if (edition.publicationYear > 0) score += 4;
+  if (edition.language) score += 4;
+  if (edition.seriesName) score += 8;
+  if (typeof edition.seriesOrder === 'number') score += 6;
+  if (edition.publisherSummary) score += 4;
+  if (edition.binding) score += 2;
+  return score;
+};
+
+
 export const selectExactIsbnEdition = (
   groups: BookSearchWorkGroup[],
   isbn: string,
@@ -139,23 +158,6 @@ export const selectExactIsbnEdition = (
   return exact[0];
 };
 
-export const catalogEditionQualityScore = (edition: BookSearchEdition): number => {
-  let score = 0;
-  if (edition.source === 'inkbound-catalog') score += 30;
-  if (isValidCatalogIsbn13(edition.isbn13)) score += 18;
-  else if (isValidCatalogIsbn10(edition.isbn10)) score += 12;
-  if (edition.coverUrl) score += 12;
-  if (edition.pageCount) score += 10;
-  if (edition.publisher) score += 6;
-  if (edition.publicationDate) score += 5;
-  if (edition.publicationYear > 0) score += 4;
-  if (edition.language) score += 4;
-  if (edition.seriesName) score += 8;
-  if (typeof edition.seriesOrder === 'number') score += 6;
-  if (edition.publisherSummary) score += 4;
-  if (edition.binding) score += 2;
-  return score;
-};
 
 const sameEdition = (left: BookSearchEdition, right: BookSearchEdition): boolean => {
   if (left.source === right.source && left.externalEditionId && left.externalEditionId === right.externalEditionId) return true;
