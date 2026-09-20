@@ -118,6 +118,12 @@ const readingSessionsScreen = read('src/components/ReadingSessionsScreen.tsx');
 const sessionEditor = read('src/components/SessionEditorModal.tsx');
 const bulkHistoricalSessions = read('src/components/BulkHistoricalSessionsModal.tsx');
 const appSource = read('src/App.tsx');
+for (const required of ['commitCanonicalBooks', 'replaceCanonicalLibrary', 'commitCanonicalSessions', 'replaceCanonicalSessions']) {
+  if (!appSource.includes(required)) {
+    violations.push(`App.tsx: reader mutations must persist through the canonical mutation boundary (${required})`);
+  }
+}
+
 
 for (const required of ['Add Past Session', 'Add Multiple', 'SessionEditorModal', 'BulkHistoricalSessionsModal']) {
   if (!readingSessionsScreen.includes(required)) {
