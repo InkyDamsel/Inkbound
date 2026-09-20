@@ -34,8 +34,13 @@ const SESSIONS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.profile;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const SYNC_FLUSH_DEBOUNCE_MS = 3000;
-const UPLOAD_BATCH_SIZE = 100;
-const SYNC_RETRY_DELAYS_MS = [15000, 60000, 120000] as const;
+const UPLOAD_BATCH_SIZE = 50;
+// Cost fuse: automatic background sync may only publish this many record
+// mutations per pass. Remaining mutations stay durably queued and retry later.
+// A large import can take a few minutes to finish syncing, but a bug can no
+// longer generate an unbounded Firestore write storm.
+const MAX_RECORD_WRITES_PER_FLUSH = 50;
+const SYNC_RETRY_DELAYS_MS = [30000, 60000, 120000] as const;
 
 interface ReaderProfile {
   displayName?: string;
@@ -297,8 +302,14 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       if (pending.profile && baseline.profile === stable(pending.profile.data)) delete pending.profile;
       writePending(uid, pending);
 
-      const failedBookWrites = await uploadRecordEntries<UserBookRecord>('books', Object.entries(pending.books));
-      const failedSessionWrites = await uploadRecordEntries<ReadingSession>('sessions', Object.entries(pending.sessions));
+      const pendingBookEntries = Object.entries(pending.books);
+      const pendingSessionEntries = Object.entries(pending.sessions);
+      const bookEntries = pendingBookEntries.slice(0, MAX_RECORD_WRITES_PER_FLUSH);
+      const remainingCapacity = Math.max(0, MAX_RECORD_WRITES_PER_FLUSH - bookEntries.length);
+      const sessionEntries = pendingSessionEntries.slice(0, remainingCapacity);
+
+      const failedBookWrites = await uploadRecordEntries<UserBookRecord>('books', bookEntries);
+      const failedSessionWrites = await uploadRecordEntries<ReadingSession>('sessions', sessionEntries);
 
       const latestBeforeProfile = readPending(uid);
       if (pending.profile && stable(latestBeforeProfile.profile) === stable(pending.profile)) {
