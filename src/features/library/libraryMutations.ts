@@ -1,4 +1,4 @@
-import type { UserBookRecord } from '../../types';
+import type { ReadingSession, UserBookRecord } from '../../types';
 import { writeRuntimeJson } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
@@ -25,4 +25,16 @@ export function replaceCanonicalLibrary(nextBooks: UserBookRecord[]) {
  */
 export function replaceCanonicalBook(currentBooks: UserBookRecord[], updatedBook: UserBookRecord) {
   return replaceCanonicalLibrary(currentBooks.map((book) => book.id === updatedBook.id ? updatedBook : book));
+}
+
+
+/**
+ * Replace the canonical local reading-session collection before publishing UI
+ * state. Session edits are reader intent just like book edits and must enter the
+ * durable pending queue before any cloud reconciliation can observe them.
+ */
+export function replaceCanonicalSessions(nextSessions: ReadingSession[]) {
+  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.sessions, nextSessions)) return false;
+  notifyCloudDataUpdated([SYNC_STORAGE_KEYS.sessions]);
+  return true;
 }
