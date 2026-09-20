@@ -27,6 +27,7 @@ export interface CommunityPost {
   body: string;
   category: CommunityPostCategory;
   containsSpoilers: boolean;
+  containsNsfw: boolean;
   visibility: CommunityPostVisibility;
   status: CommunityPostStatus;
   bookAttachment?: CommunityBookAttachment;
@@ -38,6 +39,7 @@ export interface CommunityPostDraft {
   body: string;
   category: CommunityPostCategory;
   containsSpoilers: boolean;
+  containsNsfw: boolean;
   visibility: CommunityPostVisibility;
   bookId?: string;
 }
@@ -46,6 +48,7 @@ export const EMPTY_COMMUNITY_POST_DRAFT: CommunityPostDraft = {
   body: '',
   category: 'book',
   containsSpoilers: false,
+  containsNsfw: false,
   visibility: 'public',
 };
 
