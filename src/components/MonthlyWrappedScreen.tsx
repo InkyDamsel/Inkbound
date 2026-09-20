@@ -90,7 +90,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   const previewBackground = `linear-gradient(${theme.background}88, ${theme.background}9a), url(${MONTHLY_BACKGROUND_URL}) ${backgroundPosition} / cover no-repeat`;
 
   const changeCard = (next: number) => setPreferences((current) => ({ ...current, currentCard: (next + cards.length) % cards.length }));
-  const buildSvg = () => {
+  const buildSvg = (backgroundDataUrl: string) => {
     const titleSize = isSquare ? titleLength > 70 ? 30 : titleLength > 45 ? 36 : 44 : isStory ? titleLength > 70 ? 56 : titleLength > 45 ? 64 : 76 : titleLength > 70 ? 36 : titleLength > 45 ? 44 : 54;
     const bodySize = isSquare ? 21 : isStory ? 32 : 24;
     const footerSize = isSquare ? 18 : isStory ? 27 : 21;
@@ -98,12 +98,58 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     const headerGap = isSquare ? 12 : isStory ? 20 : 18;
     const bodyGap = isSquare ? 14 : isStory ? 34 : 20;
     const footerGap = isSquare ? 22 : isStory ? 48 : 28;
-    const backgroundAssetUrl = `${window.location.origin}${MONTHLY_BACKGROUND_URL}`;
     const imageAlignment = isStory ? 'xMidYMid' : 'xMidYMax';
-    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${format.width}" height="${format.height}" viewBox="0 0 ${format.width} ${format.height}"><defs><linearGradient id="themeTint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${theme.background}" stop-opacity=".48"/><stop offset="1" stop-color="${theme.background}" stop-opacity=".64"/></linearGradient></defs><image href="${backgroundAssetUrl}" x="0" y="0" width="${format.width}" height="${format.height}" preserveAspectRatio="${imageAlignment} slice"/><rect width="100%" height="100%" fill="url(#themeTint)"/><rect x="8%" y="7%" width="84%" height="86%" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".52" stroke-width="3"/><foreignObject x="8%" y="7%" width="84%" height="86%"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${innerPadding}px;display:flex;flex-direction:column;justify-content:space-between;text-align:center;color:${theme.text};font-family:Arial,sans-serif;overflow:hidden;text-shadow:0 2px 12px rgba(0,0,0,.42);"><div><div style="color:${theme.accent};font-family:Georgia,serif;font-size:${isSquare ? 19 : isStory ? 29 : 23}px;font-weight:700;letter-spacing:${isSquare ? 5 : 7}px;line-height:1.15;">INKBOUND</div><div style="margin-top:${headerGap}px;font-size:${isSquare ? 16 : isStory ? 26 : 20}px;font-weight:700;letter-spacing:${isSquare ? 3 : 5}px;line-height:1.2;text-transform:uppercase;opacity:.84;">${escapeXml(currentCard.eyebrow)}</div></div><div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:${isSquare ? 16 : isStory ? 28 : 22}px 0;"><div style="color:${theme.accent};font-size:${isSquare ? 34 : isStory ? 52 : 42}px;line-height:1;">✦</div><div style="margin-top:${isSquare ? 14 : isStory ? 28 : 20}px;font-family:Georgia,serif;font-size:${titleSize}px;font-weight:700;line-height:1.08;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeXml(currentCard.title)}</div><div style="margin-top:${bodyGap}px;max-width:92%;font-size:${bodySize}px;line-height:1.4;opacity:.9;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(currentCard.body)}</div><div style="margin-top:${footerGap}px;max-width:92%;padding:${isSquare ? 14 : isStory ? 24 : 18}px ${isSquare ? 18 : 26}px;border:1px solid rgba(255,255,255,.11);border-radius:${isSquare ? 18 : 22}px;background:rgba(15,14,20,.17);font-size:${footerSize}px;line-height:1.35;opacity:.88;backdrop-filter:blur(3px);overflow-wrap:anywhere;word-break:break-word;">${escapeXml(currentCard.footer)}</div></div><div style="color:${theme.accent};font-size:${isSquare ? 16 : isStory ? 23 : 19}px;font-weight:700;line-height:1.2;">${cardIndex + 1} / ${cards.length} · Created with Inkbound</div></div></foreignObject></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${format.width}" height="${format.height}" viewBox="0 0 ${format.width} ${format.height}"><defs><linearGradient id="themeTint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${theme.background}" stop-opacity=".48"/><stop offset="1" stop-color="${theme.background}" stop-opacity=".64"/></linearGradient></defs><image href="${backgroundDataUrl}" x="0" y="0" width="${format.width}" height="${format.height}" preserveAspectRatio="${imageAlignment} slice"/><rect width="100%" height="100%" fill="url(#themeTint)"/><rect x="8%" y="7%" width="84%" height="86%" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".52" stroke-width="3"/><foreignObject x="8%" y="7%" width="84%" height="86%"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${innerPadding}px;display:flex;flex-direction:column;justify-content:space-between;text-align:center;color:${theme.text};font-family:Arial,sans-serif;overflow:hidden;text-shadow:0 2px 12px rgba(0,0,0,.42);"><div><div style="color:${theme.accent};font-family:Georgia,serif;font-size:${isSquare ? 19 : isStory ? 29 : 23}px;font-weight:700;letter-spacing:${isSquare ? 5 : 7}px;line-height:1.15;">INKBOUND</div><div style="margin-top:${headerGap}px;font-size:${isSquare ? 16 : isStory ? 26 : 20}px;font-weight:700;letter-spacing:${isSquare ? 3 : 5}px;line-height:1.2;text-transform:uppercase;opacity:.84;">${escapeXml(currentCard.eyebrow)}</div></div><div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:${isSquare ? 16 : isStory ? 28 : 22}px 0;"><div style="color:${theme.accent};font-size:${isSquare ? 34 : isStory ? 52 : 42}px;line-height:1;">✦</div><div style="margin-top:${isSquare ? 14 : isStory ? 28 : 20}px;font-family:Georgia,serif;font-size:${titleSize}px;font-weight:700;line-height:1.08;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeXml(currentCard.title)}</div><div style="margin-top:${bodyGap}px;max-width:92%;font-size:${bodySize}px;line-height:1.4;opacity:.9;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(currentCard.body)}</div><div style="margin-top:${footerGap}px;max-width:92%;padding:${isSquare ? 14 : isStory ? 24 : 18}px ${isSquare ? 18 : 26}px;border:1px solid rgba(255,255,255,.11);border-radius:${isSquare ? 18 : 22}px;background:rgba(15,14,20,.17);font-size:${footerSize}px;line-height:1.35;opacity:.88;backdrop-filter:blur(3px);overflow-wrap:anywhere;word-break:break-word;">${escapeXml(currentCard.footer)}</div></div><div style="color:${theme.accent};font-size:${isSquare ? 16 : isStory ? 23 : 19}px;font-weight:700;line-height:1.2;">${cardIndex + 1} / ${cards.length} · Created with Inkbound</div></div></foreignObject></svg>`;
   };
 
-  const createPngFile = async () => { const blob = new Blob([buildSvg()], { type: 'image/svg+xml;charset=utf-8' }); const url = URL.createObjectURL(blob); try { const image = new window.Image(); image.src = url; await image.decode(); const canvas = document.createElement('canvas'); canvas.width = format.width; canvas.height = format.height; const context = canvas.getContext('2d'); if (!context) throw new Error('Could not prepare the Wrapped image.'); context.drawImage(image, 0, 0); const pngBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create image.')), 'image/png', 1)); return new File([pngBlob], `inkbound-${preferences.monthKey}-wrapped-${cardIndex + 1}.png`, { type: 'image/png' }); } finally { URL.revokeObjectURL(url); } };
+  const loadBackgroundDataUrl = async (): Promise<string> => {
+    const response = await fetch(MONTHLY_BACKGROUND_URL, { cache: 'force-cache' });
+    if (!response.ok) throw new Error('Could not load the Wrapped background.');
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('Could not prepare the Wrapped background.'));
+      reader.onerror = () => reject(new Error('Could not prepare the Wrapped background.'));
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const createPngFile = async () => {
+    const backgroundDataUrl = await loadBackgroundDataUrl();
+    const svgBlob = new Blob([buildSvg(backgroundDataUrl)], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    try {
+      const image = new window.Image();
+      image.src = url;
+      await image.decode();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = format.width;
+      canvas.height = format.height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not prepare the Wrapped image.');
+
+      context.drawImage(image, 0, 0);
+
+      const pngBlob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (result) => result ? resolve(result) : reject(new Error('Could not create image.')),
+          'image/png',
+          1,
+        ),
+      );
+
+      return new File(
+        [pngBlob],
+        `inkbound-${preferences.monthKey}-wrapped-${cardIndex + 1}.png`,
+        { type: 'image/png' },
+      );
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
   const downloadCurrent = async () => { try { const file = await createPngFile(); await exportRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file }); setMessage('Wrapped card saved.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Save failed.'); } };
   const shareCurrent = async () => { try { const file = await createPngFile(); const result = await shareRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file, title: `${selectedMonth.label} Reading Wrapped`, text: 'Made with Inkbound' }); setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the card was saved instead.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); } };
   const dayChange = stats.changes.days;
