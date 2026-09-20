@@ -123,6 +123,14 @@ for (const required of ['commitCanonicalBooks', 'replaceCanonicalLibrary', 'comm
     violations.push(`App.tsx: reader mutations must persist through the canonical mutation boundary (${required})`);
   }
 }
+const directBookStateWrites = (appSource.match(/\bsetBooks\(/g) ?? []).length;
+const directSessionStateWrites = (appSource.match(/\bsetSessions\(/g) ?? []).length;
+if (directBookStateWrites > 2) {
+  violations.push('App.tsx: feature handlers must not bypass commitCanonicalBooks; only cloud hydration and the canonical helper may call setBooks');
+}
+if (directSessionStateWrites > 2) {
+  violations.push('App.tsx: feature handlers must not bypass commitCanonicalSessions; only cloud hydration and the canonical helper may call setSessions');
+}
 
 
 for (const required of ['Add Past Session', 'Add Multiple', 'SessionEditorModal', 'BulkHistoricalSessionsModal']) {
@@ -147,6 +155,12 @@ for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_K
 }
 if (!bookDetailsCore.includes('CanonicalNumberInput')) {
   violations.push('BookDetailsModalCore.tsx: editable numeric progress/edition fields must use the canonical numeric input boundary');
+}
+if (!bookDetailsCore.includes('getEffectiveBookProgressPages')) {
+  violations.push('BookDetailsModalCore.tsx: finished books with trustworthy page totals must use canonical effective page progress');
+}
+if (!bookDetailsCore.includes('CanonicalTextarea')) {
+  violations.push('BookDetailsModalCore.tsx: multiline reader text must use the canonical textarea boundary');
 }
 if (!bookDetailsCore.includes('isValidCatalogIsbn10') || !bookDetailsCore.includes('isValidCatalogIsbn13')) {
   violations.push('BookDetailsModalCore.tsx: metadata refresh must prefer canonical exact-ISBN edition identity when available');
