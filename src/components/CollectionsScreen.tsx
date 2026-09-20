@@ -1,24 +1,35 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckSquare, FolderHeart, Pencil, Plus, Search, Trash2, Undo2, X } from 'lucide-react';
-import type { Format, ReadingStatus, UserBookRecord } from '../types';
+import type { ReadingStatus, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { ResponsiveGrid } from '../layout/responsive';
-import { FORMAT_OPTIONS, READING_STATUS_OPTIONS } from '../domain/libraryTaxonomy';
+import {
+  FORMAT_OPTIONS,
+  OWNERSHIP_OPTIONS,
+  PRIORITY_OPTIONS,
+  READING_STATUS_OPTIONS,
+} from '../domain/libraryTaxonomy';
 import { replaceCanonicalLibrary } from '../features/library/libraryMutations';
 import { getActiveEdition, getAverageBookProgress, getBookReadingState } from '../features/reading/bookReadingState';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import {
+  SMART_COLLECTION_FIELD_OPTIONS,
+  createSmartCollectionRule,
+  defaultSmartCollectionOperator,
+  migrateLegacySmartCollectionRule,
+  smartCollectionMatches,
+  smartCollectionOperatorOptions,
+  type LegacySmartCollectionRule,
+  type SmartCollectionField,
+  type SmartCollectionMatchMode,
+  type SmartCollectionRule,
+} from '../features/collections/smartCollectionRules';
 import { BookCover } from './BookCover';
 import { CollectionBannerAdjuster } from './CollectionBannerAdjuster';
 import { PaginationControls } from './PaginationControls';
 
 type CollectionKind = 'manual' | 'smart';
-type SmartField = 'status' | 'format' | 'rating' | 'tag' | 'author' | 'year';
 type SortMode = 'title' | 'author' | 'rating' | 'progress' | 'recent';
-
-interface SmartRule {
-  field: SmartField;
-  value: string;
-}
 
 interface CollectionDefinition {
   id: string;
@@ -30,7 +41,10 @@ interface CollectionDefinition {
   createdAt: string;
   updatedAt?: string;
   kind?: CollectionKind;
-  rule?: SmartRule;
+  /** Legacy single-rule shape retained for existing synced collections. */
+  rule?: LegacySmartCollectionRule;
+  rules?: SmartCollectionRule[];
+  matchMode?: SmartCollectionMatchMode;
   coverBookId?: string;
 }
 
@@ -68,21 +82,16 @@ const starterCollections: CollectionDefinition[] = [
 const makeCollectionId = () => `collection-${crypto.randomUUID()}`;
 const normalized = (value?: string) => value?.trim().toLowerCase() ?? '';
 
-const smartMatches = (book: UserBookRecord, rule?: SmartRule) => {
-  if (!rule || !rule.value.trim()) return false;
-  const value = normalized(rule.value);
-  if (rule.field === 'status') return book.status === value as ReadingStatus;
-  if (rule.field === 'format') return getActiveEdition(book)?.format === value as Format;
-  if (rule.field === 'rating') return (book.rating ?? 0) >= Number(rule.value || 0);
-  if (rule.field === 'tag') return book.privateTags.some((tag) => normalized(tag) === value);
-  if (rule.field === 'author') return normalized(book.work.author).includes(value);
-  if (rule.field === 'year') return book.work.publicationYear === Number(rule.value);
-  return false;
-};
+const collectionRules = (collection: CollectionDefinition): SmartCollectionRule[] =>
+  collection.rules?.length ? collection.rules : migrateLegacySmartCollectionRule(collection.rule);
 
 const booksForCollection = (collection: CollectionDefinition, books: UserBookRecord[]) =>
   (collection.kind ?? 'manual') === 'smart'
-    ? books.filter((book) => smartMatches(book, collection.rule))
+    ? books.filter((book) => smartCollectionMatches(
+        book,
+        collectionRules(collection),
+        collection.matchMode ?? 'all',
+      ))
     : books.filter((book) => book.collections.includes(collection.name));
 
 export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onSelectBook }) => {
@@ -102,8 +111,10 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
   const [bannerUrl, setBannerUrl] = useState('');
   const [bannerBusy, setBannerBusy] = useState(false);
   const [kind, setKind] = useState<CollectionKind>('manual');
-  const [smartField, setSmartField] = useState<SmartField>('status');
-  const [smartValue, setSmartValue] = useState<string>(READING_STATUS_OPTIONS[0].value);
+  const [smartMatchMode, setSmartMatchMode] = useState<SmartCollectionMatchMode>('all');
+  const [smartRules, setSmartRules] = useState<SmartCollectionRule[]>([
+    createSmartCollectionRule('title'),
+  ]);
   const [coverBookId, setCoverBookId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('title');
@@ -238,10 +249,34 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     if (manageBooksPage > totalManageBooksPages) setManageBooksPage(totalManageBooksPages);
   }, [manageBooksPage, totalManageBooksPages]);
 
-  const resetSmartValueForField = (field: SmartField): string => {
+  const defaultSmartValueForField = (field: SmartCollectionField): string => {
     if (field === 'status') return READING_STATUS_OPTIONS[0].value;
     if (field === 'format') return FORMAT_OPTIONS[0].value;
+    if (field === 'ownership') return OWNERSHIP_OPTIONS[0].value;
+    if (field === 'priority') return PRIORITY_OPTIONS[0].value;
     return '';
+  };
+
+  const updateSmartRule = (ruleId: string, changes: Partial<SmartCollectionRule>) => {
+    setSmartRules((current) => current.map((rule) => rule.id === ruleId ? { ...rule, ...changes } : rule));
+  };
+
+  const changeSmartRuleField = (ruleId: string, field: SmartCollectionField) => {
+    updateSmartRule(ruleId, {
+      field,
+      operator: defaultSmartCollectionOperator(field),
+      value: defaultSmartValueForField(field),
+    });
+  };
+
+  const addSmartRule = () => {
+    setSmartRules((current) => [...current, createSmartCollectionRule('title')]);
+  };
+
+  const removeSmartRule = (ruleId: string) => {
+    setSmartRules((current) => current.length === 1
+      ? [createSmartCollectionRule('title')]
+      : current.filter((rule) => rule.id !== ruleId));
   };
 
   const openNewCollection = () => {
@@ -252,8 +287,8 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     setDescription('');
     setBannerUrl('');
     setKind('manual');
-    setSmartField('status');
-    setSmartValue(READING_STATUS_OPTIONS[0].value);
+    setSmartMatchMode('all');
+    setSmartRules([createSmartCollectionRule('title')]);
     setCoverBookId('');
     setIsEditorOpen(true);
   };
@@ -265,9 +300,9 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     setDescription(collection.description);
     setBannerUrl(collection.bannerUrl ?? '');
     setKind(collection.kind ?? 'manual');
-    const nextField = collection.rule?.field ?? 'status';
-    setSmartField(nextField);
-    setSmartValue(collection.rule?.value ?? resetSmartValueForField(nextField));
+    setSmartMatchMode(collection.matchMode ?? 'all');
+    const existingRules = collectionRules(collection);
+    setSmartRules(existingRules.length ? existingRules : [createSmartCollectionRule('title')]);
     setCoverBookId(collection.coverBookId ?? '');
     setIsEditorOpen(true);
   };
@@ -280,7 +315,11 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
     )) return;
 
     const now = new Date().toISOString();
-    const nextRule = kind === 'smart' ? { field: smartField, value: smartValue.trim() } : undefined;
+    const nextRules = kind === 'smart'
+      ? smartRules
+          .map((rule) => ({ ...rule, value: rule.value.trim() }))
+          .filter((rule) => rule.value)
+      : undefined;
     if (editingId) {
       const previous = visibleCollections.find((collection) => collection.id === editingId);
       setCollections((current) => current.map((collection) => collection.id === editingId
@@ -290,7 +329,9 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
             description: description.trim(),
             bannerUrl: bannerUrl || undefined,
             kind,
-            rule: nextRule,
+            rule: undefined,
+            rules: nextRules,
+            matchMode: kind === 'smart' ? smartMatchMode : undefined,
             coverBookId: coverBookId || undefined,
             updatedAt: now,
           }
@@ -314,7 +355,9 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
         createdAt: now,
         updatedAt: now,
         kind,
-        rule: nextRule,
+        rule: undefined,
+        rules: nextRules,
+        matchMode: kind === 'smart' ? smartMatchMode : undefined,
         coverBookId: coverBookId || undefined,
       };
       setCollections((current) => [...current, newCollection]);
@@ -359,33 +402,52 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
       : collection));
   };
 
-  const smartRuleValueControl = smartField === 'status' ? (
-    <select
-      value={smartValue}
-      onChange={(event) => setSmartValue(event.target.value)}
-      className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"
-    >
-      {READING_STATUS_OPTIONS.map((option) => (
-        <option key={option.value} value={option.value}>{option.label}</option>
-      ))}
-    </select>
-  ) : smartField === 'format' ? (
-    <select
-      value={smartValue}
-      onChange={(event) => setSmartValue(event.target.value)}
-      className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"
-    >
-      {FORMAT_OPTIONS.map((option) => (
-        <option key={option.value} value={option.value}>{option.label}</option>
-      ))}
-    </select>
-  ) : (
-    <input
-      value={smartValue}
-      onChange={(event) => setSmartValue(event.target.value)}
-      className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"
-    />
-  );
+  const renderSmartRuleValueControl = (rule: SmartCollectionRule) => {
+    const inputClass = "min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]";
+
+    if (rule.field === 'status') {
+      return (
+        <select value={rule.value} onChange={(event) => updateSmartRule(rule.id, { value: event.target.value })} className={inputClass}>
+          {READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      );
+    }
+    if (rule.field === 'format') {
+      return (
+        <select value={rule.value} onChange={(event) => updateSmartRule(rule.id, { value: event.target.value })} className={inputClass}>
+          {FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      );
+    }
+    if (rule.field === 'ownership') {
+      return (
+        <select value={rule.value} onChange={(event) => updateSmartRule(rule.id, { value: event.target.value })} className={inputClass}>
+          {OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      );
+    }
+    if (rule.field === 'priority') {
+      return (
+        <select value={rule.value} onChange={(event) => updateSmartRule(rule.id, { value: event.target.value })} className={inputClass}>
+          {PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      );
+    }
+
+    const numeric = ['rating', 'year', 'page-count', 'progress'].includes(rule.field);
+    return (
+      <input
+        type={numeric ? 'number' : 'text'}
+        min={rule.field === 'rating' ? 0 : rule.field === 'progress' ? 0 : undefined}
+        max={rule.field === 'rating' ? 5 : rule.field === 'progress' ? 100 : undefined}
+        step={rule.field === 'rating' ? 0.5 : 1}
+        value={rule.value}
+        onChange={(event) => updateSmartRule(rule.id, { value: event.target.value })}
+        placeholder={rule.field === 'title' ? 'e.g. dark' : undefined}
+        className={inputClass}
+      />
+    );
+  };
 
   return (
     <div className="space-y-7 pb-24">
@@ -461,7 +523,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
               <p className="inkbound-kicker">Open Collection</p>
               <h2 className="break-words font-serif text-2xl font-bold text-[var(--ink-ivory)]">{selectedCollection.name}</h2>
               <p className="mt-1 text-sm text-[var(--ink-muted)]">
-                {(selectedCollection.kind ?? 'manual') === 'smart' ? 'This shelf updates automatically from its rule.' : 'All books in this collection are shown below.'}
+                {(selectedCollection.kind ?? 'manual') === 'smart' ? 'This shelf updates automatically from its rules.' : 'All books in this collection are shown below.'}
               </p>
             </div>
             <button type="button" onClick={() => setSelectedCollectionId(null)} className="quiet-shelf-secondary-action w-full justify-center lg:w-auto">Close</button>
@@ -552,7 +614,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                     <div className="min-w-0 flex-1"><button type="button" onClick={() => onSelectBook(book)} className="text-left"><p className="line-clamp-2 font-serif font-bold text-[var(--ink-ivory)]">{book.work.title}</p><p className="truncate text-xs text-[var(--ink-muted)]">{book.work.author}</p></button><p className="mt-2 text-[11px] text-[var(--ink-muted)]">{readingState.status.replaceAll('-', ' ')} · {readingState.progressPercentage}%</p></div>
                   </div>
                   {(selectedCollection.kind ?? 'manual') === 'smart' ? (
-                    <p className="mt-3 text-xs font-semibold text-[var(--ink-gold-bright)]">Matches this smart rule</p>
+                    <p className="mt-3 text-xs font-semibold text-[var(--ink-gold-bright)]">Matches this smart collection</p>
                   ) : (
                     <div className="mt-3 flex items-center gap-2">
                       <label className="inline-flex min-h-10 flex-1 cursor-pointer items-center gap-2 rounded-xl border border-[var(--ink-border)] px-3 text-xs text-[var(--ink-muted)]"><input type="checkbox" checked={selected} onChange={() => setSelectedBookIds((current) => current.includes(book.id) ? current.filter((id) => id !== book.id) : [...current, book.id])} /> Select</label>
@@ -585,14 +647,49 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
               <CollectionBannerAdjuster collectionId={draftCollectionId || editingId || 'collection-draft'} bannerUrl={bannerUrl} onChange={setBannerUrl} onBusyChange={setBannerBusy} />
               <label className="text-xs font-semibold text-[var(--ink-muted)]">Type<select value={kind} onChange={(event) => setKind(event.target.value as CollectionKind)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="manual">Manual</option><option value="smart">Smart</option></select></label>
               {kind === 'smart' && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-xs font-semibold text-[var(--ink-muted)]">Rule field<select value={smartField} onChange={(event) => { const field = event.target.value as SmartField; setSmartField(field); setSmartValue(resetSmartValueForField(field)); }} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="status">Status</option><option value="format">Format</option><option value="rating">Rating at least</option><option value="tag">Tag equals</option><option value="author">Author contains</option><option value="year">Publication year</option></select></label>
-                  <label className="text-xs font-semibold text-[var(--ink-muted)]">Rule value{smartRuleValueControl}</label>
+                <div className="grid gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--ink-ivory)]">Smart rules</p>
+                      <p className="text-xs text-[var(--ink-muted)]">Build a shelf that updates itself as your library changes.</p>
+                    </div>
+                    <label className="text-xs font-semibold text-[var(--ink-muted)]">
+                      Match
+                      <select value={smartMatchMode} onChange={(event) => setSmartMatchMode(event.target.value as SmartCollectionMatchMode)} className="ml-2 min-h-10 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-3 text-sm text-[var(--ink-ivory)]">
+                        <option value="all">ALL rules</option>
+                        <option value="any">ANY rule</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="grid gap-3">
+                    {smartRules.map((rule, index) => (
+                      <div key={rule.id} className="grid gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-raised)] p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Rule {index + 1}</span>
+                          <button type="button" onClick={() => removeSmartRule(rule.id)} className="quiet-shelf-icon-button" aria-label={`Remove rule ${index + 1}`}><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-[1.1fr_1fr_1.25fr]">
+                          <select value={rule.field} onChange={(event) => changeSmartRuleField(rule.id, event.target.value as SmartCollectionField)} className="min-h-11 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]">
+                            {SMART_COLLECTION_FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                          <select value={rule.operator} onChange={(event) => updateSmartRule(rule.id, { operator: event.target.value as SmartCollectionRule['operator'] })} className="min-h-11 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]">
+                            {smartCollectionOperatorOptions(rule.field).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                          {renderSmartRuleValueControl(rule)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button type="button" onClick={addSmartRule} className="quiet-shelf-secondary-action w-full justify-center sm:w-fit">
+                    <Plus className="h-4 w-4" /> Add rule
+                  </button>
                 </div>
               )}
               <label className="text-xs font-semibold text-[var(--ink-muted)]">Cover book<select value={coverBookId} onChange={(event) => setCoverBookId(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="">Automatic</option>{books.map((book) => <option key={book.id} value={book.id}>{book.work.title}</option>)}</select></label>
             </div>
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={saveCollection} disabled={!name.trim() || bannerBusy} className="quiet-shelf-primary-action justify-center disabled:opacity-40"><FolderHeart className="h-4 w-4" /> Save collection</button></div>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={saveCollection} disabled={!name.trim() || bannerBusy || (kind === 'smart' && !smartRules.some((rule) => rule.value.trim()))} className="quiet-shelf-primary-action justify-center disabled:opacity-40"><FolderHeart className="h-4 w-4" /> Save collection</button></div>
           </div>
         </div>
       )}
