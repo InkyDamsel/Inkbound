@@ -97,3 +97,27 @@ export const CanonicalNumberInput = React.forwardRef<HTMLInputElement, Canonical
 );
 
 CanonicalNumberInput.displayName = 'CanonicalNumberInput';
+
+
+export interface CanonicalTextareaProps extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'onChange'> {
+  value: string;
+  onValueChange: (value: string) => void;
+}
+
+/**
+ * Canonical multiline text editor. It follows the same raw-editing contract as
+ * CanonicalInput so Backspace/Delete and temporary empty state behave identically
+ * across one-line and multiline reader-entered text.
+ */
+export const CanonicalTextarea = React.forwardRef<HTMLTextAreaElement, CanonicalTextareaProps>(
+  ({ value, onValueChange, ...props }, ref) => (
+    <textarea
+      {...props}
+      ref={ref}
+      value={value}
+      onChange={(event) => onValueChange(event.currentTarget.value)}
+    />
+  ),
+);
+
+CanonicalTextarea.displayName = 'CanonicalTextarea';
