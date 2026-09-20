@@ -251,14 +251,19 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   const deltaSource = fs.readFileSync(new URL('../src/features/sync/CrossDeviceDeltaSyncBridge.tsx', import.meta.url), 'utf8');
   const auxiliarySource = fs.readFileSync(new URL('../src/features/sync/AuxiliaryAccountSyncBridge.tsx', import.meta.url), 'utf8');
   const collectionsSource = fs.readFileSync(new URL('../src/components/CollectionsScreen.tsx', import.meta.url), 'utf8');
+  const cloudRefreshBoundarySource = fs.readFileSync(new URL('../src/features/sync/CloudDataRefreshBoundary.tsx', import.meta.url), 'utf8');
 
   assert.match(costSafeSource, /INKBOUND_CORE_RECONCILED_EVENT/);
   assert.match(costSafeSource, /let coreReconciled = false/);
   assert.match(costSafeSource, /if \(!coreReconciled\) return Promise\.resolve\(\)/);
   assert.match(deltaSource, /notifyCoreCloudReconciled\(uid\)/);
   assert.match(auxiliarySource, /remoteServerMillis: remote\.updatedAt\?\.toMillis\(\) \?\? 0/);
+  assert.match(deltaSource, /baselineFingerprint !== undefined && baselineFingerprint === fingerprint\(record\.data\)/);
+  assert.match(auxiliarySource, /baseline\[name\] === remoteFingerprint/);
+  assert.doesNotMatch(auxiliarySource, /pending\[name\] = \{ data: localValue, clientUpdatedAt: now \};[\s\S]{0,120}localChangedAgainstKnownCloud/);
   assert.doesNotMatch(collectionsSource, /setEmoji\([^\n]*slice\(0,\s*4\)/);
   assert.match(collectionsSource, /updatedAt: now/);
+  assert.doesNotMatch(cloudRefreshBoundarySource, /recoverIncompleteLatestImport/);
 }
 
 console.log('Inkbound critical reading regressions passed.');
