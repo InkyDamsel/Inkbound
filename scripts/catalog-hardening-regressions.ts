@@ -40,6 +40,9 @@ assert.equal(hardenedEdition.isbn10, undefined);
 assert.equal(hardenedEdition.isbn13, undefined);
 assert.equal(hardenedEdition.pageCount, undefined);
 assert.equal(hardenedEdition.coverUrl, 'https://example.com/cover.jpg');
+assert.equal(hardenCatalogEdition({ ...baseEdition, format: 'ebook', binding: 'Paperback' }).format, 'paperback');
+assert.equal(hardenCatalogEdition({ ...baseEdition, format: 'ebook', binding: 'Hardcover' }).format, 'hardcover');
+assert.equal(hardenCatalogEdition({ ...baseEdition, format: 'hardcover', binding: 'Kindle Edition' }).format, 'ebook');
 assert.deepEqual(hardenedEdition.genres, ['Horror', 'Fiction']);
 
 const goodEdition = hardenCatalogEdition({
