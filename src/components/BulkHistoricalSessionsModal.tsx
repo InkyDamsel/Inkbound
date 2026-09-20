@@ -3,6 +3,7 @@ import { CopyPlus, Plus, Save, Trash2, X } from 'lucide-react';
 import type { ReadingSession, UserBookRecord } from '../types';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
+import { CanonicalInput } from './form/CanonicalInput';
 
 interface BulkHistoricalSessionsModalProps {
   books: UserBookRecord[];
@@ -197,7 +198,7 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
 
         <div className="mt-5 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Find book
-            <input value={bookSearch} onChange={(event) => setBookSearch(event.target.value)} placeholder="Search title, author, or series" className="inkbound-select mt-1 w-full" />
+            <CanonicalInput value={bookSearch} onValueChange={setBookSearch} placeholder="Search title, author, or series" className="inkbound-select mt-1 w-full" />
           </label>
           <label className="mt-3 block text-xs font-bold text-[var(--ink-text-primary)]">Book
             <select value={bookId} onChange={(event) => selectBook(event.target.value)} className="inkbound-select mt-1 w-full">
@@ -221,9 +222,9 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
                   <label className="text-xs font-bold text-[var(--ink-text-primary)]">Start<input type="time" value={row.startTime} onChange={(event) => updateRow(row.id, { startTime: event.target.value })} className="inkbound-select mt-1 w-full" /></label>
                   <label className="text-xs font-bold text-[var(--ink-text-primary)]">End<input type="time" value={row.endTime} onChange={(event) => updateRow(row.id, { endTime: event.target.value })} className="inkbound-select mt-1 w-full" /></label>
                   <label className="text-xs font-bold text-[var(--ink-text-primary)]">Duration<input readOnly value={duration ?? ''} className="inkbound-select mt-1 w-full cursor-default opacity-80" /></label>
-                  <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Start min' : 'Start page'}<input type="number" min={0} inputMode="numeric" value={row.startProgress} onChange={(event) => updateRow(row.id, { startProgress: event.target.value })} className="inkbound-select mt-1 w-full" /></label>
-                  <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'End min' : 'End page'}<input type="number" min={0} inputMode="numeric" value={row.endProgress} onChange={(event) => updateRow(row.id, { endProgress: event.target.value })} className="inkbound-select mt-1 w-full" /></label>
-                  <label className="text-xs font-bold text-[var(--ink-text-primary)] sm:col-span-2 lg:col-span-6">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><input value={row.notes} onChange={(event) => updateRow(row.id, { notes: event.target.value })} className="inkbound-select mt-1 w-full" /></label>
+                  <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Start min' : 'Start page'}<CanonicalInput type="number" min={0} inputMode="numeric" value={row.startProgress} onValueChange={(value) => updateRow(row.id, { startProgress: value })} className="inkbound-select mt-1 w-full" /></label>
+                  <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'End min' : 'End page'}<CanonicalInput type="number" min={0} inputMode="numeric" value={row.endProgress} onValueChange={(value) => updateRow(row.id, { endProgress: value })} className="inkbound-select mt-1 w-full" /></label>
+                  <label className="text-xs font-bold text-[var(--ink-text-primary)] sm:col-span-2 lg:col-span-6">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalInput value={row.notes} onValueChange={(value) => updateRow(row.id, { notes: value })} className="inkbound-select mt-1 w-full" /></label>
                 </div>
               </article>
             );
