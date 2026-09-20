@@ -151,6 +151,16 @@ const bookSearchMapper = read('src/features/book-search/mapping/bookSearchMapper
 if (!bookSearchMapper.includes('hardenCatalogEdition') || !bookSearchMapper.includes('hardenCatalogGroups')) {
   violations.push('bookSearchMapper.ts: external catalog data must be hardened again at the library persistence boundary');
 }
+const canonicalInput = read('src/components/form/CanonicalInput.tsx');
+if (!canonicalInput.includes("onValueChange") || !canonicalInput.includes("event.currentTarget.value")) {
+  violations.push('CanonicalInput.tsx: editable input behavior must preserve raw reader-entered values including empty state');
+}
+for (const relative of ['src/components/AddBookModal.tsx', 'src/components/ReadingSessionModal.tsx']) {
+  if (!read(relative).includes('CanonicalInput')) {
+    violations.push(`${relative}: editable text/numeric fields must consume the canonical input boundary`);
+  }
+}
+
 const addBookModal = read('src/components/AddBookModal.tsx');
 if (!addBookModal.includes('isValidCatalogIsbn10') || !addBookModal.includes('isValidCatalogIsbn13')) {
   violations.push('AddBookModal.tsx: scanner ISBN validation must use canonical catalog hardening rules');
