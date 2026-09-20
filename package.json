@@ -40,7 +40,8 @@
     "firebase:deploy:functions": "npm run functions:build && npx firebase-tools deploy --only functions --project inkbound-app",
     "firebase:deploy:security": "npm run functions:build && npx firebase-tools deploy --only firestore:rules,storage,functions --project inkbound-app",
     "firebase:deploy:web": "npm run release:verify && npx firebase-tools deploy --only hosting --project inkbound-app",
-    "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app"
+    "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app",
+    "dev:sync-catalog-secrets": "node scripts/sync-dev-catalog-secrets.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
