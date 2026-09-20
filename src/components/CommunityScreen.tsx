@@ -3,6 +3,7 @@ import { BookOpen, Eye, EyeOff, MessageCircle, Music2, Send, ShieldCheck, Sparkl
 import { UserBookRecord } from '../types';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useReaderProfileIdentity } from '../hooks/useReaderProfileIdentity';
+import { usePersistentState } from '../hooks/usePersistentState';
 import { hasCommunityAccount } from '../features/community/communityAccess';
 import {
   COMMUNITY_CATEGORY_LABELS,
@@ -29,7 +30,11 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
   const { displayName, avatarImage, initials } = useReaderProfileIdentity();
   const [draft, setDraft] = useState<CommunityPostDraft>(EMPTY_COMMUNITY_POST_DRAFT);
   const [previewPosted, setPreviewPosted] = useState(false);
-  const [rulesAccepted, setRulesAccepted] = useState(false);
+  const [rulesAccepted, setRulesAccepted] = usePersistentState(
+    `inkbound_community_rules_accepted_${user?.uid ?? 'signed-out'}`,
+    false,
+  );
+  const [rulesConfirmed, setRulesConfirmed] = useState(false);
 
   const selectedBook = useMemo(
     () => books.find((book) => book.id === draft.bookId),
@@ -73,6 +78,71 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
             Sign in with Google or create an Inkbound account with your email to join the Community. This helps keep posts tied to real accounts and gives moderation tools something reliable to act on.
           </p>
           <p className="mt-5 text-xs text-[var(--ink-muted)]">Open Profile & account to sign in or create an account.</p>
+        </section>
+      </div>
+    );
+  }
+
+  if (!rulesAccepted) {
+    return (
+      <div className="mx-auto max-w-3xl pb-24">
+        <section className="inkbound-panel rounded-3xl p-6 sm:p-8">
+          <div className="flex items-start gap-4">
+            <ShieldCheck className="mt-1 h-8 w-8 shrink-0 text-[var(--ink-mauve)]" />
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--ink-mauve)]">Before you join</p>
+              <h1 className="mt-2 font-serif text-3xl font-bold text-[var(--ink-ivory)] sm:text-4xl">Inkbound Community Rules</h1>
+              <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
+                Inkbound is a place to share thoughts, recommendations, disagreements, and pieces of life while helping everyone feel safe enough to join the conversation.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+              <h2 className="text-sm font-bold text-[var(--ink-ivory)]">Be kind</h2>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Discuss ideas without attacking the person behind them.</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+              <h2 className="text-sm font-bold text-[var(--ink-ivory)]">Respect people</h2>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Respect different identities, backgrounds, bodies, lived experiences, and opinions.</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+              <h2 className="text-sm font-bold text-[var(--ink-ivory)]">Protect privacy</h2>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Do not share someone else's personal information or private conversations without permission.</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+              <h2 className="text-sm font-bold text-[var(--ink-ivory)]">Respect boundaries & consent</h2>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Keep interactions appropriate, safe, and free from exploitation or predatory behavior.</p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
+            <p className="text-xs leading-5 text-[var(--ink-muted)]">
+              Community is text-only. Posts do not accept photo or image uploads, video, live chat, location sharing, direct messages, or anonymous posting.
+            </p>
+          </div>
+
+          <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
+            <input
+              type="checkbox"
+              checked={rulesConfirmed}
+              onChange={(event) => setRulesConfirmed(event.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[var(--ink-mauve)]"
+            />
+            <span className="text-sm leading-6 text-[var(--ink-ivory)]">
+              I understand and agree to follow the Inkbound Community Rules.
+            </span>
+          </label>
+
+          <button
+            type="button"
+            disabled={!rulesConfirmed}
+            onClick={() => setRulesAccepted(true)}
+            className="quiet-shelf-primary-action mt-5 min-h-12 w-full justify-center disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ShieldCheck className="h-4 w-4" /> Agree & Enter Community
+          </button>
         </section>
       </div>
     );
@@ -201,39 +271,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
             </select>
           </div>
 
-          <section className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
-              <div className="min-w-0">
-                <h3 className="text-sm font-bold text-[var(--ink-ivory)]">Community Rules</h3>
-                <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                  Inkbound is a place to share thoughts, recommendations, disagreements, and pieces of life while helping everyone feel safe enough to join the conversation.
-                </p>
-                <ul className="mt-3 grid gap-1.5 text-xs leading-5 text-[var(--ink-muted)] sm:grid-cols-2">
-                  <li>• Be kind. Discuss ideas without attacking the person behind them.</li>
-                  <li>• Respect different identities, backgrounds, bodies, and lived experiences.</li>
-                  <li>• Respect other people's opinions, even when you strongly disagree.</li>
-                  <li>• Protect privacy. Do not share someone else's personal information.</li>
-                  <li>• Respect boundaries and consent in conversations and interactions.</li>
-                  <li>• Keep interactions appropriate, safe, and free from exploitation or predatory behavior.</li>
-                </ul>
-                <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">
-                  Posts are text-only. Book attachments reference books already in your Inkbound library; Community posts do not accept photo or image uploads.
-                </p>
-                <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-3">
-                  <input
-                    type="checkbox"
-                    checked={rulesAccepted}
-                    onChange={(event) => setRulesAccepted(event.target.checked)}
-                    className="mt-0.5 h-4 w-4 accent-[var(--ink-mauve)]"
-                  />
-                  <span className="text-xs leading-5 text-[var(--ink-ivory)]">
-                    I agree to follow the Inkbound Community Rules when I post.
-                  </span>
-                </label>
-              </div>
-            </div>
-          </section>
+
 
           <div className="flex flex-col gap-3 border-t border-[var(--ink-border-subtle)] pt-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-5 text-[var(--ink-muted)]">
