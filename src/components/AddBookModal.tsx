@@ -9,7 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../features/book-search/catalogHardening';
+import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -469,9 +469,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerMessage(`ISBN ${isbn} detected — looking it up…`);
     try {
       const response = await searchGoogleBooks(isbn);
-      const candidates = response.groups.flatMap((work) => work.editions.map((edition) => ({ work, edition })));
-      const exact = candidates.find(({ edition }) => editionIsbnValues(edition).includes(isbn));
-      const match = exact ?? candidates[0];
+      const match = selectExactIsbnEdition(response.groups, isbn);
       if (!match) {
         setScannerError(`Inkbound could not find a book for ISBN ${isbn}. You can keep scanning and add this one manually later.`);
         return;
