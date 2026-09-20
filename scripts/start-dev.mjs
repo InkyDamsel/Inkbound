@@ -76,6 +76,9 @@ process.on('SIGINT', () => shutdown('SIGINT', 0));
 process.on('SIGTERM', () => shutdown('SIGTERM', 0));
 
 try {
+  console.log('Inkbound DEV: preparing app-parity catalog services...');
+  await runOnce(nodeCommand, ['scripts/sync-dev-catalog-secrets.mjs']);
+
   console.log('Inkbound DEV: building local Firebase Functions...');
   const functionsBuild = npmInvocation(['run', 'functions:build']);
   await runOnce(functionsBuild.command, functionsBuild.args);
