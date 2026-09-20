@@ -190,6 +190,12 @@ if (!addBookModal.includes('isValidCatalogIsbn10') || !addBookModal.includes('is
 if (/const\s+isValidIsbn10\s*=|const\s+isValidIsbn13\s*=/.test(addBookModal)) {
   violations.push('AddBookModal.tsx: must not maintain duplicate ISBN checksum implementations');
 }
+if (/Reading status \/ category/.test(addBookModal) || /setCategory\(`custom:/.test(addBookModal)) {
+  violations.push('AddBookModal.tsx: reader-defined ownership categories must not be stored as reading status');
+}
+if (!addBookModal.includes('ownershipStatus') || !addBookModal.includes('ownershipCategoryId')) {
+  violations.push('AddBookModal.tsx: custom ownership selection must persist through the canonical ownership fields');
+}
 
 const sessionEditor = read('src/components/SessionEditorModal.tsx');
 if (!sessionEditor.includes('localDateKey')) violations.push('SessionEditorModal.tsx: must use the canonical reading date helper');
