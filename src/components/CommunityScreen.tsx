@@ -3,6 +3,7 @@ import { BookOpen, Eye, EyeOff, MessageCircle, Music2, Send, ShieldCheck, Sparkl
 import { UserBookRecord } from '../types';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useReaderProfileIdentity } from '../hooks/useReaderProfileIdentity';
+import { hasCommunityAccount } from '../features/community/communityAccess';
 import {
   COMMUNITY_CATEGORY_LABELS,
   COMMUNITY_POST_CATEGORIES,
@@ -24,6 +25,7 @@ const categoryIcon = (category: CommunityPostCategory) => {
 
 export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
   const { user } = useAccountSync();
+  const hasAccess = hasCommunityAccount(user);
   const { displayName, avatarImage, initials } = useReaderProfileIdentity();
   const [draft, setDraft] = useState<CommunityPostDraft>(EMPTY_COMMUNITY_POST_DRAFT);
   const [previewPosted, setPreviewPosted] = useState(false);
@@ -60,6 +62,21 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
     if (!canPost) return;
     setPreviewPosted(true);
   };
+
+  if (!hasAccess) {
+    return (
+      <div className="mx-auto max-w-2xl pb-24">
+        <section className="inkbound-panel rounded-3xl p-6 text-center sm:p-10">
+          <ShieldCheck className="mx-auto h-8 w-8 text-[var(--ink-mauve)]" />
+          <h1 className="mt-4 font-serif text-3xl font-bold text-[var(--ink-ivory)]">Inkbound Community is account-only</h1>
+          <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-[var(--ink-muted)]">
+            Sign in with Google or create an Inkbound account with your email to join the Community. This helps keep posts tied to real accounts and gives moderation tools something reliable to act on.
+          </p>
+          <p className="mt-5 text-xs text-[var(--ink-muted)]">Open Profile & account to sign in or create an account.</p>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto min-w-0 max-w-5xl space-y-6 pb-24">
