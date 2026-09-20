@@ -107,6 +107,9 @@ assert.equal(selectVerifiedSeriesEvidence([wrongAuthor!]), null);
 const detectiveSource = fs.readFileSync(new URL('../src/features/series/seriesDetective.ts', import.meta.url), 'utf8');
 assert.match(detectiveSource, /searchHardcover\(seriesName\)/);
 assert.match(detectiveSource, /googleSeriesOnlyGroups/);
+assert.match(detectiveSource, /missingKnownGaps/);
+assert.match(detectiveSource, /positionalDiscovery\.flat\(\)/);
+assert.match(detectiveSource, /book \\$\{position\}/);
 assert.match(detectiveSource, /!sameSeries\(edition, seriesName\) && !exactAuthorMatch\(work, author\)/);
 assert.doesNotMatch(detectiveSource, /normalize\(metadata\.name\) === normalize\(seriesName\) && normalize\(book\.work\.author\) === normalize\(author\)/);
 
