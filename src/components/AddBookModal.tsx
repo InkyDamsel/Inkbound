@@ -22,7 +22,7 @@ import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { getRuntimeStorage, readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { CanonicalInput } from './form/CanonicalInput';
+import { CanonicalInput, CanonicalTextarea } from './form/CanonicalInput';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -743,7 +743,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                       return (
                         <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">
                           {edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover" /> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5" /></span>}
-                          <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p><p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · TBR</p></div>
+                          <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p><p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · {statusLabel(scannerCategory)}</p></div>
                           <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4" /></button>
                         </article>
                       );
@@ -837,7 +837,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               <div><Field label="Ownership"><select value={ownership} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomCategory(true); return; } setOwnership(event.target.value as OwnershipSelection); setCreatingCustomCategory(false); }}><optgroup label="Ownership">{OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom').map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom ownership">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}<option value="__new__">+ Create custom ownership…</option></select></Field>{creatingCustomCategory && <div className="mt-2 flex gap-2"><CanonicalInput value={newCustomCategoryName} onValueChange={setNewCustomCategoryName} placeholder="Ownership name" className="inkbound-select min-w-0 flex-1" /><button type="button" onClick={createAndSelectCustomCategory} className="quiet-shelf-secondary-action">Create</button></div>}</div>
               <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
             </div>
-            <Field label="Summary"><textarea rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Optional" /></Field>
+            <Field label="Summary"><CanonicalTextarea rows={4} value={summary} onValueChange={setSummary} placeholder="Optional" /></Field>
             <button type="button" onClick={handleManualAdd} disabled={!title.trim() || !author.trim()} className="quiet-shelf-primary-action w-full justify-center disabled:opacity-50">Add to Inkbound</button>
           </div>
         )}
