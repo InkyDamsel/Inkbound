@@ -4,7 +4,7 @@ import { getRuntimeStorage, readRuntimeValue, writeRuntimeValue } from '../../pl
 const RUNTIME_MODE_STORAGE_KEY = 'inkbound_runtime_storage_mode_v1';
 const RUNTIME_MODE_ARCHIVE_PREFIX = 'inkbound_runtime_mode_archive_v2_';
 
-type RuntimeMode = 'emulator' | 'production';
+type RuntimeMode = 'emulator' | 'protected' | 'production';
 
 interface RuntimeModeArchive {
   schemaVersion: 2;
@@ -85,7 +85,7 @@ export function isolateDevelopmentBrowserStorage() {
     const storage = getRuntimeStorage();
     const keysToRemove = storage.getAllKeys().filter(isAccountCacheKey);
 
-    if (previousMode === 'emulator' || previousMode === 'production') {
+    if (previousMode === 'emulator' || previousMode === 'protected' || previousMode === 'production') {
       saveModeArchive(previousMode, keysToRemove);
     }
 
