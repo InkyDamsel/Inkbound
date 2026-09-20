@@ -213,7 +213,7 @@ export default function App() {
       if (keys.includes(SESSIONS_STORAGE_KEY)) {
         const nextSessions = readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []);
         sessionsRef.current = nextSessions;
-        commitCanonicalSessions(nextSessions);
+        setSessions(nextSessions);
       }
     };
 
@@ -458,7 +458,7 @@ export default function App() {
     commitCanonicalBooks((current) => current.map((book) => book.id === bookId ? reconcileBookAfterSessionMutation(book, nextSessions, changedSession) : book));
   };
 
-  const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessions]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
+  const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessionsRef.current.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessionsRef.current]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
   const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
     maybeShowFirstSessionMilestone(newSession);
     const previousBook = booksRef.current.find((book) => book.id === newSession.bookId);
@@ -487,7 +487,7 @@ export default function App() {
     if (newSessions.length === 0) return;
     const nextSessions = [...newSessions, ...sessionsRef.current];
     const affectedBookIds = new Set(newSessions.map((session) => session.bookId));
-    setSessions(nextSessions);
+    commitCanonicalSessions(nextSessions);
     commitCanonicalBooks((current) => current.map((book) =>
       affectedBookIds.has(book.id) ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
     ));
