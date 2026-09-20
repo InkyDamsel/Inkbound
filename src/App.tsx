@@ -350,7 +350,7 @@ export default function App() {
   const closeTimer = () => setIsTimerOpen(false);
   const handleToggleSelectBook = (id: string) => setSelectedBookIds((current) => current.includes(id) ? current.filter((bookId) => bookId !== id) : [...current, id]);
   const handleUpdateBook = (updatedBook: UserBookRecord) => {
-    const previous = books.find((book) => book.id === updatedBook.id);
+    const previous = booksRef.current.find((book) => book.id === updatedBook.id);
     commitCanonicalBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book)));
     setSelectedBookForDetails((current) => (current?.id === updatedBook.id ? updatedBook : current));
     if (previous?.status !== 'finished' && updatedBook.status === 'finished') {
@@ -361,7 +361,7 @@ export default function App() {
   const handleMergeDuplicateGroup = ({ keepBookId, removeBookIds, mergedBook }: DuplicateMergeRequest) => { const removeIds = new Set(removeBookIds); setPreviousBooksState(null); setPreviousSessionsState(null); commitCanonicalBooks((current) => current.filter((book) => !removeIds.has(book.id)).map((book) => book.id === keepBookId ? mergedBook : book)); setSessions((current) => current.map((session) => removeIds.has(session.bookId) ? { ...session, bookId: keepBookId } : session)); setSelectedBookIds((current) => current.filter((id) => !removeIds.has(id))); setSelectedBookForDetails((current) => current && removeIds.has(current.id) ? mergedBook : current?.id === keepBookId ? mergedBook : current); writeImportEnrichmentQueue(readImportEnrichmentQueue().filter((item) => !removeIds.has(item.targetBookId))); showToast(`Merged ${removeBookIds.length + 1} copies of “${mergedBook.work.title}” into one library record.`); };
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => {
     const today = localDateKey();
-    const previous = books.find((book) => book.id === bookId);
+    const previous = booksRef.current.find((book) => book.id === bookId);
     const updated = previous ? withReadingStatus(previous, status, today) : undefined;
     if (updated) {
       commitCanonicalBooks((current) => current.map((book) => book.id === bookId ? updated : book));
@@ -371,7 +371,7 @@ export default function App() {
   };
 
   const handleCorrectBookProgress = (bookId: string, correction: BookProgressCorrection) => {
-    const sourceBook = books.find((book) => book.id === bookId);
+    const sourceBook = booksRef.current.find((book) => book.id === bookId);
     if (!sourceBook) return;
     const sourceEdition = getActiveEdition(sourceBook);
     if (!sourceEdition) return;
