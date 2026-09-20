@@ -92,6 +92,18 @@ dependencies {
     implementation project(':capacitor-cordova-android-plugins')
 }
 
+
+def verifyInkboundWebBundle = tasks.register('verifyInkboundWebBundle', Exec) {
+    workingDir rootProject.projectDir.parentFile
+    commandLine 'node', 'scripts/verify-android-web-bundle-fresh.mjs'
+}
+
+tasks.matching { task ->
+    task.name == 'preReleaseBuild'
+}.configureEach {
+    dependsOn verifyInkboundWebBundle
+}
+
 apply from: 'capacitor.build.gradle'
 
 def servicesJSON = file('google-services.json')
