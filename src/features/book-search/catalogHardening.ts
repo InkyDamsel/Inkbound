@@ -71,6 +71,16 @@ const cleanLanguage = (value?: string): string | undefined => {
   return language.toLocaleLowerCase().replace(/_/g, '-').slice(0, 24);
 };
 
+const formatFromBinding = (binding?: string): BookSearchEdition['format'] | undefined => {
+  const normalized = normalizeKey(binding);
+  if (!normalized) return undefined;
+  if (/\b(?:audio|audiobook|cd|mp3)\b/.test(normalized)) return 'audiobook';
+  if (/\b(?:ebook|e book|kindle|digital|epub)\b/.test(normalized)) return 'ebook';
+  if (/\b(?:paperback|softcover|soft cover|mass market|trade paper)\b/.test(normalized)) return 'paperback';
+  if (/\b(?:hardcover|hardback|hard cover|library binding)\b/.test(normalized)) return 'hardcover';
+  return undefined;
+};
+
 const cleanPageCount = (value?: number): number | undefined => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   const rounded = Math.round(value);
@@ -95,8 +105,14 @@ const cleanUrl = (value?: string): string | undefined => {
 export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdition => {
   const isbn10 = isValidCatalogIsbn10(edition.isbn10) ? compactIsbn(edition.isbn10) : undefined;
   const isbn13 = isValidCatalogIsbn13(edition.isbn13) ? compactIsbn(edition.isbn13) : undefined;
+  const binding = compact(edition.binding) || undefined;
+  const bindingFormat = formatFromBinding(binding);
   return {
     ...edition,
+    // Binding is edition-level evidence and outranks provider work-level format
+    // guesses. This prevents exact paperback/hardcover ISBNs from being saved as
+    // ebooks when a catalog provider labels the work generically.
+    format: bindingFormat ?? edition.format,
     externalEditionId: compact(edition.externalEditionId),
     title: titleCaseIfShouting(edition.title),
     subtitle: compact(edition.subtitle) || undefined,
@@ -115,7 +131,7 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
     pageCount: cleanPageCount(edition.pageCount),
     coverUrl: cleanUrl(edition.coverUrl),
     editionName: compact(edition.editionName) || undefined,
-    binding: compact(edition.binding) || undefined,
+    binding,
     specialFeatures: [...new Set(edition.specialFeatures.map(compact).filter(Boolean))].slice(0, 12),
   };
 };
