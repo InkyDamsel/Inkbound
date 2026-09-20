@@ -258,7 +258,8 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.match(costSafeSource, /if \(!coreReconciled\) return Promise\.resolve\(\)/);
   assert.match(deltaSource, /notifyCoreCloudReconciled\(uid\)/);
   assert.match(auxiliarySource, /remoteServerMillis: remote\.updatedAt\?\.toMillis\(\) \?\? 0/);
-  assert.match(deltaSource, /baselineFingerprint !== undefined && baselineFingerprint === fingerprint\(record\.data\)/);
+  assert.match(deltaSource, /if \(baselineMatchesRemote\) return false/);
+  assert.match(deltaSource, /baseline\.profile === stable\(profileRecord\.data\)/);
   assert.match(auxiliarySource, /baseline\[name\] === remoteFingerprint/);
   assert.doesNotMatch(auxiliarySource, /pending\[name\] = \{ data: localValue, clientUpdatedAt: now \};[\s\S]{0,120}localChangedAgainstKnownCloud/);
   assert.doesNotMatch(collectionsSource, /setEmoji\([^\n]*slice\(0,\s*4\)/);
