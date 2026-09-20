@@ -167,6 +167,10 @@ Legitimate platform implementations include:
 
 A different implementation is not permission to omit the capability.
 
+## Import history is not recovery truth
+
+Import history and enrichment queues are operational metadata. They may explain or enrich records that still exist, but they must never recreate a book merely because a historical import row references an ID that is no longer in the canonical library. A missing canonical book may be an intentional reader deletion.
+
 ## Derived screens are not data stores
 
 Statistics, Insights, Timeline, Series, TBR, Achievements, Studio, Memories, and dashboard widgets can calculate different presentations from the canonical library/session data. They should not persist a second copy of facts such as status, ownership, progress, series assignment, or session history merely to render a screen.
