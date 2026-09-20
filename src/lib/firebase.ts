@@ -83,6 +83,10 @@ let db: Firestore | null = null;
 let functions: Functions | null = null;
 let storage: FirebaseStorage | null = null;
 let analytics: Analytics | null = null;
+let resolveAnalyticsReady: (value: Analytics | null) => void = () => {};
+const analyticsReady = new Promise<Analytics | null>((resolve) => {
+  resolveAnalyticsReady = resolve;
+});
 
 function isIosBrowserRuntime(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -162,11 +166,19 @@ if (isFirebaseConfigured) {
   if (!useFirebaseEmulators && !isNativeRuntime() && !import.meta.env.DEV) {
     void isAnalyticsSupported()
       .then((supported) => {
-        if (supported && app) analytics = getAnalytics(app);
+        if (!supported || !app) {
+          resolveAnalyticsReady(null);
+          return;
+        }
+        analytics = getAnalytics(app);
+        resolveAnalyticsReady(analytics);
       })
       .catch((error) => {
         console.warn('Inkbound web analytics could not initialize.', error);
+        resolveAnalyticsReady(null);
       });
+  } else {
+    resolveAnalyticsReady(null);
   }
 
   if (useFirebaseEmulators) {
@@ -204,4 +216,4 @@ if (isFirebaseConfigured) {
   }
 }
 
-export { app, appCheck, auth, readDb, db, functions, storage, analytics };
+export { app, appCheck, auth, readDb, db, functions, storage, analytics, analyticsReady };
