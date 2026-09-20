@@ -139,24 +139,6 @@ export const catalogEditionQualityScore = (edition: BookSearchEdition): number =
 };
 
 
-export const selectExactIsbnEdition = (
-  groups: BookSearchWorkGroup[],
-  isbn: string,
-): { work: BookSearchWorkGroup; edition: BookSearchEdition } | null => {
-  const wanted = compactIsbn(isbn);
-  if (!wanted) return null;
-
-  const exact = groups.flatMap((work) =>
-    work.editions
-      .map(hardenCatalogEdition)
-      .filter((edition) => [edition.isbn13, edition.isbn10].map(compactIsbn).includes(wanted))
-      .map((edition) => ({ work, edition })),
-  );
-  if (!exact.length) return null;
-
-  exact.sort((left, right) => catalogEditionQualityScore(right.edition) - catalogEditionQualityScore(left.edition));
-  return exact[0];
-};
 
 
 const sameEdition = (left: BookSearchEdition, right: BookSearchEdition): boolean => {
@@ -190,6 +172,31 @@ const mergeEditionData = (left: BookSearchEdition, right: BookSearchEdition): Bo
     binding: preferred.binding || supplement.binding,
     specialFeatures: [...new Set([...preferred.specialFeatures, ...supplement.specialFeatures])].slice(0, 12),
   };
+};
+
+
+export const selectExactIsbnEdition = (
+  groups: BookSearchWorkGroup[],
+  isbn: string,
+): { work: BookSearchWorkGroup; edition: BookSearchEdition } | null => {
+  const wanted = compactIsbn(isbn);
+  if (!wanted) return null;
+
+  const exact = groups.flatMap((work) =>
+    work.editions
+      .map(hardenCatalogEdition)
+      .filter((edition) => [edition.isbn13, edition.isbn10].map(compactIsbn).includes(wanted))
+      .map((edition) => ({ work, edition })),
+  );
+  if (!exact.length) return null;
+
+  exact.sort((left, right) => catalogEditionQualityScore(right.edition) - catalogEditionQualityScore(left.edition));
+  const preferred = exact[0];
+  const mergedEdition = exact.slice(1).reduce(
+    (current, candidate) => mergeEditionData(current, candidate.edition),
+    preferred.edition,
+  );
+  return { work: preferred.work, edition: mergedEdition };
 };
 
 const workIdentity = (group: BookSearchWorkGroup): string =>
