@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, Eye, EyeOff, MessageCircle, Music2, Send, ShieldCheck, Sparkles, TriangleAlert, Tv2 } from 'lucide-react';
+import { BookOpen, Eye, EyeOff, MessageCircle, Music2, Search, Send, ShieldCheck, Sparkles, TriangleAlert, Tv2 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useReaderProfileIdentity } from '../hooks/useReaderProfileIdentity';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { hasCommunityAccount } from '../features/community/communityAccess';
+import { getActiveEdition } from '../features/reading/bookReadingState';
 import {
   COMMUNITY_CATEGORY_LABELS,
   COMMUNITY_POST_CATEGORIES,
@@ -35,10 +36,25 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
     false,
   );
   const [rulesConfirmed, setRulesConfirmed] = useState(false);
+  const [bookSearch, setBookSearch] = useState('');
 
   const selectedBook = useMemo(
     () => books.find((book) => book.id === draft.bookId),
     [books, draft.bookId],
+  );
+  const selectedBookCover = selectedBook ? getActiveEdition(selectedBook)?.coverUrl : undefined;
+  const normalizedBookSearch = bookSearch.trim().toLowerCase();
+  const filteredBooks = useMemo(
+    () => books
+      .filter((book) => {
+        if (!normalizedBookSearch) return true;
+        return book.work.title.toLowerCase().includes(normalizedBookSearch)
+          || book.work.author.toLowerCase().includes(normalizedBookSearch)
+          || book.work.seriesName?.toLowerCase().includes(normalizedBookSearch);
+      })
+      .sort((a, b) => a.work.title.localeCompare(b.work.title))
+      .slice(0, 50),
+    [books, normalizedBookSearch],
   );
 
   const canPost = Boolean(user && draft.body.trim().length > 0 && rulesAccepted);
@@ -211,8 +227,22 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
           </div>
 
           {(draft.category === 'book' || draft.category === 'recommendation' || draft.category === 'discussion') && (
-            <div>
-              <label htmlFor="community-book-attachment" className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-[var(--ink-muted)]">Attach a book from your library</label>
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="community-book-search" className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-[var(--ink-muted)]">Attach a book from your library</label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
+                  <input
+                    id="community-book-search"
+                    type="search"
+                    value={bookSearch}
+                    onChange={(event) => setBookSearch(event.target.value)}
+                    placeholder="Search title, author, or series"
+                    className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-10 pr-3 text-sm text-[var(--ink-ivory)] outline-none placeholder:text-[var(--ink-muted)] focus:border-[var(--ink-mauve)]"
+                  />
+                </div>
+              </div>
+
               <select
                 id="community-book-attachment"
                 value={draft.bookId ?? ''}
@@ -220,21 +250,30 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
                 className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"
               >
                 <option value="">No book attached</option>
-                {books.slice().sort((a, b) => a.work.title.localeCompare(b.work.title)).map((book) => (
+                {filteredBooks.map((book) => (
                   <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>
                 ))}
               </select>
+
+              {normalizedBookSearch && filteredBooks.length === 0 && (
+                <p className="text-xs text-[var(--ink-muted)]">No books in your library match “{bookSearch.trim()}”.</p>
+              )}
             </div>
           )}
 
           {selectedBook && (
             <div className="flex items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3">
-              <div className="grid h-14 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--ink-surface-raised)]">
-                {selectedBook.work.coverUrl ? <img src={selectedBook.work.coverUrl} alt="" className="h-full w-full object-cover" /> : <BookOpen className="h-5 w-5 text-[var(--ink-mauve)]" />}
+              <div className="grid h-20 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--ink-surface-raised)]">
+                {selectedBookCover
+                  ? <img src={selectedBookCover} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  : <BookOpen className="h-5 w-5 text-[var(--ink-mauve)]" />}
               </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-[var(--ink-ivory)]">{selectedBook.work.title}</p>
                 <p className="truncate text-xs text-[var(--ink-muted)]">{selectedBook.work.author}</p>
+                {selectedBook.work.seriesName && (
+                  <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{selectedBook.work.seriesName}{selectedBook.work.seriesOrder ? ` · Book ${selectedBook.work.seriesOrder}` : ''}</p>
+                )}
               </div>
             </div>
           )}
@@ -307,8 +346,15 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
               <p className={`mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--ink-ivory)] ${draft.containsSpoilers || draft.containsNsfw ? 'rounded-xl bg-[var(--ink-surface-soft)] p-3 blur-sm transition hover:blur-none' : ''}`}>{draft.body.trim()}</p>
               {selectedBook && (
                 <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3">
-                  <BookOpen className="h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
-                  <div className="min-w-0"><p className="truncate text-sm font-bold text-[var(--ink-ivory)]">{selectedBook.work.title}</p><p className="truncate text-xs text-[var(--ink-muted)]">{selectedBook.work.author}</p></div>
+                  <div className="grid h-16 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--ink-surface-raised)]">
+                    {selectedBookCover
+                      ? <img src={selectedBookCover} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                      : <BookOpen className="h-5 w-5 text-[var(--ink-mauve)]" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-[var(--ink-ivory)]">{selectedBook.work.title}</p>
+                    <p className="truncate text-xs text-[var(--ink-muted)]">{selectedBook.work.author}</p>
+                  </div>
                 </div>
               )}
               <p className="mt-4 text-xs text-[var(--ink-muted)]">Preview · {draft.visibility === 'public' ? 'Public' : 'Followers only'}</p>
