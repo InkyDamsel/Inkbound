@@ -27,8 +27,20 @@ const serviceWorker = fs.readFileSync(path.join(dist, 'sw.js'), 'utf8');
 const robots = fs.readFileSync(path.join(dist, 'robots.txt'), 'utf8');
 const firebaseBootstrapPath = path.join(root, 'src', 'lib', 'firebase.ts');
 const firebaseBootstrap = fs.readFileSync(firebaseBootstrapPath, 'utf8');
+const builtJavaScript = fs.existsSync(path.join(dist, 'assets'))
+  ? fs.readdirSync(path.join(dist, 'assets'))
+    .filter((name) => name.endsWith('.js'))
+    .map((name) => fs.readFileSync(path.join(dist, 'assets', name), 'utf8'))
+    .join('\n')
+  : '';
 
 const checks = [
+  {
+    ok: builtJavaScript.includes('Add Past Session')
+      && builtJavaScript.includes('Add Multiple')
+      && builtJavaScript.includes('Start a Session'),
+    message: 'production bundle must include Build 28 manual reading-session entry controls',
+  },
   {
     ok: /"display"\s*:\s*"standalone"/.test(manifest),
     message: 'manifest.webmanifest must declare display: standalone',
