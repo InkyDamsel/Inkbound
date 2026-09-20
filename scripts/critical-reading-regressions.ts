@@ -264,6 +264,8 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.doesNotMatch(auxiliarySource, /pending\[name\] = \{ data: localValue, clientUpdatedAt: now \};[\s\S]{0,120}localChangedAgainstKnownCloud/);
   assert.doesNotMatch(collectionsSource, /setEmoji\([^\n]*slice\(0,\s*4\)/);
   assert.match(collectionsSource, /updatedAt: now/);
+  assert.match(collectionsSource, /Persist the actual deletion immediately/);
+  assert.match(collectionsSource, /setCollections\(\(current\) => current\.filter\(\(item\) => item\.id !== collection\.id\)\)/);
   assert.doesNotMatch(cloudRefreshBoundarySource, /recoverIncompleteLatestImport/);
 }
 
