@@ -5,6 +5,7 @@ import {
   hardenCatalogGroups,
   isValidCatalogIsbn10,
   isValidCatalogIsbn13,
+  mergeCatalogEditionData,
   selectExactIsbnEdition,
 } from '../src/features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
@@ -54,6 +55,13 @@ const goodEdition = hardenCatalogEdition({
   language: 'EN',
 });
 assert.ok(catalogEditionQualityScore(goodEdition) > catalogEditionQualityScore(hardenedEdition));
+
+const mergedEditionMetadata = mergeCatalogEditionData(
+  hardenCatalogEdition({ ...baseEdition, externalEditionId: 'merge-a', pageCount: undefined, publisher: undefined }),
+  hardenCatalogEdition({ ...baseEdition, source: 'open-library', externalEditionId: 'merge-b', pageCount: 531, publisher: 'Scribner' }),
+);
+assert.equal(mergedEditionMetadata.pageCount, 531);
+assert.equal(mergedEditionMetadata.publisher, 'Scribner');
 
 const work = (title: string, edition: BookSearchEdition): BookSearchWorkGroup => ({
   key: `work:${title}`,
