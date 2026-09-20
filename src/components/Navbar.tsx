@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3, Bell, BookHeart, BookMarked, BookOpen, Bookmark, CalendarClock, CalendarDays,
   ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, DownloadCloud, History, Home, Images, Library, Moon,
-  MoreHorizontal, Palette, Plus, Search, Settings, ShieldCheck, Sparkles, Sun, Target, Trophy, UserRound, X,
+  MoreHorizontal, Palette, Plus, Search, Settings, ShieldCheck, Sparkles, Sun, Target, Trophy, UserRound, UsersRound, X,
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
@@ -18,9 +18,9 @@ export type NavTab =
   | 'home' | 'library' | 'duplicates' | 'tbr' | 'sessions' | 'collections' | 'import-history' | 'timeline' | 'memories'
   | 'time-capsules' | 'photo-memories' | 'bookshelf-time' | 'my-dragon' | 'personality'
   | 'insights' | 'challenges' | 'achievements' | 'studio' | 'wrapped' | 'yearbook'
-  | 'stats' | 'import' | 'settings' | 'profile' | 'admin';
+  | 'stats' | 'import' | 'community' | 'settings' | 'profile' | 'admin';
 
-type NavigationGroupId = 'reading' | 'journal' | 'insights' | 'studio' | 'account';
+type NavigationGroupId = 'reading' | 'community' | 'journal' | 'insights' | 'studio' | 'account';
 type NavigationItem = { id: NavTab; label: string; icon: React.ComponentType<{ className?: string }>; premium?: boolean; adminOnly?: boolean };
 type NavigationGroup = { id: NavigationGroupId; label: string; items: NavigationItem[] };
 
@@ -44,6 +44,9 @@ const navigationGroups: NavigationGroup[] = [
     { id: 'library', label: 'My Library', icon: Library },
     { id: 'sessions', label: 'Reading Sessions', icon: Clock3 },
     { id: 'import', label: 'Import', icon: DownloadCloud },
+  ]},
+  { id: 'community', label: 'Community', items: [
+    { id: 'community', label: 'Community', icon: UsersRound },
   ]},
   { id: 'journal', label: 'Journal', items: [
     { id: 'timeline', label: 'Reading Timeline', icon: History }, { id: 'memories', label: 'Reading Memories', icon: BookHeart },
@@ -71,7 +74,7 @@ const navigationGroups: NavigationGroup[] = [
 const allNavigationItems = [homeItem, ...navigationGroups.flatMap((group) => group.items)];
 const mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 2)];
 const mobilePrimaryIds = new Set(mobilePrimaryItems.map((item) => item.id));
-const defaultCollapsedGroups: Record<NavigationGroupId, boolean> = { reading: false, journal: false, insights: false, studio: false, account: false };
+const defaultCollapsedGroups: Record<NavigationGroupId, boolean> = { reading: false, community: false, journal: false, insights: false, studio: false, account: false };
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, onSelectBook, onOpenAddBook, onOpenTimer, isDarkMode, setIsDarkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
