@@ -2,6 +2,14 @@
 
 Inkbound should have one authoritative owner for each kind of information. Screens may derive views from these sources, but they should not maintain competing copies of the same facts.
 
+## Editable input behavior
+
+**Canonical UI boundary:** `src/components/form/CanonicalInput.tsx`
+
+- Editable text and numeric fields keep the reader's raw in-progress value, including an empty string while Backspace/Delete is being used.
+- Domain parsing, clamping, and validation happen after editing or at the owning mutation boundary; they must not force a partially edited field back to its previous value.
+- Cross-cutting input bugs are fixed here and consumed by feature screens rather than patched independently in Search, Add Manually, or reading-session flows.
+
 ## Reader library and reading activity
 
 **Canonical working data:** the `books` and `sessions` collections owned by `App.tsx`, persisted under the canonical keys in `src/features/sync/storageKeys.ts`.
