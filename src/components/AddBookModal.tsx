@@ -272,16 +272,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         console.warn('Paged Google Books search unavailable; falling back to the standard catalog chain.', error);
       }
 
+      const catalogResponse = await searchGoogleBooks(trimmedQuery);
       if (googlePage && googlePage.groups.length > 0) {
-        setResults(googlePage.groups);
+        setResults(mergeCatalogResultGroups(googlePage.groups, catalogResponse.groups, trimmedQuery));
         setSearchNextStartIndex(googlePage.nextStartIndex);
-        setSearchProviderTotal(googlePage.providerTotalItems || null);
+        setSearchProviderTotal(googlePage.providerTotalItems || catalogResponse.totalItems || null);
         setSearchHasMore(googlePage.hasMore);
       } else {
-        const response = await searchGoogleBooks(trimmedQuery);
-        setResults(response.groups);
+        setResults(catalogResponse.groups);
         setSearchNextStartIndex(0);
-        setSearchProviderTotal(null);
+        setSearchProviderTotal(catalogResponse.totalItems || null);
         setSearchHasMore(false);
       }
     } catch (error) {
