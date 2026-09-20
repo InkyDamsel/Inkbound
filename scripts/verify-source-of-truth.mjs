@@ -40,6 +40,11 @@ for (const file of sourceFiles) {
   }
 }
 
+const cloudRefreshBoundarySource = read('src/features/sync/CloudDataRefreshBoundary.tsx');
+if (cloudRefreshBoundarySource.includes('recoverIncompleteLatestImport')) {
+  violations.push('CloudDataRefreshBoundary.tsx: import history is operational metadata and must never auto-recreate canonical library books');
+}
+
 const app = read('src/App.tsx');
 for (const required of [
   'withReadingStatus',
