@@ -404,6 +404,9 @@ export default function App() {
       if (changes.rating !== undefined) updatedBook.rating = changes.rating ?? undefined;
       if (changes.dateStarted !== undefined) updatedBook.dateStarted = changes.dateStarted ?? undefined;
       if (changes.dateFinished !== undefined) updatedBook.dateFinished = updatedBook.status === 'finished' ? changes.dateFinished ?? undefined : undefined;
+      if (changes.libraryLoanDueDate !== undefined) updatedBook.libraryLoan = changes.libraryLoanDueDate === null
+        ? (updatedBook.libraryLoan?.borrowedDate ? { borrowedDate: updatedBook.libraryLoan.borrowedDate } : undefined)
+        : { ...updatedBook.libraryLoan, dueDate: changes.libraryLoanDueDate };
       if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
       if (changes.removeTag) updatedBook.privateTags = updatedBook.privateTags.filter((tag) => tag.toLowerCase() !== changes.removeTag!.toLowerCase());
       if (changes.addCollection && !updatedBook.collections.includes(changes.addCollection)) updatedBook.collections = [...updatedBook.collections, changes.addCollection];
