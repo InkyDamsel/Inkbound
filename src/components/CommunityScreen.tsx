@@ -207,16 +207,19 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
               <div className="min-w-0">
                 <h3 className="text-sm font-bold text-[var(--ink-ivory)]">Community Rules</h3>
                 <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                  Inkbound should be a place where people can talk openly about books, music, TV, movies, fandoms, and life without being targeted for who they are.
+                  Inkbound is a place to share thoughts, recommendations, disagreements, and pieces of life while helping everyone feel safe enough to join the conversation.
                 </p>
                 <ul className="mt-3 grid gap-1.5 text-xs leading-5 text-[var(--ink-muted)] sm:grid-cols-2">
-                  <li>• No bullying or harassment.</li>
-                  <li>• No racist remarks.</li>
-                  <li>• No slurs or hate speech.</li>
-                  <li>• No body shaming.</li>
-                  <li>• No predatory behavior.</li>
-                  <li>• Respect privacy, boundaries, and consent.</li>
+                  <li>• Be kind. Discuss ideas without attacking the person behind them.</li>
+                  <li>• Respect different identities, backgrounds, bodies, and lived experiences.</li>
+                  <li>• Respect other people's opinions, even when you strongly disagree.</li>
+                  <li>• Protect privacy. Do not share someone else's personal information.</li>
+                  <li>• Respect boundaries and consent in conversations and interactions.</li>
+                  <li>• Keep interactions appropriate, safe, and free from exploitation or predatory behavior.</li>
                 </ul>
+                <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">
+                  Posts are text-only. Book attachments reference books already in your Inkbound library; Community posts do not accept photo or image uploads.
+                </p>
                 <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-3">
                   <input
                     type="checkbox"
