@@ -5,6 +5,7 @@ import {
   hardenCatalogGroups,
   isValidCatalogIsbn10,
   isValidCatalogIsbn13,
+  selectExactIsbnEdition,
 } from '../src/features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 
@@ -136,3 +137,62 @@ const seriesEdition = hardenCatalogEdition({
 assert.equal(seriesEdition.seriesName, 'Dream Harbor');
 assert.equal(seriesEdition.seriesOrder, 2);
 assert.ok(catalogEditionQualityScore(seriesEdition) > catalogEditionQualityScore({ ...seriesEdition, seriesName: undefined, seriesOrder: undefined }));
+
+
+const exactIsbnGroups = hardenCatalogGroups([
+  {
+    key: 'isbn-google',
+    title: 'Exact Edition',
+    authors: ['Example Author'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      externalEditionId: 'isbn-google',
+      title: 'Exact Edition',
+      authors: ['Example Author'],
+      isbn13: '9780307743657',
+      coverUrl: 'https://example.com/exact.jpg',
+      pageCount: undefined,
+      publisher: undefined,
+    }],
+  },
+  {
+    key: 'isbn-open-library',
+    title: 'Exact Edition',
+    authors: ['Example Author'],
+    genres: ['Fantasy'],
+    editions: [{
+      ...baseEdition,
+      source: 'open-library',
+      externalEditionId: 'isbn-open-library',
+      title: 'Exact Edition',
+      authors: ['Example Author'],
+      isbn13: '9780307743657',
+      coverUrl: undefined,
+      pageCount: 412,
+      publisher: 'Exact Publisher',
+    }],
+  },
+  {
+    key: 'wrong-edition',
+    title: 'Exact Edition',
+    authors: ['Example Author'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      externalEditionId: 'wrong-edition',
+      title: 'Exact Edition',
+      authors: ['Example Author'],
+      isbn13: '9781451673319',
+      pageCount: 999,
+    }],
+  },
+]);
+
+const exactIsbn = selectExactIsbnEdition(exactIsbnGroups, '9780307743657');
+assert.ok(exactIsbn);
+assert.equal(exactIsbn.edition.isbn13, '9780307743657');
+assert.equal(exactIsbn.edition.pageCount, 412);
+assert.equal(exactIsbn.edition.publisher, 'Exact Publisher');
+assert.equal(exactIsbn.edition.coverUrl, 'https://example.com/exact.jpg');
+assert.notEqual(exactIsbn.edition.pageCount, 999);
