@@ -18,7 +18,7 @@ import {
   INKBOUND_FORCE_CLOUD_REFRESH_EVENT,
   publishCloudSyncHealth,
 } from './cloudSyncHealth';
-import { SYNC_STORAGE_KEYS, syncPendingStateKey } from './storageKeys';
+import { SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -43,6 +43,12 @@ interface PendingSyncState {
   profile?: { data: Record<string, unknown>; clientUpdatedAt: string };
 }
 
+interface SyncBaseline {
+  books: Record<string, string>;
+  sessions: Record<string, string>;
+  profile?: string;
+}
+
 interface LibrarySyncManifest {
   status?: 'syncing' | 'complete';
   expectedBookCount?: number;
@@ -63,16 +69,41 @@ function writeJson(key: string, value: unknown) {
   getRuntimeStorage().setItem(key, JSON.stringify(value));
 }
 
-function mergeMissingById<T extends { id: string }>(
+function reconcileServerRecords<T extends { id: string }>(
   current: T[],
   server: T[],
   pending: Record<string, PendingMutation<T>>,
+  baseline: Record<string, string>,
 ): T[] {
-  const merged = new Map(current.map((item) => [item.id, item]));
+  const currentById = new Map(current.map((item) => [item.id, item]));
+  const next = new Map<string, T>();
+
   server.forEach((item) => {
-    if (!pending[item.id] && !merged.has(item.id)) merged.set(item.id, item);
+    const mutation = pending[item.id];
+    if (mutation?.operation === 'delete') return;
+    if (mutation?.operation === 'upsert' && mutation.data) {
+      next.set(item.id, mutation.data);
+      return;
+    }
+    next.set(item.id, item);
   });
-  return [...merged.values()];
+
+  currentById.forEach((item, id) => {
+    if (next.has(id) || server.some((candidate) => candidate.id === id)) return;
+    const mutation = pending[id];
+    if (mutation?.operation === 'delete') return;
+    if (mutation?.operation === 'upsert' && mutation.data) {
+      next.set(id, mutation.data);
+      return;
+    }
+
+    // A record that was in the acknowledged baseline but is now absent from a
+    // complete server snapshot was deleted remotely. Preserve only true
+    // local-only legacy records that never had a cloud baseline.
+    if (baseline[id] === undefined) next.set(id, item);
+  });
+
+  return [...next.values()];
 }
 
 function preferredText(localValue?: string, serverValue?: string) {
@@ -141,24 +172,34 @@ function mergeBooksFromServer(
   current: UserBookRecord[],
   server: UserBookRecord[],
   pending: Record<string, PendingMutation<UserBookRecord>>,
+  baseline: Record<string, string>,
 ): UserBookRecord[] {
-  const serverById = new Map(server.map((book) => [book.id, book]));
-  const merged = current.map((localBook) => {
-    const serverBook = serverById.get(localBook.id);
-    if (!serverBook) return localBook;
-    serverById.delete(localBook.id);
+  const currentById = new Map(current.map((book) => [book.id, book]));
+  const serverIds = new Set(server.map((book) => book.id));
+  const merged: UserBookRecord[] = [];
 
-    const pendingMutation = pending[localBook.id];
-    if (pendingMutation?.operation === 'delete') return localBook;
-
-    const sourceBook = pendingMutation?.operation === 'upsert' && pendingMutation.data
-      ? pendingMutation.data
-      : localBook;
-    return mergeServerMetadataIntoBook(sourceBook, serverBook);
+  server.forEach((serverBook) => {
+    const pendingMutation = pending[serverBook.id];
+    if (pendingMutation?.operation === 'delete') return;
+    if (pendingMutation?.operation === 'upsert' && pendingMutation.data) {
+      merged.push(mergeServerMetadataIntoBook(pendingMutation.data, serverBook));
+      return;
+    }
+    // With no durable local intent, the complete server snapshot is the
+    // authoritative core record. Do not let a stale local status/progress copy
+    // silently overwrite it during an explicit refresh.
+    merged.push(serverBook);
   });
 
-  serverById.forEach((serverBook, id) => {
-    if (pending[id]?.operation !== 'delete') merged.push(serverBook);
+  currentById.forEach((localBook, id) => {
+    if (serverIds.has(id)) return;
+    const pendingMutation = pending[id];
+    if (pendingMutation?.operation === 'delete') return;
+    if (pendingMutation?.operation === 'upsert' && pendingMutation.data) {
+      merged.push(pendingMutation.data);
+      return;
+    }
+    if (baseline[id] === undefined) merged.push(localBook);
   });
 
   return merged;
@@ -340,6 +381,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
         if (disposed) return;
 
         const pending = pendingState();
+        const baseline = readJson<SyncBaseline>(syncBaselineStateKey(uid), { books: {}, sessions: {} });
         const serverBooks = bookSnapshot.docs
           .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
           .filter(Boolean);
@@ -358,8 +400,8 @@ export const CloudServerRefreshBridge: React.FC = () => {
 
         const currentBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const currentSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
-        const nextBooks = mergeBooksFromServer(currentBooks, serverBooks, pending.books ?? {});
-        const nextSessions = mergeMissingById(currentSessions, serverSessions, pending.sessions ?? {});
+        const nextBooks = mergeBooksFromServer(currentBooks, serverBooks, pending.books ?? {}, baseline.books ?? {});
+        const nextSessions = reconcileServerRecords(currentSessions, serverSessions, pending.sessions ?? {}, baseline.sessions ?? {});
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (JSON.stringify(currentBooks) !== JSON.stringify(nextBooks)) {
