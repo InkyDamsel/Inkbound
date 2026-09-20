@@ -6,7 +6,7 @@ import { searchInkboundTrustedCatalog } from '../catalog/metadataContributions';
 import { searchOpenLibraryPage } from '../book-search/data/openLibraryApi';
 import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata } from './seriesLibrary';
-import { scoreSeriesEvidence, selectVerifiedSeriesEvidence } from './seriesDetectiveEvidence';
+import { scoreSeriesEvidence, selectVerifiedSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
