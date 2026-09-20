@@ -118,6 +118,11 @@ for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_K
 if (!bookDetailsCore.includes('CanonicalNumberInput')) {
   violations.push('BookDetailsModalCore.tsx: editable numeric progress/edition fields must use the canonical numeric input boundary');
 }
+for (const required of ['READING_STATUS_OPTIONS', 'OWNERSHIP_OPTIONS', 'PRIORITY_OPTIONS', 'FORMAT_OPTIONS']) {
+  if (!bookDetailsCore.includes(required)) {
+    violations.push(`BookDetailsModalCore.tsx: library selector options must consume canonical libraryTaxonomy ${required}`);
+  }
+}
 if (/const\s+localDateKey\s*=/.test(bookDetailsCore)) {
   violations.push('BookDetailsModalCore.tsx: must use the canonical reading date helper');
 }
