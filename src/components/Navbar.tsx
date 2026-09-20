@@ -12,6 +12,7 @@ import { usePersistentState } from '../hooks/usePersistentState';
 import { useReaderProfileIdentity } from '../hooks/useReaderProfileIdentity';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
 import { buildLibraryLoanReminders } from '../features/loans/libraryLoanReminders';
+import { hasCommunityAccount } from '../features/community/communityAccess';
 import { syncNativeLibraryLoanReminders } from '../features/loans/nativeLibraryLoanReminders';
 
 export type NavTab =
@@ -21,7 +22,7 @@ export type NavTab =
   | 'stats' | 'import' | 'community' | 'settings' | 'profile' | 'admin';
 
 type NavigationGroupId = 'reading' | 'community' | 'journal' | 'insights' | 'studio' | 'account';
-type NavigationItem = { id: NavTab; label: string; icon: React.ComponentType<{ className?: string }>; premium?: boolean; adminOnly?: boolean };
+type NavigationItem = { id: NavTab; label: string; icon: React.ComponentType<{ className?: string }>; premium?: boolean; adminOnly?: boolean; requiresAccount?: boolean };
 type NavigationGroup = { id: NavigationGroupId; label: string; items: NavigationItem[] };
 
 interface NavbarProps {
@@ -46,7 +47,7 @@ const navigationGroups: NavigationGroup[] = [
     { id: 'import', label: 'Import', icon: DownloadCloud },
   ]},
   { id: 'community', label: 'Community', items: [
-    { id: 'community', label: 'Community', icon: UsersRound },
+    { id: 'community', label: 'Community', icon: UsersRound, requiresAccount: true },
   ]},
   { id: 'journal', label: 'Journal', items: [
     { id: 'timeline', label: 'Reading Timeline', icon: History }, { id: 'memories', label: 'Reading Memories', icon: BookHeart },
@@ -90,6 +91,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
   const { user } = useAccountSync();
   const { displayName, avatarImage, initials } = useReaderProfileIdentity();
   const isAdmin = Boolean(user?.email && OWNER_EMAILS.has(user.email.toLowerCase()));
+  const hasCommunityAccess = hasCommunityAccount(user);
   const visibleNavigationGroups = navigationGroups
     .map((group) => ({ ...group, items: group.items.filter((item) => !item.adminOnly || isAdmin) }))
     .filter((group) => group.items.length > 0);
@@ -139,6 +141,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
     setActiveTab(tab); setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false); setSearchQuery('');
   };
   const navigateToItem = (item: NavigationItem) => {
+    if (item.requiresAccount && !hasCommunityAccess) {
+      setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false);
+      setActiveTab('profile');
+      return;
+    }
     if (item.premium && userPlan === 'free') {
       setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false);
       openUpgradeModal(`${item.label} is an Inkbound Premium feature.`);
