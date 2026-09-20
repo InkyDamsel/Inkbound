@@ -318,6 +318,12 @@ for (const forbidden of ['pauseAutomaticMetadataWork()', 'recoverBooksIfLocalCac
 if (!serverRefresh.includes('uploaded === 0') || !serverRefresh.includes('uploaded === expected')) {
   violations.push('CloudServerRefreshBridge.tsx: manual refresh must verify shrinking/empty cloud libraries exactly');
 }
+if (!serverRefresh.includes('syncBaselineStateKey') || !serverRefresh.includes('baseline[id] === undefined')) {
+  violations.push('CloudServerRefreshBridge.tsx: explicit refresh must honor baseline-confirmed deletions instead of preserving stale local records');
+}
+if (!serverRefresh.includes('merged.push(serverBook)')) {
+  violations.push('CloudServerRefreshBridge.tsx: server record must be authoritative when there is no durable pending local mutation');
+}
 
 const auxiliarySync = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
 for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeResume', 'AUXILIARY_ACCOUNT_KEYS', 'hydrationRequiredOwnerUid', "change.type === 'removed'", 'removeLocalValue']) {
