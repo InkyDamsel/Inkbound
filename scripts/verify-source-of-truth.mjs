@@ -246,7 +246,7 @@ if (!addBookModal.includes('ownershipStatus') || !addBookModal.includes('ownersh
   violations.push('AddBookModal.tsx: custom ownership selection must persist through the canonical ownership fields');
 }
 
-const sessionEditor = read('src/components/SessionEditorModal.tsx');
+
 if (!sessionEditor.includes('localDateKey')) violations.push('SessionEditorModal.tsx: must use the canonical reading date helper');
 if (/const\s+localDate\s*=/.test(sessionEditor)) violations.push('SessionEditorModal.tsx: must not maintain a second local-date formatter');
 
