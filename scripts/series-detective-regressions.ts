@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import type { UserBookRecord } from '../src/types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 import {
@@ -99,5 +100,14 @@ const wrongAuthor = scoreSeriesEvidence(work(wrongAuthorEdition), wrongAuthorEdi
 assert.ok(wrongAuthor);
 assert.equal(wrongAuthor?.exactAuthor, false);
 assert.equal(selectVerifiedSeriesEvidence([wrongAuthor!]), null);
+
+// Series discovery must not assume every installment has the same author.
+// Structured exact-series metadata may cross authors; title-only inference stays
+// author-gated to avoid pulling unrelated same-named books into the series.
+const detectiveSource = fs.readFileSync(new URL('../src/features/series/seriesDetective.ts', import.meta.url), 'utf8');
+assert.match(detectiveSource, /searchHardcover\(seriesName\)/);
+assert.match(detectiveSource, /googleSeriesOnlyGroups/);
+assert.match(detectiveSource, /!sameSeries\(edition, seriesName\) && !exactAuthorMatch\(work, author\)/);
+assert.doesNotMatch(detectiveSource, /normalize\(metadata\.name\) === normalize\(seriesName\) && normalize\(book\.work\.author\) === normalize\(author\)/);
 
 console.log('Inkbound Series Detective regressions passed.');
