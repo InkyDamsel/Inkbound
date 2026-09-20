@@ -4,6 +4,7 @@ import { FORMAT_OPTIONS, OWNERSHIP_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPT
 import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
+import { isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../features/book-search/catalogHardening';
 import { getActiveEdition, withReadingStatus } from '../features/reading/bookReadingState';
 import {
   getSessionDurationMinutes,
@@ -267,8 +268,27 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
     setIsSyncingBook(true);
     setSyncMessage(null);
     try {
-      const response = await searchGoogleBooks(`${book.work.title} ${book.work.author}`);
-      const candidates = response.groups.filter((work) => candidateMatchesBookIdentity(book, work)).flatMap((work) => work.editions.map((edition) => ({ work, edition })));
+      const activeIdentifiers = [activeEdition.isbn13, activeEdition.isbn10, activeEdition.isbn]
+        .map((value) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '')
+        .filter((value) => isValidCatalogIsbn13(value) || isValidCatalogIsbn10(value));
+      const exactIsbn = activeIdentifiers[0];
+
+      let response = await searchGoogleBooks(exactIsbn || `${book.work.title} ${book.work.author}`);
+      let candidates = (exactIsbn
+        ? response.groups
+        : response.groups.filter((work) => candidateMatchesBookIdentity(book, work)))
+        .flatMap((work) => work.editions.map((edition) => ({ work, edition })));
+
+      // Exact edition identity is preferred whenever Inkbound has an ISBN. If a
+      // provider cannot resolve that identifier, fall back to conservative
+      // title-and-author matching rather than silently borrowing page counts or
+      // publisher data from a different edition.
+      if (exactIsbn && candidates.length === 0) {
+        response = await searchGoogleBooks(`${book.work.title} ${book.work.author}`);
+        candidates = response.groups
+          .filter((work) => candidateMatchesBookIdentity(book, work))
+          .flatMap((work) => work.editions.map((edition) => ({ work, edition })));
+      }
       const candidateHasSummary = ({ work, edition }: { work: BookSearchWorkGroup; edition: BookSearchEdition }) => Boolean((edition.publisherSummary ?? work.publisherSummary)?.trim());
       const match = (!book.work.publisherSummary
         ? candidates.find((candidate) => candidate.edition.format === activeEdition.format && candidateHasSummary(candidate))
