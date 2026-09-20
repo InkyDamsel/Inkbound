@@ -9,7 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
+import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, mergeCatalogEditionData, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -104,7 +104,9 @@ const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: Book
     }
 
     group.editions.forEach((edition) => {
-      if (!existing.editions.some((candidate) => sameCatalogEdition(candidate, edition))) existing.editions.push(edition);
+      const sameIndex = existing.editions.findIndex((candidate) => sameCatalogEdition(candidate, edition));
+      if (sameIndex < 0) existing.editions.push(edition);
+      else existing.editions[sameIndex] = mergeCatalogEditionData(existing.editions[sameIndex], edition);
     });
     existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
     if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
