@@ -146,7 +146,7 @@ function removeIds<T extends { id: string }>(current: T[], removed: Set<string>)
 function cloudRecordWinsPending<T>(
   record: CloudRecord<T>,
   pending: { clientUpdatedAt: string } | undefined,
-  baselineFingerprint?: string,
+  baselineMatchesRemote: boolean,
 ): boolean {
   if (!pending) return true;
 
@@ -154,7 +154,7 @@ function cloudRecordWinsPending<T>(
   // in its baseline, it is not a competing newer edit. A durable pending
   // mutation was made after that baseline and must win even when Firestore's
   // server timestamp is later than the reader device's wall clock.
-  if (baselineFingerprint !== undefined && baselineFingerprint === fingerprint(record.data)) return false;
+  if (baselineMatchesRemote) return false;
 
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
@@ -245,7 +245,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const id = record.data?.id;
           if (!id) return;
           bookUpdateMillis.set(id, updatedMillis);
-          if (!cloudRecordWinsPending(record, pending.books[id], baseline.books[id])) return;
+          if (!cloudRecordWinsPending(record, pending.books[id], baseline.books[id] === fingerprint(record.data))) return;
           delete pending.books[id];
           acceptedBooks.push(record.data);
           baseline.books[id] = fingerprint(record.data);
@@ -258,7 +258,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const id = record.data?.id;
           if (!id) return;
           sessionUpdateMillis.set(id, updatedMillis);
-          if (!cloudRecordWinsPending(record, pending.sessions[id], baseline.sessions[id])) return;
+          if (!cloudRecordWinsPending(record, pending.sessions[id], baseline.sessions[id] === fingerprint(record.data))) return;
           delete pending.sessions[id];
           acceptedSessions.push(record.data);
           baseline.sessions[id] = fingerprint(record.data);
@@ -299,7 +299,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const profileRecord = profileSnapshot.data() as CloudRecord<Record<string, unknown>>;
           const updatedMillis = profileRecord.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
-          if (updatedMillis > lowerBound.toMillis() && cloudRecordWinsPending(profileRecord, pending.profile, baseline.profile)) {
+          if (updatedMillis > lowerBound.toMillis() && cloudRecordWinsPending(profileRecord, pending.profile, baseline.profile === stable(profileRecord.data))) {
             acceptedProfile = profileRecord.data;
             delete pending.profile;
             baseline.profile = stable(profileRecord.data);
