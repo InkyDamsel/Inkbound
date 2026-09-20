@@ -1,29 +1,50 @@
 import React, { useEffect } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
+import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, readDb } from '../../lib/firebase';
-import { readRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
+import {
+  readRuntimeValue,
+  writeRuntimeJson,
+  writeRuntimeValue,
+} from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
-const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
-const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
+const PROTECTED_DEV_HYDRATION_VERSION = '1';
+const protectedDevHydrationKey = (uid: string) =>
+  `inkbound_protected_dev_books_hydration_${uid}_v1`;
+
+interface CloudRecord<T> {
+  data: T;
+}
+
+function hasLocalBooksForUser(uid: string): boolean {
+  const ownerUid = readRuntimeValue(OWNER_UID_KEY);
+  if (ownerUid && ownerUid !== uid) return false;
+
+  const raw = readRuntimeValue(BOOKS_KEY);
+  if (!raw) return false;
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) && parsed.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 /**
- * Protected development mode is intentionally LOCAL ONLY.
+ * Protected development mode uses production Firebase Auth but must remain
+ * read-only against production Firestore.
  *
- * When Inkbound is running from the development server without explicit
- * production-write mode, Firebase Auth may still point at the real project so a
- * developer can sign in, but the app must not silently read production Firestore
- * collections. A large-library stress test can turn a harmless localhost reload
- * into tens of thousands of billable reads if this bridge hydrates or subscribes
- * to the real books collection.
- *
- * Intentional live-cloud beta verification remains available by starting the app
- * with VITE_FIREBASE_MODE=production. In that mode `db` is available and the
- * normal AdaptiveCloudPersistenceBridge owns one-time hydration plus local-first
- * persistence.
+ * To make account-backed features such as Community testable on localhost, this
+ * bridge performs one bounded books-only hydration when the protected cache has
+ * no established library. It installs no listeners, performs no writes, does not
+ * fetch sessions or auxiliary account collections, and records a local marker so
+ * routine dev reloads do not repeatedly bill the same production reads.
  */
 export const ReadOnlyCloudHydrationBridge: React.FC = () => {
   const sync = useAccountSync();
@@ -32,19 +53,54 @@ export const ReadOnlyCloudHydrationBridge: React.FC = () => {
     if (!sync.user || !readDb || db) return undefined;
 
     const uid = sync.user.uid;
-    const previousOwnerUid = readRuntimeValue(OWNER_UID_KEY);
+    let disposed = false;
+    const hydrationKey = protectedDevHydrationKey(uid);
 
-    if (!previousOwnerUid || previousOwnerUid === uid) {
+    const useLocalCopy = () => {
       writeRuntimeValue(OWNER_UID_KEY, uid);
+      notifyCloudDataUpdated([BOOKS_KEY]);
+    };
+
+    if (hasLocalBooksForUser(uid)) {
+      useLocalCopy();
+      return undefined;
     }
 
-    notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
+    if (readRuntimeValue(hydrationKey) === PROTECTED_DEV_HYDRATION_VERSION) {
+      useLocalCopy();
+      return undefined;
+    }
 
-    console.info(
-      'Inkbound DEV protected mode: using the local working copy only. Production Firestore reads are disabled to prevent test billing. Set VITE_FIREBASE_MODE=production only for intentional live-cloud beta verification.',
-    );
+    const hydrateBooksOnce = async () => {
+      try {
+        const snapshot = await getDocs(collection(readDb!, 'users', uid, 'books'));
+        if (disposed) return;
 
-    return undefined;
+        const books = snapshot.docs
+          .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
+          .filter(Boolean);
+
+        writeRuntimeJson(BOOKS_KEY, books);
+        writeRuntimeValue(OWNER_UID_KEY, uid);
+        writeRuntimeValue(hydrationKey, PROTECTED_DEV_HYDRATION_VERSION);
+        notifyCloudDataUpdated([BOOKS_KEY]);
+
+        console.info(
+          `Inkbound protected DEV mode: hydrated ${books.length} books once for local read-only testing. Production Firestore writes, live listeners, sessions, auxiliary collections, and Cloud Functions remain blocked.`,
+        );
+      } catch (error) {
+        console.warn(
+          'Inkbound protected DEV mode could not complete its one-time read-only library hydration.',
+          error,
+        );
+      }
+    };
+
+    void hydrateBooksOnce();
+
+    return () => {
+      disposed = true;
+    };
   }, [sync.user?.uid]);
 
   return null;
