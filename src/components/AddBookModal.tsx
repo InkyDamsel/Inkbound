@@ -170,6 +170,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [priority, setPriority] = useState<Priority>('medium');
 
   const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>(readScannerDraft);
+  const [scannerCategory, setScannerCategory] = useState<ReadingStatus>('tbr');
   const [scannerReviewPage, setScannerReviewPage] = useState(1);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -549,7 +550,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const saveScannedBooks = () => {
     if (scannedBooks.length === 0) return;
-    const books = scannedBooks.map((item) => ({ ...item.book, status: 'tbr' as const, dateStarted: undefined, dateFinished: undefined }));
+    const books = scannedBooks.map((item) => withReadingStatus(item.book, scannerCategory));
     if (onAddMultipleBooks) onAddMultipleBooks(books);
     else books.forEach(onAddBook);
     setScannedBooks([]);
@@ -699,7 +700,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 <div>
                   <p className="inkbound-kicker">Stack scanner</p>
                   <h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3>
-                  <p className="mt-2 max-w-2xl text-sm text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Your review stack stays saved on this device until you save or clear it. When you are finished, save the whole stack to your TBR.</p>
+                  <p className="mt-2 max-w-2xl text-sm text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Your review stack stays saved on this device until you save or clear it. When you are finished, choose the reading list for the whole stack.</p>
                 </div>
                 <div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div>
               </div>
@@ -755,7 +756,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   )}
                 </>
               )}
-              <button type="button" onClick={saveScannedBooks} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-5 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to TBR</button>
+              <div className="mt-5">
+                <Field label="Add scanned books to">
+                  <select value={scannerCategory} onChange={(event) => setScannerCategory(event.target.value as ReadingStatus)}>
+                    {ADD_TO_LIST_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <button type="button" onClick={saveScannedBooks} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {statusLabel(scannerCategory)}</button>
             </section>
           </div>
         ) : activeTab === 'search' ? (
