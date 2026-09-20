@@ -110,6 +110,9 @@ const canonicalInputSource = read('src/components/form/CanonicalInput.tsx');
 if (!canonicalInputSource.includes('CanonicalNumberInput')) {
   violations.push('CanonicalInput.tsx: canonical numeric draft/commit editor is missing');
 }
+if (!canonicalInputSource.includes('CanonicalTextarea')) {
+  violations.push('CanonicalInput.tsx: canonical multiline text editor is missing');
+}
 
 const readingSessionsScreen = read('src/components/ReadingSessionsScreen.tsx');
 const sessionEditor = read('src/components/SessionEditorModal.tsx');
