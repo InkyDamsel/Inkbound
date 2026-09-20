@@ -389,7 +389,7 @@ export default function App() {
         }));
       }
     }
-    setBooks((current) => current.map((book) => {
+    commitCanonicalBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
       const activeEdition = getActiveEdition(book);
       if (!activeEdition) return book;
@@ -405,7 +405,7 @@ export default function App() {
 
   const handleApplyBatchChanges = (changes: BatchEditChanges) => {
     setPreviousBooksState(books); setPreviousSessionsState(null); const today = localDateKey();
-    setBooks((current) => current.map((book) => {
+    commitCanonicalBooks((current) => current.map((book) => {
       if (!selectedBookIds.includes(book.id)) return book;
       let updatedBook: UserBookRecord = { ...book };
       if (changes.format) updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
@@ -432,15 +432,15 @@ export default function App() {
     const count = selectedBookIds.length; setSelectedBookIds([]); setIsBatchEditOpen(false); showToast(`Applied batch changes to ${count} books.`);
   };
 
-  const handleDeleteSelected = () => { setPreviousBooksState(books); setPreviousSessionsState(sessions); const selectedIds = new Set(selectedBookIds); const count = selectedBookIds.length; setBooks((current) => current.filter((book) => !selectedIds.has(book.id))); setSessions((current) => current.filter((session) => !selectedIds.has(session.bookId))); setSelectedBookIds([]); setIsBatchEditOpen(false); showToast(`Deleted ${count} books and their reading sessions.`); };
-  const handleUndoLastBatch = () => { if (!previousBooksState) return; booksRef.current = previousBooksState; setBooks(previousBooksState); if (previousSessionsState) setSessions(previousSessionsState); setPreviousBooksState(null); setPreviousSessionsState(null); showToast('Undid the most recent library change.'); };
+  const handleDeleteSelected = () => { setPreviousBooksState(books); setPreviousSessionsState(sessions); const selectedIds = new Set(selectedBookIds); const count = selectedBookIds.length; commitCanonicalBooks((current) => current.filter((book) => !selectedIds.has(book.id))); setSessions((current) => current.filter((session) => !selectedIds.has(session.bookId))); setSelectedBookIds([]); setIsBatchEditOpen(false); showToast(`Deleted ${count} books and their reading sessions.`); };
+  const handleUndoLastBatch = () => { if (!previousBooksState) return; commitCanonicalBooks(previousBooksState); if (previousSessionsState) setSessions(previousSessionsState); setPreviousBooksState(null); setPreviousSessionsState(null); showToast('Undid the most recent library change.'); };
 
   const updateBookFromSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
-    setBooks((current) => current.map((book) => applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes)));
+    commitCanonicalBooks((current) => current.map((book) => applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes)));
   };
 
   const reconcileBookProgressFromSessions = (bookId: string, nextSessions: ReadingSession[], changedSession?: ReadingSession) => {
-    setBooks((current) => current.map((book) => book.id === bookId ? reconcileBookAfterSessionMutation(book, nextSessions, changedSession) : book));
+    commitCanonicalBooks((current) => current.map((book) => book.id === bookId ? reconcileBookAfterSessionMutation(book, nextSessions, changedSession) : book));
   };
 
   const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessions]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
@@ -463,7 +463,7 @@ export default function App() {
   const handleSaveManualSession = (session: ReadingSession) => {
     const nextSessions = [session, ...sessions];
     setSessions(nextSessions);
-    setBooks((current) => current.map((book) =>
+    commitCanonicalBooks((current) => current.map((book) =>
       book.id === session.bookId ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
     ));
     showToast('Added past reading session.');
@@ -473,7 +473,7 @@ export default function App() {
     const nextSessions = [...newSessions, ...sessions];
     const affectedBookIds = new Set(newSessions.map((session) => session.bookId));
     setSessions(nextSessions);
-    setBooks((current) => current.map((book) =>
+    commitCanonicalBooks((current) => current.map((book) =>
       affectedBookIds.has(book.id) ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
     ));
     showToast(`Added ${newSessions.length} past reading session${newSessions.length === 1 ? '' : 's'}.`);
@@ -496,7 +496,7 @@ export default function App() {
     <ResponsiveShell navigation={<Navbar activeTab={activeTab} setActiveTab={setActiveTab} books={books} onSelectBook={setSelectedBookForDetails} onOpenAddBook={() => setIsAddBookOpen(true)} onOpenTimer={() => openTimer()} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}>
       <main className="inkbound-main-content"><ResponsiveContainer width="wide">
         {activeTab === 'home' && <HomeDashboard books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} onStartSessionForBook={(book) => openTimer(book.id)} onUpdateStatus={handleUpdateStatus} onNavigateToTab={setActiveTab} onOpenAddBook={() => setIsAddBookOpen(true)} />}
-        {activeTab === 'library' && <LibraryScreen books={books} selectedBookIds={selectedBookIds} onToggleSelectBook={handleToggleSelectBook} onSelectAll={setSelectedBookIds} onClearSelection={() => setSelectedBookIds([])} onSelectBook={setSelectedBookForDetails} onOpenBatchEdit={() => setIsBatchEditOpen(true)} onOpenAddBook={() => setIsAddBookOpen(true)} onAddBook={(newBook) => { setBooks((current) => [newBook, ...current]); showToast(`Added “${newBook.work.title}” to Inkbound.`); }} />}
+        {activeTab === 'library' && <LibraryScreen books={books} selectedBookIds={selectedBookIds} onToggleSelectBook={handleToggleSelectBook} onSelectAll={setSelectedBookIds} onClearSelection={() => setSelectedBookIds([])} onSelectBook={setSelectedBookForDetails} onOpenBatchEdit={() => setIsBatchEditOpen(true)} onOpenAddBook={() => setIsAddBookOpen(true)} onAddBook={(newBook) => { commitCanonicalBooks((current) => [newBook, ...current]); showToast(`Added “${newBook.work.title}” to Inkbound.`); }} />}
         {activeTab === 'duplicates' && <DuplicateManagerScreen books={books} onMergeGroup={handleMergeDuplicateGroup} onSelectBook={setSelectedBookForDetails} />}
         {activeTab === 'tbr' && <TBRScreen books={books} onSelectBook={setSelectedBookForDetails} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} />}
         {activeTab === 'sessions' && <div className="space-y-8"><ReadingActivityOverview books={books} sessions={sessions} onSelectBook={setSelectedBookForDetails} onUpdateBook={handleUpdateBook} /><ReadingSessionsScreen books={books} sessions={sessions} onOpenTimer={openTimer} onSelectBook={setSelectedBookForDetails} onSaveManualSession={handleSaveManualSession} onSaveManualSessions={handleSaveManualSessions} onUpdateSession={handleUpdateSession} onDeleteSession={handleDeleteSession} /></div>}
