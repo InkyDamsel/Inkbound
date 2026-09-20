@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, Eye, EyeOff, MessageCircle, Music2, Send, Sparkles, Tv2 } from 'lucide-react';
+import { BookOpen, Eye, EyeOff, MessageCircle, Music2, Send, ShieldCheck, Sparkles, TriangleAlert, Tv2 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useReaderProfileIdentity } from '../hooks/useReaderProfileIdentity';
@@ -27,18 +27,32 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
   const { displayName, avatarImage, initials } = useReaderProfileIdentity();
   const [draft, setDraft] = useState<CommunityPostDraft>(EMPTY_COMMUNITY_POST_DRAFT);
   const [previewPosted, setPreviewPosted] = useState(false);
+  const [rulesAccepted, setRulesAccepted] = useState(false);
 
   const selectedBook = useMemo(
     () => books.find((book) => book.id === draft.bookId),
     [books, draft.bookId],
   );
 
-  const canPost = Boolean(user && draft.body.trim().length > 0);
+  const canPost = Boolean(user && draft.body.trim().length > 0 && rulesAccepted);
+  const showSpoilerControl = draft.category !== 'music' && draft.category !== 'general';
   const selectedCategoryLabel = COMMUNITY_CATEGORY_LABELS[draft.category];
   const SelectedCategoryIcon = categoryIcon(draft.category);
 
   const updateDraft = <K extends keyof CommunityPostDraft>(key: K, value: CommunityPostDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
+    setPreviewPosted(false);
+  };
+
+  const updateCategory = (category: CommunityPostCategory) => {
+    setDraft((current) => ({
+      ...current,
+      category,
+      containsSpoilers: category === 'music' || category === 'general' ? false : current.containsSpoilers,
+      bookId: category === 'book' || category === 'recommendation' || category === 'discussion'
+        ? current.bookId
+        : undefined,
+    }));
     setPreviewPosted(false);
   };
 
@@ -98,7 +112,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
                   <button
                     key={category}
                     type="button"
-                    onClick={() => updateDraft('category', category)}
+                    onClick={() => updateCategory(category)}
                     className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition ${selected ? 'border-[var(--ink-mauve)] bg-[var(--ink-mauve)]/15 text-[var(--ink-ivory)]' : 'border-[var(--ink-border-subtle)] text-[var(--ink-muted)] hover:border-[var(--ink-border)] hover:text-[var(--ink-ivory)]'}`}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -139,25 +153,67 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
           )}
 
           <div className="grid gap-3 sm:grid-cols-2">
+            {showSpoilerControl && (
+              <button
+                type="button"
+                onClick={() => updateDraft('containsSpoilers', !draft.containsSpoilers)}
+                className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition ${draft.containsSpoilers ? 'border-amber-400/40 bg-amber-400/10 text-amber-200' : 'border-[var(--ink-border)] text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]'}`}
+              >
+                {draft.containsSpoilers ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {draft.containsSpoilers ? 'Spoiler warning on' : 'Mark as spoilers'}
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={() => updateDraft('containsSpoilers', !draft.containsSpoilers)}
-              className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition ${draft.containsSpoilers ? 'border-amber-400/40 bg-amber-400/10 text-amber-200' : 'border-[var(--ink-border)] text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]'}`}
+              onClick={() => updateDraft('containsNsfw', !draft.containsNsfw)}
+              className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition ${draft.containsNsfw ? 'border-rose-400/40 bg-rose-400/10 text-rose-200' : 'border-[var(--ink-border)] text-[var(--ink-muted)] hover:text-[var(--ink-ivory)]'}`}
             >
-              {draft.containsSpoilers ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              {draft.containsSpoilers ? 'Spoiler warning on' : 'Mark as spoilers'}
+              <TriangleAlert className="h-4 w-4" />
+              {draft.containsNsfw ? 'NSFW warning on' : 'Mark NSFW / sensitive'}
             </button>
 
             <select
               value={draft.visibility}
               onChange={(event) => updateDraft('visibility', event.target.value as CommunityPostDraft['visibility'])}
-              className="min-h-12 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"
+              className="min-h-12 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] sm:col-span-2"
               aria-label="Post visibility"
             >
               <option value="public">Public</option>
               <option value="followers">Followers only</option>
             </select>
           </div>
+
+          <section className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-[var(--ink-ivory)]">Community Rules</h3>
+                <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                  Inkbound should be a place where people can talk openly about books, music, TV, movies, fandoms, and life without being targeted for who they are.
+                </p>
+                <ul className="mt-3 grid gap-1.5 text-xs leading-5 text-[var(--ink-muted)] sm:grid-cols-2">
+                  <li>• No bullying or harassment.</li>
+                  <li>• No racist remarks.</li>
+                  <li>• No slurs or hate speech.</li>
+                  <li>• No body shaming.</li>
+                  <li>• No predatory behavior.</li>
+                  <li>• Respect privacy, boundaries, and consent.</li>
+                </ul>
+                <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-3">
+                  <input
+                    type="checkbox"
+                    checked={rulesAccepted}
+                    onChange={(event) => setRulesAccepted(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--ink-mauve)]"
+                  />
+                  <span className="text-xs leading-5 text-[var(--ink-ivory)]">
+                    I agree to follow the Inkbound Community Rules when I post.
+                  </span>
+                </label>
+              </div>
+            </div>
+          </section>
 
           <div className="flex flex-col gap-3 border-t border-[var(--ink-border-subtle)] pt-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-5 text-[var(--ink-muted)]">
@@ -188,8 +244,9 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ books }) => {
                 <strong className="text-sm text-[var(--ink-ivory)]">{displayName}</strong>
                 <span className="inline-flex items-center gap-1 rounded-full border border-[var(--ink-border-subtle)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]"><SelectedCategoryIcon className="h-3 w-3" /> {selectedCategoryLabel}</span>
                 {draft.containsSpoilers && <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-200">Spoilers</span>}
+                {draft.containsNsfw && <span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-200">NSFW</span>}
               </div>
-              <p className={`mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--ink-ivory)] ${draft.containsSpoilers ? 'rounded-xl bg-[var(--ink-surface-soft)] p-3 blur-sm transition hover:blur-none' : ''}`}>{draft.body.trim()}</p>
+              <p className={`mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--ink-ivory)] ${draft.containsSpoilers || draft.containsNsfw ? 'rounded-xl bg-[var(--ink-surface-soft)] p-3 blur-sm transition hover:blur-none' : ''}`}>{draft.body.trim()}</p>
               {selectedBook && (
                 <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3">
                   <BookOpen className="h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
