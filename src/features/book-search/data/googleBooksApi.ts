@@ -6,7 +6,7 @@ import { searchInkboundTrustedCatalog } from '../../catalog/metadataContribution
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { hardenCatalogGroups, hardenCatalogResponse } from '../catalogHardening';
+import { hardenCatalogGroups, hardenCatalogResponse, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -476,8 +476,22 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const isIsbnLookup = /^isbn:/i.test(builtQuery);
 
   if (isIsbnLookup) {
-    const trusted = await searchTrustedCatalogBaseline(trimmed);
-    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
+    const [trusted, google, openLibrary, hardcover] = await Promise.all([
+      searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+      searchGoogleBaseline(trimmed, signal),
+      searchOpenLibraryWithAuthorFallback(trimmed, signal),
+      searchHardcoverWithBackoff(trimmed),
+    ]);
+    const combined = hardenCatalogGroups(
+      [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
+      { searchQuery: trimmed },
+    );
+    const exact = selectExactIsbnEdition(combined, compactIsbn(trimmed));
+    if (!exact) return { groups: [], totalItems: 0 };
+    return cacheSearchResponse(cacheKey, {
+      groups: [{ ...exact.work, editions: [exact.edition] }],
+      totalItems: 1,
+    });
   }
 
   const google = await searchGoogleBaseline(trimmed, signal);
@@ -486,10 +500,8 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const openLibrary = await searchOpenLibraryWithAuthorFallback(trimmed, signal);
   if (openLibrary.groups.length > 0) return cacheSearchResponse(cacheKey, openLibrary);
 
-  if (!isIsbnLookup) {
-    const trusted = await searchTrustedCatalogBaseline(trimmed);
-    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
-  }
+  const trusted = await searchTrustedCatalogBaseline(trimmed);
+  if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
 
   const hardcover = await searchHardcoverWithBackoff(trimmed);
   if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
