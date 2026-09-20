@@ -1,7 +1,14 @@
 import { spawn } from 'node:child_process';
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const nodeCommand = process.execPath;
+const npmExecPath = process.env.npm_execpath;
+
+function npmInvocation(args) {
+  if (process.platform === 'win32' && npmExecPath) {
+    return { command: nodeCommand, args: [npmExecPath, ...args] };
+  }
+  return { command: 'npm', args };
+}
 
 const children = new Set();
 let shuttingDown = false;
@@ -36,7 +43,8 @@ function startVite() {
   if (viteStarted || shuttingDown) return;
   viteStarted = true;
   console.log('\nInkbound DEV: Firebase is ready. Starting Vite at http://127.0.0.1:3000 ...\n');
-  const vite = pipeChild(spawn(npmCommand, ['run', 'dev:web'], {
+  const viteCommand = npmInvocation(['run', 'dev:web']);
+  const vite = pipeChild(spawn(viteCommand.command, viteCommand.args, {
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -69,7 +77,8 @@ process.on('SIGTERM', () => shutdown('SIGTERM', 0));
 
 try {
   console.log('Inkbound DEV: building local Firebase Functions...');
-  await runOnce(npmCommand, ['run', 'functions:build']);
+  const functionsBuild = npmInvocation(['run', 'functions:build']);
+  await runOnce(functionsBuild.command, functionsBuild.args);
 
   console.log('\nInkbound DEV: starting local Firebase services...');
   const emulator = pipeChild(spawn(nodeCommand, ['scripts/start-firebase-emulators.mjs'], {
