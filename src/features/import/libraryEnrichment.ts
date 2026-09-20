@@ -693,6 +693,12 @@ function needsPublisherSummary(book: UserBookRecord): boolean {
   return !book.work.publisherSummary?.trim() && isPlaceholderSummary(book.work.summary);
 }
 
+function needsPageCount(book: UserBookRecord): boolean {
+  const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+  if (!activeEdition || activeEdition.format === 'audiobook') return false;
+  return !(typeof activeEdition.pageCount === 'number' && Number.isFinite(activeEdition.pageCount) && activeEdition.pageCount > 0);
+}
+
 function needsCover(book: UserBookRecord): boolean {
   const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
   return !activeEdition?.coverUrl;
@@ -716,7 +722,7 @@ export function buildRepairQueueItems(
     if (!isImportedBook(book)) return;
 
     const mustVerifyLegacyMetadata = book.importMetadataVerified !== true;
-    if (!mustVerifyLegacyMetadata && !needsCover(book) && !needsPublisherSummary(book)) {
+    if (!mustVerifyLegacyMetadata && !needsCover(book) && !needsPublisherSummary(book) && !needsPageCount(book)) {
       byBookId.delete(book.id);
       return;
     }
