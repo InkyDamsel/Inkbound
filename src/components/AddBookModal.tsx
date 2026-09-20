@@ -22,6 +22,7 @@ import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { getRuntimeStorage, readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
+import { CanonicalInput } from './form/CanonicalInput';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -726,7 +727,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </div>
               {cameraActive && <div className="mt-3 flex justify-end"><button type="button" onClick={stopCamera} className="quiet-shelf-secondary-action">Stop Camera</button></div>}
               <form onSubmit={addManualIsbn} className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-w-0 flex-1" />
+                <CanonicalInput value={manualIsbn} onValueChange={setManualIsbn} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-w-0 flex-1" />
                 <button type="submit" disabled={!manualIsbn.trim() || scanLookupBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scanLookupBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
               </form>
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
@@ -790,7 +791,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             ) : (
               <>
                 <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
-                  <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
+                  <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><CanonicalInput type="search" value={query} onValueChange={setQuery} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
                   <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
                 </form>
                 {!isSearching && hasSearched && results.length > 0 && searchProviderTotal !== null && (
@@ -823,15 +824,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         ) : (
           <div className="mt-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Title *"><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" /></Field>
-              <Field label="Author / creator *"><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Author or creator" /></Field>
+              <Field label="Title *"><CanonicalInput value={title} onValueChange={setTitle} placeholder="Title" /></Field>
+              <Field label="Author / creator *"><CanonicalInput value={author} onValueChange={setAuthor} placeholder="Author or creator" /></Field>
               <Field label="Reading material"><select value={materialType} onChange={(event) => setMaterialType(event.target.value as ReadingMaterialType)}>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
-              <Field label="Genres"><input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance" /></Field>
-              {format !== 'audiobook' && <Field label="Page count"><input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" /></Field>}
+              <Field label="Genres"><CanonicalInput value={genres} onValueChange={setGenres} placeholder="Fantasy, Romance" /></Field>
+              {format !== 'audiobook' && <Field label="Page count"><CanonicalInput type="number" min="1" value={pageCount} onValueChange={setPageCount} placeholder="Optional" /></Field>}
               <Field label="Format"><select value={format} onChange={(event) => setFormat(event.target.value as Format)}>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
               <div>
                 <Field label="Reading status / category"><select value={category} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomCategory(true); return; } setCategory(event.target.value as CategorySelection); setCreatingCustomCategory(false); }}><optgroup label="Reading status">{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}<option value="__new__">+ New custom category…</option></select></Field>
-                {creatingCustomCategory && <div className="mt-2 flex gap-2"><input value={newCustomCategoryName} onChange={(event) => setNewCustomCategoryName(event.target.value)} placeholder="Category name" className="inkbound-select min-w-0 flex-1" /><button type="button" onClick={createAndSelectCustomCategory} className="quiet-shelf-secondary-action">Create</button></div>}
+                {creatingCustomCategory && <div className="mt-2 flex gap-2"><CanonicalInput value={newCustomCategoryName} onValueChange={setNewCustomCategoryName} placeholder="Category name" className="inkbound-select min-w-0 flex-1" /><button type="button" onClick={createAndSelectCustomCategory} className="quiet-shelf-secondary-action">Create</button></div>}
               </div>
               <Field label="Ownership"><select value={ownership} onChange={(event) => setOwnership(event.target.value as OwnershipStatus)}>{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
               <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
