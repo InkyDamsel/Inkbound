@@ -3,6 +3,7 @@ import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, 
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
+import { getBookReadingState } from '../features/reading/bookReadingState';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
