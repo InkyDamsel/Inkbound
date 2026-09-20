@@ -4,6 +4,7 @@ import type { Edition, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
@@ -11,7 +12,7 @@ import {
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 
-const BOOKS_KEY = 'inkbound_books';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const LEDGER_COLLECTION = 'protectedBookDetails';
 
 interface ProtectedBookDetails {
