@@ -494,17 +494,25 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     });
   }
 
-  const google = await searchGoogleBaseline(trimmed, signal);
-  if (google.groups.length > 0) return cacheSearchResponse(cacheKey, google);
+  const [google, openLibrary, trusted, hardcover] = await Promise.all([
+    searchGoogleBaseline(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+    searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+    searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+    searchHardcoverWithBackoff(trimmed),
+  ]);
 
-  const openLibrary = await searchOpenLibraryWithAuthorFallback(trimmed, signal);
-  if (openLibrary.groups.length > 0) return cacheSearchResponse(cacheKey, openLibrary);
+  const combined = hardenCatalogGroups(
+    [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
+    { searchQuery: trimmed },
+  );
+  if (combined.length === 0) return { groups: [], totalItems: 0 };
 
-  const trusted = await searchTrustedCatalogBaseline(trimmed);
-  if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
-
-  const hardcover = await searchHardcoverWithBackoff(trimmed);
-  if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
-
-  return { groups: [], totalItems: 0 };
+  // Work-level fields (summary/genres) may safely supplement the same title and
+  // author across providers, while edition-level fields only merge when the
+  // edition identity matches. This is the canonical catalog result used by
+  // search, metadata sync, and Series Detective.
+  return cacheSearchResponse(cacheKey, {
+    groups: combined,
+    totalItems: Math.max(google.totalItems, openLibrary.totalItems, trusted.totalItems, hardcover.totalItems, combined.length),
+  });
 }
