@@ -102,11 +102,18 @@ function writeJson(key: string, value: unknown) {
   storage().setItem(key, stable(value));
 }
 
-function remoteWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpdatedAt: string }): boolean {
+function remoteWinsPending<T>(
+  record: CloudRecord<T>,
+  pending: { clientUpdatedAt: string } | undefined,
+  baselineFingerprint?: string,
+): boolean {
+  if (!pending) return true;
+  if (baselineFingerprint !== undefined && baselineFingerprint === fingerprint(record.data)) return false;
+
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
-    pendingClientUpdatedAt: pending?.clientUpdatedAt,
+    pendingClientUpdatedAt: pending.clientUpdatedAt,
   });
 }
 
@@ -147,7 +154,7 @@ function reconcileCollection<T extends { id: string }>(
     latestCloudMillis.set(item.id, updatedMillis);
 
     const localPending = pending[item.id];
-    if (localPending && !remoteWinsPending(record, localPending)) {
+    if (localPending && !remoteWinsPending(record, localPending, baseline[item.id])) {
       stats.pendingLocalProtected += 1;
       return;
     }
@@ -293,7 +300,7 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         if (profileSnapshot.exists()) {
           const profileRecord = profileSnapshot.data() as CloudRecord<Record<string, unknown>>;
           newestMillis = Math.max(newestMillis, profileRecord.updatedAt?.toMillis() ?? 0);
-          if (profileRecord.data && remoteWinsPending(profileRecord, pending.profile)) {
+          if (profileRecord.data && remoteWinsPending(profileRecord, pending.profile, baseline.profile)) {
             delete pending.profile;
             const profileValue = stable(profileRecord.data);
             baseline.profile = profileValue;
