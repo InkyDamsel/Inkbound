@@ -289,6 +289,23 @@ if (refreshBoundary.includes('getCloudDataRevision')) {
   violations.push('CloudDataRefreshBoundary.tsx: startup readiness must not depend on a global cloud revision from unrelated sync bridges');
 }
 
+const syncFingerprint = read('src/features/sync/syncFingerprint.ts');
+for (const required of ['stableSyncValue', 'fingerprintSyncValue']) {
+  if (!syncFingerprint.includes(`export ${required === 'fingerprintSyncValue' ? 'function' : 'const'} ${required}`)) {
+    violations.push(`syncFingerprint.ts: missing canonical ${required}`);
+  }
+}
+for (const relative of [
+  'src/features/sync/CostSafeCloudPersistenceBridge.tsx',
+  'src/features/sync/CrossDeviceDeltaSyncBridge.tsx',
+  'src/features/sync/FullCloudReconciliationBridge.tsx',
+  'src/features/sync/CloudServerRefreshBridge.tsx',
+]) {
+  if (!read(relative).includes('syncFingerprint')) {
+    violations.push(`${relative}: sync baseline serialization/fingerprints must consume syncFingerprint.ts`);
+  }
+}
+
 const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
 for (const required of ['shouldRemoteChangeReplacePending', 'shouldApplyRemoteTombstone', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey', 'hydrationRequiredOwnerUid']) {
   if (!crossDeviceSync.includes(required)) {
@@ -329,6 +346,9 @@ if (!serverRefresh.includes('uploaded === 0') || !serverRefresh.includes('upload
 }
 if (!serverRefresh.includes('syncBaselineStateKey') || !serverRefresh.includes('baseline[id] === undefined')) {
   violations.push('CloudServerRefreshBridge.tsx: explicit refresh must honor baseline-confirmed deletions instead of preserving stale local records');
+}
+if (!serverRefresh.includes('baseline.books = Object.fromEntries') || !serverRefresh.includes('baseline.sessions = Object.fromEntries')) {
+  violations.push('CloudServerRefreshBridge.tsx: verified full snapshots must rebuild the canonical core sync baseline');
 }
 if (!serverRefresh.includes('merged.push(serverBook)')) {
   violations.push('CloudServerRefreshBridge.tsx: server record must be authoritative when there is no durable pending local mutation');
