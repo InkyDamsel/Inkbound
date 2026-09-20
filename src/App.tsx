@@ -61,7 +61,7 @@ import {
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
 import { normalizeLibraryRecord } from './features/library/libraryNormalization';
-import { replaceCanonicalLibrary } from './features/library/libraryMutations';
+import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
 import {
   applySessionProgressToBook,
@@ -169,6 +169,7 @@ export default function App() {
   const [books, setBooks] = useState<UserBookRecord[]>(() => readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []));
   const booksRef = useRef(books);
   const [sessions, setSessions] = useState<ReadingSession[]>(() => readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []));
+  const sessionsRef = useRef(sessions);
   const [previousBooksState, setPreviousBooksState] = useState<UserBookRecord[] | null>(null);
   const [previousSessionsState, setPreviousSessionsState] = useState<ReadingSession[] | null>(null);
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
@@ -193,6 +194,7 @@ export default function App() {
   }, [books]);
 
   useEffect(() => {
+    sessionsRef.current = sessions;
     writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions);
     removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY);
   }, [sessions]);
@@ -209,7 +211,9 @@ export default function App() {
       }
 
       if (keys.includes(SESSIONS_STORAGE_KEY)) {
-        setSessions(readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []));
+        const nextSessions = readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []);
+        sessionsRef.current = nextSessions;
+        setSessions(nextSessions);
       }
     };
 
@@ -228,6 +232,17 @@ export default function App() {
     booksRef.current = next;
     replaceCanonicalLibrary(next);
     setBooks(next);
+    return next;
+  };
+
+  const commitCanonicalSessions = (
+    update: ReadingSession[] | ((current: ReadingSession[]) => ReadingSession[]),
+  ): ReadingSession[] => {
+    const current = sessionsRef.current;
+    const next = typeof update === 'function' ? update(current) : update;
+    sessionsRef.current = next;
+    replaceCanonicalSessions(next);
+    setSessions(next);
     return next;
   };
 
