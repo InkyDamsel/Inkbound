@@ -56,6 +56,10 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   try {
     const storage = getRuntimeStorage();
     if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
+    // A sync-engine migration can invalidate an otherwise "established" local
+    // cache. Until this device has completed the current full reconciliation,
+    // cloud remains the authoritative repair source for existing account data.
+    if (storage.getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
 
     const raw = storage.getItem(BOOKS_KEY);
     if (!raw) return false;
