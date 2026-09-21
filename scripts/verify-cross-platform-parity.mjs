@@ -49,6 +49,19 @@ for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(cand
   }
 }
 
+// Shared feature-action classes are a cross-platform contract. A component may
+// reflow or wrap them on small screens, but it may not combine those canonical
+// action classes with responsive "hidden" utilities that remove the feature on
+// Android/phone widths.
+for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(candidate))) {
+  const relative = rel(file);
+  const contents = fs.readFileSync(file, 'utf8');
+  const hiddenSharedAction = /className=["'][^"']*quiet-shelf-(?:primary|secondary)-action[^"']*(?:\bhidden\b|(?:sm|md|lg|xl):hidden)[^"']*["']/g;
+  if (hiddenSharedAction.test(contents)) {
+    errors.push(`${relative} responsively hides a canonical feature action. Reflow it instead so web and Android expose the same action.`);
+  }
+}
+
 // The public website is intentionally code-split from the signed-in app so the
 // marketing surface does not download Firebase/persistence code. Web /app and
 // Android must still enter the exact same applicationEntry tree.
