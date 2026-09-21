@@ -31,6 +31,7 @@ export interface CanonicalNumberInputProps extends Omit<React.InputHTMLAttribute
   value?: number;
   onCommit: (value: number | undefined) => void;
   allowEmpty?: boolean;
+  onDraftChange?: (rawValue: string) => void;
 }
 
 /**
@@ -39,7 +40,7 @@ export interface CanonicalNumberInputProps extends Omit<React.InputHTMLAttribute
  * coerced to 0 and turning the next keystroke into values such as "030".
  */
 export const CanonicalNumberInput = React.forwardRef<HTMLInputElement, CanonicalNumberInputProps>(
-  ({ value, onCommit, allowEmpty = false, min, max, onFocus, onKeyDown, ...props }, ref) => {
+  ({ value, onCommit, allowEmpty = false, onDraftChange, min, max, onFocus, onKeyDown, ...props }, ref) => {
     const [draft, setDraft] = React.useState(value === undefined ? '' : String(value));
     const [focused, setFocused] = React.useState(false);
 
@@ -82,7 +83,11 @@ export const CanonicalNumberInput = React.forwardRef<HTMLInputElement, Canonical
           setFocused(true);
           onFocus?.(event);
         }}
-        onChange={(event) => setDraft(event.currentTarget.value)}
+        onChange={(event) => {
+          const rawValue = event.currentTarget.value;
+          setDraft(rawValue);
+          onDraftChange?.(rawValue);
+        }}
         onBlur={() => {
           commit();
           setFocused(false);
