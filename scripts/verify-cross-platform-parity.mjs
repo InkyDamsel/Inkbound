@@ -116,11 +116,6 @@ assert(parityImportedAfterAppShell, 'responsive-parity.css must load after app-s
 assert(hasCompactActionOverride, 'responsive-parity.css must force shared primary/secondary feature actions visible through tablet and phone widths.');
 const bookDetailsResponsive = read('src/components/bookDetailsResponsive.css');
 assert(
-  bookDetailsResponsive.includes(".book-details-modal-host > div.fixed > section[role='dialog'] .quiet-shelf-secondary-action")
-    && bookDetailsResponsive.includes('display: inline-flex !important'),
-  'Book Details portal actions must explicitly override compact-shell secondary-action hiding on Android.',
-);
-assert(
   bookDetailsResponsive.includes('--book-details-safe-top: max(env(safe-area-inset-top), 24px)'),
   'Book Details mobile layout must keep a minimum Android status-bar safe inset even when WebView reports zero.',
 );
@@ -136,12 +131,11 @@ for (const file of sourceFiles.filter((candidate) => candidate.endsWith('.css'))
   const rules = contents.matchAll(/([^{}]+)\{([^{}]*display\s*:\s*none[^{}]*)\}/g);
   for (const match of rules) {
     const selector = match[1];
-    const legacyShellRuleSafelyOverridden = relative === 'src/styles/app-shell.css' && parityImportedAfterAppShell && hasCompactActionOverride;
-    if (selector.includes('.quiet-shelf-secondary-action') && !selector.includes('.quiet-shelf-topbar') && !legacyShellRuleSafelyOverridden) {
+    if (selector.includes('.quiet-shelf-secondary-action') && !selector.includes('.quiet-shelf-topbar')) {
       errors.push(`${relative} hides .quiet-shelf-secondary-action outside the top bar. Shared feature actions must remain reachable on Android.`);
     }
-    if (selector.includes('.quiet-shelf-primary-action') && !selector.includes('.quiet-shelf-topbar') && !selector.includes('span') && !legacyShellRuleSafelyOverridden) {
-      errors.push(`${relative} hides .quiet-shelf-primary-action outside the top bar. Shared feature actions must remain reachable on Android.`);
+    if (selector.includes('.quiet-shelf-primary-action') && !selector.includes('.quiet-shelf-topbar')) {
+      errors.push(`${relative} hides .quiet-shelf-primary-action or its label outside the top bar. Shared feature actions and labels must remain reachable on Android.`);
     }
   }
 }
