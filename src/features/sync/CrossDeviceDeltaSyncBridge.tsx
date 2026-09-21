@@ -15,6 +15,7 @@ import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import {
   getRuntimeStorage,
   notifyRuntimeStorageChanged,
@@ -131,6 +132,13 @@ function upsertById<T extends { id: string }>(current: T[], incoming: T[]): T[] 
   if (!incoming.length) return current;
   const next = new Map(current.map((item) => [item.id, item]));
   incoming.forEach((item) => next.set(item.id, item));
+  return [...next.values()];
+}
+
+function upsertBooksById(current: UserBookRecord[], incoming: UserBookRecord[]): UserBookRecord[] {
+  if (!incoming.length) return current;
+  const next = new Map(current.map((item) => [item.id, item]));
+  incoming.forEach((item) => next.set(item.id, mergeIncomingBookLoanState(next.get(item.id), item)));
   return [...next.values()];
 }
 
@@ -290,7 +298,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
 
         const books = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const sessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
-        const nextBooks = removeIds(upsertById(books, acceptedBooks), removedBooks);
+        const nextBooks = removeIds(upsertBooksById(books, acceptedBooks), removedBooks);
         const nextSessions = removeIds(upsertById(sessions, acceptedSessions), removedSessions);
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
