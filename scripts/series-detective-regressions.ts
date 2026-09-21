@@ -6,6 +6,7 @@ import {
   scoreSeriesEvidence,
   selectVerifiedSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
+import { hasKnownSeriesContextEvidence } from '../src/features/series/seriesDetective';
 
 const book = {
   id: 'book-1',
@@ -115,6 +116,30 @@ const standaloneTwistedTale = scoreSeriesEvidence(
   standaloneTwistedTaleBook,
 );
 assert.equal(standaloneTwistedTale, null);
+
+const twistedInstallment = work(
+  edition('google-books', {
+    title: 'As Old as Time',
+    subtitle: 'A Twisted Tale',
+    authors: ['Liz Braswell'],
+    seriesName: undefined,
+    seriesOrder: undefined,
+  }),
+  { title: 'As Old as Time', subtitle: 'A Twisted Tale', authors: ['Liz Braswell'] },
+);
+assert.equal(hasKnownSeriesContextEvidence(twistedInstallment, twistedInstallment.editions[0], 'A Twisted Tale', 2), true);
+assert.equal(hasKnownSeriesContextEvidence(twistedInstallment, twistedInstallment.editions[0], 'A Twisted Tale', 1), false);
+
+const twistedBrandOnly = work(
+  edition('google-books', {
+    title: 'Disney A Twisted Tale',
+    authors: ['Example Author'],
+    seriesName: undefined,
+    seriesOrder: undefined,
+  }),
+  { title: 'Disney A Twisted Tale', authors: ['Example Author'] },
+);
+assert.equal(hasKnownSeriesContextEvidence(twistedBrandOnly, twistedBrandOnly.editions[0], 'A Twisted Tale', 2), false);
 
 const wrongAuthorEdition = edition('hardcover', { authors: ['Someone Else'] });
 const wrongAuthor = scoreSeriesEvidence(work(wrongAuthorEdition), wrongAuthorEdition, book);
