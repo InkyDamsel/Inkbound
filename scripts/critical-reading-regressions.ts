@@ -30,7 +30,7 @@ import {
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
 import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
-import { withBookOwnership } from '../src/features/ownership/bookOwnership';
+import { mergeIncomingBookLoanState, withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
   shouldApplyRemoteTombstone,
   shouldPromoteLocalRecordMissingFromCloud,
@@ -222,6 +222,17 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   };
   assert.deepEqual(withBookOwnership(activeLoan, 'borrowed-library').libraryLoan, activeLoan.libraryLoan);
   assert.equal(withBookOwnership(activeLoan, 'owned').libraryLoan, undefined);
+
+  const partialRemoteLoan = { ...activeLoan };
+  delete partialRemoteLoan.libraryLoan;
+  assert.deepEqual(mergeIncomingBookLoanState(activeLoan, partialRemoteLoan).libraryLoan, activeLoan.libraryLoan);
+
+  const explicitRemoteClear = { ...activeLoan, libraryLoan: {} };
+  assert.deepEqual(mergeIncomingBookLoanState(activeLoan, explicitRemoteClear).libraryLoan, {});
+
+  const explicitOwnershipChange = { ...activeLoan, ownership: 'owned' as const };
+  delete explicitOwnershipChange.libraryLoan;
+  assert.equal(mergeIncomingBookLoanState(activeLoan, explicitOwnershipChange).libraryLoan, undefined);
 }
 
 // Sync conflict rules protect newer/pending local work from stale cloud data.
