@@ -45,6 +45,24 @@ if (cloudRefreshBoundarySource.includes('recoverIncompleteLatestImport')) {
   violations.push('CloudDataRefreshBoundary.tsx: import history is operational metadata and must never auto-recreate canonical library books');
 }
 
+const startDev = read('scripts/start-dev.mjs');
+const packageJson = JSON.parse(read('package.json'));
+if (packageJson.scripts?.dev !== 'node scripts/start-dev.mjs') {
+  violations.push('package.json: npm run dev must use the app-parity DEV launcher');
+}
+if (packageJson.scripts?.['dev:emulator'] !== 'node scripts/start-dev.mjs --emulator') {
+  violations.push('package.json: npm run dev:emulator must remain the isolated Firebase emulator path');
+}
+for (const required of [
+  "const requestedMode = process.argv.includes('--emulator') ? 'emulator' : 'production'",
+  "VITE_FIREBASE_MODE: requestedMode",
+  "VITE_PREMIUM_SUBSCRIPTIONS_OPEN: 'false'",
+]) {
+  if (!startDev.includes(required)) {
+    violations.push(`start-dev.mjs: DEV parity/safety contract is missing (${required})`);
+  }
+}
+
 const app = read('src/App.tsx');
 for (const required of [
   'withReadingStatus',
