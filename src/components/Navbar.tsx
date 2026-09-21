@@ -71,7 +71,7 @@ const navigationGroups: NavigationGroup[] = [
 
 const allNavigationItems = [homeItem, ...navigationGroups.flatMap((group) => group.items)];
 const mobilePrimaryItems = [homeItem, ...navigationGroups[0].items.slice(0, 2)];
-const mobilePrimaryIds = new Set(mobilePrimaryItems.map((item) => item.id));
+const mobilePrimaryIds = new Set<string>(mobilePrimaryItems.map((item) => item.id));
 const defaultCollapsedGroups: Record<NavigationGroupId, boolean> = { reading: false, journal: false, insights: false, studio: false, account: false };
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, onSelectBook, onOpenAddBook, onOpenTimer, isDarkMode, setIsDarkMode }) => {
