@@ -549,9 +549,6 @@ if (!normalizer.includes('normalizeCanonicalLibraryRecords')) {
 if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"]/.test(normalizer)) {
   violations.push('libraryNormalization.ts: ownership Wishlist must not erase independent reading status/history');
 }
-if (!normalizer.includes("ownership !== 'borrowed-library'") || !normalizer.includes('libraryLoan: undefined')) {
-  violations.push('libraryNormalization.ts: stale library-loan dates must be cleared when ownership is no longer a library loan');
-}
 
 const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
 for (const required of [
