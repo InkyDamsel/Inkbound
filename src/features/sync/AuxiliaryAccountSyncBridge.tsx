@@ -54,6 +54,15 @@ const FALLBACK_POLL_MS = 30000;
 const storage = () => getRuntimeStorage();
 const stable = (value: unknown) => JSON.stringify(value);
 const auxiliaryRuntimeKeys = new Set<string>(Object.values(AUXILIARY_ACCOUNT_KEYS));
+const legacyCloudDocNameById = new Map<string, AuxiliaryAccountKeyName>(
+  (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>)
+    .map(([name, runtimeKey]) => [runtimeKey, name]),
+);
+
+function auxiliaryNameForCloudDocId(id: string): AuxiliaryAccountKeyName | undefined {
+  if (id in AUXILIARY_ACCOUNT_KEYS) return id as AuxiliaryAccountKeyName;
+  return legacyCloudDocNameById.get(id);
+}
 
 function safeParse<T>(key: string, fallback: T): T {
   try {
@@ -143,6 +152,11 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
     if (!sync.user || !db) return undefined;
     const uid = sync.user.uid;
     let disposed = false;
+    // Older Inkbound builds used the runtime storage key itself as the Firestore
+    // auxiliary document id (for example inkbound_collection_definitions).
+    // Track current-format docs so legacy records are used only as a migration
+    // fallback and can never overwrite an already-migrated canonical document.
+    const canonicalCloudNames = new Set<AuxiliaryAccountKeyName>();
 
     const captureLocalChanges = () => {
       if (!hydrated.current || disposed) return;
@@ -237,10 +251,43 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
       if (disposed) return;
 
       const cloudByName = new Map<AuxiliaryAccountKeyName, CloudAuxiliaryRecord>();
+      const legacyOnlyCloudNames = new Set<AuxiliaryAccountKeyName>();
+
+      // Canonical document ids always win when both generations exist.
       cloudDocs?.docs.forEach((item) => {
         if (!(item.id in AUXILIARY_ACCOUNT_KEYS)) return;
-        cloudByName.set(item.id as AuxiliaryAccountKeyName, item.data() as CloudAuxiliaryRecord);
+        const name = item.id as AuxiliaryAccountKeyName;
+        canonicalCloudNames.add(name);
+        cloudByName.set(name, item.data() as CloudAuxiliaryRecord);
       });
+
+      // If a reader still has only the legacy document id, hydrate from it rather
+      // than treating the account as empty and uploading a local fallback.
+      cloudDocs?.docs.forEach((item) => {
+        const name = legacyCloudDocNameById.get(item.id);
+        if (!name || canonicalCloudNames.has(name) || cloudByName.has(name)) return;
+        cloudByName.set(name, item.data() as CloudAuxiliaryRecord);
+        legacyOnlyCloudNames.add(name);
+      });
+
+      // Migrate legacy-only cloud records forward without deleting the legacy
+      // source. This is a copy-forward repair, not a recreation of user data.
+      if (legacyOnlyCloudNames.size > 0) {
+        await Promise.allSettled([...legacyOnlyCloudNames].map(async (name) => {
+          const record = cloudByName.get(name);
+          if (!record) return;
+          await setDoc(
+            doc(db!, 'users', uid, 'auxiliary', name),
+            {
+              data: record.data,
+              updatedAt: serverTimestamp(),
+              clientUpdatedAt: record.clientUpdatedAt ?? now,
+            },
+            { merge: true },
+          );
+          canonicalCloudNames.add(name);
+        }));
+      }
 
       const nextBaseline: BaselineState = { ...baseline };
       (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, key]) => {
@@ -325,8 +372,17 @@ export const AuxiliaryAccountSyncBridge: React.FC = () => {
         let pendingChanged = false;
 
         snapshot.docChanges().forEach((change) => {
-          if (!(change.doc.id in AUXILIARY_ACCOUNT_KEYS)) return;
-          const name = change.doc.id as AuxiliaryAccountKeyName;
+          const isCanonicalDoc = change.doc.id in AUXILIARY_ACCOUNT_KEYS;
+          const name = auxiliaryNameForCloudDocId(change.doc.id);
+          if (!name) return;
+
+          // Once the canonical document exists, a stale legacy writer cannot
+          // roll this client backward. Legacy ids are read only as migration
+          // fallback for accounts that have not been copied forward yet.
+          if (!isCanonicalDoc && canonicalCloudNames.has(name)) return;
+          if (isCanonicalDoc && change.type !== 'removed') canonicalCloudNames.add(name);
+          if (isCanonicalDoc && change.type === 'removed') canonicalCloudNames.delete(name);
+
           const key = AUXILIARY_ACCOUNT_KEYS[name];
           const localPending = pending[name];
 
