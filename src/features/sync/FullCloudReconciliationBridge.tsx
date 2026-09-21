@@ -7,6 +7,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import {
@@ -124,6 +125,7 @@ function reconcileCollection<T extends { id: string }>(
   tombstones: TombstoneRecord[],
   pending: Record<string, RecordMutation<T>>,
   baseline: Record<string, string>,
+  mergeIncoming?: (current: T | undefined, incoming: T) => T,
 ): ReconciliationResult<T> {
   const next = new Map(localItems.map((item) => [item.id, item]));
   const latestCloudMillis = new Map<string, number>();
@@ -153,9 +155,10 @@ function reconcileCollection<T extends { id: string }>(
     }
 
     const previous = next.get(item.id);
-    if (!previous || fingerprint(previous) !== fingerprint(item)) stats.cloudRecordsApplied += 1;
+    const applied = mergeIncoming ? mergeIncoming(previous, item) : item;
+    if (!previous || fingerprint(previous) !== fingerprint(applied)) stats.cloudRecordsApplied += 1;
     delete pending[item.id];
-    next.set(item.id, item);
+    next.set(item.id, applied);
     baseline[item.id] = fingerprint(item);
   });
 
@@ -266,7 +269,14 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         const bookTombstones = tombstones.filter((item) => item.kind === 'books');
         const sessionTombstones = tombstones.filter((item) => item.kind === 'sessions');
 
-        const bookResult = reconcileCollection(localBooks, cloudBooks, bookTombstones, pending.books, baseline.books);
+        const bookResult = reconcileCollection(
+          localBooks,
+          cloudBooks,
+          bookTombstones,
+          pending.books,
+          baseline.books,
+          mergeIncomingBookLoanState,
+        );
         const sessionResult = reconcileCollection(localSessions, cloudSessions, sessionTombstones, pending.sessions, baseline.sessions);
         const nextBooks = bookResult.items;
         const nextSessions = sessionResult.items;
