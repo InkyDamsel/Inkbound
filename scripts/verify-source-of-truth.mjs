@@ -63,6 +63,29 @@ for (const required of [
   }
 }
 
+const helpContent = read('src/content/helpContent.ts');
+const navbarSource = read('src/components/Navbar.tsx');
+for (const required of [
+  "id: 'start-here'",
+  "id: 'add-books'",
+  "id: 'change-cover'",
+  "id: 'tags'",
+  "id: 'organize-series'",
+  "id: 'add-multiple'",
+  "id: 'import-goodreads'",
+  "id: 'library-limit'",
+  "id: 'free-vs-premium'",
+  "id: 'status-vs-ownership'",
+]) {
+  if (!helpContent.includes(required)) violations.push(`helpContent.ts: canonical new-reader help is missing (${required})`);
+}
+if (!navbarSource.includes("label: 'Help & Guides'") || !navbarSource.includes("href: '/faq'")) {
+  violations.push('Navbar.tsx: Account must expose the canonical /faq Help & Guides destination');
+}
+if (!navbarSource.includes('aria-label="Help & Guides"')) {
+  violations.push('Navbar.tsx: the top Help shortcut must route to the canonical Help & Guides destination');
+}
+
 const app = read('src/App.tsx');
 for (const required of [
   'withReadingStatus',
