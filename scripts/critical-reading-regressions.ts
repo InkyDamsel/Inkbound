@@ -37,6 +37,23 @@ import {
   shouldRemoteChangeReplacePending,
 } from '../src/features/sync/syncConflictPolicy';
 
+const canonicalInputSource = fs.readFileSync(new URL('../src/components/form/CanonicalInput.tsx', import.meta.url), 'utf8');
+const readingSessionModalSource = fs.readFileSync(new URL('../src/components/ReadingSessionModal.tsx', import.meta.url), 'utf8');
+const sessionEditorSource = fs.readFileSync(new URL('../src/components/SessionEditorModal.tsx', import.meta.url), 'utf8');
+const bulkHistoricalSource = fs.readFileSync(new URL('../src/components/BulkHistoricalSessionsModal.tsx', import.meta.url), 'utf8');
+
+assert.match(canonicalInputSource, /export const CanonicalNumberInput/);
+assert.match(canonicalInputSource, /const \[draft, setDraft\]/);
+assert.match(canonicalInputSource, /onDraftChange\?\./);
+for (const [name, source] of [
+  ['ReadingSessionModal', readingSessionModalSource],
+  ['SessionEditorModal', sessionEditorSource],
+  ['BulkHistoricalSessionsModal', bulkHistoricalSource],
+] as const) {
+  assert.match(source, /CanonicalNumberInput/, `${name} must use the canonical numeric progress editor`);
+  assert.doesNotMatch(source, /CanonicalInput[^>]*type=["']number["']/, `${name} must not implement its own editable numeric progress input`);
+}
+
 const baseBook = (): UserBookRecord => ({
   id: 'book-1',
   work: { id: 'work-1', title: 'Regression Book', author: 'Inkbound', summary: '', genres: ['Fiction'], publicationYear: 2026 },
