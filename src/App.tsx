@@ -61,6 +61,7 @@ import {
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
 import { normalizeLibraryRecord } from './features/library/libraryNormalization';
+import { withBookOwnership } from './features/ownership/bookOwnership';
 import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
 import {
@@ -426,10 +427,11 @@ export default function App() {
       if (changes.format) updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
       if (changes.status) updatedBook = withReadingStatus(updatedBook, changes.status, today);
       if (changes.ownership) {
-        updatedBook.ownership = changes.ownership;
-        updatedBook.customOwnershipCategoryId = changes.ownership === 'custom'
-          ? changes.customOwnershipCategoryId ?? undefined
-          : undefined;
+        updatedBook = withBookOwnership(
+          updatedBook,
+          changes.ownership,
+          changes.ownership === 'custom' ? changes.customOwnershipCategoryId ?? undefined : undefined,
+        );
       }
       if (changes.priority) updatedBook.priority = changes.priority;
       if (changes.rating !== undefined) updatedBook.rating = changes.rating ?? undefined;
