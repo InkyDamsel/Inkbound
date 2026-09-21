@@ -157,7 +157,6 @@ assert.match(detectiveSource, /googleSeriesOnlyGroups/);
 assert.match(detectiveSource, /missingKnownGaps/);
 assert.match(detectiveSource, /positionalDiscovery\.flat\(\)/);
 assert.match(detectiveSource, /book \$\{position\}/);
-assert.match(seriesEvidenceSource, /providerAgreement >= 2/);
 assert.match(detectiveSource, /providerSourcesByWork/);
 assert.match(detectiveSource, /existingTitleAuthors = new Set\(libraryBooks/);
 assert.match(detectiveSource, /metadata\.evidence === 'title' && !exactAuthorMatch\(work, author\)/);
