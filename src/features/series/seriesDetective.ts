@@ -29,18 +29,19 @@ const candidateSeriesMetadata = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
   wantedSeriesName: string,
-): { name: string; position: number | null } | null => {
+): { name: string; position: number | null; evidence: 'structured' | 'title' | 'contextual' } | null => {
   if (sameSeries(edition, wantedSeriesName)) {
     return {
       name: edition.seriesName!,
       position: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : null,
+      evidence: 'structured',
     };
   }
 
   for (const title of [edition.title, work.title]) {
     const inferred = inferSeriesHintFromTitle(title);
     if (inferred && normalize(inferred.name) === normalize(wantedSeriesName)) {
-      return { name: inferred.name, position: inferred.position };
+      return { name: inferred.name, position: inferred.position, evidence: 'title' };
     }
   }
 
@@ -56,7 +57,7 @@ const candidateSeriesMetadata = (
     .map(normalize)
     .filter(Boolean);
   if (distinctSources >= 2 && wanted && contextualText.some((value) => value.includes(wanted))) {
-    return { name: wantedSeriesName.trim(), position: null };
+    return { name: wantedSeriesName.trim(), position: null, evidence: 'contextual' };
   }
 
   return null;
@@ -207,7 +208,8 @@ export async function findMissingSeriesBooks(
       // example anthology/shared-world lines). Title-inferred series membership
       // remains author-gated so a generic parenthetical title cannot pull in an
       // unrelated same-named series.
-      if (!sameSeries(edition, seriesName) && !exactAuthorMatch(work, author)) continue;
+      if (metadata.evidence === 'title' && !exactAuthorMatch(work, author)) continue;
+      if (metadata.evidence !== 'structured' && metadata.evidence !== 'contextual' && !exactAuthorMatch(work, author)) continue;
       if (preferredLanguages.size > 0 && edition.language && !preferredLanguages.has(edition.language.toLocaleLowerCase())) continue;
 
       const candidate: SeriesDetectiveCandidate = {
