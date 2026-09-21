@@ -6,7 +6,7 @@ import { searchInkboundTrustedCatalog } from '../../catalog/metadataContribution
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { hardenCatalogGroups, hardenCatalogResponse, selectExactIsbnEdition } from '../catalogHardening';
+import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -228,16 +228,7 @@ const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWork
         return;
       }
       const current = existing.editions[duplicateIndex];
-      existing.editions[duplicateIndex] = {
-        ...edition,
-        ...current,
-        coverUrl: current.coverUrl || edition.coverUrl,
-        publisherSummary: current.publisherSummary || edition.publisherSummary,
-        seriesName: current.seriesName || edition.seriesName,
-        seriesOrder: typeof current.seriesOrder === 'number' ? current.seriesOrder : edition.seriesOrder,
-        binding: current.binding || edition.binding,
-        specialFeatures: current.specialFeatures.length ? current.specialFeatures : edition.specialFeatures,
-      };
+      existing.editions[duplicateIndex] = mergeCatalogEditionData(current, edition);
     });
   };
 
