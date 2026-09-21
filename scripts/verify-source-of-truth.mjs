@@ -311,6 +311,11 @@ if (!catalogHardening.includes('supplementExactIsbnEdition') || !catalogHardenin
   violations.push('catalogHardening.ts: exact ISBN resolution must isolate edition-specific metadata from conflicting language records.');
 }
 
+const addBookModal = read('src/components/AddBookModal.tsx');
+if (!addBookModal.includes('if (isValidIsbn(trimmedQuery))') || !addBookModal.includes('const exactResponse = await searchGoogleBooks(trimmedQuery)')) {
+  violations.push('AddBookModal.tsx: ISBN entry and scanner must share the canonical exact-edition resolver.');
+}
+
 const bookSearchMapper = read('src/features/book-search/mapping/bookSearchMapper.ts');
 if (!bookSearchMapper.includes('hardenCatalogEdition') || !bookSearchMapper.includes('hardenCatalogGroups')) {
   violations.push('bookSearchMapper.ts: external catalog data must be hardened again at the library persistence boundary');
