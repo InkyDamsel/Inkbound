@@ -6,7 +6,7 @@ import { searchInkboundTrustedCatalog } from '../catalog/metadataContributions';
 import { searchOpenLibraryPage } from '../book-search/data/openLibraryApi';
 import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata } from './seriesLibrary';
-import { scoreSeriesEvidence, selectVerifiedSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
+import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
@@ -25,29 +25,6 @@ const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
 const SERIES_DISCOVERY_MAX_PAGES = 4;
 const SERIES_DISCOVERY_PAGE_SIZE = 40;
 
-
-export const hasKnownSeriesContextEvidence = (
-  work: BookSearchWorkGroup,
-  edition: BookSearchEdition,
-  wantedSeriesName: string,
-  providerAgreement: number,
-): boolean => {
-  if (providerAgreement < 2) return false;
-  const wanted = normalize(wantedSeriesName);
-  if (!wanted) return false;
-
-  const workTitle = normalize(work.title);
-  const wantedWords = wanted.split(' ').filter(Boolean).length;
-  const titleWords = workTitle.split(' ').filter(Boolean).length;
-  const brandOnlyTitle = workTitle === wanted
-    || (workTitle.endsWith(` ${wanted}`) && titleWords <= wantedWords + 1);
-  if (brandOnlyTitle) return false;
-
-  return [work.title, work.subtitle, edition.title, edition.subtitle]
-    .map(normalize)
-    .filter(Boolean)
-    .some((value) => value.includes(wanted));
-};
 
 const candidateSeriesMetadata = (
   work: BookSearchWorkGroup,
