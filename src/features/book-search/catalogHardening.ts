@@ -170,30 +170,36 @@ const exactIsbnAnchorScore = (edition: BookSearchEdition): number => {
 const supplementExactIsbnEdition = (
   anchor: BookSearchEdition,
   supplement: BookSearchEdition,
-): BookSearchEdition => ({
-  ...supplement,
-  ...anchor,
-  subtitle: anchor.subtitle || supplement.subtitle,
-  publisherSummary: anchor.publisherSummary || supplement.publisherSummary,
-  genres: cleanGenres([...anchor.genres, ...supplement.genres]),
-  publisher: anchor.publisher || supplement.publisher,
-  publicationDate: anchor.publicationDate || supplement.publicationDate,
-  publicationYear: anchor.publicationYear || supplement.publicationYear,
-  language: anchor.language || supplement.language,
-  seriesName: anchor.seriesName || supplement.seriesName,
-  seriesOrder: typeof anchor.seriesOrder === 'number' ? anchor.seriesOrder : supplement.seriesOrder,
-  isbn10: anchor.isbn10 || supplement.isbn10,
-  isbn13: anchor.isbn13 || supplement.isbn13,
-  asin: anchor.asin || supplement.asin,
-  // Edition-specific identity never gets replaced by a "richer" conflicting
-  // provider record once the exact-ISBN anchor is chosen.
-  format: anchor.format,
-  pageCount: anchor.pageCount ?? supplement.pageCount,
-  coverUrl: anchor.coverUrl || supplement.coverUrl,
-  editionName: anchor.editionName || supplement.editionName,
-  binding: anchor.binding || supplement.binding,
-  specialFeatures: [...new Set([...anchor.specialFeatures, ...supplement.specialFeatures])].slice(0, 12),
-});
+): BookSearchEdition => {
+  const anchorLanguage = cleanLanguage(anchor.language);
+  const supplementLanguage = cleanLanguage(supplement.language);
+  const languageCompatible = !anchorLanguage || !supplementLanguage || anchorLanguage === supplementLanguage;
+
+  return {
+    ...supplement,
+    ...anchor,
+    subtitle: anchor.subtitle || supplement.subtitle,
+    publisherSummary: anchor.publisherSummary || supplement.publisherSummary,
+    genres: cleanGenres([...anchor.genres, ...supplement.genres]),
+    publisher: anchor.publisher || supplement.publisher,
+    publicationDate: anchor.publicationDate || supplement.publicationDate,
+    publicationYear: anchor.publicationYear || supplement.publicationYear,
+    language: anchor.language || supplement.language,
+    seriesName: anchor.seriesName || supplement.seriesName,
+    seriesOrder: typeof anchor.seriesOrder === 'number' ? anchor.seriesOrder : supplement.seriesOrder,
+    isbn10: anchor.isbn10 || supplement.isbn10,
+    isbn13: anchor.isbn13 || supplement.isbn13,
+    asin: anchor.asin || supplement.asin,
+    // Edition-specific identity never gets replaced by a richer but
+    // contradictory provider record once the exact-ISBN anchor is chosen.
+    format: anchor.format,
+    pageCount: anchor.pageCount ?? (languageCompatible ? supplement.pageCount : undefined),
+    coverUrl: anchor.coverUrl || (languageCompatible ? supplement.coverUrl : undefined),
+    editionName: anchor.editionName || (languageCompatible ? supplement.editionName : undefined),
+    binding: anchor.binding || (languageCompatible ? supplement.binding : undefined),
+    specialFeatures: [...new Set([...anchor.specialFeatures, ...supplement.specialFeatures])].slice(0, 12),
+  };
+};
 
 
 
