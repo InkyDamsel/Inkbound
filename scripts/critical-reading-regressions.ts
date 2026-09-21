@@ -29,6 +29,8 @@ import {
   getAccountOwnedKeysToClearForOwnerChange,
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
+import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
+import { withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
   shouldApplyRemoteTombstone,
   shouldPromoteLocalRecordMissingFromCloud,
@@ -199,6 +201,27 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(report.duplicateSessionIdCount, 0);
   assert.equal(report.orphanSessionCount, 0);
   assert.equal(report.healthy, true);
+}
+
+// Passive normalization must never erase library-loan metadata. A stale device
+// can temporarily carry older ownership while sync reconciles; that mismatch
+// must not become permanent cross-device data loss.
+{
+  const loan = {
+    ...baseBook(),
+    ownership: 'owned' as const,
+    libraryLoan: { borrowedDate: '2026-09-01', dueDate: '2026-09-22' },
+  };
+  const normalized = normalizeLibraryRecord(loan);
+  assert.deepEqual(normalized.libraryLoan, loan.libraryLoan);
+
+  const activeLoan = {
+    ...baseBook(),
+    ownership: 'borrowed-library' as const,
+    libraryLoan: { borrowedDate: '2026-09-01', dueDate: '2026-09-22' },
+  };
+  assert.deepEqual(withBookOwnership(activeLoan, 'borrowed-library').libraryLoan, activeLoan.libraryLoan);
+  assert.equal(withBookOwnership(activeLoan, 'owned').libraryLoan, undefined);
 }
 
 // Sync conflict rules protect newer/pending local work from stale cloud data.
