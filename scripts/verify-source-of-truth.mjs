@@ -398,7 +398,6 @@ for (const required of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hy
   if (!adaptiveSync.includes(required)) violations.push(`AdaptiveCloudPersistenceBridge.tsx: missing safe hydration boundary ${required}`);
 }
 
-const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 for (const required of ['subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'crossDeviceCursorKey', 'newestSnapshotUpdateMillis']) {
   if (!oneShotHydration.includes(required)) violations.push(`OneShotCloudHydrationBridge.tsx: missing safe first-device hydration behavior ${required}`);
 }
@@ -431,7 +430,6 @@ for (const relative of [
   }
 }
 
-const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
 for (const required of ['shouldRemoteChangeReplacePending', 'shouldApplyRemoteTombstone', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey', 'hydrationRequiredOwnerUid']) {
   if (!crossDeviceSync.includes(required)) {
     violations.push(`CrossDeviceDeltaSyncBridge.tsx: core sync must consume canonical ${required}`);
