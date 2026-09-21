@@ -86,6 +86,8 @@ if (!navbarSource.includes('aria-label="Help & Guides"')) {
   violations.push('Navbar.tsx: the top Help shortcut must route to the canonical Help & Guides destination');
 }
 
+const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
+const firstHydrationSync = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 const libraryNormalization = read('src/features/library/libraryNormalization.ts');
 const ownershipControl = read('src/components/ownership/CustomOwnershipBookControl.tsx');
 const ownershipTransition = read('src/features/ownership/bookOwnership.ts');
@@ -97,6 +99,9 @@ if (!ownershipControl.includes('withBookOwnership')) {
 }
 if (!ownershipTransition.includes("libraryLoan: ownership === 'borrowed-library' ? book.libraryLoan : undefined")) {
   violations.push('bookOwnership.ts: explicit ownership transitions must own library-loan clearing.');
+}
+if (!crossDeviceSync.includes('mergeIncomingBookLoanState') || !firstHydrationSync.includes('mergeIncomingBookLoanState')) {
+  violations.push('sync: canonical book hydration/delta paths must use the loan-safe cross-device merge.');
 }
 
 const app = read('src/App.tsx');
