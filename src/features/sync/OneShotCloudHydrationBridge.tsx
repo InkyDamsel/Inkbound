@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import {
@@ -72,6 +73,12 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
 function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): T[] {
   const merged = new Map(localItems.map((item) => [item.id, item]));
   cloudItems.forEach((item) => merged.set(item.id, item));
+  return [...merged.values()];
+}
+
+function mergeBooksById(localItems: UserBookRecord[], cloudItems: UserBookRecord[]): UserBookRecord[] {
+  const merged = new Map(localItems.map((item) => [item.id, item]));
+  cloudItems.forEach((item) => merged.set(item.id, mergeIncomingBookLoanState(merged.get(item.id), item)));
   return [...merged.values()];
 }
 
@@ -153,7 +160,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
         const localBooks = sameAccountLocalData ? readJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
         const localSessions = sameAccountLocalData ? readJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
-        writeJson(BOOKS_KEY, mergeById(localBooks, cloudBooks));
+        writeJson(BOOKS_KEY, mergeBooksById(localBooks, cloudBooks));
         writeJson(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
 
         if (profileSnapshot.exists()) {
