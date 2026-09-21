@@ -154,6 +154,48 @@ export const catalogEditionQualityScore = (edition: BookSearchEdition): number =
   return score;
 };
 
+const exactIsbnAnchorScore = (edition: BookSearchEdition): number => {
+  let score = catalogEditionQualityScore(edition);
+  // Exact-edition physical evidence outranks a provider's generic work-level
+  // guess. Hardcover and curated Inkbound records expose edition binding more
+  // reliably; Open Library can now contribute physical_format when present.
+  if (edition.binding?.trim()) score += 80;
+  if (edition.source === 'inkbound-catalog') score += 60;
+  else if (edition.source === 'hardcover') score += 35;
+  else if (edition.source === 'open-library') score += 15;
+  else if (edition.source === 'google-books') score += 5;
+  return score;
+};
+
+const supplementExactIsbnEdition = (
+  anchor: BookSearchEdition,
+  supplement: BookSearchEdition,
+): BookSearchEdition => ({
+  ...supplement,
+  ...anchor,
+  subtitle: anchor.subtitle || supplement.subtitle,
+  publisherSummary: anchor.publisherSummary || supplement.publisherSummary,
+  genres: cleanGenres([...anchor.genres, ...supplement.genres]),
+  publisher: anchor.publisher || supplement.publisher,
+  publicationDate: anchor.publicationDate || supplement.publicationDate,
+  publicationYear: anchor.publicationYear || supplement.publicationYear,
+  language: anchor.language || supplement.language,
+  seriesName: anchor.seriesName || supplement.seriesName,
+  seriesOrder: typeof anchor.seriesOrder === 'number' ? anchor.seriesOrder : supplement.seriesOrder,
+  isbn10: anchor.isbn10 || supplement.isbn10,
+  isbn13: anchor.isbn13 || supplement.isbn13,
+  asin: anchor.asin || supplement.asin,
+  // Edition-specific identity never gets replaced by a "richer" conflicting
+  // provider record once the exact-ISBN anchor is chosen.
+  format: anchor.format,
+  pageCount: anchor.pageCount ?? supplement.pageCount,
+  coverUrl: anchor.coverUrl || supplement.coverUrl,
+  editionName: anchor.editionName || supplement.editionName,
+  binding: anchor.binding || supplement.binding,
+  specialFeatures: [...new Set([...anchor.specialFeatures, ...supplement.specialFeatures])].slice(0, 12),
+});
+
+
 
 
 
@@ -206,10 +248,10 @@ export const selectExactIsbnEdition = (
   );
   if (!exact.length) return null;
 
-  exact.sort((left, right) => catalogEditionQualityScore(right.edition) - catalogEditionQualityScore(left.edition));
+  exact.sort((left, right) => exactIsbnAnchorScore(right.edition) - exactIsbnAnchorScore(left.edition));
   const preferred = exact[0];
   const mergedEdition = exact.slice(1).reduce(
-    (current, candidate) => mergeCatalogEditionData(current, candidate.edition),
+    (current, candidate) => supplementExactIsbnEdition(current, candidate.edition),
     preferred.edition,
   );
   return { work: preferred.work, edition: mergedEdition };
