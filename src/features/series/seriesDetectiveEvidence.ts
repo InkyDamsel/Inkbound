@@ -23,6 +23,29 @@ const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
 
+export const hasKnownSeriesContextEvidence = (
+  work: BookSearchWorkGroup,
+  edition: BookSearchEdition,
+  wantedSeriesName: string,
+  providerAgreement: number,
+): boolean => {
+  if (providerAgreement < 2) return false;
+  const wanted = normalize(wantedSeriesName);
+  if (!wanted) return false;
+
+  const workTitle = normalize(work.title);
+  const wantedWords = wanted.split(' ').filter(Boolean).length;
+  const titleWords = workTitle.split(' ').filter(Boolean).length;
+  const brandOnlyTitle = workTitle === wanted
+    || (workTitle.endsWith(` ${wanted}`) && titleWords <= wantedWords + 1);
+  if (brandOnlyTitle) return false;
+
+  return [work.title, work.subtitle, edition.title, edition.subtitle]
+    .map(normalize)
+    .filter(Boolean)
+    .some((value) => value.includes(wanted));
+};
+
 export interface SeriesEvidence {
   name: string;
   position: number | null;
