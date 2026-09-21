@@ -116,6 +116,11 @@ assert(parityImportedAfterAppShell, 'responsive-parity.css must load after app-s
 assert(hasCompactActionOverride, 'responsive-parity.css must force shared primary/secondary feature actions visible through tablet and phone widths.');
 const bookDetailsResponsive = read('src/components/bookDetailsResponsive.css');
 assert(
+  bookDetailsResponsive.includes(".book-details-modal-host > div.fixed > section[role='dialog'] .quiet-shelf-secondary-action")
+    && bookDetailsResponsive.includes('display: inline-flex !important'),
+  'Book Details portal actions must explicitly override compact-shell secondary-action hiding on Android.',
+);
+assert(
   bookDetailsResponsive.includes('--book-details-safe-top: max(env(safe-area-inset-top), 24px)'),
   'Book Details mobile layout must keep a minimum Android status-bar safe inset even when WebView reports zero.',
 );
