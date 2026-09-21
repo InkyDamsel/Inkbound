@@ -21,7 +21,7 @@ export type NavTab =
   | 'stats' | 'import' | 'settings' | 'profile' | 'admin';
 
 type NavigationGroupId = 'reading' | 'journal' | 'insights' | 'studio' | 'account';
-type NavigationItem = { id: NavTab; label: string; icon: React.ComponentType<{ className?: string }>; premium?: boolean; adminOnly?: boolean; href?: string };
+type NavigationItem = { id: NavTab | 'help'; label: string; icon: React.ComponentType<{ className?: string }>; premium?: boolean; adminOnly?: boolean; href?: string };
 type NavigationGroup = { id: NavigationGroupId; label: string; items: NavigationItem[] };
 
 interface NavbarProps {
@@ -64,7 +64,7 @@ const navigationGroups: NavigationGroup[] = [
   { id: 'account', label: 'Account', items: [
     { id: 'duplicates', label: 'Library Maintenance', icon: Copy },
     settingsItem,
-    { id: 'settings', label: 'Help & Guides', icon: CircleHelp, href: '/faq' },
+    { id: 'help', label: 'Help & Guides', icon: CircleHelp, href: '/faq' },
     { id: 'admin', label: 'Administration', icon: ShieldCheck, adminOnly: true },
   ] },
 ];
@@ -143,7 +143,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
       openUpgradeModal(`${item.label} is an Inkbound Premium feature.`);
       return;
     }
-    navigate(item.id);
+    navigate(item.id as NavTab);
   };
   const openMobilePlan = () => {
     setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false);
