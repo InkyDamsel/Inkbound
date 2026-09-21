@@ -562,7 +562,7 @@ const seriesPanel = read('src/components/library/SeriesLibraryPanel.tsx');
 if (!seriesPanel.includes('seriesName: candidate.seriesName') || !seriesPanel.includes('seriesOrder: candidate.position')) {
   violations.push('SeriesLibraryPanel.tsx: Series Detective accepted candidates must persist canonical series metadata on the saved book.');
 }
-if (!seriesDetective.includes('existingTitles = new Set(libraryBooks') || !seriesDetective.includes('existingIsbns')) {
+if (!seriesDetective.includes('existingTitleAuthors = new Set(libraryBooks') || !seriesDetective.includes('existingIsbns')) {
   violations.push('seriesDetective.ts: missing-book results must dedupe against the entire canonical library, not only the currently labeled series.');
 }
 if (!seriesDetective.includes('providerSourcesByWork') || !seriesDetective.includes('hasKnownSeriesContextEvidence')) {
