@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import type { UserBookRecord } from '../src/types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 import {
+  hasKnownSeriesContextEvidence,
   scoreSeriesEvidence,
   selectVerifiedSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
-import { hasKnownSeriesContextEvidence } from '../src/features/series/seriesDetective';
 
 const book = {
   id: 'book-1',
@@ -158,7 +158,7 @@ assert.match(detectiveSource, /positionalDiscovery\.flat\(\)/);
 assert.match(detectiveSource, /book \$\{position\}/);
 assert.match(detectiveSource, /providerAgreement >= 2/);
 assert.match(detectiveSource, /providerSourcesByWork/);
-assert.match(detectiveSource, /existingTitles = new Set\(libraryBooks/);
+assert.match(detectiveSource, /existingTitleAuthors = new Set\(libraryBooks/);
 assert.match(detectiveSource, /metadata\.evidence === 'title' && !exactAuthorMatch\(work, author\)/);
 assert.match(detectiveSource, /metadata\.evidence === 'contextual'/);
 assert.doesNotMatch(detectiveSource, /normalize\(metadata\.name\) === normalize\(seriesName\) && normalize\(book\.work\.author\) === normalize\(author\)/);
