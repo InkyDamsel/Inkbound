@@ -10,6 +10,7 @@ import {
   type CustomOwnershipCategory,
 } from '../../features/ownership/customOwnershipCategories';
 import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
+import { withBookOwnership } from '../../features/ownership/bookOwnership';
 
 interface CustomOwnershipBookControlProps {
   book: UserBookRecord;
@@ -55,19 +56,11 @@ export const CustomOwnershipBookControl: React.FC<CustomOwnershipBookControlProp
   const assignSelection = (next: OwnershipSelection) => {
     if (isCustomSelection(next)) {
       const customOwnershipCategoryId = next.slice('custom:'.length);
-      onUpdateBook({
-        ...book,
-        ownership: 'custom',
-        customOwnershipCategoryId,
-      });
+      onUpdateBook(withBookOwnership(book, 'custom', customOwnershipCategoryId));
       return;
     }
 
-    onUpdateBook({
-      ...book,
-      ownership: next,
-      customOwnershipCategoryId: undefined,
-    });
+    onUpdateBook(withBookOwnership(book, next));
   };
 
   const createAndAssign = () => {
