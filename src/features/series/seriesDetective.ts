@@ -44,6 +44,21 @@ const candidateSeriesMetadata = (
     }
   }
 
+  // Once the reader is already inside a known series, discovery may use a
+  // stronger contextual rule than single-book detection: if independent
+  // providers agree on the same work and the known series name is explicitly
+  // present in its title/subtitle, accept membership without inventing a book
+  // number. This helps publisher-branded lines such as A Twisted Tale whose
+  // catalogs often omit structured series fields.
+  const distinctSources = new Set(work.editions.map((candidate) => candidate.source)).size;
+  const wanted = normalize(wantedSeriesName);
+  const contextualText = [work.title, work.subtitle, edition.title, edition.subtitle]
+    .map(normalize)
+    .filter(Boolean);
+  if (distinctSources >= 2 && wanted && contextualText.some((value) => value.includes(wanted))) {
+    return { name: wantedSeriesName.trim(), position: null };
+  }
+
   return null;
 };
 
