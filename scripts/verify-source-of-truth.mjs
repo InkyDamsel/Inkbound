@@ -330,7 +330,6 @@ for (const relative of ['src/components/AddBookModal.tsx', 'src/components/Readi
   }
 }
 
-const addBookModal = read('src/components/AddBookModal.tsx');
 for (const required of ['ADD_TO_LIST_OPTIONS', 'withReadingStatus(item.book, scannerCategory)', 'Add scanned books to']) {
   if (!addBookModal.includes(required)) {
     violations.push(`AddBookModal.tsx: every add flow must consume the canonical reading-list destination (${required})`);
