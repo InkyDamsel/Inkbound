@@ -267,6 +267,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
+      // ISBN entry, barcode scan, and any other exact-edition lookup must enter
+      // the same canonical resolver. Do not prepend the paged Google-only path
+      // for ISBN searches or the UI can reintroduce provider-specific edition
+      // metadata before the shared exact-ISBN chain has resolved the record.
+      if (isValidIsbn(trimmedQuery)) {
+        const exactResponse = await searchGoogleBooks(trimmedQuery);
+        setResults(exactResponse.groups);
+        setSearchNextStartIndex(0);
+        setSearchProviderTotal(exactResponse.totalItems || null);
+        setSearchHasMore(false);
+        return;
+      }
+
       let googlePage = null;
       try {
         googlePage = await searchGoogleBooksPage(trimmedQuery, 0);
