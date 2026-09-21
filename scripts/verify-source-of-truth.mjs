@@ -547,7 +547,6 @@ for (const required of [
   if (!releaseAudit.includes(required)) violations.push(`RELEASE_READINESS_AUDIT.md: missing release contract section ${required}`);
 }
 
-const packageJson = JSON.parse(read('package.json'));
 if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:parity')) {
   violations.push('package.json: release:verify must include the web/Android parity gate');
 }
