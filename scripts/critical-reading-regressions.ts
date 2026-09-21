@@ -37,6 +37,15 @@ import {
   shouldRemoteChangeReplacePending,
 } from '../src/features/sync/syncConflictPolicy';
 
+const canonicalInputSource = fs.readFileSync(new URL('../src/components/form/CanonicalInput.tsx', import.meta.url), 'utf8');
+const webReadingSessionSource = fs.readFileSync(new URL('../src/components/ReadingSessionModal.tsx', import.meta.url), 'utf8');
+const webSessionEditorSource = fs.readFileSync(new URL('../src/components/SessionEditorModal.tsx', import.meta.url), 'utf8');
+
+assert.match(canonicalInputSource, /export const CanonicalNumberInput/);
+assert.match(canonicalInputSource, /const \[draft, setDraft\]/);
+assert.match(webReadingSessionSource, /CanonicalNumberInput/);
+assert.match(webSessionEditorSource, /CanonicalNumberInput/);
+
 const baseBook = (): UserBookRecord => ({
   id: 'book-1',
   work: { id: 'work-1', title: 'Regression Book', author: 'Inkbound', summary: '', genres: ['Fiction'], publicationYear: 2026 },
