@@ -75,15 +75,6 @@
     height: 7rem !important;
   }
 
-  /* Book Details renders through a portal outside .inkbound-main-content.
-     app-shell.css hides generic secondary actions below 900px, so every Book
-     Details secondary action must explicitly opt back in on phones. This keeps
-     Add Past Session, Add Multiple Sessions, Edit, Cover, Sync Metadata,
-     Series Detective, Delete, Clear, and dialog actions reachable in Android. */
-  .book-details-modal-host > div.fixed > section[role='dialog'] .quiet-shelf-secondary-action {
-    display: inline-flex !important;
-  }
-
   /* Cover, metadata sync, and Delete must all remain reachable on a phone. */
   .book-details-modal-host > div.fixed > section[role='dialog'] > header .quiet-shelf-secondary-action {
     min-height: 44px;
