@@ -211,12 +211,23 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   };
 
   const addDetectiveCandidate = (candidate: SeriesDetectiveResult['missing'][number]) => {
-    const book = createBookFromSearchEdition({
+    const created = createBookFromSearchEdition({
       work: candidate.work,
       edition: candidate.edition,
       status: 'tbr',
       ownership: 'none',
     });
+    // Detective already verified this relationship. Persist that accepted series
+    // fact on the canonical book instead of leaving it trapped in Detective UI
+    // state or depending on a provider edition to happen to repeat it.
+    const book: UserBookRecord = {
+      ...created,
+      work: {
+        ...created.work,
+        seriesName: candidate.seriesName,
+        seriesOrder: candidate.position ?? created.work.seriesOrder,
+      },
+    };
     onAddBook(book);
     setDetectiveResult((current) => current ? {
       ...current,
