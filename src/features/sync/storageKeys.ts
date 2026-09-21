@@ -52,7 +52,7 @@ export const fullReconciliationVersionKey = (uid: string) => `inkbound_full_reco
 // Single source of truth for the one-time full account reconciliation. Bumping
 // this value deliberately forces existing browser/device working copies through
 // one fresh full comparison before returning to low-cost delta sync.
-export const FULL_RECONCILIATION_VERSION = '2';
+export const FULL_RECONCILIATION_VERSION = '3';
 
 /**
  * Runtime keys whose local mutations should emit the debounced Inkbound change
