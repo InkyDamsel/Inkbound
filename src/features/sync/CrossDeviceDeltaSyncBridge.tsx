@@ -32,6 +32,8 @@ import {
 } from './syncConflictPolicy';
 import {
   crossDeviceCursorKey,
+  FULL_RECONCILIATION_VERSION,
+  fullReconciliationVersionKey,
   syncBaselineStateKey,
   syncPendingStateKey,
   SYNC_STORAGE_KEYS,
@@ -189,6 +191,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     const coreHydrationComplete = () => (
       runtimeStorage().getItem(OWNER_UID_KEY) === uid
       && runtimeStorage().getItem(HYDRATION_REQUIRED_UID_KEY) !== uid
+      && runtimeStorage().getItem(fullReconciliationVersionKey(uid)) === FULL_RECONCILIATION_VERSION
     );
 
     const pullDeltas = async () => {
