@@ -347,6 +347,11 @@ if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"
   violations.push('libraryNormalization.ts: ownership Wishlist must not erase independent reading status/history');
 }
 
+const cloudDataRefreshBoundary = read('src/features/sync/CloudDataRefreshBoundary.tsx');
+if (!cloudDataRefreshBoundary.includes('fullReconciliationVersionKey(uid)') || !cloudDataRefreshBoundary.includes('FULL_RECONCILIATION_VERSION')) {
+  violations.push('CloudDataRefreshBoundary.tsx: signed-in UI must wait for the current full reconciliation version before rendering account data.');
+}
+
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
