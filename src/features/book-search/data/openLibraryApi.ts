@@ -18,6 +18,7 @@ interface OpenLibraryEdition {
   cover_edition_key?: string;
   language?: string[];
   ebook_access?: string;
+  physical_format?: string;
   series?: string[];
 }
 
@@ -62,7 +63,7 @@ const FIELDS = [
   'editions.title', 'editions.subtitle', 'editions.publisher', 'editions.publish_date', 'editions.publish_year',
   'editions.isbn', 'editions.isbn_10', 'editions.isbn_13', 'editions.number_of_pages',
   'editions.number_of_pages_median', 'editions.cover_i', 'editions.cover_edition_key',
-  'editions.language', 'editions.ebook_access', 'editions.series',
+  'editions.language', 'editions.ebook_access', 'editions.physical_format', 'editions.series',
 ].join(',');
 
 const stringValue = (value: unknown): string | undefined => {
@@ -93,17 +94,25 @@ const normalize = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]+/g
 const stripQuotes = (value: string) => value.trim().replace(/^['"]|['"]$/g, '').trim();
 
 const inferFormat = (edition: OpenLibraryEdition): Format => {
+  const physical = edition.physical_format?.toLowerCase() ?? '';
+  if (/paperback|softcover|soft cover|mass market|trade paper/.test(physical)) return 'paperback';
+  if (/hardcover|hardback|hard cover|library binding/.test(physical)) return 'hardcover';
   const access = edition.ebook_access?.toLowerCase();
   return access && access !== 'no_ebook' ? 'ebook' : 'hardcover';
 };
 
 const coverUrl = (edition: OpenLibraryEdition, work: OpenLibraryWork): string | undefined => {
-  const coverId = edition.cover_i ?? work.cover_i;
-  if (coverId) return `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`;
-  const editionKey = edition.cover_edition_key ?? work.cover_edition_key;
-  if (editionKey) return `https://covers.openlibrary.org/b/olid/${editionKey}-L.jpg`;
-  const isbn = edition.isbn_13?.[0] ?? edition.isbn_10?.[0] ?? edition.isbn?.[0] ?? work.isbn?.[0];
-  return isbn ? `https://covers.openlibrary.org/b/isbn/${compactIsbn(isbn)}-L.jpg` : undefined;
+  // Edition identity wins. Never borrow a work-level cover before trying the
+  // exact edition/ISBN, otherwise an English ISBN can inherit an international
+  // cover from another edition of the same work.
+  if (edition.cover_i) return `https://covers.openlibrary.org/b/id/${edition.cover_i}-L.jpg`;
+  if (edition.cover_edition_key) return `https://covers.openlibrary.org/b/olid/${edition.cover_edition_key}-L.jpg`;
+  const editionIsbn = edition.isbn_13?.[0] ?? edition.isbn_10?.[0] ?? edition.isbn?.[0];
+  if (editionIsbn) return `https://covers.openlibrary.org/b/isbn/${compactIsbn(editionIsbn)}-L.jpg`;
+  if (work.cover_i) return `https://covers.openlibrary.org/b/id/${work.cover_i}-L.jpg`;
+  if (work.cover_edition_key) return `https://covers.openlibrary.org/b/olid/${work.cover_edition_key}-L.jpg`;
+  const workIsbn = work.isbn?.[0];
+  return workIsbn ? `https://covers.openlibrary.org/b/isbn/${compactIsbn(workIsbn)}-L.jpg` : undefined;
 };
 
 const parseSeries = (values?: string[]): { name?: string; order?: number } => {
@@ -139,8 +148,11 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
     format: inferFormat(edition),
     isbn10,
     isbn13,
-    pageCount: edition.number_of_pages ?? edition.number_of_pages_median ?? work.number_of_pages_median,
+    // Work medians belong to the work, not this ISBN. Attaching them to an
+    // edition is exactly how correct ISBN matches acquired the wrong page count.
+    pageCount: edition.number_of_pages ?? edition.number_of_pages_median,
     coverUrl: coverUrl(edition, work),
+    binding: edition.physical_format,
     specialFeatures: [],
   };
 };
