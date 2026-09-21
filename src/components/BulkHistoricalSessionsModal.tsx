@@ -3,7 +3,7 @@ import { CopyPlus, Plus, Save, Trash2, X } from 'lucide-react';
 import type { ReadingSession, UserBookRecord } from '../types';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
-import { CanonicalInput } from './form/CanonicalInput';
+import { CanonicalInput, CanonicalNumberInput } from './form/CanonicalInput';
 
 interface BulkHistoricalSessionsModalProps {
   books: UserBookRecord[];
@@ -16,8 +16,8 @@ interface HistoricalSessionDraft {
   date: string;
   startTime: string;
   endTime: string;
-  startProgress: string;
-  endProgress: string;
+  startProgress?: number;
+  endProgress?: number;
   notes: string;
 }
 
@@ -26,8 +26,8 @@ const createDraft = (startProgress = 0, date = localDateKey()): HistoricalSessio
   date,
   startTime: '19:00',
   endTime: '19:30',
-  startProgress: String(startProgress),
-  endProgress: String(startProgress),
+  startProgress,
+  endProgress: startProgress,
   notes: '',
 });
 
@@ -39,12 +39,6 @@ const minutesBetween = (startTime: string, endTime: string) => {
   let end = endHour * 60 + endMinute;
   if (end < start) end += 24 * 60;
   return Math.max(1, end - start);
-};
-
-const parseProgress = (value: string) => {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
 };
 
 export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalProps> = ({ books, onClose, onSave }) => {
@@ -92,7 +86,7 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
 
   const addRow = () => {
     const previous = rows.at(-1);
-    const previousEnd = parseProgress(previous?.endProgress ?? '') ?? 0;
+    const previousEnd = previous?.endProgress ?? 0;
     setRows((current) => [
       ...current,
       createDraft(previousEnd, previous?.date ?? localDateKey()),
@@ -102,14 +96,14 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
   const duplicateLastRow = () => {
     const previous = rows.at(-1);
     if (!previous) return addRow();
-    const previousEnd = parseProgress(previous.endProgress) ?? 0;
+    const previousEnd = previous.endProgress ?? 0;
     setRows((current) => [
       ...current,
       {
         ...previous,
         id: crypto.randomUUID(),
-        startProgress: String(previousEnd),
-        endProgress: String(previousEnd),
+        startProgress: previousEnd,
+        endProgress: previousEnd,
         notes: '',
       },
     ]);
@@ -141,9 +135,9 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
         return;
       }
 
-      const startProgress = parseProgress(row.startProgress);
-      const endProgress = parseProgress(row.endProgress);
-      if (startProgress === null || endProgress === null) {
+      const startProgress = row.startProgress;
+      const endProgress = row.endProgress;
+      if (startProgress === undefined || endProgress === undefined) {
         setError(`${label}: enter both starting and ending ${isAudiobook ? 'minutes' : 'pages'}.`);
         return;
       }
@@ -222,8 +216,8 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
                   <label className="text-xs font-bold text-[var(--ink-text-primary)]">Start<input type="time" value={row.startTime} onChange={(event) => updateRow(row.id, { startTime: event.target.value })} className="inkbound-select mt-1 w-full" /></label>
                   <label className="text-xs font-bold text-[var(--ink-text-primary)]">End<input type="time" value={row.endTime} onChange={(event) => updateRow(row.id, { endTime: event.target.value })} className="inkbound-select mt-1 w-full" /></label>
                   <label className="text-xs font-bold text-[var(--ink-text-primary)]">Duration<input readOnly value={duration ?? ''} className="inkbound-select mt-1 w-full cursor-default opacity-80" /></label>
-                  <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Start min' : 'Start page'}<CanonicalInput type="number" min={0} inputMode="numeric" value={row.startProgress} onValueChange={(value) => updateRow(row.id, { startProgress: value })} className="inkbound-select mt-1 w-full" /></label>
-                  <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'End min' : 'End page'}<CanonicalInput type="number" min={0} inputMode="numeric" value={row.endProgress} onValueChange={(value) => updateRow(row.id, { endProgress: value })} className="inkbound-select mt-1 w-full" /></label>
+                  <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Start min' : 'Start page'}<CanonicalNumberInput min={0} inputMode="numeric" value={row.startProgress} allowEmpty onDraftChange={(raw) => { if (!raw.trim()) updateRow(row.id, { startProgress: undefined }); }} onCommit={(value) => updateRow(row.id, { startProgress: value })} className="inkbound-select mt-1 w-full" /></label>
+                  <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'End min' : 'End page'}<CanonicalNumberInput min={0} inputMode="numeric" value={row.endProgress} allowEmpty onDraftChange={(raw) => { if (!raw.trim()) updateRow(row.id, { endProgress: undefined }); }} onCommit={(value) => updateRow(row.id, { endProgress: value })} className="inkbound-select mt-1 w-full" /></label>
                   <label className="text-xs font-bold text-[var(--ink-text-primary)] sm:col-span-2 lg:col-span-6">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalInput value={row.notes} onValueChange={(value) => updateRow(row.id, { notes: value })} className="inkbound-select mt-1 w-full" /></label>
                 </div>
               </article>
