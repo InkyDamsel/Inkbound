@@ -161,7 +161,7 @@ assert.match(seriesEvidenceSource, /providerAgreement >= 2/);
 assert.match(detectiveSource, /providerSourcesByWork/);
 assert.match(detectiveSource, /existingTitleAuthors = new Set\(libraryBooks/);
 assert.match(detectiveSource, /metadata\.evidence === 'title' && !exactAuthorMatch\(work, author\)/);
-assert.match(detectiveSource, /metadata\.evidence === 'contextual'/);
+assert.match(detectiveSource, /metadata\.evidence !== 'contextual'/);
 assert.doesNotMatch(detectiveSource, /normalize\(metadata\.name\) === normalize\(seriesName\) && normalize\(book\.work\.author\) === normalize\(author\)/);
 
 console.log('Inkbound Series Detective regressions passed.');
