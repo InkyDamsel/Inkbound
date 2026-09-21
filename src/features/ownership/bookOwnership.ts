@@ -19,3 +19,22 @@ export function withBookOwnership(
     libraryLoan: ownership === 'borrowed-library' ? book.libraryLoan : undefined,
   };
 }
+
+/**
+ * Protect an active loan from an older/partial whole-book sync record.
+ *
+ * Firestore records from older builds may omit libraryLoan entirely while still
+ * carrying borrowed-library ownership. Omission is not proof that the reader
+ * cleared the loan. An explicit empty libraryLoan object is treated as a clear,
+ * and an ownership change away from borrowed-library is also authoritative.
+ */
+export function mergeIncomingBookLoanState(
+  current: UserBookRecord | undefined,
+  incoming: UserBookRecord,
+): UserBookRecord {
+  if (!current) return incoming;
+  if (incoming.ownership !== 'borrowed-library') return incoming;
+  if (Object.prototype.hasOwnProperty.call(incoming, 'libraryLoan')) return incoming;
+  if (current.ownership !== 'borrowed-library' || !current.libraryLoan) return incoming;
+  return { ...incoming, libraryLoan: current.libraryLoan };
+}
