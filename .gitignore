@@ -11,6 +11,7 @@ firebase-export-*/
 *.log
 .env*
 !.env.example
+functions/.secret.local
 
 # Android / Capacitor local build state. Commit the generated android/ project,
 # but never commit machine-local SDK paths, Gradle caches, build outputs, or keys.
