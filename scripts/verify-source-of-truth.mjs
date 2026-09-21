@@ -316,6 +316,24 @@ if (/ownership\s*:\s*['"]none['"]/.test(seriesLibrary)) {
   violations.push('seriesLibrary.ts: Series derivation must not invent a second ownership value');
 }
 
+const canonicalInput = read('src/components/form/CanonicalInput.tsx');
+const webReadingSession = read('src/components/ReadingSessionModal.tsx');
+const webSessionEditor = read('src/components/SessionEditorModal.tsx');
+if (!canonicalInput.includes('CanonicalNumberInput')) {
+  violations.push('CanonicalInput.tsx: canonical numeric draft/commit editor is missing');
+}
+for (const [relative, source] of [
+  ['src/components/ReadingSessionModal.tsx', webReadingSession],
+  ['src/components/SessionEditorModal.tsx', webSessionEditor],
+]) {
+  if (!source.includes('CanonicalNumberInput')) {
+    violations.push(`${relative}: web reading progress must use CanonicalNumberInput`);
+  }
+}
+if (/CanonicalInput[^>]*type=["']number["']/.test(webReadingSession) || /CanonicalInput[^>]*type=["']number["']/.test(webSessionEditor)) {
+  violations.push('reading progress: editable numeric fields must not bypass CanonicalNumberInput');
+}
+
 const normalizer = read('src/features/library/libraryNormalization.ts');
 if (!normalizer.includes('normalizeCanonicalLibraryRecords')) {
   violations.push('libraryNormalization.ts: canonical library record normalizer is missing');
