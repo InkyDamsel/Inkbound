@@ -25,6 +25,30 @@ const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
 const SERIES_DISCOVERY_MAX_PAGES = 4;
 const SERIES_DISCOVERY_PAGE_SIZE = 40;
 
+
+export const hasKnownSeriesContextEvidence = (
+  work: BookSearchWorkGroup,
+  edition: BookSearchEdition,
+  wantedSeriesName: string,
+  providerAgreement: number,
+): boolean => {
+  if (providerAgreement < 2) return false;
+  const wanted = normalize(wantedSeriesName);
+  if (!wanted) return false;
+
+  const workTitle = normalize(work.title);
+  const wantedWords = wanted.split(' ').filter(Boolean).length;
+  const titleWords = workTitle.split(' ').filter(Boolean).length;
+  const brandOnlyTitle = workTitle === wanted
+    || (workTitle.endsWith(` ${wanted}`) && titleWords <= wantedWords + 1);
+  if (brandOnlyTitle) return false;
+
+  return [work.title, work.subtitle, edition.title, edition.subtitle]
+    .map(normalize)
+    .filter(Boolean)
+    .some((value) => value.includes(wanted));
+};
+
 const candidateSeriesMetadata = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
@@ -52,11 +76,7 @@ const candidateSeriesMetadata = (
   // present in its title/subtitle, accept membership without inventing a book
   // number. This helps publisher-branded lines such as A Twisted Tale whose
   // catalogs often omit structured series fields.
-  const wanted = normalize(wantedSeriesName);
-  const contextualText = [work.title, work.subtitle, edition.title, edition.subtitle]
-    .map(normalize)
-    .filter(Boolean);
-  if (providerAgreement >= 2 && wanted && contextualText.some((value) => value.includes(wanted))) {
+  if (hasKnownSeriesContextEvidence(work, edition, wantedSeriesName, providerAgreement)) {
     return { name: wantedSeriesName.trim(), position: null, evidence: 'contextual' };
   }
 
