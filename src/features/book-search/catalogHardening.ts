@@ -207,6 +207,16 @@ const sameEdition = (left: BookSearchEdition, right: BookSearchEdition): boolean
 };
 
 export const mergeCatalogEditionData = (left: BookSearchEdition, right: BookSearchEdition): BookSearchEdition => {
+  const sharedExactIsbn = Boolean(
+    left.isbn13 && right.isbn13 && left.isbn13 === right.isbn13
+    || left.isbn10 && right.isbn10 && left.isbn10 === right.isbn10,
+  );
+  if (sharedExactIsbn) {
+    const anchor = exactIsbnAnchorScore(right) > exactIsbnAnchorScore(left) ? right : left;
+    const supplement = anchor === left ? right : left;
+    return supplementExactIsbnEdition(anchor, supplement);
+  }
+
   const preferred = catalogEditionQualityScore(right) > catalogEditionQualityScore(left) ? right : left;
   const supplement = preferred === left ? right : left;
   return {
