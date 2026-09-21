@@ -40,6 +40,19 @@ for (const file of sourceFiles) {
   }
 }
 
+const libraryNormalization = read('src/features/library/libraryNormalization.ts');
+const ownershipControl = read('src/components/ownership/CustomOwnershipBookControl.tsx');
+const ownershipTransition = read('src/features/ownership/bookOwnership.ts');
+if (/ownership\s*!==\s*['"]borrowed-library['"][\s\S]{0,160}libraryLoan:\s*undefined/.test(libraryNormalization)) {
+  violations.push('libraryNormalization.ts: Passive normalization must never clear libraryLoan; only explicit ownership transitions may erase loan data.');
+}
+if (!ownershipControl.includes('withBookOwnership')) {
+  violations.push('CustomOwnershipBookControl.tsx: ownership changes must use the canonical loan-safe withBookOwnership boundary.');
+}
+if (!ownershipTransition.includes("libraryLoan: ownership === 'borrowed-library' ? book.libraryLoan : undefined")) {
+  violations.push('bookOwnership.ts: explicit ownership transitions must own library-loan clearing.');
+}
+
 const app = read('src/App.tsx');
 for (const required of [
   'withReadingStatus',
