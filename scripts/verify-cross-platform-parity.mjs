@@ -99,7 +99,7 @@ for (const itemsMatch of navbar.matchAll(/items:\s*\[([\s\S]*?)\]\s*}/g)) {
   }
 }
 navIds.add('home');
-const redirectedNavIds = new Set(['import-history']);
+const redirectedNavIds = new Set(['import-history', 'help']);
 for (const id of navIds) {
   if (redirectedNavIds.has(id)) continue;
   const routePattern = new RegExp(`activeTab\\s*===\\s*['"]${id}['"]`);
