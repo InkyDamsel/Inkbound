@@ -191,6 +191,22 @@ if (!canonicalInputSource.includes('CanonicalTextarea')) {
 const readingSessionsScreen = read('src/components/ReadingSessionsScreen.tsx');
 const sessionEditor = read('src/components/SessionEditorModal.tsx');
 const bulkHistoricalSessions = read('src/components/BulkHistoricalSessionsModal.tsx');
+const readingSessionModal = read('src/components/ReadingSessionModal.tsx');
+for (const [relative, source] of [
+  ['src/components/ReadingSessionModal.tsx', readingSessionModal],
+  ['src/components/SessionEditorModal.tsx', sessionEditor],
+  ['src/components/BulkHistoricalSessionsModal.tsx', bulkHistoricalSessions],
+]) {
+  if (!source.includes('CanonicalNumberInput')) {
+    violations.push(`${relative}: editable reading progress must use CanonicalNumberInput`);
+  }
+  if (/CanonicalInput[^>]*type=["']number["']/.test(source)) {
+    violations.push(`${relative}: editable reading progress must not bypass CanonicalNumberInput with a raw numeric CanonicalInput`);
+  }
+}
+if (/<input[^>]*type=["']number["'][^>]*(?!readOnly)[^>]*onChange=/.test(readingSessionModal)) {
+  violations.push('ReadingSessionModal.tsx: editable numeric progress must not use a raw number input');
+}
 const appSource = read('src/App.tsx');
 for (const required of ['commitCanonicalBooks', 'replaceCanonicalLibrary', 'commitCanonicalSessions', 'replaceCanonicalSessions']) {
   if (!appSource.includes(required)) {
