@@ -281,11 +281,16 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
 // Persistence-law guardrails: stale core pending writes must wait for a successful
 // cloud reconciliation, and Collection icons must not be truncated before saving.
 {
+  const fullHydrationSource = fs.readFileSync(new URL('../src/features/sync/OneShotCloudHydrationBridge.tsx', import.meta.url), 'utf8');
+  const auxiliarySyncSource = fs.readFileSync(new URL('../src/features/sync/AuxiliaryAccountSyncBridge.tsx', import.meta.url), 'utf8');
   const costSafeSource = fs.readFileSync(new URL('../src/features/sync/CostSafeCloudPersistenceBridge.tsx', import.meta.url), 'utf8');
   const deltaSource = fs.readFileSync(new URL('../src/features/sync/CrossDeviceDeltaSyncBridge.tsx', import.meta.url), 'utf8');
   const auxiliarySource = fs.readFileSync(new URL('../src/features/sync/AuxiliaryAccountSyncBridge.tsx', import.meta.url), 'utf8');
   const collectionsSource = fs.readFileSync(new URL('../src/components/CollectionsScreen.tsx', import.meta.url), 'utf8');
 
+  assert.match(fullHydrationSource, /fullReconciliationVersionKey\(uid\).*FULL_RECONCILIATION_VERSION/s);
+  assert.match(auxiliarySyncSource, /legacyCloudDocNameById/);
+  assert.match(auxiliarySyncSource, /legacyOnlyCloudNames/);
   assert.match(costSafeSource, /INKBOUND_CORE_RECONCILED_EVENT/);
   assert.match(costSafeSource, /let coreReconciled = false/);
   assert.match(costSafeSource, /if \(!coreReconciled\) return Promise\.resolve\(\)/);
