@@ -19,10 +19,11 @@ export function usePersistentState<T>(
 
   useEffect(() => {
     valueRef.current = value;
-    // Preserve the initialized value in runtime storage too. This is useful for
-    // first-run defaults and keeps native/web adapters behaviorally identical.
-    writeRuntimeJson(key, value);
-  }, [key, value]);
+    // A fallback is presentation state, not user intent. Never persist it merely
+    // because a screen mounted: account-owned defaults could otherwise become a
+    // fresh local mutation and overwrite real cloud data during hydration.
+    // Actual edits are persisted synchronously by setPersistentValue below.
+  }, [value]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
