@@ -493,8 +493,8 @@ if (!serverRefresh.includes('syncBaselineStateKey') || !serverRefresh.includes('
 if (!serverRefresh.includes('baseline.books = Object.fromEntries') || !serverRefresh.includes('baseline.sessions = Object.fromEntries')) {
   violations.push('CloudServerRefreshBridge.tsx: verified full snapshots must rebuild the canonical core sync baseline');
 }
-if (!serverRefresh.includes('merged.push(serverBook)')) {
-  violations.push('CloudServerRefreshBridge.tsx: server record must be authoritative when there is no durable pending local mutation');
+if (!serverRefresh.includes('mergeIncomingBookLoanState') || !serverRefresh.includes('serverBook')) {
+  violations.push('CloudServerRefreshBridge.tsx: server records must remain authoritative while preserving loan metadata omitted by partial legacy records');
 }
 
 const auxiliarySync = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
