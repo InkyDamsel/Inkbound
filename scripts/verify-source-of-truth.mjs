@@ -303,6 +303,14 @@ for (const providerFile of [
     violations.push(`${providerFile}: catalog data must pass through the canonical catalogHardening boundary`);
   }
 }
+const googleBooksApi = read('src/features/book-search/data/googleBooksApi.ts');
+if (!googleBooksApi.includes('mergeCatalogEditionData(current, edition)')) {
+  violations.push('googleBooksApi.ts: paged catalog merging must use the canonical edition resolver.');
+}
+if (!catalogHardening.includes('supplementExactIsbnEdition') || !catalogHardening.includes('languageCompatible')) {
+  violations.push('catalogHardening.ts: exact ISBN resolution must isolate edition-specific metadata from conflicting language records.');
+}
+
 const bookSearchMapper = read('src/features/book-search/mapping/bookSearchMapper.ts');
 if (!bookSearchMapper.includes('hardenCatalogEdition') || !bookSearchMapper.includes('hardenCatalogGroups')) {
   violations.push('bookSearchMapper.ts: external catalog data must be hardened again at the library persistence boundary');
@@ -548,6 +556,17 @@ for (const required of ['seriesName?: string', 'seriesOrder?: number']) {
 }
 if (!bookSearchMapper.includes('hardenedEdition.seriesName') || !bookSearchMapper.includes('hardenedEdition.seriesOrder')) {
   violations.push('bookSearchMapper.ts: catalog series metadata must persist through the canonical library mapper');
+}
+
+const seriesPanel = read('src/components/library/SeriesLibraryPanel.tsx');
+if (!seriesPanel.includes('seriesName: candidate.seriesName') || !seriesPanel.includes('seriesOrder: candidate.position')) {
+  violations.push('SeriesLibraryPanel.tsx: Series Detective accepted candidates must persist canonical series metadata on the saved book.');
+}
+if (!seriesDetective.includes('existingTitles = new Set(libraryBooks') || !seriesDetective.includes('existingIsbns')) {
+  violations.push('seriesDetective.ts: missing-book results must dedupe against the entire canonical library, not only the currently labeled series.');
+}
+if (!seriesDetective.includes('providerSourcesByWork') || !seriesDetective.includes('hasKnownSeriesContextEvidence')) {
+  violations.push('seriesDetective.ts: known-series discovery must preserve multi-provider agreement through catalog hardening.');
 }
 
 const collectionsSortSource = read('src/components/CollectionsScreen.tsx');
