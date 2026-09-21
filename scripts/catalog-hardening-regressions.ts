@@ -207,3 +207,97 @@ assert.equal(exactIsbn.edition.pageCount, 412);
 assert.equal(exactIsbn.edition.publisher, 'Exact Publisher');
 assert.equal(exactIsbn.edition.coverUrl, 'https://example.com/exact.jpg');
 assert.notEqual(exactIsbn.edition.pageCount, 999);
+
+
+const physicalAnchorGroups = hardenCatalogGroups([
+  {
+    key: 'physical-hardcover',
+    title: 'Divergent Example',
+    authors: ['Example Author'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      source: 'hardcover',
+      externalEditionId: 'physical-hardcover',
+      title: 'Divergent Example',
+      authors: ['Example Author'],
+      isbn13: '9780307743657',
+      binding: 'Hardcover',
+      format: 'hardcover',
+      pageCount: 330,
+      language: 'en',
+      coverUrl: 'https://example.com/english-cover.jpg',
+    }],
+  },
+  {
+    key: 'generic-ebook',
+    title: 'Divergent Example',
+    authors: ['Example Author'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      source: 'google-books',
+      externalEditionId: 'generic-ebook',
+      title: 'Divergent Example',
+      authors: ['Example Author'],
+      isbn13: '9780307743657',
+      binding: undefined,
+      format: 'ebook',
+      pageCount: 487,
+      language: 'en',
+      coverUrl: 'https://example.com/generic-cover.jpg',
+    }],
+  },
+]);
+const physicalAnchor = selectExactIsbnEdition(physicalAnchorGroups, '9780307743657');
+assert.ok(physicalAnchor);
+assert.equal(physicalAnchor.edition.format, 'hardcover');
+assert.equal(physicalAnchor.edition.pageCount, 330);
+assert.equal(physicalAnchor.edition.coverUrl, 'https://example.com/english-cover.jpg');
+
+const languageConflictGroups = hardenCatalogGroups([
+  {
+    key: 'english-no-cover',
+    title: 'Language Example',
+    authors: ['Example Author'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      source: 'hardcover',
+      externalEditionId: 'english-no-cover',
+      title: 'Language Example',
+      authors: ['Example Author'],
+      isbn13: '9780307743657',
+      binding: 'Paperback',
+      format: 'paperback',
+      pageCount: 323,
+      language: 'en',
+      coverUrl: undefined,
+    }],
+  },
+  {
+    key: 'spanish-cover',
+    title: 'Language Example',
+    authors: ['Example Author'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      source: 'google-books',
+      externalEditionId: 'spanish-cover',
+      title: 'Language Example',
+      authors: ['Example Author'],
+      isbn13: '9780307743657',
+      binding: undefined,
+      format: 'ebook',
+      pageCount: 330,
+      language: 'es',
+      coverUrl: 'https://example.com/spanish-cover.jpg',
+    }],
+  },
+]);
+const languageConflict = selectExactIsbnEdition(languageConflictGroups, '9780307743657');
+assert.ok(languageConflict);
+assert.equal(languageConflict.edition.language, 'en');
+assert.equal(languageConflict.edition.format, 'paperback');
+assert.equal(languageConflict.edition.pageCount, 323);
+assert.equal(languageConflict.edition.coverUrl, undefined);
