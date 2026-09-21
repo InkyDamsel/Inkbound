@@ -133,7 +133,8 @@ assert.match(detectiveSource, /positionalDiscovery\.flat\(\)/);
 assert.match(detectiveSource, /book \$\{position\}/);
 assert.match(detectiveSource, /distinctSources >= 2/);
 assert.match(detectiveSource, /existingTitles = new Set\(libraryBooks/);
-assert.match(detectiveSource, /!sameSeries\(edition, seriesName\) && !exactAuthorMatch\(work, author\)/);
+assert.match(detectiveSource, /metadata\.evidence === 'title' && !exactAuthorMatch\(work, author\)/);
+assert.match(detectiveSource, /metadata\.evidence === 'contextual'/);
 assert.doesNotMatch(detectiveSource, /normalize\(metadata\.name\) === normalize\(seriesName\) && normalize\(book\.work\.author\) === normalize\(author\)/);
 
 console.log('Inkbound Series Detective regressions passed.');
