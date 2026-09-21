@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3, Bell, BookHeart, BookMarked, BookOpen, Bookmark, CalendarClock, CalendarDays,
   ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, DownloadCloud, History, Home, Images, Library, Moon,
-  MoreHorizontal, Palette, Plus, Search, Settings, ShieldCheck, Sparkles, Sun, Target, Trophy, UserRound, X,
+  MoreHorizontal, Palette, Plus, Search, Settings, ShieldCheck, Sparkles, Sun, Target, Trophy, UserRound, CircleHelp, X,
 } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { useUserPlan } from '../context/UserPlanContext';
@@ -21,7 +21,7 @@ export type NavTab =
   | 'stats' | 'import' | 'settings' | 'profile' | 'admin';
 
 type NavigationGroupId = 'reading' | 'journal' | 'insights' | 'studio' | 'account';
-type NavigationItem = { id: NavTab; label: string; icon: React.ComponentType<{ className?: string }>; premium?: boolean; adminOnly?: boolean };
+type NavigationItem = { id: NavTab; label: string; icon: React.ComponentType<{ className?: string }>; premium?: boolean; adminOnly?: boolean; href?: string };
 type NavigationGroup = { id: NavigationGroupId; label: string; items: NavigationItem[] };
 
 interface NavbarProps {
@@ -64,6 +64,7 @@ const navigationGroups: NavigationGroup[] = [
   { id: 'account', label: 'Account', items: [
     { id: 'duplicates', label: 'Library Maintenance', icon: Copy },
     settingsItem,
+    { id: 'settings', label: 'Help & Guides', icon: CircleHelp, href: '/faq' },
     { id: 'admin', label: 'Administration', icon: ShieldCheck, adminOnly: true },
   ] },
 ];
@@ -136,6 +137,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
     setActiveTab(tab); setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false); setSearchQuery('');
   };
   const navigateToItem = (item: NavigationItem) => {
+    if (item.href) { window.location.assign(item.href); return; }
     if (item.premium && userPlan === 'free') {
       setIsSearchOpen(false); setIsMobileMenuOpen(false); setIsNotificationsOpen(false); setIsProfileOpen(false);
       openUpgradeModal(`${item.label} is an Inkbound Premium feature.`);
