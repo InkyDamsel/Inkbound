@@ -19,13 +19,11 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
   // previously finished book to the Wishlist ownership bucket without erasing
   // its finish date/history. Do not normalize one field by rewriting the other.
 
-  // Library-loan dates only belong to actual library loans. If ownership moves to
-  // owned, subscription, borrowed-from-person, wishlist, custom, or none, keeping
-  // a stale due date would continue surfacing countdown/reminder UI for a book that
-  // is no longer checked out from a library.
-  if (normalized.ownership !== 'borrowed-library' && normalized.libraryLoan) {
-    normalized = { ...normalized, libraryLoan: undefined };
-  }
+  // Never erase library-loan metadata during passive normalization. A stale
+  // device or legacy record may temporarily disagree about ownership while sync
+  // is reconciling. Clearing dates here turns a transient mismatch into permanent
+  // user-data loss that can then sync to every device. Explicit ownership changes
+  // clear loan dates through withBookOwnership() instead.
 
   const isFutureUntitledSeriesPlaceholder = /^untitled\b/i.test(normalized.work.title.trim())
     && Boolean(inferSeriesHintFromTitle(normalized.work.title))
