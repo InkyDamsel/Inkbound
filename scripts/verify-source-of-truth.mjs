@@ -467,6 +467,11 @@ for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselin
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
 }
 
+const fullReconciliation = read('src/features/sync/FullCloudReconciliationBridge.tsx');
+if (!fullReconciliation.includes('mergeIncomingBookLoanState')) {
+  violations.push('FullCloudReconciliationBridge.tsx: full repair must preserve active loan metadata omitted by partial legacy records.');
+}
+
 const checkpointSync = read('src/features/sync/LibrarySyncCheckpointBridge.tsx');
 for (const required of ['checkpoint.direction === \'grow\'', 'uploadedBookCount >= checkpoint.expectedBookCount', 'uploadedBookCount === checkpoint.expectedBookCount']) {
   if (!checkpointSync.includes(required)) {
@@ -564,6 +569,17 @@ if (!normalizer.includes('normalizeCanonicalLibraryRecords')) {
 }
 if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"]/.test(normalizer)) {
   violations.push('libraryNormalization.ts: ownership Wishlist must not erase independent reading status/history');
+}
+
+const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
+if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
+  violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
+}
+if (!largeBrowserStorage.includes('cache.get(key) !== value')) {
+  violations.push('largeBrowserStorage.ts: startup must let newer localStorage repair stale IndexedDB cache state.');
+}
+if (!largeBrowserStorage.includes('Promise<boolean>')) {
+  violations.push('largeBrowserStorage.ts: IndexedDB writes must report commit success before oversized write-ahead copies are removed.');
 }
 
 const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
