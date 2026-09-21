@@ -271,7 +271,9 @@ export async function findMissingSeriesBooks(
   // not only books already carrying this series label. A reader may already own
   // the work with incomplete series metadata; Detective must repair metadata,
   // never offer a second copy of the same work.
-  const existingTitles = new Set(libraryBooks.map((book) => normalize(book.work.title)));
+  const existingTitleAuthors = new Set(libraryBooks.map((book) =>
+    `${normalize(book.work.title)}::${normalize(book.work.author)}`,
+  ));
   const existingWorkIds = new Set(libraryBooks.map((book) => book.work.externalWorkId?.trim()).filter((value): value is string => Boolean(value)));
   const existingIsbns = new Set(libraryBooks.flatMap((book) =>
     book.editions.flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn].map(compactIsbn).filter(Boolean)),
@@ -279,7 +281,8 @@ export async function findMissingSeriesBooks(
 
   const missing = candidates.filter((candidate) => {
     if (candidate.position !== null && existingPositions.has(candidate.position)) return false;
-    if (existingTitles.has(normalize(candidate.work.title))) return false;
+    const candidateIdentity = `${normalize(candidate.work.title)}::${normalize(candidate.work.authors[0])}`;
+    if (existingTitleAuthors.has(candidateIdentity)) return false;
     if (candidate.work.key && existingWorkIds.has(candidate.work.key)) return false;
     const candidateIsbns = [candidate.edition.isbn13, candidate.edition.isbn10].map(compactIsbn).filter(Boolean);
     return !candidateIsbns.some((isbn) => existingIsbns.has(isbn));
