@@ -42,6 +42,8 @@ for (const file of sourceFiles) {
 
 const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
 const firstHydrationSync = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
+const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
+const auxiliarySyncBridge = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
 const libraryNormalization = read('src/features/library/libraryNormalization.ts');
 const ownershipControl = read('src/components/ownership/CustomOwnershipBookControl.tsx');
 const ownershipTransition = read('src/features/ownership/bookOwnership.ts');
@@ -56,6 +58,15 @@ if (!ownershipTransition.includes("libraryLoan: ownership === 'borrowed-library'
 }
 if (!crossDeviceSync.includes('mergeIncomingBookLoanState') || !firstHydrationSync.includes('mergeIncomingBookLoanState')) {
   violations.push('sync: canonical book hydration/delta paths must use the loan-safe cross-device merge.');
+}
+if (!oneShotHydration.includes('fullReconciliationVersionKey(uid)') || !oneShotHydration.includes('FULL_RECONCILIATION_VERSION')) {
+  violations.push('OneShotCloudHydrationBridge.tsx: established local caches must prove the current full reconciliation version before bypassing cloud hydration.');
+}
+if (!crossDeviceSync.includes('fullReconciliationVersionKey(uid)') || !crossDeviceSync.includes('FULL_RECONCILIATION_VERSION')) {
+  violations.push('CrossDeviceDeltaSyncBridge.tsx: delta sync must wait for the current full reconciliation version before declaring core sync reconciled.');
+}
+if (!auxiliarySyncBridge.includes('legacyCloudDocNameById') || !auxiliarySyncBridge.includes('legacyOnlyCloudNames')) {
+  violations.push('AuxiliaryAccountSyncBridge.tsx: legacy account-owned Firestore docs must remain readable and copy-forward into canonical auxiliary ids.');
 }
 
 const app = read('src/App.tsx');
