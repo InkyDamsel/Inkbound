@@ -70,8 +70,7 @@ const weakGoogleEdition = edition('google-books', {
 const weakGoogle = scoreSeriesEvidence(work(weakGoogleEdition), weakGoogleEdition, book);
 assert.ok(weakGoogle);
 assert.equal(weakGoogle?.structured, false);
-assert.equal(selectVerifiedSeriesEvidence([weakGoogle!])?.name, 'Dream Harbor');
-assert.equal(selectVerifiedSeriesEvidence([weakGoogle!])?.position, 2);
+assert.equal(selectVerifiedSeriesEvidence([weakGoogle!]), null);
 
 
 const vagueTitleEdition = edition('google-books', {
@@ -95,6 +94,28 @@ const weakOpenLibrary = scoreSeriesEvidence(work(weakOpenLibraryEdition), weakOp
 assert.ok(weakOpenLibrary);
 assert.equal(selectVerifiedSeriesEvidence([weakGoogle!, weakOpenLibrary!])?.name, 'Dream Harbor');
 
+
+const standaloneTwistedTaleEdition = edition('google-books', {
+  seriesName: undefined,
+  seriesOrder: undefined,
+  title: 'Disney A Twisted Tale',
+  authors: ['Example Author'],
+  isbn13: undefined,
+  isbn10: undefined,
+});
+const standaloneTwistedTaleBook = {
+  ...book,
+  work: { title: 'Disney A Twisted Tale', author: 'Example Author' },
+  editions: [{ id: 'edition-standalone', language: 'en' }],
+  activeEditionId: 'edition-standalone',
+} as unknown as UserBookRecord;
+const standaloneTwistedTale = scoreSeriesEvidence(
+  work(standaloneTwistedTaleEdition, { title: 'Disney A Twisted Tale', authors: ['Example Author'] }),
+  standaloneTwistedTaleEdition,
+  standaloneTwistedTaleBook,
+);
+assert.equal(standaloneTwistedTale, null);
+
 const wrongAuthorEdition = edition('hardcover', { authors: ['Someone Else'] });
 const wrongAuthor = scoreSeriesEvidence(work(wrongAuthorEdition), wrongAuthorEdition, book);
 assert.ok(wrongAuthor);
@@ -110,6 +131,8 @@ assert.match(detectiveSource, /googleSeriesOnlyGroups/);
 assert.match(detectiveSource, /missingKnownGaps/);
 assert.match(detectiveSource, /positionalDiscovery\.flat\(\)/);
 assert.match(detectiveSource, /book \$\{position\}/);
+assert.match(detectiveSource, /distinctSources >= 2/);
+assert.match(detectiveSource, /existingTitles = new Set\(libraryBooks/);
 assert.match(detectiveSource, /!sameSeries\(edition, seriesName\) && !exactAuthorMatch\(work, author\)/);
 assert.doesNotMatch(detectiveSource, /normalize\(metadata\.name\) === normalize\(seriesName\) && normalize\(book\.work\.author\) === normalize\(author\)/);
 
