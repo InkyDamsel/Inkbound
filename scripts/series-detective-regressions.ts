@@ -151,12 +151,13 @@ assert.equal(selectVerifiedSeriesEvidence([wrongAuthor!]), null);
 // Structured exact-series metadata may cross authors; title-only inference stays
 // author-gated to avoid pulling unrelated same-named books into the series.
 const detectiveSource = fs.readFileSync(new URL('../src/features/series/seriesDetective.ts', import.meta.url), 'utf8');
+const seriesEvidenceSource = fs.readFileSync(new URL('../src/features/series/seriesDetectiveEvidence.ts', import.meta.url), 'utf8');
 assert.match(detectiveSource, /searchHardcover\(seriesName\)/);
 assert.match(detectiveSource, /googleSeriesOnlyGroups/);
 assert.match(detectiveSource, /missingKnownGaps/);
 assert.match(detectiveSource, /positionalDiscovery\.flat\(\)/);
 assert.match(detectiveSource, /book \$\{position\}/);
-assert.match(detectiveSource, /providerAgreement >= 2/);
+assert.match(seriesEvidenceSource, /providerAgreement >= 2/);
 assert.match(detectiveSource, /providerSourcesByWork/);
 assert.match(detectiveSource, /existingTitleAuthors = new Set\(libraryBooks/);
 assert.match(detectiveSource, /metadata\.evidence === 'title' && !exactAuthorMatch\(work, author\)/);
