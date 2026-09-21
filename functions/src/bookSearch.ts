@@ -283,7 +283,9 @@ async function hardcoverCatalog(query: string) {
           format: normalizeFormat(edition.edition_format),
           isbn10: edition.isbn_10,
           isbn13: edition.isbn_13,
-          pageCount: edition.pages ?? result.pages,
+          // result.pages is work/search-result metadata and may belong to a
+          // different edition. Exact ISBN editions may only use edition.pages.
+          pageCount: edition.pages,
           coverUrl: edition.image?.url ?? edition.book?.image?.url ?? matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
           editionName: edition.title,
           binding: edition.edition_format,
