@@ -9,6 +9,7 @@ import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata } from './seri
 import { scoreSeriesEvidence, selectVerifiedSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
 const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
   const wanted = normalize(author);
@@ -211,16 +212,27 @@ export async function findMissingSeriesBooks(
   candidates.push(...seen.values());
 
   const existingPositions = new Set<number>();
-  const existingTitles = new Set<string>();
   seriesBooks.forEach((book) => {
     const metadata = resolveEffectiveSeriesMetadata(book);
     if (typeof metadata?.position === 'number') existingPositions.add(metadata.position);
-    existingTitles.add(normalize(book.work.title));
   });
+
+  // Missing-series discovery must dedupe against the entire canonical library,
+  // not only books already carrying this series label. A reader may already own
+  // the work with incomplete series metadata; Detective must repair metadata,
+  // never offer a second copy of the same work.
+  const existingTitles = new Set(libraryBooks.map((book) => normalize(book.work.title)));
+  const existingWorkIds = new Set(libraryBooks.map((book) => book.work.externalWorkId?.trim()).filter((value): value is string => Boolean(value)));
+  const existingIsbns = new Set(libraryBooks.flatMap((book) =>
+    book.editions.flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn].map(compactIsbn).filter(Boolean)),
+  ));
 
   const missing = candidates.filter((candidate) => {
     if (candidate.position !== null && existingPositions.has(candidate.position)) return false;
-    return !existingTitles.has(normalize(candidate.work.title));
+    if (existingTitles.has(normalize(candidate.work.title))) return false;
+    if (candidate.work.key && existingWorkIds.has(candidate.work.key)) return false;
+    const candidateIsbns = [candidate.edition.isbn13, candidate.edition.isbn10].map(compactIsbn).filter(Boolean);
+    return !candidateIsbns.some((isbn) => existingIsbns.has(isbn));
   }).sort((a, b) => {
     if (a.position !== null && b.position !== null) return a.position - b.position;
     if (a.position !== null) return -1;
