@@ -9,6 +9,7 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { IMPORT_ENRICHMENT_PAUSED_KEY } from '../import/importHistory';
 import { db } from '../../lib/firebase';
@@ -190,7 +191,7 @@ function mergeBooksFromServer(
     // With no durable local intent, the complete server snapshot is the
     // authoritative core record. Do not let a stale local status/progress copy
     // silently overwrite it during an explicit refresh.
-    merged.push(serverBook);
+    merged.push(mergeIncomingBookLoanState(currentById.get(serverBook.id), serverBook));
   });
 
   currentById.forEach((localBook, id) => {
