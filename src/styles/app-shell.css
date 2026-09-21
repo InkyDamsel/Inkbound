@@ -618,7 +618,7 @@ body {
     grid-template-columns: minmax(160px, 0.7fr) minmax(260px, 1fr) auto;
   }
 
-  .quiet-shelf-secondary-action span {
+  .quiet-shelf-topbar .quiet-shelf-secondary-action span {
     display: none;
   }
 }
@@ -637,8 +637,8 @@ body {
     font-size: 1.45rem;
   }
 
-  .quiet-shelf-primary-action span,
-  .quiet-shelf-secondary-action {
+  .quiet-shelf-topbar .quiet-shelf-primary-action span,
+  .quiet-shelf-topbar .quiet-shelf-secondary-action {
     display: none;
   }
 }
@@ -691,17 +691,17 @@ body {
     gap: 6px;
   }
 
-  .quiet-shelf-actions .quiet-shelf-icon-button:first-child,
-  .quiet-shelf-secondary-action {
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-icon-button:first-child,
+  .quiet-shelf-topbar .quiet-shelf-actions .quiet-shelf-secondary-action {
     display: none;
   }
 
-  .quiet-shelf-primary-action {
+  .quiet-shelf-topbar .quiet-shelf-primary-action {
     width: 40px;
     padding: 0;
   }
 
-  .quiet-shelf-primary-action span {
+  .quiet-shelf-topbar .quiet-shelf-primary-action span {
     display: none;
   }
 
