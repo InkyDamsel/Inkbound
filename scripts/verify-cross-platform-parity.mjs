@@ -62,6 +62,20 @@ for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(cand
   }
 }
 
+// Any actionable control that exists on web must remain reachable on compact
+// Android widths. Responsive layout may reflow controls, but hiding the actual
+// button/link is a feature-parity regression. Navigation chrome is handled
+// separately by the canonical Navbar/mobile-navigation checks below.
+for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(candidate))) {
+  const relative = rel(file);
+  if (relative === 'src/components/Navbar.tsx') continue;
+  const contents = fs.readFileSync(file, 'utf8');
+  const hiddenAction = /<(?:button|a)\b[^>]*className=["'][^"']*(?:\bhidden\b|(?:sm|md|lg|xl):hidden)[^"']*["'][^>]*>/g;
+  if (hiddenAction.test(contents)) {
+    errors.push(`${relative} responsively hides an actionable control. Reflow it instead so the same web action remains reachable on Android.`);
+  }
+}
+
 // The public website is intentionally code-split from the signed-in app so the
 // marketing surface does not download Firebase/persistence code. Web /app and
 // Android must still enter the exact same applicationEntry tree.
