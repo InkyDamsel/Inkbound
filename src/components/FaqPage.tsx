@@ -72,8 +72,8 @@ export const FaqPage: React.FC = () => {
         )}
 
         <section className="mx-auto mt-10 max-w-5xl rounded-3xl border border-[#392b3b] bg-gradient-to-br from-[#19121c] to-[#120e15] p-5 sm:p-6">
-          <strong className="block font-serif text-xl font-medium text-[#f6edf0]">Quick help lives inside Inkbound, too.</strong>
-          <p className="mt-2 text-sm leading-6 text-[#c6aebb]">Use the in-app Help button for common answers without leaving your library. This page is the complete reference when you need more detail.</p>
+          <strong className="block font-serif text-xl font-medium text-[#f6edf0]">Help is always within reach.</strong>
+          <p className="mt-2 text-sm leading-6 text-[#c6aebb]">Use Help &amp; Guides inside Inkbound whenever you need to get back here. You can search for an answer or browse by topic.</p>
         </section>
 
         {visibleSections.length === 0 ? (
