@@ -44,6 +44,7 @@ const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx')
 const firstHydrationSync = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 const auxiliarySyncBridge = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
+const persistentStateHook = read('src/hooks/usePersistentState.ts');
 const libraryNormalization = read('src/features/library/libraryNormalization.ts');
 const ownershipControl = read('src/components/ownership/CustomOwnershipBookControl.tsx');
 const ownershipTransition = read('src/features/ownership/bookOwnership.ts');
@@ -67,6 +68,9 @@ if (!crossDeviceSync.includes('fullReconciliationVersionKey(uid)') || !crossDevi
 }
 if (!auxiliarySyncBridge.includes('legacyCloudDocNameById') || !auxiliarySyncBridge.includes('legacyOnlyCloudNames')) {
   violations.push('AuxiliaryAccountSyncBridge.tsx: legacy account-owned Firestore docs must remain readable and copy-forward into canonical auxiliary ids.');
+}
+if (/useEffect\([\s\S]{0,260}writeRuntimeJson\(key,\s*value\)/.test(persistentStateHook)) {
+  violations.push('usePersistentState.ts: fallback state must not be persisted on mount; only explicit mutations may become account sync writes.');
 }
 
 const app = read('src/App.tsx');
