@@ -29,6 +29,7 @@ const candidateSeriesMetadata = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
   wantedSeriesName: string,
+  providerAgreement = 1,
 ): { name: string; position: number | null; evidence: 'structured' | 'title' | 'contextual' } | null => {
   if (sameSeries(edition, wantedSeriesName)) {
     return {
@@ -51,12 +52,11 @@ const candidateSeriesMetadata = (
   // present in its title/subtitle, accept membership without inventing a book
   // number. This helps publisher-branded lines such as A Twisted Tale whose
   // catalogs often omit structured series fields.
-  const distinctSources = new Set(work.editions.map((candidate) => candidate.source)).size;
   const wanted = normalize(wantedSeriesName);
   const contextualText = [work.title, work.subtitle, edition.title, edition.subtitle]
     .map(normalize)
     .filter(Boolean);
-  if (distinctSources >= 2 && wanted && contextualText.some((value) => value.includes(wanted))) {
+  if (providerAgreement >= 2 && wanted && contextualText.some((value) => value.includes(wanted))) {
     return { name: wantedSeriesName.trim(), position: null, evidence: 'contextual' };
   }
 
@@ -177,22 +177,32 @@ export async function findMissingSeriesBooks(
     })),
   ]);
 
-  const merged = hardenCatalogGroups(
-    [
-      ...googleSeriesGroups,
-      ...googleExactSeriesGroups,
-      ...googleAuthorGroups,
-      ...googleSeriesOnlyGroups,
-      ...openLibrarySeriesGroups,
-      ...openLibraryAuthorGroups,
-      ...openLibrarySeriesOnlyGroups,
-      ...hardcoverSeries.groups,
-      ...hardcoverAuthor.groups,
-      ...hardcoverSeriesOnly.groups,
-      ...positionalDiscovery.flat(),
-    ],
-    { preferredAuthor: author },
-  );
+  const rawGroups = [
+    ...googleSeriesGroups,
+    ...googleExactSeriesGroups,
+    ...googleAuthorGroups,
+    ...googleSeriesOnlyGroups,
+    ...openLibrarySeriesGroups,
+    ...openLibraryAuthorGroups,
+    ...openLibrarySeriesOnlyGroups,
+    ...hardcoverSeries.groups,
+    ...hardcoverAuthor.groups,
+    ...hardcoverSeriesOnly.groups,
+    ...positionalDiscovery.flat(),
+  ];
+
+  // Preserve provider agreement before hardening merges exact editions across
+  // catalogs. Series confidence must not disappear merely because canonical
+  // edition normalization correctly collapsed duplicate ISBN records.
+  const providerSourcesByWork = new Map<string, Set<BookSearchEdition['source']>>();
+  for (const group of rawGroups) {
+    const identity = `${normalize(group.title)}::${normalize(group.authors[0])}`;
+    const sources = providerSourcesByWork.get(identity) ?? new Set<BookSearchEdition['source']>();
+    group.editions.forEach((candidate) => sources.add(candidate.source));
+    providerSourcesByWork.set(identity, sources);
+  }
+
+  const merged = hardenCatalogGroups(rawGroups, { preferredAuthor: author });
   const seen = new Map<string, SeriesDetectiveCandidate>();
   const candidates: SeriesDetectiveCandidate[] = [];
 
@@ -200,7 +210,10 @@ export async function findMissingSeriesBooks(
 
   for (const work of merged) {
     for (const edition of work.editions) {
-      const metadata = candidateSeriesMetadata(work, edition, seriesName);
+      const providerAgreement = providerSourcesByWork.get(
+        `${normalize(work.title)}::${normalize(work.authors[0])}`,
+      )?.size ?? 1;
+      const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement);
       if (!metadata) continue;
 
       // A provider's structured exact series name is stronger evidence than an
