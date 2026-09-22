@@ -72,6 +72,27 @@ if (!runtimePlatformSource.includes("if (import.meta.env.DEV) return 'web';")) {
   violations.push('runtimePlatform.ts: getRuntimePlatform must keep Vite DEV on web');
 }
 
+const googleBooksSource = read('src/features/book-search/data/googleBooksApi.ts');
+const googleSeriesResolverSource = read('src/features/book-search/mapping/googleSeriesMetadata.ts');
+const bookDetailsCoreSource = read('src/components/BookDetailsModalCore.tsx');
+if (!googleBooksSource.includes("resolveGoogleSeriesMetadata")) {
+  violations.push('googleBooksApi.ts: Google Books series metadata must use the canonical resolver');
+}
+if (/seriesName\s*:\s*[^\n]*shortSeriesBookTitle/.test(googleBooksSource)) {
+  violations.push('googleBooksApi.ts: shortSeriesBookTitle is a book title, not a canonical series name');
+}
+for (const required of ['seriesId', 'orderNumber', 'seriesTitlesById']) {
+  if (!googleSeriesResolverSource.includes(required)) {
+    violations.push(`googleSeriesMetadata.ts: missing canonical Google series field ${required}`);
+  }
+}
+if (!bookDetailsCoreSource.includes('seriesName: book.work.seriesName || matchedEdition.seriesName')) {
+  violations.push('BookDetailsModalCore.tsx: metadata sync must repair missing canonical series metadata');
+}
+if (!bookDetailsCoreSource.includes('matchedEdition.pageCount ?? activeEdition.pageCount')) {
+  violations.push('BookDetailsModalCore.tsx: exact-ISBN metadata sync must be able to repair stale provider page counts');
+}
+
 const helpContent = read('src/content/helpContent.ts');
 const navbarSource = read('src/components/Navbar.tsx');
 for (const required of [
