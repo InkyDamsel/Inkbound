@@ -841,6 +841,18 @@ for (const required of ["'az'", "'za'", "'newest'", "'oldest'", 'LIBRARY_SECTION
   }
 }
 const seriesPanel = read('src/components/library/SeriesLibraryPanel.tsx');
+const libraryNavigationSource = read('src/features/library/libraryNavigation.ts');
+const bookDetailsModalSource = read('src/components/BookDetailsModal.tsx');
+if (!libraryNavigationSource.includes('seriesName') || !libraryNavigationSource.includes('author')) {
+  violations.push('libraryNavigation.ts: View-series navigation must carry canonical series identity');
+}
+if (!bookDetailsModalSource.includes('effectiveSeries.name') || !bookDetailsModalSource.includes('normalizedBook.work.author')) {
+  violations.push('BookDetailsModal.tsx: View series must pass series name and author to canonical navigation');
+}
+if (!seriesPanel.includes('filtered.findIndex') || !seriesPanel.includes('pendingFocusTarget')) {
+  violations.push('SeriesLibraryPanel.tsx: View-series navigation must target the sorted visible series');
+}
+
 const loansPanelSortSource = read('src/components/library/LoansLibraryPanel.tsx');
 const collectionsSortSharedSource = read('src/components/CollectionsScreen.tsx');
 for (const [relative, source] of [
