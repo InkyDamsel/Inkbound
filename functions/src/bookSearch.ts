@@ -269,24 +269,32 @@ const googleVolumeNeedsDetail = (value: unknown): boolean => {
   return !(typeof pageCount === 'number' && Number.isFinite(pageCount) && pageCount > 0) || memberships.length === 0;
 };
 
-async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string, query: string): Promise<unknown[]> {
-  const normalizedQuery = query
-    .replace(/\b(?:intitle|inauthor|isbn):/gi, '')
-    .replace(/["']/g, ' ')
+const normalizeGoogleCatalogMatchText = (value: string): string =>
+  value
+    .toLocaleLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
     .trim()
-    .toLocaleLowerCase();
+    .replace(/\s+/g, ' ');
+
+async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string, query: string): Promise<unknown[]> {
+  const operatorMatch = query.trim().match(/^(intitle|inauthor|isbn):\s*(.+)$/i);
+  const operator = operatorMatch?.[1]?.toLocaleLowerCase();
+  const operand = operatorMatch?.[2] ?? query;
+  const normalizedQuery = normalizeGoogleCatalogMatchText(operand.replace(/["']/g, ' '));
 
   return Promise.all(items.map(async (item, index) => {
     const id = googleVolumeId(item);
     const title = typeof googleVolumeInfo(item)?.title === 'string'
-      ? String(googleVolumeInfo(item)?.title).trim().toLocaleLowerCase()
+      ? normalizeGoogleCatalogMatchText(String(googleVolumeInfo(item)?.title))
       : '';
     const likelyExactTitle = Boolean(
       normalizedQuery
       && title
       && (title === normalizedQuery || title.includes(normalizedQuery) || normalizedQuery.includes(title)),
     );
-    const shouldHydrate = index < GOOGLE_DETAIL_HYDRATION_LIMIT && likelyExactTitle;
+    const operatorNeedsCatalogDetails = operator === 'inauthor' || operator === 'isbn';
+    const shouldHydrate = index < GOOGLE_DETAIL_HYDRATION_LIMIT && (operatorNeedsCatalogDetails || likelyExactTitle);
     if (!id || !shouldHydrate || !googleVolumeNeedsDetail(item)) return item;
 
     const params = new URLSearchParams({ projection: 'full' });
