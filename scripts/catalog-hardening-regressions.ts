@@ -259,6 +259,44 @@ assert.equal(exactIsbn.edition.publisher, 'Exact Publisher');
 assert.equal(exactIsbn.edition.coverUrl, 'https://example.com/exact.jpg');
 assert.notEqual(exactIsbn.edition.pageCount, 999);
 
+const conflictingIsbn13Groups = hardenCatalogGroups([
+  {
+    key: 'conflict-a',
+    title: 'Conflicting Identifier Example',
+    authors: ['Example Author'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      externalEditionId: 'conflict-a',
+      title: 'Conflicting Identifier Example',
+      authors: ['Example Author'],
+      isbn10: '0307743659',
+      isbn13: '9780307743657',
+      pageCount: 412,
+    }],
+  },
+  {
+    key: 'conflict-b',
+    title: 'Conflicting Identifier Example',
+    authors: ['Example Author'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      externalEditionId: 'conflict-b',
+      title: 'Conflicting Identifier Example',
+      authors: ['Example Author'],
+      isbn10: '0307743659',
+      isbn13: '9781451673319',
+      pageCount: 999,
+    }],
+  },
+]);
+assert.equal(conflictingIsbn13Groups[0].editions.length, 2);
+assert.equal(
+  selectExactIsbnEdition(conflictingIsbn13Groups, '9780307743657')?.edition.pageCount,
+  412,
+);
+
 
 const physicalAnchorGroups = hardenCatalogGroups([
   {
