@@ -15,6 +15,7 @@ type GoogleBibliographicSeriesInfo = { name: string; position?: number };
 type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[]; seriesMetadataById?: Record<string, string> };
 const googleBibliographicSeriesCache = new Map<string, { expiresAt: number; value: GoogleBibliographicSeriesInfo | null }>();
 const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBooksCatalogPayload }>();
+const googleBooksInFlight = new Map<string, Promise<GoogleBooksCatalogPayload>>();
 
 interface SearchResult {
   id?: number | string;
@@ -572,7 +573,14 @@ export const searchGoogleBooksCatalog = onCall(
       : 40;
 
     try {
-      return await googleBooksCatalog(query, startIndex, maxResults);
+      const requestKey = googleBooksCacheKey(query, startIndex, maxResults);
+      let pending = googleBooksInFlight.get(requestKey);
+      if (!pending) {
+        pending = googleBooksCatalog(query, startIndex, maxResults)
+          .finally(() => googleBooksInFlight.delete(requestKey));
+        googleBooksInFlight.set(requestKey, pending);
+      }
+      return await pending;
     } catch (error) {
       console.error('Google Books catalog search failed.', error);
       if (error instanceof HttpsError) throw error;
