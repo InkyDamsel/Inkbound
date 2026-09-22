@@ -118,8 +118,8 @@ for (const required of ['seriesId', 'orderNumber', 'seriesTitlesById']) {
     violations.push(`googleSeriesMetadata.ts: missing canonical Google series field ${required}`);
   }
 }
-if (!bookDetailsCoreSource.includes('seriesName: book.work.seriesName || matchedEdition.seriesName')) {
-  violations.push('BookDetailsModalCore.tsx: metadata sync must repair missing canonical series metadata');
+if (!bookDetailsCoreSource.includes('seriesName: matchedEdition.seriesName ?? book.work.seriesName')) {
+  violations.push('BookDetailsModalCore.tsx: explicit metadata sync must repair stale canonical series metadata');
 }
 if (!bookDetailsCoreSource.includes('matchedEdition.pageCount ?? activeEdition.pageCount')) {
   violations.push('BookDetailsModalCore.tsx: exact-ISBN metadata sync must be able to repair stale provider page counts');
