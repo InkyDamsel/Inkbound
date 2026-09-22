@@ -21,7 +21,26 @@ function firebaseInvocation(args) {
   };
 }
 
+function readExistingSecrets() {
+  if (!fs.existsSync(targetPath)) return {};
+  const contents = fs.readFileSync(targetPath, 'utf8');
+  return Object.fromEntries(
+    contents
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#') && line.includes('='))
+      .map((line) => {
+        const index = line.indexOf('=');
+        return [line.slice(0, index).trim(), line.slice(index + 1).trim()];
+      })
+      .filter(([name, value]) => name && value),
+  );
+}
+
 function readSecret(secretName) {
+  const fromEnvironment = String(process.env[secretName] || '').trim();
+  if (fromEnvironment) return fromEnvironment;
+
   const invocation = firebaseInvocation([
     'functions:secrets:access',
     secretName,
@@ -36,21 +55,31 @@ function readSecret(secretName) {
     windowsHide: true,
   });
 
-  if (result.status !== 0) {
-    const detail = String(result.stderr || '').trim().split('\n').slice(-2).join(' ');
-    throw new Error(
-      `Could not load ${secretName} for local catalog parity.${detail ? ` ${detail}` : ''}`,
-    );
-  }
-
-  const value = String(result.stdout || '').trim();
-  if (!value) throw new Error(`${secretName} returned an empty value.`);
-  return value;
+  if (result.status !== 0) return '';
+  return String(result.stdout || '').trim();
 }
 
 try {
-  console.log('Inkbound DEV: syncing catalog credentials for local emulator parity...');
-  const values = Object.fromEntries(SECRET_NAMES.map((name) => [name, readSecret(name)]));
+  console.log('Inkbound DEV: preparing local catalog credentials...');
+  const existing = readExistingSecrets();
+  const values = {};
+
+  for (const name of SECRET_NAMES) {
+    const existingValue = String(existing[name] || '').trim();
+    if (existingValue) {
+      values[name] = existingValue;
+      continue;
+    }
+
+    const fetched = readSecret(name);
+    if (!fetched) {
+      throw new Error(
+        `Missing ${name}. Add it once to functions/.secret.local or provide it as an environment variable.`,
+      );
+    }
+    values[name] = fetched;
+  }
+
   const contents = SECRET_NAMES
     .map((name) => `${name}=${values[name].replace(/\r?\n/g, '')}`)
     .join('\n');
@@ -60,14 +89,9 @@ try {
     mode: 0o600,
   });
 
-  console.log('Inkbound DEV: local catalog providers match the app backend configuration.');
+  console.log('Inkbound DEV: local catalog credentials are ready.');
 } catch (error) {
-  console.error(
-    'Inkbound DEV cannot guarantee app-parity catalog behavior because local Functions could not load the required catalog secrets.',
-  );
+  console.error('Inkbound DEV could not prepare local catalog credentials.');
   console.error(error instanceof Error ? error.message : error);
-  console.error(
-    'Sign in to the Firebase CLI with an account that can access this project, then run npm run dev again.',
-  );
   process.exit(1);
 }
