@@ -37,8 +37,9 @@
     "firebase:deploy:rules": "npx firebase-tools deploy --only firestore:rules,storage --project inkbound-app",
     "firebase:deploy:functions": "npm run functions:build && npx firebase-tools deploy --only functions --project inkbound-app",
     "firebase:deploy:security": "npm run functions:build && npx firebase-tools deploy --only firestore:rules,storage,functions --project inkbound-app",
-    "firebase:deploy:web": "npm run release:verify && npx firebase-tools deploy --only hosting --project inkbound-app",
-    "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app"
+    "firebase:deploy:web": "npm run verify:web-release && npx firebase-tools deploy --only hosting --project inkbound-app",
+    "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app",
+    "verify:web-release": "npm run lint && npm run test:critical && npm run verify:source-of-truth && npm run verify:parity && npm run build && npm run verify:release-artifacts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
