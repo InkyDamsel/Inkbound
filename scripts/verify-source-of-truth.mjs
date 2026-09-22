@@ -698,6 +698,18 @@ if (/ownership\s*:\s*['"]none['"]/.test(seriesLibrary)) {
   violations.push('seriesLibrary.ts: Series derivation must not invent a second ownership value');
 }
 
+const seriesEvidenceSource = read('src/features/series/seriesDetectiveEvidence.ts');
+const loansPanelSource = read('src/components/library/LoansLibraryPanel.tsx');
+const readingDeadlineSource = read('src/features/reading/readingDeadline.ts');
+if (!loansPanelSource.includes('getRemainingReadingUnits(book)')) {
+  violations.push('LoansLibraryPanel.tsx: loan remaining units must come from canonical reading state');
+}
+if (!readingDeadlineSource.includes('getRemainingReadingUnits(book)')) {
+  violations.push('readingDeadline.ts: finish-on-time remaining units must come from canonical reading state');
+}
+if (!seriesEvidenceSource.includes('(item.structured && item.exactIdentifier)')) {
+  violations.push('seriesDetectiveEvidence.ts: structured exact-identifier evidence must survive harmless author formatting differences');
+}
 const seriesDetective = read('src/features/series/seriesDetective.ts');
 for (const required of [
   'resolveEffectiveSeriesMetadata',
@@ -711,6 +723,9 @@ for (const required of [
   if (!seriesDetective.includes(required)) {
     violations.push(`seriesDetective.ts: Series Detective must consume canonical ${required}`);
   }
+}
+if (/const existing = resolveEffectiveSeriesMetadata\(book\);[\s\S]{0,120}if \(existing\) return/.test(seriesDetective)) {
+  violations.push('seriesDetective.ts: Series Detective must reverify saved metadata instead of trusting stale series values');
 }
 if (seriesDetective.includes('searchGoogleBooksPage') || seriesDetective.includes('searchGoogleBooksAuthorPage')) {
   violations.push('seriesDetective.ts: Series Detective must not fan out across multiple paged Google catalog searches');
