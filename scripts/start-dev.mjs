@@ -47,8 +47,8 @@ function startVite() {
   viteStarted = true;
   console.log(
     useEmulators
-      ? '\nInkbound DEV: local Firebase is ready. Starting Vite at http://127.0.0.1:3000 ...\n'
-      : '\nInkbound DEV: starting app-parity Vite against production Firebase at http://127.0.0.1:3000 ...\n',
+      ? '\nInkbound DEV: local Firebase is ready. Starting Vite at http://localhost:3000 ...\n'
+      : '\nInkbound DEV: starting app-parity Vite against production Firebase at http://localhost:3000 ...\n',
   );
   const viteCommand = npmInvocation(['run', 'dev:web']);
   const vite = pipeChild(spawn(viteCommand.command, viteCommand.args, {
