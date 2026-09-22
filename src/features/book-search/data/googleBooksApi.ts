@@ -7,7 +7,7 @@ import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
-import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
+import { catalogTitlesAreCompatible, hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -496,6 +496,48 @@ export async function searchGoogleBooksAuthorPage(
   }
 }
 
+const groupNeedsTargetedGoogleEnrichment = (group: BookSearchWorkGroup): boolean =>
+  !group.editions.some((edition) => edition.pageCount)
+  || !group.editions.some((edition) => edition.seriesName);
+
+async function enrichThinCatalogGroupsWithGoogle(
+  groups: BookSearchWorkGroup[],
+  signal?: AbortSignal,
+): Promise<BookSearchWorkGroup[]> {
+  const targets = groups.filter(groupNeedsTargetedGoogleEnrichment).slice(0, 8);
+  if (targets.length === 0) return groups;
+
+  const targeted = await Promise.all(targets.map(async (group) => {
+    const author = group.authors.find((value) => normalizeText(value) !== 'unknown author') ?? '';
+    const title = group.title.trim();
+    if (!title || !author) return [] as BookSearchWorkGroup[];
+
+    try {
+      const query = `intitle:"${title}" inauthor:"${author}"`;
+      const payload = shouldUseProtectedGoogleBooks()
+        ? await requestProtectedGoogleBooks(query, signal, 0, 10)
+        : await requestDirectGoogleBooks(query, signal, 0, 10);
+      return hardenCatalogGroups(
+        groupGoogleEditions(
+          (payload.items ?? [])
+            .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
+            .filter((edition): edition is BookSearchEdition => Boolean(edition)),
+        ),
+        { preferredAuthor: author },
+      ).filter((candidate) =>
+        normalizeText(candidate.authors[0]) === normalizeText(author)
+        && catalogTitlesAreCompatible(group.title, candidate.title),
+      );
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Targeted Google Books enrichment unavailable.', error);
+      return [] as BookSearchWorkGroup[];
+    }
+  }));
+
+  return hardenCatalogGroups([...groups, ...targeted.flat()]);
+}
+
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
   try {
@@ -588,11 +630,13 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     searchHardcoverWithBackoff(trimmed),
   ]);
 
-  const combined = hardenCatalogGroups(
+  let combined = hardenCatalogGroups(
     [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
     { searchQuery: trimmed },
   );
   if (combined.length === 0) return { groups: [], totalItems: 0 };
+
+  combined = await enrichThinCatalogGroupsWithGoogle(combined, signal);
 
   // Work-level fields (summary/genres) may safely supplement the same title and
   // author across providers, while edition-level fields only merge when the
