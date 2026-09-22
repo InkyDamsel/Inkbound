@@ -7,7 +7,7 @@ import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
-import { catalogTitlesAreCompatible, hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
+import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -364,10 +364,7 @@ async function requestProtectedGoogleBooks(
       GoogleVolumesResponse
     >(functions, 'searchGoogleBooksCatalog');
     pending = callable({ query, startIndex, maxResults })
-      .then(async (response) => {
-        const hydrated = await hydrateGoogleVolumeDetails(response.data);
-        return enrichGoogleSeriesMetadata(hydrated);
-      })
+      .then((response) => enrichGoogleSeriesMetadata(response.data))
       .finally(() => {
         inFlightGoogleRequests.delete(requestKey);
       });
