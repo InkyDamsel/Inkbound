@@ -112,6 +112,19 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
 const googleBooksCacheKey = (query: string, startIndex: number, maxResults: number) =>
   `${query.trim().toLowerCase()}::${startIndex}::${maxResults}`;
 
+const googleBooksErrorDetail = (body: string): string => {
+  const trimmed = body.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: { message?: unknown }; message?: unknown };
+    const message = parsed.error?.message ?? parsed.message;
+    if (typeof message === 'string' && message.trim()) return message.trim();
+  } catch {
+    // Fall through to a short plain-text response body.
+  }
+  return trimmed.replace(/\s+/g, ' ').slice(0, 300);
+};
+
 function readGoogleBooksCache(query: string, startIndex: number, maxResults: number): GoogleBooksCatalogPayload | undefined {
   const key = googleBooksCacheKey(query, startIndex, maxResults);
   const cached = googleBooksCache.get(key);
