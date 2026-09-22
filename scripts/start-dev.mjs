@@ -4,6 +4,7 @@ const nodeCommand = process.execPath;
 const npmExecPath = process.env.npm_execpath;
 const requestedMode = process.argv.includes('--emulator') ? 'emulator' : 'production';
 const useEmulators = requestedMode === 'emulator';
+const useFunctionsOnlyEmulator = !useEmulators;
 
 
 function npmInvocation(args) {
@@ -48,7 +49,7 @@ function startVite() {
   console.log(
     useEmulators
       ? '\nInkbound DEV: local Firebase is ready. Starting Vite at http://localhost:3000 ...\n'
-      : '\nInkbound DEV: starting app-parity Vite against production Firebase at http://localhost:3000 ...\n',
+      : '\nInkbound DEV: starting production-data Vite with local Functions at http://localhost:3000 ...\n',
   );
   const viteCommand = npmInvocation(['run', 'dev:web']);
   const vite = pipeChild(spawn(viteCommand.command, viteCommand.args, {
@@ -59,6 +60,7 @@ function startVite() {
       // a shell or env file. Native runtime gates have no services to await in Vite.
       VITE_RUNTIME_TARGET: 'web',
       VITE_FIREBASE_MODE: requestedMode,
+      VITE_FIREBASE_FUNCTIONS_MODE: useFunctionsOnlyEmulator ? 'emulator' : requestedMode,
       // DEV should match production data/functions, but never open real
       // subscription checkout just because the production release switch is on.
       VITE_PREMIUM_SUBSCRIPTIONS_OPEN: 'false',
@@ -90,10 +92,46 @@ process.on('SIGTERM', () => shutdown('SIGTERM', 0));
 
 try {
   if (!useEmulators) {
-    console.log('Inkbound DEV: APP-PARITY mode.');
-    console.log('Inkbound DEV: using production Firebase Auth, Firestore, Storage, and Cloud Functions.');
-    console.log('Inkbound DEV: subscription checkout is forced OFF for localhost.');
-    startVite();
+    console.log('Inkbound DEV: HYBRID PARITY mode.');
+    console.log('Inkbound DEV: production Auth, Firestore, and Storage; local Cloud Functions.');
+    console.log('Inkbound DEV: preparing local catalog Functions without touching live functions...');
+    await runOnce(nodeCommand, ['scripts/sync-dev-catalog-secrets.mjs']);
+
+    console.log('Inkbound DEV: building local Firebase Functions...');
+    const functionsBuild = npmInvocation(['run', 'functions:build']);
+    await runOnce(functionsBuild.command, functionsBuild.args);
+
+    console.log('\nInkbound DEV: starting local Functions emulator...');
+    const emulator = pipeChild(spawn(nodeCommand, ['scripts/start-functions-emulator.mjs'], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ['inherit', 'pipe', 'pipe'],
+      shell: false,
+    }));
+
+    let emulatorOutput = '';
+    const inspectReady = (chunk) => {
+      emulatorOutput += chunk.toString();
+      if (
+        emulatorOutput.includes('All emulators ready!')
+        || emulatorOutput.includes('functions[us-central1-')
+        || emulatorOutput.includes('http://127.0.0.1:5001')
+      ) {
+        startVite();
+        emulatorOutput = '';
+      } else if (emulatorOutput.length > 12000) {
+        emulatorOutput = emulatorOutput.slice(-4000);
+      }
+    };
+    emulator.stdout?.on('data', inspectReady);
+    emulator.stderr?.on('data', inspectReady);
+
+    emulator.on('exit', (code) => {
+      if (!shuttingDown) {
+        console.error(`Inkbound DEV: local Functions emulator exited with code ${code ?? 'unknown'}.`);
+        shutdown('SIGTERM', code ?? 1);
+      }
+    });
   } else {
     console.log('Inkbound DEV: EMULATOR mode.');
     console.log('Inkbound DEV: preparing catalog services for local parity...');
