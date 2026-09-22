@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { resolveGoogleSeriesMetadata } from '../src/features/book-search/mapping/googleSeriesMetadata';
-import { catalogTextMatchesSeriesLine, inferCatalogSeriesLineCandidate } from '../src/features/series/catalogSeriesLine';
 
 const twistedTale = resolveGoogleSeriesMetadata(
   {
@@ -42,17 +41,30 @@ const shortTitleMustNotBecomeSeries = resolveGoogleSeriesMetadata(
 assert.equal(shortTitleMustNotBecomeSeries.name, undefined);
 assert.equal(shortTitleMustNotBecomeSeries.order, 1);
 
-const twistedTaleLine = inferCatalogSeriesLineCandidate("Conceal, Don't Feel", 'A Twisted Tale');
-assert.deepEqual(twistedTaleLine, { name: 'A Twisted Tale' });
-assert.equal(catalogTextMatchesSeriesLine("Part of Your World: A Twisted Tale", undefined, 'A Twisted Tale'), true);
+const bibliographicTwistedTale = resolveGoogleSeriesMetadata(
+  undefined,
+  {},
+  { name: 'A Twisted Tale' },
+);
+assert.equal(bibliographicTwistedTale.name, 'A Twisted Tale');
+assert.equal(bibliographicTwistedTale.order, undefined);
 
-const sagaLine = inferCatalogSeriesLineCandidate('A Touch of Darkness', 'Hades & Persephone Saga Book 1');
-assert.deepEqual(sagaLine, { name: 'Hades & Persephone Saga', position: 1 });
+const bibliographicSaga = resolveGoogleSeriesMetadata(
+  undefined,
+  {},
+  { name: 'Hades x Persephone', position: 1 },
+);
+assert.equal(bibliographicSaga.name, 'Hades x Persephone');
+assert.equal(bibliographicSaga.order, 1);
 
-const ordinarySubtitle = inferCatalogSeriesLineCandidate('Example Book', 'A completely ordinary subtitle');
-assert.deepEqual(ordinarySubtitle, { name: 'A completely ordinary subtitle' });
-// Extraction alone is deliberately not verification. Production code requires
-// the same candidate line to appear across multiple distinct Google works before
-// it becomes canonical series metadata.
+const structuredWinsOverBibliographicFallback = resolveGoogleSeriesMetadata(
+  {
+    volumeSeries: [{ seriesId: 'harry-potter', orderNumber: 2 }],
+  },
+  { 'harry-potter': 'Harry Potter' },
+  { name: 'Wrong Subtitle Series', position: 99 },
+);
+assert.equal(structuredWinsOverBibliographicFallback.name, 'Harry Potter');
+assert.equal(structuredWinsOverBibliographicFallback.order, 2);
 
 console.log('Inkbound Google series metadata regressions passed.');
