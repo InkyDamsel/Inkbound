@@ -408,6 +408,10 @@ if (!envExampleSource.includes('VITE_FIREBASE_MEASUREMENT_ID=G-2LDXP8Z4S0')) {
 if (packageJson.scripts?.['firebase:deploy:web'] !== 'npm run verify:web-release && npx firebase-tools deploy --only hosting --project inkbound-app') {
   violations.push('package.json: web hosting deploy must remain on the web-only release path');
 }
+const firebaseHostingSource = read('firebase.json');
+if (!firebaseHostingSource.includes('https://www.googletagmanager.com')) {
+  violations.push('firebase.json: production CSP must allow the GA4 Google Tag Manager runtime');
+}
 if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:parity')) {
   violations.push('package.json: release:verify must include the web/Android parity gate');
 }
