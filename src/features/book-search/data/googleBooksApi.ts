@@ -564,8 +564,8 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
   }
 }
 
-function cacheSearchResponse(cacheKey: string, response: BookSearchResponse): BookSearchResponse {
-  const hardened = hardenCatalogResponse(response);
+function cacheSearchResponse(cacheKey: string, response: BookSearchResponse, searchQuery?: string): BookSearchResponse {
+  const hardened = hardenCatalogResponse(response, { searchQuery });
   if (hardened.groups.length > 0) {
     searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response: hardened });
   }
@@ -604,7 +604,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     return cacheSearchResponse(cacheKey, {
       groups: [{ ...exact.work, editions: [exact.edition] }],
       totalItems: 1,
-    });
+    }, trimmed);
   }
 
   const [google, openLibrary, trusted, hardcover] = await Promise.all([
@@ -646,5 +646,5 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
       supplemental.totalItems,
       combined.length,
     ),
-  });
+  }, trimmed);
 }
