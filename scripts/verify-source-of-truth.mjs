@@ -110,6 +110,12 @@ if (!googleBooksSource.includes('hydrateGoogleVolumeDetails')) {
 if (!googleBooksSource.includes("'searchGoogleBooksCatalog'")) {
   violations.push('googleBooksApi.ts: signed-in runtimes must use the shared Google Books catalog callable');
 }
+if (!googleBooksSource.includes('requireReleaseParityGoogleInDev')) {
+  violations.push('googleBooksApi.ts: release-parity DEV must fail loudly instead of silently substituting another catalog');
+}
+if (googleBooksSource.includes("searchGoogleBaseline(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 }))")) {
+  violations.push('googleBooksApi.ts: DEV must not swallow the canonical Google catalog failure inside the combined search');
+}
 if (/seriesName\s*:\s*[^\n]*shortSeriesBookTitle/.test(googleBooksSource)) {
   violations.push('googleBooksApi.ts: shortSeriesBookTitle is a book title, not a canonical series name');
 }
