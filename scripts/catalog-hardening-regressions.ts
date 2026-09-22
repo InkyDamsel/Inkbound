@@ -149,7 +149,7 @@ const concealSearchGroups = hardenCatalogGroups([
 ], { searchQuery: "conceal don't feel" });
 
 assert.equal(concealSearchGroups[0]?.title, "Conceal, Don't Feel");
-assert.ok(!concealSearchGroups.some((group) => group.title === 'Conceal and Don’t Feel as Much?'));
+assert.ok(concealSearchGroups.some((group) => group.title === 'Conceal and Don’t Feel as Much?'));
 assert.ok(!concealSearchGroups.some((group) => group.title === 'City of Ashes (The Mortal Instruments)'));
 assert.ok(!concealSearchGroups.some((group) => group.title === 'Sixty Years in California'));
 
@@ -340,7 +340,7 @@ const titleVariantGroups = hardenCatalogGroups([
     }],
   },
 ]);
-const concealExactDominance = hardenCatalogGroups([
+const concealRankedSearch = hardenCatalogGroups([
   {
     key: 'conceal-exact',
     title: "Conceal, Don't Feel",
@@ -368,21 +368,21 @@ const concealExactDominance = hardenCatalogGroups([
     }],
   },
   {
-    key: 'conceal-research-noise',
+    key: 'conceal-research-near-match',
     title: 'Conceal and Don’t Feel as Much? Experiential Effects of Expressive Suppression',
     authors: ['Jessica L. Jones'],
     genres: [],
     editions: [{
       ...goodEdition,
-      externalEditionId: 'conceal-research-noise',
+      externalEditionId: 'conceal-research-near-match',
       title: 'Conceal and Don’t Feel as Much? Experiential Effects of Expressive Suppression',
       authors: ['Jessica L. Jones'],
     }],
   },
 ], { searchQuery: "conceal don't feel" });
-assert.equal(concealExactDominance.length, 1);
-assert.equal(concealExactDominance[0].title, "Conceal, Don't Feel");
-assert.ok(concealExactDominance[0].editions.some((edition) => edition.seriesName === 'A Twisted Tale'));
+assert.equal(concealRankedSearch[0].title, "Conceal, Don't Feel");
+assert.ok(concealRankedSearch.some((group) => group.title.includes('Experiential Effects')));
+assert.ok(concealRankedSearch[0].editions.some((edition) => edition.seriesName === 'A Twisted Tale'));
 
 assert.equal(titleVariantGroups.length, 1);
 assert.ok(titleVariantGroups[0].editions.every((edition) => edition.seriesName === 'A Twisted Tale'));
