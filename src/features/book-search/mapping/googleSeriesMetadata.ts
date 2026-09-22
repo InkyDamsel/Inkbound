@@ -14,6 +14,11 @@ export interface ResolvedGoogleSeriesMetadata {
   order?: number;
 }
 
+export interface GoogleBibliographicSeriesInfo {
+  name?: string;
+  position?: number;
+}
+
 const parseDisplayOrder = (value?: string): number | undefined => {
   const parsed = Number(value?.match(/\d+(?:\.\d+)?/)?.[0]);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
@@ -30,6 +35,7 @@ const parseDisplayOrder = (value?: string): number | undefined => {
 export function resolveGoogleSeriesMetadata(
   seriesInfo: GoogleVolumeSeriesInfo | undefined,
   seriesTitlesById: Record<string, string> = {},
+  bibliographicSeries?: GoogleBibliographicSeriesInfo,
 ): ResolvedGoogleSeriesMetadata {
   const memberships = seriesInfo?.volumeSeries ?? [];
 
@@ -46,6 +52,17 @@ export function resolveGoogleSeriesMetadata(
   const order = typeof orderCandidate === 'number' && Number.isFinite(orderCandidate)
     ? orderCandidate
     : parseDisplayOrder(seriesInfo?.bookDisplayNumber);
+
+  if (name) return { name, order };
+
+  const bibliographicName = bibliographicSeries?.name?.trim();
+  if (bibliographicName) {
+    const bibliographicOrder = typeof bibliographicSeries?.position === 'number'
+      && Number.isFinite(bibliographicSeries.position)
+      ? bibliographicSeries.position
+      : order;
+    return { name: bibliographicName, order: bibliographicOrder };
+  }
 
   return { name, order };
 }
