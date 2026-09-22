@@ -134,11 +134,11 @@ if (!googleBooksSource.includes('inFlightGoogleRequests')) {
 if (googleBooksSource.includes('enrichThinCatalogGroupsWithGoogle')) {
   violations.push('googleBooksApi.ts: catalog search must not fan out into per-result Google searches');
 }
-if (!googleBooksSource.includes('requireReleaseParityGoogleInDev')) {
-  violations.push('googleBooksApi.ts: release-parity DEV must fail loudly instead of silently substituting another catalog');
+if (!googleBooksSource.includes("searchSupplementalCatalogs")) {
+  violations.push('googleBooksApi.ts: canonical catalog search must retain bounded supplemental provider fallback');
 }
-if (googleBooksSource.includes("Release-parity Google Books backend is cooling down")) {
-  violations.push('googleBooksApi.ts: DEV must not cache transient Google failures into a cooldown state');
+if (googleBooksSource.includes('requireReleaseParityGoogleInDev')) {
+  violations.push('googleBooksApi.ts: DEV must exercise the same resilient provider chain as production');
 }
 if (googleBooksSource.includes("searchGoogleBaseline(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 }))")) {
   violations.push('googleBooksApi.ts: DEV must not swallow the canonical Google catalog failure inside the combined search');
@@ -704,7 +704,25 @@ for (const required of [
 if (seriesDetective.includes('searchGoogleBooksPage') || seriesDetective.includes('searchGoogleBooksAuthorPage')) {
   violations.push('seriesDetective.ts: Series Detective must not fan out across multiple paged Google catalog searches');
 }
+const supplementalCatalogSource = read('src/features/book-search/data/supplementalCatalogApi.ts');
+for (const required of [
+  'searchCrossrefSupplement',
+  'searchLibraryOfCongressSupplement',
+  'searchInternetArchiveSupplement',
+  'searchSupplementalCatalogs',
+  'CACHE_TTL_MS',
+  'inFlight',
+]) {
+  if (!supplementalCatalogSource.includes(required)) {
+    violations.push(`supplementalCatalogApi.ts: missing bounded supplemental catalog contract ${required}`);
+  }
+}
 const searchModel = read('src/features/book-search/model/bookSearch.ts');
+for (const source of ["'crossref'", "'library-of-congress'", "'internet-archive'"]) {
+  if (!searchModel.includes(source)) {
+    violations.push(`bookSearch.ts: canonical catalog source union is missing ${source}`);
+  }
+}
 for (const required of ['seriesName?: string', 'seriesOrder?: number']) {
   if (!searchModel.includes(required)) violations.push(`bookSearch.ts: missing canonical series metadata field ${required}`);
 }
