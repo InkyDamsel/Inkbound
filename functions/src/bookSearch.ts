@@ -329,7 +329,11 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
   const cached = readGoogleBooksCache(query, startIndex, maxResults);
   if (cached) return cached;
 
-  const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
+  const configuredApiKey = GOOGLE_BOOKS_API_KEY.value().trim();
+  // The catalog endpoint is public. Local emulator requests deliberately avoid
+  // a referrer-restricted production key; production may use the key and still
+  // falls back to the public request if Google rejects it for that runtime.
+  const apiKey = process.env.FUNCTIONS_EMULATOR === 'true' ? '' : configuredApiKey;
   let effectiveApiKey = apiKey;
   const baseParams = new URLSearchParams({
     q: query,
