@@ -91,9 +91,9 @@ export interface SeriesDetectiveResult {
 }
 
 export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name: string; position: number | null } | null> {
-  const existing = resolveEffectiveSeriesMetadata(book);
-  if (existing) return { name: existing.name, position: existing.position };
-
+  // Series Detective is an explicit verification/repair action. Never trust an
+  // already-saved series value here: older builds may have persisted incorrect
+  // inferred metadata. Re-evaluate the book against current catalog evidence.
   const wantedTitle = normalize(book.work.title);
   const wantedAuthor = normalize(book.work.author);
   const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
