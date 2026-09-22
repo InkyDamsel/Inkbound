@@ -239,16 +239,67 @@ const parseGoogleBooksBibliographicSeries = (
   const removeAuthorSuffix = (value: string): string => {
     let cleaned = value.trim();
     for (const author of authors) {
-      const escaped = author.replace(/[.*+?^$(){}|[\]\\]/g, '\\const googleVolumeNeedsDetail = (value: unknown): boolean => {
-');
-      cleaned = cleaned.replace(new RegExp('\\s*,\\s*' + escaped + '\\s*  const info = googleVolumeInfo(value);
+      const escaped = author.replace(/[.*+?^$(){}|[\]\\]/g, '\\$&');
+      cleaned = cleaned.replace(new RegExp('\\s*,\\s*' + escaped + '\\s*$', 'i'), '').trim();
+    }
+    return cleaned;
+  };
+
+  for (const rawLine of lines.slice(1)) {
+    const line = removeAuthorSuffix(rawLine);
+    const numbered = line.match(/^Book\s+(\d+(?:\.\d+)?)\s+of\s+(.+)$/i);
+    if (numbered) {
+      const position = Number(numbered[1]);
+      const name = numbered[2].trim();
+      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
+    }
+
+    if (
+      line.length >= 3
+      && line.length <= 100
+      && !/^edition\b/i.test(line)
+      && !/^volume\b/i.test(line)
+      && !/^part\b/i.test(line)
+    ) {
+      return { name: line };
+    }
+  }
+
+  return null;
+};
+
+async function fetchGoogleBooksBibliographicSeries(
+  volumeId: string,
+  authors: string[],
+): Promise<GoogleBibliographicSeriesInfo | null> {
+  const cached = readGoogleBibliographicSeriesCache(volumeId);
+  if (cached !== undefined) return cached;
+
+  try {
+    const response = await fetch('https://books.google.com/books?id=' + encodeURIComponent(volumeId), {
+      headers: { 'User-Agent': 'Inkbound/1.0 book-metadata lookup' },
+    });
+    if (!response.ok) {
+      writeGoogleBibliographicSeriesCache(volumeId, null);
+      return null;
+    }
+    const value = parseGoogleBooksBibliographicSeries(await response.text(), authors);
+    writeGoogleBibliographicSeriesCache(volumeId, value);
+    return value;
+  } catch (error) {
+    console.warn('Google Books bibliographic series lookup unavailable.', error);
+    return null;
+  }
+}
+
+const googleVolumeNeedsDetail = (value: unknown): boolean => {
+  const info = googleVolumeInfo(value);
   if (!info) return true;
   const pageCount = info.pageCount;
   const seriesInfo = asRecord(info.seriesInfo);
   const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
   return !(typeof pageCount === 'number' && Number.isFinite(pageCount) && pageCount > 0) || memberships.length === 0;
 };
-
 async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string): Promise<unknown[]> {
   return Promise.all(items.map(async (item, index) => {
     const id = googleVolumeId(item);
