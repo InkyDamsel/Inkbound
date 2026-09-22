@@ -557,16 +557,13 @@ async function enrichThinCatalogGroupsWithGoogle(
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  if (Date.now() < googleBackoffUntil) {
-    if (requireReleaseParityGoogleInDev()) {
-      throw new Error('Release-parity Google Books backend is cooling down. Dev will not substitute a different catalog.');
-    }
+  if (!requireReleaseParityGoogleInDev() && Date.now() < googleBackoffUntil) {
     return { groups: [], totalItems: 0 };
   }
   try {
     return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
-    if (shouldBackOffCatalog(error)) {
+    if (shouldBackOffCatalog(error) && !requireReleaseParityGoogleInDev()) {
       googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
     }
 
