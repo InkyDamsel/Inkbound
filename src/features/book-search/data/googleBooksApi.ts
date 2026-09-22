@@ -6,6 +6,7 @@ import { searchInkboundTrustedCatalog } from '../../catalog/metadataContribution
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
+import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
 import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
@@ -147,27 +148,8 @@ const mapGoogleVolume = (
     publicationDate: info.publishedDate,
     publicationYear: publicationYear(info.publishedDate),
     language: info.language,
-    seriesName: (() => {
-      // Google documents shortSeriesBookTitle as the short title of this book
-      // within the series, not the series title. Resolve the actual title from
-      // volumeSeries.seriesId via the Books Series endpoint instead.
-      const seriesId = volume.volumeInfo?.seriesInfo?.volumeSeries
-        ?.map((item) => item.seriesId?.trim())
-        .find((value): value is string => Boolean(value));
-      return seriesId ? seriesMetadataById[seriesId]?.trim() || undefined : undefined;
-    })(),
-    seriesOrder: (() => {
-      // Google documents orderNumber as the actual series sequence. The display
-      // number is presentation text and may contain values such as "Book 4".
-      const order = volume.volumeInfo?.seriesInfo?.volumeSeries
-        ?.map((item) => item.orderNumber ?? item.issue?.[0]?.issueOrderNumber)
-        .find((value) => typeof value === 'number' && Number.isFinite(value));
-      if (typeof order === 'number') return order;
-
-      const display = volume.volumeInfo?.seriesInfo?.bookDisplayNumber?.trim() ?? '';
-      const parsedDisplay = Number(display.match(/\d+(?:\.\d+)?/)?.[0]);
-      return Number.isFinite(parsedDisplay) && parsedDisplay >= 0 ? parsedDisplay : undefined;
-    })(),
+    seriesName: resolveGoogleSeriesMetadata(info.seriesInfo, seriesMetadataById).name,
+    seriesOrder: resolveGoogleSeriesMetadata(info.seriesInfo, seriesMetadataById).order,
     format: inferFormat(volume),
     isbn10: getIdentifier(volume, 'ISBN_10'),
     isbn13: getIdentifier(volume, 'ISBN_13'),
