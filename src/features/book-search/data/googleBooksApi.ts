@@ -76,6 +76,9 @@ let hardcoverBackoffUntil = 0;
 const shouldUseProtectedGoogleBooks = (): boolean =>
   Boolean(functions && auth?.currentUser);
 
+const requireReleaseParityGoogleInDev = (): boolean =>
+  import.meta.env.DEV && shouldUseProtectedGoogleBooks();
+
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
@@ -456,6 +459,7 @@ export async function searchGoogleBooksPage(
       hasMore,
     };
   } catch (error) {
+    if (requireReleaseParityGoogleInDev()) throw error;
     if (!isGoogleQuotaError(error)) throw error;
     googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
     console.warn('Google Books quota is exhausted; using paged Open Library results instead.', error);
@@ -501,6 +505,7 @@ export async function searchGoogleBooksAuthorPage(
       hasMore,
     };
   } catch (error) {
+    if (requireReleaseParityGoogleInDev()) throw error;
     if (!isGoogleQuotaError(error)) throw error;
     googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
     console.warn('Google Books quota is exhausted for author lookup; using paged Open Library results instead.', error);
@@ -542,6 +547,7 @@ async function enrichThinCatalogGroupsWithGoogle(
       );
     } catch (error) {
       if (signal?.aborted) throw error;
+      if (requireReleaseParityGoogleInDev()) throw error;
       console.warn('Targeted Google Books enrichment unavailable.', error);
       return [] as BookSearchWorkGroup[];
     }
@@ -551,12 +557,25 @@ async function enrichThinCatalogGroupsWithGoogle(
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
+  if (Date.now() < googleBackoffUntil) {
+    if (requireReleaseParityGoogleInDev()) {
+      throw new Error('Release-parity Google Books backend is cooling down. Dev will not substitute a different catalog.');
+    }
+    return { groups: [], totalItems: 0 };
+  }
   try {
     return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
     if (shouldBackOffCatalog(error)) {
       googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+    }
+
+    if (requireReleaseParityGoogleInDev()) {
+      const detail = error instanceof Error ? error.message : String(error ?? '');
+      throw new Error(`Release-parity Google Books backend failed in dev${detail ? `: ${detail}` : '.'}`);
+    }
+
+    if (shouldBackOffCatalog(error)) {
       console.warn('Google Books is cooling down after a provider rate limit/outage; alternate catalogs remain available.', error);
     } else {
       console.warn('Google Books search unavailable; using alternate catalogs.', error);
@@ -636,7 +655,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   }
 
   const [google, openLibrary, trusted, hardcover] = await Promise.all([
-    searchGoogleBaseline(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+    searchGoogleBaseline(trimmed, signal),
     searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
     searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
     searchHardcoverWithBackoff(trimmed),
