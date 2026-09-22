@@ -55,12 +55,21 @@ if (packageJson.scripts?.['dev:emulator'] !== 'node scripts/start-dev.mjs --emul
 }
 for (const required of [
   "const requestedMode = process.argv.includes('--emulator') ? 'emulator' : 'production'",
+  "VITE_RUNTIME_TARGET: 'web'",
   "VITE_FIREBASE_MODE: requestedMode",
   "VITE_PREMIUM_SUBSCRIPTIONS_OPEN: 'false'",
 ]) {
   if (!startDev.includes(required)) {
     violations.push(`start-dev.mjs: DEV parity/safety contract is missing (${required})`);
   }
+}
+
+const runtimePlatformSource = read('src/platform/runtimePlatform.ts');
+if (!runtimePlatformSource.includes("if (import.meta.env.DEV) return false;")) {
+  violations.push('runtimePlatform.ts: Vite DEV must always resolve as a web runtime');
+}
+if (!runtimePlatformSource.includes("if (import.meta.env.DEV) return 'web';")) {
+  violations.push('runtimePlatform.ts: getRuntimePlatform must keep Vite DEV on web');
 }
 
 const helpContent = read('src/content/helpContent.ts');
