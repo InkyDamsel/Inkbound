@@ -34,6 +34,9 @@ const providerLabel = (source: BookSearchEdition['source']): string => {
   if (source === 'inkbound-catalog') return 'Inkbound Trusted Catalog';
   if (source === 'open-library') return 'Open Library';
   if (source === 'hardcover') return 'Hardcover';
+  if (source === 'crossref') return 'Crossref';
+  if (source === 'library-of-congress') return 'Library of Congress';
+  if (source === 'internet-archive') return 'Internet Archive';
   return 'Google Books';
 };
 
