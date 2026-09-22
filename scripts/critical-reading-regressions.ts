@@ -5,6 +5,7 @@ import {
   getActiveEdition,
   getAverageBookProgress,
   getBookReadingState,
+  getRemainingReadingUnits,
   reconcileFinishedBookProgress,
   withReadingStatus,
 } from '../src/features/reading/bookReadingState';
@@ -326,6 +327,21 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.doesNotMatch(cloudRefreshBoundarySource, /recoverIncompleteLatestImport/);
   assert.match(enrichmentSource, /function needsPageCount\(/);
   assert.match(enrichmentSource, /!needsPageCount\(book\)/);
+}
+
+
+{
+  const finishedLoan = baseBook();
+  finishedLoan.status = 'finished';
+  finishedLoan.progressPercentage = 100;
+  finishedLoan.progressPages = 337;
+  finishedLoan.ownership = 'borrowed-library';
+  finishedLoan.libraryLoan = { dueDate: '2026-09-26' };
+
+  const remaining = getRemainingReadingUnits(finishedLoan);
+  assert.equal(remaining.totalUnits, 500);
+  assert.equal(remaining.completedUnits, 337);
+  assert.equal(remaining.remainingUnits, 0);
 }
 
 console.log('Inkbound critical reading regressions passed.');
