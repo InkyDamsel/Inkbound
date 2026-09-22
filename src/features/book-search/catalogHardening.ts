@@ -187,12 +187,13 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
   const isbn13 = isValidCatalogIsbn13(edition.isbn13) ? compactIsbn(edition.isbn13) : undefined;
   const binding = compact(edition.binding) || undefined;
   const bindingFormat = formatFromBinding(binding);
+  const format = bindingFormat ?? edition.format;
   return {
     ...edition,
     // Binding is edition-level evidence and outranks provider work-level format
     // guesses. This prevents exact paperback/hardcover ISBNs from being saved as
     // ebooks when a catalog provider labels the work generically.
-    format: bindingFormat ?? edition.format,
+    format,
     externalEditionId: compact(edition.externalEditionId),
     title: titleCaseIfShouting(edition.title),
     subtitle: compact(edition.subtitle) || undefined,
@@ -208,7 +209,7 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
     isbn10,
     isbn13,
     asin: compact(edition.asin)?.toUpperCase() || undefined,
-    pageCount: cleanPageCount(edition.pageCount),
+    pageCount: format === 'audiobook' ? undefined : cleanPageCount(edition.pageCount),
     coverUrl: cleanUrl(edition.coverUrl),
     editionName: compact(edition.editionName) || undefined,
     binding,
@@ -598,9 +599,28 @@ export const hardenCatalogGroups = (
   const preferredAuthor = normalizeKey(preferredAuthorValue);
   const shouldApplyTitleRelevance = Boolean(options.searchQuery && !preferredAuthor);
 
-  const relevantGroups = shouldApplyTitleRelevance
+  let relevantGroups = shouldApplyTitleRelevance
     ? hardenedGroups.filter((group) => catalogSearchResultIsRelevant(group, options.searchQuery))
     : hardenedGroups;
+
+  // When a specific multi-word query already has an exact-title hit, stop
+  // flooding Add Reading Material with loose partial matches. Keep all exact
+  // same-title works (different authors are still legitimate) plus compatible
+  // subtitle/edition variants by the same author. Broad searches such as
+  // "Harry Potter" or one/two-keyword discovery remain unaffected.
+  const exactQuery = normalizeKey(options.searchQuery);
+  const exactQueryWords = meaningfulSearchWords(options.searchQuery);
+  if (shouldApplyTitleRelevance && exactQueryWords.length >= 3 && exactQuery) {
+    const exactTitleGroups = relevantGroups.filter((group) => normalizeKey(group.title) === exactQuery);
+    if (exactTitleGroups.length > 0) {
+      const exactAuthors = new Set(exactTitleGroups.map((group) => normalizeKey(group.authors[0])).filter(Boolean));
+      relevantGroups = relevantGroups.filter((group) => {
+        if (normalizeKey(group.title) === exactQuery) return true;
+        const primaryAuthor = normalizeKey(group.authors[0]);
+        return exactAuthors.has(primaryAuthor) && catalogTitlesAreCompatible(options.searchQuery, group.title);
+      });
+    }
+  }
 
   return relevantGroups.sort((left, right) => {
     const authorScore = (group: BookSearchWorkGroup) => {
