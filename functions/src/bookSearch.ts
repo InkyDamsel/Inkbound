@@ -350,9 +350,16 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
   if (!response.ok && apiKey) {
     const body = await response.text();
     const detail = googleBooksErrorDetail(body);
-    const invalidKey = response.status === 400 && /api key.*not valid|valid api key/i.test(detail);
-    if (invalidKey) {
-      console.warn('Configured Google Books API key was rejected; retrying public catalog request without a key.');
+    const keyRestricted = (
+      response.status === 400
+      || response.status === 401
+      || response.status === 403
+    ) && /api key|credential|referer|referrer|permission|forbidden|not authorized|not valid/i.test(detail);
+
+    if (keyRestricted) {
+      console.warn(
+        `Configured Google Books API key was rejected for this runtime (${response.status}); retrying the public catalog request without a key.`,
+      );
       effectiveApiKey = '';
       response = await runRequest();
     } else {
