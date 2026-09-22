@@ -193,6 +193,7 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
   if (cached) return cached;
 
   const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
+  let effectiveApiKey = apiKey;
   const baseParams = new URLSearchParams({
     q: query,
     printType: 'books',
@@ -215,6 +216,7 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
     const invalidKey = response.status === 400 && /api key.*not valid|valid api key/i.test(detail);
     if (invalidKey) {
       console.warn('Configured Google Books API key was rejected; retrying public catalog request without a key.');
+      effectiveApiKey = '';
       response = await runRequest();
     } else {
       throw new Error(`Google Books returned ${response.status}${detail ? `: ${detail}` : '.'}`);
@@ -231,7 +233,7 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
     items,
-    seriesMetadataById: await googleSeriesMetadata(items, apiKey),
+    seriesMetadataById: await googleSeriesMetadata(items, effectiveApiKey),
   };
   writeGoogleBooksCache(query, startIndex, maxResults, payload);
   return payload;
