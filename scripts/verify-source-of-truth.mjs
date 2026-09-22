@@ -178,6 +178,12 @@ if (!googleBooksSource.includes('hydrateGoogleVolumeDetails')) {
 if (!googleBooksSource.includes('refineExactTitleWithAuthor')) {
   violations.push('googleBooksApi.ts: thin exact-title matches must receive one bounded author-qualified Google repair pass');
 }
+if (!googleBooksSource.includes('requestCanonicalGoogleBooksPayload')) {
+  violations.push('googleBooksApi.ts: protected and direct Google Books searches must share one canonical hydrated payload path');
+}
+if ((googleBooksSource.match(/requestCanonicalGoogleBooksPayload\(/g) ?? []).length < 4) {
+  violations.push('googleBooksApi.ts: standard, paged, and author Google searches must all use canonical hydrated payloads');
+}
 if (!googleBooksSource.includes('intitle:"') || !googleBooksSource.includes('inauthor:"')) {
   violations.push('googleBooksApi.ts: exact-title repair must constrain both title and author');
 }
