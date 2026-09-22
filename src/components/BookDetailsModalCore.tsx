@@ -4,7 +4,7 @@ import { FORMAT_OPTIONS, OWNERSHIP_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPT
 import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
-import { isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../features/book-search/catalogHardening';
+import { catalogEditionQualityScore, isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../features/book-search/catalogHardening';
 import { getActiveEdition, withReadingStatus } from '../features/reading/bookReadingState';
 import {
   getSessionDurationMinutes,
@@ -288,14 +288,16 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
           .filter((work) => candidateMatchesBookIdentity(book, work))
           .flatMap((work) => work.editions.map((edition) => ({ work, edition })));
       }
-      const candidateHasSummary = ({ work, edition }: { work: BookSearchWorkGroup; edition: BookSearchEdition }) => Boolean((edition.publisherSummary ?? work.publisherSummary)?.trim());
-      const match = (!book.work.publisherSummary
-        ? candidates.find((candidate) => candidate.edition.format === activeEdition.format && candidateHasSummary(candidate))
-          ?? candidates.find(candidateHasSummary)
-        : undefined)
-        ?? candidates.find(({ edition }) => edition.format === activeEdition.format && Boolean(edition.coverUrl))
-        ?? candidates.find(({ edition }) => Boolean(edition.coverUrl))
-        ?? candidates[0];
+      const candidateScore = ({ work, edition }: { work: BookSearchWorkGroup; edition: BookSearchEdition }) => {
+        let score = catalogEditionQualityScore(edition);
+        if (edition.format === activeEdition.format) score += 30;
+        if (edition.pageCount) score += 20;
+        if (edition.seriesName) score += 25;
+        if (typeof edition.seriesOrder === 'number') score += 10;
+        if ((edition.publisherSummary ?? work.publisherSummary)?.trim()) score += 4;
+        return score;
+      };
+      const match = [...candidates].sort((left, right) => candidateScore(right) - candidateScore(left))[0];
       if (!match) return setSyncMessage('No safe title-and-author match was found. Inkbound left this book unchanged.');
       const { work: matchedWork, edition: matchedEdition } = match;
       let matchedPublisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
