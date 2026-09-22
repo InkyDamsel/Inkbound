@@ -66,7 +66,6 @@ const isCustomOwnershipSelection = (selection: OwnershipSelection): selection is
 const ownershipStatus = (selection: OwnershipSelection): OwnershipStatus => isCustomOwnershipSelection(selection) ? 'custom' : selection;
 const ownershipCategoryId = (selection: OwnershipSelection): string | undefined => isCustomOwnershipSelection(selection) ? selection.slice('custom:'.length) : undefined;
 const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
-const editionIsbnValues = (edition: BookSearchEdition) => [edition.isbn13, edition.isbn10].map((value) => normalizeIsbn(value ?? '')).filter(Boolean);
 const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) => `${work.key}:${edition.source}:${edition.externalEditionId}`;
 const statusLabel = (status: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
 const normalizeAuthorName = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
