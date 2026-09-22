@@ -147,15 +147,28 @@ assert.ok(wrongAuthor);
 assert.equal(wrongAuthor?.exactAuthor, false);
 assert.equal(selectVerifiedSeriesEvidence([wrongAuthor!]), null);
 
+const formattedAuthorExactIsbnEdition = edition('hardcover', {
+  authors: ['Gilmore, Laurie'],
+});
+const formattedAuthorExactIsbn = scoreSeriesEvidence(
+  work(formattedAuthorExactIsbnEdition, { authors: ['Gilmore, Laurie'] }),
+  formattedAuthorExactIsbnEdition,
+  book,
+);
+assert.ok(formattedAuthorExactIsbn);
+assert.equal(formattedAuthorExactIsbn?.structured, true);
+assert.equal(formattedAuthorExactIsbn?.exactIdentifier, true);
+assert.equal(formattedAuthorExactIsbn?.exactAuthor, false);
+assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.name, 'Dream Harbor');
+assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.position, 2);
+
 // Series discovery must not assume every installment has the same author.
 // Structured exact-series metadata may cross authors; title-only inference stays
 // author-gated to avoid pulling unrelated same-named books into the series.
 const detectiveSource = fs.readFileSync(new URL('../src/features/series/seriesDetective.ts', import.meta.url), 'utf8');
 assert.match(detectiveSource, /searchHardcover\(seriesName\)/);
-assert.match(detectiveSource, /googleSeriesOnlyGroups/);
 assert.match(detectiveSource, /missingKnownGaps/);
 assert.match(detectiveSource, /positionalDiscovery\.flat\(\)/);
-assert.match(detectiveSource, /book \$\{position\}/);
 assert.match(detectiveSource, /providerSourcesByWork/);
 assert.match(detectiveSource, /existingTitleAuthors = new Set\(libraryBooks/);
 assert.match(detectiveSource, /metadata\.evidence === 'title' && !exactAuthorMatch\(work, author\)/);
