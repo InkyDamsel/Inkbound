@@ -55,6 +55,9 @@ function startVite() {
     cwd: process.cwd(),
     env: {
       ...process.env,
+      // Browser development must never inherit an Android/iOS build stamp from
+      // a shell or env file. Native runtime gates have no services to await in Vite.
+      VITE_RUNTIME_TARGET: 'web',
       VITE_FIREBASE_MODE: requestedMode,
       // DEV should match production data/functions, but never open real
       // subscription checkout just because the production release switch is on.
