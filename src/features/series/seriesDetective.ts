@@ -2,7 +2,7 @@ import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
-import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata } from './seriesLibrary';
+import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
 import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -14,7 +14,7 @@ const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
 };
 
 const sameSeries = (edition: BookSearchEdition, seriesName: string) =>
-  Boolean(edition.seriesName && normalize(edition.seriesName) === normalize(seriesName));
+  Boolean(edition.seriesName && seriesNamesAreCompatible(edition.seriesName, seriesName));
 
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
@@ -38,7 +38,7 @@ const candidateSeriesMetadata = (
 
   for (const title of [edition.title, work.title]) {
     const inferred = inferSeriesHintFromTitle(title);
-    if (inferred && normalize(inferred.name) === normalize(wantedSeriesName)) {
+    if (inferred && seriesNamesAreCompatible(inferred.name, wantedSeriesName)) {
       return { name: inferred.name, position: inferred.position, evidence: 'title' };
     }
   }
@@ -130,7 +130,7 @@ export async function findMissingSeriesBooks(
 ): Promise<SeriesDetectiveResult> {
   const seriesBooks = libraryBooks.filter((book) => {
     const metadata = resolveEffectiveSeriesMetadata(book);
-    return metadata && normalize(metadata.name) === normalize(seriesName);
+    return metadata && seriesNamesAreCompatible(metadata.name, seriesName);
   });
   const knownWholePositions = seriesBooks
     .map((book) => resolveEffectiveSeriesMetadata(book)?.position)
