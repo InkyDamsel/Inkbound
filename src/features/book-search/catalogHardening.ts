@@ -29,18 +29,6 @@ const titlesAreCompatibleWorkVariants = (left?: string, right?: string): boolean
     && longerWords.length - shorterWords.length <= 6;
 };
 
-const groupsShareEditionIsbn = (left: BookSearchWorkGroup, right: BookSearchWorkGroup): boolean => {
-  const left13 = new Set(left.editions.map((edition) => compactIsbn(edition.isbn13)).filter(Boolean));
-  const right13 = new Set(right.editions.map((edition) => compactIsbn(edition.isbn13)).filter(Boolean));
-  if ([...left13].some((isbn) => right13.has(isbn))) return true;
-
-  // ISBN-10 is a fallback only when neither side gives us a comparable ISBN-13.
-  if (left13.size > 0 && right13.size > 0) return false;
-  const left10 = new Set(left.editions.map((edition) => compactIsbn(edition.isbn10)).filter(Boolean));
-  const right10 = new Set(right.editions.map((edition) => compactIsbn(edition.isbn10)).filter(Boolean));
-  return [...left10].some((isbn) => right10.has(isbn));
-};
-
 export const isValidCatalogIsbn10 = (value?: string): boolean => {
   const isbn = compactIsbn(value);
   if (!/^\d{9}[\dX]$/.test(isbn)) return false;
