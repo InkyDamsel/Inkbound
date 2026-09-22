@@ -110,6 +110,12 @@ if (!googleBooksSource.includes('hydrateGoogleVolumeDetails')) {
 if (!googleBooksSource.includes("'searchGoogleBooksCatalog'")) {
   violations.push('googleBooksApi.ts: signed-in runtimes must use the shared Google Books catalog callable');
 }
+if (!googleBooksSource.includes('inFlightGoogleRequests')) {
+  violations.push('googleBooksApi.ts: concurrent identical Google catalog requests must be deduplicated');
+}
+if (googleBooksSource.includes('enrichThinCatalogGroupsWithGoogle')) {
+  violations.push('googleBooksApi.ts: catalog search must not fan out into per-result Google searches');
+}
 if (!googleBooksSource.includes('requireReleaseParityGoogleInDev')) {
   violations.push('googleBooksApi.ts: release-parity DEV must fail loudly instead of silently substituting another catalog');
 }
@@ -144,6 +150,12 @@ if (!bookSearchFunctionSource.includes('enforceAppCheck: false')) {
 if (!bookSearchFunctionSource.includes('parseGoogleBooksBibliographicSeries')) {
   violations.push('functions/src/bookSearch.ts: Google Books must enrich missing structured series from its bibliographic Title field');
 }
+if (!bookSearchFunctionSource.includes('GOOGLE_DETAIL_HYDRATION_LIMIT = 3')) {
+  violations.push('functions/src/bookSearch.ts: Google detail hydration must remain tightly bounded');
+}
+if (!bookSearchFunctionSource.includes('googleBooksInFlight')) {
+  violations.push('functions/src/bookSearch.ts: concurrent identical Google function requests must be deduplicated');
+}
 if (!googleSeriesResolverSource.includes('bibliographicSeries')) {
   violations.push('googleSeriesMetadata.ts: canonical Google series resolver must own bibliographic fallback precedence');
 }
@@ -161,6 +173,9 @@ if (!addBookModalSource.includes("hardenCatalogGroups(")) {
 }
 if (addBookModalSource.includes('const sameCatalogEdition =')) {
   violations.push('AddBookModal.tsx: must not own a duplicate catalog-edition merge algorithm');
+}
+if ((addBookModalSource.match(/searchGoogleBooksPage\(trimmedQuery, 0\)/g) ?? []).length > 0) {
+  violations.push('AddBookModal.tsx: initial Add Book search must not duplicate the canonical Google request with a paged request');
 }
 if (!googleBooksSource.includes("Boolean(functions && auth?.currentUser)")) {
   violations.push('googleBooksApi.ts: signed-in DEV and native runtimes must share the canonical Google Books callable');
@@ -657,8 +672,7 @@ if (/ownership\s*:\s*['"]none['"]/.test(seriesLibrary)) {
 const seriesDetective = read('src/features/series/seriesDetective.ts');
 for (const required of [
   'resolveEffectiveSeriesMetadata',
-  'searchGoogleBooksPage',
-  'searchGoogleBooksAuthorPage',
+  'searchGoogleBooks',
   'searchOpenLibraryPage',
   'searchHardcover',
   'searchInkboundTrustedCatalog',
@@ -668,6 +682,9 @@ for (const required of [
   if (!seriesDetective.includes(required)) {
     violations.push(`seriesDetective.ts: Series Detective must consume canonical ${required}`);
   }
+}
+if (seriesDetective.includes('searchGoogleBooksPage') || seriesDetective.includes('searchGoogleBooksAuthorPage')) {
+  violations.push('seriesDetective.ts: Series Detective must not fan out across multiple paged Google catalog searches');
 }
 const searchModel = read('src/features/book-search/model/bookSearch.ts');
 for (const required of ['seriesName?: string', 'seriesOrder?: number']) {
