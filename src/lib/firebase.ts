@@ -53,8 +53,10 @@ export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length =
 
 const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
 const effectiveFirebaseMode = requestedFirebaseMode || 'local';
+const requestedFunctionsMode = readEnv(import.meta.env.VITE_FIREBASE_FUNCTIONS_MODE).toLowerCase();
 
 export const useFirebaseEmulators = import.meta.env.DEV && effectiveFirebaseMode === 'emulator';
+export const useFunctionsEmulator = import.meta.env.DEV && (useFirebaseEmulators || requestedFunctionsMode === 'emulator');
 export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
 
 const explicitProductionMode = import.meta.env.DEV && requestedFirebaseMode === 'production';
@@ -151,15 +153,19 @@ if (isFirebaseConfigured) {
     } : {}),
   });
 
-  functions = allowProductionFirebaseFunctions ? getFunctions(app) : null;
+  functions = (allowProductionFirebaseFunctions || useFunctionsEmulator) ? getFunctions(app) : null;
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
+
+  if (useFunctionsEmulator && functions) {
+    const emulatorHost = window.location.hostname || 'localhost';
+    connectFunctionsEmulator(functions, emulatorHost, 5001);
+  }
 
   if (useFirebaseEmulators) {
     const emulatorHost = window.location.hostname || '127.0.0.1';
 
     connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
     connectFirestoreEmulator(readDb, emulatorHost, 8080);
-    if (functions) connectFunctionsEmulator(functions, emulatorHost, 5001);
     if (storage) connectStorageEmulator(storage, emulatorHost, 9199);
 
     db = readDb;
@@ -184,6 +190,12 @@ if (isFirebaseConfigured) {
     if (import.meta.env.DEV && explicitProductionMode) {
       console.info(
         'Inkbound live-cloud beta test mode: production reads, functions, and Firestore writes are enabled by explicit VITE_FIREBASE_MODE=production.',
+      );
+    }
+
+    if (import.meta.env.DEV && useFunctionsEmulator && !useFirebaseEmulators) {
+      console.info(
+        'Inkbound hybrid DEV mode: production Auth/Firestore/Storage with local Cloud Functions emulator.',
       );
     }
   }
