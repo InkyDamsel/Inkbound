@@ -3,7 +3,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Loader2, Lock, Pencil, Plus, Searc
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
-import { consumeLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
+import { consumeLibrarySeriesFocusTarget, type LibrarySeriesFocusTarget } from '../../features/library/libraryNavigation';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import {
   buildSeriesLibrary,
@@ -54,6 +54,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
   const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>('inkbound_series_sort', 'az');
+  const [pendingFocusTarget, setPendingFocusTarget] = useState<LibrarySeriesFocusTarget | null>(() => consumeLibrarySeriesFocusTarget());
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -111,20 +112,38 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   }, [sortMode]);
 
   useEffect(() => {
-    const targetBookId = consumeLibrarySeriesFocusBookId();
-    if (!targetBookId) return;
-    const targetIndex = series.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
+    if (!pendingFocusTarget) return;
+    if (search) {
+      setSearch('');
+      return;
+    }
+
+    const normalizedTargetName = pendingFocusTarget.seriesName?.trim().toLowerCase();
+    const normalizedTargetAuthor = pendingFocusTarget.author?.trim().toLowerCase();
+    const targetIndex = filtered.findIndex((item) => {
+      if (normalizedTargetName) {
+        const sameName = item.name.trim().toLowerCase() === normalizedTargetName;
+        const sameAuthor = !normalizedTargetAuthor || item.author.trim().toLowerCase() === normalizedTargetAuthor;
+        if (sameName && sameAuthor) return true;
+      }
+      return item.books.some(({ book }) => book.id === pendingFocusTarget.bookId);
+    });
     if (targetIndex < 0) return;
 
-    const targetSeries = series[targetIndex];
-    setSearch('');
+    const targetSeries = filtered[targetIndex];
     setCurrentPage(Math.floor(targetIndex / SERIES_PER_PAGE) + 1);
     setExpandedSeriesId(targetSeries.id);
+  }, [filtered, pendingFocusTarget, search]);
 
-    window.setTimeout(() => {
-      document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
-  }, [series]);
+  useEffect(() => {
+    if (!pendingFocusTarget || !expandedSeriesId) return;
+    if (!pagedSeries.some((item) => item.id === expandedSeriesId)) return;
+
+    window.requestAnimationFrame(() => {
+      document.querySelector(`[data-series-id="${CSS.escape(expandedSeriesId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setPendingFocusTarget(null);
+    });
+  }, [expandedSeriesId, pagedSeries, pendingFocusTarget]);
 
   const goToPage = (page: number) => {
     const next = Math.max(1, Math.min(page, totalPages));
@@ -296,8 +315,8 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
               <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1); setExpandedSeriesId(null); }} placeholder="Search series or title" className="h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-10 pr-4 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55" />
             </label>
-            <label className="flex items-center gap-2 text-sm text-[var(--ink-muted)]">
-              <span>Sort</span>
+            <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--ink-muted)]">
+              <span className="shrink-0 whitespace-nowrap">Sort</span>
               <select value={sortMode} onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)} className="inkbound-select min-w-[140px]" aria-label="Sort series">
                 {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
