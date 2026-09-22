@@ -66,6 +66,24 @@ for (const required of [
 }
 
 const firebaseSource = read('src/lib/firebase.ts');
+for (const required of [
+  "from 'firebase/analytics'",
+  "measurementId: readEnv(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) || 'G-2LDXP8Z4S0'",
+  "isAnalyticsSupported()",
+  "analytics = getAnalytics(app)",
+  "export { app, appCheck, auth, readDb, db, functions, storage, analytics }",
+]) {
+  if (!firebaseSource.includes(required)) {
+    violations.push(`firebase.ts: shipped web analytics carry-forward is missing ${required}`);
+  }
+}
+const envExampleSource = read('.env.example');
+if (!envExampleSource.includes('VITE_FIREBASE_MEASUREMENT_ID=G-2LDXP8Z4S0')) {
+  violations.push('.env.example: canonical Inkbound GA4 measurement ID must remain documented');
+}
+if (packageJson.scripts?.['firebase:deploy:web'] !== 'npm run verify:web-release && npx firebase-tools deploy --only hosting --project inkbound-app') {
+  violations.push('package.json: web hosting deploy must use the web-only release verifier');
+}
 if (!firebaseSource.includes("requestedFunctionsMode === 'emulator'")) {
   violations.push('firebase.ts: hybrid DEV must support a Functions-only emulator');
 }
