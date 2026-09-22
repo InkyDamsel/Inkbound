@@ -367,6 +367,80 @@ export const mergeCatalogEditionData = (left: BookSearchEdition, right: BookSear
 };
 
 
+export const enrichSelectedCatalogEdition = (
+  work: BookSearchWorkGroup,
+  selectedEdition: BookSearchEdition,
+): BookSearchEdition => {
+  const hardenedWork = hardenCatalogGroups([work])[0] ?? work;
+  const selected = hardenCatalogEdition(selectedEdition);
+
+  const exactSelected = hardenedWork.editions.find((edition) =>
+    edition.source === selected.source
+    && edition.externalEditionId === selected.externalEditionId,
+  ) ?? selected;
+
+  const selectedIsbns = new Set(
+    [exactSelected.isbn13, exactSelected.isbn10]
+      .map(compactIsbn)
+      .filter(Boolean),
+  );
+
+  const exactIdentityMatches = hardenedWork.editions.filter((candidate) =>
+    candidate !== exactSelected
+    && [candidate.isbn13, candidate.isbn10]
+      .map(compactIsbn)
+      .filter(Boolean)
+      .some((isbn) => selectedIsbns.has(isbn)),
+  );
+
+  let enriched = exactIdentityMatches.reduce(
+    (current, candidate) => supplementExactIsbnEdition(current, candidate),
+    exactSelected,
+  );
+
+  const compatibleFormatCandidates = hardenedWork.editions.filter((candidate) => {
+    if (candidate === exactSelected) return false;
+    if (candidate.format !== exactSelected.format) return false;
+    const selectedLanguage = cleanLanguage(exactSelected.language);
+    const candidateLanguage = cleanLanguage(candidate.language);
+    if (selectedLanguage && candidateLanguage && selectedLanguage !== candidateLanguage) return false;
+    return true;
+  });
+
+  if (!enriched.pageCount) {
+    const pageCounts = [...new Set(
+      compatibleFormatCandidates
+        .map((candidate) => cleanPageCount(candidate.pageCount))
+        .filter((value): value is number => typeof value === 'number'),
+    )];
+    if (pageCounts.length === 1) enriched = { ...enriched, pageCount: pageCounts[0] };
+  }
+
+  if (!enriched.seriesName) {
+    const named = compatibleFormatCandidates
+      .map((candidate) => candidate.seriesName?.trim())
+      .filter((value): value is string => Boolean(value));
+    const byKey = new Map<string, string>();
+    named.forEach((name) => byKey.set(normalizeKey(name), name));
+    if (byKey.size === 1) {
+      const [seriesKey, seriesName] = [...byKey.entries()][0];
+      const orders = [...new Set(
+        compatibleFormatCandidates
+          .filter((candidate) => normalizeKey(candidate.seriesName) === seriesKey)
+          .map((candidate) => candidate.seriesOrder)
+          .filter((value): value is number => typeof value === 'number' && Number.isFinite(value)),
+      )];
+      enriched = {
+        ...enriched,
+        seriesName,
+        seriesOrder: orders.length === 1 ? orders[0] : enriched.seriesOrder,
+      };
+    }
+  }
+
+  return hardenCatalogEdition(enriched);
+};
+
 export const selectExactIsbnEdition = (
   groups: BookSearchWorkGroup[],
   isbn: string,
