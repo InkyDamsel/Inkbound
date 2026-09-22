@@ -65,6 +65,20 @@ for (const required of [
   }
 }
 
+const runtimeAnalyticsSource = read('src/platform/runtimeAnalytics.ts');
+if (packageJson.dependencies?.['@capacitor-firebase/analytics'] !== '8.3.0') {
+  violations.push('package.json: Capacitor Firebase Analytics 8.3.0 must remain installed for Android analytics');
+}
+for (const required of ['FirebaseAnalytics', 'setCurrentScreen', "name: 'inkbound_app_open'", "platform: 'android'"]) {
+  if (!runtimeAnalyticsSource.includes(required)) {
+    violations.push(`runtimeAnalytics.ts: native analytics bootstrap is missing ${required}`);
+  }
+}
+const applicationEntrySource = read('src/applicationEntry.tsx');
+if (!applicationEntrySource.includes('initializeNativeAnalytics')) {
+  violations.push('applicationEntry.tsx: Android runtime must initialize native Firebase Analytics');
+}
+
 const firebaseSource = read('src/lib/firebase.ts');
 for (const required of [
   "from 'firebase/analytics'",
