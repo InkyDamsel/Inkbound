@@ -65,10 +65,14 @@ for (const required of [
   }
 }
 
+const analyticsConfigSource = read('src/config/analytics.ts');
+if (!analyticsConfigSource.includes("INKBOUND_GA4_MEASUREMENT_ID = 'G-2LDXP8Z4S0'")) {
+  violations.push('analytics.ts: canonical Inkbound GA4 measurement ID must remain G-2LDXP8Z4S0');
+}
 const firebaseSource = read('src/lib/firebase.ts');
 for (const required of [
   "from 'firebase/analytics'",
-  "measurementId: readEnv(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) || 'G-2LDXP8Z4S0'",
+  "measurementId: INKBOUND_GA4_MEASUREMENT_ID",
   "isAnalyticsSupported()",
   "analytics = getAnalytics(app)",
   "export { app, appCheck, auth, readDb, db, functions, storage, analytics }",
@@ -80,6 +84,13 @@ for (const required of [
 const envExampleSource = read('.env.example');
 if (!envExampleSource.includes('VITE_FIREBASE_MEASUREMENT_ID=G-2LDXP8Z4S0')) {
   violations.push('.env.example: canonical Inkbound GA4 measurement ID must remain documented');
+}
+if (firebaseSource.includes('VITE_FIREBASE_MEASUREMENT_ID')) {
+  violations.push('firebase.ts: production GA4 stream must not be overridden by local env drift');
+}
+
+if (!firebaseSource.includes("import { INKBOUND_GA4_MEASUREMENT_ID } from '../config/analytics';")) {
+  violations.push('firebase.ts: must consume the canonical GA4 measurement ID from src/config/analytics.ts');
 }
 if (packageJson.scripts?.['firebase:deploy:web'] !== 'npm run verify:web-release && npx firebase-tools deploy --only hosting --project inkbound-app') {
   violations.push('package.json: web hosting deploy must use the web-only release verifier');
