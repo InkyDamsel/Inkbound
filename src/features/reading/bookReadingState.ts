@@ -71,6 +71,29 @@ export function getCanonicalProgressPercentage(book: UserBookRecord): number {
   return getBookReadingState(book).progressPercentage;
 }
 
+export function getRemainingReadingUnits(book: UserBookRecord): {
+  isAudiobook: boolean;
+  totalUnits?: number;
+  completedUnits: number;
+  remainingUnits?: number;
+} {
+  const state = getBookReadingState(book);
+  const isAudiobook = state.activeEdition?.format === 'audiobook';
+  const remainingUnits = state.totalUnits === undefined
+    ? undefined
+    : state.isFinished
+      ? 0
+      : Math.max(0, state.totalUnits - state.completedUnits);
+
+  return {
+    isAudiobook,
+    totalUnits: state.totalUnits,
+    completedUnits: state.completedUnits,
+    remainingUnits,
+  };
+}
+
+
 /**
  * Canonical aggregate progress for any derived book grouping (collections,
  * series, dashboards, etc.). Keeping the average here prevents feature screens
