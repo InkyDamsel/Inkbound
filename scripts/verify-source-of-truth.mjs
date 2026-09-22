@@ -93,6 +93,17 @@ if (!bookDetailsCoreSource.includes('matchedEdition.pageCount ?? activeEdition.p
   violations.push('BookDetailsModalCore.tsx: exact-ISBN metadata sync must be able to repair stale provider page counts');
 }
 
+const addBookModalSource = read('src/components/AddBookModal.tsx');
+if (!addBookModalSource.includes("hardenCatalogGroups(")) {
+  violations.push('AddBookModal.tsx: search result merging must use canonical catalog hardening');
+}
+if (addBookModalSource.includes('const sameCatalogEdition =')) {
+  violations.push('AddBookModal.tsx: must not own a duplicate catalog-edition merge algorithm');
+}
+if (!googleBooksSource.includes("!import.meta.env.DEV && Boolean(functions && auth?.currentUser)")) {
+  violations.push('googleBooksApi.ts: Vite DEV must use direct Google Books instead of protected callable fallback');
+}
+
 const helpContent = read('src/content/helpContent.ts');
 const navbarSource = read('src/components/Navbar.tsx');
 for (const required of [
