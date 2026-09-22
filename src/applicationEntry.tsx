@@ -32,6 +32,7 @@ import {
   prepareLargeBrowserStorageForStartup,
 } from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
+import { initializeNativeAnalytics } from './platform/runtimeAnalytics.ts';
 import {
   getNativeRuntimeError,
   isNativeRuntimeReady,
@@ -229,7 +230,11 @@ export async function mountApplication(rootElement: HTMLElement) {
   }
 
   if (isAndroidRuntime()) {
-    void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
+    void initializeAndroidRuntime()
+      .then(() => initializeNativeAnalytics().catch((error) => {
+        console.warn('Inkbound Android analytics could not initialize.', error);
+      }))
+      .catch(markNativeRuntimeFailed);
   }
 
   createRoot(rootElement).render(
