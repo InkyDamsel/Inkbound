@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { AlertTriangle, CalendarClock, Clock3, Library, TimerReset } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
+import { getRemainingReadingUnits } from '../../features/reading/bookReadingState';
 import { BookCover } from '../BookCover';
 
 interface LoansLibraryPanelProps {
@@ -35,12 +36,9 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
       const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
       const dueDate = localDateAtNoon(book.libraryLoan?.dueDate);
       const rawDays = dueDate ? Math.round((dueDate.getTime() - todayAtNoon().getTime()) / DAY_MS) : null;
-      const isAudiobook = edition?.format === 'audiobook';
-      const totalUnits = isAudiobook ? edition?.audiobookDurationMins : edition?.pageCount;
-      const completedUnits = isAudiobook ? book.progressMinutes : book.progressPages;
-      const remainingUnits = typeof totalUnits === 'number' && totalUnits > 0
-        ? Math.max(0, totalUnits - Math.max(0, completedUnits))
-        : null;
+      const readingUnits = getRemainingReadingUnits(book);
+      const isAudiobook = readingUnits.isAudiobook;
+      const remainingUnits = readingUnits.remainingUnits ?? null;
       const daysForPace = rawDays !== null && rawDays >= 0 ? Math.max(1, rawDays) : 0;
       const unitsPerDay = remainingUnits !== null && daysForPace > 0 && book.status !== 'finished'
         ? Math.ceil(remainingUnits / daysForPace)
