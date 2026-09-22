@@ -9,7 +9,7 @@ const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const GOOGLE_BOOKS_CACHE_TTL_MS = 5 * 60 * 1000;
 const GOOGLE_BOOKS_CACHE_MAX = 500;
 
-type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[]; seriesMetadataById?: Record<string, string> };
+type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[] };
 const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBooksCatalogPayload }>();
 
 interface SearchResult {
@@ -135,65 +135,11 @@ function writeGoogleBooksCache(query: string, startIndex: number, maxResults: nu
   }
 }
 
-function googleSeriesIds(items: unknown[]): string[] {
-  const ids = new Set<string>();
-  for (const item of items) {
-    if (!item || typeof item !== 'object') continue;
-    const seriesInfo = (item as { volumeInfo?: { seriesInfo?: { volumeSeries?: Array<{ seriesId?: unknown }> } } }).volumeInfo?.seriesInfo;
-    for (const membership of seriesInfo?.volumeSeries ?? []) {
-      if (typeof membership.seriesId === 'string' && membership.seriesId.trim()) ids.add(membership.seriesId.trim());
-    }
-  }
-  return [...ids];
-}
-
-async function googleSeriesMetadata(items: unknown[], apiKey: string): Promise<Record<string, string>> {
-  const ids = googleSeriesIds(items);
-  if (ids.length === 0) return {};
-
-  const params = new URLSearchParams();
-  ids.forEach((id) => params.append('series_id', id));
-  if (apiKey) params.set('key', apiKey);
-
-  try {
-    const response = await fetch(`https://www.googleapis.com/books/v1/series/get?${params.toString()}`);
-    if (!response.ok) return {};
-    const payload = await response.json() as { series?: Array<{ seriesId?: unknown; title?: unknown }> };
-    return Object.fromEntries(
-      (payload.series ?? []).flatMap((series) =>
-        typeof series.seriesId === 'string'
-        && typeof series.title === 'string'
-        && series.seriesId.trim()
-        && series.title.trim()
-          ? [[series.seriesId.trim(), series.title.trim()] as const]
-          : [],
-      ),
-    );
-  } catch (error) {
-    console.warn('Google Books series metadata lookup unavailable.', error);
-    return {};
-  }
-}
-
-const googleBooksErrorDetail = (body: string): string => {
-  const trimmed = body.trim();
-  if (!trimmed) return '';
-  try {
-    const parsed = JSON.parse(trimmed) as { error?: { message?: unknown }; message?: unknown };
-    const message = parsed.error?.message ?? parsed.message;
-    if (typeof message === 'string' && message.trim()) return message.trim();
-  } catch {
-    // Fall through to a short plain-text response body.
-  }
-  return trimmed.replace(/\s+/g, ' ').slice(0, 300);
-};
-
 async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40): Promise<GoogleBooksCatalogPayload> {
   const cached = readGoogleBooksCache(query, startIndex, maxResults);
   if (cached) return cached;
 
   const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
-  let effectiveApiKey = apiKey;
   const baseParams = new URLSearchParams({
     q: query,
     printType: 'books',
@@ -216,7 +162,6 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
     const invalidKey = response.status === 400 && /api key.*not valid|valid api key/i.test(detail);
     if (invalidKey) {
       console.warn('Configured Google Books API key was rejected; retrying public catalog request without a key.');
-      effectiveApiKey = '';
       response = await runRequest();
     } else {
       throw new Error(`Google Books returned ${response.status}${detail ? `: ${detail}` : '.'}`);
@@ -229,11 +174,9 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
   }
 
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
-  const items = Array.isArray(raw.items) ? raw.items : [];
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
-    items,
-    seriesMetadataById: await googleSeriesMetadata(items, effectiveApiKey),
+    items: Array.isArray(raw.items) ? raw.items : [],
   };
   writeGoogleBooksCache(query, startIndex, maxResults, payload);
   return payload;
