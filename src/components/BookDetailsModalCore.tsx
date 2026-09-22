@@ -333,8 +333,13 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
           publisherSummary: book.work.publisherSummary || matchedPublisherSummary,
           summary: book.work.personalSummary || book.work.publisherSummary || matchedPublisherSummary || book.work.summary,
           genres: book.work.genres.length ? book.work.genres : matchedWork.genres,
-          seriesName: book.work.seriesName || matchedEdition.seriesName,
-          seriesOrder: typeof book.work.seriesOrder === 'number' ? book.work.seriesOrder : matchedEdition.seriesOrder,
+          // Sync Metadata is an explicit repair action. Verified catalog
+          // series metadata should repair stale/incorrect auto-filled values;
+          // preserve the existing value only when the catalog still has no answer.
+          seriesName: matchedEdition.seriesName ?? book.work.seriesName,
+          seriesOrder: typeof matchedEdition.seriesOrder === 'number'
+            ? matchedEdition.seriesOrder
+            : book.work.seriesOrder,
           publicationYear: book.work.publicationYear || matchedEdition.publicationYear,
           originalLanguage: book.work.originalLanguage || matchedEdition.language,
           externalWorkId: matchedWork.key,
