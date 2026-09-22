@@ -3,7 +3,7 @@ import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/mode
 import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
-import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
+import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
@@ -120,7 +120,10 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
     .filter((item): item is SeriesEvidence => Boolean(item));
 
   const match = selectVerifiedSeriesEvidence(evidence);
-  return match ? { name: match.name, position: match.position } : null;
+  if (match) return { name: match.name, position: match.position };
+
+  const subtitleMatch = selectVerifiedSubtitleSeriesEvidence(groups, book);
+  return subtitleMatch ? { name: subtitleMatch.name, position: subtitleMatch.position } : null;
 }
 
 export async function findMissingSeriesBooks(
