@@ -48,6 +48,58 @@ export const hasKnownSeriesContextEvidence = (
     );
 };
 
+const GENERIC_SUBTITLE_SERIES_WORDS = new Set([
+  'novel', 'novella', 'memoir', 'romance', 'thriller', 'mystery', 'fantasy',
+  'story', 'stories', 'edition', 'editions', 'anniversary', 'illustrated',
+  'hardcover', 'paperback', 'ebook', 'audiobook',
+]);
+
+const subtitleSeriesCandidate = (value?: string): string | null => {
+  const candidate = value?.trim().replace(/\s+/g, ' ') ?? '';
+  if (!candidate) return null;
+  const identity = canonicalSeriesIdentity(candidate);
+  const words = identity.split(' ').filter(Boolean);
+  if (words.length < 2 || words.length > 6) return null;
+  if (words.some((word) => GENERIC_SUBTITLE_SERIES_WORDS.has(word))) return null;
+  return candidate;
+};
+
+/**
+ * Safe fallback for catalogs that expose a publisher line as a subtitle rather
+ * than structured series metadata. One provider is never enough: the exact
+ * title+author match must independently repeat the same non-generic subtitle
+ * across at least two catalog sources.
+ */
+export const selectVerifiedSubtitleSeriesEvidence = (
+  groups: BookSearchWorkGroup[],
+  book: UserBookRecord,
+): { name: string; position: null } | null => {
+  const wantedTitle = comparableTitle(book.work.title);
+  const byIdentity = new Map<string, { name: string; sources: Set<BookSearchEdition['source']> }>();
+
+  for (const work of groups) {
+    if (!exactAuthorMatch(work, book.work.author)) continue;
+    if (comparableTitle(work.title) !== wantedTitle) continue;
+
+    for (const edition of work.editions) {
+      if (comparableTitle(edition.title) !== wantedTitle && comparableTitle(work.title) !== wantedTitle) continue;
+      const candidate = subtitleSeriesCandidate(edition.subtitle) ?? subtitleSeriesCandidate(work.subtitle);
+      if (!candidate) continue;
+      const identity = canonicalSeriesIdentity(candidate);
+      if (!identity) continue;
+      const current = byIdentity.get(identity) ?? { name: candidate, sources: new Set<BookSearchEdition['source']>() };
+      current.sources.add(edition.source);
+      byIdentity.set(identity, current);
+    }
+  }
+
+  const verified = [...byIdentity.values()]
+    .filter((item) => item.sources.size >= 2)
+    .sort((a, b) => b.sources.size - a.sources.size || a.name.localeCompare(b.name))[0];
+
+  return verified ? { name: verified.name, position: null } : null;
+};
+
 export interface SeriesEvidence {
   name: string;
   position: number | null;
