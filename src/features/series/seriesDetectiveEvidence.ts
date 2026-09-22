@@ -1,6 +1,6 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
-import { inferSeriesHintFromTitle } from './seriesLibrary';
+import { canonicalSeriesIdentity, inferSeriesHintFromTitle, seriesNamesAreCompatible } from './seriesLibrary';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
@@ -41,9 +41,11 @@ export const hasKnownSeriesContextEvidence = (
   if (brandOnlyTitle) return false;
 
   return [work.title, work.subtitle, edition.title, edition.subtitle]
-    .map(normalize)
-    .filter(Boolean)
-    .some((value) => value.includes(wanted));
+    .filter((value): value is string => Boolean(value?.trim()))
+    .some((value) =>
+      normalize(value).includes(wanted)
+      || seriesNamesAreCompatible(value, wantedSeriesName),
+    );
 };
 
 export interface SeriesEvidence {
@@ -109,7 +111,7 @@ export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): Series
 
   const bySeries = new Map<string, SeriesEvidence[]>();
   for (const item of eligible) {
-    const key = `${normalize(item.name)}::${item.position ?? 'unknown'}`;
+    const key = `${canonicalSeriesIdentity(item.name)}::${item.position ?? 'unknown'}`;
     const current = bySeries.get(key) ?? [];
     current.push(item);
     bySeries.set(key, current);
