@@ -36,7 +36,29 @@ export interface EffectiveSeriesMetadata extends SeriesHint {
 }
 
 const normalizeSeriesName = (value: string) => value.trim().replace(/\s+/g, ' ');
-const seriesId = (name: string, author: string) => `${name}::${author}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const SERIES_CONNECTOR_TOKENS = new Set(['a', 'an', 'the', 'and', 'x']);
+const SERIES_TRAILING_QUALIFIERS = new Set(['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections']);
+
+export const canonicalSeriesIdentity = (value?: string): string => {
+  const tokens = (value ?? '')
+    .toLocaleLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  while (tokens.length > 1 && SERIES_TRAILING_QUALIFIERS.has(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.filter((token) => !SERIES_CONNECTOR_TOKENS.has(token)).join(' ');
+};
+
+export const seriesNamesAreCompatible = (left?: string, right?: string): boolean => {
+  const leftKey = canonicalSeriesIdentity(left);
+  const rightKey = canonicalSeriesIdentity(right);
+  return Boolean(leftKey && rightKey && leftKey === rightKey);
+};
+
+const seriesId = (name: string, author: string) => `${canonicalSeriesIdentity(name)}::${author}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const GENERIC_SERIES_NAMES = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition']);
 
 export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
@@ -62,7 +84,7 @@ function recoverSeriesPosition(book: UserBookRecord, seriesName: string, positio
   if (position !== 0) return position;
   const inferred = inferSeriesHintFromTitle(book.work.title);
   if (!inferred || inferred.position === null) return position;
-  if (normalizeSeriesName(inferred.name).toLowerCase() !== normalizeSeriesName(seriesName).toLowerCase()) return position;
+  if (!seriesNamesAreCompatible(inferred.name, seriesName)) return position;
   return inferred.position;
 }
 
@@ -101,7 +123,7 @@ export function seriesBookDisplayTitle(book: UserBookRecord, seriesName?: string
   const title = book.work.title.trim();
   if (/^untitled\b/i.test(title)) return 'Untitled / Upcoming';
   const inferred = inferSeriesHintFromTitle(title);
-  const sameSeries = inferred && (!seriesName || normalizeSeriesName(inferred.name).toLowerCase() === normalizeSeriesName(seriesName).toLowerCase());
+  const sameSeries = inferred && (!seriesName || seriesNamesAreCompatible(inferred.name, seriesName));
   if (!sameSeries) return title;
   const withoutSuffix = title.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
   return withoutSuffix || title;
@@ -169,7 +191,7 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     if (!resolved) return;
     const name = resolved.name;
     const author = book.work.author.trim() || 'Unknown author';
-    const key = `${name.toLowerCase()}::${author.toLowerCase()}`;
+    const key = `${canonicalSeriesIdentity(name)}::${author.toLowerCase()}`;
     const current = metadataGroups.get(key) ?? { name, author, entries: [] };
     current.entries.push({ book, position: resolved.position, displayPosition: seriesPositionLabel(book, resolved.position) });
     metadataGroups.set(key, current);
