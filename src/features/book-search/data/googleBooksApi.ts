@@ -70,6 +70,7 @@ const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
 const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const GOOGLE_BOOKS_PAGE_SIZE = 40;
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
+const inFlightGoogleRequests = new Map<string, Promise<GoogleVolumesResponse>>();
 let googleBackoffUntil = 0;
 let hardcoverBackoffUntil = 0;
 
@@ -355,14 +356,27 @@ async function requestProtectedGoogleBooks(
   if (!functions || !auth?.currentUser) {
     throw new Error('Protected Google Books search requires a signed-in Inkbound account.');
   }
-  const callable = httpsCallable<
-    { query: string; startIndex?: number; maxResults?: number },
-    GoogleVolumesResponse
-  >(functions, 'searchGoogleBooksCatalog');
-  const response = await callable({ query, startIndex, maxResults });
+  const requestKey = `${query.trim().toLocaleLowerCase()}::${startIndex}::${maxResults}`;
+  let pending = inFlightGoogleRequests.get(requestKey);
+  if (!pending) {
+    const callable = httpsCallable<
+      { query: string; startIndex?: number; maxResults?: number },
+      GoogleVolumesResponse
+    >(functions, 'searchGoogleBooksCatalog');
+    pending = callable({ query, startIndex, maxResults })
+      .then(async (response) => {
+        const hydrated = await hydrateGoogleVolumeDetails(response.data);
+        return enrichGoogleSeriesMetadata(hydrated);
+      })
+      .finally(() => {
+        inFlightGoogleRequests.delete(requestKey);
+      });
+    inFlightGoogleRequests.set(requestKey, pending);
+  }
+
+  const payload = await pending;
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-  const hydrated = await hydrateGoogleVolumeDetails(response.data, signal);
-  return enrichGoogleSeriesMetadata(hydrated, signal);
+  return payload;
 }
 
 async function requestDirectGoogleBooks(
