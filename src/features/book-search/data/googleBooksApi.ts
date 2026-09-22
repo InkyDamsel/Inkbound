@@ -48,6 +48,7 @@ interface GoogleVolume {
 interface GoogleVolumesResponse {
   totalItems?: number;
   items?: GoogleVolume[];
+  seriesMetadataById?: Record<string, string>;
 }
 
 export interface GoogleBooksCatalogPage extends BookSearchResponse {
@@ -128,7 +129,10 @@ const coverUrl = (volume: GoogleVolume): string | undefined => {
   return source?.replace(/^http:/, 'https:').replace('&edge=curl', '').replace('zoom=1', 'zoom=2');
 };
 
-const mapGoogleVolume = (volume: GoogleVolume): BookSearchEdition | null => {
+const mapGoogleVolume = (
+  volume: GoogleVolume,
+  seriesMetadataById: Record<string, string> = {},
+): BookSearchEdition | null => {
   const info = volume.volumeInfo;
   if (!info?.title) return null;
   return {
@@ -143,7 +147,15 @@ const mapGoogleVolume = (volume: GoogleVolume): BookSearchEdition | null => {
     publicationDate: info.publishedDate,
     publicationYear: publicationYear(info.publishedDate),
     language: info.language,
-    seriesName: volume.seriesInfo?.shortSeriesBookTitle?.trim() || undefined,
+    seriesName: (() => {
+      // Google documents shortSeriesBookTitle as the short title of this book
+      // within the series, not the series title. Resolve the actual title from
+      // volumeSeries.seriesId via the Books Series endpoint instead.
+      const seriesId = volume.seriesInfo?.volumeSeries
+        ?.map((item) => item.seriesId?.trim())
+        .find((value): value is string => Boolean(value));
+      return seriesId ? seriesMetadataById[seriesId]?.trim() || undefined : undefined;
+    })(),
     seriesOrder: (() => {
       const explicit = Number(volume.seriesInfo?.bookDisplayNumber);
       if (Number.isFinite(explicit) && explicit >= 0) return explicit;
@@ -286,7 +298,35 @@ async function requestDirectGoogleBooks(
     const detail = googleBooksErrorDetail(await response.text());
     throw new Error(`Google Books search failed (${response.status})${detail ? `: ${detail}` : '.'}`);
   }
-  return response.json() as Promise<GoogleVolumesResponse>;
+  const payload = await response.json() as GoogleVolumesResponse;
+  const ids = [...new Set((payload.items ?? []).flatMap((volume) =>
+    volume.seriesInfo?.volumeSeries
+      ?.map((item) => item.seriesId?.trim())
+      .filter((value): value is string => Boolean(value)) ?? [],
+  ))];
+
+  if (ids.length > 0) {
+    try {
+      const seriesParams = new URLSearchParams();
+      ids.forEach((id) => seriesParams.append('series_id', id));
+      const seriesResponse = await fetch(`https://www.googleapis.com/books/v1/series/get?${seriesParams.toString()}`, { signal });
+      if (seriesResponse.ok) {
+        const seriesPayload = await seriesResponse.json() as { series?: Array<{ seriesId?: string; title?: string }> };
+        payload.seriesMetadataById = Object.fromEntries(
+          (seriesPayload.series ?? []).flatMap((series) =>
+            series.seriesId?.trim() && series.title?.trim()
+              ? [[series.seriesId.trim(), series.title.trim()] as const]
+              : [],
+          ),
+        );
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Google Books series metadata lookup unavailable in browser search.', error);
+    }
+  }
+
+  return payload;
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -294,7 +334,9 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
     ? await requestProtectedGoogleBooks(query, signal)
     : await requestDirectGoogleBooks(query, signal);
 
-  const editions = (payload.items ?? []).map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
+  const editions = (payload.items ?? [])
+    .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
+    .filter((item): item is BookSearchEdition => Boolean(item));
   const groups = hardenCatalogGroups(groupGoogleEditions(editions));
   return { groups, totalItems: payload.totalItems ?? groups.length };
 }
@@ -317,7 +359,9 @@ export async function searchGoogleBooksPage(
       : await requestDirectGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
     const rawItems = payload.items ?? [];
-    const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
+    const editions = rawItems
+      .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
+      .filter((item): item is BookSearchEdition => Boolean(item));
     let groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
 
     // The Add Reading Material screen prefers this paged path. Enrich the first
@@ -375,7 +419,9 @@ export async function searchGoogleBooksAuthorPage(
       : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
     const rawItems = payload.items ?? [];
-    const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
+    const editions = rawItems
+      .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
+      .filter((item): item is BookSearchEdition => Boolean(item));
     const groups = hardenCatalogGroups(groupGoogleEditions(editions), { preferredAuthor: trimmedAuthor });
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
