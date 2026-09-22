@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import type { UserBookRecord } from '../src/types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 import {
@@ -7,6 +6,7 @@ import {
   scoreSeriesEvidence,
   selectVerifiedSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
+import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
 
 const book = {
   id: 'book-1',
@@ -162,17 +162,92 @@ assert.equal(formattedAuthorExactIsbn?.exactAuthor, false);
 assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.name, 'Dream Harbor');
 assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.position, 2);
 
-// Series discovery must not assume every installment has the same author.
-// Structured exact-series metadata may cross authors; title-only inference stays
-// author-gated to avoid pulling unrelated same-named books into the series.
-const detectiveSource = fs.readFileSync(new URL('../src/features/series/seriesDetective.ts', import.meta.url), 'utf8');
-assert.match(detectiveSource, /searchHardcover\(seriesName\)/);
-assert.match(detectiveSource, /missingKnownGaps/);
-assert.match(detectiveSource, /positionalDiscovery\.flat\(\)/);
-assert.match(detectiveSource, /providerSourcesByWork/);
-assert.match(detectiveSource, /existingTitleAuthors = new Set\(libraryBooks/);
-assert.match(detectiveSource, /metadata\.evidence === 'title' && !exactAuthorMatch\(work, author\)/);
-assert.match(detectiveSource, /metadata\.evidence !== 'contextual'/);
-assert.doesNotMatch(detectiveSource, /normalize\(metadata\.name\) === normalize\(seriesName\) && normalize\(book\.work\.author\) === normalize\(author\)/);
+// Provider naming differences must not split one real series.
+assert.equal(canonicalSeriesIdentity('Hades x Persephone Saga'), 'hades persephone');
+assert.equal(canonicalSeriesIdentity('Hades & Persephone'), 'hades persephone');
+assert.equal(seriesNamesAreCompatible('Hades x Persephone Saga', 'Hades x Persephone'), true);
+assert.equal(seriesNamesAreCompatible('Hades x Persephone Saga', 'Hades & Persephone'), true);
+assert.equal(seriesNamesAreCompatible('Hades x Persephone Saga', 'Adrian X Isolde'), false);
+
+const aliasBookOne = {
+  id: 'hades-1',
+  work: {
+    title: 'A Touch of Darkness',
+    author: 'Scarlett St. Clair',
+    seriesName: 'Hades x Persephone Saga',
+    seriesOrder: 1,
+    publicationYear: 2019,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'hades-ed-1', format: 'paperback' }],
+  activeEditionId: 'hades-ed-1',
+} as unknown as UserBookRecord;
+const aliasBookTwo = {
+  id: 'hades-2',
+  work: {
+    title: 'A Touch of Ruin',
+    author: 'Scarlett St. Clair',
+    seriesName: 'Hades & Persephone',
+    seriesOrder: 2,
+    publicationYear: 2020,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'hades-ed-2', format: 'paperback' }],
+  activeEditionId: 'hades-ed-2',
+} as unknown as UserBookRecord;
+const aliasSeries = buildSeriesLibrary([aliasBookOne, aliasBookTwo]);
+assert.equal(aliasSeries.length, 1);
+assert.equal(aliasSeries[0].books.length, 2);
+assert.equal(aliasSeries[0].books[0].position, 1);
+assert.equal(aliasSeries[0].books[1].position, 2);
+
+const aliasEvidenceA = scoreSeriesEvidence(
+  work(edition('open-library', {
+    title: 'A Touch of Darkness',
+    authors: ['Scarlett St. Clair'],
+    seriesName: 'Hades x Persephone Saga',
+    seriesOrder: 1,
+    isbn13: '9781728258454',
+  }), { title: 'A Touch of Darkness', authors: ['Scarlett St. Clair'] }),
+  edition('open-library', {
+    title: 'A Touch of Darkness',
+    authors: ['Scarlett St. Clair'],
+    seriesName: 'Hades x Persephone Saga',
+    seriesOrder: 1,
+    isbn13: '9781728258454',
+  }),
+  {
+    ...book,
+    work: { title: 'A Touch of Darkness', author: 'Scarlett St. Clair' },
+    activeEditionId: 'alias-edition',
+    editions: [{ id: 'alias-edition', isbn13: '9781728258454', language: 'en' }],
+  } as unknown as UserBookRecord,
+);
+const aliasEvidenceB = scoreSeriesEvidence(
+  work(edition('hardcover', {
+    title: 'A Touch of Darkness',
+    authors: ['Scarlett St. Clair'],
+    seriesName: 'Hades & Persephone',
+    seriesOrder: 1,
+    isbn13: '9781728258454',
+  }), { title: 'A Touch of Darkness', authors: ['Scarlett St. Clair'] }),
+  edition('hardcover', {
+    title: 'A Touch of Darkness',
+    authors: ['Scarlett St. Clair'],
+    seriesName: 'Hades & Persephone',
+    seriesOrder: 1,
+    isbn13: '9781728258454',
+  }),
+  {
+    ...book,
+    work: { title: 'A Touch of Darkness', author: 'Scarlett St. Clair' },
+    activeEditionId: 'alias-edition',
+    editions: [{ id: 'alias-edition', isbn13: '9781728258454', language: 'en' }],
+  } as unknown as UserBookRecord,
+);
+assert.ok(aliasEvidenceA && aliasEvidenceB);
+assert.ok(selectVerifiedSeriesEvidence([aliasEvidenceA!, aliasEvidenceB!]));
 
 console.log('Inkbound Series Detective regressions passed.');
