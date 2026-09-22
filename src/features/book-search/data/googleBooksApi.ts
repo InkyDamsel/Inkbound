@@ -7,6 +7,7 @@ import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
+import { catalogTextMatchesSeriesLine, inferCatalogSeriesLineCandidate } from '../../series/catalogSeriesLine';
 import { catalogTitlesAreCompatible, hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
@@ -500,6 +501,73 @@ const groupNeedsTargetedGoogleEnrichment = (group: BookSearchWorkGroup): boolean
   !group.editions.some((edition) => edition.pageCount)
   || !group.editions.some((edition) => edition.seriesName);
 
+async function verifyGoogleSeriesLine(
+  hint: { name: string; position?: number },
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const query = `"${hint.name}"`;
+  try {
+    const payload = shouldUseProtectedGoogleBooks()
+      ? await requestProtectedGoogleBooks(query, signal, 0, 20)
+      : await requestDirectGoogleBooks(query, signal, 0, 20);
+    const matchingWorks = new Set<string>();
+
+    for (const volume of payload.items ?? []) {
+      const info = volume.volumeInfo;
+      if (!info?.title || !catalogTextMatchesSeriesLine(info.title, info.subtitle, hint.name)) continue;
+      matchingWorks.add(`${normalizeText(info.title)}::${normalizeText(info.authors?.[0])}`);
+      if (matchingWorks.size >= 2) return true;
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    console.warn('Google Books series-line verification unavailable.', error);
+  }
+  return false;
+}
+
+async function promoteVerifiedSeriesLines(
+  groups: BookSearchWorkGroup[],
+  signal?: AbortSignal,
+): Promise<BookSearchWorkGroup[]> {
+  const verificationCache = new Map<string, boolean>();
+
+  const promoted = await Promise.all(groups.map(async (group) => {
+    if (group.editions.some((edition) => edition.seriesName)) return group;
+
+    const candidates = group.editions
+      .map((edition) => inferCatalogSeriesLineCandidate(edition.title, edition.subtitle))
+      .filter((hint): hint is { name: string; position?: number } => Boolean(hint?.name));
+    const workCandidate = inferCatalogSeriesLineCandidate(group.title, group.subtitle);
+    if (workCandidate) candidates.push(workCandidate);
+
+    const unique = [...new Map(candidates.map((hint) => [normalizeText(hint.name), hint])).values()];
+    for (const hint of unique) {
+      const key = normalizeText(hint.name);
+      let verified = verificationCache.get(key);
+      if (verified === undefined) {
+        verified = await verifyGoogleSeriesLine(hint, signal);
+        verificationCache.set(key, verified);
+      }
+      if (!verified) continue;
+
+      return {
+        ...group,
+        editions: group.editions.map((edition) => ({
+          ...edition,
+          seriesName: edition.seriesName ?? hint.name,
+          seriesOrder: typeof edition.seriesOrder === 'number'
+            ? edition.seriesOrder
+            : hint.position,
+        })),
+      };
+    }
+
+    return group;
+  }));
+
+  return promoted;
+}
+
 async function enrichThinCatalogGroupsWithGoogle(
   groups: BookSearchWorkGroup[],
   signal?: AbortSignal,
@@ -535,7 +603,8 @@ async function enrichThinCatalogGroupsWithGoogle(
     }
   }));
 
-  return hardenCatalogGroups([...groups, ...targeted.flat()]);
+  const enriched = hardenCatalogGroups([...groups, ...targeted.flat()]);
+  return promoteVerifiedSeriesLines(enriched, signal);
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
