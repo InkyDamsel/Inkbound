@@ -155,10 +155,16 @@ const mapGoogleVolume = (
     publicationDate: info.publishedDate,
     publicationYear: publicationYear(info.publishedDate),
     language: info.language,
-    seriesName: resolveGoogleSeriesMetadata(info.seriesInfo, seriesMetadataById).name
-      ?? volume.inkboundBibliographicSeries?.name,
-    seriesOrder: resolveGoogleSeriesMetadata(info.seriesInfo, seriesMetadataById).order
-      ?? volume.inkboundBibliographicSeries?.position,
+    seriesName: resolveGoogleSeriesMetadata(
+      info.seriesInfo,
+      seriesMetadataById,
+      volume.inkboundBibliographicSeries,
+    ).name,
+    seriesOrder: resolveGoogleSeriesMetadata(
+      info.seriesInfo,
+      seriesMetadataById,
+      volume.inkboundBibliographicSeries,
+    ).order,
     format: inferFormat(volume),
     isbn10: getIdentifier(volume, 'ISBN_10'),
     isbn13: getIdentifier(volume, 'ISBN_13'),
