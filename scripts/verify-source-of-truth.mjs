@@ -747,6 +747,16 @@ for (const required of [
   }
 }
 const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
+if (!openLibrarySource.includes('hydrateOpenLibraryGroupFromWork')) {
+  violations.push('openLibraryApi.ts: author catalog page 1 must hydrate canonical edition records');
+}
+if (!openLibrarySource.includes("authorOperator && startIndex > 0")) {
+  violations.push('openLibraryApi.ts: only deep author pagination may remain shallow');
+}
+if (!openLibrarySource.includes("operatorKind === 'inauthor'")) {
+  violations.push('openLibraryApi.ts: author search must use the same edition hydration pipeline as title/ISBN search');
+}
+
 for (const required of [
   'fetchOpenLibraryEditionDetails',
   'hydrateOpenLibraryExactGroups',
