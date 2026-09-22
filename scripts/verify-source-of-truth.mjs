@@ -711,6 +711,9 @@ if (!seriesEvidenceSource.includes('(item.structured && item.exactIdentifier)'))
   violations.push('seriesDetectiveEvidence.ts: structured exact-identifier evidence must survive harmless author formatting differences');
 }
 const seriesDetective = read('src/features/series/seriesDetective.ts');
+if (seriesDetective.includes('.filter((group) => !wantedAuthor || exactAuthorMatch')) {
+  violations.push('seriesDetective.ts: must not discard candidates before canonical evidence scoring');
+}
 for (const required of [
   'resolveEffectiveSeriesMetadata',
   'searchGoogleBooks',
@@ -742,6 +745,10 @@ for (const required of [
   if (!supplementalCatalogSource.includes(required)) {
     violations.push(`supplementalCatalogApi.ts: missing bounded supplemental catalog contract ${required}`);
   }
+}
+const bookSearchMapperSource = read('src/features/book-search/mapping/bookSearchMapper.ts');
+if (!bookSearchMapperSource.includes('enrichSelectedCatalogEdition(hardenedWork, edition)')) {
+  violations.push('bookSearchMapper.ts: selected search edition must be canonically enriched before save');
 }
 const searchModel = read('src/features/book-search/model/bookSearch.ts');
 for (const source of ["'crossref'", "'library-of-congress'", "'internet-archive'"]) {
