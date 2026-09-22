@@ -400,8 +400,13 @@ export const hardenCatalogGroups = (
         || candidateAuthorKey === primaryAuthorKey;
       if (!authorCompatible) return false;
 
-      if (groupsShareEditionIsbn(candidate, hardened)) return true;
-      return titlesAreCompatibleWorkVariants(candidate.title, hardened.title);
+      const titleCompatible = titlesAreCompatibleWorkVariants(candidate.title, hardened.title);
+      if (!titleCompatible) return false;
+
+      // ISBN agreement may strengthen a compatible-title match, but it must
+      // never collapse unrelated works when a provider attached a bad/shared
+      // identifier (for example a box set carrying a constituent book ISBN).
+      return true;
     });
     if (compatibleIdentity) identity = compatibleIdentity;
 
