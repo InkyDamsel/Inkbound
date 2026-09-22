@@ -229,18 +229,23 @@ const supplementExactIsbnEdition = (
 
 
 
-const sameEdition = (left: BookSearchEdition, right: BookSearchEdition): boolean => {
-  if (left.source === right.source && left.externalEditionId && left.externalEditionId === right.externalEditionId) return true;
-  if (left.isbn13 && right.isbn13 && left.isbn13 === right.isbn13) return true;
-  if (left.isbn10 && right.isbn10 && left.isbn10 === right.isbn10) return true;
+const sharesExactIsbnIdentity = (left: BookSearchEdition, right: BookSearchEdition): boolean => {
+  // ISBN-13 is the strongest identifier. If both records provide one and they
+  // disagree, they are different editions even if a provider attached the same
+  // ISBN-10 incorrectly. Only fall back to ISBN-10 when an ISBN-13 comparison
+  // is not available on both sides.
+  if (left.isbn13 && right.isbn13) return left.isbn13 === right.isbn13;
+  if (left.isbn10 && right.isbn10) return left.isbn10 === right.isbn10;
   return false;
 };
 
+const sameEdition = (left: BookSearchEdition, right: BookSearchEdition): boolean => {
+  if (left.source === right.source && left.externalEditionId && left.externalEditionId === right.externalEditionId) return true;
+  return sharesExactIsbnIdentity(left, right);
+};
+
 export const mergeCatalogEditionData = (left: BookSearchEdition, right: BookSearchEdition): BookSearchEdition => {
-  const sharedExactIsbn = Boolean(
-    left.isbn13 && right.isbn13 && left.isbn13 === right.isbn13
-    || left.isbn10 && right.isbn10 && left.isbn10 === right.isbn10,
-  );
+  const sharedExactIsbn = sharesExactIsbnIdentity(left, right);
   if (sharedExactIsbn) {
     const anchor = exactIsbnAnchorScore(right) > exactIsbnAnchorScore(left) ? right : left;
     const supplement = anchor === left ? right : left;
