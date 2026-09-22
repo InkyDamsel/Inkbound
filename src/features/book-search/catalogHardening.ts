@@ -8,6 +8,39 @@ const compact = (value?: string) => value?.replace(/\s+/g, ' ').trim() ?? '';
 const normalizeKey = (value?: string) => compact(value).toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
+const titleWords = (value?: string): string[] => normalizeKey(value).split(' ').filter(Boolean);
+
+const titlesAreCompatibleWorkVariants = (left?: string, right?: string): boolean => {
+  const a = normalizeKey(left);
+  const b = normalizeKey(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  const shorterWords = titleWords(shorter);
+  const longerWords = titleWords(longer);
+
+  // Treat a longer title as the same work only when the shorter side is already
+  // specific enough to stand on its own and the extra text is a modest
+  // subtitle/series suffix. This avoids collapsing broad parent titles such as
+  // "Harry Potter" into every individual Harry Potter novel.
+  return shorterWords.length >= 3
+    && longer.startsWith(`${shorter} `)
+    && longerWords.length - shorterWords.length <= 6;
+};
+
+const groupsShareEditionIsbn = (left: BookSearchWorkGroup, right: BookSearchWorkGroup): boolean => {
+  const left13 = new Set(left.editions.map((edition) => compactIsbn(edition.isbn13)).filter(Boolean));
+  const right13 = new Set(right.editions.map((edition) => compactIsbn(edition.isbn13)).filter(Boolean));
+  if ([...left13].some((isbn) => right13.has(isbn))) return true;
+
+  // ISBN-10 is a fallback only when neither side gives us a comparable ISBN-13.
+  if (left13.size > 0 && right13.size > 0) return false;
+  const left10 = new Set(left.editions.map((edition) => compactIsbn(edition.isbn10)).filter(Boolean));
+  const right10 = new Set(right.editions.map((edition) => compactIsbn(edition.isbn10)).filter(Boolean));
+  return [...left10].some((isbn) => right10.has(isbn));
+};
+
 export const isValidCatalogIsbn10 = (value?: string): boolean => {
   const isbn = compactIsbn(value);
   if (!/^\d{9}[\dX]$/.test(isbn)) return false;
@@ -359,9 +392,16 @@ export const hardenCatalogGroups = (
     const authorIsUnknown = primaryAuthorKey === 'unknown author';
     const compatibleIdentity = order.find((candidateKey) => {
       const candidate = merged.get(candidateKey);
-      if (!candidate || normalizeKey(candidate.title) !== titleKey) return false;
+      if (!candidate) return false;
+
       const candidateAuthorKey = normalizeKey(candidate.authors[0]);
-      return authorIsUnknown || candidateAuthorKey === 'unknown author';
+      const authorCompatible = authorIsUnknown
+        || candidateAuthorKey === 'unknown author'
+        || candidateAuthorKey === primaryAuthorKey;
+      if (!authorCompatible) return false;
+
+      if (groupsShareEditionIsbn(candidate, hardened)) return true;
+      return titlesAreCompatibleWorkVariants(candidate.title, hardened.title);
     });
     if (compatibleIdentity) identity = compatibleIdentity;
 
