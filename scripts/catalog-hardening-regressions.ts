@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   catalogEditionQualityScore,
+  enrichSelectedCatalogEdition,
   hardenCatalogEdition,
   hardenCatalogGroups,
   isValidCatalogIsbn10,
@@ -142,6 +143,44 @@ assert.equal(concealSearchGroups[0]?.title, "Conceal, Don't Feel");
 assert.ok(concealSearchGroups.some((group) => group.title === 'Conceal and Don’t Feel as Much?'));
 assert.ok(!concealSearchGroups.some((group) => group.title === 'City of Ashes (The Mortal Instruments)'));
 assert.ok(!concealSearchGroups.some((group) => group.title === 'Sixty Years in California'));
+
+
+const thinSelectedWork: BookSearchWorkGroup = {
+  key: 'conceal-enrichment',
+  title: "Conceal, Don't Feel",
+  authors: ['Jen Calonita'],
+  genres: [],
+  editions: [
+    {
+      ...goodEdition,
+      source: 'open-library',
+      externalEditionId: 'conceal-thin-hardcover',
+      title: "Conceal, Don't Feel",
+      authors: ['Jen Calonita'],
+      format: 'hardcover',
+      pageCount: undefined,
+      isbn10: undefined,
+      isbn13: undefined,
+    },
+    {
+      ...goodEdition,
+      source: 'hardcover',
+      externalEditionId: 'conceal-rich-hardcover',
+      title: "Conceal, Don't Feel",
+      authors: ['Jen Calonita'],
+      format: 'hardcover',
+      pageCount: 312,
+      isbn10: undefined,
+      isbn13: undefined,
+      seriesName: 'A Twisted Tale',
+      seriesOrder: 7,
+    },
+  ],
+};
+const enrichedSelected = enrichSelectedCatalogEdition(thinSelectedWork, thinSelectedWork.editions[0]);
+assert.equal(enrichedSelected.pageCount, 312);
+assert.equal(enrichedSelected.seriesName, 'A Twisted Tale');
+assert.equal(enrichedSelected.seriesOrder, 7);
 
 console.log('Inkbound catalog hardening regressions passed.');
 
