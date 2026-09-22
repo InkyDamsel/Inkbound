@@ -10,6 +10,66 @@ const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperC
 
 const titleWords = (value?: string): string[] => normalizeKey(value).split(' ').filter(Boolean);
 
+const SEARCH_STOP_WORDS = new Set(['a', 'an', 'the', 'of', 'and', 'or', 'to', 'for', 'in', 'on', 'at', 'by']);
+const meaningfulSearchWords = (value?: string): string[] =>
+  titleWords(value).filter((word) => word.length > 1 && !SEARCH_STOP_WORDS.has(word));
+
+export const catalogSearchRelevanceScore = (group: BookSearchWorkGroup, query?: string): number => {
+  const wanted = normalizeKey(query);
+  if (!wanted) return 0;
+
+  const title = normalizeKey(group.title);
+  const subtitle = normalizeKey(group.subtitle);
+  const authorText = normalizeKey(group.authors.join(' '));
+  const queryWords = meaningfulSearchWords(query);
+  if (!queryWords.length) return 0;
+
+  if (title === wanted) return 1000;
+  if (subtitle && `${title} ${subtitle}` === wanted) return 950;
+  if (title.startsWith(`${wanted} `) || wanted.startsWith(`${title} `)) return 850;
+
+  const titleWordsSet = new Set(meaningfulSearchWords(group.title));
+  const subtitleWordsSet = new Set(meaningfulSearchWords(group.subtitle));
+  const authorWordsSet = new Set(meaningfulSearchWords(group.authors.join(' ')));
+  const titleMatches = queryWords.filter((word) => titleWordsSet.has(word)).length;
+  const subtitleMatches = queryWords.filter((word) => subtitleWordsSet.has(word)).length;
+  const authorMatches = queryWords.filter((word) => authorWordsSet.has(word)).length;
+  const titleCoverage = titleMatches / queryWords.length;
+
+  let score = titleMatches * 120 + subtitleMatches * 35 + authorMatches * 25;
+  if (titleCoverage === 1) score += 500;
+  else if (titleCoverage >= 0.75) score += 300;
+  else if (titleCoverage >= 0.5) score += 120;
+
+  if (title.includes(wanted)) score += 250;
+  if (authorText === wanted) score += 700;
+
+  return score;
+};
+
+const catalogSearchResultIsRelevant = (group: BookSearchWorkGroup, query?: string): boolean => {
+  const wanted = normalizeKey(query);
+  if (!wanted) return true;
+
+  const queryWords = meaningfulSearchWords(query);
+  if (queryWords.length <= 1) return true;
+
+  const titleWordsSet = new Set(meaningfulSearchWords(group.title));
+  const subtitleWordsSet = new Set(meaningfulSearchWords(group.subtitle));
+  const authorWordsSet = new Set(meaningfulSearchWords(group.authors.join(' ')));
+
+  const matchedTitleWords = queryWords.filter((word) => titleWordsSet.has(word)).length;
+  const matchedAcrossRecord = queryWords.filter((word) =>
+    titleWordsSet.has(word) || subtitleWordsSet.has(word) || authorWordsSet.has(word),
+  ).length;
+
+  // Multi-word searches should not be polluted by records that merely contain
+  // one common word. Keep a result only when at least half of the meaningful
+  // query terms match, with at least one match in the title itself.
+  return matchedTitleWords >= 1 && matchedAcrossRecord >= Math.ceil(queryWords.length / 2);
+};
+
+
 export const catalogTitlesAreCompatible = (left?: string, right?: string): boolean => {  const a = normalizeKey(left);
   const b = normalizeKey(right);
   if (!a || !b) return false;
@@ -462,8 +522,13 @@ export const hardenCatalogGroups = (
 
   const preferredAuthorValue = options.preferredAuthor || inferCatalogAuthorIntent(hardenedGroups, options.searchQuery);
   const preferredAuthor = normalizeKey(preferredAuthorValue);
+  const shouldApplyTitleRelevance = Boolean(options.searchQuery && !preferredAuthor);
 
-  return hardenedGroups.sort((left, right) => {
+  const relevantGroups = shouldApplyTitleRelevance
+    ? hardenedGroups.filter((group) => catalogSearchResultIsRelevant(group, options.searchQuery))
+    : hardenedGroups;
+
+  return relevantGroups.sort((left, right) => {
     const authorScore = (group: BookSearchWorkGroup) => {
       if (!preferredAuthor) return 0;
       const normalizedAuthors = group.authors.map(normalizeKey);
@@ -476,7 +541,8 @@ export const hardenCatalogGroups = (
     const authorNamedTitlePenalty = (group: BookSearchWorkGroup) =>
       preferredAuthor && normalizeKey(group.title) === preferredAuthor && group.authors.length > 1 ? 70 : 0;
     const score = (group: BookSearchWorkGroup) =>
-      authorScore(group)
+      (shouldApplyTitleRelevance ? catalogSearchRelevanceScore(group, options.searchQuery) : 0)
+      + authorScore(group)
       + catalogEditionQualityScore(group.editions[0])
       - supplementPenalty(group)
       - authorNamedTitlePenalty(group);
