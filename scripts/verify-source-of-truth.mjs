@@ -377,6 +377,18 @@ for (const required of ['getBookReadingState', 'getAverageBookProgress']) {
 if (/\b(?:book|a|b)\.progressPercentage\b/.test(collectionsScreen)) {
   violations.push('CollectionsScreen.tsx: must not derive display/sort/aggregate progress from raw UserBookRecord.progressPercentage');
 }
+if (!collectionsScreen.includes("from '../features/collections/smartCollectionRules'")) {
+  violations.push('CollectionsScreen.tsx: Smart Collections must consume the canonical smartCollectionRules engine');
+}
+if (collectionsScreen.includes('const smartMatches =')) {
+  violations.push('CollectionsScreen.tsx: must not own a duplicate Smart Collections matching engine');
+}
+const smartCollectionRules = read('src/features/collections/smartCollectionRules.ts');
+for (const required of ['smartCollectionRuleMatches', 'smartCollectionMatches', 'migrateLegacySmartCollectionRule']) {
+  if (!smartCollectionRules.includes(required)) {
+    violations.push(`smartCollectionRules.ts: missing canonical ${required} behavior`);
+  }
+}
 
 const tbrScreen = read('src/components/TBRScreen.tsx');
 if (!tbrScreen.includes('resolveEffectiveSeriesMetadata')) {
