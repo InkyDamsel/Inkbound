@@ -603,24 +603,10 @@ export const hardenCatalogGroups = (
     ? hardenedGroups.filter((group) => catalogSearchResultIsRelevant(group, options.searchQuery))
     : hardenedGroups;
 
-  // When a specific multi-word query already has an exact-title hit, stop
-  // flooding Add Reading Material with loose partial matches. Keep all exact
-  // same-title works (different authors are still legitimate) plus compatible
-  // subtitle/edition variants by the same author. Broad searches such as
-  // "Harry Potter" or one/two-keyword discovery remain unaffected.
-  const exactQuery = normalizeKey(options.searchQuery);
-  const exactQueryWords = meaningfulSearchWords(options.searchQuery);
-  if (shouldApplyTitleRelevance && exactQueryWords.length >= 3 && exactQuery) {
-    const exactTitleGroups = relevantGroups.filter((group) => normalizeKey(group.title) === exactQuery);
-    if (exactTitleGroups.length > 0) {
-      const exactAuthors = new Set(exactTitleGroups.map((group) => normalizeKey(group.authors[0])).filter(Boolean));
-      relevantGroups = relevantGroups.filter((group) => {
-        if (normalizeKey(group.title) === exactQuery) return true;
-        const primaryAuthor = normalizeKey(group.authors[0]);
-        return exactAuthors.has(primaryAuthor) && catalogTitlesAreCompatible(options.searchQuery, group.title);
-      });
-    }
-  }
+  // Exact-title matches already receive the strongest relevance score below.
+  // Do not prune other relevant results merely because an exact match exists:
+  // Add Reading Material is a discovery surface, so ranking must guide the user
+  // without turning a good exact hit into an accidental exact-only search.
 
   return relevantGroups.sort((left, right) => {
     const authorScore = (group: BookSearchWorkGroup) => {
