@@ -257,6 +257,42 @@ async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchRe
   return searchInkboundTrustedCatalog({ title: query.trim() });
 }
 
+async function enrichGoogleSeriesMetadata(
+  payload: GoogleVolumesResponse,
+  signal?: AbortSignal,
+): Promise<GoogleVolumesResponse> {
+  if (payload.seriesMetadataById && Object.keys(payload.seriesMetadataById).length > 0) return payload;
+
+  const ids = [...new Set((payload.items ?? []).flatMap((volume) =>
+    volume.volumeInfo?.seriesInfo?.volumeSeries
+      ?.map((item) => item.seriesId?.trim())
+      .filter((value): value is string => Boolean(value)) ?? [],
+  ))];
+  if (ids.length === 0) return payload;
+
+  try {
+    const seriesParams = new URLSearchParams();
+    ids.forEach((id) => seriesParams.append('series_id', id));
+    const seriesResponse = await fetch(`https://www.googleapis.com/books/v1/series/get?${seriesParams.toString()}`, { signal });
+    if (!seriesResponse.ok) return payload;
+    const seriesPayload = await seriesResponse.json() as { series?: Array<{ seriesId?: string; title?: string }> };
+    return {
+      ...payload,
+      seriesMetadataById: Object.fromEntries(
+        (seriesPayload.series ?? []).flatMap((series) =>
+          series.seriesId?.trim() && series.title?.trim()
+            ? [[series.seriesId.trim(), series.title.trim()] as const]
+            : [],
+        ),
+      ),
+    };
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    console.warn('Google Books series metadata lookup unavailable in browser search.', error);
+    return payload;
+  }
+}
+
 async function requestProtectedGoogleBooks(
   query: string,
   signal?: AbortSignal,
@@ -272,7 +308,7 @@ async function requestProtectedGoogleBooks(
   >(functions, 'searchHardcoverBooks');
   const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-  return response.data;
+  return enrichGoogleSeriesMetadata(response.data, signal);
 }
 
 async function requestDirectGoogleBooks(
@@ -299,34 +335,7 @@ async function requestDirectGoogleBooks(
     throw new Error(`Google Books search failed (${response.status})${detail ? `: ${detail}` : '.'}`);
   }
   const payload = await response.json() as GoogleVolumesResponse;
-  const ids = [...new Set((payload.items ?? []).flatMap((volume) =>
-    volume.volumeInfo?.seriesInfo?.volumeSeries
-      ?.map((item) => item.seriesId?.trim())
-      .filter((value): value is string => Boolean(value)) ?? [],
-  ))];
-
-  if (ids.length > 0) {
-    try {
-      const seriesParams = new URLSearchParams();
-      ids.forEach((id) => seriesParams.append('series_id', id));
-      const seriesResponse = await fetch(`https://www.googleapis.com/books/v1/series/get?${seriesParams.toString()}`, { signal });
-      if (seriesResponse.ok) {
-        const seriesPayload = await seriesResponse.json() as { series?: Array<{ seriesId?: string; title?: string }> };
-        payload.seriesMetadataById = Object.fromEntries(
-          (seriesPayload.series ?? []).flatMap((series) =>
-            series.seriesId?.trim() && series.title?.trim()
-              ? [[series.seriesId.trim(), series.title.trim()] as const]
-              : [],
-          ),
-        );
-      }
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      console.warn('Google Books series metadata lookup unavailable in browser search.', error);
-    }
-  }
-
-  return payload;
+  return enrichGoogleSeriesMetadata(payload, signal);
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
