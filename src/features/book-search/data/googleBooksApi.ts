@@ -69,6 +69,9 @@ const searchCache = new Map<string, { expiresAt: number; response: BookSearchRes
 let googleBackoffUntil = 0;
 let hardcoverBackoffUntil = 0;
 
+const shouldUseProtectedGoogleBooks = (): boolean =>
+  !import.meta.env.DEV && Boolean(functions && auth?.currentUser);
+
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
@@ -327,7 +330,7 @@ async function requestDirectGoogleBooks(
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  const payload = functions && auth?.currentUser
+  const payload = shouldUseProtectedGoogleBooks()
     ? await requestProtectedGoogleBooks(query, signal)
     : await requestDirectGoogleBooks(query, signal);
 
@@ -351,7 +354,7 @@ export async function searchGoogleBooksPage(
   const builtQuery = buildGoogleBooksQuery(trimmed);
 
   try {
-    const payload = functions && auth?.currentUser
+    const payload = shouldUseProtectedGoogleBooks()
       ? await requestProtectedGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
       : await requestDirectGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
@@ -412,7 +415,7 @@ export async function searchGoogleBooksAuthorPage(
   const query = `inauthor:${trimmedAuthor}`;
 
   try {
-    const payload = functions && auth?.currentUser
+    const payload = shouldUseProtectedGoogleBooks()
       ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
       : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
