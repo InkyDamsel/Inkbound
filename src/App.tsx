@@ -74,6 +74,7 @@ import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, lo
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
 import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
 import { subscribeToRuntimeResume } from './platform/runtimeLifecycle';
+import { subscribeToRuntimeBackNavigation } from './platform/runtimeBackNavigation';
 import { notifyNativeBookFinished, notifyNativeReadingSessionFinished } from './features/notifications/nativeInkboundNotifications';
 import {
   getRuntimeStorage,
@@ -361,6 +362,13 @@ export default function App() {
     const interval = window.setInterval(resumeMaintenance, MAINTENANCE_CHECK_INTERVAL_MS);
     return () => { window.removeEventListener('online', resumeMaintenance); unsubscribeRuntimeResume(); window.clearInterval(interval); };
   }, []);
+
+  useEffect(() => {
+    if (!selectedBookForDetails) return undefined;
+    return subscribeToRuntimeBackNavigation(() => {
+      setSelectedBookForDetails(null);
+    });
+  }, [selectedBookForDetails]);
 
   const openTimer = (bookId?: string) => { setTimerInitialBookId(bookId); setIsTimerOpen(true); };
   const closeTimer = () => setIsTimerOpen(false);
