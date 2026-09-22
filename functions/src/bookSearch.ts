@@ -276,8 +276,15 @@ async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string): Prom
     const params = new URLSearchParams({ projection: 'full' });
     if (apiKey) params.set('key', apiKey);
     try {
-      const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(id)}?${params.toString()}`);
-      const hydrated = response.ok ? await response.json() as unknown : item;
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(id)}?${params.toString()}`);
+        if (response.status !== 429 && response.status !== 503) break;
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+        }
+      }
+      const hydrated = response?.ok ? await response.json() as unknown : item;
       const hydratedRecord = asRecord(hydrated) ?? asRecord(item);
       if (!hydratedRecord) return hydrated;
 
@@ -347,7 +354,16 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
   const runRequest = async (key?: string) => {
     const params = new URLSearchParams(baseParams);
     if (key) params.set('key', key);
-    return fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+      if (response.status !== 429 && response.status !== 503) return response;
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+    }
+    return response!;
   };
 
   let response = await runRequest(apiKey || undefined);
