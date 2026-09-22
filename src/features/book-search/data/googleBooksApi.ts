@@ -248,6 +248,53 @@ async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchRe
   return searchInkboundTrustedCatalog({ title: query.trim() });
 }
 
+const GOOGLE_DETAIL_HYDRATION_LIMIT = 20;
+
+async function hydrateGoogleVolumeDetails(
+  payload: GoogleVolumesResponse,
+  signal?: AbortSignal,
+): Promise<GoogleVolumesResponse> {
+  const items = payload.items ?? [];
+  if (items.length === 0) return payload;
+
+  const hydrated = await Promise.all(items.map(async (volume, index) => {
+    const info = volume.volumeInfo;
+    const needsDetail = !info?.pageCount || !info?.seriesInfo?.volumeSeries?.length;
+    if (!needsDetail || index >= GOOGLE_DETAIL_HYDRATION_LIMIT || !volume.id) return volume;
+
+    try {
+      const response = await fetch(
+        `${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(volume.id)}?projection=full`,
+        { signal },
+      );
+      if (!response.ok) return volume;
+      const detail = await response.json() as GoogleVolume;
+      return {
+        ...volume,
+        ...detail,
+        volumeInfo: {
+          ...volume.volumeInfo,
+          ...detail.volumeInfo,
+          // Preserve any list-only values while preferring the fully hydrated
+          // volume detail for page count and series metadata.
+          seriesInfo: detail.volumeInfo?.seriesInfo ?? volume.volumeInfo?.seriesInfo,
+          pageCount: detail.volumeInfo?.pageCount ?? volume.volumeInfo?.pageCount,
+        },
+        saleInfo: {
+          ...volume.saleInfo,
+          ...detail.saleInfo,
+        },
+      };
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Google Books volume detail lookup unavailable.', error);
+      return volume;
+    }
+  }));
+
+  return { ...payload, items: hydrated };
+}
+
 async function enrichGoogleSeriesMetadata(
   payload: GoogleVolumesResponse,
   signal?: AbortSignal,
@@ -299,7 +346,8 @@ async function requestProtectedGoogleBooks(
   >(functions, 'searchHardcoverBooks');
   const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-  return enrichGoogleSeriesMetadata(response.data, signal);
+  const hydrated = await hydrateGoogleVolumeDetails(response.data, signal);
+  return enrichGoogleSeriesMetadata(hydrated, signal);
 }
 
 async function requestDirectGoogleBooks(
@@ -326,7 +374,8 @@ async function requestDirectGoogleBooks(
     throw new Error(`Google Books search failed (${response.status})${detail ? `: ${detail}` : '.'}`);
   }
   const payload = await response.json() as GoogleVolumesResponse;
-  return enrichGoogleSeriesMetadata(payload, signal);
+  const hydrated = await hydrateGoogleVolumeDetails(payload, signal);
+  return enrichGoogleSeriesMetadata(hydrated, signal);
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
