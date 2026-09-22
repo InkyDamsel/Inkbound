@@ -389,6 +389,25 @@ for (const required of [
 }
 
 const packageJson = JSON.parse(read('package.json'));
+const firebaseSource = read('src/lib/firebase.ts');
+for (const required of [
+  "from 'firebase/analytics'",
+  "measurementId: readEnv(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) || 'G-2LDXP8Z4S0'",
+  "isAnalyticsSupported()",
+  "analytics = getAnalytics(app)",
+  "export { app, appCheck, auth, readDb, db, functions, storage, analytics }",
+]) {
+  if (!firebaseSource.includes(required)) {
+    violations.push(`firebase.ts: shipped web analytics wiring is missing ${required}`);
+  }
+}
+const envExampleSource = read('.env.example');
+if (!envExampleSource.includes('VITE_FIREBASE_MEASUREMENT_ID=G-2LDXP8Z4S0')) {
+  violations.push('.env.example: canonical Inkbound GA4 measurement ID must remain documented');
+}
+if (packageJson.scripts?.['firebase:deploy:web'] !== 'npm run verify:web-release && npx firebase-tools deploy --only hosting --project inkbound-app') {
+  violations.push('package.json: web hosting deploy must remain on the web-only release path');
+}
 if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:parity')) {
   violations.push('package.json: release:verify must include the web/Android parity gate');
 }
