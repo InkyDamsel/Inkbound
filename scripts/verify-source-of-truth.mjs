@@ -81,6 +81,9 @@ if (!googleBooksSource.includes("resolveGoogleSeriesMetadata")) {
 if (!googleBooksSource.includes('hydrateGoogleVolumeDetails')) {
   violations.push('googleBooksApi.ts: Google Books results must hydrate full volume details before canonical mapping');
 }
+if (!googleBooksSource.includes("'searchGoogleBooksCatalog'")) {
+  violations.push('googleBooksApi.ts: signed-in runtimes must use the shared Google Books catalog callable');
+}
 if (/seriesName\s*:\s*[^\n]*shortSeriesBookTitle/.test(googleBooksSource)) {
   violations.push('googleBooksApi.ts: shortSeriesBookTitle is a book title, not a canonical series name');
 }
@@ -97,6 +100,13 @@ if (!bookDetailsCoreSource.includes('matchedEdition.pageCount ?? activeEdition.p
 }
 
 const bookSearchFunctionSource = read('functions/src/bookSearch.ts');
+if (!bookSearchFunctionSource.includes('export const searchGoogleBooksCatalog = onCall')) {
+  violations.push('functions/src/bookSearch.ts: missing shared Google Books catalog callable');
+}
+if (!bookSearchFunctionSource.includes('enforceAppCheck: false')) {
+  violations.push('functions/src/bookSearch.ts: Google Books parity callable must remain localhost-compatible');
+}
+
 if (bookSearchFunctionSource.includes('googleSeriesMetadata(')) {
   violations.push('functions/src/bookSearch.ts: Google series interpretation must remain in the canonical client mapper');
 }
