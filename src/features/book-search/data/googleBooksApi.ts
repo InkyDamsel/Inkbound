@@ -402,10 +402,30 @@ async function requestDirectGoogleBooks(
   return enrichGoogleSeriesMetadata(hydrated, signal);
 }
 
+async function requestCanonicalGoogleBooksPayload(
+  query: string,
+  signal?: AbortSignal,
+  startIndex = 0,
+  maxResults = GOOGLE_BOOKS_PAGE_SIZE,
+): Promise<GoogleVolumesResponse> {
+  const protectedRequest = shouldUseProtectedGoogleBooks();
+  const payload = protectedRequest
+    ? await requestProtectedGoogleBooks(query, signal, startIndex, maxResults)
+    : await requestDirectGoogleBooks(query, signal, startIndex, maxResults);
+
+  // Direct browser search already hydrates details. Protected Firebase search
+  // returns the catalog list payload, so hydrate those same volume ids here
+  // before any mapper sees them. Dev/release/auth state must never change the
+  // metadata quality of the same Google Books result.
+  const hydrated = protectedRequest
+    ? await hydrateGoogleVolumeDetails(payload, signal)
+    : payload;
+
+  return enrichGoogleSeriesMetadata(hydrated, signal);
+}
+
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  const payload = shouldUseProtectedGoogleBooks()
-    ? await requestProtectedGoogleBooks(query, signal)
-    : await requestDirectGoogleBooks(query, signal);
+  const payload = await requestCanonicalGoogleBooksPayload(query, signal);
 
   const editions = (payload.items ?? [])
     .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
@@ -427,9 +447,12 @@ export async function searchGoogleBooksPage(
   const builtQuery = buildGoogleBooksQuery(trimmed);
 
   try {
-    const payload = shouldUseProtectedGoogleBooks()
-      ? await requestProtectedGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-      : await requestDirectGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    const payload = await requestCanonicalGoogleBooksPayload(
+      builtQuery,
+      signal,
+      startIndex,
+      GOOGLE_BOOKS_PAGE_SIZE,
+    );
 
     const rawItems = payload.items ?? [];
     const editions = rawItems
@@ -496,9 +519,12 @@ export async function searchGoogleBooksAuthorPage(
   const query = `inauthor:${trimmedAuthor}`;
 
   try {
-    const payload = shouldUseProtectedGoogleBooks()
-      ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-      : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    const payload = await requestCanonicalGoogleBooksPayload(
+      query,
+      signal,
+      startIndex,
+      GOOGLE_BOOKS_PAGE_SIZE,
+    );
 
     const rawItems = payload.items ?? [];
     const editions = rawItems
