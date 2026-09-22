@@ -252,25 +252,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
 
-      let googlePage = null;
-      try {
-        googlePage = await searchGoogleBooksPage(trimmedQuery, 0);
-      } catch (error) {
-        console.warn('Paged Google Books search unavailable; falling back to the standard catalog chain.', error);
-      }
-
       const catalogResponse = await searchGoogleBooks(trimmedQuery);
-      if (googlePage && googlePage.groups.length > 0) {
-        setResults(mergeCatalogResultGroups(googlePage.groups, catalogResponse.groups, trimmedQuery));
-        setSearchNextStartIndex(googlePage.nextStartIndex);
-        setSearchProviderTotal(googlePage.providerTotalItems || catalogResponse.totalItems || null);
-        setSearchHasMore(googlePage.hasMore);
-      } else {
-        setResults(catalogResponse.groups);
-        setSearchNextStartIndex(0);
-        setSearchProviderTotal(catalogResponse.totalItems || null);
-        setSearchHasMore(false);
-      }
+      setResults(catalogResponse.groups);
+      setSearchNextStartIndex(0);
+      setSearchProviderTotal(catalogResponse.totalItems || null);
+      // Initial search intentionally uses the canonical cached catalog request
+      // exactly once. Load-more remains an explicit user action.
+      setSearchHasMore(catalogResponse.groups.length >= 20);
     } catch (error) {
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
