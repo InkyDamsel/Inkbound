@@ -150,7 +150,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
 
   const viewSeries = () => {
     if (!normalizedBook || !effectiveSeries) return;
-    openLibrarySeriesForBook(normalizedBook.id);
+    openLibrarySeriesForBook(normalizedBook.id, effectiveSeries.name, normalizedBook.work.author);
     props.onClose();
   };
 
