@@ -153,7 +153,7 @@ function writeGoogleBooksCache(query: string, startIndex: number, maxResults: nu
 }
 
 const GOOGLE_SERIES_ENDPOINT = 'https://www.googleapis.com/books/v1/series/get';
-const GOOGLE_DETAIL_HYDRATION_LIMIT = 20;
+const GOOGLE_DETAIL_HYDRATION_LIMIT = 3;
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
@@ -268,10 +268,25 @@ const googleVolumeNeedsDetail = (value: unknown): boolean => {
   return !(typeof pageCount === 'number' && Number.isFinite(pageCount) && pageCount > 0) || memberships.length === 0;
 };
 
-async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string): Promise<unknown[]> {
+async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string, query: string): Promise<unknown[]> {
+  const normalizedQuery = query
+    .replace(/\b(?:intitle|inauthor|isbn):/gi, '')
+    .replace(/["']/g, ' ')
+    .trim()
+    .toLocaleLowerCase();
+
   return Promise.all(items.map(async (item, index) => {
     const id = googleVolumeId(item);
-    if (!id || index >= GOOGLE_DETAIL_HYDRATION_LIMIT || !googleVolumeNeedsDetail(item)) return item;
+    const title = typeof googleVolumeInfo(item)?.title === 'string'
+      ? String(googleVolumeInfo(item)?.title).trim().toLocaleLowerCase()
+      : '';
+    const likelyExactTitle = Boolean(
+      normalizedQuery
+      && title
+      && (title === normalizedQuery || title.includes(normalizedQuery) || normalizedQuery.includes(title)),
+    );
+    const shouldHydrate = index < GOOGLE_DETAIL_HYDRATION_LIMIT && likelyExactTitle;
+    if (!id || !shouldHydrate || !googleVolumeNeedsDetail(item)) return item;
 
     const params = new URLSearchParams({ projection: 'full' });
     if (apiKey) params.set('key', apiKey);
@@ -394,7 +409,7 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
 
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
   const rawItems = Array.isArray(raw.items) ? raw.items : [];
-  const items = await hydrateGoogleCatalogItems(rawItems, effectiveApiKey);
+  const items = await hydrateGoogleCatalogItems(rawItems, effectiveApiKey, query);
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
     items,
