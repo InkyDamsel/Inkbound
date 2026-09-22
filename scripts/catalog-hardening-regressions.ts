@@ -200,6 +200,64 @@ assert.equal(propagatedExact.edition.pageCount, 320);
 assert.equal(propagatedExact.edition.seriesName, 'A Twisted Tale');
 assert.equal(propagatedExact.edition.seriesOrder, 7);
 
+const titleVariantGroups = hardenCatalogGroups([
+  {
+    key: 'conceal-short-title',
+    title: "Conceal, Don't Feel",
+    authors: ['Jen Calonita'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      source: 'google-books',
+      externalEditionId: 'conceal-google',
+      title: "Conceal, Don't Feel",
+      authors: ['Jen Calonita'],
+      isbn13: '9781368052238',
+      pageCount: 320,
+    }],
+  },
+  {
+    key: 'conceal-series-title',
+    title: "Conceal, Don't Feel: A Twisted Tale",
+    authors: ['Jen Calonita'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      source: 'hardcover',
+      externalEditionId: 'conceal-hardcover',
+      title: "Conceal, Don't Feel: A Twisted Tale",
+      authors: ['Jen Calonita'],
+      isbn13: '9781368052238',
+      seriesName: 'A Twisted Tale',
+      seriesOrder: 7,
+      pageCount: 312,
+      binding: 'Hardcover',
+    }],
+  },
+]);
+assert.equal(titleVariantGroups.length, 1);
+assert.ok(titleVariantGroups[0].editions.every((edition) => edition.seriesName === 'A Twisted Tale'));
+assert.ok(titleVariantGroups[0].editions.every((edition) => edition.seriesOrder === 7));
+assert.equal(selectExactIsbnEdition(titleVariantGroups, '9781368052238')?.edition.pageCount, 320);
+
+const broadParentTitleGroups = hardenCatalogGroups([
+  {
+    key: 'harry-parent',
+    title: 'Harry Potter',
+    authors: ['J. K. Rowling'],
+    genres: [],
+    editions: [{ ...baseEdition, externalEditionId: 'harry-parent', title: 'Harry Potter', authors: ['J. K. Rowling'], isbn13: undefined, isbn10: undefined }],
+  },
+  {
+    key: 'harry-goblet',
+    title: 'Harry Potter and the Goblet of Fire',
+    authors: ['J. K. Rowling'],
+    genres: [],
+    editions: [{ ...baseEdition, externalEditionId: 'harry-goblet', title: 'Harry Potter and the Goblet of Fire', authors: ['J. K. Rowling'], isbn13: undefined, isbn10: undefined }],
+  },
+]);
+assert.equal(broadParentTitleGroups.length, 2);
+
 
 const exactIsbnGroups = hardenCatalogGroups([
   {
