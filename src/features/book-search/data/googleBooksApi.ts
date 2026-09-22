@@ -70,7 +70,7 @@ let googleBackoffUntil = 0;
 let hardcoverBackoffUntil = 0;
 
 const shouldUseProtectedGoogleBooks = (): boolean =>
-  !import.meta.env.DEV && Boolean(functions && auth?.currentUser);
+  Boolean(functions && auth?.currentUser);
 
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -341,10 +341,10 @@ async function requestProtectedGoogleBooks(
     throw new Error('Protected Google Books search requires a signed-in Inkbound account.');
   }
   const callable = httpsCallable<
-    { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
+    { query: string; startIndex?: number; maxResults?: number },
     GoogleVolumesResponse
-  >(functions, 'searchHardcoverBooks');
-  const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
+  >(functions, 'searchGoogleBooksCatalog');
+  const response = await callable({ query, startIndex, maxResults });
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
   const hydrated = await hydrateGoogleVolumeDetails(response.data, signal);
   return enrichGoogleSeriesMetadata(hydrated, signal);
