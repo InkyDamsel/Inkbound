@@ -95,7 +95,6 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
   // already-saved series value here: older builds may have persisted incorrect
   // inferred metadata. Re-evaluate the book against current catalog evidence.
   const wantedTitle = normalize(book.work.title);
-  const wantedAuthor = normalize(book.work.author);
   const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
   const identifiers = [activeEdition?.isbn13, activeEdition?.isbn10].filter((value): value is string => Boolean(value?.trim()));
 
