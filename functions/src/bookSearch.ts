@@ -9,7 +9,7 @@ const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const GOOGLE_BOOKS_CACHE_TTL_MS = 5 * 60 * 1000;
 const GOOGLE_BOOKS_CACHE_MAX = 500;
 
-type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[] };
+type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[]; seriesMetadataById?: Record<string, string> };
 const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBooksCatalogPayload }>();
 
 interface SearchResult {
@@ -135,11 +135,91 @@ function writeGoogleBooksCache(query: string, startIndex: number, maxResults: nu
   }
 }
 
+const GOOGLE_SERIES_ENDPOINT = 'https://www.googleapis.com/books/v1/series/get';
+const GOOGLE_DETAIL_HYDRATION_LIMIT = 20;
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+
+const googleVolumeId = (value: unknown): string | undefined => {
+  const record = asRecord(value);
+  return typeof record?.id === 'string' && record.id.trim() ? record.id.trim() : undefined;
+};
+
+const googleVolumeInfo = (value: unknown): Record<string, unknown> | undefined =>
+  asRecord(asRecord(value)?.volumeInfo);
+
+const googleSeriesIdsFromItems = (items: unknown[]): string[] => {
+  const ids = new Set<string>();
+  for (const item of items) {
+    const seriesInfo = asRecord(googleVolumeInfo(item)?.seriesInfo);
+    const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
+    for (const membership of memberships) {
+      const id = asRecord(membership)?.seriesId;
+      if (typeof id === 'string' && id.trim()) ids.add(id.trim());
+    }
+  }
+  return [...ids];
+};
+
+const googleVolumeNeedsDetail = (value: unknown): boolean => {
+  const info = googleVolumeInfo(value);
+  if (!info) return true;
+  const pageCount = info.pageCount;
+  const seriesInfo = asRecord(info.seriesInfo);
+  const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
+  return !(typeof pageCount === 'number' && Number.isFinite(pageCount) && pageCount > 0) || memberships.length === 0;
+};
+
+async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string): Promise<unknown[]> {
+  return Promise.all(items.map(async (item, index) => {
+    const id = googleVolumeId(item);
+    if (!id || index >= GOOGLE_DETAIL_HYDRATION_LIMIT || !googleVolumeNeedsDetail(item)) return item;
+
+    const params = new URLSearchParams({ projection: 'full' });
+    if (apiKey) params.set('key', apiKey);
+    try {
+      const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(id)}?${params.toString()}`);
+      if (!response.ok) return item;
+      return await response.json() as unknown;
+    } catch (error) {
+      console.warn('Google Books volume hydration unavailable.', error);
+      return item;
+    }
+  }));
+}
+
+async function fetchGoogleSeriesTitles(items: unknown[], apiKey: string): Promise<Record<string, string>> {
+  const ids = googleSeriesIdsFromItems(items);
+  if (ids.length === 0) return {};
+
+  const params = new URLSearchParams();
+  ids.forEach((id) => params.append('series_id', id));
+  if (apiKey) params.set('key', apiKey);
+
+  try {
+    const response = await fetch(`${GOOGLE_SERIES_ENDPOINT}?${params.toString()}`);
+    if (!response.ok) return {};
+    const payload = await response.json() as { series?: unknown[] };
+    const pairs = (payload.series ?? []).flatMap((value) => {
+      const record = asRecord(value);
+      const seriesId = typeof record?.seriesId === 'string' ? record.seriesId.trim() : '';
+      const title = typeof record?.title === 'string' ? record.title.trim() : '';
+      return seriesId && title ? [[seriesId, title] as const] : [];
+    });
+    return Object.fromEntries(pairs);
+  } catch (error) {
+    console.warn('Google Books series-title lookup unavailable.', error);
+    return {};
+  }
+}
+
 async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40): Promise<GoogleBooksCatalogPayload> {
   const cached = readGoogleBooksCache(query, startIndex, maxResults);
   if (cached) return cached;
 
   const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
+  let effectiveApiKey = apiKey;
   const baseParams = new URLSearchParams({
     q: query,
     printType: 'books',
@@ -162,6 +242,7 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
     const invalidKey = response.status === 400 && /api key.*not valid|valid api key/i.test(detail);
     if (invalidKey) {
       console.warn('Configured Google Books API key was rejected; retrying public catalog request without a key.');
+      effectiveApiKey = '';
       response = await runRequest();
     } else {
       throw new Error(`Google Books returned ${response.status}${detail ? `: ${detail}` : '.'}`);
@@ -174,9 +255,12 @@ async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40
   }
 
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
+  const rawItems = Array.isArray(raw.items) ? raw.items : [];
+  const items = await hydrateGoogleCatalogItems(rawItems, effectiveApiKey);
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
-    items: Array.isArray(raw.items) ? raw.items : [],
+    items,
+    seriesMetadataById: await fetchGoogleSeriesTitles(items, effectiveApiKey),
   };
   writeGoogleBooksCache(query, startIndex, maxResults, payload);
   return payload;
@@ -308,6 +392,41 @@ async function hardcoverCatalog(query: string) {
 
   return { groups, totalItems: groups.length };
 }
+
+export const searchGoogleBooksCatalog = onCall(
+  {
+    secrets: [GOOGLE_BOOKS_API_KEY],
+    // This callable returns public bibliographic metadata only. Authentication
+    // prevents anonymous abuse while allowing localhost/dev parity without an
+    // App Check token.
+    enforceAppCheck: false,
+  },
+  async (request) => {
+    if (!request.auth && process.env.FUNCTIONS_EMULATOR !== 'true') {
+      throw new HttpsError('unauthenticated', 'Sign in to search the Google Books catalog.');
+    }
+
+    const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+    if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
+
+    const requestedStartIndex = Number(request.data?.startIndex);
+    const requestedMaxResults = Number(request.data?.maxResults);
+    const startIndex = Number.isInteger(requestedStartIndex) && requestedStartIndex >= 0
+      ? Math.min(requestedStartIndex, 10000)
+      : 0;
+    const maxResults = Number.isInteger(requestedMaxResults) && requestedMaxResults > 0
+      ? Math.min(requestedMaxResults, 40)
+      : 40;
+
+    try {
+      return await googleBooksCatalog(query, startIndex, maxResults);
+    } catch (error) {
+      console.error('Google Books catalog search failed.', error);
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError('unavailable', error instanceof Error ? error.message : 'Google Books catalog search failed.');
+    }
+  },
+);
 
 export const searchHardcoverBooks = onCall(
   { secrets: [HARDCOVER_API_TOKEN, GOOGLE_BOOKS_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
