@@ -26,6 +26,45 @@ const walk = (directory) => {
 };
 walk(path.join(root, 'src'));
 
+// ONE SOURCE OF TRUTH LAW: feature/UI code may consume canonical catalog
+// services, but it must never assemble provider pipelines of its own.
+for (const file of sourceFiles) {
+  const relative = path.relative(root, file).replaceAll('\\', '/');
+  const source = fs.readFileSync(file, 'utf8');
+
+  const isCatalogProviderLayer = relative.startsWith('src/features/book-search/data/');
+  if (!isCatalogProviderLayer) {
+    if (/from ['"][^'"]*book-search\/data\/openLibraryApi['"]/.test(source)) {
+      violations.push(`${relative}: feature/UI code must not import Open Library directly; use the canonical catalog service`);
+    }
+    if (/from ['"][^'"]*book-search\/data\/hardcoverApi['"]/.test(source)) {
+      violations.push(`${relative}: feature/UI code must not import Hardcover directly; use the canonical catalog service`);
+    }
+  }
+
+  // Remaining-reading math belongs to bookReadingState.ts. UI/features may
+  // display the value but must never recalculate it independently.
+  if (relative !== 'src/features/reading/bookReadingState.ts') {
+    if (/pageCount[\s\S]{0,120}-[\s\S]{0,120}progressPages|progressPages[\s\S]{0,120}-[\s\S]{0,120}pageCount/.test(source)) {
+      violations.push(`${relative}: remaining-page math must come from canonical bookReadingState.ts`);
+    }
+    if (/audiobookDurationMins[\s\S]{0,120}-[\s\S]{0,120}progressMinutes|progressMinutes[\s\S]{0,120}-[\s\S]{0,120}audiobookDurationMins/.test(source)) {
+      violations.push(`${relative}: remaining-audio math must come from canonical bookReadingState.ts`);
+    }
+  }
+
+  // Series parsing/interpretation is allowed only inside canonical catalog or
+  // series-domain modules. Components must not invent their own series parser.
+  const mayOwnSeriesParsing =
+    relative === 'src/features/book-search/data/openLibraryApi.ts'
+    || relative === 'src/features/book-search/mapping/googleSeriesMetadata.ts'
+    || relative === 'src/features/series/seriesLibrary.ts'
+    || relative === 'src/features/series/seriesDetectiveEvidence.ts';
+  if (!mayOwnSeriesParsing && /\b(?:function|const)\s+parseSeries\b/.test(source)) {
+    violations.push(`${relative}: duplicate series parsing is forbidden; use canonical series/catalog metadata`);
+  }
+}
+
 for (const file of sourceFiles) {
   const relative = path.relative(root, file).replaceAll('\\', '/');
   if (relative === 'src/features/sync/storageKeys.ts') continue;
@@ -711,6 +750,17 @@ if (!seriesEvidenceSource.includes('(item.structured && item.exactIdentifier)'))
   violations.push('seriesDetectiveEvidence.ts: structured exact-identifier evidence must survive harmless author formatting differences');
 }
 const seriesDetective = read('src/features/series/seriesDetective.ts');
+for (const forbidden of [
+  'openLibraryApi',
+  'hardcoverApi',
+]) {
+  if (seriesDetective.includes(forbidden)) {
+    violations.push(`seriesDetective.ts: Series Detective must not orchestrate catalog provider ${forbidden}; use canonical catalog search`);
+  }
+}
+if (!seriesDetective.includes('searchGoogleBooksAuthorPage')) {
+  violations.push('seriesDetective.ts: author discovery must use the canonical author catalog service');
+}
 if (seriesDetective.includes('.filter((group) => !wantedAuthor || exactAuthorMatch')) {
   violations.push('seriesDetective.ts: must not discard candidates before canonical evidence scoring');
 }
