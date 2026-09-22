@@ -36,13 +36,13 @@ interface GoogleVolume {
     categories?: string[];
     imageLinks?: GoogleImageLinks;
     language?: string;
+    seriesInfo?: {
+      shortSeriesBookTitle?: string;
+      bookDisplayNumber?: string;
+      volumeSeries?: Array<{ seriesId?: string; seriesBookType?: string; orderNumber?: number; issue?: Array<{ issueOrderNumber?: number }> }>;
+    };
   };
   saleInfo?: { isEbook?: boolean };
-  seriesInfo?: {
-    shortSeriesBookTitle?: string;
-    bookDisplayNumber?: string;
-    volumeSeries?: Array<{ seriesId?: string; seriesBookType?: string; orderNumber?: number; issue?: Array<{ issueOrderNumber?: number }> }>;
-  };
 }
 
 interface GoogleVolumesResponse {
@@ -151,15 +151,15 @@ const mapGoogleVolume = (
       // Google documents shortSeriesBookTitle as the short title of this book
       // within the series, not the series title. Resolve the actual title from
       // volumeSeries.seriesId via the Books Series endpoint instead.
-      const seriesId = volume.seriesInfo?.volumeSeries
+      const seriesId = volume.volumeInfo?.seriesInfo?.volumeSeries
         ?.map((item) => item.seriesId?.trim())
         .find((value): value is string => Boolean(value));
       return seriesId ? seriesMetadataById[seriesId]?.trim() || undefined : undefined;
     })(),
     seriesOrder: (() => {
-      const explicit = Number(volume.seriesInfo?.bookDisplayNumber);
+      const explicit = Number(volume.volumeInfo?.seriesInfo?.bookDisplayNumber);
       if (Number.isFinite(explicit) && explicit >= 0) return explicit;
-      const order = volume.seriesInfo?.volumeSeries?.map((item) => item.orderNumber ?? item.issue?.[0]?.issueOrderNumber).find((value) => typeof value === 'number' && Number.isFinite(value));
+      const order = volume.volumeInfo?.seriesInfo?.volumeSeries?.map((item) => item.orderNumber ?? item.issue?.[0]?.issueOrderNumber).find((value) => typeof value === 'number' && Number.isFinite(value));
       return typeof order === 'number' ? order : undefined;
     })(),
     format: inferFormat(volume),
@@ -300,7 +300,7 @@ async function requestDirectGoogleBooks(
   }
   const payload = await response.json() as GoogleVolumesResponse;
   const ids = [...new Set((payload.items ?? []).flatMap((volume) =>
-    volume.seriesInfo?.volumeSeries
+    volume.volumeInfo?.seriesInfo?.volumeSeries
       ?.map((item) => item.seriesId?.trim())
       .filter((value): value is string => Boolean(value)) ?? [],
   ))];
