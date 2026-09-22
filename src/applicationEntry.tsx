@@ -78,6 +78,7 @@ const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) =
 );
 
 const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
+  const nativeRuntime = isNativeRuntime();
   const ready = useSyncExternalStore(
     subscribeNativeRuntimeReadiness,
     isNativeRuntimeReady,
@@ -90,14 +91,16 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
   );
 
   useEffect(() => {
-    if (ready || error || !isAndroidRuntime()) return undefined;
+    if (!nativeRuntime || ready || error || !isAndroidRuntime()) return undefined;
 
     const timer = window.setTimeout(() => {
       markNativeRuntimeFailed(new Error('Secure Android services took too long to respond. Check your connection and try again.'));
     }, NATIVE_RUNTIME_TIMEOUT_MS);
 
     return () => window.clearTimeout(timer);
-  }, [ready, error]);
+  }, [nativeRuntime, ready, error]);
+
+  if (!nativeRuntime) return <>{children}</>;
 
   if (error) {
     return (
