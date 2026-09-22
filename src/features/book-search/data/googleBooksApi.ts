@@ -450,6 +450,14 @@ export async function searchGoogleBooksPage(
         mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
         { searchQuery: trimmed },
       );
+
+      const refinedExact = await refineExactTitleWithAuthor(groups, trimmed, signal);
+      if (refinedExact.length > 0) {
+        groups = hardenCatalogGroups(
+          mergeGroups(groups, [refinedExact]),
+          { searchQuery: trimmed },
+        );
+      }
     }
 
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
@@ -541,6 +549,35 @@ export async function searchGoogleBooksAuthorPage(
     console.warn('Google Books quota is exhausted for author lookup; using paged Open Library results instead.', error);
     return searchOpenLibraryPage(query, startIndex, GOOGLE_BOOKS_PAGE_SIZE, signal);
   }
+}
+
+const exactTitleGroupNeedsRepair = (group: BookSearchWorkGroup): boolean =>
+  group.editions.every((edition) => !edition.pageCount || !edition.seriesName);
+
+async function refineExactTitleWithAuthor(
+  groups: BookSearchWorkGroup[],
+  query: string,
+  signal?: AbortSignal,
+): Promise<BookSearchWorkGroup[]> {
+  const wanted = normalizeText(query);
+  if (!wanted) return [];
+
+  const exact = groups.find((group) =>
+    normalizeText(group.title) === wanted
+    && normalizeText(group.authors[0]) !== 'unknown author',
+  );
+  if (!exact || !exactTitleGroupNeedsRepair(exact)) return [];
+
+  const author = exact.authors[0]?.trim();
+  if (!author) return [];
+
+  const safeTitle = query.trim().replace(/"/g, '');
+  const safeAuthor = author.replace(/"/g, '');
+  const refined = await searchGoogleBaseline(
+    `intitle:"${safeTitle}" inauthor:"${safeAuthor}"`,
+    signal,
+  );
+  return refined.groups;
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -641,6 +678,14 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
     { searchQuery: trimmed },
   );
+
+  const refinedExact = await refineExactTitleWithAuthor(combined, trimmed, signal);
+  if (refinedExact.length > 0) {
+    combined = hardenCatalogGroups(
+      [...combined, ...refinedExact],
+      { searchQuery: trimmed },
+    );
+  }
 
   let supplemental: BookSearchResponse = { groups: [], totalItems: 0 };
   if (google.groups.length === 0 || combined.length < 8) {
