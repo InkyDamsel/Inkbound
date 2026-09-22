@@ -368,12 +368,13 @@ export async function searchGoogleBooksPage(
     // page with the same supplemental metadata sources used by the standard
     // catalog chain so pagination does not silently lose series metadata.
     if (startIndex === 0 && groups.length > 0) {
-      const [trusted, hardcover] = await Promise.all([
+      const [trusted, openLibrary, hardcover] = await Promise.all([
         searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+        searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
         searchHardcoverWithBackoff(trimmed),
       ]);
       groups = hardenCatalogGroups(
-        mergeGroups(groups, [trusted.groups, hardcover.groups]),
+        mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
         { searchQuery: trimmed },
       );
     }
