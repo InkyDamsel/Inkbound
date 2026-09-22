@@ -47,6 +47,7 @@
     "verify:web-release": "npm run verify:verifier && npm run lint && npm run test:critical && npm run verify:source-of-truth && npm run verify:parity && npm run build && npm run verify:release-artifacts"
   },
   "dependencies": {
+    "@capacitor-firebase/analytics": "8.3.0",
     "@capacitor-firebase/app-check": "8.3.0",
     "@capacitor-firebase/authentication": "8.3.0",
     "@capacitor/android": "8.4.0",
