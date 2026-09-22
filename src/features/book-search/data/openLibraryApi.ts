@@ -118,10 +118,14 @@ const coverUrl = (edition: OpenLibraryEdition, work: OpenLibraryWork): string | 
 const parseSeries = (values?: string[]): { name?: string; order?: number } => {
   const raw = values?.find((value) => value?.trim())?.trim();
   if (!raw) return {};
-  const match = raw.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*)(\d+(?:\.\d+)?)\s*$/i);
-  if (!match) return { name: raw };
+  // Open Library sometimes stores multiple series memberships in one string,
+  // separated by semicolons. The first membership is the edition's primary
+  // bibliographic series and should be parsed independently.
+  const primary = raw.split(';').map((value) => value.trim()).find(Boolean) ?? raw;
+  const match = primary.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*|,\s*)(\d+(?:\.\d+)?)\s*$/i);
+  if (!match) return { name: primary };
   const order = Number(match[2]);
-  return { name: match[1].replace(/[,:;\-]+$/g, '').trim() || raw, order: Number.isFinite(order) ? order : undefined };
+  return { name: match[1].replace(/[,:;\-]+$/g, '').trim() || primary, order: Number.isFinite(order) ? order : undefined };
 };
 
 const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: number): BookSearchEdition | null => {
@@ -155,6 +159,107 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
     binding: edition.physical_format,
     specialFeatures: [],
   };
+};
+
+const OPEN_LIBRARY_EDITION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const openLibraryEditionCache = new Map<string, { expiresAt: number; value: OpenLibraryEdition }>();
+const openLibraryEditionInFlight = new Map<string, Promise<OpenLibraryEdition | null>>();
+
+const fetchOpenLibraryEditionDetails = async (
+  externalEditionId: string,
+  signal?: AbortSignal,
+): Promise<OpenLibraryEdition | null> => {
+  const path = externalEditionId.startsWith('/books/')
+    ? externalEditionId
+    : /^OL\d+M$/i.test(externalEditionId)
+      ? `/books/${externalEditionId}`
+      : '';
+  if (!path) return null;
+
+  const cached = openLibraryEditionCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (cached) openLibraryEditionCache.delete(path);
+
+  let pending = openLibraryEditionInFlight.get(path);
+  if (!pending) {
+    pending = fetch(`https://openlibrary.org${path}.json`, {
+      signal,
+      headers: { Accept: 'application/json' },
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const detail = await response.json() as OpenLibraryEdition;
+        openLibraryEditionCache.set(path, {
+          expiresAt: Date.now() + OPEN_LIBRARY_EDITION_CACHE_TTL_MS,
+          value: detail,
+        });
+        return detail;
+      })
+      .catch(() => null)
+      .finally(() => openLibraryEditionInFlight.delete(path));
+    openLibraryEditionInFlight.set(path, pending);
+  }
+  return pending;
+};
+
+const hydrateOpenLibraryExactGroups = async (
+  groups: BookSearchWorkGroup[],
+  query: string,
+  signal?: AbortSignal,
+): Promise<BookSearchWorkGroup[]> => {
+  const operator = query.trim().match(/^(intitle|isbn):\s*(.+)$/i);
+  const rawWanted = operator ? stripQuotes(operator[2]) : query;
+  const wantedTitle = operator?.[1].toLowerCase() === 'isbn' ? '' : normalize(rawWanted);
+  const wantedIsbn = operator?.[1].toLowerCase() === 'isbn' ? compactIsbn(rawWanted) : '';
+
+  const candidates = groups.filter((group) => {
+    if (wantedTitle) return normalize(group.title) === wantedTitle;
+    if (wantedIsbn) {
+      return group.editions.some((edition) =>
+        [edition.isbn13, edition.isbn10].map(compactIsbn).includes(wantedIsbn),
+      );
+    }
+    return false;
+  }).slice(0, 3);
+
+  if (!candidates.length) return groups;
+
+  const candidateKeys = new Set(candidates.map((group) => group.key));
+  return Promise.all(groups.map(async (group) => {
+    if (!candidateKeys.has(group.key)) return group;
+
+    const hydratedEditions = await Promise.all(group.editions.slice(0, 8).map(async (edition) => {
+      if (edition.source !== 'open-library') return edition;
+      if (edition.pageCount && edition.seriesName && edition.isbn13) return edition;
+
+      const detail = await fetchOpenLibraryEditionDetails(edition.externalEditionId, signal);
+      if (!detail) return edition;
+      const detailSeries = parseSeries(detail.series);
+      const detailIsbn13 = detail.isbn_13?.[0] ?? detail.isbn?.find((value) => compactIsbn(value).length === 13);
+      const detailIsbn10 = detail.isbn_10?.[0] ?? detail.isbn?.find((value) => compactIsbn(value).length === 10);
+
+      return {
+        ...edition,
+        isbn13: edition.isbn13 || detailIsbn13,
+        isbn10: edition.isbn10 || detailIsbn10,
+        pageCount: edition.pageCount || detail.number_of_pages || detail.number_of_pages_median,
+        seriesName: edition.seriesName || detailSeries.name,
+        seriesOrder: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : detailSeries.order,
+        binding: edition.binding || detail.physical_format,
+        format: edition.binding ? edition.format : inferFormat(detail),
+        publisher: edition.publisher || first(detail.publisher),
+        publicationDate: edition.publicationDate || stringValue(detail.publish_date),
+      };
+    }));
+
+    return {
+      ...group,
+      editions: [
+        ...hydratedEditions,
+        ...group.editions.slice(8),
+      ],
+    };
+  }));
 };
 
 const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
@@ -214,10 +319,19 @@ export async function searchOpenLibraryPage(
   const payload = (await response.json()) as OpenLibraryResponse;
   const rawDocs = payload.docs ?? [];
   const authorOperator = trimmed.match(/^inauthor:\s*(.+)$/i);
-  const groups = hardenCatalogGroups(
+  const initialGroups = hardenCatalogGroups(
     rawDocs
       .map(mapWork)
       .filter((group): group is BookSearchWorkGroup => Boolean(group)),
+    authorOperator
+      ? { preferredAuthor: stripQuotes(authorOperator[1]) }
+      : { searchQuery: trimmed },
+  );
+  const hydratedGroups = authorOperator
+    ? initialGroups
+    : await hydrateOpenLibraryExactGroups(initialGroups, trimmed, signal);
+  const groups = hardenCatalogGroups(
+    hydratedGroups,
     authorOperator
       ? { preferredAuthor: stripQuotes(authorOperator[1]) }
       : { searchQuery: trimmed },
