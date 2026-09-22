@@ -126,7 +126,6 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
       || normalize(group.title).includes(wantedTitle)
       || wantedTitle.includes(normalize(group.title)),
     )
-    .filter((group) => !wantedAuthor || exactAuthorMatch(group, book.work.author))
     .flatMap((group) => group.editions.map((edition) => scoreSeriesEvidence(group, edition, book)))
     .filter((item): item is SeriesEvidence => Boolean(item));
 
