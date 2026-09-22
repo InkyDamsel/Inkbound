@@ -9,7 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, mergeCatalogEditionData, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
+import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -70,7 +70,6 @@ const editionIsbnValues = (edition: BookSearchEdition) => [edition.isbn13, editi
 const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) => `${work.key}:${edition.source}:${edition.externalEditionId}`;
 const statusLabel = (status: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
 const normalizeAuthorName = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-const normalizeCatalogText = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
   const normalizedAuthor = normalizeAuthorName(authorName);
@@ -79,41 +78,15 @@ const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: str
   );
 };
 
-const sameCatalogEdition = (left: BookSearchEdition, right: BookSearchEdition) => {
-  if (left.source === right.source && left.externalEditionId === right.externalEditionId) return true;
-  const leftIsbns = editionIsbnValues(left);
-  const rightIsbns = new Set(editionIsbnValues(right));
-  return leftIsbns.some((isbn) => rightIsbns.has(isbn));
-};
-
-const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: BookSearchWorkGroup[], searchQuery?: string, preferredAuthor?: string) => {
-  const merged = current.map((group) => ({ ...group, genres: [...group.genres], editions: [...group.editions] }));
-  const byIdentity = new Map<string, BookSearchWorkGroup>();
-  merged.forEach((group) => {
-    byIdentity.set(`${normalizeCatalogText(group.title)}::${normalizeAuthorName(group.authors[0] ?? '')}`, group);
-  });
-
-  incoming.forEach((group) => {
-    const identity = `${normalizeCatalogText(group.title)}::${normalizeAuthorName(group.authors[0] ?? '')}`;
-    const existing = byIdentity.get(identity);
-    if (!existing) {
-      const added = { ...group, genres: [...group.genres], editions: [...group.editions] };
-      merged.push(added);
-      byIdentity.set(identity, added);
-      return;
-    }
-
-    group.editions.forEach((edition) => {
-      const sameIndex = existing.editions.findIndex((candidate) => sameCatalogEdition(candidate, edition));
-      if (sameIndex < 0) existing.editions.push(edition);
-      else existing.editions[sameIndex] = mergeCatalogEditionData(existing.editions[sameIndex], edition);
-    });
-    existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
-    if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
-  });
-
-  return hardenCatalogGroups(merged, { searchQuery, preferredAuthor });
-};
+const mergeCatalogResultGroups = (
+  current: BookSearchWorkGroup[],
+  incoming: BookSearchWorkGroup[],
+  searchQuery?: string,
+  preferredAuthor?: string,
+) => hardenCatalogGroups(
+  [...current, ...incoming],
+  { searchQuery, preferredAuthor },
+);
 
 const isValidIsbn = (value: string) => isValidCatalogIsbn10(value) || isValidCatalogIsbn13(value);
 
