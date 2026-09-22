@@ -10,8 +10,7 @@ const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperC
 
 const titleWords = (value?: string): string[] => normalizeKey(value).split(' ').filter(Boolean);
 
-const titlesAreCompatibleWorkVariants = (left?: string, right?: string): boolean => {
-  const a = normalizeKey(left);
+export const catalogTitlesAreCompatible = (left?: string, right?: string): boolean => {  const a = normalizeKey(left);
   const b = normalizeKey(right);
   if (!a || !b) return false;
   if (a === b) return true;
@@ -388,7 +387,7 @@ export const hardenCatalogGroups = (
         || candidateAuthorKey === primaryAuthorKey;
       if (!authorCompatible) return false;
 
-      const titleCompatible = titlesAreCompatibleWorkVariants(candidate.title, hardened.title);
+      const titleCompatible = catalogTitlesAreCompatible(candidate.title, hardened.title);
       if (!titleCompatible) return false;
 
       // ISBN agreement may strengthen a compatible-title match, but it must
