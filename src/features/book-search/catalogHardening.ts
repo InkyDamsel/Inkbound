@@ -167,6 +167,30 @@ const exactIsbnAnchorScore = (edition: BookSearchEdition): number => {
   return score;
 };
 
+const exactIsbnPageCountAuthority = (edition: BookSearchEdition): number => {
+  if (!edition.pageCount) return 0;
+  if (edition.source === 'inkbound-catalog') return 40;
+  // Google Books defines pageCount as publisher metadata. Prefer it when
+  // multiple providers disagree about the same ISBN.
+  if (edition.source === 'google-books') return 30;
+  if (edition.source === 'hardcover') return 20;
+  if (edition.source === 'open-library') return 10;
+  return 0;
+};
+
+const chooseExactIsbnPageCount = (
+  anchor: BookSearchEdition,
+  supplement: BookSearchEdition,
+  languageCompatible: boolean,
+): number | undefined => {
+  if (!languageCompatible) return anchor.pageCount;
+  if (!anchor.pageCount) return supplement.pageCount;
+  if (!supplement.pageCount) return anchor.pageCount;
+  return exactIsbnPageCountAuthority(supplement) > exactIsbnPageCountAuthority(anchor)
+    ? supplement.pageCount
+    : anchor.pageCount;
+};
+
 const supplementExactIsbnEdition = (
   anchor: BookSearchEdition,
   supplement: BookSearchEdition,
@@ -193,7 +217,7 @@ const supplementExactIsbnEdition = (
     // Edition-specific identity never gets replaced by a richer but
     // contradictory provider record once the exact-ISBN anchor is chosen.
     format: anchor.format,
-    pageCount: anchor.pageCount ?? (languageCompatible ? supplement.pageCount : undefined),
+    pageCount: chooseExactIsbnPageCount(anchor, supplement, languageCompatible),
     coverUrl: anchor.coverUrl || (languageCompatible ? supplement.coverUrl : undefined),
     editionName: anchor.editionName || (languageCompatible ? supplement.editionName : undefined),
     binding: anchor.binding || (languageCompatible ? supplement.binding : undefined),
@@ -360,7 +384,35 @@ export const hardenCatalogGroups = (
 
   const hardenedGroups = order
     .map((key) => merged.get(key))
-    .filter((group): group is BookSearchWorkGroup => Boolean(group));
+    .filter((group): group is BookSearchWorkGroup => Boolean(group))
+    .map((group) => {
+      // Series membership is work-level metadata even though providers expose
+      // it on editions. If every structured provider that names a series agrees,
+      // carry that relationship to sibling editions that omitted it so choosing
+      // an ebook/paperback does not erase known series data.
+      const namedSeries = group.editions
+        .map((edition) => edition.seriesName?.trim())
+        .filter((value): value is string => Boolean(value));
+      const seriesByKey = new Map<string, string>();
+      namedSeries.forEach((name) => seriesByKey.set(normalizeKey(name), name));
+      if (seriesByKey.size !== 1) return group;
+
+      const [seriesKey, canonicalSeriesName] = [...seriesByKey.entries()][0];
+      const matchingOrders = [...new Set(group.editions
+        .filter((edition) => normalizeKey(edition.seriesName) === seriesKey)
+        .map((edition) => edition.seriesOrder)
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))];
+      const canonicalOrder = matchingOrders.length === 1 ? matchingOrders[0] : undefined;
+
+      return {
+        ...group,
+        editions: group.editions.map((edition) => ({
+          ...edition,
+          seriesName: edition.seriesName || canonicalSeriesName,
+          seriesOrder: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : canonicalOrder,
+        })),
+      };
+    });
 
   const preferredAuthorValue = options.preferredAuthor || inferCatalogAuthorIntent(hardenedGroups, options.searchQuery);
   const preferredAuthor = normalizeKey(preferredAuthorValue);
