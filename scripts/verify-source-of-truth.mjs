@@ -834,7 +834,25 @@ if (!bookSearchMapper.includes('hardenedEdition.seriesName') || !bookSearchMappe
   violations.push('bookSearchMapper.ts: catalog series metadata must persist through the canonical library mapper');
 }
 
+const librarySectionSort = read('src/features/library/librarySectionSort.ts');
+for (const required of ["'az'", "'za'", "'newest'", "'oldest'", 'LIBRARY_SECTION_SORT_OPTIONS']) {
+  if (!librarySectionSort.includes(required)) {
+    violations.push(`librarySectionSort.ts: shared library sort options are missing ${required}`);
+  }
+}
 const seriesPanel = read('src/components/library/SeriesLibraryPanel.tsx');
+const loansPanelSortSource = read('src/components/library/LoansLibraryPanel.tsx');
+const collectionsSortSharedSource = read('src/components/CollectionsScreen.tsx');
+for (const [relative, source] of [
+  ['src/components/library/SeriesLibraryPanel.tsx', seriesPanel],
+  ['src/components/library/LoansLibraryPanel.tsx', loansPanelSortSource],
+  ['src/components/CollectionsScreen.tsx', collectionsSortSharedSource],
+]) {
+  if (!source.includes('LIBRARY_SECTION_SORT_OPTIONS')) {
+    violations.push(`${relative}: library section sort controls must consume the canonical shared options`);
+  }
+}
+
 if (!seriesPanel.includes('seriesName: candidate.seriesName') || !seriesPanel.includes('seriesOrder: candidate.position')) {
   violations.push('SeriesLibraryPanel.tsx: Series Detective accepted candidates must persist canonical series metadata on the saved book.');
 }
@@ -847,7 +865,7 @@ if (!seriesDetective.includes('providerSourcesByWork') || !seriesDetective.inclu
 
 const collectionsSortSource = read('src/components/CollectionsScreen.tsx');
 for (const required of [
-  "type CollectionSortMode = 'az' | 'za' | 'newest' | 'oldest' | 'custom'",
+  "type CollectionSortMode = LibrarySectionSortMode | 'custom'",
   "COLLECTION_SORT_STORAGE_KEY",
   "sortOrder?: number",
   "sortCollectionsForView",
