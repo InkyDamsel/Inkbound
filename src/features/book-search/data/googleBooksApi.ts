@@ -5,6 +5,7 @@ import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
+import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
 import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
@@ -76,9 +77,6 @@ let hardcoverBackoffUntil = 0;
 
 const shouldUseProtectedGoogleBooks = (): boolean =>
   Boolean(functions && auth?.currentUser);
-
-const requireReleaseParityGoogleInDev = (): boolean =>
-  import.meta.env.DEV && shouldUseProtectedGoogleBooks();
 
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -470,7 +468,6 @@ export async function searchGoogleBooksPage(
       hasMore,
     };
   } catch (error) {
-    if (requireReleaseParityGoogleInDev()) throw error;
     if (!isGoogleQuotaError(error)) throw error;
     googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
     console.warn('Google Books quota is exhausted; using paged Open Library results instead.', error);
@@ -516,7 +513,6 @@ export async function searchGoogleBooksAuthorPage(
       hasMore,
     };
   } catch (error) {
-    if (requireReleaseParityGoogleInDev()) throw error;
     if (!isGoogleQuotaError(error)) throw error;
     googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
     console.warn('Google Books quota is exhausted for author lookup; using paged Open Library results instead.', error);
@@ -525,25 +521,16 @@ export async function searchGoogleBooksAuthorPage(
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  if (!requireReleaseParityGoogleInDev() && Date.now() < googleBackoffUntil) {
-    return { groups: [], totalItems: 0 };
-  }
+  if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
+
   try {
     return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
-    if (shouldBackOffCatalog(error) && !requireReleaseParityGoogleInDev()) {
-      googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
-    }
-
-    if (requireReleaseParityGoogleInDev()) {
-      const detail = error instanceof Error ? error.message : String(error ?? '');
-      throw new Error(`Release-parity Google Books backend failed in dev${detail ? `: ${detail}` : '.'}`);
-    }
-
     if (shouldBackOffCatalog(error)) {
-      console.warn('Google Books is cooling down after a provider rate limit/outage; alternate catalogs remain available.', error);
+      googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+      console.warn('Google Books is unavailable; Inkbound is continuing with alternate catalog providers.', error);
     } else {
-      console.warn('Google Books search unavailable; using alternate catalogs.', error);
+      console.warn('Google Books search failed; Inkbound is continuing with alternate catalog providers.', error);
     }
     return { groups: [], totalItems: 0 };
   }
@@ -601,14 +588,15 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const isIsbnLookup = /^isbn:/i.test(builtQuery);
 
   if (isIsbnLookup) {
-    const [trusted, google, openLibrary, hardcover] = await Promise.all([
+    const [trusted, google, openLibrary, hardcover, supplemental] = await Promise.all([
       searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
       searchGoogleBaseline(trimmed, signal),
       searchOpenLibraryWithAuthorFallback(trimmed, signal),
       searchHardcoverWithBackoff(trimmed),
+      searchSupplementalCatalogs(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
     ]);
     const combined = hardenCatalogGroups(
-      [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
+      [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups, ...supplemental.groups],
       { searchQuery: trimmed },
     );
     const exact = selectExactIsbnEdition(combined, compactIsbn(trimmed));
@@ -630,16 +618,33 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
     { searchQuery: trimmed },
   );
+
+  let supplemental: BookSearchResponse = { groups: [], totalItems: 0 };
+  if (google.groups.length === 0 || combined.length < 8) {
+    supplemental = await searchSupplementalCatalogs(trimmed)
+      .catch((error) => {
+        console.warn('Supplemental catalog providers unavailable.', error);
+        return { groups: [], totalItems: 0 };
+      });
+    combined = hardenCatalogGroups(
+      [...combined, ...supplemental.groups],
+      { searchQuery: trimmed },
+    );
+  }
+
   if (combined.length === 0) return { groups: [], totalItems: 0 };
 
-  // Do not fan out into extra Google searches for every thin result. The
-  // canonical server request hydrates only the strongest query matches.
-  // Work-level fields (summary/genres) may safely supplement the same title and
-  // author across providers, while edition-level fields only merge when the
-  // edition identity matches. This is the canonical catalog result used by
-  // search, metadata sync, and Series Detective.
+  // Supplemental providers fill gaps and provide resilience, but all records
+  // still pass through the same canonical work/edition resolver.
   return cacheSearchResponse(cacheKey, {
     groups: combined,
-    totalItems: Math.max(google.totalItems, openLibrary.totalItems, trusted.totalItems, hardcover.totalItems, combined.length),
+    totalItems: Math.max(
+      google.totalItems,
+      openLibrary.totalItems,
+      trusted.totalItems,
+      hardcover.totalItems,
+      supplemental.totalItems,
+      combined.length,
+    ),
   });
 }
