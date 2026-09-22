@@ -101,7 +101,10 @@ export const scoreSeriesEvidence = (
 };
 
 export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): SeriesEvidence | null => {
-  const eligible = evidence.filter((item) => item.exactAuthor && (item.exactTitle || item.exactIdentifier));
+  const eligible = evidence.filter((item) =>
+    (item.exactAuthor && (item.exactTitle || item.exactIdentifier))
+    || (item.structured && item.exactIdentifier),
+  );
   if (!eligible.length) return null;
 
   const bySeries = new Map<string, SeriesEvidence[]>();
@@ -121,7 +124,7 @@ export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): Series
     // record may still verify when it matches this exact book.
     const verified =
       best.exactIdentifier && best.structured
-      || best.structured && best.score >= 150
+      || best.structured && best.exactAuthor && best.exactTitle && best.score >= 150
       || distinctSources >= 2 && best.score >= 110;
     return { best, distinctSources, verified };
   }).filter((item) => item.verified)
