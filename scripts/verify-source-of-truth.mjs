@@ -57,11 +57,24 @@ for (const required of [
   "const requestedMode = process.argv.includes('--emulator') ? 'emulator' : 'production'",
   "VITE_RUNTIME_TARGET: 'web'",
   "VITE_FIREBASE_MODE: requestedMode",
+  "VITE_FIREBASE_FUNCTIONS_MODE: useFunctionsOnlyEmulator ? 'emulator' : requestedMode",
   "VITE_PREMIUM_SUBSCRIPTIONS_OPEN: 'false'",
 ]) {
   if (!startDev.includes(required)) {
     violations.push(`start-dev.mjs: DEV parity/safety contract is missing (${required})`);
   }
+}
+
+const firebaseSource = read('src/lib/firebase.ts');
+if (!firebaseSource.includes("requestedFunctionsMode === 'emulator'")) {
+  violations.push('firebase.ts: hybrid DEV must support a Functions-only emulator');
+}
+if (!firebaseSource.includes('connectFunctionsEmulator(functions, emulatorHost, 5001)')) {
+  violations.push('firebase.ts: hybrid DEV must route Cloud Functions to localhost');
+}
+const functionsOnlyLauncher = read('scripts/start-functions-emulator.mjs');
+if (!functionsOnlyLauncher.includes("'--only',") || !functionsOnlyLauncher.includes("'functions'")) {
+  violations.push('start-functions-emulator.mjs: DEV must launch only the local Functions emulator');
 }
 
 const runtimePlatformSource = read('src/platform/runtimePlatform.ts');
