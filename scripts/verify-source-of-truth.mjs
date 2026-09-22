@@ -113,6 +113,9 @@ if (!googleBooksSource.includes("'searchGoogleBooksCatalog'")) {
 if (!googleBooksSource.includes('requireReleaseParityGoogleInDev')) {
   violations.push('googleBooksApi.ts: release-parity DEV must fail loudly instead of silently substituting another catalog');
 }
+if (googleBooksSource.includes("Release-parity Google Books backend is cooling down")) {
+  violations.push('googleBooksApi.ts: DEV must not cache transient Google failures into a cooldown state');
+}
 if (googleBooksSource.includes("searchGoogleBaseline(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 }))")) {
   violations.push('googleBooksApi.ts: DEV must not swallow the canonical Google catalog failure inside the combined search');
 }
