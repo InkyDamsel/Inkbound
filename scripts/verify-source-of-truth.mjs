@@ -175,6 +175,12 @@ if (!googleBooksSource.includes("resolveGoogleSeriesMetadata")) {
 if (!googleBooksSource.includes('hydrateGoogleVolumeDetails')) {
   violations.push('googleBooksApi.ts: Google Books results must hydrate full volume details before canonical mapping');
 }
+if (!googleBooksSource.includes('refineExactTitleWithAuthor')) {
+  violations.push('googleBooksApi.ts: thin exact-title matches must receive one bounded author-qualified Google repair pass');
+}
+if (!googleBooksSource.includes('intitle:"') || !googleBooksSource.includes('inauthor:"')) {
+  violations.push('googleBooksApi.ts: exact-title repair must constrain both title and author');
+}
 if (!googleBooksSource.includes("'searchGoogleBooksCatalog'")) {
   violations.push('googleBooksApi.ts: signed-in runtimes must use the shared Google Books catalog callable');
 }
@@ -843,6 +849,9 @@ for (const required of [
   if (!openLibrarySource.includes(required)) {
     violations.push(`openLibraryApi.ts: Open Library exact matches must hydrate full edition records (${required})`);
   }
+}
+if (!read('src/features/book-search/catalogHardening.ts').includes("format === 'audiobook' ? undefined : cleanPageCount")) {
+  violations.push('catalogHardening.ts: Audiobook catalog records must not expose page counts');
 }
 const bookSearchMapperSource = read('src/features/book-search/mapping/bookSearchMapper.ts');
 if (!bookSearchMapperSource.includes('enrichSelectedCatalogEdition(hardenedWork, edition)')) {
