@@ -62,11 +62,7 @@ export async function searchCrossrefSupplement(query: string): Promise<BookSearc
   if (!trimmed) return { groups: [], totalItems: 0 };
   return cachedRequest(`crossref:${trimmed.toLowerCase()}`, async () => {
     const isbn = compactIsbn(trimmed.replace(/^isbn:/i, ''));
-    const params = new URLSearchParams({
-      rows: '12',
-      select: 'DOI,title,subtitle,author,publisher,ISBN,type,page,published,issued,language',
-      mailto: 'support@inkydameinteractive.com',
-    });
+    const params = new URLSearchParams({ rows: '12' });
     if (/^(?:978|979)\d{10}$|^\d{9}[\dX]$/.test(isbn)) params.set('filter', `isbn:${isbn}`);
     else params.set('query.bibliographic', trimmed);
 
