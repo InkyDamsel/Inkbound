@@ -1,9 +1,6 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
-import { searchGoogleBooks } from '../book-search/data/googleBooksApi';
-import { searchHardcover } from '../book-search/data/hardcoverApi';
-import { searchInkboundTrustedCatalog } from '../catalog/metadataContributions';
-import { searchOpenLibraryPage } from '../book-search/data/openLibraryApi';
+import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata } from './seriesLibrary';
 import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
@@ -99,22 +96,17 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
   const identifiers = [activeEdition?.isbn13, activeEdition?.isbn10].filter((value): value is string => Boolean(value?.trim()));
 
   const googleQuery = identifiers[0] || `${book.work.title} ${book.work.author}`;
-  const [google, openLibraryAuthorGroups, ...searches] = await Promise.all([
+  const [catalog, authorGroups, ...identifierSearches] = await Promise.all([
     searchGoogleBooks(googleQuery),
-    collectPagedGroups((startIndex) => searchOpenLibraryPage(`inauthor:${book.work.author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
-    searchInkboundTrustedCatalog({ title: book.work.title, author: book.work.author }),
-    searchHardcover(`${book.work.title} ${book.work.author}`),
-    searchOpenLibraryPage(`intitle:"${book.work.title}"`, 0, SERIES_DISCOVERY_PAGE_SIZE),
-    ...identifiers.map((isbn) => searchInkboundTrustedCatalog({ isbn })),
-    ...identifiers.map((isbn) => searchHardcover(isbn)),
-    ...identifiers.map((isbn) => searchOpenLibraryPage(`isbn:${isbn}`, 0, SERIES_DISCOVERY_PAGE_SIZE)),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(book.work.author, startIndex)),
+    ...identifiers.map((isbn) => searchGoogleBooks(isbn)),
   ]);
 
   const groups = hardenCatalogGroups(
     [
-      ...google.groups,
-      ...searches.flatMap((response) => response.groups),
-      ...openLibraryAuthorGroups,
+      ...catalog.groups,
+      ...identifierSearches.flatMap((response) => response.groups),
+      ...authorGroups,
     ],
     { preferredAuthor: book.work.author },
   );
@@ -149,32 +141,21 @@ export async function findMissingSeriesBooks(
   const missingKnownGaps = Array.from({ length: highestKnownPosition }, (_, index) => index + 1)
     .filter((position) => !knownPositionSet.has(position));
 
-  const [googleSeries, openLibrarySeriesGroups, openLibraryAuthorGroups, openLibrarySeriesOnlyGroups, hardcoverSeries, hardcoverAuthor, hardcoverSeriesOnly, positionalDiscovery] = await Promise.all([
+  const [seriesAndAuthor, authorGroups, seriesOnly, positionalDiscovery] = await Promise.all([
     searchGoogleBooks(`${seriesName} ${author}`),
-    collectPagedGroups((startIndex) => searchOpenLibraryPage(`${seriesName} ${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
-    collectPagedGroups((startIndex) => searchOpenLibraryPage(`inauthor:${author}`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
-    collectPagedGroups((startIndex) => searchOpenLibraryPage(`"${seriesName}"`, startIndex, SERIES_DISCOVERY_PAGE_SIZE)),
-    searchHardcover(`${seriesName} ${author}`),
-    searchHardcover(author),
-    searchHardcover(seriesName),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
+    searchGoogleBooks(seriesName),
     Promise.all(missingKnownGaps.map(async (position) => {
       const query = `${seriesName} book ${position} ${author}`;
-      const [openLibrary, hardcover] = await Promise.all([
-        searchOpenLibraryPage(query, 0, SERIES_DISCOVERY_PAGE_SIZE),
-        searchHardcover(query),
-      ]);
-      return [...openLibrary.groups, ...hardcover.groups];
+      const result = await searchGoogleBooks(query);
+      return result.groups;
     })),
   ]);
 
   const rawGroups = [
-    ...googleSeries.groups,
-    ...openLibrarySeriesGroups,
-    ...openLibraryAuthorGroups,
-    ...openLibrarySeriesOnlyGroups,
-    ...hardcoverSeries.groups,
-    ...hardcoverAuthor.groups,
-    ...hardcoverSeriesOnly.groups,
+    ...seriesAndAuthor.groups,
+    ...authorGroups,
+    ...seriesOnly.groups,
     ...positionalDiscovery.flat(),
   ];
 
