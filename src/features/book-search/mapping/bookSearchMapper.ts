@@ -6,7 +6,7 @@ import {
   UserBookRecord,
 } from '../../../types';
 import { BookSearchEdition, BookSearchWorkGroup } from '../model/bookSearch';
-import { hardenCatalogEdition, hardenCatalogGroups } from '../catalogHardening';
+import { enrichSelectedCatalogEdition, hardenCatalogGroups } from '../catalogHardening';
 
 interface CreateBookFromEditionOptions {
   work: BookSearchWorkGroup;
@@ -52,7 +52,7 @@ export function createBookFromSearchEdition({
   specialFeatures = edition.specialFeatures,
 }: CreateBookFromEditionOptions): UserBookRecord {
   const hardenedWork = hardenCatalogGroups([work])[0] ?? work;
-  const hardenedEdition = hardenCatalogEdition(edition);
+  const hardenedEdition = enrichSelectedCatalogEdition(hardenedWork, edition);
   const bookId = uniqueId('book');
   const workId = uniqueId('work');
   const editionId = uniqueId('edition');
