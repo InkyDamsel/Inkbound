@@ -254,11 +254,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
       const catalogResponse = await searchGoogleBooks(trimmedQuery);
       setResults(catalogResponse.groups);
-      setSearchNextStartIndex(0);
+      setSearchNextStartIndex(40);
       setSearchProviderTotal(catalogResponse.totalItems || null);
-      // Initial search intentionally uses the canonical cached catalog request
-      // exactly once. Load-more remains an explicit user action.
-      setSearchHasMore(catalogResponse.groups.length >= 20);
+      // Initial search intentionally uses one canonical Google page (40 max).
+      // Only an explicit Load More action may request the next Google page.
+      setSearchHasMore((catalogResponse.totalItems || 0) > 40);
     } catch (error) {
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
