@@ -5,6 +5,7 @@ import {
   hasKnownSeriesContextEvidence,
   scoreSeriesEvidence,
   selectVerifiedSeriesEvidence,
+  selectVerifiedSubtitleSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
 
@@ -140,6 +141,75 @@ const twistedBrandOnly = work(
   { title: 'Disney A Twisted Tale', authors: ['Example Author'] },
 );
 assert.equal(hasKnownSeriesContextEvidence(twistedBrandOnly, twistedBrandOnly.editions[0], 'A Twisted Tale', 2), false);
+
+const concealBook = {
+  ...book,
+  work: { title: "Conceal, Don't Feel", author: 'Jen Calonita' },
+  activeEditionId: 'conceal-active',
+  editions: [{ id: 'conceal-active', language: 'en' }],
+} as unknown as UserBookRecord;
+
+const concealGoogle = work(
+  edition('google-books', {
+    title: "Conceal, Don't Feel",
+    subtitle: 'A Twisted Tale',
+    authors: ['Jen Calonita'],
+    seriesName: undefined,
+    seriesOrder: undefined,
+    isbn13: undefined,
+    isbn10: undefined,
+  }),
+  { title: "Conceal, Don't Feel", subtitle: 'A Twisted Tale', authors: ['Jen Calonita'] },
+);
+const concealOpenLibrary = work(
+  edition('open-library', {
+    title: "Conceal, Don't Feel",
+    subtitle: 'A Twisted Tale',
+    authors: ['Jen Calonita'],
+    seriesName: undefined,
+    seriesOrder: undefined,
+    isbn13: undefined,
+    isbn10: undefined,
+  }),
+  { title: "Conceal, Don't Feel", subtitle: 'A Twisted Tale', authors: ['Jen Calonita'] },
+);
+assert.deepEqual(
+  selectVerifiedSubtitleSeriesEvidence([concealGoogle, concealOpenLibrary], concealBook),
+  { name: 'A Twisted Tale', position: null },
+);
+assert.equal(
+  selectVerifiedSubtitleSeriesEvidence([concealGoogle], concealBook),
+  null,
+);
+
+const genericSubtitleGoogle = work(
+  edition('google-books', {
+    title: "Conceal, Don't Feel",
+    subtitle: 'A Novel',
+    authors: ['Jen Calonita'],
+    seriesName: undefined,
+    seriesOrder: undefined,
+    isbn13: undefined,
+    isbn10: undefined,
+  }),
+  { title: "Conceal, Don't Feel", subtitle: 'A Novel', authors: ['Jen Calonita'] },
+);
+const genericSubtitleOpenLibrary = work(
+  edition('open-library', {
+    title: "Conceal, Don't Feel",
+    subtitle: 'A Novel',
+    authors: ['Jen Calonita'],
+    seriesName: undefined,
+    seriesOrder: undefined,
+    isbn13: undefined,
+    isbn10: undefined,
+  }),
+  { title: "Conceal, Don't Feel", subtitle: 'A Novel', authors: ['Jen Calonita'] },
+);
+assert.equal(
+  selectVerifiedSubtitleSeriesEvidence([genericSubtitleGoogle, genericSubtitleOpenLibrary], concealBook),
+  null,
+);
 
 const wrongAuthorEdition = edition('hardcover', { authors: ['Someone Else'] });
 const wrongAuthor = scoreSeriesEvidence(work(wrongAuthorEdition), wrongAuthorEdition, book);
