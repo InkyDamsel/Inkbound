@@ -312,7 +312,9 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         isbn: activeEdition.isbn || matchedEdition.isbn13 || matchedEdition.isbn10,
         isbn10: activeEdition.isbn10 || matchedEdition.isbn10,
         isbn13: activeEdition.isbn13 || matchedEdition.isbn13,
-        pageCount: activeEdition.pageCount || matchedEdition.pageCount,
+        pageCount: exactIsbn
+          ? (matchedEdition.pageCount ?? activeEdition.pageCount)
+          : (activeEdition.pageCount || matchedEdition.pageCount),
         publisher: activeEdition.publisher || matchedEdition.publisher,
         publicationDate: activeEdition.publicationDate || matchedEdition.publicationDate,
         coverUrl: activeEdition.coverUrl || matchedEdition.coverUrl,
@@ -329,6 +331,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
           publisherSummary: book.work.publisherSummary || matchedPublisherSummary,
           summary: book.work.personalSummary || book.work.publisherSummary || matchedPublisherSummary || book.work.summary,
           genres: book.work.genres.length ? book.work.genres : matchedWork.genres,
+          seriesName: book.work.seriesName || matchedEdition.seriesName,
+          seriesOrder: typeof book.work.seriesOrder === 'number' ? book.work.seriesOrder : matchedEdition.seriesOrder,
           publicationYear: book.work.publicationYear || matchedEdition.publicationYear,
           originalLanguage: book.work.originalLanguage || matchedEdition.language,
           externalWorkId: matchedWork.key,
