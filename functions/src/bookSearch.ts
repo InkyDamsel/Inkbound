@@ -8,6 +8,11 @@ const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const GOOGLE_BOOKS_CACHE_TTL_MS = 5 * 60 * 1000;
 const GOOGLE_BOOKS_CACHE_MAX = 500;
+const GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_MAX = 1000;
+
+type GoogleBibliographicSeriesInfo = { name: string; position?: number };
+const googleBibliographicSeriesCache = new Map<string, { expiresAt: number; value: GoogleBibliographicSeriesInfo | null }>();
 
 type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[]; seriesMetadataById?: Record<string, string> };
 const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBooksCatalogPayload }>();
@@ -174,6 +179,430 @@ const googleSeriesIdsFromItems = (items: unknown[]): string[] => {
   }
   return [...ids];
 };
+
+const decodeGoogleBooksHtml = (value: string): string =>
+  value
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ');
+
+const stripGoogleBooksHtml = (value: string): string =>
+  decodeGoogleBooksHtml(
+    value
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' '),
+  )
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim();
+
+const readGoogleBibliographicSeriesCache = (volumeId: string): GoogleBibliographicSeriesInfo | null | undefined => {
+  const cached = googleBibliographicSeriesCache.get(volumeId);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    googleBibliographicSeriesCache.delete(volumeId);
+    return undefined;
+  }
+  return cached.value;
+};
+
+const writeGoogleBibliographicSeriesCache = (volumeId: string, value: GoogleBibliographicSeriesInfo | null) => {
+  googleBibliographicSeriesCache.set(volumeId, {
+    expiresAt: Date.now() + GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_TTL_MS,
+    value,
+  });
+  while (googleBibliographicSeriesCache.size > GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_MAX) {
+    const oldestKey = googleBibliographicSeriesCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    googleBibliographicSeriesCache.delete(oldestKey);
+  }
+};
+
+const parseGoogleBooksBibliographicSeries = (
+  html: string,
+  authors: string[],
+): GoogleBibliographicSeriesInfo | null => {
+  const titleCell = html.match(
+    /<td[^>]*>\s*Title\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/i,
+  )?.[1];
+  if (!titleCell) return null;
+
+  const lines = stripGoogleBooksHtml(titleCell)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return null;
+
+  const removeAuthorSuffix = (value: string): string => {
+    let cleaned = value.trim();
+    for (const author of authors) {
+      const escaped = author.replace(/[.*+?^$(){}|[\]\\]/g, '\\const googleVolumeNeedsDetail = (value: unknown): boolean => {
+');
+      cleaned = cleaned.replace(new RegExp('\\s*,\\s*' + escaped + '\\s*  const info = googleVolumeInfo(value);
+  if (!info) return true;
+  const pageCount = info.pageCount;
+  const seriesInfo = asRecord(info.seriesInfo);
+  const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
+  return !(typeof pageCount === 'number' && Number.isFinite(pageCount) && pageCount > 0) || memberships.length === 0;
+};
+
+async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string): Promise<unknown[]> {
+  return Promise.all(items.map(async (item, index) => {
+    const id = googleVolumeId(item);
+    if (!id || index >= GOOGLE_DETAIL_HYDRATION_LIMIT || !googleVolumeNeedsDetail(item)) return item;
+
+    const params = new URLSearchParams({ projection: 'full' });
+    if (apiKey) params.set('key', apiKey);
+    try {
+      const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(id)}?${params.toString()}`);
+      const hydrated = response.ok ? await response.json() as unknown : item;
+      const hydratedRecord = asRecord(hydrated) ?? asRecord(item);
+      const info = googleVolumeInfo(hydrated);
+      const seriesInfo = asRecord(info?.seriesInfo);
+      const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
+      if (memberships.length > 0 || !hydratedRecord) return hydrated;
+
+      const authors = Array.isArray(info?.authors)
+        ? info.authors.filter((value): value is string => typeof value === 'string')
+        : [];
+      const bibliographicSeries = await fetchGoogleBooksBibliographicSeries(id, authors);
+      return bibliographicSeries
+        ? { ...hydratedRecord, inkboundBibliographicSeries: bibliographicSeries }
+        : hydrated;
+    } catch (error) {
+      console.warn('Google Books volume hydration unavailable.', error);
+      return item;
+    }
+  }));
+}
+
+async function fetchGoogleSeriesTitles(items: unknown[], apiKey: string): Promise<Record<string, string>> {
+  const ids = googleSeriesIdsFromItems(items);
+  if (ids.length === 0) return {};
+
+  const params = new URLSearchParams();
+  ids.forEach((id) => params.append('series_id', id));
+  if (apiKey) params.set('key', apiKey);
+
+  try {
+    const response = await fetch(`${GOOGLE_SERIES_ENDPOINT}?${params.toString()}`);
+    if (!response.ok) return {};
+    const payload = await response.json() as { series?: unknown[] };
+    const pairs = (payload.series ?? []).flatMap((value) => {
+      const record = asRecord(value);
+      const seriesId = typeof record?.seriesId === 'string' ? record.seriesId.trim() : '';
+      const title = typeof record?.title === 'string' ? record.title.trim() : '';
+      return seriesId && title ? [[seriesId, title] as const] : [];
+    });
+    return Object.fromEntries(pairs);
+  } catch (error) {
+    console.warn('Google Books series-title lookup unavailable.', error);
+    return {};
+  }
+}
+
+async function googleBooksCatalog(query: string, startIndex = 0, maxResults = 40): Promise<GoogleBooksCatalogPayload> {
+  const cached = readGoogleBooksCache(query, startIndex, maxResults);
+  if (cached) return cached;
+
+  const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
+  let effectiveApiKey = apiKey;
+  const baseParams = new URLSearchParams({
+    q: query,
+    printType: 'books',
+    projection: 'full',
+    orderBy: 'relevance',
+    startIndex: String(startIndex),
+    maxResults: String(maxResults),
+  });
+
+  const runRequest = async (key?: string) => {
+    const params = new URLSearchParams(baseParams);
+    if (key) params.set('key', key);
+    return fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+  };
+
+  let response = await runRequest(apiKey || undefined);
+  if (!response.ok && apiKey) {
+    const body = await response.text();
+    const detail = googleBooksErrorDetail(body);
+    const invalidKey = response.status === 400 && /api key.*not valid|valid api key/i.test(detail);
+    if (invalidKey) {
+      console.warn('Configured Google Books API key was rejected; retrying public catalog request without a key.');
+      effectiveApiKey = '';
+      response = await runRequest();
+    } else {
+      throw new Error(`Google Books returned ${response.status}${detail ? `: ${detail}` : '.'}`);
+    }
+  }
+
+  if (!response.ok) {
+    const detail = googleBooksErrorDetail(await response.text());
+    throw new Error(`Google Books returned ${response.status}${detail ? `: ${detail}` : '.'}`);
+  }
+
+  const raw = await response.json() as { totalItems?: unknown; items?: unknown };
+  const rawItems = Array.isArray(raw.items) ? raw.items : [];
+  const items = await hydrateGoogleCatalogItems(rawItems, effectiveApiKey);
+  const payload: GoogleBooksCatalogPayload = {
+    totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
+    items,
+    seriesMetadataById: await fetchGoogleSeriesTitles(items, effectiveApiKey),
+  };
+  writeGoogleBooksCache(query, startIndex, maxResults, payload);
+  return payload;
+}
+
+async function hardcoverCatalog(query: string) {
+  const token = HARDCOVER_API_TOKEN.value();
+  if (!token) throw new HttpsError('failed-precondition', 'Hardcover search is not configured.');
+
+  const searchData = await hardcoverGraphql<{ search?: { results?: unknown } }>(
+    token,
+    `query SearchBooks($q: String!) {
+      search(query: $q, query_type: "Book", per_page: 15, page: 1) { results }
+    }`,
+    { q: query },
+  );
+  const searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
+  const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
+
+  let editions: HardcoverEdition[] = [];
+  let books: HardcoverBook[] = [];
+  if (ids.length > 0) {
+    try {
+      const detailData = await hardcoverGraphql<{ editions?: HardcoverEdition[]; books?: HardcoverBook[] }>(
+        token,
+        `query SearchBookDetails($ids: [Int!]!) {
+          books(where: { id: { _in: $ids } }, limit: 80) {
+            id title subtitle description release_year image { url }
+            book_series { position series { id name } }
+          }
+          editions(where: { book_id: { _in: $ids } }, limit: 80) {
+            id book_id title pages isbn_10 isbn_13 release_date edition_format
+            image { url }
+            publisher { name }
+            book {
+              id title subtitle description release_year image { url }
+              book_series { position series { id name } }
+            }
+          }
+        }`,
+        { ids },
+      );
+      editions = detailData.editions ?? [];
+      books = detailData.books ?? [];
+    } catch (error) {
+      console.warn('Hardcover detail expansion unavailable.', error);
+    }
+  }
+
+  const booksById = new Map<string, HardcoverBook>();
+  books.forEach((book) => {
+    const key = String(book.id ?? '');
+    if (key) booksById.set(key, book);
+  });
+
+  const editionsByBook = new Map<string, HardcoverEdition[]>();
+  editions.forEach((edition) => {
+    const key = String(edition.book_id ?? edition.book?.id ?? '');
+    if (!key) return;
+    editionsByBook.set(key, [...(editionsByBook.get(key) ?? []), edition]);
+  });
+
+  const groups = searchResults.map((result) => {
+    const id = String(result.id ?? result.slug ?? result.title);
+    const authors = authorNames(result);
+    const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
+    const matchedBook = booksById.get(String(result.id ?? ''));
+    const seriesMembership = matchedBook?.book_series?.find((membership) => membership.series?.name?.trim())
+      ?? matchedEditions.map((edition) => edition.book?.book_series?.find((membership) => membership.series?.name?.trim())).find(Boolean);
+    const seriesName = seriesMembership?.series?.name?.trim();
+    const seriesOrder = typeof seriesMembership?.position === 'number' && Number.isFinite(seriesMembership.position)
+      ? seriesMembership.position
+      : undefined;
+    const publisherSummary = matchedBook?.description
+      ?? result.description
+      ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
+    const normalizedEditions = matchedEditions.length > 0
+      ? matchedEditions.map((edition) => ({
+          source: 'hardcover' as const,
+          externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
+          title: edition.title ?? edition.book?.title ?? matchedBook?.title ?? result.title ?? 'Untitled',
+          subtitle: edition.book?.subtitle ?? matchedBook?.subtitle ?? result.subtitle,
+          authors,
+          publisherSummary: matchedBook?.description ?? edition.book?.description ?? publisherSummary,
+          seriesName: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.series?.name?.trim() ?? seriesName,
+          seriesOrder: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.position ?? seriesOrder,
+          genres: [],
+          publisher: edition.publisher?.name,
+          publicationDate: edition.release_date,
+          publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || matchedBook?.release_year || result.release_year || new Date().getFullYear(),
+          format: normalizeFormat(edition.edition_format),
+          isbn10: edition.isbn_10,
+          isbn13: edition.isbn_13,
+          // result.pages is work/search-result metadata and may belong to a
+          // different edition. Exact ISBN editions may only use edition.pages.
+          pageCount: edition.pages,
+          coverUrl: edition.image?.url ?? edition.book?.image?.url ?? matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
+          editionName: edition.title,
+          binding: edition.edition_format,
+          specialFeatures: [],
+        }))
+      : [{
+          source: 'hardcover' as const,
+          externalEditionId: id,
+          title: matchedBook?.title ?? result.title ?? 'Untitled',
+          subtitle: matchedBook?.subtitle ?? result.subtitle,
+          authors,
+          publisherSummary,
+          seriesName,
+          seriesOrder,
+          genres: [],
+          publicationYear: matchedBook?.release_year || result.release_year || new Date().getFullYear(),
+          format: 'hardcover' as const,
+          pageCount: result.pages,
+          coverUrl: matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
+          specialFeatures: [],
+        }];
+
+    return {
+      key: `hardcover:${id}`,
+      title: matchedBook?.title ?? result.title ?? 'Untitled',
+      subtitle: matchedBook?.subtitle ?? result.subtitle,
+      authors,
+      publisherSummary,
+      genres: [],
+      editions: normalizedEditions,
+    };
+  });
+
+  return { groups, totalItems: groups.length };
+}
+
+export const searchGoogleBooksCatalog = onCall(
+  {
+    secrets: [GOOGLE_BOOKS_API_KEY],
+    // This callable returns public bibliographic metadata only. Authentication
+    // prevents anonymous abuse while allowing localhost/dev parity without an
+    // App Check token.
+    enforceAppCheck: false,
+  },
+  async (request) => {
+    if (!request.auth && process.env.FUNCTIONS_EMULATOR !== 'true') {
+      throw new HttpsError('unauthenticated', 'Sign in to search the Google Books catalog.');
+    }
+
+    const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+    if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
+
+    const requestedStartIndex = Number(request.data?.startIndex);
+    const requestedMaxResults = Number(request.data?.maxResults);
+    const startIndex = Number.isInteger(requestedStartIndex) && requestedStartIndex >= 0
+      ? Math.min(requestedStartIndex, 10000)
+      : 0;
+    const maxResults = Number.isInteger(requestedMaxResults) && requestedMaxResults > 0
+      ? Math.min(requestedMaxResults, 40)
+      : 40;
+
+    try {
+      return await googleBooksCatalog(query, startIndex, maxResults);
+    } catch (error) {
+      console.error('Google Books catalog search failed.', error);
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError('unavailable', error instanceof Error ? error.message : 'Google Books catalog search failed.');
+    }
+  },
+);
+
+export const searchHardcoverBooks = onCall(
+  { secrets: [HARDCOVER_API_TOKEN, GOOGLE_BOOKS_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    if (!request.auth && process.env.FUNCTIONS_EMULATOR !== 'true') {
+      throw new HttpsError('unauthenticated', 'Sign in to use protected book search.');
+    }
+    const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+    if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
+    const provider = request.data?.provider === 'google-books' ? 'google-books' : 'hardcover';
+    const requestedStartIndex = Number(request.data?.startIndex);
+    const requestedMaxResults = Number(request.data?.maxResults);
+    const startIndex = Number.isInteger(requestedStartIndex) && requestedStartIndex >= 0
+      ? Math.min(requestedStartIndex, 10000)
+      : 0;
+    const maxResults = Number.isInteger(requestedMaxResults) && requestedMaxResults > 0
+      ? Math.min(requestedMaxResults, 40)
+      : 40;
+
+    try {
+      return provider === 'google-books'
+        ? await googleBooksCatalog(query, startIndex, maxResults)
+        : await hardcoverCatalog(query);
+    } catch (error) {
+      if (provider === 'hardcover') {
+        console.warn('Optional Hardcover catalog supplement unavailable.', error);
+        return { groups: [], totalItems: 0 };
+      }
+
+      console.error('google-books search failed', error);
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError('unavailable', error instanceof Error ? error.message : 'Protected book search failed.');
+    }
+  },
+);
+, 'i'), '').trim();
+    }
+    return cleaned;
+  };
+
+  for (const rawLine of lines.slice(1)) {
+    const line = removeAuthorSuffix(rawLine);
+    const numbered = line.match(/^Book\s+(\d+(?:\.\d+)?)\s+of\s+(.+)$/i);
+    if (numbered) {
+      const position = Number(numbered[1]);
+      const name = numbered[2].trim();
+      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
+    }
+
+    if (
+      line.length >= 3
+      && line.length <= 100
+      && !/^edition\b/i.test(line)
+      && !/^volume\b/i.test(line)
+      && !/^part\b/i.test(line)
+    ) {
+      return { name: line };
+    }
+  }
+
+  return null;
+};
+
+async function fetchGoogleBooksBibliographicSeries(
+  volumeId: string,
+  authors: string[],
+): Promise<GoogleBibliographicSeriesInfo | null> {
+  const cached = readGoogleBibliographicSeriesCache(volumeId);
+  if (cached !== undefined) return cached;
+
+  try {
+    const response = await fetch('https://books.google.com/books?id=' + encodeURIComponent(volumeId), {
+      headers: { 'User-Agent': 'Inkbound/1.0 book-metadata lookup' },
+    });
+    if (!response.ok) {
+      writeGoogleBibliographicSeriesCache(volumeId, null);
+      return null;
+    }
+    const value = parseGoogleBooksBibliographicSeries(await response.text(), authors);
+    writeGoogleBibliographicSeriesCache(volumeId, value);
+    return value;
+  } catch (error) {
+    console.warn('Google Books bibliographic series lookup unavailable.', error);
+    return null;
+  }
+}
 
 const googleVolumeNeedsDetail = (value: unknown): boolean => {
   const info = googleVolumeInfo(value);
