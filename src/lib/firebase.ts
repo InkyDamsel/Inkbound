@@ -24,6 +24,7 @@ import { FirebaseStorage, connectStorageEmulator, getStorage } from 'firebase/st
 import { Analytics, getAnalytics, logEvent } from 'firebase/analytics';
 import { getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
 import { isNativeRuntime } from '../platform/runtimePlatform';
+import { INKBOUND_GA4_MEASUREMENT_ID } from '../config/analytics';
 
 const readEnv = (value: string | undefined): string => value?.trim() ?? '';
 const readBooleanEnv = (value: string | undefined): boolean => readEnv(value).toLowerCase() === 'true';
@@ -35,7 +36,7 @@ const firebaseConfig = {
   storageBucket: readEnv(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET),
   messagingSenderId: readEnv(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
   appId: readEnv(import.meta.env.VITE_FIREBASE_APP_ID),
-  measurementId: 'G-2LDXP8Z4S0',
+  measurementId: INKBOUND_GA4_MEASUREMENT_ID,
 };
 
 const appCheckSiteKey = readEnv(import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY);
