@@ -752,6 +752,16 @@ if (!seriesEvidenceSource.includes('(item.structured && item.exactIdentifier)'))
 if (!seriesEvidenceSource.includes('canonicalSeriesIdentity(item.name)')) {
   violations.push('seriesDetectiveEvidence.ts: provider series-name aliases must corroborate through canonical series identity');
 }
+
+for (const required of [
+  'selectVerifiedSubtitleSeriesEvidence',
+  'GENERIC_SUBTITLE_SERIES_WORDS',
+  'item.sources.size >= 2',
+]) {
+  if (!seriesEvidenceSource.includes(required)) {
+    violations.push(`seriesDetectiveEvidence.ts: safe corroborated subtitle series evidence is missing ${required}`);
+  }
+}
 const seriesDetective = read('src/features/series/seriesDetective.ts');
 for (const forbidden of [
   'openLibraryApi',
@@ -771,6 +781,7 @@ for (const required of [
   'searchGoogleBooksAuthorPage',
   'scoreSeriesEvidence',
   'selectVerifiedSeriesEvidence',
+  'selectVerifiedSubtitleSeriesEvidence',
 ]) {
   if (!seriesDetective.includes(required)) {
     violations.push(`seriesDetective.ts: Series Detective must consume canonical ${required}`);
