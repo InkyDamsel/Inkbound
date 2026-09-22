@@ -746,6 +746,17 @@ for (const required of [
     violations.push(`supplementalCatalogApi.ts: missing bounded supplemental catalog contract ${required}`);
   }
 }
+const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
+for (const required of [
+  'fetchOpenLibraryEditionDetails',
+  'hydrateOpenLibraryExactGroups',
+  'number_of_pages',
+  'detailSeries',
+]) {
+  if (!openLibrarySource.includes(required)) {
+    violations.push(`openLibraryApi.ts: Open Library exact matches must hydrate full edition records (${required})`);
+  }
+}
 const bookSearchMapperSource = read('src/features/book-search/mapping/bookSearchMapper.ts');
 if (!bookSearchMapperSource.includes('enrichSelectedCatalogEdition(hardenedWork, edition)')) {
   violations.push('bookSearchMapper.ts: selected search edition must be canonically enriched before save');
