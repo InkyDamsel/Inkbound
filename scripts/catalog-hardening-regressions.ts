@@ -149,6 +149,57 @@ assert.equal(seriesEdition.seriesName, 'Dream Harbor');
 assert.equal(seriesEdition.seriesOrder, 2);
 assert.ok(catalogEditionQualityScore(seriesEdition) > catalogEditionQualityScore({ ...seriesEdition, seriesName: undefined, seriesOrder: undefined }));
 
+const propagatedSeriesGroups = hardenCatalogGroups([
+  {
+    key: 'google-conceal',
+    title: "Conceal, Don't Feel",
+    subtitle: 'A Twisted Tale',
+    authors: ['Jen Calonita'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      source: 'google-books',
+      externalEditionId: 'google-conceal-ebook',
+      title: "Conceal, Don't Feel",
+      subtitle: 'A Twisted Tale',
+      authors: ['Jen Calonita'],
+      isbn13: '9781368052238',
+      seriesName: undefined,
+      seriesOrder: undefined,
+      pageCount: 320,
+      format: 'ebook',
+      binding: 'Digital',
+    }],
+  },
+  {
+    key: 'hardcover-conceal',
+    title: "Conceal, Don't Feel",
+    authors: ['Jen Calonita'],
+    genres: [],
+    editions: [{
+      ...baseEdition,
+      source: 'hardcover',
+      externalEditionId: 'hardcover-conceal',
+      title: "Conceal, Don't Feel",
+      authors: ['Jen Calonita'],
+      isbn13: '9781368052238',
+      seriesName: 'A Twisted Tale',
+      seriesOrder: 7,
+      pageCount: 312,
+      format: 'hardcover',
+      binding: 'Hardcover',
+    }],
+  },
+]);
+assert.equal(propagatedSeriesGroups.length, 1);
+assert.ok(propagatedSeriesGroups[0].editions.every((edition) => edition.seriesName === 'A Twisted Tale'));
+assert.ok(propagatedSeriesGroups[0].editions.every((edition) => edition.seriesOrder === 7));
+const propagatedExact = selectExactIsbnEdition(propagatedSeriesGroups, '9781368052238');
+assert.ok(propagatedExact);
+assert.equal(propagatedExact.edition.pageCount, 320);
+assert.equal(propagatedExact.edition.seriesName, 'A Twisted Tale');
+assert.equal(propagatedExact.edition.seriesOrder, 7);
+
 
 const exactIsbnGroups = hardenCatalogGroups([
   {
@@ -252,7 +303,7 @@ const physicalAnchorGroups = hardenCatalogGroups([
 const physicalAnchor = selectExactIsbnEdition(physicalAnchorGroups, '9780307743657');
 assert.ok(physicalAnchor);
 assert.equal(physicalAnchor.edition.format, 'hardcover');
-assert.equal(physicalAnchor.edition.pageCount, 330);
+assert.equal(physicalAnchor.edition.pageCount, 487);
 assert.equal(physicalAnchor.edition.coverUrl, 'https://example.com/english-cover.jpg');
 
 const languageConflictGroups = hardenCatalogGroups([
