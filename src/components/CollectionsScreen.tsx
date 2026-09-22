@@ -10,6 +10,7 @@ import {
   READING_STATUS_OPTIONS,
 } from '../domain/libraryTaxonomy';
 import { replaceCanonicalLibrary } from '../features/library/libraryMutations';
+import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryLabels, type LibrarySectionSortMode } from '../features/library/librarySectionSort';
 import { getActiveEdition, getAverageBookProgress, getBookReadingState } from '../features/reading/bookReadingState';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import {
@@ -30,7 +31,7 @@ import { PaginationControls } from './PaginationControls';
 
 type CollectionKind = 'manual' | 'smart';
 type SortMode = 'title' | 'author' | 'rating' | 'progress' | 'recent';
-type CollectionSortMode = 'az' | 'za' | 'newest' | 'oldest' | 'custom';
+type CollectionSortMode = LibrarySectionSortMode | 'custom';
 
 interface CollectionDefinition {
   id: string;
@@ -85,7 +86,7 @@ const starterCollections: CollectionDefinition[] = [
 const makeCollectionId = () => `collection-${crypto.randomUUID()}`;
 const normalized = (value?: string) => value?.trim().toLowerCase() ?? '';
 const compareCollectionsByName = (a: CollectionDefinition, b: CollectionDefinition) =>
-  a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+  compareLibraryLabels(a.name, b.name);
 
 const sortCollectionsForView = (items: CollectionDefinition[], mode: CollectionSortMode) => {
   const sorted = [...items];
@@ -539,10 +540,7 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
               className="inkbound-select min-h-11 min-w-[150px]"
               aria-label="Sort collections"
             >
-              <option value="az">A–Z</option>
-              <option value="za">Z–A</option>
-              <option value="newest">Newest</option>
-              <option value="oldest">Oldest</option>
+              {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               <option value="custom">Custom</option>
             </select>
           </label>
