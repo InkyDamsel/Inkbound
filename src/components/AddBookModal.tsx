@@ -9,7 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
+import { enrichSelectedCatalogEdition, hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -614,15 +614,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           </div>
           <div className="mt-4 grid gap-3">
             {work.editions.map((edition) => {
+              const displayEdition = enrichSelectedCatalogEdition(work, edition);
               const key = searchEditionKey(work, edition);
               const addedBook = addedSearchBooks.get(key);
               const added = Boolean(addedBook);
               return (
                 <div key={edition.externalEditionId} className={`flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#17131b]' : 'border-white/7 bg-[#120c15]'}`}>
-                  {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
+                  {displayEdition.coverUrl ? <img src={displayEdition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
                   <div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]">
-                    <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
-                    {typeof edition.pageCount === 'number' && edition.pageCount > 0 ? <span className="mt-1 block">{edition.pageCount} pages</span> : <span className="mt-1 block text-[#776b78]">Page count unavailable</span>}
+                    <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === displayEdition.format)?.label ?? displayEdition.format}</strong>
+                    {typeof displayEdition.pageCount === 'number' && displayEdition.pageCount > 0 ? <span className="mt-1 block">{displayEdition.pageCount} pages</span> : <span className="mt-1 block text-[#776b78]">Page count unavailable</span>}
                     <div className="mt-auto pt-3">
                       {addedBook ? (
                         <div className="rounded-xl border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2.5">
@@ -633,12 +634,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                             </div>
                             <button type="button" onClick={() => removeStoredSearchBook(work, edition)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-[#8f8290] transition hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-300 focus:border-rose-400/50 focus:text-rose-300" aria-label={`Remove ${work.title} from your library`} title="Remove from library"><Trash2 className="h-3.5 w-3.5" /></button>
                           </div>
-                          <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="mt-2 min-h-8 w-full rounded-lg border border-[#c5a059]/15 bg-[#120c15]/70 px-2 text-[11px] font-bold text-[#d8c28b] transition hover:border-[#c5a059]/35 hover:bg-[#c5a059]/5">Change list</button>
+                          <button type="button" onClick={() => chooseSearchEdition(work, displayEdition)} className="mt-2 min-h-8 w-full rounded-lg border border-[#c5a059]/15 bg-[#120c15]/70 px-2 text-[11px] font-bold text-[#d8c28b] transition hover:border-[#c5a059]/35 hover:bg-[#c5a059]/5">Change list</button>
                         </div>
                       ) : (
                         <div className="flex flex-col gap-2">
-                          <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
-                          <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
+                          <button type="button" onClick={() => quickAddSearchEdition(work, displayEdition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
+                          <button type="button" onClick={() => chooseSearchEdition(work, displayEdition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
                         </div>
                       )}
                     </div>
