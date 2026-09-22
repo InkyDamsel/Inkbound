@@ -78,6 +78,9 @@ const bookDetailsCoreSource = read('src/components/BookDetailsModalCore.tsx');
 if (!googleBooksSource.includes("resolveGoogleSeriesMetadata")) {
   violations.push('googleBooksApi.ts: Google Books series metadata must use the canonical resolver');
 }
+if (!googleBooksSource.includes('hydrateGoogleVolumeDetails')) {
+  violations.push('googleBooksApi.ts: Google Books results must hydrate full volume details before canonical mapping');
+}
 if (/seriesName\s*:\s*[^\n]*shortSeriesBookTitle/.test(googleBooksSource)) {
   violations.push('googleBooksApi.ts: shortSeriesBookTitle is a book title, not a canonical series name');
 }
@@ -91,6 +94,11 @@ if (!bookDetailsCoreSource.includes('seriesName: book.work.seriesName || matched
 }
 if (!bookDetailsCoreSource.includes('matchedEdition.pageCount ?? activeEdition.pageCount')) {
   violations.push('BookDetailsModalCore.tsx: exact-ISBN metadata sync must be able to repair stale provider page counts');
+}
+
+const bookSearchFunctionSource = read('functions/src/bookSearch.ts');
+if (bookSearchFunctionSource.includes('googleSeriesMetadata(')) {
+  violations.push('functions/src/bookSearch.ts: Google series interpretation must remain in the canonical client mapper');
 }
 
 const addBookModalSource = read('src/components/AddBookModal.tsx');
