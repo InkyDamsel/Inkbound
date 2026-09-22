@@ -77,17 +77,16 @@ if (!functionsOnlyLauncher.includes("'--only',") || !functionsOnlyLauncher.inclu
   violations.push('start-functions-emulator.mjs: DEV must launch only the local Functions emulator');
 }
 
-const packageJson = JSON.parse(read('package.json'));
 if (packageJson.scripts?.dev !== 'node scripts/start-dev.mjs') {
   violations.push('package.json: npm run dev must remain the single release-parity development entrypoint');
 }
-if (!devScript.includes("await runOnce(nodeCommand, ['scripts/sync-dev-catalog-secrets.mjs'])")) {
+if (!startDev.includes("await runOnce(nodeCommand, ['scripts/sync-dev-catalog-secrets.mjs'])")) {
   violations.push('start-dev.mjs: npm run dev must prepare local catalog credentials automatically');
 }
-if (!devScript.includes("npmInvocation(['run', 'functions:build'])")) {
+if (!startDev.includes("npmInvocation(['run', 'functions:build'])")) {
   violations.push('start-dev.mjs: npm run dev must build current local Functions automatically');
 }
-if (!devScript.includes("scripts/start-functions-emulator.mjs")) {
+if (!startDev.includes("scripts/start-functions-emulator.mjs")) {
   violations.push('start-dev.mjs: npm run dev must start the local Functions emulator automatically');
 }
 
@@ -133,6 +132,15 @@ if (!bookSearchFunctionSource.includes('export const searchGoogleBooksCatalog = 
 if (!bookSearchFunctionSource.includes('enforceAppCheck: false')) {
   violations.push('functions/src/bookSearch.ts: Google Books parity callable must remain localhost-compatible');
 }
+if (!bookSearchFunctionSource.includes('parseGoogleBooksBibliographicSeries')) {
+  violations.push('functions/src/bookSearch.ts: Google Books must enrich missing structured series from its bibliographic Title field');
+}
+if (!googleSeriesResolverSource.includes('bibliographicSeries')) {
+  violations.push('googleSeriesMetadata.ts: canonical Google series resolver must own bibliographic fallback precedence');
+}
+if (googleBooksSource.includes('inferCatalogSeriesLineCandidate')) {
+  violations.push('googleBooksApi.ts: arbitrary subtitle/title inference must not invent series metadata');
+}
 
 if (bookSearchFunctionSource.includes('googleSeriesMetadata(')) {
   violations.push('functions/src/bookSearch.ts: Google series interpretation must remain in the canonical client mapper');
@@ -145,8 +153,8 @@ if (!addBookModalSource.includes("hardenCatalogGroups(")) {
 if (addBookModalSource.includes('const sameCatalogEdition =')) {
   violations.push('AddBookModal.tsx: must not own a duplicate catalog-edition merge algorithm');
 }
-if (!googleBooksSource.includes("!import.meta.env.DEV && Boolean(functions && auth?.currentUser)")) {
-  violations.push('googleBooksApi.ts: Vite DEV must use direct Google Books instead of protected callable fallback');
+if (!googleBooksSource.includes("Boolean(functions && auth?.currentUser)")) {
+  violations.push('googleBooksApi.ts: signed-in DEV and native runtimes must share the canonical Google Books callable');
 }
 
 const helpContent = read('src/content/helpContent.ts');
