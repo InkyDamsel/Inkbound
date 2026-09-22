@@ -20,7 +20,6 @@ const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
 
 const SERIES_DISCOVERY_MAX_PAGES = 4;
-const SERIES_DISCOVERY_PAGE_SIZE = 40;
 
 
 const candidateSeriesMetadata = (
