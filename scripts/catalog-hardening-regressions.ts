@@ -86,6 +86,63 @@ assert.ok(groups[0].genres.includes('Horror'));
 assert.ok(groups[0].genres.includes('Fiction'));
 assert.equal(groups.at(-1)?.title, 'Stephen King Box Set');
 
+
+const concealSearchGroups = hardenCatalogGroups([
+  {
+    key: 'conceal-correct',
+    title: "Conceal, Don't Feel",
+    authors: ['Jen Calonita'],
+    genres: [],
+    editions: [{
+      ...goodEdition,
+      externalEditionId: 'conceal-correct',
+      title: "Conceal, Don't Feel",
+      authors: ['Jen Calonita'],
+    }],
+  },
+  {
+    key: 'city-of-ashes-noise',
+    title: 'City of Ashes (The Mortal Instruments)',
+    authors: ['Cassandra Clare'],
+    genres: [],
+    editions: [{
+      ...goodEdition,
+      externalEditionId: 'city-of-ashes-noise',
+      title: 'City of Ashes (The Mortal Instruments)',
+      authors: ['Cassandra Clare'],
+    }],
+  },
+  {
+    key: 'conceal-partial',
+    title: 'Conceal and Don’t Feel as Much?',
+    authors: ['Jessica L. Jones'],
+    genres: [],
+    editions: [{
+      ...goodEdition,
+      externalEditionId: 'conceal-partial',
+      title: 'Conceal and Don’t Feel as Much?',
+      authors: ['Jessica L. Jones'],
+    }],
+  },
+  {
+    key: 'sixty-years-noise',
+    title: 'Sixty Years in California',
+    authors: ['William Heath Davis'],
+    genres: [],
+    editions: [{
+      ...goodEdition,
+      externalEditionId: 'sixty-years-noise',
+      title: 'Sixty Years in California',
+      authors: ['William Heath Davis'],
+    }],
+  },
+], { searchQuery: "conceal don't feel" });
+
+assert.equal(concealSearchGroups[0]?.title, "Conceal, Don't Feel");
+assert.ok(concealSearchGroups.some((group) => group.title === 'Conceal and Don’t Feel as Much?'));
+assert.ok(!concealSearchGroups.some((group) => group.title === 'City of Ashes (The Mortal Instruments)'));
+assert.ok(!concealSearchGroups.some((group) => group.title === 'Sixty Years in California'));
+
 console.log('Inkbound catalog hardening regressions passed.');
 
 
