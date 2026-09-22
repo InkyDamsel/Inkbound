@@ -496,7 +496,30 @@ export async function searchGoogleBooksAuthorPage(
     const editions = rawItems
       .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
       .filter((item): item is BookSearchEdition => Boolean(item));
-    const groups = hardenCatalogGroups(groupGoogleEditions(editions), { preferredAuthor: trimmedAuthor });
+    let groups = hardenCatalogGroups(groupGoogleEditions(editions), { preferredAuthor: trimmedAuthor });
+
+    // Author discovery is part of the same canonical catalog pipeline as title
+    // and ISBN search. The first page must be enriched by the same providers so
+    // Series Detective and author browsing cannot see thinner metadata than
+    // normal search.
+    if (startIndex === 0 && groups.length > 0) {
+      const [trusted, openLibrary, hardcover] = await Promise.all([
+        searchTrustedCatalogBaseline(trimmedAuthor).catch(() => ({ groups: [], totalItems: 0 })),
+        searchOpenLibraryPage(query, 0, GOOGLE_BOOKS_PAGE_SIZE, signal).catch(() => ({
+          groups: [],
+          totalItems: 0,
+          providerTotalItems: 0,
+          nextStartIndex: 0,
+          hasMore: false,
+        })),
+        searchHardcoverWithBackoff(trimmedAuthor),
+      ]);
+      groups = hardenCatalogGroups(
+        mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
+        { preferredAuthor: trimmedAuthor },
+      );
+    }
+
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
     const hasMore = rawItems.length > 0 && (
