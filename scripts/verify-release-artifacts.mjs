@@ -36,6 +36,10 @@ const builtJavaScript = fs.existsSync(path.join(dist, 'assets'))
 
 const checks = [
   {
+    ok: builtJavaScript.includes('G-2LDXP8Z4S0'),
+    message: 'production bundle must contain the canonical Inkbound GA4 measurement ID',
+  },
+  {
     ok: builtJavaScript.includes('Add Past Session')
       && builtJavaScript.includes('Add Multiple')
       && builtJavaScript.includes('Start a Session'),
