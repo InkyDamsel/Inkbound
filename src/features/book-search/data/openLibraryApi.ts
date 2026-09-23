@@ -1,6 +1,6 @@
 import { Format } from '../../../types';
 import type { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { hardenCatalogGroups } from '../catalogHardening';
+import { catalogTitlesAreCompatible, hardenCatalogGroups } from '../catalogHardening';
 
 interface OpenLibraryEdition {
   key?: string;
@@ -287,7 +287,10 @@ const hydrateOpenLibraryExactGroups = async (
   const candidates = operatorKind === 'inauthor'
     ? groups.slice(0, 20)
     : groups.filter((group) => {
-        if (wantedTitle) return normalize(group.title) === wantedTitle;
+        if (wantedTitle) {
+          return normalize(group.title) === wantedTitle
+            || catalogTitlesAreCompatible(group.title, rawWanted);
+        }
         if (wantedIsbn) {
           return group.editions.some((edition) =>
             [edition.isbn13, edition.isbn10].map(compactIsbn).includes(wantedIsbn),
@@ -302,11 +305,19 @@ const hydrateOpenLibraryExactGroups = async (
   return Promise.all(groups.map(async (group) => {
     if (!candidateKeys.has(group.key)) return group;
 
+    // Search payload edition docs are often intentionally thin. For author and
+    // exact/compatible title matches, hydrate the canonical work's edition list
+    // first so physical editions can recover ISBN, binding, and page counts
+    // before individual edition detail enrichment runs.
+    const workHydrated = operatorKind === 'inauthor' || Boolean(wantedTitle)
+      ? await hydrateOpenLibraryGroupFromWork(group, signal)
+      : group;
+
     if (operatorKind === 'inauthor') {
-      return hydrateOpenLibraryGroupFromWork(group, signal);
+      return workHydrated;
     }
 
-    const hydratedEditions = await Promise.all(group.editions.slice(0, 8).map(async (edition) => {
+    const hydratedEditions = await Promise.all(workHydrated.editions.slice(0, 12).map(async (edition) => {
       if (edition.source !== 'open-library') return edition;
       if (edition.pageCount && edition.seriesName && edition.isbn13) return edition;
 
@@ -331,10 +342,10 @@ const hydrateOpenLibraryExactGroups = async (
     }));
 
     return {
-      ...group,
+      ...workHydrated,
       editions: [
         ...hydratedEditions,
-        ...group.editions.slice(8),
+        ...workHydrated.editions.slice(12),
       ],
     };
   }));
