@@ -29,13 +29,11 @@ const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
 
-export const hasKnownSeriesContextEvidence = (
+export const hasKnownSeriesContextText = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
   wantedSeriesName: string,
-  providerAgreement: number,
 ): boolean => {
-  if (providerAgreement < 2) return false;
   const wanted = normalize(wantedSeriesName);
   if (!wanted) return false;
 
@@ -53,6 +51,15 @@ export const hasKnownSeriesContextEvidence = (
       || seriesNamesAreCompatible(value, wantedSeriesName),
     );
 };
+
+export const hasKnownSeriesContextEvidence = (
+  work: BookSearchWorkGroup,
+  edition: BookSearchEdition,
+  wantedSeriesName: string,
+  providerAgreement: number,
+): boolean =>
+  providerAgreement >= 2
+  && hasKnownSeriesContextText(work, edition, wantedSeriesName);
 
 const GENERIC_SUBTITLE_SERIES_WORDS = new Set([
   'novel', 'novella', 'memoir', 'romance', 'thriller', 'mystery', 'fantasy',
