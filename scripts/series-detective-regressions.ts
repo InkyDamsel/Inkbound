@@ -8,7 +8,7 @@ import {
   selectVerifiedSubtitleSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
-import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetective';
+import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetectiveQueries';
 import { catalogEditionSources, hardenCatalogGroups } from '../src/features/book-search/catalogHardening';
 
 const book = {
