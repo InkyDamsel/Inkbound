@@ -3,6 +3,7 @@ import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/mode
 import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, catalogEditionSources, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
+import { buildSeriesDetectionQueries } from './seriesDetectiveQueries';
 import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -91,20 +92,6 @@ export interface SeriesDetectiveResult {
   missing: SeriesDetectiveCandidate[];
   seriesAuthorityId?: string;
 }
-
-export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: string; identifiers: string[] } => {
-  const identifiers = [...new Set(
-    book.editions
-      .flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn])
-      .map((value) => value?.trim())
-      .filter((value): value is string => Boolean(value)),
-  )];
-
-  return {
-    workQuery: `${book.work.title} ${book.work.author}`.trim(),
-    identifiers,
-  };
-};
 
 export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name: string; position: number | null; seriesAuthorityId?: string } | null> {
   // Series Detective verifies the canonical work, not merely the active
