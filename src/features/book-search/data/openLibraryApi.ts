@@ -370,7 +370,7 @@ const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
 
 function buildSearchParams(query: string, page = 1, limit = DEFAULT_PAGE_SIZE): URLSearchParams {
   const trimmed = query.trim();
-  const operator = trimmed.match(/^(inauthor|intitle|isbn|series):\s*(.+)$/i);
+  const operator = trimmed.match(/^(inauthor|intitle|isbn):\s*(.+)$/i);
   const params = new URLSearchParams({ limit: String(limit), page: String(page), fields: FIELDS });
   if (!operator) {
     params.set('q', trimmed);
@@ -381,7 +381,6 @@ function buildSearchParams(query: string, page = 1, limit = DEFAULT_PAGE_SIZE): 
   const value = stripQuotes(rawValue);
   if (kind.toLowerCase() === 'inauthor') params.set('author', value);
   else if (kind.toLowerCase() === 'intitle') params.set('title', value);
-  else if (kind.toLowerCase() === 'series') params.set('q', `series:"${value}"`);
   else params.set('isbn', compactIsbn(value));
   return params;
 }
@@ -409,25 +408,23 @@ export async function searchOpenLibraryPage(
   const payload = (await response.json()) as OpenLibraryResponse;
   const rawDocs = payload.docs ?? [];
   const authorOperator = trimmed.match(/^inauthor:\s*(.+)$/i);
-  const seriesOperator = trimmed.match(/^series:\s*(.+)$/i);
-  const hardeningOptions = authorOperator
-    ? { preferredAuthor: stripQuotes(authorOperator[1]) }
-    : seriesOperator
-      ? {}
-      : { searchQuery: trimmed };
   const initialGroups = hardenCatalogGroups(
     rawDocs
       .map(mapWork)
       .filter((group): group is BookSearchWorkGroup => Boolean(group)),
-    hardeningOptions,
+    authorOperator
+      ? { preferredAuthor: stripQuotes(authorOperator[1]) }
+      : { searchQuery: trimmed },
   );
-  // Series enumeration already receives Open Library's work/edition series
-  // fields in the search payload. Hydrating every returned work here turns one
-  // series page into dozens of extra HTTP requests and can stall Detective.
-  const hydratedGroups = seriesOperator || (authorOperator && startIndex > 0)
+  const hydratedGroups = authorOperator && startIndex > 0
     ? initialGroups
     : await hydrateOpenLibraryExactGroups(initialGroups, trimmed, signal);
-  const groups = hardenCatalogGroups(hydratedGroups, hardeningOptions);
+  const groups = hardenCatalogGroups(
+    hydratedGroups,
+    authorOperator
+      ? { preferredAuthor: stripQuotes(authorOperator[1]) }
+      : { searchQuery: trimmed },
+  );
   const providerTotalItems = payload.numFound ?? payload.num_found ?? groups.length;
   const nextStartIndex = Math.max(0, startIndex) + rawDocs.length;
   const hasMore = rawDocs.length > 0 && nextStartIndex < providerTotalItems;
