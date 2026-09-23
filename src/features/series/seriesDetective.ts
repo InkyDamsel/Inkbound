@@ -1,9 +1,8 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
-import { catalogEditionQualityScore, catalogEditionSources, hardenCatalogGroups } from '../book-search/catalogHardening';
+import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
-import { buildSeriesDetectionQueries } from './seriesDetectiveQueries';
 import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -28,14 +27,11 @@ const candidateSeriesMetadata = (
   edition: BookSearchEdition,
   wantedSeriesName: string,
   providerAgreement = 1,
-  wantedAuthorityId?: string,
-): { name: string; position: number | null; authorityId?: string; evidence: 'structured' | 'title' | 'contextual' } | null => {
-  if (wantedAuthorityId && edition.seriesAuthorityId && edition.seriesAuthorityId !== wantedAuthorityId) return null;
+): { name: string; position: number | null; evidence: 'structured' | 'title' | 'contextual' } | null => {
   if (sameSeries(edition, wantedSeriesName)) {
     return {
       name: edition.seriesName!,
       position: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : null,
-      authorityId: edition.seriesAuthorityId,
       evidence: 'structured',
     };
   }
@@ -54,10 +50,7 @@ const candidateSeriesMetadata = (
   // number. This helps publisher-branded lines such as A Twisted Tale whose
   // catalogs often omit structured series fields.
   if (hasKnownSeriesContextEvidence(work, edition, wantedSeriesName, providerAgreement)) {
-    const authorityId = work.editions.find((candidate) =>
-      sameSeries(candidate, wantedSeriesName) && candidate.seriesAuthorityId,
-    )?.seriesAuthorityId;
-    return { name: wantedSeriesName.trim(), position: null, authorityId, evidence: 'contextual' };
+    return { name: wantedSeriesName.trim(), position: null, evidence: 'contextual' };
   }
 
   return null;
@@ -84,7 +77,6 @@ export interface SeriesDetectiveCandidate {
   edition: BookSearchEdition;
   seriesName: string;
   position: number | null;
-  seriesAuthorityId?: string;
 }
 
 export interface SeriesDetectiveResult {
@@ -92,13 +84,23 @@ export interface SeriesDetectiveResult {
   author: string;
   candidates: SeriesDetectiveCandidate[];
   missing: SeriesDetectiveCandidate[];
-  seriesAuthorityId?: string;
 }
 
-export async function detectSeriesForBook(
-  book: UserBookRecord,
-  signal?: AbortSignal,
-): Promise<{ name: string; position: number | null; seriesAuthorityId?: string } | null> {
+export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: string; identifiers: string[] } => {
+  const identifiers = [...new Set(
+    book.editions
+      .flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn])
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value)),
+  )];
+
+  return {
+    workQuery: `${book.work.title} ${book.work.author}`.trim(),
+    identifiers,
+  };
+};
+
+export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name: string; position: number | null } | null> {
   // Series Detective verifies the canonical work, not merely the active
   // edition. ISBN records are edition-specific and can be metadata-thin, so an
   // ISBN lookup must supplement -- never replace -- title+author work evidence.
@@ -106,9 +108,9 @@ export async function detectSeriesForBook(
   const { workQuery, identifiers } = buildSeriesDetectionQueries(book);
 
   const [workCatalog, authorGroups, ...identifierSearches] = await Promise.all([
-    searchGoogleBooks(workQuery, signal),
-    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(book.work.author, startIndex, signal)),
-    ...identifiers.map((isbn) => searchGoogleBooks(isbn, signal)),
+    searchGoogleBooks(workQuery),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(book.work.author, startIndex)),
+    ...identifiers.map((isbn) => searchGoogleBooks(isbn)),
   ]);
 
   const groups = hardenCatalogGroups(
@@ -130,59 +132,20 @@ export async function detectSeriesForBook(
     .filter((item): item is SeriesEvidence => Boolean(item));
 
   const match = selectVerifiedSeriesEvidence(evidence);
-  if (match) return {
-    name: match.name,
-    position: match.position,
-    seriesAuthorityId: match.edition.seriesAuthorityId,
-  };
+  if (match) return { name: match.name, position: match.position };
 
   const subtitleMatch = selectVerifiedSubtitleSeriesEvidence(groups, book);
-  if (!subtitleMatch) return null;
-  const seriesAuthorityId = groups
-    .flatMap((group) => group.editions)
-    .find((edition) =>
-      edition.seriesAuthorityId
-      && edition.seriesName
-      && seriesNamesAreCompatible(edition.seriesName, subtitleMatch.name),
-    )?.seriesAuthorityId;
-  return { name: subtitleMatch.name, position: subtitleMatch.position, seriesAuthorityId };
+  return subtitleMatch ? { name: subtitleMatch.name, position: subtitleMatch.position } : null;
 }
 
 export async function findMissingSeriesBooks(
   seriesName: string,
   author: string,
   libraryBooks: UserBookRecord[],
-  signal?: AbortSignal,
 ): Promise<SeriesDetectiveResult> {
-  const normalizedAuthor = normalize(author);
-  const seedBook = libraryBooks.find((book) => {
-    const metadata = resolveEffectiveSeriesMetadata(book);
-    return metadata
-      && seriesNamesAreCompatible(metadata.name, seriesName)
-      && normalize(book.work.author) === normalizedAuthor;
-  });
-
-  let seedSeriesAuthorityId = seedBook?.work.seriesAuthorityId;
-
-  const storedAuthorityId = libraryBooks.find((book) => {
-    const metadata = resolveEffectiveSeriesMetadata(book);
-    return metadata
-      && seriesNamesAreCompatible(metadata.name, seriesName)
-      && normalize(book.work.author) === normalizedAuthor
-      && Boolean(book.work.seriesAuthorityId);
-  })?.work.seriesAuthorityId;
-  seedSeriesAuthorityId ||= storedAuthorityId;
-
   const seriesBooks = libraryBooks.filter((book) => {
     const metadata = resolveEffectiveSeriesMetadata(book);
-    if (!metadata || !seriesNamesAreCompatible(metadata.name, seriesName)) return false;
-    if (seedSeriesAuthorityId) {
-      // The seed may have just had its authority resolved in-memory and not yet
-      // persisted back to the library record. Keep it in the working series so
-      // language/position/dedupe evidence is not accidentally discarded.
-      return book.id === seedBook?.id || book.work.seriesAuthorityId === seedSeriesAuthorityId;
-    }
-    return normalize(book.work.author) === normalizedAuthor;
+    return metadata && seriesNamesAreCompatible(metadata.name, seriesName);
   });
   const knownWholePositions = seriesBooks
     .map((book) => resolveEffectiveSeriesMetadata(book)?.position)
@@ -192,16 +155,13 @@ export async function findMissingSeriesBooks(
   const missingKnownGaps = Array.from({ length: highestKnownPosition }, (_, index) => index + 1)
     .filter((position) => !knownPositionSet.has(position));
 
-  // Restore the proven Build 28 discovery inputs. These found established
-  // single-author series such as The Selection and Hades x Persephone before
-  // the canonical-series-search experiment narrowed discovery too far.
   const [seriesAndAuthor, authorGroups, seriesOnly, positionalDiscovery] = await Promise.all([
-    searchGoogleBooks(`${seriesName} ${author}`, signal),
-    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex, signal)),
-    searchGoogleBooks(seriesName, signal),
+    searchGoogleBooks(`${seriesName} ${author}`),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
+    searchGoogleBooks(seriesName),
     Promise.all(missingKnownGaps.map(async (position) => {
       const query = `${seriesName} book ${position} ${author}`;
-      const result = await searchGoogleBooks(query, signal);
+      const result = await searchGoogleBooks(query);
       return result.groups;
     })),
   ]);
@@ -213,9 +173,17 @@ export async function findMissingSeriesBooks(
     ...positionalDiscovery.flat(),
   ];
 
-  // Canonical hardening preserves provider provenance on merged editions, so
-  // Detective can measure corroboration after deduplication without relying on
-  // brittle title+author formatting keys.
+  // Preserve provider agreement before hardening merges exact editions across
+  // catalogs. Series confidence must not disappear merely because canonical
+  // edition normalization correctly collapsed duplicate ISBN records.
+  const providerSourcesByWork = new Map<string, Set<BookSearchEdition['source']>>();
+  for (const group of rawGroups) {
+    const identity = `${normalize(group.title)}::${normalize(group.authors[0])}`;
+    const sources = providerSourcesByWork.get(identity) ?? new Set<BookSearchEdition['source']>();
+    group.editions.forEach((candidate) => sources.add(candidate.source));
+    providerSourcesByWork.set(identity, sources);
+  }
+
   const merged = hardenCatalogGroups(rawGroups, { preferredAuthor: author });
   const seen = new Map<string, SeriesDetectiveCandidate>();
   const candidates: SeriesDetectiveCandidate[] = [];
@@ -224,10 +192,10 @@ export async function findMissingSeriesBooks(
 
   for (const work of merged) {
     for (const edition of work.editions) {
-      const providerAgreement = new Set(
-        work.editions.flatMap((candidate) => catalogEditionSources(candidate)),
-      ).size;
-      const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement, seedSeriesAuthorityId);
+      const providerAgreement = providerSourcesByWork.get(
+        `${normalize(work.title)}::${normalize(work.authors[0])}`,
+      )?.size ?? 1;
+      const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement);
       if (!metadata) continue;
 
       // A provider's structured exact series name is stronger evidence than an
@@ -244,7 +212,6 @@ export async function findMissingSeriesBooks(
         edition,
         seriesName: metadata.name,
         position: metadata.position,
-        seriesAuthorityId: metadata.authorityId,
       };
       const key = metadata.position !== null ? `position:${metadata.position}` : `title:${normalize(work.title)}`;
       const current = seen.get(key);
@@ -255,8 +222,6 @@ export async function findMissingSeriesBooks(
   }
 
   candidates.push(...seen.values());
-
-
 
   const existingPositions = new Set<number>();
   seriesBooks.forEach((book) => {
@@ -290,18 +255,10 @@ export async function findMissingSeriesBooks(
     return a.work.title.localeCompare(b.work.title);
   });
 
-  const authorityIds = [...new Set(
-    [
-      seedSeriesAuthorityId,
-      ...candidates.map((candidate) => candidate.seriesAuthorityId),
-    ].filter((value): value is string => Boolean(value)),
-  )];
-
   return {
     seriesName,
     author,
     candidates,
     missing,
-    seriesAuthorityId: authorityIds.length === 1 ? authorityIds[0] : undefined,
   };
 }
