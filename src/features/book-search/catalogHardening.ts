@@ -87,7 +87,10 @@ const catalogSearchResultIsRelevant = (group: BookSearchWorkGroup, query?: strin
   const titleRelevant = matchedTitleWords >= 1 && matchedAcrossRecord >= requiredCoverage;
   const subtitleRelevant = matchedSubtitleWords === queryWords.length;
   const seriesRelevant = matchedSeriesWords === queryWords.length;
-  return titleRelevant || subtitleRelevant || seriesRelevant;
+  const bibliographicCombinationRelevant =
+    matchedAcrossRecord === queryWords.length
+    && (matchedSubtitleWords > 0 || matchedSeriesWords > 0);
+  return titleRelevant || subtitleRelevant || seriesRelevant || bibliographicCombinationRelevant;
 };
 
 
