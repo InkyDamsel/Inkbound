@@ -145,6 +145,11 @@ const mapGoogleVolume = (
 ): BookSearchEdition | null => {
   const info = volume.volumeInfo;
   if (!info?.title) return null;
+  const seriesMetadata = resolveGoogleSeriesMetadata(
+    info.seriesInfo,
+    seriesMetadataById,
+    volume.inkboundBibliographicSeries,
+  );
   return {
     source: 'google-books',
     externalEditionId: volume.id,
@@ -157,16 +162,9 @@ const mapGoogleVolume = (
     publicationDate: info.publishedDate,
     publicationYear: publicationYear(info.publishedDate),
     language: info.language,
-    seriesName: resolveGoogleSeriesMetadata(
-      info.seriesInfo,
-      seriesMetadataById,
-      volume.inkboundBibliographicSeries,
-    ).name,
-    seriesOrder: resolveGoogleSeriesMetadata(
-      info.seriesInfo,
-      seriesMetadataById,
-      volume.inkboundBibliographicSeries,
-    ).order,
+    seriesName: seriesMetadata.name,
+    seriesOrder: seriesMetadata.order,
+    seriesAuthorityId: seriesMetadata.authorityId,
     format: inferFormat(volume),
     isbn10: getIdentifier(volume, 'ISBN_10'),
     isbn13: getIdentifier(volume, 'ISBN_13'),
