@@ -145,11 +145,6 @@ const mapGoogleVolume = (
 ): BookSearchEdition | null => {
   const info = volume.volumeInfo;
   if (!info?.title) return null;
-  const seriesMetadata = resolveGoogleSeriesMetadata(
-    info.seriesInfo,
-    seriesMetadataById,
-    volume.inkboundBibliographicSeries,
-  );
   return {
     source: 'google-books',
     externalEditionId: volume.id,
@@ -162,9 +157,16 @@ const mapGoogleVolume = (
     publicationDate: info.publishedDate,
     publicationYear: publicationYear(info.publishedDate),
     language: info.language,
-    seriesName: seriesMetadata.name,
-    seriesOrder: seriesMetadata.order,
-    seriesAuthorityId: seriesMetadata.authorityId,
+    seriesName: resolveGoogleSeriesMetadata(
+      info.seriesInfo,
+      seriesMetadataById,
+      volume.inkboundBibliographicSeries,
+    ).name,
+    seriesOrder: resolveGoogleSeriesMetadata(
+      info.seriesInfo,
+      seriesMetadataById,
+      volume.inkboundBibliographicSeries,
+    ).order,
     format: inferFormat(volume),
     isbn10: getIdentifier(volume, 'ISBN_10'),
     isbn13: getIdentifier(volume, 'ISBN_13'),
@@ -823,90 +825,4 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
       combined.length,
     ),
   }, trimmed);
-}
-
-
-const SERIES_CATALOG_PROVIDER_TIMEOUT_MS = 5_000;
-
-const withSeriesCatalogTimeout = async (
-  label: string,
-  promise: Promise<BookSearchResponse>,
-): Promise<BookSearchResponse> =>
-  Promise.race([
-    promise,
-    new Promise<BookSearchResponse>((resolve) => {
-      globalThis.setTimeout(() => {
-        console.warn(`${label} series catalog lookup timed out; continuing with other providers.`);
-        resolve({ groups: [], totalItems: 0 });
-      }, SERIES_CATALOG_PROVIDER_TIMEOUT_MS);
-    }),
-  ]);
-
-/**
- * Canonical catalog path for enumerating a known series.
- *
- * This deliberately stays small: one focused request per provider, in parallel.
- * A slow/unavailable provider contributes no evidence but never blocks the rest.
- */
-export async function searchCatalogSeries(
-  seriesName: string,
-  signal?: AbortSignal,
-): Promise<BookSearchResponse> {
-  const trimmed = seriesName.trim();
-  if (!trimmed) return { groups: [], totalItems: 0 };
-  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-
-  await waitUntilAdministrationInactive(signal);
-
-  const googlePromise = (async (): Promise<BookSearchResponse> => {
-    try {
-      const payload = await requestCanonicalGoogleBooksPayload(
-        buildGoogleBooksQuery(`"${trimmed}"`),
-        signal,
-        0,
-        GOOGLE_BOOKS_PAGE_SIZE,
-      );
-      const mapped = (payload.items ?? [])
-        .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
-        .filter((item): item is BookSearchEdition => Boolean(item));
-      const groups = hardenCatalogGroups(groupGoogleEditions(mapped));
-      return { groups, totalItems: groups.length };
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      console.warn('Google Books series catalog search unavailable.', error);
-      return { groups: [], totalItems: 0 };
-    }
-  })();
-
-  const openLibraryPromise = (async (): Promise<BookSearchResponse> => {
-    try {
-      const page = await searchOpenLibraryPage(
-        `series:"${trimmed.replace(/"/g, '')}"`,
-        0,
-        GOOGLE_BOOKS_PAGE_SIZE,
-        signal,
-      );
-      return { groups: page.groups, totalItems: page.groups.length };
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      console.warn('Open Library series catalog search unavailable.', error);
-      return { groups: [], totalItems: 0 };
-    }
-  })();
-
-  const hardcoverPromise = searchHardcoverWithBackoff(trimmed);
-
-  const [google, openLibrary, hardcover] = await Promise.all([
-    withSeriesCatalogTimeout('Google Books', googlePromise),
-    withSeriesCatalogTimeout('Open Library', openLibraryPromise),
-    withSeriesCatalogTimeout('Hardcover', hardcoverPromise),
-  ]);
-
-  const groups = hardenCatalogGroups([
-    ...google.groups,
-    ...openLibrary.groups,
-    ...hardcover.groups,
-  ]);
-
-  return { groups, totalItems: groups.length };
 }
