@@ -610,33 +610,31 @@ async function refineExactTitleWithAuthor(
 const editionRepairIsbn = (edition: BookSearchEdition): string =>
   compactIsbn(edition.isbn13 || edition.isbn10 || '');
 
-async function repairExactTitleEditionPageCounts(
+async function repairVisibleEditionPageCounts(
   groups: BookSearchWorkGroup[],
-  query: string,
   signal?: AbortSignal,
 ): Promise<BookSearchWorkGroup[]> {
-  const wanted = normalizeText(query);
-  if (!wanted) return groups;
-
-  const targetIndex = groups.findIndex((group) =>
-    normalizeText(group.title) === wanted
-    && normalizeText(group.authors[0]) !== 'unknown author',
-  );
-  if (targetIndex < 0) return groups;
-
-  const target = groups[targetIndex];
-  const candidates = target.editions
-    .filter((edition) =>
-      edition.format !== 'audiobook'
-      && !edition.pageCount
-      && Boolean(editionRepairIsbn(edition)),
+  // Repair only the highest-ranked visible results. This keeps search responsive
+  // while ensuring the editions users are actually choosing from get one exact-
+  // ISBN metadata pass before we concede that a page count is unavailable.
+  const candidates = groups
+    .slice(0, 8)
+    .flatMap((group, groupIndex) =>
+      group.editions
+        .filter((edition) =>
+          edition.format !== 'audiobook'
+          && !edition.pageCount
+          && Boolean(editionRepairIsbn(edition)),
+        )
+        .map((edition) => ({ groupIndex, edition })),
     )
     .slice(0, 4);
+
   if (!candidates.length) return groups;
 
-  const repairedById = new Map<string, BookSearchEdition>();
+  const repaired = groups.map((group) => ({ ...group, editions: [...group.editions] }));
 
-  await Promise.all(candidates.map(async (edition) => {
+  await Promise.all(candidates.map(async ({ groupIndex, edition }) => {
     const isbn = editionRepairIsbn(edition);
     if (!isbn) return;
 
@@ -656,22 +654,16 @@ async function repairExactTitleEditionPageCounts(
     );
     if (!exact?.edition.pageCount) return;
 
-    repairedById.set(
-      `${edition.source}:${edition.externalEditionId}`,
-      mergeCatalogEditionData(edition, exact.edition),
+    const targetGroup = repaired[groupIndex];
+    const editionIndex = targetGroup.editions.findIndex((candidate) =>
+      candidate.source === edition.source
+      && candidate.externalEditionId === edition.externalEditionId,
     );
+    if (editionIndex < 0) return;
+    targetGroup.editions[editionIndex] = mergeCatalogEditionData(edition, exact.edition);
   }));
 
-  if (!repairedById.size) return groups;
-
-  const repairedTarget: BookSearchWorkGroup = {
-    ...target,
-    editions: target.editions.map((edition) =>
-      repairedById.get(`${edition.source}:${edition.externalEditionId}`) ?? edition,
-    ),
-  };
-
-  return groups.map((group, index) => index === targetIndex ? repairedTarget : group);
+  return repaired;
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -781,7 +773,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     );
   }
 
-  combined = await repairExactTitleEditionPageCounts(combined, trimmed, signal);
+  combined = await repairVisibleEditionPageCounts(combined, signal);
   combined = hardenCatalogGroups(combined, { searchQuery: trimmed });
 
   let supplemental: BookSearchResponse = { groups: [], totalItems: 0 };
