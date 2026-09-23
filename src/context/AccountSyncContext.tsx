@@ -17,14 +17,15 @@ import {
   IMPORT_HISTORY_STORAGE_KEY,
 } from '../features/import/importHistory';
 import { IMPORT_ENRICHMENT_QUEUE_KEY } from '../features/import/libraryEnrichment';
-import { synchronizePhotoMemories } from '../features/memories/photoMemoryCloudSync';
-import { clearPhotoMemoriesFromDevice } from '../features/memories/photoMemoryStore';
+import { PHOTO_CLOUD_REVISIONS_KEY, synchronizePhotoMemories } from '../features/memories/photoMemoryCloudSync';
+import { LEGACY_PHOTO_KEY, PHOTO_METADATA_KEY, clearPhotoMemoriesFromDevice } from '../features/memories/photoMemoryStore';
 import { PHOTO_MEMORY_SYNC_QUEUE_KEY } from '../features/memories/photoMemorySyncQueue';
 import { PROFILE_MEDIA_KEY_PREFIX } from '../features/profile/profileMedia';
 import { getProfileMediaSyncQueueKey, synchronizeProfileMedia } from '../features/profile/profileMediaCloudSync';
 import { AUXILIARY_ACCOUNT_KEYS, getAuxiliaryBaselineKey, getAuxiliaryPendingKey } from '../features/sync/auxiliaryAccountSyncConfig';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import {
+  LEGACY_ACCOUNT_DATA_STORAGE_KEYS,
   LEGACY_SYNC_STORAGE_KEYS,
   SYNC_STORAGE_KEYS,
   crossDeviceCursorKey,
@@ -45,9 +46,9 @@ const SIGNED_IN_DATA_KEYS = [
   SYNC_STORAGE_KEYS.books,
   SYNC_STORAGE_KEYS.sessions,
   SYNC_STORAGE_KEYS.profile,
-  'inkbound_photo_memories',
-  'inkbound_photo_memories_v2',
-  'inkbound_photo_memory_cloud_revisions_v1',
+  LEGACY_PHOTO_KEY,
+  PHOTO_METADATA_KEY,
+  PHOTO_CLOUD_REVISIONS_KEY,
   PHOTO_MEMORY_SYNC_QUEUE_KEY,
   IMPORT_HISTORY_STORAGE_KEY,
   IMPORT_ENRICHMENT_QUEUE_KEY,
@@ -70,7 +71,7 @@ function clearSignedInDataFromDevice(uid: string) {
   removeRuntimeValue(getProfileMediaSyncQueueKey(uid));
   removeRuntimeValue(getAuxiliaryPendingKey(uid));
   removeRuntimeValue(getAuxiliaryBaselineKey(uid));
-  removeRuntimeValue('inkbound_profile_media_sync_queue_v1');
+  removeRuntimeValue(LEGACY_SYNC_STORAGE_KEYS.profileMediaSyncQueue);
   removeRuntimeValue(SYNC_STORAGE_KEYS.localOwnerUid);
   removeRuntimeValue(SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid);
   removeRuntimeValue(LAST_SYNC_STORAGE_KEY);
@@ -79,7 +80,7 @@ function clearSignedInDataFromDevice(uid: string) {
   removeRuntimeValue(crossDeviceCursorKey(uid));
   // Older beta metadata is cleared too so returning accounts cannot inherit a
   // stale baseline from a pre-v2 build.
-  removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`);
+  removeRuntimeValue(LEGACY_ACCOUNT_DATA_STORAGE_KEYS.syncBaselineV1(uid));
 }
 
 function friendlyAuthMessage(error: unknown, fallback: string): string {
