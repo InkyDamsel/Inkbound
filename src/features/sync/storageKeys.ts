@@ -37,6 +37,12 @@ export const LEGACY_SYNC_STORAGE_KEYS = {
   sessions: 'bookhaven_sessions',
   libraryCustomLists: 'inkbound_library_custom_lists',
   libraryCustomListMembers: 'inkbound_library_custom_list_members',
+  profileMediaSyncQueue: 'inkbound_profile_media_sync_queue_v1',
+} as const;
+
+export const LEGACY_ACCOUNT_DATA_STORAGE_KEYS = {
+  photoMemories: 'inkbound_photo_memories',
+  syncBaselineV1: (uid: string) => `inkbound_sync_baseline_${uid}_v1`,
 } as const;
 
 export const syncPendingStateKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
