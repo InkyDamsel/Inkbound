@@ -58,7 +58,11 @@ export const seriesNamesAreCompatible = (left?: string, right?: string): boolean
   return Boolean(leftKey && rightKey && leftKey === rightKey);
 };
 
-const seriesId = (name: string, author: string) => `${canonicalSeriesIdentity(name)}::${author}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const seriesId = (name: string, author: string, authorityId?: string) =>
+  (authorityId ? `authority::${authorityId}` : `${canonicalSeriesIdentity(name)}::${author}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 const GENERIC_SERIES_NAMES = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition']);
 
 export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
@@ -184,19 +188,26 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
   });
 
-  const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[] }>();
+  const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[]; authorityId?: string }>();
   books.forEach((book) => {
     if (manuallyAssignedBookIds.has(book.id)) return;
     const resolved = resolveSeriesMetadata(book);
     if (!resolved) return;
     const name = resolved.name;
     const author = book.work.author.trim() || 'Unknown author';
-    const key = `${canonicalSeriesIdentity(name)}::${author.toLowerCase()}`;
-    const current = metadataGroups.get(key) ?? { name, author, entries: [] };
+    const authorityId = book.work.seriesAuthorityId?.trim();
+    const key = authorityId
+      ? `authority::${authorityId}`
+      : `${canonicalSeriesIdentity(name)}::${author.toLowerCase()}`;
+    const current = metadataGroups.get(key) ?? { name, author, entries: [], authorityId };
     current.entries.push({ book, position: resolved.position, displayPosition: seriesPositionLabel(book, resolved.position) });
     metadataGroups.set(key, current);
   });
 
-  metadataGroups.forEach(({ name, author, entries }) => summaries.push(summarize(seriesId(name, author), name, author, entries, false)));
+  metadataGroups.forEach(({ name, author, entries, authorityId }) => {
+    const authors = [...new Set(entries.map(({ book }) => book.work.author.trim()).filter(Boolean))];
+    const displayAuthor = authors.length > 1 ? 'Various authors' : authors[0] || author;
+    summaries.push(summarize(seriesId(name, displayAuthor, authorityId), name, displayAuthor, entries, false));
+  });
   return summaries.sort((a, b) => a.name.localeCompare(b.name));
 }
