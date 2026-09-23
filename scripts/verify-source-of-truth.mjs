@@ -167,6 +167,7 @@ if (!runtimePlatformSource.includes("if (import.meta.env.DEV) return 'web';")) {
 }
 
 const googleBooksSource = read('src/features/book-search/data/googleBooksApi.ts');
+const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
 const googleSeriesResolverSource = read('src/features/book-search/mapping/googleSeriesMetadata.ts');
 const bookDetailsCoreSource = read('src/components/BookDetailsModalCore.tsx');
 if (!googleBooksSource.includes("resolveGoogleSeriesMetadata")) {
@@ -177,6 +178,22 @@ if (!googleBooksSource.includes('hydrateGoogleVolumeDetails')) {
 }
 if (!googleBooksSource.includes('refineExactTitleWithAuthor')) {
   violations.push('googleBooksApi.ts: thin exact-title matches must receive one bounded author-qualified Google repair pass');
+}
+if (!googleBooksSource.includes('searchOpenLibraryExactTitleAuthor')) {
+  violations.push('googleBooksApi.ts: exact-title repair must include Open Library title+author work enrichment so page counts do not depend on Google quota');
+}
+if (!googleBooksSource.includes("edition.format !== 'audiobook' && !edition.pageCount")) {
+  violations.push('googleBooksApi.ts: an exact work must be repaired when any visible print edition is still missing pages');
+}
+for (const required of [
+  'searchOpenLibraryExactTitleAuthor',
+  'hydrateOpenLibraryGroupFromWork',
+  'catalogTitlesAreCompatible(group.title, rawWanted)',
+  "editions.json?limit=30",
+]) {
+  if (!openLibrarySource.includes(required)) {
+    violations.push(`openLibraryApi.ts: exact-title work/edition hydration is missing ${required}`);
+  }
 }
 if (!googleBooksSource.includes('repairVisibleEditionPageCounts')) {
   violations.push('googleBooksApi.ts: visible catalog editions with known ISBNs must receive bounded exact-edition page-count repair');
