@@ -8,6 +8,7 @@ import {
   selectVerifiedSubtitleSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
+import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetective';
 
 const book = {
   id: 'book-1',
@@ -54,6 +55,20 @@ const work = (
   editions: [candidateEdition],
   ...overrides,
 });
+
+// Series Detective must resolve the canonical work regardless of which edition is active.
+const divergentAcrossEditions = {
+  id: 'divergent-book',
+  work: { title: 'Divergent', author: 'Veronica Roth' },
+  activeEditionId: 'edition-b',
+  editions: [
+    { id: 'edition-a', isbn13: '9780062024039', isbn10: '0062024035' },
+    { id: 'edition-b', isbn13: '9780007420421' },
+  ],
+} as unknown as UserBookRecord;
+const divergentQueries = buildSeriesDetectionQueries(divergentAcrossEditions);
+assert.equal(divergentQueries.workQuery, 'Divergent Veronica Roth');
+assert.deepEqual(new Set(divergentQueries.identifiers), new Set(['9780062024039', '0062024035', '9780007420421']));
 
 const strong = scoreSeriesEvidence(work(edition('open-library')), edition('open-library'), book);
 assert.ok(strong);
