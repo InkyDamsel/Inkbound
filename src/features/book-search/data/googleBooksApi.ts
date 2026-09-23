@@ -606,6 +606,74 @@ async function refineExactTitleWithAuthor(
   return refined.groups;
 }
 
+
+const editionRepairIsbn = (edition: BookSearchEdition): string =>
+  compactIsbn(edition.isbn13 || edition.isbn10 || '');
+
+async function repairExactTitleEditionPageCounts(
+  groups: BookSearchWorkGroup[],
+  query: string,
+  signal?: AbortSignal,
+): Promise<BookSearchWorkGroup[]> {
+  const wanted = normalizeText(query);
+  if (!wanted) return groups;
+
+  const targetIndex = groups.findIndex((group) =>
+    normalizeText(group.title) === wanted
+    && normalizeText(group.authors[0]) !== 'unknown author',
+  );
+  if (targetIndex < 0) return groups;
+
+  const target = groups[targetIndex];
+  const candidates = target.editions
+    .filter((edition) =>
+      edition.format !== 'audiobook'
+      && !edition.pageCount
+      && Boolean(editionRepairIsbn(edition)),
+    )
+    .slice(0, 4);
+  if (!candidates.length) return groups;
+
+  const repairedById = new Map<string, BookSearchEdition>();
+
+  await Promise.all(candidates.map(async (edition) => {
+    const isbn = editionRepairIsbn(edition);
+    if (!isbn) return;
+
+    const [trusted, google, openLibrary, hardcover] = await Promise.all([
+      searchTrustedCatalogBaseline(isbn).catch(() => ({ groups: [], totalItems: 0 })),
+      searchGoogleBaseline(isbn, signal),
+      searchOpenLibraryWithAuthorFallback(isbn, signal).catch(() => ({ groups: [], totalItems: 0 })),
+      searchHardcoverWithBackoff(isbn),
+    ]);
+
+    const exact = selectExactIsbnEdition(
+      hardenCatalogGroups(
+        [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
+        { searchQuery: isbn },
+      ),
+      isbn,
+    );
+    if (!exact?.edition.pageCount) return;
+
+    repairedById.set(
+      `${edition.source}:${edition.externalEditionId}`,
+      mergeCatalogEditionData(edition, exact.edition),
+    );
+  }));
+
+  if (!repairedById.size) return groups;
+
+  const repairedTarget: BookSearchWorkGroup = {
+    ...target,
+    editions: target.editions.map((edition) =>
+      repairedById.get(`${edition.source}:${edition.externalEditionId}`) ?? edition,
+    ),
+  };
+
+  return groups.map((group, index) => index === targetIndex ? repairedTarget : group);
+}
+
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
 
@@ -712,6 +780,9 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
       { searchQuery: trimmed },
     );
   }
+
+  combined = await repairExactTitleEditionPageCounts(combined, trimmed, signal);
+  combined = hardenCatalogGroups(combined, { searchQuery: trimmed });
 
   let supplemental: BookSearchResponse = { groups: [], totalItems: 0 };
   if (google.groups.length === 0 || combined.length < 8) {
