@@ -96,7 +96,10 @@ export interface SeriesDetectiveResult {
   seriesAuthorityId?: string;
 }
 
-export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name: string; position: number | null; seriesAuthorityId?: string } | null> {
+export async function detectSeriesForBook(
+  book: UserBookRecord,
+  signal?: AbortSignal,
+): Promise<{ name: string; position: number | null; seriesAuthorityId?: string } | null> {
   // Series Detective verifies the canonical work, not merely the active
   // edition. ISBN records are edition-specific and can be metadata-thin, so an
   // ISBN lookup must supplement -- never replace -- title+author work evidence.
@@ -104,9 +107,9 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
   const { workQuery, identifiers } = buildSeriesDetectionQueries(book);
 
   const [workCatalog, authorGroups, ...identifierSearches] = await Promise.all([
-    searchGoogleBooks(workQuery),
-    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(book.work.author, startIndex)),
-    ...identifiers.map((isbn) => searchGoogleBooks(isbn)),
+    searchGoogleBooks(workQuery, signal),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(book.work.author, startIndex, signal)),
+    ...identifiers.map((isbn) => searchGoogleBooks(isbn, signal)),
   ]);
 
   const groups = hardenCatalogGroups(
@@ -150,6 +153,7 @@ export async function findMissingSeriesBooks(
   seriesName: string,
   author: string,
   libraryBooks: UserBookRecord[],
+  signal?: AbortSignal,
 ): Promise<SeriesDetectiveResult> {
   const normalizedAuthor = normalize(author);
   const seedBook = libraryBooks.find((book) => {
@@ -162,7 +166,7 @@ export async function findMissingSeriesBooks(
   let seedSeriesAuthorityId = seedBook?.work.seriesAuthorityId;
   if (!seedSeriesAuthorityId && seedBook) {
     try {
-      const detectedSeed = await detectSeriesForBook(seedBook);
+      const detectedSeed = await detectSeriesForBook(seedBook, signal);
       if (detectedSeed?.seriesAuthorityId && seriesNamesAreCompatible(detectedSeed.name, seriesName)) {
         seedSeriesAuthorityId = detectedSeed.seriesAuthorityId;
       }
@@ -201,12 +205,12 @@ export async function findMissingSeriesBooks(
     .filter((position) => !knownPositionSet.has(position));
 
   const [seriesCatalog, seriesAndAuthorGroups, authorGroups, positionalDiscovery] = await Promise.all([
-    searchCatalogSeries(seriesName),
-    collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex)),
-    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
+    searchCatalogSeries(seriesName, signal),
+    collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex, signal)),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex, signal)),
     Promise.all(missingKnownGaps.map(async (position) => {
       const query = `${seriesName} book ${position} ${author}`;
-      const result = await searchGoogleBooks(query);
+      const result = await searchGoogleBooks(query, signal);
       return result.groups;
     })),
   ]);
@@ -281,7 +285,7 @@ export async function findMissingSeriesBooks(
   if (pendingContextual.length > 0) {
     const corroboratedGroups = await Promise.all(pendingContextual.map(async ({ work }) => {
       const exactQuery = `${work.title} ${work.authors[0] ?? ''}`.trim();
-      const response = await searchGoogleBooks(exactQuery);
+      const response = await searchGoogleBooks(exactQuery, signal);
       return response.groups;
     }));
 
