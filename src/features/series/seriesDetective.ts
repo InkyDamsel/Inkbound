@@ -1,10 +1,10 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
-import { searchCatalogSeries, searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../book-search/data/googleBooksApi';
+import { searchCatalogSeries, searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, catalogEditionSources, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
 import { buildSeriesDetectionQueries } from './seriesDetectiveQueries';
-import { hasKnownSeriesContextEvidence, hasKnownSeriesContextText, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
+import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
@@ -21,7 +21,6 @@ const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
 
 const SERIES_DISCOVERY_MAX_PAGES = 2;
-const SERIES_CORROBORATION_LIMIT = 8;
 
 
 const candidateSeriesMetadata = (
@@ -164,17 +163,6 @@ export async function findMissingSeriesBooks(
   });
 
   let seedSeriesAuthorityId = seedBook?.work.seriesAuthorityId;
-  if (!seedSeriesAuthorityId && seedBook) {
-    try {
-      const detectedSeed = await detectSeriesForBook(seedBook, signal);
-      if (detectedSeed?.seriesAuthorityId && seriesNamesAreCompatible(detectedSeed.name, seriesName)) {
-        seedSeriesAuthorityId = detectedSeed.seriesAuthorityId;
-      }
-    } catch {
-      // Discovery still continues from the reader-visible series name when an
-      // authority lookup is unavailable.
-    }
-  }
 
   const storedAuthorityId = libraryBooks.find((book) => {
     const metadata = resolveEffectiveSeriesMetadata(book);
@@ -204,23 +192,8 @@ export async function findMissingSeriesBooks(
   const missingKnownGaps = Array.from({ length: highestKnownPosition }, (_, index) => index + 1)
     .filter((position) => !knownPositionSet.has(position));
 
-  const [seriesCatalog, seriesAndAuthorGroups, authorGroups, positionalDiscovery] = await Promise.all([
-    searchCatalogSeries(seriesName, signal),
-    collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex, signal)),
-    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex, signal)),
-    Promise.all(missingKnownGaps.map(async (position) => {
-      const query = `${seriesName} book ${position} ${author}`;
-      const result = await searchGoogleBooks(query, signal);
-      return result.groups;
-    })),
-  ]);
-
-  const rawGroups = [
-    ...seriesCatalog.groups,
-    ...seriesAndAuthorGroups,
-    ...authorGroups,
-    ...positionalDiscovery.flat(),
-  ];
+  const seriesCatalog = await searchCatalogSeries(seriesName, signal);
+  const rawGroups = seriesCatalog.groups;
 
   // Canonical hardening preserves provider provenance on merged editions, so
   // Detective can measure corroboration after deduplication without relying on
@@ -263,66 +236,9 @@ export async function findMissingSeriesBooks(
     }
   }
 
-  // A broad series query can surface a legitimate installment from only one
-  // provider. Do not discard it immediately. Re-query that exact work through
-  // the canonical multi-provider catalog and accept it only if the follow-up
-  // supplies structured series metadata or independent contextual corroboration.
-  const pendingContextual = merged
-    .flatMap((work) => {
-      const providerAgreement = new Set(
-        work.editions.flatMap((candidate) => catalogEditionSources(candidate)),
-      ).size;
-      if (providerAgreement >= 2) return [];
-      return work.editions
-        .filter((edition) =>
-          !candidateSeriesMetadata(work, edition, seriesName, providerAgreement, seedSeriesAuthorityId)
-          && hasKnownSeriesContextText(work, edition, seriesName),
-        )
-        .map((edition) => ({ work, edition }));
-    })
-    .slice(0, SERIES_CORROBORATION_LIMIT);
-
-  if (pendingContextual.length > 0) {
-    const corroboratedGroups = await Promise.all(pendingContextual.map(async ({ work }) => {
-      const exactQuery = `${work.title} ${work.authors[0] ?? ''}`.trim();
-      const response = await searchGoogleBooks(exactQuery, signal);
-      return response.groups;
-    }));
-
-    const corroborated = hardenCatalogGroups(corroboratedGroups.flat());
-    for (const work of corroborated) {
-      for (const edition of work.editions) {
-        const providerAgreement = new Set(
-          work.editions.flatMap((candidate) => catalogEditionSources(candidate)),
-        ).size;
-        const metadata = candidateSeriesMetadata(
-          work,
-          edition,
-          seriesName,
-          providerAgreement,
-          seedSeriesAuthorityId,
-        );
-        if (!metadata) continue;
-        if (metadata.evidence === 'title' && !exactAuthorMatch(work, author)) continue;
-        if (preferredLanguages.size > 0 && edition.language && !preferredLanguages.has(edition.language.toLocaleLowerCase())) continue;
-
-        const candidate: SeriesDetectiveCandidate = {
-          work,
-          edition,
-          seriesName: metadata.name,
-          position: metadata.position,
-          seriesAuthorityId: metadata.authorityId,
-        };
-        const key = metadata.position !== null ? `position:${metadata.position}` : `title:${normalize(work.title)}`;
-        const current = seen.get(key);
-        if (!current || catalogEditionQualityScore(candidate.edition) > catalogEditionQualityScore(current.edition)) {
-          seen.set(key, candidate);
-        }
-      }
-    }
-  }
-
   candidates.push(...seen.values());
+
+
 
   const existingPositions = new Set<number>();
   seriesBooks.forEach((book) => {
