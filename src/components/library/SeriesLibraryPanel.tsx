@@ -246,9 +246,11 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
     setDetectiveResult(null);
     setDetectiveError('');
     setDetectiveLoading(true);
+    const controller = new AbortController();
+    const deadline = window.setTimeout(() => controller.abort(), 18_000);
     try {
       const seedAuthor = item.books[0]?.book.work.author || item.author;
-      const result = await findMissingSeriesBooks(item.name, seedAuthor, books);
+      const result = await findMissingSeriesBooks(item.name, seedAuthor, books, controller.signal);
       if (result.seriesAuthorityId) {
         item.books.forEach(({ book }) => {
           if (book.work.seriesAuthorityId === result.seriesAuthorityId) return;
@@ -263,8 +265,13 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
       }
       setDetectiveResult(result);
     } catch (error) {
-      setDetectiveError(error instanceof Error ? error.message : 'Series Detective could not check this series.');
+      if (controller.signal.aborted) {
+        setDetectiveError('Series Detective stopped after 18 seconds because one or more catalogs were too slow. Try again in a moment.');
+      } else {
+        setDetectiveError(error instanceof Error ? error.message : 'Series Detective could not check this series.');
+      }
     } finally {
+      window.clearTimeout(deadline);
       setDetectiveLoading(false);
     }
   };
