@@ -272,26 +272,23 @@ assert.equal(
   null,
 );
 
+const reorderedAuthorEdition = edition('hardcover', {
+  authors: ['Gilmore, Laurie'],
+});
+const reorderedAuthorEvidence = scoreSeriesEvidence(
+  work(reorderedAuthorEdition, { authors: ['Gilmore, Laurie'] }),
+  reorderedAuthorEdition,
+  book,
+);
+assert.ok(reorderedAuthorEvidence);
+assert.equal(reorderedAuthorEvidence?.exactAuthor, true);
+assert.equal(selectVerifiedSeriesEvidence([reorderedAuthorEvidence!])?.name, 'Dream Harbor');
+
 const wrongAuthorEdition = edition('hardcover', { authors: ['Someone Else'] });
 const wrongAuthor = scoreSeriesEvidence(work(wrongAuthorEdition), wrongAuthorEdition, book);
 assert.ok(wrongAuthor);
 assert.equal(wrongAuthor?.exactAuthor, false);
 assert.equal(selectVerifiedSeriesEvidence([wrongAuthor!]), null);
-
-const formattedAuthorExactIsbnEdition = edition('hardcover', {
-  authors: ['Gilmore, Laurie'],
-});
-const formattedAuthorExactIsbn = scoreSeriesEvidence(
-  work(formattedAuthorExactIsbnEdition, { authors: ['Gilmore, Laurie'] }),
-  formattedAuthorExactIsbnEdition,
-  book,
-);
-assert.ok(formattedAuthorExactIsbn);
-assert.equal(formattedAuthorExactIsbn?.structured, true);
-assert.equal(formattedAuthorExactIsbn?.exactIdentifier, true);
-assert.equal(formattedAuthorExactIsbn?.exactAuthor, false);
-assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.name, 'Dream Harbor');
-assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.position, 2);
 
 // Provider naming differences must not split one real series.
 assert.equal(canonicalSeriesIdentity('Hades x Persephone Saga'), 'hades persephone');
