@@ -443,6 +443,55 @@ export async function searchOpenLibrary(query: string, signal?: AbortSignal): Pr
   return { groups: page.groups, totalItems: page.totalItems };
 }
 
+export async function searchOpenLibraryExactTitleAuthor(
+  title: string,
+  author: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  const trimmedTitle = title.trim();
+  const trimmedAuthor = author.trim();
+  if (!trimmedTitle || !trimmedAuthor) return { groups: [], totalItems: 0 };
+
+  const params = new URLSearchParams({
+    title: trimmedTitle,
+    author: trimmedAuthor,
+    limit: '8',
+    fields: FIELDS,
+  });
+  const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) throw new Error(`Open Library exact title/author search failed (${response.status}).`);
+
+  const payload = (await response.json()) as OpenLibraryResponse;
+  const initialGroups = hardenCatalogGroups(
+    (payload.docs ?? [])
+      .map(mapWork)
+      .filter((group): group is BookSearchWorkGroup => Boolean(group)),
+    { searchQuery: trimmedTitle },
+  );
+
+  const wantedAuthor = normalize(trimmedAuthor);
+  const authorMatched = initialGroups.filter((group) => {
+    const candidateAuthors = normalize(group.authors.join(' '));
+    const tokens = wantedAuthor.split(' ').filter(Boolean);
+    return tokens.length > 0 && tokens.every((token) => candidateAuthors.includes(token));
+  });
+
+  const hydrated = await hydrateOpenLibraryExactGroups(
+    authorMatched,
+    trimmedTitle,
+    signal,
+  );
+
+  const groups = hardenCatalogGroups(hydrated, { searchQuery: trimmedTitle });
+  return {
+    groups,
+    totalItems: payload.numFound ?? payload.num_found ?? groups.length,
+  };
+}
+
 export async function fetchOpenLibrarySummary(title: string, author: string, signal?: AbortSignal): Promise<string | undefined> {
   const params = new URLSearchParams({
     title: title.trim(),
