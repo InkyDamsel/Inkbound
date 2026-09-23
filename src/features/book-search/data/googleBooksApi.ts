@@ -481,6 +481,9 @@ export async function searchGoogleBooksPage(
           { searchQuery: trimmed },
         );
       }
+
+      groups = await repairVisibleEditionPageCounts(groups, signal);
+      groups = hardenCatalogGroups(groups, { searchQuery: trimmed });
     }
 
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
@@ -552,6 +555,8 @@ export async function searchGoogleBooksAuthorPage(
         mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
         { preferredAuthor: trimmedAuthor },
       );
+      groups = await repairVisibleEditionPageCounts(groups, signal);
+      groups = hardenCatalogGroups(groups, { preferredAuthor: trimmedAuthor });
     }
 
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
