@@ -1,5 +1,6 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import { catalogEditionSources } from '../book-search/catalogHardening';
 import { canonicalSeriesIdentity, inferSeriesHintFromTitle, seriesNamesAreCompatible } from './seriesLibrary';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -15,9 +16,14 @@ const comparableTitle = (value?: string) => {
   return normalize(withoutSeriesSuffix);
 };
 
+const comparableAuthor = (value?: string): string => {
+  const tokens = normalize(value).split(' ').filter(Boolean);
+  return tokens.length > 1 ? [...tokens].sort().join(' ') : tokens.join(' ');
+};
+
 const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
-  const wanted = normalize(author);
-  return !wanted || group.authors.some((candidate) => normalize(candidate) === wanted);
+  const wanted = comparableAuthor(author);
+  return !wanted || group.authors.some((candidate) => comparableAuthor(candidate) === wanted);
 };
 
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
@@ -88,7 +94,7 @@ export const selectVerifiedSubtitleSeriesEvidence = (
       const identity = canonicalSeriesIdentity(candidate);
       if (!identity) continue;
       const current = byIdentity.get(identity) ?? { name: candidate, sources: new Set<BookSearchEdition['source']>() };
-      current.sources.add(edition.source);
+      catalogEditionSources(edition).forEach((source) => current.sources.add(source));
       byIdentity.set(identity, current);
     }
   }
@@ -156,8 +162,7 @@ export const scoreSeriesEvidence = (
 
 export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): SeriesEvidence | null => {
   const eligible = evidence.filter((item) =>
-    (item.exactAuthor && (item.exactTitle || item.exactIdentifier))
-    || (item.structured && item.exactIdentifier),
+    item.exactAuthor && (item.exactTitle || item.exactIdentifier),
   );
   if (!eligible.length) return null;
 
@@ -170,7 +175,9 @@ export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): Series
   }
 
   const ranked = [...bySeries.values()].map((group) => {
-    const distinctSources = new Set(group.map((item) => item.edition.source)).size;
+    const distinctSources = new Set(
+      group.flatMap((item) => catalogEditionSources(item.edition)),
+    ).size;
     const best = [...group].sort((a, b) => b.score - a.score)[0];
     // Never promote a title-inferred series from a single provider. That was
     // permissive enough to turn standalone works into invented series. Inferred
