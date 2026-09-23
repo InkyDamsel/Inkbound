@@ -217,6 +217,30 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
   };
 };
 
+const enrichConsistentSameFormatPageCounts = (
+  editions: BookSearchEdition[],
+): BookSearchEdition[] =>
+  editions.map((edition) => {
+    if (edition.format === 'audiobook' || edition.pageCount) return edition;
+
+    const editionLanguage = cleanLanguage(edition.language);
+    const compatibleCounts = editions
+      .filter((candidate) => {
+        if (candidate === edition) return false;
+        if (candidate.format !== edition.format) return false;
+        const candidateLanguage = cleanLanguage(candidate.language);
+        if (editionLanguage && candidateLanguage && editionLanguage !== candidateLanguage) return false;
+        return Boolean(cleanPageCount(candidate.pageCount));
+      })
+      .map((candidate) => cleanPageCount(candidate.pageCount))
+      .filter((value): value is number => typeof value === 'number');
+
+    const uniqueCounts = [...new Set(compatibleCounts)];
+    return uniqueCounts.length === 1
+      ? { ...edition, pageCount: uniqueCounts[0] }
+      : edition;
+  });
+
 export const catalogEditionQualityScore = (edition: BookSearchEdition): number => {
   let score = 0;
   // Provider authority is explicit. Supplemental sources may fill gaps, but
@@ -576,7 +600,9 @@ export const hardenCatalogGroups = (
         .filter((value): value is string => Boolean(value));
       const seriesByKey = new Map<string, string>();
       namedSeries.forEach((name) => seriesByKey.set(normalizeKey(name), name));
-      if (seriesByKey.size !== 1) return group;
+      if (seriesByKey.size !== 1) {
+        return { ...group, editions: enrichConsistentSameFormatPageCounts(group.editions) };
+      }
 
       const [seriesKey, canonicalSeriesName] = [...seriesByKey.entries()][0];
       const matchingOrders = [...new Set(group.editions
@@ -587,11 +613,13 @@ export const hardenCatalogGroups = (
 
       return {
         ...group,
-        editions: group.editions.map((edition) => ({
-          ...edition,
-          seriesName: edition.seriesName || canonicalSeriesName,
-          seriesOrder: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : canonicalOrder,
-        })),
+        editions: enrichConsistentSameFormatPageCounts(
+          group.editions.map((edition) => ({
+            ...edition,
+            seriesName: edition.seriesName || canonicalSeriesName,
+            seriesOrder: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : canonicalOrder,
+          })),
+        ),
       };
     });
 
