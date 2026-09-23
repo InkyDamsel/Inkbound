@@ -178,6 +178,15 @@ if (!googleBooksSource.includes('hydrateGoogleVolumeDetails')) {
 if (!googleBooksSource.includes('refineExactTitleWithAuthor')) {
   violations.push('googleBooksApi.ts: thin exact-title matches must receive one bounded author-qualified Google repair pass');
 }
+if (!googleBooksSource.includes('repairVisibleEditionPageCounts')) {
+  violations.push('googleBooksApi.ts: visible catalog editions with known ISBNs must receive bounded exact-edition page-count repair');
+}
+if (!googleBooksSource.includes(".slice(0, 4)") || !googleBooksSource.includes("edition.format !== 'audiobook'")) {
+  violations.push('googleBooksApi.ts: page-count repair must stay bounded and must never invent audiobook pages');
+}
+if ((googleBooksSource.match(/repairVisibleEditionPageCounts\(groups, signal\)/g) ?? []).length < 2) {
+  violations.push('googleBooksApi.ts: paged search and author browsing must share visible-edition page-count repair');
+}
 if (!googleBooksSource.includes('requestCanonicalGoogleBooksPayload')) {
   violations.push('googleBooksApi.ts: protected and direct Google Books searches must share one canonical hydrated payload path');
 }
