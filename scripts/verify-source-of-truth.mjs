@@ -852,8 +852,8 @@ if (/const existing = resolveEffectiveSeriesMetadata\(book\);[\s\S]{0,120}if \(e
 if (!seriesDetective.includes('existingTitleAuthors = new Set(libraryBooks') || !seriesDetective.includes('existingIsbns')) {
   violations.push('seriesDetective.ts: missing-book results must dedupe against the entire canonical library, not only the currently labeled series.');
 }
-if (!seriesDetective.includes('providerSourcesByWork') || !seriesDetective.includes('hasKnownSeriesContextEvidence')) {
-  violations.push('seriesDetective.ts: known-series discovery must preserve multi-provider agreement through catalog hardening.');
+if (!seriesDetective.includes('catalogEditionSources') || !seriesDetective.includes('hasKnownSeriesContextEvidence')) {
+  violations.push('seriesDetective.ts: known-series discovery must preserve canonical multi-provider agreement through catalog hardening.');
 }
 const seriesSearchModelSource = read('src/features/book-search/model/bookSearch.ts');
 for (const required of ['seriesAuthorityId?: string', 'corroboratingSources?: BookSearchSource[]']) {
@@ -989,8 +989,8 @@ if (!seriesPanel.includes('seriesName: candidate.seriesName') || !seriesPanel.in
 if (!seriesDetective.includes('existingTitleAuthors = new Set(libraryBooks') || !seriesDetective.includes('existingIsbns')) {
   violations.push('seriesDetective.ts: missing-book results must dedupe against the entire canonical library, not only the currently labeled series.');
 }
-if (!seriesDetective.includes('providerSourcesByWork') || !seriesDetective.includes('hasKnownSeriesContextEvidence')) {
-  violations.push('seriesDetective.ts: known-series discovery must preserve multi-provider agreement through catalog hardening.');
+if (!seriesDetective.includes('catalogEditionSources') || !seriesDetective.includes('hasKnownSeriesContextEvidence')) {
+  violations.push('seriesDetective.ts: known-series discovery must preserve canonical multi-provider agreement through catalog hardening.');
 }
 
 const collectionsSortSource = read('src/components/CollectionsScreen.tsx');
