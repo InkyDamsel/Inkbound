@@ -826,16 +826,27 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
 }
 
 
-const SERIES_CATALOG_MAX_PAGES = 2;
+const SERIES_CATALOG_PROVIDER_TIMEOUT_MS = 5_000;
+
+const withSeriesCatalogTimeout = async (
+  label: string,
+  promise: Promise<BookSearchResponse>,
+): Promise<BookSearchResponse> =>
+  Promise.race([
+    promise,
+    new Promise<BookSearchResponse>((resolve) => {
+      globalThis.setTimeout(() => {
+        console.warn(`${label} series catalog lookup timed out; continuing with other providers.`);
+        resolve({ groups: [], totalItems: 0 });
+      }, SERIES_CATALOG_PROVIDER_TIMEOUT_MS);
+    }),
+  ]);
 
 /**
  * Canonical catalog path for enumerating a known series.
  *
- * Normal reading-material search is intentionally title-relevance driven.
- * Series enumeration is different: a legitimate installment often has a title
- * that contains none of the series words, so series metadata itself is the
- * relevance signal. Keep provider orchestration here rather than in Series
- * Detective.
+ * This deliberately stays small: one focused request per provider, in parallel.
+ * A slow/unavailable provider contributes no evidence but never blocks the rest.
  */
 export async function searchCatalogSeries(
   seriesName: string,
@@ -843,69 +854,59 @@ export async function searchCatalogSeries(
 ): Promise<BookSearchResponse> {
   const trimmed = seriesName.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   await waitUntilAdministrationInactive(signal);
 
-  const googleGroups: BookSearchWorkGroup[] = [];
-  let googleStartIndex = 0;
-  for (let page = 0; page < SERIES_CATALOG_MAX_PAGES; page += 1) {
+  const googlePromise = (async (): Promise<BookSearchResponse> => {
     try {
       const payload = await requestCanonicalGoogleBooksPayload(
         buildGoogleBooksQuery(`"${trimmed}"`),
         signal,
-        googleStartIndex,
+        0,
         GOOGLE_BOOKS_PAGE_SIZE,
       );
-      const rawItems = payload.items ?? [];
-      const mapped = rawItems
+      const mapped = (payload.items ?? [])
         .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
         .filter((item): item is BookSearchEdition => Boolean(item));
-      googleGroups.push(...groupGoogleEditions(mapped));
-      if (rawItems.length < GOOGLE_BOOKS_PAGE_SIZE) break;
-      googleStartIndex += rawItems.length;
+      const groups = hardenCatalogGroups(groupGoogleEditions(mapped));
+      return { groups, totalItems: groups.length };
     } catch (error) {
+      if (signal?.aborted) throw error;
       console.warn('Google Books series catalog search unavailable.', error);
-      break;
+      return { groups: [], totalItems: 0 };
     }
-  }
+  })();
 
-  const openLibraryGroups: BookSearchWorkGroup[] = [];
-  let openLibraryStartIndex = 0;
-  for (let page = 0; page < SERIES_CATALOG_MAX_PAGES; page += 1) {
+  const openLibraryPromise = (async (): Promise<BookSearchResponse> => {
     try {
-      const result = await searchOpenLibraryPage(
+      const page = await searchOpenLibraryPage(
         `series:"${trimmed.replace(/"/g, '')}"`,
-        openLibraryStartIndex,
+        0,
         GOOGLE_BOOKS_PAGE_SIZE,
         signal,
       );
-      openLibraryGroups.push(...result.groups);
-      if (!result.hasMore || result.nextStartIndex <= openLibraryStartIndex) break;
-      openLibraryStartIndex = result.nextStartIndex;
+      return { groups: page.groups, totalItems: page.groups.length };
     } catch (error) {
+      if (signal?.aborted) throw error;
       console.warn('Open Library series catalog search unavailable.', error);
-      break;
+      return { groups: [], totalItems: 0 };
     }
-  }
+  })();
 
-  // Google + Open Library above are already canonical multi-page series
-  // discovery. Do not recursively run the full general search pipeline again;
-  // that duplicates those providers and can multiply network work dramatically.
-  const hardcover = await Promise.race<BookSearchResponse>([
-    searchHardcoverWithBackoff(trimmed),
-    new Promise<BookSearchResponse>((resolve) => {
-      window.setTimeout(() => resolve({ groups: [], totalItems: 0 }), 6_000);
-    }),
+  const hardcoverPromise = searchHardcoverWithBackoff(trimmed);
+
+  const [google, openLibrary, hardcover] = await Promise.all([
+    withSeriesCatalogTimeout('Google Books', googlePromise),
+    withSeriesCatalogTimeout('Open Library', openLibraryPromise),
+    withSeriesCatalogTimeout('Hardcover', hardcoverPromise),
   ]);
 
   const groups = hardenCatalogGroups([
-    ...googleGroups,
-    ...openLibraryGroups,
+    ...google.groups,
+    ...openLibrary.groups,
     ...hardcover.groups,
   ]);
 
-  return {
-    groups,
-    totalItems: groups.length,
-  };
+  return { groups, totalItems: groups.length };
 }
