@@ -221,6 +221,16 @@ if (!bookDetailsCoreSource.includes('matchedEdition.pageCount ?? activeEdition.p
 }
 
 const bookSearchFunctionSource = read('functions/src/bookSearch.ts');
+for (const required of [
+  'normalizeGoogleCatalogMatchText',
+  "operator === 'inauthor' || operator === 'isbn'",
+  'operatorNeedsCatalogDetails || likelyExactTitle',
+]) {
+  if (!bookSearchFunctionSource.includes(required)) {
+    violations.push(`functions/src/bookSearch.ts: Google catalog detail hydration parity is missing ${required}`);
+  }
+}
+
 if (!bookSearchFunctionSource.includes('export const searchGoogleBooksCatalog = onCall')) {
   violations.push('functions/src/bookSearch.ts: missing shared Google Books catalog callable');
 }
