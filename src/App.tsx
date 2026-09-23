@@ -63,7 +63,7 @@ import { getImportVerificationSnapshot } from './features/import/importVerificat
 import { normalizeLibraryRecord } from './features/library/libraryNormalization';
 import { withBookOwnership } from './features/ownership/bookOwnership';
 import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
-import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
+import { getActiveEdition, reconcileBookProgressWithActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
 import {
   applySessionProgressToBook,
   getSessionProgressEndpoint,
@@ -418,8 +418,14 @@ export default function App() {
       const activeEdition = getActiveEdition(book);
       if (!activeEdition) return book;
       const nextEdition = { ...activeEdition, ...(correction.pageCount !== undefined ? { pageCount: Math.max(0, correction.pageCount), externalSource: 'manual' as const } : {}), ...(correction.audiobookDurationMins !== undefined ? { audiobookDurationMins: Math.max(0, correction.audiobookDurationMins), externalSource: 'manual' as const } : {}) };
-      const nextPages = Math.max(0, correction.progressPages ?? book.progressPages); const nextMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes); const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount; const nextCompleted = isAudiobook ? nextMinutes : nextPages; const progressPercentage = nextTotal && nextTotal > 0 ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100)) : book.progressPercentage; const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal!); const status = reachedEnd ? 'finished' : book.status;
-      const updatedBook: UserBookRecord = { ...book, editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition), progressPages: nextPages, progressMinutes: nextMinutes, progressPercentage, status, dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished };
+      const nextPages = Math.max(0, correction.progressPages ?? book.progressPages);
+      const nextMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes);
+      const updatedBook = reconcileBookProgressWithActiveEdition({
+        ...book,
+        editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition),
+        progressPages: nextPages,
+        progressMinutes: nextMinutes,
+      });
       setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected); return updatedBook;
     }));
     showToast('Corrected book progress and reconciled the latest reading session.');
