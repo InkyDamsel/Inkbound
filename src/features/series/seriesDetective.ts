@@ -184,14 +184,6 @@ export async function findMissingSeriesBooks(
     }
     return normalize(book.work.author) === normalizedAuthor;
   });
-  const knownWholePositions = seriesBooks
-    .map((book) => resolveEffectiveSeriesMetadata(book)?.position)
-    .filter((position): position is number => typeof position === 'number' && Number.isInteger(position) && position > 0);
-  const highestKnownPosition = knownWholePositions.length ? Math.max(...knownWholePositions) : 0;
-  const knownPositionSet = new Set(knownWholePositions);
-  const missingKnownGaps = Array.from({ length: highestKnownPosition }, (_, index) => index + 1)
-    .filter((position) => !knownPositionSet.has(position));
-
   const seriesCatalog = await searchCatalogSeries(seriesName, signal);
   const rawGroups = seriesCatalog.groups;
 
