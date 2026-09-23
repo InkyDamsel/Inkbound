@@ -1,7 +1,7 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
-import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
+import { catalogEditionQualityScore, catalogEditionSources, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
 import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
@@ -173,17 +173,9 @@ export async function findMissingSeriesBooks(
     ...positionalDiscovery.flat(),
   ];
 
-  // Preserve provider agreement before hardening merges exact editions across
-  // catalogs. Series confidence must not disappear merely because canonical
-  // edition normalization correctly collapsed duplicate ISBN records.
-  const providerSourcesByWork = new Map<string, Set<BookSearchEdition['source']>>();
-  for (const group of rawGroups) {
-    const identity = `${normalize(group.title)}::${normalize(group.authors[0])}`;
-    const sources = providerSourcesByWork.get(identity) ?? new Set<BookSearchEdition['source']>();
-    group.editions.forEach((candidate) => sources.add(candidate.source));
-    providerSourcesByWork.set(identity, sources);
-  }
-
+  // Canonical hardening preserves provider provenance on merged editions, so
+  // Detective can measure corroboration after deduplication without relying on
+  // brittle title+author formatting keys.
   const merged = hardenCatalogGroups(rawGroups, { preferredAuthor: author });
   const seen = new Map<string, SeriesDetectiveCandidate>();
   const candidates: SeriesDetectiveCandidate[] = [];
@@ -192,9 +184,9 @@ export async function findMissingSeriesBooks(
 
   for (const work of merged) {
     for (const edition of work.editions) {
-      const providerAgreement = providerSourcesByWork.get(
-        `${normalize(work.title)}::${normalize(work.authors[0])}`,
-      )?.size ?? 1;
+      const providerAgreement = new Set(
+        work.editions.flatMap((candidate) => catalogEditionSources(candidate)),
+      ).size;
       const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement);
       if (!metadata) continue;
 
