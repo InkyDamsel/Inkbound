@@ -71,6 +71,41 @@ export function getCanonicalProgressPercentage(book: UserBookRecord): number {
   return getBookReadingState(book).progressPercentage;
 }
 
+/**
+ * Canonical persisted progress reconciliation after a progress correction or an
+ * active-edition change. Surfaces may change the underlying edition/progress
+ * fields first, then pass the resulting book through this helper.
+ *
+ * This keeps the persisted percentage/status/date rules aligned with the same
+ * reader-facing state used by every derived screen.
+ */
+export function reconcileBookProgressWithActiveEdition(
+  book: UserBookRecord,
+  finishDate = book.lastSessionDate ?? localDateKey(),
+): UserBookRecord {
+  const activeEdition = getActiveEdition(book);
+  if (!activeEdition) return reconcileFinishedBookProgress(book);
+
+  const isAudiobook = activeEdition.format === 'audiobook';
+  const completed = Math.max(0, isAudiobook ? book.progressMinutes : book.progressPages);
+  const total = isAudiobook ? activeEdition.audiobookDurationMins : activeEdition.pageCount;
+  const hasKnownTotal = typeof total === 'number' && Number.isFinite(total) && total > 0;
+  const reachedEnd = Boolean(hasKnownTotal && completed >= total!);
+  const staysFinished = reachedEnd || book.status === 'finished';
+  const progressPercentage = staysFinished
+    ? 100
+    : hasKnownTotal
+      ? Math.max(0, Math.min(100, Math.round((completed / total!) * 100)))
+      : Math.max(0, Math.min(100, Math.round(book.progressPercentage || 0)));
+
+  return {
+    ...book,
+    progressPercentage,
+    status: staysFinished ? 'finished' : book.status,
+    dateFinished: reachedEnd ? book.dateFinished ?? finishDate : book.dateFinished,
+  };
+}
+
 export function getRemainingReadingUnits(book: UserBookRecord): {
   isAudiobook: boolean;
   totalUnits?: number;
