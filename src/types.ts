@@ -42,6 +42,9 @@ export interface BookWork {
   materialType?: ReadingMaterialType;
   seriesName?: string;
   seriesOrder?: number;
+  // Provider-scoped series identity when a catalog exposes one. Optional so
+  // imports/manual records remain fully compatible.
+  seriesAuthorityId?: string;
   genres: string[];
   tropes?: string[];
   contentWarnings?: string[];
