@@ -582,8 +582,13 @@ export async function searchGoogleBooksAuthorPage(
   }
 }
 
-const exactTitleGroupNeedsRepair = (group: BookSearchWorkGroup): boolean =>
-  group.editions.every((edition) => !edition.pageCount || !edition.seriesName);
+const exactTitleGroupNeedsRepair = (group: BookSearchWorkGroup): boolean => {
+  const hasThinPrintEdition = group.editions.some((edition) =>
+    edition.format !== 'audiobook' && !edition.pageCount,
+  );
+  const hasNoSeriesEvidence = group.editions.every((edition) => !edition.seriesName);
+  return hasThinPrintEdition || hasNoSeriesEvidence;
+};
 
 async function refineExactTitleWithAuthor(
   groups: BookSearchWorkGroup[],
