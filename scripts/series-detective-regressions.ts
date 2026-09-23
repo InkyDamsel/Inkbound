@@ -334,6 +334,37 @@ assert.equal(aliasSeries[0].books.length, 2);
 assert.equal(aliasSeries[0].books[0].position, 1);
 assert.equal(aliasSeries[0].books[1].position, 2);
 
+// A provider series identity must keep legitimate multi-author installments
+// in one canonical series without globally merging every same-named series.
+const sharedAuthorityBookA = {
+  ...aliasBookOne,
+  id: 'shared-authority-1',
+  work: {
+    ...aliasBookOne.work,
+    title: 'Installment One',
+    author: 'Author One',
+    seriesName: 'Shared World',
+    seriesOrder: 1,
+    seriesAuthorityId: 'google-books:shared-world',
+  },
+} as unknown as UserBookRecord;
+const sharedAuthorityBookB = {
+  ...aliasBookTwo,
+  id: 'shared-authority-2',
+  work: {
+    ...aliasBookTwo.work,
+    title: 'Installment Two',
+    author: 'Author Two',
+    seriesName: 'Shared World',
+    seriesOrder: 2,
+    seriesAuthorityId: 'google-books:shared-world',
+  },
+} as unknown as UserBookRecord;
+const sharedAuthoritySeries = buildSeriesLibrary([sharedAuthorityBookA, sharedAuthorityBookB]);
+assert.equal(sharedAuthoritySeries.length, 1);
+assert.equal(sharedAuthoritySeries[0].books.length, 2);
+assert.equal(sharedAuthoritySeries[0].author, 'Various authors');
+
 const aliasEvidenceA = scoreSeriesEvidence(
   work(edition('open-library', {
     title: 'A Touch of Darkness',
