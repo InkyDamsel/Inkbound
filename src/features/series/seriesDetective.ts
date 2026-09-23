@@ -1,6 +1,6 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
-import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../book-search/data/googleBooksApi';
+import { searchCatalogSeries, searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, catalogEditionSources, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
 import { buildSeriesDetectionQueries } from './seriesDetectiveQueries';
@@ -194,11 +194,10 @@ export async function findMissingSeriesBooks(
   const missingKnownGaps = Array.from({ length: highestKnownPosition }, (_, index) => index + 1)
     .filter((position) => !knownPositionSet.has(position));
 
-  const [seriesAndAuthorGroups, authorGroups, seriesOnlyGroups, exactPhraseGroups, positionalDiscovery] = await Promise.all([
+  const [seriesCatalog, seriesAndAuthorGroups, authorGroups, positionalDiscovery] = await Promise.all([
+    searchCatalogSeries(seriesName),
     collectPagedGroups((startIndex) => searchGoogleBooksPage(`${seriesName} ${author}`, startIndex)),
     collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
-    collectPagedGroups((startIndex) => searchGoogleBooksPage(seriesName, startIndex)),
-    collectPagedGroups((startIndex) => searchGoogleBooksPage(`"${seriesName}"`, startIndex)),
     Promise.all(missingKnownGaps.map(async (position) => {
       const query = `${seriesName} book ${position} ${author}`;
       const result = await searchGoogleBooks(query);
@@ -207,10 +206,9 @@ export async function findMissingSeriesBooks(
   ]);
 
   const rawGroups = [
+    ...seriesCatalog.groups,
     ...seriesAndAuthorGroups,
     ...authorGroups,
-    ...seriesOnlyGroups,
-    ...exactPhraseGroups,
     ...positionalDiscovery.flat(),
   ];
 
