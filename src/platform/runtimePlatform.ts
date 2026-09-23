@@ -3,9 +3,13 @@ type CapacitorRuntime = {
   getPlatform?: () => string;
 };
 
+const viteEnv = ((import.meta as ImportMeta & {
+  env?: Record<string, string | boolean | undefined>;
+}).env ?? {});
+const viteDev = viteEnv.DEV === true || viteEnv.DEV === 'true';
 const buildRuntimeTarget =
-  typeof import.meta.env !== 'undefined'
-    ? import.meta.env.VITE_RUNTIME_TARGET
+  typeof viteEnv.VITE_RUNTIME_TARGET === 'string'
+    ? viteEnv.VITE_RUNTIME_TARGET
     : undefined;
 
 function getCapacitorRuntime(): CapacitorRuntime | undefined {
@@ -25,13 +29,13 @@ export function isNativeRuntime(): boolean {
   // Vite's development server is always a browser runtime. This hard boundary
   // prevents stale native build stamps or Capacitor globals from trapping
   // localhost behind Android-only startup services.
-  if (import.meta.env.DEV) return false;
+  if (viteDev) return false;
   if (buildRuntimeTarget === 'android' || buildRuntimeTarget === 'ios') return true;
   return getCapacitorRuntime()?.isNativePlatform?.() === true;
 }
 
 export function getRuntimePlatform(): 'android' | 'ios' | 'web' | 'native' {
-  if (import.meta.env.DEV) return 'web';
+  if (viteDev) return 'web';
   if (buildRuntimeTarget === 'android' || buildRuntimeTarget === 'ios') return buildRuntimeTarget;
 
   const capacitor = getCapacitorRuntime();
