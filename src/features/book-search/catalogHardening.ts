@@ -8,9 +8,6 @@ const compact = (value?: string) => value?.replace(/\s+/g, ' ').trim() ?? '';
 const normalizeKey = (value?: string) => compact(value).toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
-export const catalogEditionSources = (edition: BookSearchEdition): BookSearchEdition['source'][] =>
-  [...new Set([edition.source, ...(edition.corroboratingSources ?? [])])];
-
 const titleWords = (value?: string): string[] => normalizeKey(value).split(' ').filter(Boolean);
 
 const SEARCH_STOP_WORDS = new Set(['a', 'an', 'the', 'of', 'and', 'or', 'to', 'for', 'in', 'on', 'at', 'by']);
@@ -60,37 +57,16 @@ const catalogSearchResultIsRelevant = (group: BookSearchWorkGroup, query?: strin
   const titleWordsSet = new Set(meaningfulSearchWords(group.title));
   const subtitleWordsSet = new Set(meaningfulSearchWords(group.subtitle));
   const authorWordsSet = new Set(meaningfulSearchWords(group.authors.join(' ')));
-  const seriesWordsSet = new Set(
-    meaningfulSearchWords(
-      group.editions
-        .map((edition) => edition.seriesName)
-        .filter((value): value is string => Boolean(value?.trim()))
-        .join(' '),
-    ),
-  );
 
   const matchedTitleWords = queryWords.filter((word) => titleWordsSet.has(word)).length;
-  const matchedSubtitleWords = queryWords.filter((word) => subtitleWordsSet.has(word)).length;
-  const matchedSeriesWords = queryWords.filter((word) => seriesWordsSet.has(word)).length;
   const matchedAcrossRecord = queryWords.filter((word) =>
-    titleWordsSet.has(word)
-    || subtitleWordsSet.has(word)
-    || seriesWordsSet.has(word)
-    || authorWordsSet.has(word),
+    titleWordsSet.has(word) || subtitleWordsSet.has(word) || authorWordsSet.has(word),
   ).length;
 
-  // Normal title search still rejects records that match only a stray common
-  // word. But an exact/complete subtitle or structured-series match is also a
-  // legitimate bibliographic hit: many publishers expose series membership in
-  // those fields instead of the work title.
-  const requiredCoverage = Math.ceil(queryWords.length / 2);
-  const titleRelevant = matchedTitleWords >= 1 && matchedAcrossRecord >= requiredCoverage;
-  const subtitleRelevant = matchedSubtitleWords === queryWords.length;
-  const seriesRelevant = matchedSeriesWords === queryWords.length;
-  const bibliographicCombinationRelevant =
-    matchedAcrossRecord === queryWords.length
-    && (matchedSubtitleWords > 0 || matchedSeriesWords > 0);
-  return titleRelevant || subtitleRelevant || seriesRelevant || bibliographicCombinationRelevant;
+  // Multi-word searches should not be polluted by records that merely contain
+  // one common word. Keep a result only when at least half of the meaningful
+  // query terms match, with at least one match in the title itself.
+  return matchedTitleWords >= 1 && matchedAcrossRecord >= Math.ceil(queryWords.length / 2);
 };
 
 
@@ -230,7 +206,6 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
     language: cleanLanguage(edition.language),
     seriesName: compact(edition.seriesName) || undefined,
     seriesOrder: typeof edition.seriesOrder === 'number' && Number.isFinite(edition.seriesOrder) && edition.seriesOrder >= 0 ? edition.seriesOrder : undefined,
-    seriesAuthorityId: compact(edition.seriesAuthorityId) || undefined,
     isbn10,
     isbn13,
     asin: compact(edition.asin)?.toUpperCase() || undefined,
@@ -350,7 +325,6 @@ const supplementExactIsbnEdition = (
     language: anchor.language || supplement.language,
     seriesName: anchor.seriesName || supplement.seriesName,
     seriesOrder: typeof anchor.seriesOrder === 'number' ? anchor.seriesOrder : supplement.seriesOrder,
-    seriesAuthorityId: anchor.seriesAuthorityId || supplement.seriesAuthorityId,
     isbn10: anchor.isbn10 || supplement.isbn10,
     isbn13: anchor.isbn13 || supplement.isbn13,
     asin: anchor.asin || supplement.asin,
@@ -362,10 +336,6 @@ const supplementExactIsbnEdition = (
     editionName: anchor.editionName || (languageCompatible ? supplement.editionName : undefined),
     binding: anchor.binding || (languageCompatible ? supplement.binding : undefined),
     specialFeatures: [...new Set([...anchor.specialFeatures, ...supplement.specialFeatures])].slice(0, 12),
-    corroboratingSources: [...new Set([
-      ...catalogEditionSources(anchor),
-      ...catalogEditionSources(supplement),
-    ])],
   };
 };
 
@@ -410,7 +380,6 @@ export const mergeCatalogEditionData = (left: BookSearchEdition, right: BookSear
     language: preferred.language || supplement.language,
     seriesName: preferred.seriesName || supplement.seriesName,
     seriesOrder: typeof preferred.seriesOrder === 'number' ? preferred.seriesOrder : supplement.seriesOrder,
-    seriesAuthorityId: preferred.seriesAuthorityId || supplement.seriesAuthorityId,
     isbn10: preferred.isbn10 || supplement.isbn10,
     isbn13: preferred.isbn13 || supplement.isbn13,
     asin: preferred.asin || supplement.asin,
@@ -419,10 +388,6 @@ export const mergeCatalogEditionData = (left: BookSearchEdition, right: BookSear
     editionName: preferred.editionName || supplement.editionName,
     binding: preferred.binding || supplement.binding,
     specialFeatures: [...new Set([...preferred.specialFeatures, ...supplement.specialFeatures])].slice(0, 12),
-    corroboratingSources: [...new Set([
-      ...catalogEditionSources(preferred),
-      ...catalogEditionSources(supplement),
-    ])],
   };
 };
 
@@ -645,11 +610,6 @@ export const hardenCatalogGroups = (
         .map((edition) => edition.seriesOrder)
         .filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))];
       const canonicalOrder = matchingOrders.length === 1 ? matchingOrders[0] : undefined;
-      const matchingAuthorityIds = [...new Set(group.editions
-        .filter((edition) => normalizeKey(edition.seriesName) === seriesKey)
-        .map((edition) => edition.seriesAuthorityId?.trim())
-        .filter((value): value is string => Boolean(value)))];
-      const canonicalAuthorityId = matchingAuthorityIds.length === 1 ? matchingAuthorityIds[0] : undefined;
 
       return {
         ...group,
@@ -658,7 +618,6 @@ export const hardenCatalogGroups = (
             ...edition,
             seriesName: edition.seriesName || canonicalSeriesName,
             seriesOrder: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : canonicalOrder,
-            seriesAuthorityId: edition.seriesAuthorityId || canonicalAuthorityId,
           })),
         ),
       };
