@@ -227,6 +227,7 @@ export const hardenCatalogEdition = (edition: BookSearchEdition): BookSearchEdit
     language: cleanLanguage(edition.language),
     seriesName: compact(edition.seriesName) || undefined,
     seriesOrder: typeof edition.seriesOrder === 'number' && Number.isFinite(edition.seriesOrder) && edition.seriesOrder >= 0 ? edition.seriesOrder : undefined,
+    seriesAuthorityId: compact(edition.seriesAuthorityId) || undefined,
     isbn10,
     isbn13,
     asin: compact(edition.asin)?.toUpperCase() || undefined,
@@ -346,6 +347,7 @@ const supplementExactIsbnEdition = (
     language: anchor.language || supplement.language,
     seriesName: anchor.seriesName || supplement.seriesName,
     seriesOrder: typeof anchor.seriesOrder === 'number' ? anchor.seriesOrder : supplement.seriesOrder,
+    seriesAuthorityId: anchor.seriesAuthorityId || supplement.seriesAuthorityId,
     isbn10: anchor.isbn10 || supplement.isbn10,
     isbn13: anchor.isbn13 || supplement.isbn13,
     asin: anchor.asin || supplement.asin,
@@ -405,6 +407,7 @@ export const mergeCatalogEditionData = (left: BookSearchEdition, right: BookSear
     language: preferred.language || supplement.language,
     seriesName: preferred.seriesName || supplement.seriesName,
     seriesOrder: typeof preferred.seriesOrder === 'number' ? preferred.seriesOrder : supplement.seriesOrder,
+    seriesAuthorityId: preferred.seriesAuthorityId || supplement.seriesAuthorityId,
     isbn10: preferred.isbn10 || supplement.isbn10,
     isbn13: preferred.isbn13 || supplement.isbn13,
     asin: preferred.asin || supplement.asin,
@@ -639,6 +642,11 @@ export const hardenCatalogGroups = (
         .map((edition) => edition.seriesOrder)
         .filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))];
       const canonicalOrder = matchingOrders.length === 1 ? matchingOrders[0] : undefined;
+      const matchingAuthorityIds = [...new Set(group.editions
+        .filter((edition) => normalizeKey(edition.seriesName) === seriesKey)
+        .map((edition) => edition.seriesAuthorityId?.trim())
+        .filter((value): value is string => Boolean(value)))];
+      const canonicalAuthorityId = matchingAuthorityIds.length === 1 ? matchingAuthorityIds[0] : undefined;
 
       return {
         ...group,
@@ -647,6 +655,7 @@ export const hardenCatalogGroups = (
             ...edition,
             seriesName: edition.seriesName || canonicalSeriesName,
             seriesOrder: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : canonicalOrder,
+            seriesAuthorityId: edition.seriesAuthorityId || canonicalAuthorityId,
           })),
         ),
       };
