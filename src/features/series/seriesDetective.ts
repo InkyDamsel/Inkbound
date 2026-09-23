@@ -1,6 +1,6 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
-import { searchCatalogSeries, searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
+import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, catalogEditionSources, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
 import { buildSeriesDetectionQueries } from './seriesDetectiveQueries';
@@ -20,7 +20,7 @@ const sameSeries = (edition: BookSearchEdition, seriesName: string) =>
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
 
-const SERIES_DISCOVERY_MAX_PAGES = 2;
+const SERIES_DISCOVERY_MAX_PAGES = 4;
 
 
 const candidateSeriesMetadata = (
@@ -184,8 +184,34 @@ export async function findMissingSeriesBooks(
     }
     return normalize(book.work.author) === normalizedAuthor;
   });
-  const seriesCatalog = await searchCatalogSeries(seriesName, signal);
-  const rawGroups = seriesCatalog.groups;
+  const knownWholePositions = seriesBooks
+    .map((book) => resolveEffectiveSeriesMetadata(book)?.position)
+    .filter((position): position is number => typeof position === 'number' && Number.isInteger(position) && position > 0);
+  const highestKnownPosition = knownWholePositions.length ? Math.max(...knownWholePositions) : 0;
+  const knownPositionSet = new Set(knownWholePositions);
+  const missingKnownGaps = Array.from({ length: highestKnownPosition }, (_, index) => index + 1)
+    .filter((position) => !knownPositionSet.has(position));
+
+  // Restore the proven Build 28 discovery inputs. These found established
+  // single-author series such as The Selection and Hades x Persephone before
+  // the canonical-series-search experiment narrowed discovery too far.
+  const [seriesAndAuthor, authorGroups, seriesOnly, positionalDiscovery] = await Promise.all([
+    searchGoogleBooks(`${seriesName} ${author}`, signal),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex, signal)),
+    searchGoogleBooks(seriesName, signal),
+    Promise.all(missingKnownGaps.map(async (position) => {
+      const query = `${seriesName} book ${position} ${author}`;
+      const result = await searchGoogleBooks(query, signal);
+      return result.groups;
+    })),
+  ]);
+
+  const rawGroups = [
+    ...seriesAndAuthor.groups,
+    ...authorGroups,
+    ...seriesOnly.groups,
+    ...positionalDiscovery.flat(),
+  ];
 
   // Canonical hardening preserves provider provenance on merged editions, so
   // Detective can measure corroboration after deduplication without relying on
