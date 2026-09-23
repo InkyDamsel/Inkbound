@@ -191,6 +191,89 @@ assert.equal(enrichedSelected.pageCount, 312);
 assert.equal(enrichedSelected.seriesName, 'A Twisted Tale');
 assert.equal(enrichedSelected.seriesOrder, 7);
 
+const visibleSameFormatPageCount = hardenCatalogGroups([thinSelectedWork])[0];
+const visibleThinHardcover = visibleSameFormatPageCount.editions.find((edition) => edition.externalEditionId === 'conceal-thin-hardcover');
+assert.equal(visibleThinHardcover?.pageCount, 312);
+
+const conflictingSameFormatCounts = hardenCatalogGroups([{
+  key: 'conflicting-hardcovers',
+  title: 'Conflicting Hardcover Test',
+  authors: ['Test Author'],
+  genres: [],
+  editions: [
+    {
+      ...goodEdition,
+      externalEditionId: 'conflict-thin',
+      title: 'Conflicting Hardcover Test',
+      authors: ['Test Author'],
+      format: 'hardcover',
+      pageCount: undefined,
+      isbn10: undefined,
+      isbn13: undefined,
+    },
+    {
+      ...goodEdition,
+      source: 'open-library',
+      externalEditionId: 'conflict-320',
+      title: 'Conflicting Hardcover Test',
+      authors: ['Test Author'],
+      format: 'hardcover',
+      pageCount: 320,
+      isbn10: undefined,
+      isbn13: undefined,
+    },
+    {
+      ...goodEdition,
+      source: 'hardcover',
+      externalEditionId: 'conflict-336',
+      title: 'Conflicting Hardcover Test',
+      authors: ['Test Author'],
+      format: 'hardcover',
+      pageCount: 336,
+      isbn10: undefined,
+      isbn13: undefined,
+    },
+  ],
+}])[0];
+assert.equal(
+  conflictingSameFormatCounts.editions.find((edition) => edition.externalEditionId === 'conflict-thin')?.pageCount,
+  undefined,
+);
+
+const crossFormatPages = hardenCatalogGroups([{
+  key: 'cross-format-pages',
+  title: 'Cross Format Test',
+  authors: ['Test Author'],
+  genres: [],
+  editions: [
+    {
+      ...goodEdition,
+      externalEditionId: 'cross-hardcover',
+      title: 'Cross Format Test',
+      authors: ['Test Author'],
+      format: 'hardcover',
+      pageCount: undefined,
+      isbn10: undefined,
+      isbn13: undefined,
+    },
+    {
+      ...goodEdition,
+      source: 'open-library',
+      externalEditionId: 'cross-paperback',
+      title: 'Cross Format Test',
+      authors: ['Test Author'],
+      format: 'paperback',
+      pageCount: 320,
+      isbn10: undefined,
+      isbn13: undefined,
+    },
+  ],
+}])[0];
+assert.equal(
+  crossFormatPages.editions.find((edition) => edition.externalEditionId === 'cross-hardcover')?.pageCount,
+  undefined,
+);
+
 console.log('Inkbound catalog hardening regressions passed.');
 
 
