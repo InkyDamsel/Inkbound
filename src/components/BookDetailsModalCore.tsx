@@ -239,7 +239,6 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
           ...book.work,
           seriesName: detected.name,
           seriesOrder: detected.position ?? undefined,
-          seriesAuthorityId: detected.seriesAuthorityId,
         },
       };
       onUpdateBook(updated);
