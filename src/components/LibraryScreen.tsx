@@ -3,7 +3,7 @@ import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, 
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
-import { getBookReadingState } from '../features/reading/bookReadingState';
+import { getBookReadingState, getCanonicalProgressPercentage } from '../features/reading/bookReadingState';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -151,7 +151,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       : sortBy === 'rating'
         ? (b.rating || 0) - (a.rating || 0)
         : sortBy === 'progress'
-          ? b.progressPercentage - a.progressPercentage
+          ? getCanonicalProgressPercentage(b) - getCanonicalProgressPercentage(a)
           : new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
