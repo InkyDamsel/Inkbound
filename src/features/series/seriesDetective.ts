@@ -20,7 +20,8 @@ const sameSeries = (edition: BookSearchEdition, seriesName: string) =>
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
 
-const SERIES_DISCOVERY_MAX_PAGES = 4;
+const SERIES_DISCOVERY_MAX_PAGES = 2;
+const SERIES_CORROBORATION_LIMIT = 8;
 
 
 const candidateSeriesMetadata = (
@@ -275,7 +276,7 @@ export async function findMissingSeriesBooks(
         )
         .map((edition) => ({ work, edition }));
     })
-    .slice(0, 24);
+    .slice(0, SERIES_CORROBORATION_LIMIT);
 
   if (pendingContextual.length > 0) {
     const corroboratedGroups = await Promise.all(pendingContextual.map(async ({ work }) => {
