@@ -29,17 +29,26 @@ import { INKBOUND_GA4_MEASUREMENT_ID } from '../config/analytics';
 const readEnv = (value: string | undefined): string => value?.trim() ?? '';
 const readBooleanEnv = (value: string | undefined): boolean => readEnv(value).toLowerCase() === 'true';
 
+// Vite injects import.meta.env in the browser/build pipeline, but Inkbound's
+// Node/tsx regression scripts import modules that eventually reach this file.
+// Treat a missing Vite environment as an unconfigured non-browser runtime
+// instead of crashing during module evaluation.
+const viteEnv = ((import.meta as ImportMeta & {
+  env?: Record<string, string | boolean | undefined>;
+}).env ?? {});
+const viteDev = viteEnv.DEV === true || viteEnv.DEV === 'true';
+
 const firebaseConfig = {
-  apiKey: readEnv(import.meta.env.VITE_FIREBASE_API_KEY),
-  authDomain: readEnv(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
-  projectId: readEnv(import.meta.env.VITE_FIREBASE_PROJECT_ID),
-  storageBucket: readEnv(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET),
-  messagingSenderId: readEnv(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
-  appId: readEnv(import.meta.env.VITE_FIREBASE_APP_ID),
-  measurementId: readEnv(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) || 'G-2LDXP8Z4S0',
+  apiKey: readEnv(typeof viteEnv.VITE_FIREBASE_API_KEY === 'string' ? viteEnv.VITE_FIREBASE_API_KEY : undefined),
+  authDomain: readEnv(typeof viteEnv.VITE_FIREBASE_AUTH_DOMAIN === 'string' ? viteEnv.VITE_FIREBASE_AUTH_DOMAIN : undefined),
+  projectId: readEnv(typeof viteEnv.VITE_FIREBASE_PROJECT_ID === 'string' ? viteEnv.VITE_FIREBASE_PROJECT_ID : undefined),
+  storageBucket: readEnv(typeof viteEnv.VITE_FIREBASE_STORAGE_BUCKET === 'string' ? viteEnv.VITE_FIREBASE_STORAGE_BUCKET : undefined),
+  messagingSenderId: readEnv(typeof viteEnv.VITE_FIREBASE_MESSAGING_SENDER_ID === 'string' ? viteEnv.VITE_FIREBASE_MESSAGING_SENDER_ID : undefined),
+  appId: readEnv(typeof viteEnv.VITE_FIREBASE_APP_ID === 'string' ? viteEnv.VITE_FIREBASE_APP_ID : undefined),
+  measurementId: readEnv(typeof viteEnv.VITE_FIREBASE_MEASUREMENT_ID === 'string' ? viteEnv.VITE_FIREBASE_MEASUREMENT_ID : undefined) || 'G-2LDXP8Z4S0',
 };
 
-const appCheckSiteKey = readEnv(import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY);
+const appCheckSiteKey = readEnv(typeof viteEnv.VITE_FIREBASE_APP_CHECK_SITE_KEY === 'string' ? viteEnv.VITE_FIREBASE_APP_CHECK_SITE_KEY : undefined);
 
 const requiredFirebaseFields = {
   VITE_FIREBASE_API_KEY: firebaseConfig.apiKey,
@@ -54,20 +63,20 @@ export const missingFirebaseEnvironmentVariables = Object.entries(requiredFireba
 
 export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length === 0;
 
-const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
+const requestedFirebaseMode = readEnv(typeof viteEnv.VITE_FIREBASE_MODE === 'string' ? viteEnv.VITE_FIREBASE_MODE : undefined).toLowerCase();
 const effectiveFirebaseMode = requestedFirebaseMode || 'local';
-const requestedFunctionsMode = readEnv(import.meta.env.VITE_FIREBASE_FUNCTIONS_MODE).toLowerCase();
+const requestedFunctionsMode = readEnv(typeof viteEnv.VITE_FIREBASE_FUNCTIONS_MODE === 'string' ? viteEnv.VITE_FIREBASE_FUNCTIONS_MODE : undefined).toLowerCase();
 
-export const useFirebaseEmulators = import.meta.env.DEV && effectiveFirebaseMode === 'emulator';
-export const useFunctionsEmulator = import.meta.env.DEV && (useFirebaseEmulators || requestedFunctionsMode === 'emulator');
+export const useFirebaseEmulators = viteDev && effectiveFirebaseMode === 'emulator';
+export const useFunctionsEmulator = viteDev && (useFirebaseEmulators || requestedFunctionsMode === 'emulator');
 export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
 
-const explicitProductionMode = import.meta.env.DEV && requestedFirebaseMode === 'production';
+const explicitProductionMode = viteDev && requestedFirebaseMode === 'production';
 export const allowProductionFirebaseWrites =
   useFirebaseEmulators ||
-  !import.meta.env.DEV ||
+  !viteDev ||
   explicitProductionMode ||
-  readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_WRITES);
+  readBooleanEnv(typeof viteEnv.VITE_ALLOW_PROD_FIREBASE_WRITES === 'string' ? viteEnv.VITE_ALLOW_PROD_FIREBASE_WRITES : undefined);
 
 // Local development should not silently invoke production Cloud Functions. A
 // 50k-book stress test can turn automatic metadata work into tens of thousands
@@ -75,9 +84,9 @@ export const allowProductionFirebaseWrites =
 // an explicitly requested live-production dev session retain function access.
 export const allowProductionFirebaseFunctions =
   useFirebaseEmulators ||
-  !import.meta.env.DEV ||
+  !viteDev ||
   explicitProductionMode ||
-  readBooleanEnv(import.meta.env.VITE_ALLOW_PROD_FIREBASE_FUNCTIONS);
+  readBooleanEnv(typeof viteEnv.VITE_ALLOW_PROD_FIREBASE_FUNCTIONS === 'string' ? viteEnv.VITE_ALLOW_PROD_FIREBASE_FUNCTIONS : undefined);
 
 let app: FirebaseApp | null = null;
 let appCheck: AppCheck | null = null;
@@ -97,7 +106,7 @@ function isIosBrowserRuntime(): boolean {
 }
 
 function enableWebAppCheckDebugMode() {
-  if (!import.meta.env.DEV || useFirebaseEmulators || isNativeRuntime()) return;
+  if (!viteDev || useFirebaseEmulators || isNativeRuntime()) return;
   const debugGlobal = globalThis as typeof globalThis & {
     FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean | string;
   };
@@ -163,7 +172,7 @@ if (isFirebaseConfigured) {
   // Analytics is intentionally web-only and production-only. Local development
   // must not pollute GA4 with developer sessions, and native Android does not
   // use the web analytics SDK.
-  if (!useFirebaseEmulators && !isNativeRuntime() && !import.meta.env.DEV) {
+  if (!useFirebaseEmulators && !isNativeRuntime() && !viteDev) {
     void isAnalyticsSupported()
       .then((supported) => {
         if (supported && app) analytics = getAnalytics(app);
@@ -198,19 +207,19 @@ if (isFirebaseConfigured) {
       );
     }
 
-    if (import.meta.env.DEV && !allowProductionFirebaseWrites) {
+    if (viteDev && !allowProductionFirebaseWrites) {
       console.info(
         'Inkbound protected DEV mode: production Firestore writes and production Cloud Functions are blocked. The local working copy is used without production Firestore collection reads. Set VITE_FIREBASE_MODE=production only for intentional live-cloud beta verification.',
       );
     }
 
-    if (import.meta.env.DEV && explicitProductionMode) {
+    if (viteDev && explicitProductionMode) {
       console.info(
         'Inkbound live-cloud beta test mode: production reads, functions, and Firestore writes are enabled by explicit VITE_FIREBASE_MODE=production.',
       );
     }
 
-    if (import.meta.env.DEV && useFunctionsEmulator && !useFirebaseEmulators) {
+    if (viteDev && useFunctionsEmulator && !useFirebaseEmulators) {
       console.info(
         'Inkbound hybrid DEV mode: production Auth/Firestore/Storage with local Cloud Functions emulator.',
       );
