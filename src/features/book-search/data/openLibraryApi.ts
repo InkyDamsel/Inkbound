@@ -421,7 +421,10 @@ export async function searchOpenLibraryPage(
       .filter((group): group is BookSearchWorkGroup => Boolean(group)),
     hardeningOptions,
   );
-  const hydratedGroups = authorOperator && startIndex > 0
+  // Series enumeration already receives Open Library's work/edition series
+  // fields in the search payload. Hydrating every returned work here turns one
+  // series page into dozens of extra HTTP requests and can stall Detective.
+  const hydratedGroups = seriesOperator || (authorOperator && startIndex > 0)
     ? initialGroups
     : await hydrateOpenLibraryExactGroups(initialGroups, trimmed, signal);
   const groups = hardenCatalogGroups(hydratedGroups, hardeningOptions);
