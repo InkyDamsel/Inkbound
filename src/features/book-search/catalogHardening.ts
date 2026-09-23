@@ -8,6 +8,9 @@ const compact = (value?: string) => value?.replace(/\s+/g, ' ').trim() ?? '';
 const normalizeKey = (value?: string) => compact(value).toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
+export const catalogEditionSources = (edition: BookSearchEdition): BookSearchEdition['source'][] =>
+  [...new Set([edition.source, ...(edition.corroboratingSources ?? [])])];
+
 const titleWords = (value?: string): string[] => normalizeKey(value).split(' ').filter(Boolean);
 
 const SEARCH_STOP_WORDS = new Set(['a', 'an', 'the', 'of', 'and', 'or', 'to', 'for', 'in', 'on', 'at', 'by']);
@@ -57,16 +60,34 @@ const catalogSearchResultIsRelevant = (group: BookSearchWorkGroup, query?: strin
   const titleWordsSet = new Set(meaningfulSearchWords(group.title));
   const subtitleWordsSet = new Set(meaningfulSearchWords(group.subtitle));
   const authorWordsSet = new Set(meaningfulSearchWords(group.authors.join(' ')));
+  const seriesWordsSet = new Set(
+    meaningfulSearchWords(
+      group.editions
+        .map((edition) => edition.seriesName)
+        .filter((value): value is string => Boolean(value?.trim()))
+        .join(' '),
+    ),
+  );
 
   const matchedTitleWords = queryWords.filter((word) => titleWordsSet.has(word)).length;
+  const matchedSubtitleWords = queryWords.filter((word) => subtitleWordsSet.has(word)).length;
+  const matchedSeriesWords = queryWords.filter((word) => seriesWordsSet.has(word)).length;
   const matchedAcrossRecord = queryWords.filter((word) =>
-    titleWordsSet.has(word) || subtitleWordsSet.has(word) || authorWordsSet.has(word),
+    titleWordsSet.has(word)
+    || subtitleWordsSet.has(word)
+    || seriesWordsSet.has(word)
+    || authorWordsSet.has(word),
   ).length;
 
-  // Multi-word searches should not be polluted by records that merely contain
-  // one common word. Keep a result only when at least half of the meaningful
-  // query terms match, with at least one match in the title itself.
-  return matchedTitleWords >= 1 && matchedAcrossRecord >= Math.ceil(queryWords.length / 2);
+  // Normal title search still rejects records that match only a stray common
+  // word. But an exact/complete subtitle or structured-series match is also a
+  // legitimate bibliographic hit: many publishers expose series membership in
+  // those fields instead of the work title.
+  const requiredCoverage = Math.ceil(queryWords.length / 2);
+  const titleRelevant = matchedTitleWords >= 1 && matchedAcrossRecord >= requiredCoverage;
+  const subtitleRelevant = matchedSubtitleWords === queryWords.length;
+  const seriesRelevant = matchedSeriesWords === queryWords.length;
+  return titleRelevant || subtitleRelevant || seriesRelevant;
 };
 
 
@@ -336,6 +357,10 @@ const supplementExactIsbnEdition = (
     editionName: anchor.editionName || (languageCompatible ? supplement.editionName : undefined),
     binding: anchor.binding || (languageCompatible ? supplement.binding : undefined),
     specialFeatures: [...new Set([...anchor.specialFeatures, ...supplement.specialFeatures])].slice(0, 12),
+    corroboratingSources: [...new Set([
+      ...catalogEditionSources(anchor),
+      ...catalogEditionSources(supplement),
+    ])],
   };
 };
 
@@ -388,6 +413,10 @@ export const mergeCatalogEditionData = (left: BookSearchEdition, right: BookSear
     editionName: preferred.editionName || supplement.editionName,
     binding: preferred.binding || supplement.binding,
     specialFeatures: [...new Set([...preferred.specialFeatures, ...supplement.specialFeatures])].slice(0, 12),
+    corroboratingSources: [...new Set([
+      ...catalogEditionSources(preferred),
+      ...catalogEditionSources(supplement),
+    ])],
   };
 };
 
