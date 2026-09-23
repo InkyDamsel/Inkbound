@@ -878,6 +878,16 @@ for (const required of [
 if (!read('src/features/book-search/catalogHardening.ts').includes("format === 'audiobook' ? undefined : cleanPageCount")) {
   violations.push('catalogHardening.ts: Audiobook catalog records must not expose page counts');
 }
+const catalogHardeningSource = read('src/features/book-search/catalogHardening.ts');
+if (!catalogHardeningSource.includes('enrichConsistentSameFormatPageCounts')) {
+  violations.push('catalogHardening.ts: visible editions must consume canonical same-format page-count enrichment');
+}
+if (!catalogHardeningSource.includes("candidate.format !== edition.format")) {
+  violations.push('catalogHardening.ts: page-count enrichment must never cross edition formats');
+}
+if (!catalogHardeningSource.includes('uniqueCounts.length === 1')) {
+  violations.push('catalogHardening.ts: page-count enrichment must refuse conflicting same-format page counts');
+}
 const bookSearchMapperSource = read('src/features/book-search/mapping/bookSearchMapper.ts');
 if (!bookSearchMapperSource.includes('enrichSelectedCatalogEdition(hardenedWork, edition)')) {
   violations.push('bookSearchMapper.ts: selected search edition must be canonically enriched before save');
