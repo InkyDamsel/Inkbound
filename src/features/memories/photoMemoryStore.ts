@@ -115,4 +115,4 @@ export function subscribeToPhotoMemoryChanges(listener: () => void): () => void 
   return () => listeners.delete(listener);
 }
 
-export { PHOTO_METADATA_KEY };
+export { LEGACY_PHOTO_KEY, PHOTO_METADATA_KEY };
