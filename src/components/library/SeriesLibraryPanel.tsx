@@ -29,6 +29,7 @@ interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
   onSelectBook: (book: UserBookRecord) => void;
   onAddBook: (book: UserBookRecord) => void;
+  onUpdateBook: (book: UserBookRecord) => void;
 }
 
 type DraftBook = { bookId: string; position: string; label: string };
@@ -49,7 +50,7 @@ const pageWindow = (current: number, total: number): number[] => {
   return Array.from({ length: 5 }, (_, index) => start + index);
 };
 
-export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook }) => {
+export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook, onUpdateBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
@@ -246,7 +247,20 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
     setDetectiveError('');
     setDetectiveLoading(true);
     try {
-      const result = await findMissingSeriesBooks(item.name, item.author, books);
+      const seedAuthor = item.books[0]?.book.work.author || item.author;
+      const result = await findMissingSeriesBooks(item.name, seedAuthor, books);
+      if (result.seriesAuthorityId) {
+        item.books.forEach(({ book }) => {
+          if (book.work.seriesAuthorityId === result.seriesAuthorityId) return;
+          onUpdateBook({
+            ...book,
+            work: {
+              ...book.work,
+              seriesAuthorityId: result.seriesAuthorityId,
+            },
+          });
+        });
+      }
       setDetectiveResult(result);
     } catch (error) {
       setDetectiveError(error instanceof Error ? error.message : 'Series Detective could not check this series.');
@@ -271,6 +285,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
         ...created.work,
         seriesName: candidate.seriesName,
         seriesOrder: candidate.position ?? created.work.seriesOrder,
+        seriesAuthorityId: candidate.seriesAuthorityId ?? detectiveResult?.seriesAuthorityId ?? created.work.seriesAuthorityId,
       },
     };
     onAddBook(book);
