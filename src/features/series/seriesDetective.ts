@@ -183,7 +183,12 @@ export async function findMissingSeriesBooks(
   const seriesBooks = libraryBooks.filter((book) => {
     const metadata = resolveEffectiveSeriesMetadata(book);
     if (!metadata || !seriesNamesAreCompatible(metadata.name, seriesName)) return false;
-    if (seedSeriesAuthorityId) return book.work.seriesAuthorityId === seedSeriesAuthorityId;
+    if (seedSeriesAuthorityId) {
+      // The seed may have just had its authority resolved in-memory and not yet
+      // persisted back to the library record. Keep it in the working series so
+      // language/position/dedupe evidence is not accidentally discarded.
+      return book.id === seedBook?.id || book.work.seriesAuthorityId === seedSeriesAuthorityId;
+    }
     return normalize(book.work.author) === normalizedAuthor;
   });
   const knownWholePositions = seriesBooks
