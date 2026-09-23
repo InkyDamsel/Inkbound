@@ -12,6 +12,7 @@ export interface GoogleVolumeSeriesInfo {
 export interface ResolvedGoogleSeriesMetadata {
   name?: string;
   order?: number;
+  authorityId?: string;
 }
 
 export interface GoogleBibliographicSeriesInfo {
@@ -53,7 +54,7 @@ export function resolveGoogleSeriesMetadata(
     ? orderCandidate
     : parseDisplayOrder(seriesInfo?.bookDisplayNumber);
 
-  if (name) return { name, order };
+  if (name) return { name, order, authorityId: seriesId ? `google-books:${seriesId}` : undefined };
 
   const bibliographicName = bibliographicSeries?.name?.trim();
   if (bibliographicName) {
