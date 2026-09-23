@@ -86,24 +86,36 @@ export interface SeriesDetectiveResult {
   missing: SeriesDetectiveCandidate[];
 }
 
-export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name: string; position: number | null } | null> {
-  // Series Detective is an explicit verification/repair action. Never trust an
-  // already-saved series value here: older builds may have persisted incorrect
-  // inferred metadata. Re-evaluate the book against current catalog evidence.
-  const wantedTitle = normalize(book.work.title);
-  const activeEdition = book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
-  const identifiers = [activeEdition?.isbn13, activeEdition?.isbn10].filter((value): value is string => Boolean(value?.trim()));
+export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: string; identifiers: string[] } => {
+  const identifiers = [...new Set(
+    book.editions
+      .flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn])
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value)),
+  )];
 
-  const googleQuery = identifiers[0] || `${book.work.title} ${book.work.author}`;
-  const [catalog, authorGroups, ...identifierSearches] = await Promise.all([
-    searchGoogleBooks(googleQuery),
+  return {
+    workQuery: `${book.work.title} ${book.work.author}`.trim(),
+    identifiers,
+  };
+};
+
+export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name: string; position: number | null } | null> {
+  // Series Detective verifies the canonical work, not merely the active
+  // edition. ISBN records are edition-specific and can be metadata-thin, so an
+  // ISBN lookup must supplement -- never replace -- title+author work evidence.
+  const wantedTitle = normalize(book.work.title);
+  const { workQuery, identifiers } = buildSeriesDetectionQueries(book);
+
+  const [workCatalog, authorGroups, ...identifierSearches] = await Promise.all([
+    searchGoogleBooks(workQuery),
     collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(book.work.author, startIndex)),
     ...identifiers.map((isbn) => searchGoogleBooks(isbn)),
   ]);
 
   const groups = hardenCatalogGroups(
     [
-      ...catalog.groups,
+      ...workCatalog.groups,
       ...identifierSearches.flatMap((response) => response.groups),
       ...authorGroups,
     ],
