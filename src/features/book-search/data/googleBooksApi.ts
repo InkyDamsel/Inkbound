@@ -824,3 +824,84 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     ),
   }, trimmed);
 }
+
+
+const SERIES_CATALOG_MAX_PAGES = 4;
+
+/**
+ * Canonical catalog path for enumerating a known series.
+ *
+ * Normal reading-material search is intentionally title-relevance driven.
+ * Series enumeration is different: a legitimate installment often has a title
+ * that contains none of the series words, so series metadata itself is the
+ * relevance signal. Keep provider orchestration here rather than in Series
+ * Detective.
+ */
+export async function searchCatalogSeries(
+  seriesName: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  const trimmed = seriesName.trim();
+  if (!trimmed) return { groups: [], totalItems: 0 };
+
+  await waitUntilAdministrationInactive(signal);
+
+  const googleGroups: BookSearchWorkGroup[] = [];
+  let googleStartIndex = 0;
+  for (let page = 0; page < SERIES_CATALOG_MAX_PAGES; page += 1) {
+    try {
+      const payload = await requestCanonicalGoogleBooksPayload(
+        buildGoogleBooksQuery(`"${trimmed}"`),
+        signal,
+        googleStartIndex,
+        GOOGLE_BOOKS_PAGE_SIZE,
+      );
+      const rawItems = payload.items ?? [];
+      const mapped = rawItems
+        .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
+        .filter((item): item is BookSearchEdition => Boolean(item));
+      googleGroups.push(...groupGoogleEditions(mapped));
+      if (rawItems.length < GOOGLE_BOOKS_PAGE_SIZE) break;
+      googleStartIndex += rawItems.length;
+    } catch (error) {
+      console.warn('Google Books series catalog search unavailable.', error);
+      break;
+    }
+  }
+
+  const openLibraryGroups: BookSearchWorkGroup[] = [];
+  let openLibraryStartIndex = 0;
+  for (let page = 0; page < SERIES_CATALOG_MAX_PAGES; page += 1) {
+    try {
+      const result = await searchOpenLibraryPage(
+        `series:"${trimmed.replace(/"/g, '')}"`,
+        openLibraryStartIndex,
+        GOOGLE_BOOKS_PAGE_SIZE,
+        signal,
+      );
+      openLibraryGroups.push(...result.groups);
+      if (!result.hasMore || result.nextStartIndex <= openLibraryStartIndex) break;
+      openLibraryStartIndex = result.nextStartIndex;
+    } catch (error) {
+      console.warn('Open Library series catalog search unavailable.', error);
+      break;
+    }
+  }
+
+  const [hardcover, generalCatalog] = await Promise.all([
+    searchHardcoverWithBackoff(trimmed),
+    searchGoogleBooks(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+  ]);
+
+  const groups = hardenCatalogGroups([
+    ...googleGroups,
+    ...openLibraryGroups,
+    ...hardcover.groups,
+    ...generalCatalog.groups,
+  ]);
+
+  return {
+    groups,
+    totalItems: groups.length,
+  };
+}
