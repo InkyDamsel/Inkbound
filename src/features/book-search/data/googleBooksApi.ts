@@ -826,7 +826,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
 }
 
 
-const SERIES_CATALOG_MAX_PAGES = 4;
+const SERIES_CATALOG_MAX_PAGES = 2;
 
 /**
  * Canonical catalog path for enumerating a known series.
@@ -888,16 +888,20 @@ export async function searchCatalogSeries(
     }
   }
 
-  const [hardcover, generalCatalog] = await Promise.all([
+  // Google + Open Library above are already canonical multi-page series
+  // discovery. Do not recursively run the full general search pipeline again;
+  // that duplicates those providers and can multiply network work dramatically.
+  const hardcover = await Promise.race<BookSearchResponse>([
     searchHardcoverWithBackoff(trimmed),
-    searchGoogleBooks(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+    new Promise<BookSearchResponse>((resolve) => {
+      window.setTimeout(() => resolve({ groups: [], totalItems: 0 }), 6_000);
+    }),
   ]);
 
   const groups = hardenCatalogGroups([
     ...googleGroups,
     ...openLibraryGroups,
     ...hardcover.groups,
-    ...generalCatalog.groups,
   ]);
 
   return {
