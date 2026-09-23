@@ -4,7 +4,7 @@ import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
-import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
+import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage } from './openLibraryApi';
 import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
@@ -604,11 +604,22 @@ async function refineExactTitleWithAuthor(
 
   const safeTitle = query.trim().replace(/"/g, '');
   const safeAuthor = author.replace(/"/g, '');
-  const refined = await searchGoogleBaseline(
-    `intitle:"${safeTitle}" inauthor:"${safeAuthor}"`,
-    signal,
+  const [googleRefined, openLibraryRefined] = await Promise.all([
+    searchGoogleBaseline(
+      `intitle:"${safeTitle}" inauthor:"${safeAuthor}"`,
+      signal,
+    ),
+    searchOpenLibraryExactTitleAuthor(safeTitle, safeAuthor, signal)
+      .catch((error) => {
+        console.warn('Open Library exact title/author enrichment failed.', error);
+        return { groups: [], totalItems: 0 };
+      }),
+  ]);
+
+  return hardenCatalogGroups(
+    mergeGroups(googleRefined.groups, [openLibraryRefined.groups]),
+    { searchQuery: safeTitle },
   );
-  return refined.groups;
 }
 
 
