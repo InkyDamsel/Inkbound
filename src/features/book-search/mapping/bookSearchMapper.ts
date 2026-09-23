@@ -76,6 +76,7 @@ export function createBookFromSearchEdition({
       genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : hardenedWork.genres,
       ...(hardenedEdition.seriesName ? { seriesName: hardenedEdition.seriesName } : {}),
       ...(typeof hardenedEdition.seriesOrder === 'number' ? { seriesOrder: hardenedEdition.seriesOrder } : {}),
+      ...(hardenedEdition.seriesAuthorityId ? { seriesAuthorityId: hardenedEdition.seriesAuthorityId } : {}),
       publicationYear: hardenedEdition.publicationYear,
       originalLanguage: hardenedEdition.language,
       externalWorkId: hardenedWork.key,
