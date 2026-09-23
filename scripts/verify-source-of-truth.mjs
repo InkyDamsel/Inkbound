@@ -855,6 +855,22 @@ if (!seriesDetective.includes('existingTitleAuthors = new Set(libraryBooks') || 
 if (!seriesDetective.includes('providerSourcesByWork') || !seriesDetective.includes('hasKnownSeriesContextEvidence')) {
   violations.push('seriesDetective.ts: known-series discovery must preserve multi-provider agreement through catalog hardening.');
 }
+const seriesSearchModelSource = read('src/features/book-search/model/bookSearch.ts');
+for (const required of ['seriesAuthorityId?: string', 'corroboratingSources?: BookSearchSource[]']) {
+  if (!seriesSearchModelSource.includes(required)) {
+    violations.push(`bookSearch.ts: canonical series evidence model is missing ${required}`);
+  }
+}
+if (!catalogHardeningSource.includes('catalogEditionSources')) {
+  violations.push('catalogHardening.ts: provider corroboration must survive canonical edition deduplication');
+}
+if (!seriesDetective.includes('catalogEditionSources')) {
+  violations.push('seriesDetective.ts: Series Detective must consume canonical provider corroboration after hardening');
+}
+if (!bookSearchMapperSource.includes('seriesAuthorityId: hardenedEdition.seriesAuthorityId')) {
+  violations.push('bookSearchMapper.ts: provider series authority must persist onto the canonical book work');
+}
+
 const seriesLibrarySource = read('src/features/series/seriesLibrary.ts');
 for (const required of [
   'canonicalSeriesIdentity',
@@ -867,6 +883,9 @@ for (const required of [
 }
 if (!seriesLibrarySource.includes('canonicalSeriesIdentity(name)')) {
   violations.push('seriesLibrary.ts: provider-name aliases must collapse into one canonical series grouping');
+}
+if (!seriesLibrarySource.includes('book.work.seriesAuthorityId')) {
+  violations.push('seriesLibrary.ts: provider-backed series grouping must consume the persisted series authority identity');
 }
 
 const supplementalCatalogSource = read('src/features/book-search/data/supplementalCatalogApi.ts');
