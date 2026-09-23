@@ -27,11 +27,12 @@ const candidateSeriesMetadata = (
   edition: BookSearchEdition,
   wantedSeriesName: string,
   providerAgreement = 1,
-): { name: string; position: number | null; evidence: 'structured' | 'title' | 'contextual' } | null => {
+): { name: string; position: number | null; authorityId?: string; evidence: 'structured' | 'title' | 'contextual' } | null => {
   if (sameSeries(edition, wantedSeriesName)) {
     return {
       name: edition.seriesName!,
       position: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : null,
+      authorityId: edition.seriesAuthorityId,
       evidence: 'structured',
     };
   }
@@ -50,7 +51,10 @@ const candidateSeriesMetadata = (
   // number. This helps publisher-branded lines such as A Twisted Tale whose
   // catalogs often omit structured series fields.
   if (hasKnownSeriesContextEvidence(work, edition, wantedSeriesName, providerAgreement)) {
-    return { name: wantedSeriesName.trim(), position: null, evidence: 'contextual' };
+    const authorityId = work.editions.find((candidate) =>
+      sameSeries(candidate, wantedSeriesName) && candidate.seriesAuthorityId,
+    )?.seriesAuthorityId;
+    return { name: wantedSeriesName.trim(), position: null, authorityId, evidence: 'contextual' };
   }
 
   return null;
@@ -77,6 +81,7 @@ export interface SeriesDetectiveCandidate {
   edition: BookSearchEdition;
   seriesName: string;
   position: number | null;
+  seriesAuthorityId?: string;
 }
 
 export interface SeriesDetectiveResult {
@@ -84,6 +89,7 @@ export interface SeriesDetectiveResult {
   author: string;
   candidates: SeriesDetectiveCandidate[];
   missing: SeriesDetectiveCandidate[];
+  seriesAuthorityId?: string;
 }
 
 export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: string; identifiers: string[] } => {
@@ -100,7 +106,7 @@ export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: 
   };
 };
 
-export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name: string; position: number | null } | null> {
+export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name: string; position: number | null; seriesAuthorityId?: string } | null> {
   // Series Detective verifies the canonical work, not merely the active
   // edition. ISBN records are edition-specific and can be metadata-thin, so an
   // ISBN lookup must supplement -- never replace -- title+author work evidence.
@@ -132,10 +138,22 @@ export async function detectSeriesForBook(book: UserBookRecord): Promise<{ name:
     .filter((item): item is SeriesEvidence => Boolean(item));
 
   const match = selectVerifiedSeriesEvidence(evidence);
-  if (match) return { name: match.name, position: match.position };
+  if (match) return {
+    name: match.name,
+    position: match.position,
+    seriesAuthorityId: match.edition.seriesAuthorityId,
+  };
 
   const subtitleMatch = selectVerifiedSubtitleSeriesEvidence(groups, book);
-  return subtitleMatch ? { name: subtitleMatch.name, position: subtitleMatch.position } : null;
+  if (!subtitleMatch) return null;
+  const seriesAuthorityId = groups
+    .flatMap((group) => group.editions)
+    .find((edition) =>
+      edition.seriesAuthorityId
+      && edition.seriesName
+      && seriesNamesAreCompatible(edition.seriesName, subtitleMatch.name),
+    )?.seriesAuthorityId;
+  return { name: subtitleMatch.name, position: subtitleMatch.position, seriesAuthorityId };
 }
 
 export async function findMissingSeriesBooks(
@@ -204,6 +222,7 @@ export async function findMissingSeriesBooks(
         edition,
         seriesName: metadata.name,
         position: metadata.position,
+        seriesAuthorityId: metadata.authorityId,
       };
       const key = metadata.position !== null ? `position:${metadata.position}` : `title:${normalize(work.title)}`;
       const current = seen.get(key);
@@ -247,10 +266,17 @@ export async function findMissingSeriesBooks(
     return a.work.title.localeCompare(b.work.title);
   });
 
+  const authorityIds = [...new Set(
+    candidates
+      .map((candidate) => candidate.seriesAuthorityId)
+      .filter((value): value is string => Boolean(value)),
+  )];
+
   return {
     seriesName,
     author,
     candidates,
     missing,
+    seriesAuthorityId: authorityIds.length === 1 ? authorityIds[0] : undefined,
   };
 }
