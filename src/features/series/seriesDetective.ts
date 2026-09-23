@@ -28,7 +28,9 @@ const candidateSeriesMetadata = (
   edition: BookSearchEdition,
   wantedSeriesName: string,
   providerAgreement = 1,
+  wantedAuthorityId?: string,
 ): { name: string; position: number | null; authorityId?: string; evidence: 'structured' | 'title' | 'contextual' } | null => {
+  if (wantedAuthorityId && edition.seriesAuthorityId && edition.seriesAuthorityId !== wantedAuthorityId) return null;
   if (sameSeries(edition, wantedSeriesName)) {
     return {
       name: edition.seriesName!,
@@ -148,9 +150,20 @@ export async function findMissingSeriesBooks(
   author: string,
   libraryBooks: UserBookRecord[],
 ): Promise<SeriesDetectiveResult> {
+  const normalizedAuthor = normalize(author);
+  const seedSeriesAuthorityId = libraryBooks.find((book) => {
+    const metadata = resolveEffectiveSeriesMetadata(book);
+    return metadata
+      && seriesNamesAreCompatible(metadata.name, seriesName)
+      && normalize(book.work.author) === normalizedAuthor
+      && Boolean(book.work.seriesAuthorityId);
+  })?.work.seriesAuthorityId;
+
   const seriesBooks = libraryBooks.filter((book) => {
     const metadata = resolveEffectiveSeriesMetadata(book);
-    return metadata && seriesNamesAreCompatible(metadata.name, seriesName);
+    if (!metadata || !seriesNamesAreCompatible(metadata.name, seriesName)) return false;
+    if (seedSeriesAuthorityId) return book.work.seriesAuthorityId === seedSeriesAuthorityId;
+    return normalize(book.work.author) === normalizedAuthor;
   });
   const knownWholePositions = seriesBooks
     .map((book) => resolveEffectiveSeriesMetadata(book)?.position)
@@ -192,7 +205,7 @@ export async function findMissingSeriesBooks(
       const providerAgreement = new Set(
         work.editions.flatMap((candidate) => catalogEditionSources(candidate)),
       ).size;
-      const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement);
+      const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement, seedSeriesAuthorityId);
       if (!metadata) continue;
 
       // A provider's structured exact series name is stronger evidence than an
@@ -254,9 +267,10 @@ export async function findMissingSeriesBooks(
   });
 
   const authorityIds = [...new Set(
-    candidates
-      .map((candidate) => candidate.seriesAuthorityId)
-      .filter((value): value is string => Boolean(value)),
+    [
+      seedSeriesAuthorityId,
+      ...candidates.map((candidate) => candidate.seriesAuthorityId),
+    ].filter((value): value is string => Boolean(value)),
   )];
 
   return {
