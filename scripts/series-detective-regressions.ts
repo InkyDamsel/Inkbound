@@ -9,6 +9,7 @@ import {
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
 import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetective';
+import { catalogEditionSources, hardenCatalogGroups } from '../src/features/book-search/catalogHardening';
 
 const book = {
   id: 'book-1',
@@ -132,6 +133,51 @@ const standaloneTwistedTale = scoreSeriesEvidence(
   standaloneTwistedTaleBook,
 );
 assert.equal(standaloneTwistedTale, null);
+
+// Series-name searches must retain installments whose series appears in a
+// subtitle/structured field even when the work title itself contains none of
+// the series words. This is a general publisher-catalog pattern, not a
+// title-specific exception.
+const subtitleOnlySeriesHit = hardenCatalogGroups([
+  work(
+    edition('google-books', {
+      title: 'As Old as Time',
+      subtitle: 'A Twisted Tale',
+      authors: ['Liz Braswell'],
+      seriesName: undefined,
+      seriesOrder: undefined,
+      isbn13: undefined,
+      isbn10: undefined,
+    }),
+    { title: 'As Old as Time', subtitle: 'A Twisted Tale', authors: ['Liz Braswell'] },
+  ),
+], { searchQuery: 'A Twisted Tale' });
+assert.equal(subtitleOnlySeriesHit.length, 1);
+
+// Independent provider agreement must survive exact-ISBN deduplication.
+const corroboratedEditionGroup = hardenCatalogGroups([
+  work(edition('google-books', {
+    title: 'Example Series Installment',
+    subtitle: 'Example Shared Series',
+    isbn13: '9781234567897',
+    isbn10: undefined,
+    seriesName: undefined,
+    seriesOrder: undefined,
+  }), { title: 'Example Series Installment' }),
+  work(edition('open-library', {
+    title: 'Example Series Installment',
+    subtitle: 'Example Shared Series',
+    isbn13: '9781234567897',
+    isbn10: undefined,
+    seriesName: undefined,
+    seriesOrder: undefined,
+  }), { title: 'Example Series Installment' }),
+]);
+assert.equal(corroboratedEditionGroup.length, 1);
+assert.equal(
+  new Set(corroboratedEditionGroup[0].editions.flatMap(catalogEditionSources)).size,
+  2,
+);
 
 const twistedInstallment = work(
   edition('google-books', {
