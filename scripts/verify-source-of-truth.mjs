@@ -805,8 +805,8 @@ if (!loansPanelSource.includes('getRemainingReadingUnits(book)')) {
 if (!readingDeadlineSource.includes('getRemainingReadingUnits(book)')) {
   violations.push('readingDeadline.ts: finish-on-time remaining units must come from canonical reading state');
 }
-if (!seriesEvidenceSource.includes('(item.structured && item.exactIdentifier)')) {
-  violations.push('seriesDetectiveEvidence.ts: structured exact-identifier evidence must survive harmless author formatting differences');
+if (!seriesEvidenceSource.includes('comparableAuthor') || !seriesEvidenceSource.includes('item.exactAuthor && (item.exactTitle || item.exactIdentifier)')) {
+  violations.push('seriesDetectiveEvidence.ts: structured exact-identifier evidence must require canonical author agreement while tolerating harmless author formatting differences');
 }
 if (!seriesEvidenceSource.includes('canonicalSeriesIdentity(item.name)')) {
   violations.push('seriesDetectiveEvidence.ts: provider series-name aliases must corroborate through canonical series identity');
