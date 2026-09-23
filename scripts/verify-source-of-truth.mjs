@@ -53,6 +53,17 @@ for (const file of sourceFiles) {
     }
   }
 
+  // Persisted progress/status reconciliation belongs to bookReadingState.ts.
+  // UI/App code may request a correction, but must not independently recalculate
+  // percentage/status/date semantics from page or audio totals.
+  if (relative !== 'src/features/reading/bookReadingState.ts'
+    && relative !== 'src/features/reading/sessionBookReconciliation.ts') {
+    if (/Math\.round\(\s*\([^)]*(?:progressPages|progressMinutes|completed)[^)]*\/[^)]*(?:pageCount|audiobookDurationMins|total)[^)]*\)\s*\*\s*100\s*\)/s.test(source)
+      || /(?:pageCount|audiobookDurationMins|total)[\s\S]{0,220}(?:progressPercentage|reachedEnd)[\s\S]{0,220}status\s*:/s.test(source)) {
+      violations.push(`${relative}: persisted progress/status reconciliation must come from canonical bookReadingState.ts`);
+    }
+  }
+
   // Series parsing/interpretation is allowed only inside canonical catalog or
   // series-domain modules. Components must not invent their own series parser.
   const mayOwnSeriesParsing =
