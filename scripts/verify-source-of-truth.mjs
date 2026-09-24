@@ -64,6 +64,17 @@ for (const file of sourceFiles) {
     }
   }
 
+  // Author and language identity have one canonical owner. Local variants of
+  // these normalizers recreate provider-specific identity drift.
+  if (relative !== 'src/features/book-search/catalogHardening.ts') {
+    if (/\b(?:const|function)\s+(?:normalize|canonical)[A-Za-z0-9_]*Author[A-Za-z0-9_]*\b/.test(source)) {
+      violations.push(`${relative}: author identity normalization must come from catalogHardening.ts`);
+    }
+    if (/\b(?:const|function)\s+(?:normalize|canonical)[A-Za-z0-9_]*Language[A-Za-z0-9_]*\b/.test(source)) {
+      violations.push(`${relative}: language identity normalization must come from catalogHardening.ts`);
+    }
+  }
+
   // Series parsing/interpretation is allowed only inside canonical catalog or
   // series-domain modules. Components must not invent their own series parser.
   const mayOwnSeriesParsing =
@@ -836,6 +847,25 @@ for (const required of ['canonicalAuthorIdentity', 'canonicalLanguageCode', 'mer
     violations.push(`catalogHardening.ts: canonical metadata identity/merge owner is missing ${required}`);
   }
 }
+for (const required of [
+  'canonicalAuthorIdentity(edition.authors[0])',
+  'canonicalAuthorIdentity(group.authors[0])',
+]) {
+  if (!googleBooksSource.includes(required)) {
+    violations.push(`googleBooksApi.ts: catalog work grouping must use canonical author identity (${required})`);
+  }
+}
+for (const required of [
+  'canonicalAuthorIdentity(group.authors[0])',
+  'canonicalAuthorIdentity(work.authors[0])',
+  'canonicalAuthorIdentity(book.work.author)',
+  'canonicalAuthorIdentity(candidate.work.authors[0])',
+  'canonicalLanguageCode(edition.language)',
+]) {
+  if (!seriesDetective.includes(required)) {
+    violations.push(`seriesDetective.ts: provider agreement/dedupe must use canonical metadata identity (${required})`);
+  }
+}
 const addBookModalSource = read('src/components/AddBookModal.tsx');
 if (!addBookModalSource.includes('canonicalAuthorIdentity') || addBookModalSource.includes('normalizeAuthorName')) {
   violations.push('AddBookModal.tsx: author filtering must consume canonicalAuthorIdentity instead of owning a local author normalizer');
@@ -1053,6 +1083,11 @@ for (const required of [
   'src/domain/libraryTaxonomy.ts',
   'src/config/productPolicy.ts',
   'src/features/series/seriesLibrary.ts',
+  'src/features/book-search/catalogHardening.ts',
+  'canonicalAuthorIdentity()',
+  'canonicalLanguageCode()',
+  'mergeCatalogEditionData()',
+  'Metadata enrichment is **monotonic**',
   'src/features/export/libraryExport.ts',
   'src/features/sync/storageKeys.ts',
   'src/features/reading/bookReadingState.ts',
