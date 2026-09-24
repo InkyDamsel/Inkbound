@@ -412,6 +412,22 @@ for (const literal of ["const BOOKS_STORAGE_KEY = 'inkbound_books'", "const SESS
 if (/\blocalStorage\./.test(app)) {
   violations.push('App.tsx: canonical app persistence must go through runtimeStorage so Android and web emit the same sync events');
 }
+for (const literal of [
+  "'inkbound_active_tab'",
+  "'inkbound_timer_open'",
+  "'inkbound_timer_book_id'",
+  "'inkbound_last_daytime_library_maintenance'",
+]) {
+  if (app.includes(literal)) {
+    violations.push(`App.tsx: device storage key must come from DEVICE_STORAGE_KEYS, not literal ${literal}`);
+  }
+}
+if (!app.includes('DEVICE_STORAGE_KEYS.activeTab')
+  || !app.includes('DEVICE_STORAGE_KEYS.timerOpen')
+  || !app.includes('DEVICE_STORAGE_KEYS.timerBookId')
+  || !app.includes('DEVICE_STORAGE_KEYS.daytimeLibraryMaintenance')) {
+  violations.push('App.tsx: device-local state must consume the canonical DEVICE_STORAGE_KEYS registry');
+}
 if (!app.includes('writeRuntimeJson(BOOKS_STORAGE_KEY, books)') || !app.includes('writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions)')) {
   violations.push('App.tsx: canonical books/sessions persistence must use writeRuntimeJson');
 }
