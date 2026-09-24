@@ -252,7 +252,7 @@ export async function findMissingSeriesBooks(
   // discovery paths still found nothing, probe a small bounded window ahead.
   // Candidates must still pass the exact same series-evidence rules below;
   // the position query is discovery only, never proof of membership.
-  if (seen.size === 0 && highestKnownPosition > 0) {
+  if (highestKnownPosition > 0) {
     const forwardPositions = Array.from(
       { length: 5 },
       (_, index) => highestKnownPosition + index + 1,
