@@ -68,6 +68,9 @@ export type GoogleBooksAuthorPage = GoogleBooksCatalogPage;
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
+const VISIBLE_PAGE_COUNT_REPAIR_GROUP_LIMIT = 10;
+const VISIBLE_PAGE_COUNT_ISBN_REPAIR_LIMIT = 8;
+const VISIBLE_PAGE_COUNT_WORK_REPAIR_LIMIT = 6;
 const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const GOOGLE_BOOKS_PAGE_SIZE = 40;
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
@@ -645,7 +648,7 @@ async function repairVisibleEditionPageCounts(
   const repaired = groups.map((group) => ({ ...group, editions: [...group.editions] }));
 
   const isbnCandidates = groups
-    .slice(0, 10)
+    .slice(0, VISIBLE_PAGE_COUNT_REPAIR_GROUP_LIMIT)
     .flatMap((group, groupIndex) =>
       group.editions
         .filter((edition) =>
@@ -655,7 +658,7 @@ async function repairVisibleEditionPageCounts(
         )
         .map((edition) => ({ groupIndex, edition })),
     )
-    .slice(0, 8);
+    .slice(0, VISIBLE_PAGE_COUNT_ISBN_REPAIR_LIMIT);
 
   await Promise.all(isbnCandidates.map(async ({ groupIndex, edition }) => {
     const isbn = editionRepairIsbn(edition);
@@ -692,13 +695,13 @@ async function repairVisibleEditionPageCounts(
   // belong to that same work. Existing hardening then propagates a page count
   // only when same-format evidence is unambiguous.
   const workCandidates = repaired
-    .slice(0, 10)
+    .slice(0, VISIBLE_PAGE_COUNT_REPAIR_GROUP_LIMIT)
     .map((group, groupIndex) => ({ group, groupIndex }))
     .filter(({ group }) =>
       group.authors.some((author) => author.trim() && normalizeText(author) !== 'unknown author')
       && group.editions.some((edition) => edition.format !== 'audiobook' && !edition.pageCount),
     )
-    .slice(0, 6);
+    .slice(0, VISIBLE_PAGE_COUNT_WORK_REPAIR_LIMIT);
 
   await Promise.all(workCandidates.map(async ({ group, groupIndex }) => {
     const author = group.authors.find((value) => value.trim() && normalizeText(value) !== 'unknown author')?.trim();
