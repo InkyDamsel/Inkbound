@@ -4,6 +4,7 @@ import type { UserBookRecord } from '../../types';
 import { getRemainingReadingUnits } from '../../features/reading/bookReadingState';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { usePersistentState } from '../../hooks/usePersistentState';
+import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { BookCover } from '../BookCover';
 
 interface LoansLibraryPanelProps {
@@ -32,7 +33,7 @@ const formatDueDate = (value?: string) => {
 };
 
 export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onSelectBook }) => {
-  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>('inkbound_loans_sort', 'az');
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.loansSort, 'az');
   const loans = useMemo(() => books
     .filter((book) => book.ownership === 'borrowed-library')
     .map((book) => {
