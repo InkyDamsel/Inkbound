@@ -3,6 +3,10 @@ import {
   CANONICAL_SYNC_COLLECTION_KEYS,
   LEGACY_SYNC_STORAGE_KEYS,
   SYNC_STORAGE_KEYS,
+  auxiliaryBaselineStateKey,
+  auxiliaryPendingStateKey,
+  legacyAuxiliaryBaselineStateKey,
+  legacyAuxiliaryPendingStateKey,
 } from './storageKeys';
 
 /**
@@ -57,10 +61,10 @@ export type AuxiliaryAccountKeyName = keyof typeof AUXILIARY_ACCOUNT_KEYS;
 // baselines could survive several generations of the sync engine and make a
 // legitimate new local edit look like a no-op. Pending user intent is migrated
 // separately by AuxiliaryAccountSyncBridge before the new baseline is built.
-export const getAuxiliaryPendingKey = (uid: string) => `inkbound_auxiliary_pending_${uid}_v2`;
-export const getAuxiliaryBaselineKey = (uid: string) => `inkbound_auxiliary_baseline_${uid}_v2`;
-export const getLegacyAuxiliaryPendingKey = (uid: string) => `inkbound_auxiliary_pending_${uid}_v1`;
-export const getLegacyAuxiliaryBaselineKey = (uid: string) => `inkbound_auxiliary_baseline_${uid}_v1`;
+export const getAuxiliaryPendingKey = auxiliaryPendingStateKey;
+export const getAuxiliaryBaselineKey = auxiliaryBaselineStateKey;
+export const getLegacyAuxiliaryPendingKey = legacyAuxiliaryPendingStateKey;
+export const getLegacyAuxiliaryBaselineKey = legacyAuxiliaryBaselineStateKey;
 
 export const getAuxiliaryKeysToClearForOwnerChange = (
   previousOwnerUid: string | null,
