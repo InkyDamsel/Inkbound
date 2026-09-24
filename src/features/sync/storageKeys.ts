@@ -76,9 +76,13 @@ export const LEGACY_ACCOUNT_DATA_STORAGE_KEYS = {
   syncBaselineV1: (uid: string) => `inkbound_sync_baseline_${uid}_v1`,
 } as const;
 
+export const INKBOUND_STORAGE_NAMESPACE_PREFIX = 'inkbound_';
+
 export const SYNC_STORAGE_PREFIXES = {
   pending: 'inkbound_pending_sync_',
   baseline: 'inkbound_sync_baseline_',
+  auxiliaryPending: 'inkbound_auxiliary_pending_',
+  auxiliaryBaseline: 'inkbound_auxiliary_baseline_',
 } as const;
 
 export const syncPendingStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.pending}${uid}_v1`;
@@ -91,6 +95,10 @@ export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_curs
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 export const fullReconciliationVersionKey = (uid: string) => `inkbound_full_reconciliation_${uid}_v1`;
 export const librarySyncCheckpointKey = (uid: string) => `inkbound_library_sync_checkpoint_v1_${uid}`;
+export const auxiliaryPendingStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.auxiliaryPending}${uid}_v2`;
+export const auxiliaryBaselineStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.auxiliaryBaseline}${uid}_v2`;
+export const legacyAuxiliaryPendingStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.auxiliaryPending}${uid}_v1`;
+export const legacyAuxiliaryBaselineStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.auxiliaryBaseline}${uid}_v1`;
 
 // Single source of truth for the one-time full account reconciliation. Bumping
 // this value deliberately forces existing browser/device working copies through
