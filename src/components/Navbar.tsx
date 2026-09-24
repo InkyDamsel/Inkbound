@@ -12,6 +12,7 @@ import { usePersistentState } from '../hooks/usePersistentState';
 import { useReaderProfileIdentity } from '../hooks/useReaderProfileIdentity';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
 import { buildLibraryLoanReminders } from '../features/loans/libraryLoanReminders';
+import { DEVICE_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { syncNativeLibraryLoanReminders } from '../features/loans/nativeLibraryLoanReminders';
 
 export type NavTab =
@@ -36,7 +37,7 @@ interface NavbarProps {
 }
 
 const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
-const IMPORT_CENTER_VIEW_KEY = 'inkbound_import_center_view';
+const IMPORT_CENTER_VIEW_KEY = DEVICE_STORAGE_KEYS.importCenterView;
 const homeItem: NavigationItem = { id: 'home', label: 'Home', icon: Home };
 const settingsItem: NavigationItem = { id: 'settings', label: 'Settings', icon: Settings };
 const navigationGroups: NavigationGroup[] = [
@@ -80,10 +81,10 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, books, 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [notificationsRead, setNotificationsRead] = usePersistentState('inkbound_notifications_read', false);
-  const [loanReminderReadIds, setLoanReminderReadIds] = usePersistentState<string[]>('inkbound_library_loan_reminders_read', []);
-  const [collapsedGroups, setCollapsedGroups] = usePersistentState<Record<NavigationGroupId, boolean>>('inkbound_navigation_collapsed_groups', defaultCollapsedGroups);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = usePersistentState('inkbound_sidebar_collapsed', false);
+  const [notificationsRead, setNotificationsRead] = usePersistentState(DEVICE_STORAGE_KEYS.notificationsRead, false);
+  const [loanReminderReadIds, setLoanReminderReadIds] = usePersistentState<string[]>(DEVICE_STORAGE_KEYS.libraryLoanRemindersRead, []);
+  const [collapsedGroups, setCollapsedGroups] = usePersistentState<Record<NavigationGroupId, boolean>>(DEVICE_STORAGE_KEYS.navigationCollapsedGroups, defaultCollapsedGroups);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = usePersistentState(DEVICE_STORAGE_KEYS.sidebarCollapsed, false);
   const { userPlan, openUpgradeModal } = useUserPlan();
   const { user } = useAccountSync();
   const { displayName, avatarImage, initials } = useReaderProfileIdentity();
