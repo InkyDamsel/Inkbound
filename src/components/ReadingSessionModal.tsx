@@ -11,7 +11,7 @@ import {
   getSessionDurationMinutes,
   getSevenDayAveragePace,
 } from '../features/reading/sessionAnalytics';
-import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { removeRuntimeValue } from '../platform/runtimeStorage';
 
 interface ReadingSessionModalProps {
@@ -46,7 +46,7 @@ interface SessionDraft {
   location: string;
 }
 
-const SESSION_DRAFT_KEY = 'inkbound_active_session_draft';
+const SESSION_DRAFT_KEY = DEVICE_STORAGE_KEYS.activeSessionDraft;
 const MAX_BACKGROUND_RECOVERY_SECONDS = 8 * 60 * 60;
 
 const localDateKey = (timestamp: number) => {
