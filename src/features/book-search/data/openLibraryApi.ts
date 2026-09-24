@@ -1,6 +1,6 @@
 import { Format } from '../../../types';
 import type { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { catalogTitlesAreCompatible, hardenCatalogGroups } from '../catalogHardening';
+import { catalogTitlesAreCompatible, hardenCatalogGroups, mergeCatalogEditionData } from '../catalogHardening';
 
 interface OpenLibraryEdition {
   key?: string;
@@ -253,10 +253,9 @@ const hydrateOpenLibraryGroupFromWork = async (
   const details = await fetchOpenLibraryWorkEditions(rawKey, signal);
   if (!details.length) return group;
 
-  // Preserve work-level series evidence from the search payload while
-  // hydrating richer edition records. Open Library often exposes series on the
-  // work/search result but not on every edition. Replacing the thin editions
-  // outright used to trade correct series metadata for richer ISBN/page data.
+  // Hydration is enrichment, never replacement. Preserve every known
+  // field from the thin search payload and merge richer edition details into it
+  // only when the records refer to the same edition identity.
   const primarySeriesEdition = group.editions.find((edition) => edition.seriesName);
   const inheritedSeries = primarySeriesEdition?.seriesName
     ? [
@@ -281,16 +280,33 @@ const hydrateOpenLibraryGroupFromWork = async (
 
   if (!detailedEditions.length) return group;
 
-  return {
+  const mergedEditions = [...group.editions];
+
+  for (const detailed of detailedEditions) {
+    const detailedIsbns = [detailed.isbn13, detailed.isbn10].map(compactIsbn).filter(Boolean);
+    const matchIndex = mergedEditions.findIndex((existing) => {
+      if (
+        existing.source === detailed.source
+        && existing.externalEditionId
+        && detailed.externalEditionId
+        && existing.externalEditionId === detailed.externalEditionId
+      ) return true;
+
+      const existingIsbns = [existing.isbn13, existing.isbn10].map(compactIsbn).filter(Boolean);
+      return detailedIsbns.some((isbn) => existingIsbns.includes(isbn));
+    });
+
+    if (matchIndex >= 0) {
+      mergedEditions[matchIndex] = mergeCatalogEditionData(mergedEditions[matchIndex], detailed);
+    } else {
+      mergedEditions.push(detailed);
+    }
+  }
+
+  return hardenCatalogGroups([{
     ...group,
-    editions: detailedEditions.map((edition) => ({
-      ...edition,
-      seriesName: edition.seriesName ?? primarySeriesEdition?.seriesName,
-      seriesOrder: typeof edition.seriesOrder === 'number'
-        ? edition.seriesOrder
-        : primarySeriesEdition?.seriesOrder,
-    })),
-  };
+    editions: mergedEditions,
+  }])[0] ?? group;
 };
 
 const hydrateOpenLibraryExactGroups = async (
