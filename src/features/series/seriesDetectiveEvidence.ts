@@ -1,5 +1,6 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import { canonicalAuthorIdentity, canonicalLanguageCode } from '../book-search/catalogHardening';
 import { canonicalSeriesIdentity, inferSeriesHintFromTitle, seriesNamesAreCompatible } from './seriesLibrary';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -16,12 +17,50 @@ const comparableTitle = (value?: string) => {
 };
 
 const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
-  const wanted = normalize(author);
-  return !wanted || group.authors.some((candidate) => normalize(candidate) === wanted);
+  const wanted = canonicalAuthorIdentity(author);
+  return !wanted || group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wanted);
 };
 
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
-  (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
+  canonicalLanguageCode(
+    (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language,
+  );
+
+export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: string; identifiers: string[] } => {
+  const identifiers = [...new Set(
+    book.editions
+      .flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn])
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value)),
+  )];
+
+  return {
+    workQuery: `${book.work.title} ${book.work.author}`.trim(),
+    identifiers,
+  };
+};
+
+export const inferKnownSeriesFromBibliographicText = (
+  value: string | undefined,
+  wantedSeriesName: string,
+): { name: string; position: number | null } | null => {
+  const text = value?.trim();
+  if (!text) return null;
+
+  const parts = text.split(':');
+  const candidate = (parts.length > 1 ? parts[parts.length - 1] : text).trim();
+  const match = candidate.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*)(\d+(?:\.\d+)?)\s*$/i);
+  if (!match) return null;
+
+  const name = match[1].trim().replace(/[,:;\-]+$/g, '');
+  if (!seriesNamesAreCompatible(name, wantedSeriesName)) return null;
+
+  const position = Number.parseFloat(match[2]);
+  return {
+    name,
+    position: Number.isFinite(position) && position >= 0 ? position : null,
+  };
+};
 
 export const hasKnownSeriesContextEvidence = (
   work: BookSearchWorkGroup,
@@ -151,7 +190,7 @@ export const scoreSeriesEvidence = (
   else if (edition.source === 'google-books') score += 15;
   else if (edition.source === 'open-library') score += 10;
   if (typeof position === 'number') score += 10;
-  if (edition.language && edition.language === activeEditionLanguage(book)) score += 5;
+  if (canonicalLanguageCode(edition.language) && canonicalLanguageCode(edition.language) === activeEditionLanguage(book)) score += 5;
 
   return { name, position, edition, work, structured, exactIdentifier, exactTitle, exactAuthor, score };
 };
