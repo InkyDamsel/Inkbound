@@ -156,13 +156,27 @@ export async function findMissingSeriesBooks(
     .filter((position) => !knownPositionSet.has(position));
 
   const [seriesAndAuthor, authorGroups, seriesOnly, positionalDiscovery] = await Promise.all([
-    searchGoogleBooks(`${seriesName} ${author}`),
-    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)),
-    searchGoogleBooks(seriesName),
+    searchGoogleBooks(`${seriesName} ${author}`).catch((error) => {
+      console.warn('Series Detective series+author discovery failed.', error);
+      return { groups: [], totalItems: 0 };
+    }),
+    collectPagedGroups((startIndex) => searchGoogleBooksAuthorPage(author, startIndex)).catch((error) => {
+      console.warn('Series Detective author discovery failed.', error);
+      return [];
+    }),
+    searchGoogleBooks(seriesName).catch((error) => {
+      console.warn('Series Detective series-only discovery failed.', error);
+      return { groups: [], totalItems: 0 };
+    }),
     Promise.all(missingKnownGaps.map(async (position) => {
       const query = `${seriesName} book ${position} ${author}`;
-      const result = await searchGoogleBooks(query);
-      return result.groups;
+      try {
+        const result = await searchGoogleBooks(query);
+        return result.groups;
+      } catch (error) {
+        console.warn(`Series Detective gap discovery failed for position ${position}.`, error);
+        return [];
+      }
     })),
   ]);
 
@@ -226,7 +240,10 @@ export async function findMissingSeriesBooks(
   // This is isolated from Add Reading Material and from successful Detective
   // searches, so ordinary title/author search behavior cannot regress.
   if (seen.size === 0) {
-    const contextualFallback = await searchSeriesContextCatalog(seriesName);
+    const contextualFallback = await searchSeriesContextCatalog(seriesName).catch((error) => {
+      console.warn('Series Detective contextual fallback failed.', error);
+      return { groups: [], totalItems: 0 };
+    });
     addCandidatesFromRawGroups(contextualFallback.groups);
   }
 
@@ -242,8 +259,13 @@ export async function findMissingSeriesBooks(
     );
     const forwardDiscovery = await Promise.all(forwardPositions.map(async (position) => {
       const query = `${seriesName} book ${position} ${author}`;
-      const result = await searchGoogleBooks(query);
-      return result.groups;
+      try {
+        const result = await searchGoogleBooks(query);
+        return result.groups;
+      } catch (error) {
+        console.warn(`Series Detective forward discovery failed for position ${position}.`, error);
+        return [];
+      }
     }));
     addCandidatesFromRawGroups(forwardDiscovery.flat());
   }
