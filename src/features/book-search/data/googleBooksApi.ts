@@ -635,11 +635,13 @@ async function repairVisibleEditionPageCounts(
   groups: BookSearchWorkGroup[],
   signal?: AbortSignal,
 ): Promise<BookSearchWorkGroup[]> {
-  // Repair only the highest-ranked visible results. This keeps search responsive
-  // while ensuring the editions users are actually choosing from get one exact-
-  // ISBN metadata pass before we concede that a page count is unavailable.
-  const candidates = groups
-    .slice(0, 8)
+  // Repair only the highest-ranked visible results. Search ranking is already
+  // decided before this step; this function may enrich edition metadata but
+  // must never reorder or introduce unrelated works.
+  const repaired = groups.map((group) => ({ ...group, editions: [...group.editions] }));
+
+  const isbnCandidates = groups
+    .slice(0, 10)
     .flatMap((group, groupIndex) =>
       group.editions
         .filter((edition) =>
@@ -649,13 +651,9 @@ async function repairVisibleEditionPageCounts(
         )
         .map((edition) => ({ groupIndex, edition })),
     )
-    .slice(0, 4);
+    .slice(0, 8);
 
-  if (!candidates.length) return groups;
-
-  const repaired = groups.map((group) => ({ ...group, editions: [...group.editions] }));
-
-  await Promise.all(candidates.map(async ({ groupIndex, edition }) => {
+  await Promise.all(isbnCandidates.map(async ({ groupIndex, edition }) => {
     const isbn = editionRepairIsbn(edition);
     if (!isbn) return;
 
@@ -684,7 +682,47 @@ async function repairVisibleEditionPageCounts(
     targetGroup.editions[editionIndex] = mergeCatalogEditionData(edition, exact.edition);
   }));
 
-  return repaired;
+  // Thin author/title search records frequently arrive without an ISBN, which
+  // means the exact-ISBN repair above cannot even start. For those visible
+  // works, hydrate one exact title+author record and merge only editions that
+  // belong to that same work. Existing hardening then propagates a page count
+  // only when same-format evidence is unambiguous.
+  const workCandidates = repaired
+    .slice(0, 10)
+    .map((group, groupIndex) => ({ group, groupIndex }))
+    .filter(({ group }) =>
+      group.authors.some((author) => author.trim() && normalizeText(author) !== 'unknown author')
+      && group.editions.some((edition) => edition.format !== 'audiobook' && !edition.pageCount),
+    )
+    .slice(0, 6);
+
+  await Promise.all(workCandidates.map(async ({ group, groupIndex }) => {
+    const author = group.authors.find((value) => value.trim() && normalizeText(value) !== 'unknown author')?.trim();
+    if (!author) return;
+
+    const exact = await searchOpenLibraryExactTitleAuthor(group.title, author, signal)
+      .catch((error) => {
+        console.warn('Open Library visible-work page-count repair failed.', error);
+        return { groups: [], totalItems: 0 };
+      });
+    if (!exact.groups.length) return;
+
+    const target = repaired[groupIndex];
+    const enriched = hardenCatalogGroups(
+      mergeGroups([target], [exact.groups]),
+      { preferredAuthor: author },
+    )[0];
+    if (!enriched) return;
+
+    // Preserve the already-ranked work identity. Only replace its edition set
+    // with the enriched canonical edition set.
+    repaired[groupIndex] = {
+      ...target,
+      editions: enriched.editions,
+    };
+  }));
+
+  return hardenCatalogGroups(repaired);
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
