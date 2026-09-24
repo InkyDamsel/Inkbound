@@ -272,17 +272,15 @@ export async function findMissingSeriesBooks(
 
   addCandidatesFromRawGroups(rawGroups);
 
-  // Only when the known-good discovery path proves nothing, try a series-context
-  // catalog pass that does not apply normal title-search relevance pruning.
-  // This is isolated from Add Reading Material and from successful Detective
-  // searches, so ordinary title/author search behavior cannot regress.
-  if (seen.size === 0) {
-    const contextualFallback = await searchSeriesContextCatalog(seriesName).catch((error) => {
-      console.warn('Series Detective contextual fallback failed.', error);
-      return { groups: [], totalItems: 0 };
-    });
-    addCandidatesFromRawGroups(contextualFallback.groups);
-  }
+  // Series-context discovery is additive, not a zero-result fallback. Finding
+  // one member does not prove the series is complete, especially for shared-
+  // author/publisher lines. This path remains isolated from Add Reading Material
+  // and every candidate still has to pass the same membership evidence rules.
+  const contextualCatalog = await searchSeriesContextCatalog(seriesName).catch((error) => {
+    console.warn('Series Detective contextual catalog discovery failed.', error);
+    return { groups: [], totalItems: 0 };
+  });
+  addCandidatesFromRawGroups(contextualCatalog.groups);
 
   // A library containing only Book 1 has no internal "gap", so the normal
   // missing-gap search never asks the catalog about Books 2+. If all proven
