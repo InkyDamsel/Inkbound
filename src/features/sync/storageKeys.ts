@@ -26,6 +26,7 @@ export const DEVICE_STORAGE_KEYS = {
 
 export const LEGACY_DEVICE_STORAGE_KEYS = {
   importVerificationResult: 'inkbound_import_verification_result_v1',
+  importEnrichmentRetryRequest: 'inkbound_import_enrichment_retry_request_v1',
 } as const;
 
 export const ACCOUNT_DATA_STORAGE_KEYS = {
