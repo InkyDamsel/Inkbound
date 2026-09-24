@@ -16,7 +16,7 @@ const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
 const sameSeries = (edition: BookSearchEdition, seriesName: string) =>
   Boolean(edition.seriesName && seriesNamesAreCompatible(edition.seriesName, seriesName));
 
-const inferKnownSeriesFromBibliographicText = (
+export const inferKnownSeriesFromBibliographicText = (
   value: string | undefined,
   wantedSeriesName: string,
 ): { name: string; position: number | null } | null => {
