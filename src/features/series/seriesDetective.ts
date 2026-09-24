@@ -206,7 +206,7 @@ export async function findMissingSeriesBooks(
     // edition normalization correctly collapsed duplicate ISBN records.
     const providerSourcesByWork = new Map<string, Set<BookSearchEdition['source']>>();
     for (const group of sourceGroups) {
-      const identity = `${normalize(group.title)}::${normalize(group.authors[0])}`;
+      const identity = `${normalize(group.title)}::${canonicalAuthorIdentity(group.authors[0])}`;
       const sources = providerSourcesByWork.get(identity) ?? new Set<BookSearchEdition['source']>();
       group.editions.forEach((candidate) => sources.add(candidate.source));
       providerSourcesByWork.set(identity, sources);
@@ -216,7 +216,7 @@ export async function findMissingSeriesBooks(
     for (const work of merged) {
       for (const edition of work.editions) {
         const providerAgreement = providerSourcesByWork.get(
-          `${normalize(work.title)}::${normalize(work.authors[0])}`,
+          `${normalize(work.title)}::${canonicalAuthorIdentity(work.authors[0])}`,
         )?.size ?? 1;
         const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement);
         if (!metadata) continue;
@@ -291,7 +291,7 @@ export async function findMissingSeriesBooks(
   // the work with incomplete series metadata; Detective must repair metadata,
   // never offer a second copy of the same work.
   const existingTitleAuthors = new Set(libraryBooks.map((book) =>
-    `${normalize(book.work.title)}::${normalize(book.work.author)}`,
+    `${normalize(book.work.title)}::${canonicalAuthorIdentity(book.work.author)}`,
   ));
   const existingWorkIds = new Set(libraryBooks.map((book) => book.work.externalWorkId?.trim()).filter((value): value is string => Boolean(value)));
   const existingIsbns = new Set(libraryBooks.flatMap((book) =>
@@ -300,7 +300,7 @@ export async function findMissingSeriesBooks(
 
   const missing = candidates.filter((candidate) => {
     if (candidate.position !== null && existingPositions.has(candidate.position)) return false;
-    const candidateIdentity = `${normalize(candidate.work.title)}::${normalize(candidate.work.authors[0])}`;
+    const candidateIdentity = `${normalize(candidate.work.title)}::${canonicalAuthorIdentity(candidate.work.authors[0])}`;
     if (existingTitleAuthors.has(candidateIdentity)) return false;
     if (candidate.work.key && existingWorkIds.has(candidate.work.key)) return false;
     const candidateIsbns = [candidate.edition.isbn13, candidate.edition.isbn10].map(compactIsbn).filter(Boolean);
