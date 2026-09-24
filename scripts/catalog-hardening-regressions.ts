@@ -73,6 +73,36 @@ const mergedEditionMetadata = mergeCatalogEditionData(
 assert.equal(mergedEditionMetadata.pageCount, 531);
 assert.equal(mergedEditionMetadata.publisher, 'Scribner');
 
+const monotonicMerge = mergeCatalogEditionData(
+  hardenCatalogEdition({
+    ...baseEdition,
+    externalEditionId: 'monotonic-known',
+    pageCount: 444,
+    publisher: 'Known Publisher',
+    seriesName: 'Known Series',
+    seriesOrder: 3,
+    coverUrl: 'https://example.com/known-cover.jpg',
+    language: 'en',
+  }),
+  hardenCatalogEdition({
+    ...baseEdition,
+    source: 'open-library',
+    externalEditionId: 'monotonic-missing',
+    pageCount: undefined,
+    publisher: undefined,
+    seriesName: undefined,
+    seriesOrder: undefined,
+    coverUrl: undefined,
+    language: undefined,
+  }),
+);
+assert.equal(monotonicMerge.pageCount, 444);
+assert.equal(monotonicMerge.publisher, 'Known Publisher');
+assert.equal(monotonicMerge.seriesName, 'Known Series');
+assert.equal(monotonicMerge.seriesOrder, 3);
+assert.equal(monotonicMerge.coverUrl, 'https://example.com/known-cover.jpg');
+assert.equal(monotonicMerge.language, 'en');
+
 const work = (title: string, edition: BookSearchEdition): BookSearchWorkGroup => ({
   key: `work:${title}`,
   title,
