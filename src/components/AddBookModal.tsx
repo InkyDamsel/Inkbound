@@ -9,7 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { enrichSelectedCatalogEdition, hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
+import { canonicalAuthorIdentity, enrichSelectedCatalogEdition, hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -68,12 +68,10 @@ const ownershipCategoryId = (selection: OwnershipSelection): string | undefined 
 const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
 const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) => `${work.key}:${edition.source}:${edition.externalEditionId}`;
 const statusLabel = (status: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
-const normalizeAuthorName = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
 const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
-  const normalizedAuthor = normalizeAuthorName(authorName);
+  const normalizedAuthor = canonicalAuthorIdentity(authorName);
   return groups.filter((work) =>
-    work.authors.some((candidate) => normalizeAuthorName(candidate) === normalizedAuthor),
+    work.authors.some((candidate) => canonicalAuthorIdentity(candidate) === normalizedAuthor),
   );
 };
 
