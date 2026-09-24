@@ -66,7 +66,10 @@ const regressionFiles = [
   'scripts/critical-reading-regressions.ts',
   'scripts/reporting-math-regressions.ts',
   'scripts/catalog-hardening-regressions.ts',
+  'scripts/google-series-regressions.ts',
+  'scripts/runtime-boundary-regressions.ts',
   'scripts/series-detective-regressions.ts',
+  'scripts/smart-collection-regressions.ts',
 ];
 for (const relative of regressionFiles) {
   const source = read(relative);
@@ -83,6 +86,19 @@ if (/from\s+['"][^'"]*features\/series\/seriesDetective['"]/.test(seriesRegressi
 }
 
 const sourceTruth = read('scripts/verify-source-of-truth.mjs');
+for (const required of [
+  'canonicalAuthorIdentity',
+  'canonicalLanguageCode',
+  'mergeCatalogEditionData',
+  'searchOpenLibrarySeriesContext',
+  'metadata identity',
+  'Detective-only series-context catalog search must never leak into general Add Reading Material search',
+  'hydration must merge richer edition metadata without replacing known canonical fields',
+]) {
+  if (!sourceTruth.includes(required)) {
+    failures.push(`verify-source-of-truth.mjs: canonical metadata audit guard is missing (${required})`);
+  }
+}
 for (const stale of [
   'stale library-loan dates must be cleared',
   "merged.push(serverBook)",
