@@ -266,9 +266,24 @@ const formattedAuthorExactIsbn = scoreSeriesEvidence(
 assert.ok(formattedAuthorExactIsbn);
 assert.equal(formattedAuthorExactIsbn?.structured, true);
 assert.equal(formattedAuthorExactIsbn?.exactIdentifier, true);
-assert.equal(formattedAuthorExactIsbn?.exactAuthor, false);
+assert.equal(formattedAuthorExactIsbn?.exactAuthor, true);
 assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.name, 'Dream Harbor');
 assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.position, 2);
+
+// Provider language-code aliases must not make the same edition/series look
+// incompatible across catalogs.
+const aliasedLanguageEdition = edition('open-library', {
+  language: 'eng',
+});
+const aliasedLanguageEvidence = scoreSeriesEvidence(
+  work(aliasedLanguageEdition),
+  aliasedLanguageEdition,
+  book,
+);
+assert.ok(aliasedLanguageEvidence);
+assert.equal(aliasedLanguageEvidence?.exactAuthor, true);
+assert.ok((aliasedLanguageEvidence?.score ?? 0) >= (strong?.score ?? 0));
+
 
 // Provider naming differences must not split one real series.
 assert.equal(canonicalSeriesIdentity('Hades x Persephone Saga'), 'hades persephone');
