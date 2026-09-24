@@ -230,6 +230,24 @@ export async function findMissingSeriesBooks(
     addCandidatesFromRawGroups(contextualFallback.groups);
   }
 
+  // A library containing only Book 1 has no internal "gap", so the normal
+  // missing-gap search never asks the catalog about Books 2+. If all proven
+  // discovery paths still found nothing, probe a small bounded window ahead.
+  // Candidates must still pass the exact same series-evidence rules below;
+  // the position query is discovery only, never proof of membership.
+  if (seen.size === 0 && highestKnownPosition > 0) {
+    const forwardPositions = Array.from(
+      { length: 5 },
+      (_, index) => highestKnownPosition + index + 1,
+    );
+    const forwardDiscovery = await Promise.all(forwardPositions.map(async (position) => {
+      const query = `${seriesName} book ${position} ${author}`;
+      const result = await searchGoogleBooks(query);
+      return result.groups;
+    }));
+    addCandidatesFromRawGroups(forwardDiscovery.flat());
+  }
+
   candidates.push(...seen.values());
 
   const existingPositions = new Set<number>();
