@@ -209,8 +209,15 @@ for (const required of [
 if (!googleBooksSource.includes('repairVisibleEditionPageCounts')) {
   violations.push('googleBooksApi.ts: visible catalog editions with known ISBNs must receive bounded exact-edition page-count repair');
 }
-if (!googleBooksSource.includes(".slice(0, 4)") || !googleBooksSource.includes("edition.format !== 'audiobook'")) {
-  violations.push('googleBooksApi.ts: page-count repair must stay bounded and must never invent audiobook pages');
+for (const required of [
+  'VISIBLE_PAGE_COUNT_REPAIR_GROUP_LIMIT',
+  'VISIBLE_PAGE_COUNT_ISBN_REPAIR_LIMIT',
+  'VISIBLE_PAGE_COUNT_WORK_REPAIR_LIMIT',
+  "edition.format !== 'audiobook'",
+]) {
+  if (!googleBooksSource.includes(required)) {
+    violations.push(`googleBooksApi.ts: bounded page-count enrichment contract is missing ${required}`);
+  }
 }
 if ((googleBooksSource.match(/repairVisibleEditionPageCounts\(groups, signal\)/g) ?? []).length < 2) {
   violations.push('googleBooksApi.ts: paged search and author browsing must share visible-edition page-count repair');
@@ -805,22 +812,57 @@ if (!loansPanelSource.includes('getRemainingReadingUnits(book)')) {
 if (!readingDeadlineSource.includes('getRemainingReadingUnits(book)')) {
   violations.push('readingDeadline.ts: finish-on-time remaining units must come from canonical reading state');
 }
-if (!seriesEvidenceSource.includes('comparableAuthor') || !seriesEvidenceSource.includes('item.exactAuthor && (item.exactTitle || item.exactIdentifier)')) {
-  violations.push('seriesDetectiveEvidence.ts: structured exact-identifier evidence must require canonical author agreement while tolerating harmless author formatting differences');
-}
-if (!seriesEvidenceSource.includes('canonicalSeriesIdentity(item.name)')) {
-  violations.push('seriesDetectiveEvidence.ts: provider series-name aliases must corroborate through canonical series identity');
-}
-
 for (const required of [
+  'canonicalAuthorIdentity',
+  'canonicalLanguageCode',
+  'buildSeriesDetectionQueries',
+  'inferKnownSeriesFromBibliographicText',
+  'item.exactAuthor && (item.exactTitle || item.exactIdentifier)',
+  'canonicalSeriesIdentity(item.name)',
   'selectVerifiedSubtitleSeriesEvidence',
   'GENERIC_SUBTITLE_SERIES_WORDS',
-  'item.sources.size >= 2',
+  'current.sources.size >= 2',
 ]) {
   if (!seriesEvidenceSource.includes(required)) {
-    violations.push(`seriesDetectiveEvidence.ts: safe corroborated subtitle series evidence is missing ${required}`);
+    violations.push(`seriesDetectiveEvidence.ts: canonical pure evidence contract is missing ${required}`);
   }
 }
+if (/from ['"][^'"]*(?:lib\/firebase|firebase\/)/.test(seriesEvidenceSource)) {
+  violations.push('seriesDetectiveEvidence.ts: pure Series Detective evidence must never import Firebase/runtime modules');
+}
+const catalogHardeningIdentitySource = read('src/features/book-search/catalogHardening.ts');
+for (const required of ['canonicalAuthorIdentity', 'canonicalLanguageCode', 'mergeCatalogEditionData']) {
+  if (!catalogHardeningIdentitySource.includes(required)) {
+    violations.push(`catalogHardening.ts: canonical metadata identity/merge owner is missing ${required}`);
+  }
+}
+const addBookModalSource = read('src/components/AddBookModal.tsx');
+if (!addBookModalSource.includes('canonicalAuthorIdentity') || addBookModalSource.includes('normalizeAuthorName')) {
+  violations.push('AddBookModal.tsx: author filtering must consume canonicalAuthorIdentity instead of owning a local author normalizer');
+}
+
+const pagedSearchStart = googleBooksSource.indexOf('export async function searchGoogleBooksPage');
+const authorSearchStart = googleBooksSource.indexOf('export async function searchGoogleBooksAuthorPage');
+const standardSearchStart = googleBooksSource.indexOf('export async function searchGoogleBooks(query');
+const pagedSearchSource = pagedSearchStart >= 0 && authorSearchStart > pagedSearchStart
+  ? googleBooksSource.slice(pagedSearchStart, authorSearchStart)
+  : '';
+const standardSearchSource = standardSearchStart >= 0 ? googleBooksSource.slice(standardSearchStart) : '';
+if (pagedSearchSource.includes('searchOpenLibrarySeriesContext') || standardSearchSource.includes('searchOpenLibrarySeriesContext')) {
+  violations.push('googleBooksApi.ts: Detective-only series-context catalog search must never leak into general Add Reading Material search');
+}
+const seriesContextStart = googleBooksSource.indexOf('export async function searchSeriesContextCatalog');
+const seriesContextEnd = googleBooksSource.indexOf('export async function searchGoogleBooks(query');
+const seriesContextSource = seriesContextStart >= 0 && seriesContextEnd > seriesContextStart
+  ? googleBooksSource.slice(seriesContextStart, seriesContextEnd)
+  : '';
+if (!seriesContextSource.includes('searchOpenLibrarySeriesContext')) {
+  violations.push('googleBooksApi.ts: dedicated Series Detective catalog context must remain isolated in searchSeriesContextCatalog');
+}
+if (!openLibrarySource.includes('mergeCatalogEditionData') || !openLibrarySource.includes('mergedEditions')) {
+  violations.push('openLibraryApi.ts: hydration must merge richer edition metadata without replacing known canonical fields');
+}
+
 const seriesDetective = read('src/features/series/seriesDetective.ts');
 for (const forbidden of [
   'openLibraryApi',
@@ -841,6 +883,8 @@ for (const required of [
   'scoreSeriesEvidence',
   'selectVerifiedSeriesEvidence',
   'selectVerifiedSubtitleSeriesEvidence',
+  'buildSeriesDetectionQueries',
+  'inferKnownSeriesFromBibliographicText',
 ]) {
   if (!seriesDetective.includes(required)) {
     violations.push(`seriesDetective.ts: Series Detective must consume canonical ${required}`);
