@@ -16,13 +16,6 @@ export interface BookSearchEdition {
   language?: string;
   seriesName?: string;
   seriesOrder?: number;
-  // Provider-scoped stable series identity when exposed by the catalog.
-  seriesAuthorityId?: string;
-  // Canonical provenance survives provider deduplication. When multiple
-  // catalogs describe the same physical/digital edition, hardening may collapse
-  // them into one edition record, but evidence consumers still need to know
-  // which independent providers corroborated that record.
-  corroboratingSources?: BookSearchSource[];
   format: Format;
   isbn10?: string;
   isbn13?: string;
