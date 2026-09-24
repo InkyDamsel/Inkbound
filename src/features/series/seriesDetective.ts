@@ -1,6 +1,6 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
-import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../book-search/data/googleBooksApi';
+import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchSeriesContextCatalog } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
 import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
@@ -173,52 +173,61 @@ export async function findMissingSeriesBooks(
     ...positionalDiscovery.flat(),
   ];
 
-  // Preserve provider agreement before hardening merges exact editions across
-  // catalogs. Series confidence must not disappear merely because canonical
-  // edition normalization correctly collapsed duplicate ISBN records.
-  const providerSourcesByWork = new Map<string, Set<BookSearchEdition['source']>>();
-  for (const group of rawGroups) {
-    const identity = `${normalize(group.title)}::${normalize(group.authors[0])}`;
-    const sources = providerSourcesByWork.get(identity) ?? new Set<BookSearchEdition['source']>();
-    group.editions.forEach((candidate) => sources.add(candidate.source));
-    providerSourcesByWork.set(identity, sources);
-  }
-
-  const merged = hardenCatalogGroups(rawGroups, { preferredAuthor: author });
   const seen = new Map<string, SeriesDetectiveCandidate>();
   const candidates: SeriesDetectiveCandidate[] = [];
-
   const preferredLanguages = new Set(seriesBooks.map(activeEditionLanguage).filter((value): value is string => Boolean(value)));
 
-  for (const work of merged) {
-    for (const edition of work.editions) {
-      const providerAgreement = providerSourcesByWork.get(
-        `${normalize(work.title)}::${normalize(work.authors[0])}`,
-      )?.size ?? 1;
-      const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement);
-      if (!metadata) continue;
+  const addCandidatesFromRawGroups = (sourceGroups: BookSearchWorkGroup[]) => {
+    // Preserve provider agreement before hardening merges exact editions across
+    // catalogs. Series confidence must not disappear merely because canonical
+    // edition normalization correctly collapsed duplicate ISBN records.
+    const providerSourcesByWork = new Map<string, Set<BookSearchEdition['source']>>();
+    for (const group of sourceGroups) {
+      const identity = `${normalize(group.title)}::${normalize(group.authors[0])}`;
+      const sources = providerSourcesByWork.get(identity) ?? new Set<BookSearchEdition['source']>();
+      group.editions.forEach((candidate) => sources.add(candidate.source));
+      providerSourcesByWork.set(identity, sources);
+    }
 
-      // A provider's structured exact series name is stronger evidence than an
-      // author match because legitimate series can span multiple authors (for
-      // example anthology/shared-world lines). Title-inferred series membership
-      // remains author-gated so a generic parenthetical title cannot pull in an
-      // unrelated same-named series.
-      if (metadata.evidence === 'title' && !exactAuthorMatch(work, author)) continue;
-      if (metadata.evidence !== 'structured' && metadata.evidence !== 'contextual' && !exactAuthorMatch(work, author)) continue;
-      if (preferredLanguages.size > 0 && edition.language && !preferredLanguages.has(edition.language.toLocaleLowerCase())) continue;
+    const merged = hardenCatalogGroups(sourceGroups, { preferredAuthor: author });
+    for (const work of merged) {
+      for (const edition of work.editions) {
+        const providerAgreement = providerSourcesByWork.get(
+          `${normalize(work.title)}::${normalize(work.authors[0])}`,
+        )?.size ?? 1;
+        const metadata = candidateSeriesMetadata(work, edition, seriesName, providerAgreement);
+        if (!metadata) continue;
 
-      const candidate: SeriesDetectiveCandidate = {
-        work,
-        edition,
-        seriesName: metadata.name,
-        position: metadata.position,
-      };
-      const key = metadata.position !== null ? `position:${metadata.position}` : `title:${normalize(work.title)}`;
-      const current = seen.get(key);
-      if (!current || catalogEditionQualityScore(candidate.edition) > catalogEditionQualityScore(current.edition)) {
-        seen.set(key, candidate);
+        // Structured/contextual series evidence may legitimately span authors.
+        // Title-inferred evidence remains author-gated to prevent false joins.
+        if (metadata.evidence === 'title' && !exactAuthorMatch(work, author)) continue;
+        if (metadata.evidence !== 'structured' && metadata.evidence !== 'contextual' && !exactAuthorMatch(work, author)) continue;
+        if (preferredLanguages.size > 0 && edition.language && !preferredLanguages.has(edition.language.toLocaleLowerCase())) continue;
+
+        const candidate: SeriesDetectiveCandidate = {
+          work,
+          edition,
+          seriesName: metadata.name,
+          position: metadata.position,
+        };
+        const key = metadata.position !== null ? `position:${metadata.position}` : `title:${normalize(work.title)}`;
+        const current = seen.get(key);
+        if (!current || catalogEditionQualityScore(candidate.edition) > catalogEditionQualityScore(current.edition)) {
+          seen.set(key, candidate);
+        }
       }
     }
+  };
+
+  addCandidatesFromRawGroups(rawGroups);
+
+  // Only when the known-good discovery path proves nothing, try a series-context
+  // catalog pass that does not apply normal title-search relevance pruning.
+  // This is isolated from Add Reading Material and from successful Detective
+  // searches, so ordinary title/author search behavior cannot regress.
+  if (seen.size === 0) {
+    const contextualFallback = await searchSeriesContextCatalog(seriesName);
+    addCandidatesFromRawGroups(contextualFallback.groups);
   }
 
   candidates.push(...seen.values());
