@@ -3,12 +3,13 @@ import type { UserBookRecord } from '../src/types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 import {
   hasKnownSeriesContextEvidence,
+  plausibleSeriesSubtitle,
   scoreSeriesEvidence,
   selectVerifiedSeriesEvidence,
   selectVerifiedSubtitleSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
-import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetective';
+import { buildSeriesDetectionQueries, inferKnownSeriesFromBibliographicText } from '../src/features/series/seriesDetective';
 
 const book = {
   id: 'book-1',
@@ -132,6 +133,27 @@ const standaloneTwistedTale = scoreSeriesEvidence(
   standaloneTwistedTaleBook,
 );
 assert.equal(standaloneTwistedTale, null);
+
+// Known-series discovery must understand bibliographic suffix formats that
+// providers commonly expose without structured series fields.
+assert.deepEqual(
+  inferKnownSeriesFromBibliographicText('Example Book: Crown Trials #2', 'Crown Trials Series'),
+  { name: 'Crown Trials', position: 2 },
+);
+assert.deepEqual(
+  inferKnownSeriesFromBibliographicText('Crown Trials Book 3', 'The Crown Trials'),
+  { name: 'Crown Trials', position: 3 },
+);
+assert.equal(
+  inferKnownSeriesFromBibliographicText('Unrelated Book: Different Saga #2', 'Crown Trials'),
+  null,
+);
+
+// Exact non-generic subtitles are strong bibliographic series context once the
+// reader is already inside that known series. Generic marketing subtitles are
+// still rejected.
+assert.equal(plausibleSeriesSubtitle('A Twisted Path'), 'A Twisted Path');
+assert.equal(plausibleSeriesSubtitle('A Novel'), null);
 
 const twistedInstallment = work(
   edition('google-books', {
