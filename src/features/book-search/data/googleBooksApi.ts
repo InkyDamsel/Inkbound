@@ -4,7 +4,7 @@ import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
-import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage } from './openLibraryApi';
+import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage, searchOpenLibrarySeriesContext } from './openLibraryApi';
 import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
@@ -466,7 +466,7 @@ export async function searchGoogleBooksPage(
     if (startIndex === 0 && groups.length > 0) {
       const [trusted, openLibrary, hardcover] = await Promise.all([
         searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
-        searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+        searchOpenLibrarySeriesContext(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
         searchHardcoverWithBackoff(trimmed),
       ]);
       groups = hardenCatalogGroups(
