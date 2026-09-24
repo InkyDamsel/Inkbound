@@ -875,6 +875,19 @@ const addBookModalSource = read('src/components/AddBookModal.tsx');
 if (!addBookModalSource.includes('canonicalAuthorIdentity') || addBookModalSource.includes('normalizeAuthorName')) {
   violations.push('AddBookModal.tsx: author filtering must consume canonicalAuthorIdentity instead of owning a local author normalizer');
 }
+if (!addBookModalSource.includes('DEVICE_STORAGE_KEYS.scannerReviewDraft')) {
+  violations.push('AddBookModal.tsx: scanner draft persistence must use DEVICE_STORAGE_KEYS.scannerReviewDraft');
+}
+for (const required of [
+  'inferCatalogAuthorIntent(catalogResponse.groups, trimmedQuery)',
+  'searchPreferredAuthor',
+  'searchGoogleBooksAuthorPage(searchPreferredAuthor, searchNextStartIndex)',
+  'filterExactAuthorResults(response.groups, searchPreferredAuthor)',
+]) {
+  if (!addBookModalSource.includes(required)) {
+    violations.push(`AddBookModal.tsx: paged search must preserve resolved author intent (${required})`);
+  }
+}
 
 const pagedSearchStart = googleBooksSource.indexOf('export async function searchGoogleBooksPage');
 const authorSearchStart = googleBooksSource.indexOf('export async function searchGoogleBooksAuthorPage');
