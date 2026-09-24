@@ -855,17 +855,6 @@ for (const required of [
     violations.push(`googleBooksApi.ts: catalog work grouping must use canonical author identity (${required})`);
   }
 }
-for (const required of [
-  'canonicalAuthorIdentity(group.authors[0])',
-  'canonicalAuthorIdentity(work.authors[0])',
-  'canonicalAuthorIdentity(book.work.author)',
-  'canonicalAuthorIdentity(candidate.work.authors[0])',
-  'canonicalLanguageCode(edition.language)',
-]) {
-  if (!seriesDetective.includes(required)) {
-    violations.push(`seriesDetective.ts: provider agreement/dedupe must use canonical metadata identity (${required})`);
-  }
-}
 const addBookModalSource = read('src/components/AddBookModal.tsx');
 if (!addBookModalSource.includes('canonicalAuthorIdentity') || addBookModalSource.includes('normalizeAuthorName')) {
   violations.push('AddBookModal.tsx: author filtering must consume canonicalAuthorIdentity instead of owning a local author normalizer');
@@ -894,6 +883,17 @@ if (!openLibrarySource.includes('mergeCatalogEditionData') || !openLibrarySource
 }
 
 const seriesDetective = read('src/features/series/seriesDetective.ts');
+for (const required of [
+  'canonicalAuthorIdentity(group.authors[0])',
+  'canonicalAuthorIdentity(work.authors[0])',
+  'canonicalAuthorIdentity(book.work.author)',
+  'canonicalAuthorIdentity(candidate.work.authors[0])',
+  'canonicalLanguageCode(edition.language)',
+]) {
+  if (!seriesDetective.includes(required)) {
+    violations.push(`seriesDetective.ts: provider agreement/dedupe must use canonical metadata identity (${required})`);
+  }
+}
 for (const forbidden of [
   'openLibraryApi',
   'hardcoverApi',
