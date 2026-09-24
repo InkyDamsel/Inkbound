@@ -536,10 +536,10 @@ export async function searchGoogleBooksAuthorPage(
     let groups = hardenCatalogGroups(groupGoogleEditions(editions), { preferredAuthor: trimmedAuthor });
 
     // Author discovery is part of the same canonical catalog pipeline as title
-    // and ISBN search. The first page must be enriched by the same providers so
-    // Series Detective and author browsing cannot see thinner metadata than
-    // normal search.
-    if (startIndex === 0 && groups.length > 0) {
+    // and ISBN search. Google is one witness, not a gatekeeper: alternate
+    // providers must still contribute exact-author works even when Google
+    // returns zero usable author results.
+    if (startIndex === 0) {
       const [trusted, openLibrary, hardcover] = await Promise.all([
         searchTrustedCatalogBaseline(trimmedAuthor).catch(() => ({ groups: [], totalItems: 0 })),
         searchOpenLibraryPage(query, 0, GOOGLE_BOOKS_PAGE_SIZE, signal).catch(() => ({
