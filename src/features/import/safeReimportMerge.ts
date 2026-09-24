@@ -1,5 +1,6 @@
 import type { ImportRecordItem, ReadingStatus, UserBookRecord } from '../../types';
 import { readSeriesOverrides, SERIES_OVERRIDES_STORAGE_KEY, makeSeriesOverrideId, type SeriesOverrides } from '../series/seriesOverrides';
+import { canonicalAuthorIdentity } from '../book-search/catalogHardening';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { writeRuntimeJson } from '../../platform/runtimeStorage';
@@ -26,9 +27,9 @@ function bookIsbns(book: UserBookRecord): string[] {
 
 function sameTitleAuthor(item: ImportRecordItem, book: UserBookRecord): boolean {
   const incomingTitle = normalizeText(item.title);
-  const incomingAuthor = normalizeText(item.author);
+  const incomingAuthor = canonicalAuthorIdentity(item.author);
   const existingTitle = normalizeText(book.work.title);
-  const existingAuthor = normalizeText(book.work.author);
+  const existingAuthor = canonicalAuthorIdentity(book.work.author);
   return Boolean(incomingTitle && incomingAuthor && incomingTitle === existingTitle && incomingAuthor === existingAuthor);
 }
 
@@ -160,7 +161,7 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
     work: {
       ...existing.work,
       title: existing.work.title?.trim() ? existing.work.title : item.title,
-      author: existing.work.author?.trim() && normalizeText(existing.work.author) !== 'unknown author' ? existing.work.author : item.author,
+      author: existing.work.author?.trim() && canonicalAuthorIdentity(existing.work.author) !== 'unknown author' ? existing.work.author : item.author,
       seriesName: existing.work.seriesName?.trim() ? existing.work.seriesName : item.seriesName,
       seriesOrder: existing.work.seriesOrder ?? item.seriesOrder,
     },
