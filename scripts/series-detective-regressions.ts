@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import type { UserBookRecord } from '../src/types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 import {
@@ -372,5 +373,25 @@ const aliasEvidenceB = scoreSeriesEvidence(
 );
 assert.ok(aliasEvidenceA && aliasEvidenceB);
 assert.ok(selectVerifiedSeriesEvidence([aliasEvidenceA!, aliasEvidenceB!]));
+
+const detectiveRuntimeSource = fs.readFileSync(
+  new URL('../src/features/series/seriesDetective.ts', import.meta.url),
+  'utf8',
+);
+assert.match(
+  detectiveRuntimeSource,
+  /providerSourcesByWork[\s\S]*canonicalAuthorIdentity\(group\.authors\[0\]\)/,
+  'Series Detective provider agreement must use canonical author identity',
+);
+assert.match(
+  detectiveRuntimeSource,
+  /const contextualCatalog = await searchSeriesContextCatalog\(seriesName\)/,
+  'Series-context discovery must be additive even after other candidates are found',
+);
+assert.doesNotMatch(
+  detectiveRuntimeSource,
+  /if \(seen\.size === 0\)[\s\S]{0,240}searchSeriesContextCatalog/,
+  'Series-context discovery must not regress to a zero-result-only fallback',
+);
 
 console.log('Inkbound Series Detective regressions passed.');
