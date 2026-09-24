@@ -72,7 +72,7 @@ import {
 } from './features/reading/sessionBookReconciliation';
 import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, localDateKey } from './features/reading/sessionAnalytics';
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
-import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
+import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
 import { subscribeToRuntimeResume } from './platform/runtimeLifecycle';
 import { subscribeToRuntimeBackNavigation } from './platform/runtimeBackNavigation';
 import { notifyNativeBookFinished, notifyNativeReadingSessionFinished } from './features/notifications/nativeInkboundNotifications';
@@ -90,8 +90,8 @@ const SESSIONS_STORAGE_KEY = SYNC_STORAGE_KEYS.sessions;
 const THEME_STORAGE_KEY = SYNC_STORAGE_KEYS.theme;
 const LEGACY_BOOKS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.books;
 const LEGACY_SESSIONS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.sessions;
-const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
-const DAYTIME_MAINTENANCE_KEY = 'inkbound_last_daytime_library_maintenance';
+const TIMER_OPEN_STORAGE_KEY = DEVICE_STORAGE_KEYS.timerOpen;
+const DAYTIME_MAINTENANCE_KEY = DEVICE_STORAGE_KEYS.daytimeLibraryMaintenance;
 const DAILY_GOAL_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes;
 const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
 const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
@@ -163,7 +163,7 @@ function markDaytimeMaintenanceRun() {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = usePersistentState<NavTab>('inkbound_active_tab', 'home');
+  const [activeTab, setActiveTab] = usePersistentState<NavTab>(DEVICE_STORAGE_KEYS.activeTab, 'home');
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = readRuntimeValue(THEME_STORAGE_KEY);
     return savedTheme ? savedTheme === 'dark' : true;
@@ -178,7 +178,7 @@ export default function App() {
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
   const [isBatchEditOpen, setIsBatchEditOpen] = useState(false);
   const [isTimerOpen, setIsTimerOpen] = usePersistentState(TIMER_OPEN_STORAGE_KEY, false);
-  const [timerInitialBookId, setTimerInitialBookId] = usePersistentState<string | undefined>('inkbound_timer_book_id', undefined);
+  const [timerInitialBookId, setTimerInitialBookId] = usePersistentState<string | undefined>(DEVICE_STORAGE_KEYS.timerBookId, undefined);
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sessionMilestone, setSessionMilestone] = useState<SessionMilestoneNotice | null>(null);
