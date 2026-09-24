@@ -1,5 +1,5 @@
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
-import { DEVICE_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { DEVICE_STORAGE_KEYS, SYNC_STORAGE_KEYS, SYNC_STORAGE_PREFIXES } from '../features/sync/storageKeys';
 
 const DB_NAME = 'inkbound-large-storage';
 const STORE_NAME = 'entries';
@@ -17,14 +17,14 @@ const exactManagedKeys = new Set([
 ]);
 
 const managedPrefixes = [
-  'inkbound_pending_sync_',
-  'inkbound_sync_baseline_',
+  SYNC_STORAGE_PREFIXES.pending,
+  SYNC_STORAGE_PREFIXES.baseline,
 ];
 
 const STARTUP_EXACT_KEYS = new Set([SYNC_STORAGE_KEYS.books]);
 const STARTUP_PREFIXES = [
-  'inkbound_pending_sync_',
-  'inkbound_sync_baseline_',
+  SYNC_STORAGE_PREFIXES.pending,
+  SYNC_STORAGE_PREFIXES.baseline,
 ];
 
 const cache = new Map<string, string>();
