@@ -1,3 +1,4 @@
+import { INKBOUND_STORAGE_NAMESPACE_PREFIX } from '../features/sync/storageKeys';
 import { getLargeBrowserStorageKeys } from './largeBrowserStorage';
 import { removeRuntimeMediaByPrefix } from './runtimeMediaStorage';
 
@@ -133,7 +134,7 @@ export function removeRuntimeValuesByPrefix(prefix: string): number {
     // already part of the app runtime for photo/profile media, so importing it
     // statically avoids a misleading split-chunk warning without increasing the
     // effective startup graph.
-    if (prefix === 'inkbound_') {
+    if (prefix === INKBOUND_STORAGE_NAMESPACE_PREFIX) {
       void Promise.all([
         removeRuntimeMediaByPrefix('photo-memory:'),
         removeRuntimeMediaByPrefix('profile-media:'),
