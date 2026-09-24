@@ -74,10 +74,16 @@ for (const file of sourceFiles) {
   // Author and language identity have one canonical owner. Local variants of
   // these normalizers recreate provider-specific identity drift.
   if (relative !== 'src/features/book-search/catalogHardening.ts') {
-    if (/\b(?:const|function)\s+(?:normalize|canonical)[A-Za-z0-9_]*Author[A-Za-z0-9_]*\b/.test(source)) {
+    const ownsAuthorNormalizer =
+      /\bfunction\s+(?:normalize|canonical)[A-Za-z0-9_]*Author[A-Za-z0-9_]*\s*\(/.test(source)
+      || /\bconst\s+(?:normalize|canonical)[A-Za-z0-9_]*Author[A-Za-z0-9_]*\s*=\s*(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/.test(source);
+    const ownsLanguageNormalizer =
+      /\bfunction\s+(?:normalize|canonical)[A-Za-z0-9_]*Language[A-Za-z0-9_]*\s*\(/.test(source)
+      || /\bconst\s+(?:normalize|canonical)[A-Za-z0-9_]*Language[A-Za-z0-9_]*\s*=\s*(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/.test(source);
+    if (ownsAuthorNormalizer) {
       violations.push(`${relative}: author identity normalization must come from catalogHardening.ts`);
     }
-    if (/\b(?:const|function)\s+(?:normalize|canonical)[A-Za-z0-9_]*Language[A-Za-z0-9_]*\b/.test(source)) {
+    if (ownsLanguageNormalizer) {
       violations.push(`${relative}: language identity normalization must come from catalogHardening.ts`);
     }
   }
