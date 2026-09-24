@@ -879,7 +879,6 @@ for (const required of [
     violations.push(`supplementalCatalogApi.ts: missing bounded supplemental catalog contract ${required}`);
   }
 }
-const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
 if (!openLibrarySource.includes('hydrateOpenLibraryGroupFromWork')) {
   violations.push('openLibraryApi.ts: author catalog page 1 must hydrate canonical edition records');
 }
