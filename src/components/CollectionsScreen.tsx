@@ -12,7 +12,7 @@ import {
 import { replaceCanonicalLibrary } from '../features/library/libraryMutations';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryLabels, type LibrarySectionSortMode } from '../features/library/librarySectionSort';
 import { getActiveEdition, getAverageBookProgress, getBookReadingState } from '../features/reading/bookReadingState';
-import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_STORAGE_KEYS } from '../features/sync/storageKeys';
 import {
   SMART_COLLECTION_FIELD_OPTIONS,
   createSmartCollectionRule,
@@ -59,8 +59,8 @@ interface CollectionsScreenProps {
 
 const COLLECTIONS_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions;
 // Device-only view preference. Collection definitions/membership remain account-owned.
-const COLLECTION_VIEW_STORAGE_KEY = 'inkbound_collection_view';
-const COLLECTION_SORT_STORAGE_KEY = 'inkbound_collection_sort';
+const COLLECTION_VIEW_STORAGE_KEY = DEVICE_STORAGE_KEYS.collectionView;
+const COLLECTION_SORT_STORAGE_KEY = DEVICE_STORAGE_KEYS.collectionSort;
 const COLLECTION_DELETE_UNDO_MS = 7000;
 const COLLECTION_SHELF_PAGE_SIZE = 24;
 const COLLECTION_MANAGER_PAGE_SIZE = 24;
