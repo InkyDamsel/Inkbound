@@ -438,6 +438,42 @@ export async function searchOpenLibraryPage(
   };
 }
 
+/**
+ * Series-context lookup used only by Series Detective's zero-result fallback.
+ * This intentionally does not apply normal title-search relevance because an
+ * installment title may share no words with its series name.
+ */
+export async function searchOpenLibrarySeriesContext(
+  seriesName: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  const trimmed = seriesName.trim();
+  if (!trimmed) return { groups: [], totalItems: 0 };
+
+  const params = new URLSearchParams({
+    q: `series:"${trimmed.replace(/"/g, '')}"`,
+    limit: String(DEFAULT_PAGE_SIZE),
+    fields: FIELDS,
+  });
+  const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) throw new Error(`Open Library series-context search failed (${response.status}).`);
+
+  const payload = (await response.json()) as OpenLibraryResponse;
+  const groups = hardenCatalogGroups(
+    (payload.docs ?? [])
+      .map(mapWork)
+      .filter((group): group is BookSearchWorkGroup => Boolean(group)),
+  );
+
+  return {
+    groups,
+    totalItems: payload.numFound ?? payload.num_found ?? groups.length,
+  };
+}
+
 export async function searchOpenLibrary(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const page = await searchOpenLibraryPage(query, 0, DEFAULT_PAGE_SIZE, signal);
   return { groups: page.groups, totalItems: page.totalItems };
