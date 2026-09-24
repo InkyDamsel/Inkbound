@@ -1,4 +1,5 @@
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { DEVICE_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 const DB_NAME = 'inkbound-large-storage';
 const STORE_NAME = 'entries';
@@ -8,11 +9,11 @@ const LOCAL_STORAGE_SOFT_LIMIT = 1_500_000;
 export const LARGE_BROWSER_STORAGE_HYDRATED_EVENT = 'inkbound:large-browser-storage-hydrated';
 
 const exactManagedKeys = new Set([
-  'inkbound_books',
-  'inkbound_import_enrichment_queue_v3',
-  'inkbound_import_history_v1',
-  'inkbound_import_metadata_pending_v1',
-  'inkbound_import_verification_result_v2',
+  SYNC_STORAGE_KEYS.books,
+  SYNC_STORAGE_KEYS.importEnrichmentQueue,
+  DEVICE_STORAGE_KEYS.importHistory,
+  DEVICE_STORAGE_KEYS.importMetadataPending,
+  DEVICE_STORAGE_KEYS.importVerificationResult,
 ]);
 
 const managedPrefixes = [
@@ -20,7 +21,7 @@ const managedPrefixes = [
   'inkbound_sync_baseline_',
 ];
 
-const STARTUP_EXACT_KEYS = new Set(['inkbound_books']);
+const STARTUP_EXACT_KEYS = new Set([SYNC_STORAGE_KEYS.books]);
 const STARTUP_PREFIXES = [
   'inkbound_pending_sync_',
   'inkbound_sync_baseline_',
@@ -59,7 +60,7 @@ function announceStartupHydrated() {
   // App already listens for cloud-data updates and reloads its canonical books
   // collection. Reuse that path so a library restored from IndexedDB appears as
   // soon as background hydration finishes, without reloading the page.
-  notifyCloudDataUpdated(['inkbound_books']);
+  notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
 }
 
 function openDatabase(): Promise<IDBDatabase | null> {
