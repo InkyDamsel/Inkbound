@@ -1,7 +1,7 @@
 import type { UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchSeriesContextCatalog } from '../book-search/data/googleBooksApi';
-import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
+import { canonicalAuthorIdentity, canonicalLanguageCode, catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
 import { hasKnownSeriesContextEvidence, plausibleSeriesSubtitle, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
@@ -9,8 +9,8 @@ const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
 const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
-  const wanted = normalize(author);
-  return !wanted || group.authors.some((candidate) => normalize(candidate) === wanted);
+  const wanted = canonicalAuthorIdentity(author);
+  return !wanted || group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wanted);
 };
 
 const sameSeries = (edition: BookSearchEdition, seriesName: string) =>
@@ -39,7 +39,9 @@ export const inferKnownSeriesFromBibliographicText = (
 };
 
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
-  (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
+  canonicalLanguageCode(
+    (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language,
+  );
 
 const SERIES_DISCOVERY_MAX_PAGES = 4;
 
@@ -250,7 +252,8 @@ export async function findMissingSeriesBooks(
         // Title-inferred evidence remains author-gated to prevent false joins.
         if (metadata.evidence === 'title' && !exactAuthorMatch(work, author)) continue;
         if (metadata.evidence !== 'structured' && metadata.evidence !== 'contextual' && !exactAuthorMatch(work, author)) continue;
-        if (preferredLanguages.size > 0 && edition.language && !preferredLanguages.has(edition.language.toLocaleLowerCase())) continue;
+        const candidateLanguage = canonicalLanguageCode(edition.language);
+        if (preferredLanguages.size > 0 && candidateLanguage && !preferredLanguages.has(candidateLanguage)) continue;
 
         const candidate: SeriesDetectiveCandidate = {
           work,
