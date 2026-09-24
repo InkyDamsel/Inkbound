@@ -722,7 +722,11 @@ async function repairVisibleEditionPageCounts(
     };
   }));
 
-  return hardenCatalogGroups(repaired);
+  // Preserve the caller's established result order and search intent. Every
+  // caller re-runs hardening with its own searchQuery/preferredAuthor options.
+  // Re-hardening here without that context can scramble otherwise-correct
+  // author/title ranking after page-count enrichment.
+  return repaired;
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -798,7 +802,7 @@ export async function searchSeriesContextCatalog(
 
   const [google, openLibrary, trusted, hardcover] = await Promise.all([
     searchGoogleBaseline(trimmed, signal),
-    searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+    searchOpenLibrarySeriesContext(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
     searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
     searchHardcoverWithBackoff(trimmed),
   ]);
