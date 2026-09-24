@@ -466,7 +466,7 @@ export async function searchGoogleBooksPage(
     if (startIndex === 0 && groups.length > 0) {
       const [trusted, openLibrary, hardcover] = await Promise.all([
         searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
-        searchOpenLibrarySeriesContext(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+        searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
         searchHardcoverWithBackoff(trimmed),
       ]);
       groups = hardenCatalogGroups(
