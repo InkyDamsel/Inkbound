@@ -16,10 +16,9 @@ import {
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
-import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { SYNC_STORAGE_KEYS, librarySyncCheckpointKey } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
-const CHECKPOINT_KEY_PREFIX = 'inkbound_library_sync_checkpoint_v1_';
 const VERIFY_DELAY_MS = 15000;
 const REPAIR_BATCH_SIZE = 100;
 
@@ -49,7 +48,7 @@ function readBookCount(): number {
 
 function readCheckpoint(uid: string): LocalCheckpoint | null {
   try {
-    const raw = getRuntimeStorage().getItem(`${CHECKPOINT_KEY_PREFIX}${uid}`);
+    const raw = getRuntimeStorage().getItem(librarySyncCheckpointKey(uid));
     return raw ? JSON.parse(raw) as LocalCheckpoint : null;
   } catch {
     return null;
@@ -57,11 +56,11 @@ function readCheckpoint(uid: string): LocalCheckpoint | null {
 }
 
 function writeCheckpoint(uid: string, checkpoint: LocalCheckpoint) {
-  getRuntimeStorage().setItem(`${CHECKPOINT_KEY_PREFIX}${uid}`, JSON.stringify(checkpoint));
+  getRuntimeStorage().setItem(librarySyncCheckpointKey(uid), JSON.stringify(checkpoint));
 }
 
 function clearCheckpoint(uid: string) {
-  getRuntimeStorage().removeItem(`${CHECKPOINT_KEY_PREFIX}${uid}`);
+  getRuntimeStorage().removeItem(librarySyncCheckpointKey(uid));
 }
 
 function checkpointComplete(checkpoint: LocalCheckpoint, uploadedBookCount: number): boolean {
