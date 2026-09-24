@@ -739,6 +739,51 @@ function cacheSearchResponse(cacheKey: string, response: BookSearchResponse, sea
   return hardened;
 }
 
+/**
+ * Series-only catalog fallback for Series Detective.
+ *
+ * Normal Add Reading Material search intentionally prunes by title relevance.
+ * A series lookup cannot use that rule because an installment title may share
+ * zero words with the series name. This helper is isolated from normal search:
+ * it gathers one canonical provider pass and hardens/dedupes the records without
+ * applying title-query relevance.
+ */
+export async function searchSeriesContextCatalog(
+  seriesName: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  const trimmed = seriesName.trim();
+  if (!trimmed) return { groups: [], totalItems: 0 };
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+
+  await waitUntilAdministrationInactive(signal);
+
+  const [google, openLibrary, trusted, hardcover] = await Promise.all([
+    searchGoogleBaseline(trimmed, signal),
+    searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+    searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+    searchHardcoverWithBackoff(trimmed),
+  ]);
+
+  const groups = hardenCatalogGroups([
+    ...trusted.groups,
+    ...google.groups,
+    ...openLibrary.groups,
+    ...hardcover.groups,
+  ]);
+
+  return {
+    groups,
+    totalItems: Math.max(
+      google.totalItems,
+      openLibrary.totalItems,
+      trusted.totalItems,
+      hardcover.totalItems,
+      groups.length,
+    ),
+  };
+}
+
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
