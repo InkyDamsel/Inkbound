@@ -20,13 +20,13 @@ import {
   publishCloudSyncHealth,
 } from './cloudSyncHealth';
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
-import { SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
+import { DEVICE_STORAGE_KEYS, SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const LAST_SYNC_STORAGE_KEY = SYNC_STORAGE_KEYS.lastCloudSyncAt;
-const LEGACY_AUTOPAUSE_MIGRATION_KEY = 'inkbound_import_enrichment_autopause_cleanup_v1';
+const LEGACY_AUTOPAUSE_MIGRATION_KEY = DEVICE_STORAGE_KEYS.importEnrichmentAutopauseCleanup;
 const REPAIR_UPLOAD_BATCH_SIZE = 100;
 
 interface CloudRecord<T> {
