@@ -19,8 +19,9 @@ export type ReadingMaterialType =
   | 'anthology';
 
 // `custom` is an internal compatibility value for reader-defined categories.
-// The only built-in statuses offered to readers are Currently Reading, TBR, and Read.
-// Legacy paused/dnf/wishlist values remain valid so existing libraries are never rewritten.
+// Reader-facing statuses are owned by libraryTaxonomy.ts and currently include
+// Currently Reading, TBR, Read, Paused, and Did Not Finish. Legacy `wishlist`
+// remains valid for older persisted/imported records but is now an ownership value.
 export type ReadingStatus = 'currently-reading' | 'tbr' | 'finished' | 'custom' | 'paused' | 'dnf' | 'wishlist';
 
 export type OwnershipStatus = 'owned' | 'borrowed-library' | 'borrowed-person' | 'subscription' | 'wishlist' | 'custom' | 'none';
