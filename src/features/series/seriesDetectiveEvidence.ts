@@ -54,7 +54,7 @@ const GENERIC_SUBTITLE_SERIES_WORDS = new Set([
   'hardcover', 'paperback', 'ebook', 'audiobook',
 ]);
 
-const subtitleSeriesCandidate = (value?: string): string | null => {
+export const plausibleSeriesSubtitle = (value?: string): string | null => {
   const candidate = value?.trim().replace(/\s+/g, ' ') ?? '';
   if (!candidate) return null;
   const identity = canonicalSeriesIdentity(candidate);
@@ -63,6 +63,8 @@ const subtitleSeriesCandidate = (value?: string): string | null => {
   if (words.some((word) => GENERIC_SUBTITLE_SERIES_WORDS.has(word))) return null;
   return candidate;
 };
+
+const subtitleSeriesCandidate = plausibleSeriesSubtitle;
 
 /**
  * Safe fallback for catalogs that expose a publisher line as a subtitle rather
