@@ -8,7 +8,7 @@ import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibrary
 import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
-import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
+import { hardenCatalogGroups, hardenCatalogResponse, inferCatalogAuthorIntent, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -722,11 +722,10 @@ async function repairVisibleEditionPageCounts(
     };
   }));
 
-  // Preserve the caller's established result order and search intent. Every
-  // caller re-runs hardening with its own searchQuery/preferredAuthor options.
-  // Re-hardening here without that context can scramble otherwise-correct
-  // author/title ranking after page-count enrichment.
-  return repaired;
+  // Rebuild canonical work/edition groups after metadata repair so newly
+  // hydrated print editions can become the visible, higher-quality editions.
+  // The caller immediately reapplies its own searchQuery/preferredAuthor intent.
+  return hardenCatalogGroups(repaired);
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -876,16 +875,55 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     { searchQuery: trimmed },
   );
 
+  // Mixed catalog results can hide obvious author intent when noisy providers
+  // return titles containing the person's name. If the normal inference is
+  // inconclusive, verify a short name-like query against the canonical author
+  // page. Multiple exact-author works are strong evidence that the user meant
+  // an author, not a title phrase.
+  let preferredAuthor = inferCatalogAuthorIntent(combined, trimmed);
+  const nameLikeQuery =
+    !preferredAuthor
+    && /^[\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,3}$/u.test(trimmed)
+    && !/\d/.test(trimmed);
+
+  if (nameLikeQuery) {
+    const authorProbe = await searchGoogleBooksAuthorPage(trimmed, 0, signal)
+      .catch((error) => {
+        console.warn('Author-intent confirmation failed.', error);
+        return {
+          groups: [],
+          totalItems: 0,
+          providerTotalItems: 0,
+          nextStartIndex: 0,
+          hasMore: false,
+        };
+      });
+    const wantedAuthor = normalizeText(trimmed);
+    const exactAuthorWorks = authorProbe.groups.filter((group) =>
+      group.authors.some((candidate) => normalizeText(candidate) === wantedAuthor),
+    );
+    if (exactAuthorWorks.length >= 2) {
+      preferredAuthor = trimmed;
+      combined = hardenCatalogGroups(
+        [...combined, ...exactAuthorWorks],
+        { preferredAuthor },
+      );
+    }
+  }
+
   const refinedExact = await refineExactTitleWithAuthor(combined, trimmed, signal);
   if (refinedExact.length > 0) {
     combined = hardenCatalogGroups(
       [...combined, ...refinedExact],
-      { searchQuery: trimmed },
+      preferredAuthor ? { preferredAuthor } : { searchQuery: trimmed },
     );
   }
 
   combined = await repairVisibleEditionPageCounts(combined, signal);
-  combined = hardenCatalogGroups(combined, { searchQuery: trimmed });
+  combined = hardenCatalogGroups(
+    combined,
+    preferredAuthor ? { preferredAuthor } : { searchQuery: trimmed },
+  );
 
   let supplemental: BookSearchResponse = { groups: [], totalItems: 0 };
   if (google.groups.length === 0 || combined.length < 8) {
@@ -896,7 +934,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
       });
     combined = hardenCatalogGroups(
       [...combined, ...supplemental.groups],
-      { searchQuery: trimmed },
+      preferredAuthor ? { preferredAuthor } : { searchQuery: trimmed },
     );
   }
 
