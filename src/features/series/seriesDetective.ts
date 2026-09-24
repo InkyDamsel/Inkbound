@@ -3,7 +3,7 @@ import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/mode
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchSeriesContextCatalog } from '../book-search/data/googleBooksApi';
 import { catalogEditionQualityScore, hardenCatalogGroups } from '../book-search/catalogHardening';
 import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAreCompatible } from './seriesLibrary';
-import { hasKnownSeriesContextEvidence, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
+import { hasKnownSeriesContextEvidence, plausibleSeriesSubtitle, scoreSeriesEvidence, selectVerifiedSeriesEvidence, selectVerifiedSubtitleSeriesEvidence, type SeriesEvidence } from './seriesDetectiveEvidence';
 
 const normalize = (value?: string) => value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
@@ -15,6 +15,28 @@ const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
 
 const sameSeries = (edition: BookSearchEdition, seriesName: string) =>
   Boolean(edition.seriesName && seriesNamesAreCompatible(edition.seriesName, seriesName));
+
+const inferKnownSeriesFromBibliographicText = (
+  value: string | undefined,
+  wantedSeriesName: string,
+): { name: string; position: number | null } | null => {
+  const text = value?.trim();
+  if (!text) return null;
+
+  const parts = text.split(':');
+  const candidate = (parts.length > 1 ? parts[parts.length - 1] : text).trim();
+  const match = candidate.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*)(\d+(?:\.\d+)?)\s*$/i);
+  if (!match) return null;
+
+  const name = match[1].trim().replace(/[,:;\-]+$/g, '');
+  if (!seriesNamesAreCompatible(name, wantedSeriesName)) return null;
+
+  const position = Number.parseFloat(match[2]);
+  return {
+    name,
+    position: Number.isFinite(position) && position >= 0 ? position : null,
+  };
+};
 
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
@@ -36,10 +58,22 @@ const candidateSeriesMetadata = (
     };
   }
 
-  for (const title of [edition.title, work.title]) {
-    const inferred = inferSeriesHintFromTitle(title);
+  for (const value of [edition.title, work.title, edition.subtitle, work.subtitle]) {
+    const inferred = inferSeriesHintFromTitle(value ?? '')
+      ?? inferKnownSeriesFromBibliographicText(value, wantedSeriesName);
     if (inferred && seriesNamesAreCompatible(inferred.name, wantedSeriesName)) {
       return { name: inferred.name, position: inferred.position, evidence: 'title' };
+    }
+  }
+
+  // A known series can also be exposed by a provider as an exact, non-generic
+  // subtitle rather than structured series metadata. In that case the subtitle
+  // itself is the bibliographic evidence; do not require a second provider to
+  // repeat the same field before accepting the relationship.
+  for (const subtitle of [edition.subtitle, work.subtitle]) {
+    const candidate = plausibleSeriesSubtitle(subtitle);
+    if (candidate && seriesNamesAreCompatible(candidate, wantedSeriesName)) {
+      return { name: candidate, position: null, evidence: 'contextual' };
     }
   }
 
