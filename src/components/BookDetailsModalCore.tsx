@@ -21,7 +21,6 @@ import { SessionEditorModal } from './SessionEditorModal';
 import { BulkHistoricalSessionsModal } from './BulkHistoricalSessionsModal';
 import { CustomOwnershipBookControl } from './ownership/CustomOwnershipBookControl';
 import { detectSeriesForBook } from '../features/series/seriesDetective';
-import { seriesNamesAreCompatible } from '../features/series/seriesLibrary';
 import { getEffectiveBookProgressPages } from '../features/reading/readingPageTotals';
 import { withBookOwnership } from '../features/ownership/bookOwnership';
 import { CanonicalInput, CanonicalNumberInput, CanonicalTextarea } from './form/CanonicalInput';
@@ -161,21 +160,14 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
   const saveDetails = () => {
     if (!title.trim() || !author.trim()) return;
     stopAutomaticEnrichmentForBook(book.id);
-    const nextSeriesName = seriesName.trim() || undefined;
-    const keepSeriesAuthority = Boolean(
-      nextSeriesName
-      && book.work.seriesName
-      && seriesNamesAreCompatible(nextSeriesName, book.work.seriesName),
-    );
     onUpdateBook({
       ...book,
       work: {
         ...book.work,
         title: title.trim(),
         author: author.trim(),
-        seriesName: nextSeriesName,
+        seriesName: seriesName.trim() || undefined,
         seriesOrder: seriesOrder.trim() ? Math.max(0, Number(seriesOrder)) || undefined : undefined,
-        seriesAuthorityId: keepSeriesAuthority ? book.work.seriesAuthorityId : undefined,
       },
       privateTags: csvList(tags),
     });
