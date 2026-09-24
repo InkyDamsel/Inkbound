@@ -8,7 +8,7 @@ import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibrary
 import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
-import { hardenCatalogGroups, hardenCatalogResponse, inferCatalogAuthorIntent, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
+import { canonicalAuthorIdentity, hardenCatalogGroups, hardenCatalogResponse, inferCatalogAuthorIntent, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -555,6 +555,10 @@ export async function searchGoogleBooksAuthorPage(
         mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
         { preferredAuthor: trimmedAuthor },
       );
+      const wantedAuthor = canonicalAuthorIdentity(trimmedAuthor);
+      groups = groups.filter((group) =>
+        group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
+      );
       groups = await repairVisibleEditionPageCounts(groups, signal);
       groups = hardenCatalogGroups(groups, { preferredAuthor: trimmedAuthor });
     }
@@ -875,25 +879,28 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     { searchQuery: trimmed },
   );
 
-  // Resolve user intent from evidence rather than query shape alone. A phrase
-  // that looks like a person's name may also be a title/series family. Several
-  // works whose titles begin with the query are strong title-family evidence
-  // and prevent noisy exact-author records from hijacking that search.
+  // Resolve ambiguous person-like queries from accumulated evidence. Do not
+  // let a title-prefix heuristic veto author evidence before all providers have
+  // had a chance to contribute.
   const normalizedQuery = normalizeText(trimmed);
   const titleFamilyEvidence = combined.filter((group) => {
     const title = normalizeText(group.title);
     return title === normalizedQuery || title.startsWith(`${normalizedQuery} `);
   }).length;
-  const strongTitleFamilyIntent = titleFamilyEvidence >= 3;
 
-  let preferredAuthor = strongTitleFamilyIntent
-    ? undefined
-    : inferCatalogAuthorIntent(combined, trimmed);
   const nameLikeQuery =
-    !strongTitleFamilyIntent
-    && !preferredAuthor
-    && /^[\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,3}$/u.test(trimmed)
+    /^[\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,3}$/u.test(trimmed)
     && !/\d/.test(trimmed);
+
+  let preferredAuthor = inferCatalogAuthorIntent(combined, trimmed);
+  let exactAuthorWorks: BookSearchWorkGroup[] = [];
+  let authorEvidence = preferredAuthor
+    ? combined.filter((group) =>
+        group.authors.some((candidate) =>
+          canonicalAuthorIdentity(candidate) === canonicalAuthorIdentity(trimmed),
+        ),
+      ).length
+    : 0;
 
   if (nameLikeQuery) {
     const authorProbe = await searchGoogleBooksAuthorPage(trimmed, 0, signal)
@@ -907,17 +914,29 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
           hasMore: false,
         };
       });
-    const wantedAuthor = normalizeText(trimmed);
-    const exactAuthorWorks = authorProbe.groups.filter((group) =>
-      group.authors.some((candidate) => normalizeText(candidate) === wantedAuthor),
+
+    const wantedAuthor = canonicalAuthorIdentity(trimmed);
+    exactAuthorWorks = authorProbe.groups.filter((group) =>
+      group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
     );
-    if (exactAuthorWorks.length >= 2) {
+    authorEvidence = Math.max(authorEvidence, exactAuthorWorks.length);
+
+    if (authorEvidence >= 2 && (titleFamilyEvidence < 3 || authorEvidence >= titleFamilyEvidence)) {
       preferredAuthor = trimmed;
       combined = hardenCatalogGroups(
         [...combined, ...exactAuthorWorks],
         { preferredAuthor },
       );
+    } else if (titleFamilyEvidence >= 3) {
+      preferredAuthor = undefined;
     }
+  }
+
+  if (preferredAuthor) {
+    const wantedAuthor = canonicalAuthorIdentity(preferredAuthor);
+    combined = combined.filter((group) =>
+      group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
+    );
   }
 
   const refinedExact = await refineExactTitleWithAuthor(combined, trimmed, signal);
@@ -945,6 +964,12 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
       [...combined, ...supplemental.groups],
       preferredAuthor ? { preferredAuthor } : { searchQuery: trimmed },
     );
+    if (preferredAuthor) {
+      const wantedAuthor = canonicalAuthorIdentity(preferredAuthor);
+      combined = combined.filter((group) =>
+        group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
+      );
+    }
   }
 
   if (combined.length === 0) return { groups: [], totalItems: 0 };
