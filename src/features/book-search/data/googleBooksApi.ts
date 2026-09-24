@@ -875,14 +875,23 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     { searchQuery: trimmed },
   );
 
-  // Mixed catalog results can hide obvious author intent when noisy providers
-  // return titles containing the person's name. If the normal inference is
-  // inconclusive, verify a short name-like query against the canonical author
-  // page. Multiple exact-author works are strong evidence that the user meant
-  // an author, not a title phrase.
-  let preferredAuthor = inferCatalogAuthorIntent(combined, trimmed);
+  // Resolve user intent from evidence rather than query shape alone. A phrase
+  // that looks like a person's name may also be a title/series family. Several
+  // works whose titles begin with the query are strong title-family evidence
+  // and prevent noisy exact-author records from hijacking that search.
+  const normalizedQuery = normalizeText(trimmed);
+  const titleFamilyEvidence = combined.filter((group) => {
+    const title = normalizeText(group.title);
+    return title === normalizedQuery || title.startsWith(`${normalizedQuery} `);
+  }).length;
+  const strongTitleFamilyIntent = titleFamilyEvidence >= 3;
+
+  let preferredAuthor = strongTitleFamilyIntent
+    ? undefined
+    : inferCatalogAuthorIntent(combined, trimmed);
   const nameLikeQuery =
-    !preferredAuthor
+    !strongTitleFamilyIntent
+    && !preferredAuthor
     && /^[\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,3}$/u.test(trimmed)
     && !/\d/.test(trimmed);
 
