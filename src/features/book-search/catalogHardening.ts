@@ -6,6 +6,52 @@ const SUPPLEMENT_PATTERN = /\b(?:box\s*set|boxed\s*set|omnibus|study\s*guide|sum
 
 const compact = (value?: string) => value?.replace(/\s+/g, ' ').trim() ?? '';
 const normalizeKey = (value?: string) => compact(value).toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+export const canonicalAuthorIdentity = (value?: string): string => {
+  let author = compact(value);
+  if (!author) return '';
+
+  // Catalogs frequently invert names as "Last, First". Normalize that display
+  // variation without changing the user-facing author string.
+  const commaParts = author.split(',').map((part) => compact(part)).filter(Boolean);
+  if (commaParts.length >= 2 && !/\d/.test(commaParts[1])) {
+    const trailingSuffix = commaParts
+      .slice(2)
+      .filter((part) => /^(?:jr|sr|ii|iii|iv|v)\.?$/i.test(part))
+      .join(' ');
+    author = `${commaParts[1]} ${commaParts[0]}${trailingSuffix ? ` ${trailingSuffix}` : ''}`;
+  }
+
+  // Honorifics are not identity. Dates/biographical parentheticals from
+  // authority records are not identity either.
+  author = author
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/^(?:dame|sir|dr|mr|mrs|ms)\.?\s+/i, '');
+
+  return normalizeKey(author);
+};
+
+const LANGUAGE_ALIASES: Record<string, string> = {
+  eng: 'en', english: 'en',
+  spa: 'es', spanish: 'es', esp: 'es',
+  fra: 'fr', fre: 'fr', french: 'fr',
+  deu: 'de', ger: 'de', german: 'de',
+  ita: 'it', italian: 'it',
+  por: 'pt', portuguese: 'pt',
+  nld: 'nl', dut: 'nl', dutch: 'nl',
+  rus: 'ru', russian: 'ru',
+  jpn: 'ja', japanese: 'ja',
+  zho: 'zh', chi: 'zh', chinese: 'zh',
+  kor: 'ko', korean: 'ko',
+};
+
+export const canonicalLanguageCode = (value?: string): string | undefined => {
+  let language = compact(value).toLocaleLowerCase().replace(/_/g, '-');
+  if (!language) return undefined;
+  language = language.replace(/^\/languages\//, '');
+  const base = language.split('-')[0];
+  return LANGUAGE_ALIASES[language] ?? LANGUAGE_ALIASES[base] ?? base;
+};
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
 const titleWords = (value?: string): string[] => normalizeKey(value).split(' ').filter(Boolean);
@@ -123,7 +169,7 @@ const cleanAuthors = (authors: string[]): string[] => {
   for (const raw of authors) {
     const author = compact(raw);
     if (!author) continue;
-    const key = normalizeKey(author);
+    const key = canonicalAuthorIdentity(author);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     cleaned.push(author);
@@ -145,11 +191,8 @@ const cleanGenres = (genres: string[]): string[] => {
   return cleaned;
 };
 
-const cleanLanguage = (value?: string): string | undefined => {
-  const language = compact(value);
-  if (!language) return undefined;
-  return language.toLocaleLowerCase().replace(/_/g, '-').slice(0, 24);
-};
+const cleanLanguage = (value?: string): string | undefined =>
+  canonicalLanguageCode(value);
 
 const formatFromBinding = (binding?: string): BookSearchEdition['format'] | undefined => {
   const normalized = normalizeKey(binding);
@@ -491,7 +534,7 @@ export const selectExactIsbnEdition = (
 };
 
 const workIdentity = (group: BookSearchWorkGroup): string =>
-  `${normalizeKey(group.title)}::${normalizeKey(group.authors[0])}`;
+  `${normalizeKey(group.title)}::${canonicalAuthorIdentity(group.authors[0])}`;
 
 export const inferCatalogAuthorIntent = (
   groups: BookSearchWorkGroup[],
@@ -502,7 +545,7 @@ export const inferCatalogAuthorIntent = (
   if (!normalizedCandidate || /\d/.test(candidate) || candidate.split(/\s+/).length > 5) return undefined;
 
   const exactMatches = groups.filter((group) =>
-    cleanAuthors(group.authors).some((author) => normalizeKey(author) === normalizedCandidate),
+    cleanAuthors(group.authors).some((author) => canonicalAuthorIdentity(author) === canonicalAuthorIdentity(candidate)),
   ).length;
 
   return exactMatches >= 2 ? candidate : undefined;
@@ -543,13 +586,13 @@ export const hardenCatalogGroups = (
     if (!identity.replace(/[:]/g, '')) continue;
 
     const titleKey = normalizeKey(hardened.title);
-    const primaryAuthorKey = normalizeKey(hardened.authors[0]);
+    const primaryAuthorKey = canonicalAuthorIdentity(hardened.authors[0]);
     const authorIsUnknown = primaryAuthorKey === 'unknown author';
     const compatibleIdentity = order.find((candidateKey) => {
       const candidate = merged.get(candidateKey);
       if (!candidate) return false;
 
-      const candidateAuthorKey = normalizeKey(candidate.authors[0]);
+      const candidateAuthorKey = canonicalAuthorIdentity(candidate.authors[0]);
       const authorCompatible = authorIsUnknown
         || candidateAuthorKey === 'unknown author'
         || candidateAuthorKey === primaryAuthorKey;
@@ -572,7 +615,7 @@ export const hardenCatalogGroups = (
       continue;
     }
 
-    if (normalizeKey(existing.authors[0]) === 'unknown author' && !authorIsUnknown) {
+    if (canonicalAuthorIdentity(existing.authors[0]) === 'unknown author' && !authorIsUnknown) {
       existing.authors = hardened.authors;
     }
 
@@ -624,7 +667,7 @@ export const hardenCatalogGroups = (
     });
 
   const preferredAuthorValue = options.preferredAuthor || inferCatalogAuthorIntent(hardenedGroups, options.searchQuery);
-  const preferredAuthor = normalizeKey(preferredAuthorValue);
+  const preferredAuthor = canonicalAuthorIdentity(preferredAuthorValue);
   const shouldApplyTitleRelevance = Boolean(options.searchQuery && !preferredAuthor);
 
   let relevantGroups = shouldApplyTitleRelevance
@@ -639,7 +682,7 @@ export const hardenCatalogGroups = (
   return relevantGroups.sort((left, right) => {
     const authorScore = (group: BookSearchWorkGroup) => {
       if (!preferredAuthor) return 0;
-      const normalizedAuthors = group.authors.map(normalizeKey);
+      const normalizedAuthors = group.authors.map(canonicalAuthorIdentity);
       const exactIndex = normalizedAuthors.indexOf(preferredAuthor);
       if (exactIndex < 0) return normalizedAuthors.includes('unknown author') ? -80 : -120;
       if (normalizedAuthors.length === 1) return 90;
