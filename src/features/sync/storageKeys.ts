@@ -12,6 +12,15 @@ export const SYNC_STORAGE_KEYS = {
   importEnrichmentActiveRetry: 'inkbound_import_enrichment_active_retry_v1',
 } as const;
 
+export const DEVICE_STORAGE_KEYS = {
+  activeTab: 'inkbound_active_tab',
+  timerOpen: 'inkbound_timer_open',
+  timerBookId: 'inkbound_timer_book_id',
+  daytimeLibraryMaintenance: 'inkbound_last_daytime_library_maintenance',
+  scannerReviewDraft: 'inkbound_scanner_review_draft_v1',
+  photoMemoryMetadata: 'inkbound_photo_memories_v2',
+} as const;
+
 export const ACCOUNT_DATA_STORAGE_KEYS = {
   collectionDefinitions: 'inkbound_collection_definitions',
   seriesOverrides: 'inkbound_series_overrides_v1',
