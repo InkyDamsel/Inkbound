@@ -10,6 +10,7 @@ import {
   getReadingStreak,
   getSessionDurationMinutes,
   getSevenDayAveragePace,
+  localDateKey,
 } from '../features/reading/sessionAnalytics';
 import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { removeRuntimeValue } from '../platform/runtimeStorage';
@@ -49,14 +50,6 @@ interface SessionDraft {
 const SESSION_DRAFT_KEY = DEVICE_STORAGE_KEYS.activeSessionDraft;
 const MAX_BACKGROUND_RECOVERY_SECONDS = 8 * 60 * 60;
 
-const localDateKey = (timestamp: number) => {
-  const date = new Date(timestamp);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 const localTime = (timestamp: number) => new Date(timestamp).toTimeString().substring(0, 5);
 
 function addElapsedToDateBuckets(existing: Record<string, number> | undefined, startTimestamp: number, endTimestamp: number) {
@@ -67,7 +60,7 @@ function addElapsedToDateBuckets(existing: Record<string, number> | undefined, s
     const nextMidnight = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0).getTime();
     const segmentEnd = Math.min(endTimestamp, nextMidnight);
     const seconds = Math.max(0, Math.floor((segmentEnd - cursor) / 1000));
-    const key = localDateKey(cursor);
+    const key = localDateKey(new Date(cursor));
     next[key] = (next[key] ?? 0) + seconds;
     cursor = segmentEnd;
   }
@@ -75,8 +68,8 @@ function addElapsedToDateBuckets(existing: Record<string, number> | undefined, s
 }
 
 function fallbackDateBuckets(startedAt: number, endedAt: number, timerSeconds: number) {
-  const startDate = localDateKey(startedAt);
-  const endDate = localDateKey(endedAt);
+  const startDate = localDateKey(new Date(startedAt));
+  const endDate = localDateKey(new Date(endedAt));
   if (startDate === endDate) return { [startDate]: timerSeconds };
   const midnight = new Date(startedAt);
   midnight.setHours(24, 0, 0, 0);
@@ -236,8 +229,8 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
   const endedAt = draft.endedAt ?? Date.now();
   const startedAt = draft.startedAt ?? Math.max(0, endedAt - draft.timerSeconds * 1000);
-  const startDate = localDateKey(startedAt);
-  const endDate = localDateKey(endedAt);
+  const startDate = localDateKey(new Date(startedAt));
+  const endDate = localDateKey(new Date(endedAt));
   const crossedMidnight = startDate !== endDate;
   const recordedBuckets = useMemo(() => {
     const stored = draft.secondsByDate ?? {};
