@@ -1,3 +1,4 @@
+import { DEVICE_STORAGE_KEYS } from '../sync/storageKeys';
 import {
   notifyRuntimeStorageChanged,
   readRuntimeJson,
@@ -10,7 +11,7 @@ export type LibrarySection = 'books' | 'series' | 'collections' | 'loans';
 export const LIBRARY_SECTION_STORAGE_KEY = 'inkbound_library_section';
 export const DEFAULT_LIBRARY_SECTION: LibrarySection = 'books';
 
-const APP_TAB_STORAGE_KEY = 'inkbound_active_tab';
+const APP_TAB_STORAGE_KEY = DEVICE_STORAGE_KEYS.activeTab;
 const SERIES_FOCUS_TARGET_STORAGE_KEY = 'inkbound_library_series_focus_target';
 const LEGACY_SERIES_FOCUS_BOOK_STORAGE_KEY = 'inkbound_library_series_focus_book';
 
