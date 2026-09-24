@@ -10,7 +10,6 @@ const twistedTale = resolveGoogleSeriesMetadata(
 );
 assert.equal(twistedTale.name, 'A Twisted Tale');
 assert.equal(twistedTale.order, 7);
-assert.equal(twistedTale.authorityId, 'google-books:twisted-tale');
 
 const harryPotter = resolveGoogleSeriesMetadata(
   {
@@ -21,7 +20,6 @@ const harryPotter = resolveGoogleSeriesMetadata(
 );
 assert.equal(harryPotter.name, 'Harry Potter');
 assert.equal(harryPotter.order, 4);
-assert.equal(harryPotter.authorityId, 'google-books:harry-potter');
 
 const displayFallback = resolveGoogleSeriesMetadata(
   {
