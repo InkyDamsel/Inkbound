@@ -10,11 +10,11 @@ const retiredCollectionKeys = [
   'inkbound_library_custom_list_members',
 ];
 
-const canonicalRegisteredKeyLiterals = new Map([
-  ['inkbound_reader_profile', 'SYNC_STORAGE_KEYS.profile'],
-  ['inkbound_annual_goal', 'ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal'],
-  ['inkbound_daily_goal_minutes', 'ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes'],
-]);
+const storageKeysRegistrySource = read('src/features/sync/storageKeys.ts');
+const registeredStorageKeyLiterals = [...new Set(
+  [...storageKeysRegistrySource.matchAll(/['"]((?:inkbound|bookhaven)_[A-Za-z0-9_:-]+)['"]/g)]
+    .map((match) => match[1]),
+)];
 
 const sourceFiles = [];
 const walk = (directory) => {
@@ -94,9 +94,9 @@ for (const file of sourceFiles) {
   for (const key of retiredCollectionKeys) {
     if (source.includes(key)) violations.push(`${relative}: references retired collection store ${key}`);
   }
-  for (const [literal, owner] of canonicalRegisteredKeyLiterals) {
+  for (const literal of registeredStorageKeyLiterals) {
     if (source.includes(`'${literal}'`) || source.includes(`"${literal}"`)) {
-      violations.push(`${relative}: redefines registered storage key ${literal}; use ${owner}`);
+      violations.push(`${relative}: hardcodes registered storage key ${literal}; consume storageKeys.ts instead`);
     }
   }
 }
