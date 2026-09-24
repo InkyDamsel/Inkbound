@@ -62,20 +62,23 @@ for (const required of [
   if (!critical.includes(required)) failures.push(`package.json: test:critical is missing ${required}`);
 }
 
-const regressionFiles = [
+const pureRegressionFiles = [
   'scripts/critical-reading-regressions.ts',
   'scripts/reporting-math-regressions.ts',
   'scripts/catalog-hardening-regressions.ts',
   'scripts/google-series-regressions.ts',
-  'scripts/runtime-boundary-regressions.ts',
   'scripts/series-detective-regressions.ts',
   'scripts/smart-collection-regressions.ts',
 ];
-for (const relative of regressionFiles) {
+for (const relative of pureRegressionFiles) {
   const source = read(relative);
   if (/from\s+['"][^'"]*(?:lib\/firebase|firebase\/)/.test(source)) {
-    failures.push(`${relative}: regression entrypoint must not import Firebase runtime modules`);
+    failures.push(`${relative}: pure regression entrypoint must not import Firebase runtime modules`);
   }
+}
+const runtimeBoundaryRegression = read('scripts/runtime-boundary-regressions.ts');
+if (!/from\s+['"][^'"]*lib\/firebase['"]/.test(runtimeBoundaryRegression)) {
+  failures.push('runtime-boundary-regressions.ts: runtime boundary regression must exercise Firebase module initialization');
 }
 
 // Series Detective's runtime module imports live catalog providers, which initialize
