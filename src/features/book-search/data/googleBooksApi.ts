@@ -803,12 +803,15 @@ export async function searchSeriesContextCatalog(
     searchHardcoverWithBackoff(trimmed),
   ]);
 
-  const groups = hardenCatalogGroups([
+  // Deliberately return provider groups before cross-provider hardening.
+  // Series Detective measures independent-provider corroboration before it
+  // canonicalizes duplicate editions; merging here would erase that evidence.
+  const groups = [
     ...trusted.groups,
     ...google.groups,
     ...openLibrary.groups,
     ...hardcover.groups,
-  ]);
+  ];
 
   return {
     groups,
