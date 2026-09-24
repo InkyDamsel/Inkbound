@@ -29,7 +29,6 @@ interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
   onSelectBook: (book: UserBookRecord) => void;
   onAddBook: (book: UserBookRecord) => void;
-  onUpdateBook: (book: UserBookRecord) => void;
 }
 
 type DraftBook = { bookId: string; position: string; label: string };
@@ -50,7 +49,7 @@ const pageWindow = (current: number, total: number): number[] => {
   return Array.from({ length: 5 }, (_, index) => start + index);
 };
 
-export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook, onUpdateBook }) => {
+export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
