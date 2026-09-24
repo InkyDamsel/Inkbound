@@ -32,6 +32,13 @@ for (const file of sourceFiles) {
   const relative = path.relative(root, file).replaceAll('\\', '/');
   const source = fs.readFileSync(file, 'utf8');
 
+  const mayUseBrowserLocalStorage =
+    relative === 'src/platform/runtimeStorage.ts'
+    || relative === 'src/platform/largeBrowserStorage.ts';
+  if (!mayUseBrowserLocalStorage && /\blocalStorage\./.test(source)) {
+    violations.push(`${relative}: direct browser localStorage access is forbidden; use runtimeStorage.ts`);
+  }
+
   const isCatalogProviderLayer = relative.startsWith('src/features/book-search/data/');
   if (!isCatalogProviderLayer) {
     if (/from ['"][^'"]*book-search\/data\/openLibraryApi['"]/.test(source)) {
