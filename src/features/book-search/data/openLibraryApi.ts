@@ -1,6 +1,6 @@
 import { Format } from '../../../types';
 import type { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { catalogTitlesAreCompatible, hardenCatalogGroups, mergeCatalogEditionData } from '../catalogHardening';
+import { canonicalAuthorIdentity, catalogTitlesAreCompatible, hardenCatalogGroups, mergeCatalogEditionData } from '../catalogHardening';
 
 interface OpenLibraryEdition {
   key?: string;
@@ -395,7 +395,7 @@ const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
     .filter((edition): edition is BookSearchEdition => Boolean(edition));
   if (editions.length === 0) return null;
   return {
-    key: `open-library:${work.key ?? `${normalize(work.title)}:${normalize(work.author_name?.[0])}`}`,
+    key: `open-library:${work.key ?? `${normalize(work.title)}:${canonicalAuthorIdentity(work.author_name?.[0])}`}`,
     title: work.title,
     subtitle: work.subtitle,
     authors: work.author_name?.length ? work.author_name : ['Unknown author'],
@@ -475,7 +475,7 @@ export async function searchOpenLibraryPage(
 }
 
 /**
- * Series-context lookup used only by Series Detective's zero-result fallback.
+ * Series-context lookup used only by Series Detective's additive discovery path.
  * This intentionally does not apply normal title-search relevance because an
  * installment title may share no words with its series name.
  */
@@ -544,12 +544,10 @@ export async function searchOpenLibraryExactTitleAuthor(
     { searchQuery: trimmedTitle },
   );
 
-  const wantedAuthor = normalize(trimmedAuthor);
-  const authorMatched = initialGroups.filter((group) => {
-    const candidateAuthors = normalize(group.authors.join(' '));
-    const tokens = wantedAuthor.split(' ').filter(Boolean);
-    return tokens.length > 0 && tokens.every((token) => candidateAuthors.includes(token));
-  });
+  const wantedAuthor = canonicalAuthorIdentity(trimmedAuthor);
+  const authorMatched = initialGroups.filter((group) =>
+    group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
+  );
 
   const hydrated = await hydrateOpenLibraryExactGroups(
     authorMatched,
@@ -579,13 +577,14 @@ export async function fetchOpenLibrarySummary(title: string, author: string, sig
 
   const payload = (await response.json()) as OpenLibraryResponse;
   const wantedTitle = normalize(title);
-  const wantedAuthor = normalize(author);
+  const wantedAuthor = canonicalAuthorIdentity(author);
   const candidate = (payload.docs ?? []).find((work) => {
     const candidateTitle = normalize(work.title);
-    const candidateAuthors = normalize((work.author_name ?? []).join(' '));
     const titleMatch = candidateTitle === wantedTitle || candidateTitle.includes(wantedTitle) || wantedTitle.includes(candidateTitle);
-    const authorTokens = wantedAuthor.split(' ').filter(Boolean);
-    const authorMatch = authorTokens.length === 0 || authorTokens.every((token) => candidateAuthors.includes(token));
+    const authorMatch = !wantedAuthor
+      || (work.author_name ?? []).some((candidateAuthor) =>
+        canonicalAuthorIdentity(candidateAuthor) === wantedAuthor,
+      );
     return Boolean(work.key && titleMatch && authorMatch);
   });
   if (!candidate?.key) return undefined;
