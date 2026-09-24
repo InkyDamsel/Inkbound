@@ -5,6 +5,7 @@ import type {
 import { getRuntimeStorage, removeRuntimeValue, writeRuntimeJson } from '../../platform/runtimeStorage';
 import { searchGoogleBooks } from '../book-search/data/googleBooksApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import { canonicalAuthorIdentity } from '../book-search/catalogHardening';
 import { LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
 export const IMPORT_ENRICHMENT_QUEUE_KEY = SYNC_STORAGE_KEYS.importEnrichmentQueue;
@@ -118,7 +119,7 @@ function titleSearchVariants(value?: string): string[] {
 
 function authorSearchVariants(value?: string): string[] {
   const raw = value?.trim() ?? '';
-  const normalized = normalizeText(raw);
+  const normalized = canonicalAuthorIdentity(raw);
   if (!raw || !normalized || normalized === 'unknown author') return [];
   const parts = raw.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
   const surname = parts.at(-1) ?? '';
@@ -131,8 +132,8 @@ function authorSearchVariants(value?: string): string[] {
 }
 
 function authorMatches(importAuthor?: string, candidateAuthor?: string): boolean {
-  const wanted = normalizeText(importAuthor);
-  const candidate = normalizeText(candidateAuthor);
+  const wanted = canonicalAuthorIdentity(importAuthor);
+  const candidate = canonicalAuthorIdentity(candidateAuthor);
   if (!wanted || !candidate || wanted === 'unknown author' || candidate === 'unknown author') return false;
   if (wanted === candidate || wanted.includes(candidate) || candidate.includes(wanted)) return true;
 
@@ -147,8 +148,8 @@ function authorMatches(importAuthor?: string, candidateAuthor?: string): boolean
 }
 
 function authorSimilarity(importAuthor?: string, candidateAuthor?: string): number {
-  const wanted = normalizeText(importAuthor);
-  const candidate = normalizeText(candidateAuthor);
+  const wanted = canonicalAuthorIdentity(importAuthor);
+  const candidate = canonicalAuthorIdentity(candidateAuthor);
   if (!wanted || !candidate || wanted === 'unknown author' || candidate === 'unknown author') return 0;
   if (wanted === candidate) return 1;
   if (wanted.includes(candidate) || candidate.includes(wanted)) return 0.94;
@@ -212,7 +213,7 @@ function bookIdentifiers(book: UserBookRecord): string[] {
 
 function titleAuthorKey(title?: string, author?: string): string {
   const normalizedTitle = normalizeText(title);
-  const normalizedAuthor = normalizeText(author);
+  const normalizedAuthor = canonicalAuthorIdentity(author);
   if (!normalizedTitle || !normalizedAuthor || normalizedAuthor === 'unknown author') return '';
   return `${normalizedTitle}::${normalizedAuthor}`;
 }
@@ -396,7 +397,7 @@ async function findBestImportedMetadata(
 
   const title = item.title.trim();
   const author = item.author.trim();
-  if (!title || !author || normalizeText(author) === 'unknown author') return {};
+  if (!title || !author || canonicalAuthorIdentity(author) === 'unknown author') return {};
 
   const seenGroups = new Map<string, BookSearchWorkGroup>();
   for (const query of importSearchQueries(item)) {
