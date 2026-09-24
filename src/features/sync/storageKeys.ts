@@ -19,6 +19,13 @@ export const DEVICE_STORAGE_KEYS = {
   daytimeLibraryMaintenance: 'inkbound_last_daytime_library_maintenance',
   scannerReviewDraft: 'inkbound_scanner_review_draft_v1',
   photoMemoryMetadata: 'inkbound_photo_memories_v2',
+  importHistory: 'inkbound_import_history_v1',
+  importVerificationResult: 'inkbound_import_verification_result_v2',
+  importMetadataPending: 'inkbound_import_metadata_pending_v1',
+} as const;
+
+export const LEGACY_DEVICE_STORAGE_KEYS = {
+  importVerificationResult: 'inkbound_import_verification_result_v1',
 } as const;
 
 export const ACCOUNT_DATA_STORAGE_KEYS = {
