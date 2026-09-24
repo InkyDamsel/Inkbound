@@ -185,7 +185,7 @@ const groupGoogleEditions = (editions: BookSearchEdition[]): BookSearchWorkGroup
   const order: string[] = [];
 
   editions.forEach((edition) => {
-    const key = `${normalizeText(edition.title)}::${normalizeText(edition.authors[0])}`;
+    const key = `${normalizeText(edition.title)}::${canonicalAuthorIdentity(edition.authors[0])}`;
     const existing = groups.get(key);
     if (!existing) {
       groups.set(key, {
@@ -214,7 +214,7 @@ const groupGoogleEditions = (editions: BookSearchEdition[]): BookSearchWorkGroup
 };
 
 const groupIdentity = (group: BookSearchWorkGroup): string =>
-  `${normalizeText(group.title)}::${normalizeText(group.authors[0])}`;
+  `${normalizeText(group.title)}::${canonicalAuthorIdentity(group.authors[0])}`;
 
 const sameEdition = (
   a: BookSearchWorkGroup['editions'][number],
