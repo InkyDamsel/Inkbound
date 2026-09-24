@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 import {
+  buildSeriesDetectionQueries,
   hasKnownSeriesContextEvidence,
+  inferKnownSeriesFromBibliographicText,
   plausibleSeriesSubtitle,
   scoreSeriesEvidence,
   selectVerifiedSeriesEvidence,
   selectVerifiedSubtitleSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
-import { buildSeriesDetectionQueries, inferKnownSeriesFromBibliographicText } from '../src/features/series/seriesDetective';
 
 const book = {
   id: 'book-1',
