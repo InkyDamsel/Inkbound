@@ -121,6 +121,24 @@ const work = (title: string, edition: BookSearchEdition): BookSearchWorkGroup =>
   editions: [edition],
 });
 
+const invertedAuthorGroups = hardenCatalogGroups([
+  {
+    key: 'author-forward',
+    title: 'Canonical Identity Test',
+    authors: ['Example Writer'],
+    genres: [],
+    editions: [{ ...goodEdition, externalEditionId: 'author-forward', title: 'Canonical Identity Test', authors: ['Example Writer'] }],
+  },
+  {
+    key: 'author-inverted',
+    title: 'Canonical Identity Test',
+    authors: ['Writer, Example'],
+    genres: [],
+    editions: [{ ...goodEdition, source: 'open-library', externalEditionId: 'author-inverted', title: 'Canonical Identity Test', authors: ['Writer, Example'] }],
+  },
+]);
+assert.equal(invertedAuthorGroups.length, 1);
+
 const groups = hardenCatalogGroups([
   work('STEPHEN KING BOX SET', { ...goodEdition, externalEditionId: 'box' }),
   work('DOCTOR SLEEP', goodEdition),
