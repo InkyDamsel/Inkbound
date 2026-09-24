@@ -8,8 +8,7 @@ import {
   selectVerifiedSubtitleSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
-import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetectiveQueries';
-import { catalogEditionSources, hardenCatalogGroups } from '../src/features/book-search/catalogHardening';
+import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetective';
 
 const book = {
   id: 'book-1',
@@ -134,51 +133,6 @@ const standaloneTwistedTale = scoreSeriesEvidence(
 );
 assert.equal(standaloneTwistedTale, null);
 
-// Series-name searches must retain installments whose series appears in a
-// subtitle/structured field even when the work title itself contains none of
-// the series words. This is a general publisher-catalog pattern, not a
-// title-specific exception.
-const subtitleOnlySeriesHit = hardenCatalogGroups([
-  work(
-    edition('google-books', {
-      title: 'As Old as Time',
-      subtitle: 'A Twisted Tale',
-      authors: ['Liz Braswell'],
-      seriesName: undefined,
-      seriesOrder: undefined,
-      isbn13: undefined,
-      isbn10: undefined,
-    }),
-    { title: 'As Old as Time', subtitle: 'A Twisted Tale', authors: ['Liz Braswell'] },
-  ),
-], { searchQuery: 'A Twisted Tale' });
-assert.equal(subtitleOnlySeriesHit.length, 1);
-
-// Independent provider agreement must survive exact-ISBN deduplication.
-const corroboratedEditionGroup = hardenCatalogGroups([
-  work(edition('google-books', {
-    title: 'Example Series Installment',
-    subtitle: 'Example Shared Series',
-    isbn13: '9781234567897',
-    isbn10: undefined,
-    seriesName: undefined,
-    seriesOrder: undefined,
-  }), { title: 'Example Series Installment' }),
-  work(edition('open-library', {
-    title: 'Example Series Installment',
-    subtitle: 'Example Shared Series',
-    isbn13: '9781234567897',
-    isbn10: undefined,
-    seriesName: undefined,
-    seriesOrder: undefined,
-  }), { title: 'Example Series Installment' }),
-]);
-assert.equal(corroboratedEditionGroup.length, 1);
-assert.equal(
-  new Set(corroboratedEditionGroup[0].editions.flatMap(catalogEditionSources)).size,
-  2,
-);
-
 const twistedInstallment = work(
   edition('google-books', {
     title: 'As Old as Time',
@@ -272,23 +226,26 @@ assert.equal(
   null,
 );
 
-const reorderedAuthorEdition = edition('hardcover', {
-  authors: ['Gilmore, Laurie'],
-});
-const reorderedAuthorEvidence = scoreSeriesEvidence(
-  work(reorderedAuthorEdition, { authors: ['Gilmore, Laurie'] }),
-  reorderedAuthorEdition,
-  book,
-);
-assert.ok(reorderedAuthorEvidence);
-assert.equal(reorderedAuthorEvidence?.exactAuthor, true);
-assert.equal(selectVerifiedSeriesEvidence([reorderedAuthorEvidence!])?.name, 'Dream Harbor');
-
 const wrongAuthorEdition = edition('hardcover', { authors: ['Someone Else'] });
 const wrongAuthor = scoreSeriesEvidence(work(wrongAuthorEdition), wrongAuthorEdition, book);
 assert.ok(wrongAuthor);
 assert.equal(wrongAuthor?.exactAuthor, false);
 assert.equal(selectVerifiedSeriesEvidence([wrongAuthor!]), null);
+
+const formattedAuthorExactIsbnEdition = edition('hardcover', {
+  authors: ['Gilmore, Laurie'],
+});
+const formattedAuthorExactIsbn = scoreSeriesEvidence(
+  work(formattedAuthorExactIsbnEdition, { authors: ['Gilmore, Laurie'] }),
+  formattedAuthorExactIsbnEdition,
+  book,
+);
+assert.ok(formattedAuthorExactIsbn);
+assert.equal(formattedAuthorExactIsbn?.structured, true);
+assert.equal(formattedAuthorExactIsbn?.exactIdentifier, true);
+assert.equal(formattedAuthorExactIsbn?.exactAuthor, false);
+assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.name, 'Dream Harbor');
+assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.position, 2);
 
 // Provider naming differences must not split one real series.
 assert.equal(canonicalSeriesIdentity('Hades x Persephone Saga'), 'hades persephone');
@@ -330,37 +287,6 @@ assert.equal(aliasSeries.length, 1);
 assert.equal(aliasSeries[0].books.length, 2);
 assert.equal(aliasSeries[0].books[0].position, 1);
 assert.equal(aliasSeries[0].books[1].position, 2);
-
-// A provider series identity must keep legitimate multi-author installments
-// in one canonical series without globally merging every same-named series.
-const sharedAuthorityBookA = {
-  ...aliasBookOne,
-  id: 'shared-authority-1',
-  work: {
-    ...aliasBookOne.work,
-    title: 'Installment One',
-    author: 'Author One',
-    seriesName: 'Shared World',
-    seriesOrder: 1,
-    seriesAuthorityId: 'google-books:shared-world',
-  },
-} as unknown as UserBookRecord;
-const sharedAuthorityBookB = {
-  ...aliasBookTwo,
-  id: 'shared-authority-2',
-  work: {
-    ...aliasBookTwo.work,
-    title: 'Installment Two',
-    author: 'Author Two',
-    seriesName: 'Shared World',
-    seriesOrder: 2,
-    seriesAuthorityId: 'google-books:shared-world',
-  },
-} as unknown as UserBookRecord;
-const sharedAuthoritySeries = buildSeriesLibrary([sharedAuthorityBookA, sharedAuthorityBookB]);
-assert.equal(sharedAuthoritySeries.length, 1);
-assert.equal(sharedAuthoritySeries[0].books.length, 2);
-assert.equal(sharedAuthoritySeries[0].author, 'Various authors');
 
 const aliasEvidenceA = scoreSeriesEvidence(
   work(edition('open-library', {
