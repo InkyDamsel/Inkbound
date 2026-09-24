@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import {
+  canonicalAuthorIdentity,
+  canonicalLanguageCode,
   catalogEditionQualityScore,
   enrichSelectedCatalogEdition,
   hardenCatalogEdition,
@@ -30,6 +32,14 @@ assert.equal(isValidCatalogIsbn10('0307743659'), true);
 assert.equal(isValidCatalogIsbn10('0307743658'), false);
 assert.equal(isValidCatalogIsbn13('9780307743657'), true);
 assert.equal(isValidCatalogIsbn13('9780307743658'), false);
+assert.equal(canonicalAuthorIdentity('Christopher Pike'), canonicalAuthorIdentity('Pike, Christopher'));
+assert.equal(canonicalAuthorIdentity('Agatha Christie'), canonicalAuthorIdentity('Christie, Agatha'));
+assert.equal(canonicalAuthorIdentity('Dame Agatha Christie'), canonicalAuthorIdentity('Agatha Christie'));
+assert.equal(canonicalLanguageCode('en'), 'en');
+assert.equal(canonicalLanguageCode('eng'), 'en');
+assert.equal(canonicalLanguageCode('/languages/eng'), 'en');
+assert.equal(canonicalLanguageCode('English'), 'en');
+
 
 const hardenedEdition = hardenCatalogEdition({
   ...baseEdition,
