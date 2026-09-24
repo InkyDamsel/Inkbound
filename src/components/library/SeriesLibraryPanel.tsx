@@ -24,6 +24,7 @@ import {
 import { BookCover } from '../BookCover';
 import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
 import { createBookFromSearchEdition } from '../../features/book-search/mapping/bookSearchMapper';
+import { canonicalAuthorIdentity } from '../../features/book-search/catalogHardening';
 
 interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
@@ -119,11 +120,11 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
     }
 
     const normalizedTargetName = pendingFocusTarget.seriesName?.trim().toLowerCase();
-    const normalizedTargetAuthor = pendingFocusTarget.author?.trim().toLowerCase();
+    const normalizedTargetAuthor = canonicalAuthorIdentity(pendingFocusTarget.author);
     const targetIndex = filtered.findIndex((item) => {
       if (normalizedTargetName) {
         const sameName = item.name.trim().toLowerCase() === normalizedTargetName;
-        const sameAuthor = !normalizedTargetAuthor || item.author.trim().toLowerCase() === normalizedTargetAuthor;
+        const sameAuthor = !normalizedTargetAuthor || canonicalAuthorIdentity(item.author) === normalizedTargetAuthor;
         if (sameName && sameAuthor) return true;
       }
       return item.books.some(({ book }) => book.id === pendingFocusTarget.bookId);
