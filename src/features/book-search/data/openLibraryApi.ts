@@ -253,12 +253,26 @@ const hydrateOpenLibraryGroupFromWork = async (
   const details = await fetchOpenLibraryWorkEditions(rawKey, signal);
   if (!details.length) return group;
 
+  // Preserve work-level series evidence from the search payload while
+  // hydrating richer edition records. Open Library often exposes series on the
+  // work/search result but not on every edition. Replacing the thin editions
+  // outright used to trade correct series metadata for richer ISBN/page data.
+  const primarySeriesEdition = group.editions.find((edition) => edition.seriesName);
+  const inheritedSeries = primarySeriesEdition?.seriesName
+    ? [
+        typeof primarySeriesEdition.seriesOrder === 'number'
+          ? `${primarySeriesEdition.seriesName} #${primarySeriesEdition.seriesOrder}`
+          : primarySeriesEdition.seriesName,
+      ]
+    : undefined;
+
   const workLike: OpenLibraryWork = {
     key: rawKey,
     title: group.title,
     subtitle: group.subtitle,
     author_name: group.authors,
     subject: group.genres,
+    series: inheritedSeries,
   };
 
   const detailedEditions = details
@@ -269,7 +283,13 @@ const hydrateOpenLibraryGroupFromWork = async (
 
   return {
     ...group,
-    editions: detailedEditions,
+    editions: detailedEditions.map((edition) => ({
+      ...edition,
+      seriesName: edition.seriesName ?? primarySeriesEdition?.seriesName,
+      seriesOrder: typeof edition.seriesOrder === 'number'
+        ? edition.seriesOrder
+        : primarySeriesEdition?.seriesOrder,
+    })),
   };
 };
 
