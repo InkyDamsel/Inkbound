@@ -22,11 +22,25 @@ export const DEVICE_STORAGE_KEYS = {
   importHistory: 'inkbound_import_history_v1',
   importVerificationResult: 'inkbound_import_verification_result_v2',
   importMetadataPending: 'inkbound_import_metadata_pending_v1',
+  importCenterView: 'inkbound_import_center_view',
+  notificationsRead: 'inkbound_notifications_read',
+  libraryLoanRemindersRead: 'inkbound_library_loan_reminders_read',
+  navigationCollapsedGroups: 'inkbound_navigation_collapsed_groups',
+  sidebarCollapsed: 'inkbound_sidebar_collapsed',
+  activeSessionDraft: 'inkbound_active_session_draft',
+  collectionView: 'inkbound_collection_view',
+  collectionSort: 'inkbound_collection_sort',
+  loansSort: 'inkbound_loans_sort',
+  seriesSort: 'inkbound_series_sort',
+  librarySection: 'inkbound_library_section',
+  librarySeriesFocusTarget: 'inkbound_library_series_focus_target',
+  importEnrichmentAutopauseCleanup: 'inkbound_import_enrichment_autopause_cleanup_v1',
 } as const;
 
 export const LEGACY_DEVICE_STORAGE_KEYS = {
   importVerificationResult: 'inkbound_import_verification_result_v1',
   importEnrichmentRetryRequest: 'inkbound_import_enrichment_retry_request_v1',
+  librarySeriesFocusBook: 'inkbound_library_series_focus_book',
 } as const;
 
 export const ACCOUNT_DATA_STORAGE_KEYS = {
@@ -62,15 +76,21 @@ export const LEGACY_ACCOUNT_DATA_STORAGE_KEYS = {
   syncBaselineV1: (uid: string) => `inkbound_sync_baseline_${uid}_v1`,
 } as const;
 
-export const syncPendingStateKey = (uid: string) => `inkbound_pending_sync_${uid}_v1`;
+export const SYNC_STORAGE_PREFIXES = {
+  pending: 'inkbound_pending_sync_',
+  baseline: 'inkbound_sync_baseline_',
+} as const;
+
+export const syncPendingStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.pending}${uid}_v1`;
 // v3 intentionally invalidates only the cached comparison baseline. Pending
 // local mutations and the cross-device cursor keep their existing versions so
 // an older account can rebuild a clean baseline without losing unsynced edits
 // or replaying its full delta history.
-export const syncBaselineStateKey = (uid: string) => `inkbound_sync_baseline_${uid}_v3`;
+export const syncBaselineStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.baseline}${uid}_v3`;
 export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 export const fullReconciliationVersionKey = (uid: string) => `inkbound_full_reconciliation_${uid}_v1`;
+export const librarySyncCheckpointKey = (uid: string) => `inkbound_library_sync_checkpoint_v1_${uid}`;
 
 // Single source of truth for the one-time full account reconciliation. Bumping
 // this value deliberately forces existing browser/device working copies through
