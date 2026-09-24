@@ -61,6 +61,26 @@ New status-changing, progress-presenting, aggregate-progress, or session-reconci
 
 This owns library limits, subscription availability, planned pricing, and which features belong to Free or Premium. Marketing, Settings, upgrade UI, and entitlement consumers should read this policy rather than redefining the plan independently.
 
+## Catalog metadata and search identity
+
+**Canonical normalization / merge boundary:** `src/features/book-search/catalogHardening.ts`
+
+- `canonicalAuthorIdentity()` owns author identity across providers, UI filtering, work grouping, and Series Detective. Provider display variants such as `Last, First`, honorifics, and punctuation must not create a second author identity.
+- `canonicalLanguageCode()` owns language identity. Equivalent provider values such as `en`, `eng`, `English`, and Open Library language keys must compare as the same language.
+- `mergeCatalogEditionData()` owns non-destructive edition enrichment.
+- Metadata enrichment is **monotonic**: a missing value from one provider never erases a populated value from another provider. Only two populated, incompatible values require conflict/authority resolution.
+- Work and edition grouping must use canonical identity helpers rather than local string normalizers.
+- Provider hydration enriches existing records; it must not replace an existing work/edition wholesale and silently discard known ISBN, page-count, series, language, cover, format, publisher, or publication metadata.
+
+**Canonical catalog orchestration:** `src/features/book-search/data/googleBooksApi.ts`
+
+- Add Reading Material uses the normal canonical catalog chain.
+- Series Detective's series-context search is a separate bounded discovery path and must never leak into normal Search.
+- Author-vs-title intent is decided only after evidence is collected. One provider returning missing/noisy data does not veto exact evidence from another provider.
+- Once author intent is proven, records that are merely *about* that person are not valid author-search results.
+
+Search screens and Series Detective consume these canonical services; they must not create alternate provider pipelines, alternate author/language normalizers, or destructive metadata replacement rules.
+
 ## Series
 
 **Canonical series resolver:** `src/features/series/seriesLibrary.ts`
