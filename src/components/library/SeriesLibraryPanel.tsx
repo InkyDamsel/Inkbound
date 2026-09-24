@@ -246,8 +246,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
     setDetectiveError('');
     setDetectiveLoading(true);
     try {
-      const seedAuthor = item.books[0]?.book.work.author || item.author;
-      const result = await findMissingSeriesBooks(item.name, seedAuthor, books);
+      const result = await findMissingSeriesBooks(item.name, item.author, books);
       setDetectiveResult(result);
     } catch (error) {
       setDetectiveError(error instanceof Error ? error.message : 'Series Detective could not check this series.');
