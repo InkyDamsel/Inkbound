@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import {
@@ -12,6 +13,8 @@ import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
+  ACCOUNT_LIBRARY_MIGRATION_VERSION,
+  accountLibraryMigrationVersionKey,
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -55,6 +58,10 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   try {
     const storage = getRuntimeStorage();
     if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
+    // A sync-engine migration can invalidate an otherwise "established" local
+    // cache. Until this device has completed the current full reconciliation,
+    // cloud remains the authoritative repair source for existing account data.
+    if (storage.getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
 
     const raw = storage.getItem(BOOKS_KEY);
     if (!raw) return false;
@@ -72,6 +79,12 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
 function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): T[] {
   const merged = new Map(localItems.map((item) => [item.id, item]));
   cloudItems.forEach((item) => merged.set(item.id, item));
+  return [...merged.values()];
+}
+
+function mergeBooksById(localItems: UserBookRecord[], cloudItems: UserBookRecord[]): UserBookRecord[] {
+  const merged = new Map(localItems.map((item) => [item.id, item]));
+  cloudItems.forEach((item) => merged.set(item.id, mergeIncomingBookLoanState(merged.get(item.id), item)));
   return [...merged.values()];
 }
 
@@ -153,7 +166,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
         const localBooks = sameAccountLocalData ? readJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
         const localSessions = sameAccountLocalData ? readJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
-        writeJson(BOOKS_KEY, mergeById(localBooks, cloudBooks));
+        writeJson(BOOKS_KEY, mergeBooksById(localBooks, cloudBooks));
         writeJson(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
 
         if (profileSnapshot.exists()) {
@@ -191,6 +204,9 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
+        // A new/returning device that built its working copy directly from the
+        // verified cloud snapshot does not need a local-to-cloud migration.
+        storage.setItem(accountLibraryMigrationVersionKey(uid), ACCOUNT_LIBRARY_MIGRATION_VERSION);
         storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
         if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) {
           storage.removeItem(HYDRATION_REQUIRED_UID_KEY);
