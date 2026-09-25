@@ -282,10 +282,13 @@ const evidenceForVolume = (
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
   const exactAuthor = !wantedAuthor || (volume.volumeInfo?.authors ?? [])
     .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor);
-  const structured = Boolean((volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
-    const id = membership.seriesId?.trim();
-    return Boolean(id && catalog.seriesTitlesById[id]);
-  }));
+  const structured = Boolean(
+    (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
+      const id = membership.seriesId?.trim();
+      return Boolean(id && catalog.seriesTitlesById[id]);
+    })
+    || volume.inkboundBibliographicSeries?.name?.trim(),
+  );
 
   return scoreDetectiveEvidence({
     seriesName: metadata.name,
@@ -572,7 +575,9 @@ const mergeCandidateFromGoogleVolume = (
     position: metadata?.position ?? null,
     provider: 'google-books',
     seriesProvider: metadata ? 'google-books' : undefined,
-    seriesStructured: metadata ? hasStructuredSeries : undefined,
+    seriesStructured: metadata
+      ? Boolean(hasStructuredSeries || volume.inkboundBibliographicSeries?.name?.trim())
+      : undefined,
   };
 };
 
