@@ -255,6 +255,24 @@ if (!bulkHistoricalSessionsSource.includes('onSave(nextSessions)')) {
   violations.push('BulkHistoricalSessionsModal.tsx: bulk historical sessions must save through the parent canonical session mutation path');
 }
 
+const fullCloudReconciliationSource = read('src/features/sync/FullCloudReconciliationBridge.tsx');
+const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
+const accountLibraryMigrationSource = read('src/features/sync/accountLibraryMigration.ts');
+
+if (
+  !fullCloudReconciliationSource.includes('uploadMissingMigrationRecords')
+  || !fullCloudReconciliationSource.includes('accountLibraryMigrationSnapshotKey')
+  || !fullCloudReconciliationSource.includes('verifiedBookSnapshot')
+) {
+  violations.push('FullCloudReconciliationBridge.tsx: local-only account libraries must snapshot, upload, and verify before migration completes');
+}
+if (!cloudServerRefreshSource.includes('canReportCloudLibraryHealthy')) {
+  violations.push('CloudServerRefreshBridge.tsx: manual refresh must block empty cloud from masquerading as a synced non-empty local library');
+}
+if (!accountLibraryMigrationSource.includes('if (!migrationVerified) return true')) {
+  violations.push('accountLibraryMigration.ts: non-empty local libraries must remain migration-pending until round-trip verification completes');
+}
+
 const addBookModalSource = read('src/components/AddBookModal.tsx');
 if (!addBookModalSource.includes("import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';")) {
   violations.push('AddBookModal.tsx: clean Build 28 must keep the proven Build 27 general Search boundary');
