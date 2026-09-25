@@ -273,13 +273,21 @@ async function copyCollectionWithoutOverwrite(
     let targetSnapshot = await targetRef.get();
     if (targetSnapshot.exists) {
       if (!prefixOnCollision) {
+        // A prior interrupted merge may already have copied this exact record.
+        // Treat byte-equivalent data as complete so the operation is retryable;
+        // genuinely different records remain a hard conflict.
+        if (JSON.stringify(targetSnapshot.data()) === JSON.stringify(document.data())) continue;
         collisions.push(document.id);
         continue;
       }
       targetId = `merged-${source.parent.parent?.id ?? 'source'}-${document.id}`;
       targetRef = target.doc(targetId);
       targetSnapshot = await targetRef.get();
-      if (targetSnapshot.exists) collisions.push(document.id);
+      if (targetSnapshot.exists) {
+        if (JSON.stringify(targetSnapshot.data()) === JSON.stringify(document.data())) continue;
+        collisions.push(document.id);
+        continue;
+      }
     }
     writes.push({ id: targetId, data: document.data() });
   }
@@ -444,7 +452,15 @@ export const mergeAdminUserAccounts = onCall({
     const destination = bucket.file(destinationName);
     const [exists] = await destination.exists();
     if (exists) {
-      throw new HttpsError('failed-precondition', `Account merge stopped because destination storage already contains ${suffix}. No source account was deleted.`);
+      const [[sourceMetadata], [destinationMetadata]] = await Promise.all([
+        file.getMetadata(),
+        destination.getMetadata(),
+      ]);
+      const sameFile = sourceMetadata.size === destinationMetadata.size
+        && Boolean(sourceMetadata.md5Hash)
+        && sourceMetadata.md5Hash === destinationMetadata.md5Hash;
+      if (sameFile) continue;
+      throw new HttpsError('failed-precondition', `Account merge stopped because destination storage already contains a different ${suffix}. No source account was deleted.`);
     }
     await file.copy(destination);
   }
