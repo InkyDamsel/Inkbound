@@ -1,5 +1,5 @@
-import React, { FormEvent, useEffect, useState } from 'react';
-import { BookOpen, Loader2, Search, X } from 'lucide-react';
+import React, { FormEvent, useEffect, useRef, useState } from 'react';
+import { BookOpen, Camera, Check, Loader2, ScanLine, Search, Trash2, X } from 'lucide-react';
 import {
   FORMAT_OPTIONS,
   MATERIAL_TYPE_OPTIONS,
@@ -26,10 +26,16 @@ interface AddBookModalProps {
   onAddMultipleBooks?: (newBooks: UserBookRecord[]) => void;
 }
 
-type AddBookTab = 'search' | 'manual';
+type AddBookTab = 'search' | 'scan' | 'manual';
 type PendingSearchEdition = { work: BookSearchWorkGroup; edition: BookSearchEdition };
 type CustomOwnershipSelection = `custom:${string}`;
 type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
+type ScannedBook = { isbn: string; book: UserBookRecord };
+
+type BarcodeDetectorLike = {
+  detect(source: HTMLVideoElement): Promise<Array<{ rawValue?: string }>>;
+};
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const BUILT_IN_OWNERSHIP_OPTIONS = OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom');
@@ -40,7 +46,7 @@ const today = () => {
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const isCustomOwnershipSelection = (selection: OwnershipSelection): selection is CustomOwnershipSelection => selection.startsWith('custom:');
 
-export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }) => {
+export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, onAddMultipleBooks }) => {
   const [activeTab, setActiveTab] = useState<AddBookTab>('search');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<BookSearchWorkGroup[]>([]);
@@ -63,6 +69,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
   const [ownershipSelection, setOwnershipSelection] = useState<OwnershipSelection>('owned');
   const [priority, setPriority] = useState<Priority>('medium');
 
+  const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>([]);
+  const [manualIsbn, setManualIsbn] = useState('');
+  const [scannerBusy, setScannerBusy] = useState(false);
+  const [scannerMessage, setScannerMessage] = useState<string | null>(null);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const detectorRef = useRef<BarcodeDetectorLike | null>(null);
+  const scanLoopRef = useRef<number | null>(null);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -82,6 +99,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
     return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
   }, []);
 
+  useEffect(() => () => {
+    if (scanLoopRef.current !== null) cancelAnimationFrame(scanLoopRef.current);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
   const createAndSelectCustomOwnership = () => {
     const created = createCustomOwnershipCategory(newCustomOwnershipName);
     if (!created) return;
@@ -89,6 +111,101 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
     setOwnershipSelection(`custom:${created.id}`);
     setNewCustomOwnershipName('');
     setCreatingCustomOwnership(false);
+  };
+
+  const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
+
+  const stopCamera = () => {
+    if (scanLoopRef.current !== null) cancelAnimationFrame(scanLoopRef.current);
+    scanLoopRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraActive(false);
+  };
+
+  const lookupScannedIsbn = async (rawIsbn: string) => {
+    const isbn = normalizeIsbn(rawIsbn);
+    if (!(isbn.length === 10 || isbn.length === 13) || scannerBusy) {
+      if (isbn) setScannerError('Enter or scan a valid 10- or 13-digit ISBN.');
+      return;
+    }
+    if (scannedBooks.some((item) => item.isbn === isbn)) {
+      setScannerMessage('That ISBN is already in this scan batch.');
+      setScannerError(null);
+      return;
+    }
+
+    setScannerBusy(true);
+    setScannerError(null);
+    setScannerMessage(null);
+    try {
+      const response = await searchGoogleBooks(`isbn:${isbn}`);
+      const work = response.groups[0];
+      const edition = work?.editions[0];
+      if (!work || !edition) {
+        setScannerError('No matching book was found for that ISBN.');
+        return;
+      }
+      const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
+      setScannedBooks((current) => [...current, { isbn, book }]);
+      setManualIsbn('');
+      setScannerMessage(`Added “${work.title}” to this scan batch.`);
+    } catch (error) {
+      setScannerError(error instanceof Error ? error.message : 'ISBN lookup failed. Please try again.');
+    } finally {
+      setScannerBusy(false);
+    }
+  };
+
+  const startCamera = async () => {
+    setScannerError(null);
+    setScannerMessage(null);
+    const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+    if (!Detector) {
+      setScannerError('Barcode scanning is not supported in this browser. You can still enter the ISBN manually.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      detectorRef.current = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setCameraActive(true);
+
+      const scanFrame = async () => {
+        if (!videoRef.current || !detectorRef.current || !streamRef.current) return;
+        try {
+          const codes = await detectorRef.current.detect(videoRef.current);
+          const raw = codes.find((code) => code.rawValue)?.rawValue;
+          if (raw) {
+            stopCamera();
+            await lookupScannedIsbn(raw);
+            return;
+          }
+        } catch {
+          // Keep scanning; transient detector errors should not end the camera session.
+        }
+        scanLoopRef.current = requestAnimationFrame(scanFrame);
+      };
+      scanLoopRef.current = requestAnimationFrame(scanFrame);
+    } catch (error) {
+      stopCamera();
+      setScannerError(error instanceof Error ? error.message : 'Inkbound could not open the camera.');
+    }
+  };
+
+  const addScannedBatch = () => {
+    if (scannedBooks.length === 0) return;
+    if (onAddMultipleBooks) onAddMultipleBooks(scannedBooks.map((item) => item.book));
+    else scannedBooks.forEach((item) => onAddBook(item.book));
+    onClose();
   };
 
   const handleSearch = async (event: FormEvent) => {
@@ -187,8 +304,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
           <p className="mt-2 text-sm text-[#ad9fac]">Add books, manga, comics, graphic novels, magazines, light novels, novellas, short stories, and anthologies.</p>
         </header>
 
-        <div className="mt-6 grid grid-cols-2 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
+        <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
           <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
+          <button type="button" onClick={() => setActiveTab('scan')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
           <button type="button" onClick={() => setActiveTab('manual')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
         </div>
 
@@ -220,6 +338,57 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook }
                 </div>
               </article>
             ))}
+          </div>
+        ) : activeTab === 'scan' ? (
+          <div className="mt-6 space-y-5">
+            <div className="rounded-2xl border border-[#c5a059]/20 bg-[#120c15] p-5">
+              <div className="flex items-start gap-3">
+                <ScanLine className="mt-0.5 h-5 w-5 shrink-0 text-[#e2bd66]" />
+                <div>
+                  <h3 className="font-serif text-xl text-[#f4efe6]">Scan book barcodes</h3>
+                  <p className="mt-1 text-sm text-[#ad9fac]">Scan ISBN barcodes one after another, review the batch, then add them to your library together.</p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
+                <input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void lookupScannedIsbn(manualIsbn); } }} inputMode="numeric" placeholder="Enter ISBN manually" className="min-h-12 rounded-xl border border-[#c5a059]/20 bg-[#0d0910] px-4 text-sm text-[#f4efe6] outline-none" />
+                <button type="button" onClick={() => void lookupScannedIsbn(manualIsbn)} disabled={scannerBusy || !manualIsbn.trim()} className="quiet-shelf-primary-action min-h-12 px-5 disabled:opacity-50">{scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{scannerBusy ? 'Looking up…' : 'Add ISBN'}</button>
+              </div>
+
+              <div className="mt-3">
+                <button type="button" onClick={() => cameraActive ? stopCamera() : void startCamera()} disabled={scannerBusy} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50"><Camera className="h-4 w-4" />{cameraActive ? 'Stop camera' : 'Scan with camera'}</button>
+              </div>
+
+              {cameraActive && <div className="mt-4 overflow-hidden rounded-2xl border border-[#c5a059]/20 bg-black"><video ref={videoRef} playsInline muted className="aspect-video w-full object-cover" /></div>}
+              {!cameraActive && <video ref={videoRef} playsInline muted className="hidden" />}
+
+              {scannerError && <div className="mt-4 rounded-xl border border-[#c97b7b]/40 bg-[#c97b7b]/10 p-3 text-sm text-[#efb6b6]">{scannerError}</div>}
+              {scannerMessage && <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-950/20 p-3 text-sm text-emerald-200"><Check className="h-4 w-4" />{scannerMessage}</div>}
+            </div>
+
+            <div className="rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div><p className="inkbound-kicker">Scan batch</p><h3 className="mt-1 font-serif text-xl text-[#f4efe6]">{scannedBooks.length} book{scannedBooks.length === 1 ? '' : 's'} ready</h3></div>
+                {scannedBooks.length > 0 && <button type="button" onClick={() => setScannedBooks([])} className="quiet-shelf-secondary-action text-[#efb6b6]"><Trash2 className="h-4 w-4" />Clear</button>}
+              </div>
+
+              {scannedBooks.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-dashed border-[#c5a059]/20 px-5 py-8 text-center text-sm text-[#ad9fac]">Scanned books will appear here before anything is added to your library.</div>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {scannedBooks.map((item) => {
+                    const edition = item.book.editions.find((candidate) => candidate.id === item.book.activeEditionId) ?? item.book.editions[0];
+                    return <div key={item.isbn} className="flex items-center gap-3 rounded-xl border border-white/7 bg-[#120c15] p-3">
+                      {edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-16 w-11 shrink-0 rounded object-cover" /> : <span className="grid h-16 w-11 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-4 w-4" /></span>}
+                      <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author} · ISBN {item.isbn}</p></div>
+                      <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate.isbn !== item.isbn))} className="grid h-10 w-10 place-items-center rounded-lg text-[#ad9fac] hover:bg-white/5" aria-label={`Remove ${item.book.work.title} from scan batch`}><X className="h-4 w-4" /></button>
+                    </div>;
+                  })}
+                </div>
+              )}
+
+              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-5 min-h-12 w-full disabled:opacity-50">Add {scannedBooks.length || ''} scanned book{scannedBooks.length === 1 ? '' : 's'} to library</button>
+            </div>
           </div>
         ) : (
           <div className="mt-6 space-y-4">
