@@ -228,6 +228,24 @@ for (const relative of [
   }
 }
 
+const librarySectionSortSource = read('src/features/library/librarySectionSort.ts');
+const seriesLibraryPanelSource = read('src/components/library/SeriesLibraryPanel.tsx');
+const loansLibraryPanelSource = read('src/components/library/LoansLibraryPanel.tsx');
+const collectionsScreenSource = read('src/components/CollectionsScreen.tsx');
+
+if (!librarySectionSortSource.includes("export type LibrarySectionSortMode = 'az' | 'za' | 'newest' | 'oldest'")) {
+  violations.push('librarySectionSort.ts: Series, Collections, and Loans must share the canonical library-section sort modes');
+}
+for (const [relative, source] of [
+  ['SeriesLibraryPanel.tsx', seriesLibraryPanelSource],
+  ['LoansLibraryPanel.tsx', loansLibraryPanelSource],
+  ['CollectionsScreen.tsx', collectionsScreenSource],
+]) {
+  if (!source.includes('LIBRARY_SECTION_SORT_OPTIONS')) {
+    violations.push(`${relative}: library-section sorting must consume the shared canonical sort options`);
+  }
+}
+
 const addBookModalSource = read('src/components/AddBookModal.tsx');
 if (!addBookModalSource.includes("import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';")) {
   violations.push('AddBookModal.tsx: clean Build 28 must keep the proven Build 27 general Search boundary');
