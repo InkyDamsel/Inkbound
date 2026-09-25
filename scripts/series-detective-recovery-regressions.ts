@@ -527,6 +527,40 @@ assert.equal(aliasSeries[0].books.length, 2);
 assert.equal(aliasSeries[0].books[0].position, 1);
 assert.equal(aliasSeries[0].books[1].position, 2);
 
+// Canonical publisher/shared-world series must not split just because authors differ.
+const multiAuthorOne = {
+  id: 'twisted-1',
+  work: {
+    title: "Conceal, Don't Feel",
+    author: 'Jen Calonita',
+    seriesName: 'A Twisted Tale',
+    seriesOrder: 7,
+    publicationYear: 2019,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'twisted-ed-1', format: 'paperback' }],
+  activeEditionId: 'twisted-ed-1',
+} as unknown as UserBookRecord;
+const multiAuthorTwo = {
+  id: 'twisted-2',
+  work: {
+    title: 'As Old as Time',
+    author: 'Liz Braswell',
+    seriesName: 'A Twisted Tale Series',
+    seriesOrder: 3,
+    publicationYear: 2016,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'twisted-ed-2', format: 'paperback' }],
+  activeEditionId: 'twisted-ed-2',
+} as unknown as UserBookRecord;
+const multiAuthorSeries = buildSeriesLibrary([multiAuthorOne, multiAuthorTwo]);
+assert.equal(multiAuthorSeries.length, 1);
+assert.equal(multiAuthorSeries[0].books.length, 2);
+assert.equal(multiAuthorSeries[0].author, 'Various authors');
+
 // A branded title with no installment number is not proof of membership.
 assert.equal(inferDetectiveSeriesFromTitle('Disney A Twisted Tale'), null);
 
