@@ -2,7 +2,6 @@ import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
-import { DEVICE_STORAGE_KEYS } from '../../sync/storageKeys';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage, searchOpenLibrarySeriesContext } from './openLibraryApi';
@@ -69,10 +68,7 @@ export type GoogleBooksAuthorPage = GoogleBooksCatalogPage;
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
-const VISIBLE_PAGE_COUNT_REPAIR_GROUP_LIMIT = 10;
-const VISIBLE_PAGE_COUNT_ISBN_REPAIR_LIMIT = 8;
-const VISIBLE_PAGE_COUNT_WORK_REPAIR_LIMIT = 6;
-const ACTIVE_TAB_STORAGE_KEY = DEVICE_STORAGE_KEYS.activeTab;
+const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const GOOGLE_BOOKS_PAGE_SIZE = 40;
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
 const inFlightGoogleRequests = new Map<string, Promise<GoogleVolumesResponse>>();
@@ -186,7 +182,7 @@ const groupGoogleEditions = (editions: BookSearchEdition[]): BookSearchWorkGroup
   const order: string[] = [];
 
   editions.forEach((edition) => {
-    const key = `${normalizeText(edition.title)}::${canonicalAuthorIdentity(edition.authors[0])}`;
+    const key = `${normalizeText(edition.title)}::${normalizeText(edition.authors[0])}`;
     const existing = groups.get(key);
     if (!existing) {
       groups.set(key, {
@@ -215,7 +211,7 @@ const groupGoogleEditions = (editions: BookSearchEdition[]): BookSearchWorkGroup
 };
 
 const groupIdentity = (group: BookSearchWorkGroup): string =>
-  `${normalizeText(group.title)}::${canonicalAuthorIdentity(group.authors[0])}`;
+  `${normalizeText(group.title)}::${normalizeText(group.authors[0])}`;
 
 const sameEdition = (
   a: BookSearchWorkGroup['editions'][number],
@@ -649,7 +645,7 @@ async function repairVisibleEditionPageCounts(
   const repaired = groups.map((group) => ({ ...group, editions: [...group.editions] }));
 
   const isbnCandidates = groups
-    .slice(0, VISIBLE_PAGE_COUNT_REPAIR_GROUP_LIMIT)
+    .slice(0, 10)
     .flatMap((group, groupIndex) =>
       group.editions
         .filter((edition) =>
@@ -659,7 +655,7 @@ async function repairVisibleEditionPageCounts(
         )
         .map((edition) => ({ groupIndex, edition })),
     )
-    .slice(0, VISIBLE_PAGE_COUNT_ISBN_REPAIR_LIMIT);
+    .slice(0, 8);
 
   await Promise.all(isbnCandidates.map(async ({ groupIndex, edition }) => {
     const isbn = editionRepairIsbn(edition);
@@ -696,13 +692,13 @@ async function repairVisibleEditionPageCounts(
   // belong to that same work. Existing hardening then propagates a page count
   // only when same-format evidence is unambiguous.
   const workCandidates = repaired
-    .slice(0, VISIBLE_PAGE_COUNT_REPAIR_GROUP_LIMIT)
+    .slice(0, 10)
     .map((group, groupIndex) => ({ group, groupIndex }))
     .filter(({ group }) =>
       group.authors.some((author) => author.trim() && normalizeText(author) !== 'unknown author')
       && group.editions.some((edition) => edition.format !== 'audiobook' && !edition.pageCount),
     )
-    .slice(0, VISIBLE_PAGE_COUNT_WORK_REPAIR_LIMIT);
+    .slice(0, 6);
 
   await Promise.all(workCandidates.map(async ({ group, groupIndex }) => {
     const author = group.authors.find((value) => value.trim() && normalizeText(value) !== 'unknown author')?.trim();
