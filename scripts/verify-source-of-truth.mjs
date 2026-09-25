@@ -342,8 +342,25 @@ if (bookSearchFunctionSource.includes('googleSeriesMetadata(')) {
 }
 
 const addBookModalSource = read('src/components/AddBookModal.tsx');
+const generalBookSearchSource = read('src/features/book-search/data/generalBookSearch.ts');
+const generalOpenLibrarySource = read('src/features/book-search/data/generalOpenLibraryApi.ts');
 if (!addBookModalSource.includes("hardenCatalogGroups(")) {
   violations.push('AddBookModal.tsx: search result merging must use canonical catalog hardening');
+}
+if (!addBookModalSource.includes("from '../features/book-search/data/generalBookSearch'")) {
+  violations.push('AddBookModal.tsx: general Search must use the Build 27-derived generalBookSearch boundary');
+}
+if (addBookModalSource.includes('searchGoogleBooks(')) {
+  violations.push('AddBookModal.tsx: general Search/ISBN lookup must not call the Series Detective/paged Google module directly');
+}
+if (!generalBookSearchSource.includes('if (google.groups.length > 0) return cacheSearchResponse(cacheKey, google);')) {
+  violations.push('generalBookSearch.ts: preserve the proven Build 27 Google-first stop condition');
+}
+if (!generalBookSearchSource.includes('searchGeneralOpenLibrary(buildGoogleBooksQuery(query), signal)')) {
+  violations.push('generalBookSearch.ts: preserve the Build 27 Open Library fallback path');
+}
+if (!generalOpenLibrarySource.includes("params.set('author', value)")) {
+  violations.push('generalOpenLibraryApi.ts: preserve Build 27 author-qualified Open Library fallback behavior');
 }
 if (addBookModalSource.includes('const sameCatalogEdition =')) {
   violations.push('AddBookModal.tsx: must not own a duplicate catalog-edition merge algorithm');
