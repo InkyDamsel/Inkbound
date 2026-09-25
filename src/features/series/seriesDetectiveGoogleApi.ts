@@ -47,6 +47,7 @@ interface GooglePayload {
   totalItems?: number;
   items?: DetectiveGoogleVolume[];
   seriesMetadataById?: Record<string, string>;
+  seriesDetectiveHydrated?: boolean;
 }
 
 export interface DetectiveGoogleCatalog {
@@ -213,13 +214,24 @@ export async function searchDetectiveGoogleBooksPage(
   }
 
   const useProtectedSearch = Boolean(functions && auth?.currentUser);
-  const raw = useProtectedSearch
-    ? await protectedSearch(trimmed, safeStart, safeMax)
+  let protectedPayload: GooglePayload | null = null;
+  if (useProtectedSearch) {
+    try {
+      protectedPayload = await protectedSearch(trimmed, safeStart, safeMax);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Protected Series Detective Google search unavailable; using direct catalog fallback.', error);
+    }
+  }
+
+  const protectedIsDetectiveCapable = protectedPayload?.seriesDetectiveHydrated === true;
+  const raw = protectedIsDetectiveCapable
+    ? protectedPayload!
     : await directSearch(trimmed, signal, safeStart, safeMax);
-  // The Firebase transport already hydrates and adds bibliographic series
-  // evidence. Re-hydrating the same page again in the browser multiplies quota
-  // usage without adding canonical evidence.
-  const hydrated = useProtectedSearch ? raw : await hydrateDetails(raw, signal);
+
+  // A current Firebase transport already performs Detective-depth hydration.
+  // Direct/stale-backend fallback hydrates locally instead.
+  const hydrated = protectedIsDetectiveCapable ? raw : await hydrateDetails(raw, signal);
   const items = hydrated.items ?? [];
 
   const serverSeriesTitles = hydrated.seriesMetadataById ?? {};
