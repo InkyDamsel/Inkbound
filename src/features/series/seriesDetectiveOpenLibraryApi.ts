@@ -2,6 +2,7 @@ import type { Format } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import {
   canonicalDetectiveAuthor,
+  comparableDetectiveTitle,
   detectiveSeriesNamesCompatible,
   normalizeDetectiveText,
 } from './seriesDetectiveEvidence';
@@ -430,8 +431,8 @@ export async function searchDetectiveOpenLibraryBook(
     const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 8, signal);
     return flattenCandidates(works, undefined, author)
       .filter((candidate) =>
-        normalizeDetectiveText(candidate.work.title) === normalizeDetectiveText(title)
-        || normalizeDetectiveText(candidate.edition.title) === normalizeDetectiveText(title),
+        comparableDetectiveTitle(candidate.work.title) === comparableDetectiveTitle(title)
+        || comparableDetectiveTitle(candidate.edition.title) === comparableDetectiveTitle(title),
       );
   } catch (error) {
     if (signal?.aborted) throw error;
