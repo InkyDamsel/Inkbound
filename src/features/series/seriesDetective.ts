@@ -347,33 +347,6 @@ const collectGoogleAuthorCatalogs = async (
   return catalogs;
 };
 
-const hardcoverDetectionCandidates = (
-  groups: BookSearchWorkGroup[],
-  wantedAuthor: string,
-): DetectiveMergeCandidate[] => {
-  const wanted = canonicalDetectiveAuthor(wantedAuthor);
-  return groups.flatMap((work) => {
-    const exactAuthor = !wanted || work.authors.some((author) => canonicalDetectiveAuthor(author) === wanted);
-    if (!exactAuthor) return [];
-
-    return work.editions.flatMap((edition) => {
-      const seriesName = edition.seriesName?.trim();
-      if (!seriesName) return [];
-      return [{
-        work,
-        edition,
-        seriesName,
-        position: typeof edition.seriesOrder === 'number' && Number.isFinite(edition.seriesOrder)
-          ? edition.seriesOrder
-          : null,
-        provider: 'hardcover' as const,
-        seriesProvider: 'hardcover' as const,
-        seriesStructured: true,
-      }];
-    });
-  });
-};
-
 export async function detectSeriesForBook(
   book: UserBookRecord,
   signal?: AbortSignal,
