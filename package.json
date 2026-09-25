@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:critical": "npm run test:critical:reading && npm run test:critical:reporting && npm run test:critical:sync",
+    "test:critical": "npm run test:critical:reading && npm run test:critical:reporting && npm run test:critical:sync && npm run test:critical:series",
     "verify:source-of-truth": "npm run verify:source-boundary && npm run verify:domain-taxonomy",
     "verify:parity": "node scripts/verify-cross-platform-parity.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
@@ -47,7 +47,8 @@
     "verify:domain-taxonomy": "node scripts/verify-domain-taxonomy.mjs",
     "firebase:deploy:admin-repair": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts --project inkbound-app",
     "firebase:deploy:admin-support": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:getAdminDashboard,functions:syncUserDirectory,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts,functions:resendAdminVerificationEmail,functions:sendAdminPasswordResetEmail,functions:addAdminSupportNote --project inkbound-app",
-    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts"
+    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts",
+    "test:critical:series": "tsx scripts/series-detective-recovery-regressions.ts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
