@@ -17,6 +17,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { Format, ImportRecordItem, ImportSourceInfo, ReadingStatus, UserBookRecord } from '../types';
+import { normalizeBookRating, normalizeSpiceLevel } from '../features/reading/bookRating';
 import { analyzeImportDuplicates } from '../features/import/libraryEnrichment';
 import { findExistingImportMatch } from '../features/import/safeReimportMerge';
 import { readXlsxRecords } from '../features/import/spreadsheetImport';
@@ -161,6 +162,7 @@ function mapRecord(record: Record<string, unknown>, index: number, mapping: Impo
   const author = mappedValue(record, mapping, 'author') || 'Unknown Author';
   const isbn = mappedValue(record, mapping, 'isbn');
   const ratingValue = Number(mappedValue(record, mapping, 'rating'));
+  const spiceValue = Number(mappedValue(record, mapping, 'spiceLevel'));
   return {
     id: `import-${index}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`,
     title,
@@ -168,7 +170,8 @@ function mapRecord(record: Record<string, unknown>, index: number, mapping: Impo
     isbn: isbn || undefined,
     format: normalizeFormat(mappedValue(record, mapping, 'format')),
     status: normalizeStatus(mappedValue(record, mapping, 'status')),
-    rating: Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue : undefined,
+    rating: Number.isFinite(ratingValue) && ratingValue > 0 ? normalizeBookRating(ratingValue) : undefined,
+    spiceLevel: Number.isFinite(spiceValue) ? normalizeSpiceLevel(spiceValue) : undefined,
     dateStarted: mappedValue(record, mapping, 'dateStarted') || undefined,
     dateRead: mappedValue(record, mapping, 'dateRead') || undefined,
     dateAdded: mappedValue(record, mapping, 'dateAdded') || new Date().toISOString().split('T')[0],
