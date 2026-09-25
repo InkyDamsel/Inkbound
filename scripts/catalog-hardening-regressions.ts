@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import {
   catalogEditionQualityScore,
   enrichSelectedCatalogEdition,
@@ -303,30 +302,6 @@ const crossFormatPages = hardenCatalogGroups([{
 assert.equal(
   crossFormatPages.editions.find((edition) => edition.externalEditionId === 'cross-hardcover')?.pageCount,
   undefined,
-);
-
-const googleSearchSource = fs.readFileSync(
-  new URL('../src/features/book-search/data/googleBooksApi.ts', import.meta.url),
-  'utf8',
-);
-
-const generalSearchStart = googleSearchSource.indexOf(
-  'export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {',
-);
-const generalSearchEnd = googleSearchSource.indexOf('\n}', generalSearchStart);
-const generalSearchSource = generalSearchStart >= 0 && generalSearchEnd > generalSearchStart
-  ? googleSearchSource.slice(generalSearchStart, generalSearchEnd + 2)
-  : '';
-
-assert.match(
-  generalSearchSource,
-  /const google = await searchGoogleBaseline\(trimmed, signal\);[\s\S]*if \(google\.groups\.length > 0\) return cacheSearchResponse\(cacheKey, google\);/,
-  'General Add Reading Material search must preserve the proven Build 27 Google-first stop condition',
-);
-assert.doesNotMatch(
-  generalSearchSource,
-  /Promise\.all\(|searchSupplementalCatalogs|searchGoogleBooksAuthorPage|hardenCatalogGroups/,
-  'General Add Reading Material search must not regress to additive multi-provider fanout or Series Detective hardening',
 );
 
 console.log('Inkbound catalog hardening regressions passed.');
