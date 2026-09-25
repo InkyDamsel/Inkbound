@@ -20,6 +20,11 @@ import {
   type DetectiveGoogleCatalog,
   type DetectiveGoogleVolume,
 } from './seriesDetectiveGoogleApi';
+import {
+  searchDetectiveOpenLibraryBook,
+  searchDetectiveOpenLibrarySeries,
+  type DetectiveOpenLibraryCandidate,
+} from './seriesDetectiveOpenLibraryApi';
 
 export interface SeriesDetectiveMatch {
   name: string;
@@ -157,16 +162,46 @@ export async function detectSeriesForBook(
 ): Promise<SeriesDetectiveMatch | null> {
   const { workQuery, identifiers } = buildSeriesDetectionQueries(book);
   const queries = [workQuery, ...identifiers];
-  const catalogs = await Promise.all(queries.map(async (query, index) => ({
-    sourceId: `query-${index}`,
-    catalog: await safeDetectiveSearch(query, signal),
-  })));
+  const [catalogs, openLibraryCandidates] = await Promise.all([
+    Promise.all(queries.map(async (query, index) => ({
+      sourceId: `google-query-${index}`,
+      catalog: await safeDetectiveSearch(query, signal),
+    }))),
+    searchDetectiveOpenLibraryBook(book.work.title, book.work.author, signal),
+  ]);
 
-  const evidence = catalogs.flatMap(({ sourceId, catalog }) =>
+  const googleEvidence = catalogs.flatMap(({ sourceId, catalog }) =>
     catalog.items
       .map((volume) => evidenceForVolume(volume, catalog, book, sourceId))
       .filter((item): item is SeriesDetectionEvidence => Boolean(item)),
   );
+
+  const libraryIdentifiers = new Set(book.editions.flatMap((edition) =>
+    [edition.isbn13, edition.isbn10, edition.isbn].map(compactDetectiveIsbn).filter(Boolean),
+  ));
+  const wantedTitle = normalizeDetectiveText(book.work.title);
+  const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
+  const openLibraryEvidence = openLibraryCandidates.map((candidate) => scoreDetectiveEvidence({
+    seriesName: candidate.seriesName,
+    position: candidate.position,
+    title: candidate.work.title,
+    authors: candidate.work.authors,
+    isbn10: candidate.edition.isbn10,
+    isbn13: candidate.edition.isbn13,
+    sourceId: 'open-library',
+    recordId: `open-library:${candidate.recordId}`,
+    structured: true,
+    exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
+      .map(compactDetectiveIsbn)
+      .filter(Boolean)
+      .some((isbn) => libraryIdentifiers.has(isbn)),
+    exactTitle: normalizeDetectiveText(candidate.work.title) === wantedTitle
+      || normalizeDetectiveText(candidate.edition.title) === wantedTitle,
+    exactAuthor: !wantedAuthor || candidate.work.authors
+      .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor),
+  }));
+
+  const evidence = [...googleEvidence, ...openLibraryEvidence];
   const match = selectVerifiedDetectiveEvidence(evidence);
   return match ? { name: match.seriesName, position: match.position } : null;
 }
@@ -270,18 +305,37 @@ export async function findMissingSeriesBooks(
     ...positionQueries,
   ];
 
-  const catalogs = await Promise.all(queries.map((query) => safeDetectiveSearch(query, signal)));
+  const [catalogs, openLibraryCandidates] = await Promise.all([
+    Promise.all(queries.map((query) => safeDetectiveSearch(query, signal))),
+    searchDetectiveOpenLibrarySeries(seriesName, author, signal),
+  ]);
   const seen = new Map<string, SeriesDetectiveCandidate>();
+
+  const addCandidate = (candidate: SeriesDetectiveCandidate) => {
+    const titleKey = normalizeDetectiveText(candidate.work.title);
+    const isbnKey = compactDetectiveIsbn(candidate.edition.isbn13 ?? candidate.edition.isbn10);
+    const key = candidate.position !== null
+      ? `position:${candidate.position}`
+      : isbnKey
+        ? `isbn:${isbnKey}`
+        : `title:${titleKey}`;
+    const current = seen.get(key);
+    if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
+  };
 
   catalogs.forEach((catalog) => {
     catalog.items.forEach((volume) => {
       const candidate = candidateFromVolume(volume, catalog, seriesName, author);
-      if (!candidate) return;
-      const key = candidate.position !== null
-        ? `position:${candidate.position}`
-        : `title:${normalizeDetectiveText(candidate.work.title)}`;
-      const current = seen.get(key);
-      if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
+      if (candidate) addCandidate(candidate);
+    });
+  });
+
+  openLibraryCandidates.forEach((candidate: DetectiveOpenLibraryCandidate) => {
+    addCandidate({
+      work: candidate.work,
+      edition: candidate.edition,
+      seriesName: candidate.seriesName,
+      position: candidate.position,
     });
   });
 
