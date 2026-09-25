@@ -31,30 +31,23 @@ import {
   type DetectiveOpenLibraryCandidate,
 } from './seriesDetectiveOpenLibraryApi';
 import {
-  detectiveCandidatesAreSameWork,
   mergeDetectiveCandidates,
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
 
-
-type DetectiveSeriesAwareEdition = BookSearchEdition & {
-  seriesName?: string;
-  seriesOrder?: number;
-};
 
 const knownSeriesMetadataFromCatalogWork = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
   wantedSeriesName: string,
 ): SeriesDetectiveMatch | null => {
-  const seriesAware = edition as DetectiveSeriesAwareEdition;
   if (
-    seriesAware.seriesName
-    && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName)
+    edition.seriesName
+    && detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName)
   ) {
     return {
-      name: seriesAware.seriesName,
-      position: typeof seriesAware.seriesOrder === 'number' ? seriesAware.seriesOrder : null,
+      name: edition.seriesName,
+      position: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : null,
     };
   }
 
@@ -79,35 +72,7 @@ const knownSeriesMetadataFromCatalogWork = (
   return null;
 };
 
-const hardcoverMergeCandidates = (
-  groups: BookSearchWorkGroup[],
-  wantedSeriesName: string,
-  wantedAuthor: string,
-): DetectiveMergeCandidate[] => {
-  const wanted = canonicalDetectiveAuthor(wantedAuthor);
-  return groups.flatMap((work) => {
-    const exactAuthor = !wanted || work.authors.some((author) => canonicalDetectiveAuthor(author) === wanted);
-    return work.editions.flatMap((edition) => {
-      const metadata = knownSeriesMetadataFromCatalogWork(work, edition, wantedSeriesName);
-      if (!metadata) return [];
-      const seriesAware = edition as DetectiveSeriesAwareEdition;
-      const structured = Boolean(
-        seriesAware.seriesName
-        && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName),
-      );
-      if (!structured && !exactAuthor) return [];
-      return [{
-        work,
-        edition,
-        seriesName: metadata.name,
-        position: metadata.position,
-        provider: 'hardcover' as const,
-        seriesProvider: 'hardcover' as const,
-        seriesStructured: structured,
-      }];
-    });
-  });
-};
+
 
 const hardcoverContextCandidates = (
   groups: BookSearchWorkGroup[],
