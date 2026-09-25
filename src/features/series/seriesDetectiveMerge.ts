@@ -1,7 +1,7 @@
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import {
-  canonicalDetectiveAuthor,
   compactDetectiveIsbn,
+  detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
   normalizeDetectiveText,
 } from './seriesDetectiveEvidence';
@@ -28,11 +28,10 @@ const comparableWorkTitle = (value?: string): string => {
 
 
 
-const sameAuthor = (left: string[], right: string[]): boolean => {
-  const leftIds = new Set(left.map(canonicalDetectiveAuthor).filter(Boolean));
-  const rightIds = right.map(canonicalDetectiveAuthor).filter(Boolean);
-  return rightIds.some((author) => leftIds.has(author));
-};
+const sameAuthor = (left: string[], right: string[]): boolean =>
+  left.some((leftAuthor) =>
+    right.some((rightAuthor) => detectiveAuthorsCompatible(leftAuthor, rightAuthor)),
+  );
 
 export const detectiveCandidatesAreSameWork = (
   left: DetectiveMergeCandidate,
