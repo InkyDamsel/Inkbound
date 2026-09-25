@@ -1,4 +1,5 @@
 import type { UserBookRecord } from '../../types';
+import { normalizeBookRating, normalizeSpiceLevel } from '../reading/bookRating';
 import { reconcileFinishedBookProgress } from '../reading/bookReadingState';
 import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
 
@@ -15,6 +16,12 @@ import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
  */
 export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
   let normalized = reconcileFinishedBookProgress(book);
+
+  const rating = normalizeBookRating(normalized.rating);
+  const spiceLevel = normalizeSpiceLevel(normalized.spiceLevel);
+  if (rating !== normalized.rating || spiceLevel !== normalized.spiceLevel) {
+    normalized = { ...normalized, rating, spiceLevel };
+  }
 
   if (normalized.status === 'wishlist') {
     normalized = {
