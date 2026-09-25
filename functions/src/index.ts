@@ -199,7 +199,14 @@ export const addCourtesyTime = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, as
 });
 
 export { createStripeCheckoutSession, createStripeBillingPortalSession, stripeBillingWebhook, verifyGooglePlaySubscription } from './billing.js';
-export { getAdminDashboard, correctAdminUserEmail, mergeAdminUserAccounts } from './readerDirectoryMaintenance.js';
+export {
+  getAdminDashboard,
+  correctAdminUserEmail,
+  mergeAdminUserAccounts,
+  resendAdminVerificationEmail,
+  sendAdminPasswordResetEmail,
+  addAdminSupportNote,
+} from './readerDirectoryMaintenance.js';
 export { getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
 export { listAdminRecoveryPoints, restoreAdminRecoveryPoint } from './adminRecovery.js';
 export { previewAdminRecoveryPoint, restoreAdminRecoverySelection } from './adminSelectiveRecovery.js';
