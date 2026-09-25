@@ -6,6 +6,7 @@ import { mergeDetectiveCandidates } from '../src/features/series/seriesDetective
 import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
+  detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
   inferDetectiveSeriesFromTitle,
   inferKnownDetectiveSeriesFromDescription,
@@ -48,6 +49,10 @@ assert.equal(canonicalDetectiveAuthor('Gilmore, Laurie'), 'laurie gilmore');
 assert.equal(canonicalDetectiveAuthor('Laurie Gilmore'), 'laurie gilmore');
 assert.equal(canonicalDetectiveAuthor('St. Clair, Scarlett'), 'scarlett st clair');
 assert.equal(canonicalDetectiveAuthor('Scarlett St. Clair'), 'scarlett st clair');
+assert.equal(detectiveAuthorsCompatible('Gilmore, Laurie', 'Laurie Gilmore'), true);
+assert.equal(detectiveAuthorsCompatible('Neil Gaiman, Terry Pratchett', 'Neil Gaiman'), true);
+assert.equal(detectiveAuthorsCompatible('Neil Gaiman, Terry Pratchett', 'Terry Pratchett'), true);
+assert.equal(detectiveAuthorsCompatible('Neil Gaiman, Terry Pratchett', 'Someone Else'), false);
 
 // Explicit publisher copy is bibliographic evidence, including ordinal words.
 assert.deepEqual(
@@ -560,6 +565,39 @@ const multiAuthorSeries = buildSeriesLibrary([multiAuthorOne, multiAuthorTwo]);
 assert.equal(multiAuthorSeries.length, 1);
 assert.equal(multiAuthorSeries[0].books.length, 2);
 assert.equal(multiAuthorSeries[0].author, 'Various authors');
+
+// Same-name series from different authors remain separate when their explicit
+// installment positions conflict. This prevents a generic reused series name
+// from becoming a cross-author identity by accident.
+const collisionOne = {
+  id: 'collision-1',
+  work: {
+    title: 'First Collision Book',
+    author: 'Author One',
+    seriesName: 'Legacy',
+    seriesOrder: 1,
+    publicationYear: 2020,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'collision-ed-1', format: 'paperback' }],
+  activeEditionId: 'collision-ed-1',
+} as unknown as UserBookRecord;
+const collisionTwo = {
+  id: 'collision-2',
+  work: {
+    title: 'Other Collision Book',
+    author: 'Author Two',
+    seriesName: 'Legacy Series',
+    seriesOrder: 1,
+    publicationYear: 2021,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'collision-ed-2', format: 'paperback' }],
+  activeEditionId: 'collision-ed-2',
+} as unknown as UserBookRecord;
+assert.equal(buildSeriesLibrary([collisionOne, collisionTwo]).length, 2);
 
 // A branded title with no installment number is not proof of membership.
 assert.equal(inferDetectiveSeriesFromTitle('Disney A Twisted Tale'), null);
