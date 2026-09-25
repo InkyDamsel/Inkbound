@@ -89,7 +89,7 @@ export const inferKnownSeriesFromBibliographicDescription = (
 
   // Single-word series names need an explicit bibliographic qualifier so an
   // incidental word such as "selection" is never treated as membership proof.
-  if (seriesTokens.length === 1 && !/\\b(?:series|saga|novels?|books?|collection)\\b/i.test(match[0])) return null;
+  if (seriesTokens.length === 1 && !/\b(?:series|saga|novels?|books?|collection)\b/i.test(match[0])) return null;
 
   const start = Math.max(0, match.index - 100);
   const end = Math.min(normalized.length, match.index + match[0].length + 100);
@@ -97,8 +97,8 @@ export const inferKnownSeriesFromBibliographicDescription = (
   let position: number | null = null;
 
   for (const pattern of [
-    /\\b(?:book|volume|vol|part)\\s*#?\\s*(\\d+(?:\\.\\d+)?)\\b/i,
-    /\\b(\\d+(?:\\.\\d+)?)\\s*(?:st|nd|rd|th)?\\s+(?:book|novel|volume|part)\\b/i,
+    /\b(?:book|volume|vol|part)\s*#?\s*(\d+(?:\.\d+)?)\b/i,
+    /\b(\d+(?:\.\d+)?)\s*(?:st|nd|rd|th)?\s+(?:book|novel|volume|part)\b/i,
   ]) {
     const numberMatch = context.match(pattern);
     const parsed = numberMatch ? Number(numberMatch[1]) : Number.NaN;
