@@ -533,7 +533,8 @@ export async function findMissingSeriesBooks(
   ];
 
   const [
-    catalogs,
+    queryCatalogs,
+    googleAuthorCatalogs,
     openLibrarySeriesCandidates,
     openLibraryAuthorCandidates,
     hardcoverSeriesAndAuthor,
@@ -541,12 +542,14 @@ export async function findMissingSeriesBooks(
     hardcoverAuthor,
   ] = await Promise.all([
     Promise.all(queries.map((query) => safeDetectiveSearch(query, signal))),
+    collectGoogleAuthorCatalogs(author, signal),
     searchDetectiveOpenLibrarySeries(seriesName, author, signal),
     searchDetectiveOpenLibraryAuthor(author, signal),
     searchHardcover(`${seriesName} ${author}`),
     searchHardcover(seriesName),
     searchHardcover(author),
   ]);
+  const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
   const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
   const seen = new Map<string, SeriesDetectiveCandidate>();
 
