@@ -205,7 +205,51 @@ export async function detectSeriesForBook(
       .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor),
   }));
 
-  const evidence = [...googleEvidence, ...openLibraryEvidence];
+  const providerCandidates: DetectiveMergeCandidate[] = [];
+
+  catalogs.forEach(({ catalog }) => {
+    catalog.items.forEach((volume) => {
+      const candidate = mergeCandidateFromGoogleVolume(volume, catalog, undefined, book.work.author);
+      if (!candidate) return;
+      const sameTitle = normalizeDetectiveText(candidate.work.title) === wantedTitle
+        || normalizeDetectiveText(candidate.edition.title) === wantedTitle;
+      if (sameTitle) providerCandidates.push(candidate);
+    });
+  });
+
+  openLibraryCandidates.forEach((candidate) => {
+    providerCandidates.push({
+      work: candidate.work,
+      edition: candidate.edition,
+      seriesName: candidate.seriesName,
+      position: candidate.position,
+      provider: 'open-library',
+    });
+  });
+
+  const mergedEvidence = mergeDetectiveCandidates(providerCandidates)
+    .filter((candidate): candidate is DetectiveMergeCandidate & { seriesName: string } => Boolean(candidate.seriesName))
+    .map((candidate) => scoreDetectiveEvidence({
+      seriesName: candidate.seriesName,
+      position: candidate.position,
+      title: candidate.work.title,
+      authors: candidate.work.authors,
+      isbn10: candidate.edition.isbn10,
+      isbn13: candidate.edition.isbn13,
+      sourceId: 'merged-providers',
+      recordId: `merged:${normalizeDetectiveText(candidate.work.title)}:${canonicalDetectiveAuthor(candidate.work.authors[0])}`,
+      structured: candidate.provider === 'open-library' || Boolean(candidate.seriesName),
+      exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
+        .map(compactDetectiveIsbn)
+        .filter(Boolean)
+        .some((isbn) => libraryIdentifiers.has(isbn)),
+      exactTitle: normalizeDetectiveText(candidate.work.title) === wantedTitle
+        || normalizeDetectiveText(candidate.edition.title) === wantedTitle,
+      exactAuthor: !wantedAuthor || candidate.work.authors
+        .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor),
+    }));
+
+  const evidence = [...googleEvidence, ...openLibraryEvidence, ...mergedEvidence];
   const match = selectVerifiedDetectiveEvidence(evidence);
   return match ? { name: match.seriesName, position: match.position } : null;
 }
@@ -224,10 +268,12 @@ const detectivePublicationYear = (value?: string): number => {
 const mergeCandidateFromGoogleVolume = (
   volume: DetectiveGoogleVolume,
   catalog: DetectiveGoogleCatalog,
-  wantedSeriesName: string,
+  wantedSeriesName: string | undefined,
   wantedAuthor: string,
 ): DetectiveMergeCandidate | null => {
-  const metadata = knownSeriesMetadata(volume, catalog, wantedSeriesName);
+  const metadata = wantedSeriesName
+    ? knownSeriesMetadata(volume, catalog, wantedSeriesName)
+    : seriesMetadata(volume, catalog);
   const info = volume.volumeInfo;
   const title = info?.title?.trim();
   if (!title) return null;
