@@ -533,7 +533,8 @@ export async function searchGoogleBooksPage(
     } else {
       console.warn('Google Books page search unavailable; using paged Open Library results instead.', error);
     }
-    return searchOpenLibraryPage(builtQuery, startIndex, GOOGLE_BOOKS_PAGE_SIZE, signal);
+    const fallbackQuery = looksLikePersonNameQuery(trimmed) ? `inauthor:${trimmed}` : builtQuery;
+    return searchOpenLibraryPage(fallbackQuery, startIndex, GOOGLE_BOOKS_PAGE_SIZE, signal);
   }
 }
 
