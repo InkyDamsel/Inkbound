@@ -20,6 +20,7 @@ const exactManagedKeys = new Set([
 const managedPrefixes = [
   'inkbound_pending_sync_',
   'inkbound_sync_baseline_',
+  'inkbound_account_library_migration_snapshot_',
 ];
 
 const STARTUP_EXACT_KEYS = new Set<string>([SYNC_STORAGE_KEYS.books]);
