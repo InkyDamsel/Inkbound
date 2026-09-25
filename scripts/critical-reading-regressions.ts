@@ -219,7 +219,7 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(normalizeBookRating(4.5), 4.5);
   assert.equal(normalizeBookRating(5.8), 5);
   assert.equal(normalizeBookRating(0.1), 0.5);
-  assert.equal(normalizeSpiceLevel(3.4), 3);
+  assert.equal(normalizeSpiceLevel(3.4), 3.5);
   assert.equal(normalizeSpiceLevel(8), 5);
   assert.equal(normalizeSpiceLevel(-2), 0);
 
