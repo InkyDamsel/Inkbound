@@ -10,9 +10,9 @@ import {
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { manualCoverLedgerBaselineKey, SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_KEY = 'inkbound_books';
-const LEDGER_BASELINE_PREFIX = 'inkbound_manual_cover_ledger_baseline_v1_';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 
 interface ManualCoverLedgerEntry {
   bookId: string;
@@ -48,7 +48,7 @@ function collectManualAssignments(books: UserBookRecord[]): ManualCoverLedgerEnt
 }
 
 function baselineKey(uid: string) {
-  return `${LEDGER_BASELINE_PREFIX}${uid}`;
+  return manualCoverLedgerBaselineKey(uid);
 }
 
 function readPersistedSignatures(uid: string): Map<string, string> {
