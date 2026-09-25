@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { AlertTriangle, CalendarClock, Clock3, Library, TimerReset } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
+import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
+import { usePersistentState } from '../../hooks/usePersistentState';
+import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { BookCover } from '../BookCover';
 
 interface LoansLibraryPanelProps {
@@ -29,6 +32,7 @@ const formatDueDate = (value?: string) => {
 };
 
 export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onSelectBook }) => {
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.loansSort, 'az');
   const loans = useMemo(() => books
     .filter((book) => book.ownership === 'borrowed-library')
     .map((book) => {
@@ -49,11 +53,15 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
       return { book, edition, rawDays, isAudiobook, remainingUnits, unitsPerDay };
     })
     .sort((a, b) => {
-      if (a.rawDays === null && b.rawDays === null) return a.book.work.title.localeCompare(b.book.work.title);
-      if (a.rawDays === null) return 1;
-      if (b.rawDays === null) return -1;
-      return a.rawDays - b.rawDays;
-    }), [books]);
+      if (sortMode === 'za') return compareLibraryLabels(b.book.work.title, a.book.work.title);
+      if (sortMode === 'newest') {
+        return compareLibraryDates(b.book.dateAdded, a.book.dateAdded) || compareLibraryLabels(a.book.work.title, b.book.work.title);
+      }
+      if (sortMode === 'oldest') {
+        return compareLibraryDates(a.book.dateAdded, b.book.dateAdded) || compareLibraryLabels(a.book.work.title, b.book.work.title);
+      }
+      return compareLibraryLabels(a.book.work.title, b.book.work.title);
+    }), [books, sortMode]);
 
   const overdueCount = loans.filter((loan) => loan.rawDays !== null && loan.rawDays < 0).length;
   const dueSoonCount = loans.filter((loan) => loan.rawDays !== null && loan.rawDays >= 0 && loan.rawDays <= 7).length;
@@ -78,11 +86,19 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
             <h2 className="mt-1 font-serif text-2xl text-[#f4efe6]">Finish before they go back</h2>
             <p className="mt-1 text-sm text-[#ad9fac]">Due dates and daily reading pace update from your current progress.</p>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border border-[#c5a059]/20 bg-[#0d0910] px-3 py-2 text-[#d8ccd7]"><b className="text-[#f4efe6]">{loans.length}</b> borrowed</span>
-            {dueSoonCount > 0 && <span className="rounded-full border border-[#c5a059]/30 bg-[#c5a059]/10 px-3 py-2 text-[#e2bd66]">{dueSoonCount} due within 7 days</span>}
-            {overdueCount > 0 && <span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-rose-200">{overdueCount} overdue</span>}
-            {missingDueDateCount > 0 && <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[#ad9fac]">{missingDueDateCount} need a due date</span>}
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <label className="flex items-center gap-2 text-sm text-[#ad9fac]">
+              <span>Sort</span>
+              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)} className="inkbound-select min-w-[140px]" aria-label="Sort library loans">
+                {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full border border-[#c5a059]/20 bg-[#0d0910] px-3 py-2 text-[#d8ccd7]"><b className="text-[#f4efe6]">{loans.length}</b> borrowed</span>
+              {dueSoonCount > 0 && <span className="rounded-full border border-[#c5a059]/30 bg-[#c5a059]/10 px-3 py-2 text-[#e2bd66]">{dueSoonCount} due within 7 days</span>}
+              {overdueCount > 0 && <span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-rose-200">{overdueCount} overdue</span>}
+              {missingDueDateCount > 0 && <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[#ad9fac]">{missingDueDateCount} need a due date</span>}
+            </div>
           </div>
         </div>
       </section>
