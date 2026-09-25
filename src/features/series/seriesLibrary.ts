@@ -58,7 +58,7 @@ export const seriesNamesAreCompatible = (left?: string, right?: string): boolean
   return Boolean(leftKey && rightKey && leftKey === rightKey);
 };
 
-const seriesId = (name: string, author: string) => `${canonicalSeriesIdentity(name)}::${author}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const seriesId = (name: string) => canonicalSeriesIdentity(name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const GENERIC_SERIES_NAMES = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition']);
 
 export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
@@ -184,19 +184,29 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
   });
 
-  const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[] }>();
+  // Series identity is the normalized series itself, not "series + author".
+  // Publisher/shared-world series can legitimately span authors. Author is
+  // presentation metadata and must never split one canonical series into
+  // separate cards. Manual overrides remain authoritative for genuine
+  // same-name collisions the reader wants separated.
+  const metadataGroups = new Map<string, { name: string; authors: Set<string>; entries: SeriesBookEntry[] }>();
   books.forEach((book) => {
     if (manuallyAssignedBookIds.has(book.id)) return;
     const resolved = resolveSeriesMetadata(book);
     if (!resolved) return;
     const name = resolved.name;
     const author = book.work.author.trim() || 'Unknown author';
-    const key = `${canonicalSeriesIdentity(name)}::${author.toLowerCase()}`;
-    const current = metadataGroups.get(key) ?? { name, author, entries: [] };
+    const key = canonicalSeriesIdentity(name);
+    const current = metadataGroups.get(key) ?? { name, authors: new Set<string>(), entries: [] };
+    current.authors.add(author);
     current.entries.push({ book, position: resolved.position, displayPosition: seriesPositionLabel(book, resolved.position) });
     metadataGroups.set(key, current);
   });
 
-  metadataGroups.forEach(({ name, author, entries }) => summaries.push(summarize(seriesId(name, author), name, author, entries, false)));
+  metadataGroups.forEach(({ name, authors, entries }) => {
+    const authorList = [...authors].filter(Boolean);
+    const author = authorList.length === 1 ? authorList[0] : 'Various authors';
+    summaries.push(summarize(seriesId(name), name, author, entries, false));
+  });
   return summaries.sort((a, b) => a.name.localeCompare(b.name));
 }
