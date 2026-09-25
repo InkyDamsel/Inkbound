@@ -7,7 +7,10 @@ import {
   compactDetectiveIsbn,
   detectiveSeriesNamesCompatible,
   inferDetectiveSeriesFromTitle,
+  inferKnownDetectiveSeriesFromDescription,
+  inferKnownDetectiveSeriesFromText,
   normalizeDetectiveText,
+  plausibleDetectiveSeriesSubtitle,
   scoreDetectiveEvidence,
   selectVerifiedDetectiveEvidence,
   type SeriesDetectionEvidence,
@@ -65,6 +68,33 @@ const seriesMetadata = (
     ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
 };
 
+const knownSeriesMetadata = (
+  volume: DetectiveGoogleVolume,
+  catalog: DetectiveGoogleCatalog,
+  wantedSeriesName: string,
+): SeriesDetectiveMatch | null => {
+  const structured = seriesMetadata(volume, catalog);
+  if (structured && detectiveSeriesNamesCompatible(structured.name, wantedSeriesName)) return structured;
+
+  for (const value of [volume.volumeInfo?.title, volume.volumeInfo?.subtitle]) {
+    const inferred = inferKnownDetectiveSeriesFromText(value, wantedSeriesName);
+    if (inferred) return inferred;
+  }
+
+  const described = inferKnownDetectiveSeriesFromDescription(
+    volume.volumeInfo?.description,
+    wantedSeriesName,
+  );
+  if (described) return described;
+
+  const subtitle = plausibleDetectiveSeriesSubtitle(volume.volumeInfo?.subtitle);
+  if (subtitle && detectiveSeriesNamesCompatible(subtitle, wantedSeriesName)) {
+    return { name: subtitle, position: null };
+  }
+
+  return null;
+};
+
 const evidenceForVolume = (
   volume: DetectiveGoogleVolume,
   catalog: DetectiveGoogleCatalog,
@@ -100,6 +130,7 @@ const evidenceForVolume = (
     isbn10,
     isbn13,
     sourceId,
+    recordId: volume.id,
     structured,
     exactIdentifier,
     exactTitle,
@@ -142,15 +173,25 @@ const candidateFromVolume = (
   volume: DetectiveGoogleVolume,
   catalog: DetectiveGoogleCatalog,
   wantedSeriesName: string,
+  wantedAuthor: string,
 ): SeriesDetectiveCandidate | null => {
-  const metadata = seriesMetadata(volume, catalog);
-  if (!metadata || !detectiveSeriesNamesCompatible(metadata.name, wantedSeriesName)) return null;
+  const metadata = knownSeriesMetadata(volume, catalog, wantedSeriesName);
+  if (!metadata) return null;
   const info = volume.volumeInfo;
   const title = info?.title?.trim();
   if (!title) return null;
 
   const format: Format = volume.saleInfo?.isEbook ? 'ebook' : 'hardcover';
   const authors = info?.authors?.length ? info.authors : ['Unknown author'];
+  const canonicalWantedAuthor = canonicalDetectiveAuthor(wantedAuthor);
+  const exactAuthor = !canonicalWantedAuthor || authors.some((name) => canonicalDetectiveAuthor(name) === canonicalWantedAuthor);
+  const hasStructuredSeries = Boolean(
+    (info?.seriesInfo?.volumeSeries ?? []).some((membership) => {
+      const id = membership.seriesId?.trim();
+      return Boolean(id && catalog.seriesTitlesById[id]);
+    }),
+  );
+  if (!hasStructuredSeries && !exactAuthor) return null;
   const edition: BookSearchEdition = {
     source: 'google-books',
     externalEditionId: volume.id,
@@ -213,7 +254,7 @@ export async function findMissingSeriesBooks(
 
   catalogs.forEach((catalog) => {
     catalog.items.forEach((volume) => {
-      const candidate = candidateFromVolume(volume, catalog, seriesName);
+      const candidate = candidateFromVolume(volume, catalog, seriesName, author);
       if (!candidate) return;
       const key = candidate.position !== null
         ? `position:${candidate.position}`
