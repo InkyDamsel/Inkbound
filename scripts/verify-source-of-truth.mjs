@@ -228,6 +228,17 @@ for (const relative of [
   }
 }
 
+const addBookModalSource = read('src/components/AddBookModal.tsx');
+if (!addBookModalSource.includes("import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';")) {
+  violations.push('AddBookModal.tsx: clean Build 28 must keep the proven Build 27 general Search boundary');
+}
+if (!addBookModalSource.includes('const response = await searchGoogleBooks(trimmedQuery);')) {
+  violations.push('AddBookModal.tsx: normal Search must keep the proven Build 27 search call');
+}
+if (!addBookModalSource.includes("type AddBookTab = 'search' | 'scan' | 'manual';")) {
+  violations.push('AddBookModal.tsx: Build 28 scanner must remain additive to the proven Search UI');
+}
+
 const main = read('src/main.tsx');
 if (!main.includes("import('./applicationEntry.tsx')")) {
   violations.push('main.tsx: the non-public runtime must lazy-load the canonical application entry');
