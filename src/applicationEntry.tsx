@@ -78,7 +78,6 @@ const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) =
 );
 
 const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
-  const nativeRuntime = isNativeRuntime();
   const ready = useSyncExternalStore(
     subscribeNativeRuntimeReadiness,
     isNativeRuntimeReady,
@@ -172,7 +171,7 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
     if (isLargeBrowserStorageHydrated()) setReady(true);
 
     return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
-  }, [nativeRuntime]);
+  }, []);
 
   return ready ? <>{children}</> : null;
 };
