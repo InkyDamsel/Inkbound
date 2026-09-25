@@ -83,9 +83,8 @@ const hardcoverContextCandidates = (
   const wanted = canonicalDetectiveAuthor(wantedAuthor);
   return groups.flatMap((work) => {
     const exactAuthor = !wanted || work.authors.some((author) => canonicalDetectiveAuthor(author) === wanted);
-    if (!exactAuthor) return [];
 
-    return work.editions.map((edition) => {
+    return work.editions.flatMap((edition) => {
       const metadata = wantedSeriesName
         ? knownSeriesMetadataFromCatalogWork(work, edition, wantedSeriesName)
         : edition.seriesName?.trim()
@@ -96,7 +95,13 @@ const hardcoverContextCandidates = (
                 : null,
             }
           : null;
-      return {
+      const structuredSeriesMatch = Boolean(
+        wantedSeriesName
+        && edition.seriesName
+        && detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName),
+      );
+      if (!exactAuthor && !structuredSeriesMatch) return [];
+      return [{
         work,
         edition,
         seriesName: metadata?.name,
@@ -107,20 +112,9 @@ const hardcoverContextCandidates = (
           edition.seriesName
           && (!wantedSeriesName || detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName)),
         ),
-      };
+      }];
     });
   });
-};
-
-const canonicalDetectiveLanguage = (value?: string): string => {
-  const raw = value?.trim().toLowerCase().replace(/_/g, '-') ?? '';
-  if (!raw) return '';
-  const base = raw.split('-')[0];
-  const aliases: Record<string, string> = {
-    eng: 'en', spa: 'es', fre: 'fr', fra: 'fr', ger: 'de', deu: 'de',
-    ita: 'it', por: 'pt', dut: 'nl', nld: 'nl', jpn: 'ja',
-  };
-  return aliases[base] ?? base;
 };
 
 const hasMergedKnownSeriesContext = (
@@ -617,14 +611,6 @@ export async function findMissingSeriesBooks(
       ? [resolved.position]
       : [];
   });
-  const preferredLanguages = new Set(
-    seriesBooks
-      .map((book) => {
-        const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-        return canonicalDetectiveLanguage(edition?.language);
-      })
-      .filter(Boolean),
-  );
   const wholePositions = knownPositions.filter((position) => Number.isInteger(position) && position > 0);
   const highest = wholePositions.length ? Math.max(...wholePositions) : 0;
   const knownPositionSet = new Set(wholePositions);
@@ -728,13 +714,6 @@ export async function findMissingSeriesBooks(
     const contextual = !candidate.seriesName && hasMergedKnownSeriesContext(candidate, seriesName);
     const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
     if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) return;
-
-    const candidateLanguage = canonicalDetectiveLanguage(candidate.edition.language);
-    if (
-      preferredLanguages.size > 0
-      && candidateLanguage
-      && !preferredLanguages.has(candidateLanguage)
-    ) return;
 
     addCandidate({
       work: candidate.work,
