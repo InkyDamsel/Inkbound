@@ -4,6 +4,8 @@ import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import { consumeLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
+import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
+import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import {
   buildSeriesLibrary,
   seriesBookDisplayTitle,
@@ -49,6 +51,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.seriesSort, 'az');
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -57,13 +60,32 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const series = useMemo(() => buildSeriesLibrary(books, overrides), [books, overrides]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return series;
-    return series.filter((item) =>
-      item.name.toLowerCase().includes(query)
-      || item.author.toLowerCase().includes(query)
-      || item.books.some(({ book }) => book.work.title.toLowerCase().includes(query)),
-    );
-  }, [search, series]);
+    const source = query
+      ? series.filter((item) =>
+          item.name.toLowerCase().includes(query)
+          || item.author.toLowerCase().includes(query)
+          || item.books.some(({ book }) => book.work.title.toLowerCase().includes(query)),
+        )
+      : [...series];
+
+    const seriesDate = (item: (typeof series)[number], newest: boolean) => {
+      const dates = item.books.map(({ book }) => book.dateAdded).filter(Boolean);
+      if (!dates.length) return '';
+      const ordered = [...dates].sort(compareLibraryDates);
+      return ordered[newest ? ordered.length - 1 : 0];
+    };
+
+    return source.sort((a, b) => {
+      if (sortMode === 'za') return compareLibraryLabels(b.name, a.name);
+      if (sortMode === 'newest') {
+        return compareLibraryDates(seriesDate(b, true), seriesDate(a, true)) || compareLibraryLabels(a.name, b.name);
+      }
+      if (sortMode === 'oldest') {
+        return compareLibraryDates(seriesDate(a, false), seriesDate(b, false)) || compareLibraryLabels(a.name, b.name);
+      }
+      return compareLibraryLabels(a.name, b.name);
+    });
+  }, [search, series, sortMode]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / SERIES_PER_PAGE));
   const pagedSeries = useMemo(() => {
@@ -78,12 +100,17 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   }, [currentPage, totalPages]);
 
   useEffect(() => {
+    setCurrentPage(1);
+    setExpandedSeriesId(null);
+  }, [sortMode]);
+
+  useEffect(() => {
     const targetBookId = consumeLibrarySeriesFocusBookId();
     if (!targetBookId) return;
-    const targetIndex = series.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
+    const targetIndex = filtered.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
     if (targetIndex < 0) return;
 
-    const targetSeries = series[targetIndex];
+    const targetSeries = filtered[targetIndex];
     setSearch('');
     setCurrentPage(Math.floor(targetIndex / SERIES_PER_PAGE) + 1);
     setExpandedSeriesId(targetSeries.id);
@@ -91,7 +118,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
     window.setTimeout(() => {
       document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 0);
-  }, [series]);
+  }, [filtered]);
 
   const goToPage = (page: number) => {
     const next = Math.max(1, Math.min(page, totalPages));
@@ -217,11 +244,14 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
             <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Your reading worlds</h2>
             <p className="mt-1 text-sm text-[var(--ink-muted)]">{series.length} series found in your library.</p>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:max-w-lg sm:flex-row">
+          <div className="flex w-full flex-col gap-2 sm:max-w-2xl sm:flex-row">
             <label className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
               <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1); setExpandedSeriesId(null); }} placeholder="Search series or title" className="h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-10 pr-4 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55" />
             </label>
+            <select value={sortMode} onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)} className="inkbound-select min-h-11 min-w-[140px]" aria-label="Sort series">
+              {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
             <button type="button" onClick={openCreate} className="quiet-shelf-primary-action shrink-0"><Plus className="h-4 w-4" />Create Series</button>
           </div>
         </div>
