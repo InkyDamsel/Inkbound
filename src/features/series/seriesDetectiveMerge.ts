@@ -9,7 +9,7 @@ import {
 export interface DetectiveMergeCandidate {
   work: BookSearchWorkGroup;
   edition: BookSearchEdition;
-  seriesName: string;
+  seriesName?: string;
   position: number | null;
   provider: 'google-books' | 'open-library';
 }
@@ -96,8 +96,12 @@ const mergeExactEdition = (
 const mergeSeries = (
   left: DetectiveMergeCandidate,
   right: DetectiveMergeCandidate,
-): { name: string; position: number | null } => {
-  const compatible = detectiveSeriesNamesCompatible(left.seriesName, right.seriesName);
+): { name?: string; position: number | null } => {
+  const leftName = left.seriesName?.trim();
+  const rightName = right.seriesName?.trim();
+  if (!leftName) return { name: rightName, position: right.position };
+  if (!rightName) return { name: leftName, position: left.position };
+  const compatible = detectiveSeriesNamesCompatible(leftName, rightName);
   if (!compatible) {
     // Do not manufacture a consensus when two providers disagree on the series.
     // Keep the candidate with the more specific position and let both survive as
@@ -109,7 +113,7 @@ const mergeSeries = (
   }
 
   return {
-    name: left.seriesName.trim() || right.seriesName.trim(),
+    name: leftName || rightName,
     position: left.position ?? right.position,
   };
 };
@@ -145,7 +149,11 @@ export const mergeDetectiveCandidates = (
     }
 
     const current = merged[workIndex];
-    if (!detectiveSeriesNamesCompatible(current.seriesName, incoming.seriesName)) {
+    if (
+      current.seriesName
+      && incoming.seriesName
+      && !detectiveSeriesNamesCompatible(current.seriesName, incoming.seriesName)
+    ) {
       // Conflicting series claims for the same work are intentionally not
       // flattened into one truth. Preserve both for downstream verification.
       merged.push({
