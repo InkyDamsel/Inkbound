@@ -13,6 +13,8 @@ import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
+  ACCOUNT_LIBRARY_MIGRATION_VERSION,
+  accountLibraryMigrationVersionKey,
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -202,6 +204,9 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
+        // A new/returning device that built its working copy directly from the
+        // verified cloud snapshot does not need a local-to-cloud migration.
+        storage.setItem(accountLibraryMigrationVersionKey(uid), ACCOUNT_LIBRARY_MIGRATION_VERSION);
         storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
         if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) {
           storage.removeItem(HYDRATION_REQUIRED_UID_KEY);
