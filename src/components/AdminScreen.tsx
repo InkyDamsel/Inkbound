@@ -5,6 +5,7 @@ import { functions } from '../lib/firebase';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { AdminDataSafetyPanel } from './admin/AdminDataSafetyPanel';
 import { AdminCatalogContributionsPanel } from './admin/AdminCatalogContributionsPanel';
+import { AdminSupportConsole } from './admin/AdminSupportConsole';
 
 interface AdminUser {
   uid: string;
@@ -12,6 +13,9 @@ interface AdminUser {
   displayName: string;
   photoUrl: string;
   emailVerified: boolean;
+  authProviderIds: string[];
+  accountCreatedAt: string | null;
+  lastSignInAt: string | null;
   lastSeenAt: string | null;
   basePlan: 'free' | 'premium';
   subscriptionStatus: string;
@@ -23,6 +27,7 @@ interface AdminUser {
 interface AuditEntry {
   id: string;
   action: string;
+  targetUserId: string;
   targetEmail: string;
   performedByEmail: string;
   reason: string;
@@ -433,6 +438,12 @@ export const AdminScreen: React.FC = () => {
           </div> : <p className="mt-5 text-[var(--ink-muted)]">Select a reader to manage access.</p>}
         </aside>
       </section>
+
+      <AdminSupportConsole
+        reader={selectedUser}
+        audit={data?.audit ?? []}
+        onRefresh={() => loadDashboard(query)}
+      />
 
       <AdminDataSafetyPanel
         targetUserId={selectedUser?.uid ?? null}
