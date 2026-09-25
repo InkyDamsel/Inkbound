@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
@@ -63,6 +64,7 @@ function hasCompletedFullReconciliation(uid: string): boolean {
 export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   const { user } = useAccountSync();
   const uid = user?.uid;
+  const localOnlyDevelopment = import.meta.env.DEV && !db;
   const [localLibraryReady, setLocalLibraryReady] = useState(false);
   const [fullReconciliationComplete, setFullReconciliationComplete] = useState(false);
 
@@ -97,7 +99,7 @@ export const AdaptiveCloudPersistenceBridge: React.FC = () => {
     setFullReconciliationComplete(true);
   }, []);
 
-  if (!uid) return null;
+  if (!uid || localOnlyDevelopment) return null;
   if (!localLibraryReady) return <OneShotCloudHydrationBridge />;
   if (!fullReconciliationComplete) {
     return <FullCloudReconciliationBridge onComplete={handleFullReconciliationComplete} />;
