@@ -63,16 +63,28 @@ export const IconStepRating: React.FC<IconStepRatingProps> = ({
                 setValue(half ? step - 0.5 : step);
               }}
             >
-              <Icon className={`${iconSizeClass} ${emptyClass}`} />
-              {fill > 0 && (
-                <span
-                  aria-hidden="true"
-                  className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${iconSizeClass}`}
-                >
-                  <span className="block h-full overflow-hidden" style={{ width: `${fill}%` }}>
-                    <Icon className={`${iconSizeClass} max-w-none ${activeClass}`} />
+              {kind === 'spice' ? (
+                fill === 50 ? (
+                  <span aria-hidden="true" className={`relative block overflow-hidden ${iconSizeClass}`} style={{ width: '50%' }}>
+                    <ChiliPepperIcon className={`${iconSizeClass} max-w-none`} />
                   </span>
-                </span>
+                ) : (
+                  <ChiliPepperIcon className={`${iconSizeClass} ${fill === 100 ? '' : emptyClass}`} />
+                )
+              ) : (
+                <>
+                  <Icon className={`${iconSizeClass} ${emptyClass}`} />
+                  {fill > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${iconSizeClass}`}
+                    >
+                      <span className="block h-full overflow-hidden" style={{ width: `${fill}%` }}>
+                        <Icon className={`${iconSizeClass} max-w-none ${activeClass}`} />
+                      </span>
+                    </span>
+                  )}
+                </>
               )}
             </button>
           );
