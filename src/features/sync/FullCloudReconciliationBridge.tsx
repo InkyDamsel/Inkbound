@@ -325,6 +325,9 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
             });
             await flushLargeBrowserStorage();
             if (disposed) return;
+            if (!storage().getItem(snapshotKey)) {
+              throw new Error('Account migration stopped because Inkbound could not create a durable local recovery snapshot.');
+            }
           }
         }
 
