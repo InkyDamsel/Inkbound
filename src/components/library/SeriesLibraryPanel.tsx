@@ -6,6 +6,7 @@ import { usePersistentState } from '../../hooks/usePersistentState';
 import { clearLibrarySeriesFocusBookId, readLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
+import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
 import {
   buildSeriesLibrary,
   seriesBookDisplayTitle,
@@ -63,6 +64,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const [detectiveResult, setDetectiveResult] = useState<SeriesDetectiveResult | null>(null);
   const [detectiveLoading, setDetectiveLoading] = useState(false);
   const [detectiveError, setDetectiveError] = useState('');
+  const [pendingFocusBookId, setPendingFocusBookId] = useState<string | null>(() => readLibrarySeriesFocusBookId());
 
   const series = useMemo(() => buildSeriesLibrary(books, overrides), [books, overrides]);
   const filtered = useMemo(() => {
@@ -112,25 +114,40 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   }, [sortMode]);
 
   useEffect(() => {
-    const targetBookId = readLibrarySeriesFocusBookId();
+    const refreshPendingFocus = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key !== 'inkbound_library_series_focus_book') return;
+      setPendingFocusBookId(readLibrarySeriesFocusBookId());
+    };
+
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, refreshPendingFocus);
+    return () => window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, refreshPendingFocus);
+  }, []);
+
+  useEffect(() => {
+    const targetBookId = pendingFocusBookId ?? readLibrarySeriesFocusBookId();
     if (!targetBookId) return;
 
-    // Resolve against the complete series collection, not the currently
-    // filtered page. A user's existing Series search must never make a
-    // Book Details deep-link disappear.
-    const targetSeries = series.find((item) => item.books.some(({ book }) => book.id === targetBookId));
-    if (!targetSeries) return;
+    // Clear any stale Series search first, then resolve against the actual
+    // rendered ordering. This also preserves the user's chosen Series sort.
+    if (search) {
+      setSearch('');
+      return;
+    }
 
-    setSearch('');
-    const targetIndex = series.findIndex((item) => item.id === targetSeries.id);
-    setCurrentPage(Math.floor(Math.max(0, targetIndex) / SERIES_PER_PAGE) + 1);
+    const targetIndex = filtered.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
+    if (targetIndex < 0) return;
+
+    const targetSeries = filtered[targetIndex];
+    setCurrentPage(Math.floor(targetIndex / SERIES_PER_PAGE) + 1);
     setExpandedSeriesId(targetSeries.id);
     clearLibrarySeriesFocusBookId(targetBookId);
+    setPendingFocusBookId(null);
 
     window.setTimeout(() => {
       document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 0);
-  }, [series]);
+  }, [filtered, pendingFocusBookId, search]);
 
   const goToPage = (page: number) => {
     const next = Math.max(1, Math.min(page, totalPages));
