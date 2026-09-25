@@ -12,6 +12,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { readCustomOwnershipCategories } from '../features/ownership/customOwnershipCategories';
 import type { Format, OwnershipStatus, Priority, ReadingStatus, UserBookRecord } from '../types';
+import { BOOK_RATING_VALUES, SPICE_LEVEL_VALUES } from '../features/reading/bookRating';
 
 export interface BatchEditChanges {
   status?: ReadingStatus;
@@ -20,6 +21,7 @@ export interface BatchEditChanges {
   format?: Format;
   priority?: Priority;
   rating?: number | null;
+  spiceLevel?: number | null;
   dateStarted?: string | null;
   dateFinished?: string | null;
   addTag?: string;
@@ -74,6 +76,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const [priority, setPriority] = useState<string>(uniform((book) => book.priority) ? first.priority : 'multiple');
   const [format, setFormat] = useState('keep');
   const [rating, setRating] = useState('keep');
+  const [spiceLevel, setSpiceLevel] = useState('keep');
   const [startedMode, setStartedMode] = useState<DateMode>('keep');
   const [finishedMode, setFinishedMode] = useState<DateMode>('keep');
   const [dateStarted, setDateStarted] = useState('');
@@ -100,6 +103,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
       priority: priority !== 'multiple' && priority !== 'keep' ? priority as Priority : undefined,
       format: format !== 'keep' ? format as Format : undefined,
       rating: rating === 'clear' ? null : rating !== 'keep' ? Number(rating) : undefined,
+      spiceLevel: spiceLevel === 'clear' ? null : spiceLevel !== 'keep' ? Number(spiceLevel) : undefined,
       dateStarted: startedMode === 'clear' ? null : startedMode === 'set' && dateStarted ? dateStarted : undefined,
       dateFinished: finishDateChange,
       addTag: optionalText(tagAdd)?.toLowerCase(),
@@ -107,7 +111,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
       addCollection: optionalText(collectionAdd),
       removeCollection: optionalText(collectionRemove),
     };
-  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, startedMode, status, tagAdd, tagRemove]);
+  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, spiceLevel, startedMode, status, tagAdd, tagRemove]);
 
   const preview = useMemo(() => {
     const items: string[] = [];
@@ -121,6 +125,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     if (changes.format) items.push(`Format → ${formatLabel(changes.format)}`);
     if (changes.priority) items.push(`Priority → ${priorityLabel(changes.priority)}`);
     if (changes.rating !== undefined) items.push(changes.rating === null ? 'Clear rating' : `Rating → ${changes.rating}/5`);
+    if (changes.spiceLevel !== undefined) items.push(changes.spiceLevel === null ? 'Clear spice level' : `Spice → ${changes.spiceLevel}/5`);
     if (changes.dateStarted !== undefined) items.push(changes.dateStarted === null ? 'Clear date started' : `Date started → ${changes.dateStarted}`);
     if (changes.dateFinished !== undefined) items.push(changes.dateFinished === null ? 'Clear date finished' : `Date finished → ${changes.dateFinished}`);
     if (changes.addTag) items.push(`Add tag “${changes.addTag}”`);
@@ -153,7 +158,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
             {field('Ownership', <select value={ownership} onChange={(event) => setOwnership(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{ownership === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom'))}{customOwnershipCategories.length > 0 && <optgroup label="Custom categories">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>)}
             {field('Primary Format', <select value={format} onChange={(event) => setFormat(event.target.value)} className={selectClass}><option value="keep">Keep Current Formats</option>{optionSet(FORMAT_OPTIONS)}</select>)}
             {field('Priority', <select value={priority} onChange={(event) => setPriority(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{priority === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(PRIORITY_OPTIONS)}</select>)}
-            {field('Rating', <select value={rating} onChange={(event) => setRating(event.target.value)} className={selectClass}><option value="keep">Keep Current Ratings</option>{[5,4,3,2,1].map((value) => <option key={value} value={value}>{value} stars</option>)}<option value="clear">Clear Rating</option></select>)}
+            {field('Rating', <select value={rating} onChange={(event) => setRating(event.target.value)} className={selectClass}><option value="keep">Keep Current Ratings</option>{BOOK_RATING_VALUES.slice().reverse().map((value) => <option key={value} value={value}>{value} stars</option>)}<option value="clear">Clear Rating</option></select>)}{field('Spice Level', <select value={spiceLevel} onChange={(event) => setSpiceLevel(event.target.value)} className={selectClass}><option value="keep">Keep Current Spice Levels</option>{SPICE_LEVEL_VALUES.map((value) => <option key={value} value={value}>{value === 0 ? '0 — No spice' : `${value}/5 spice`}</option>)}<option value="clear">Clear Spice Level</option></select>)}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
