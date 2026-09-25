@@ -593,11 +593,15 @@ export async function findMissingSeriesBooks(
   author: string,
   libraryBooks: UserBookRecord[],
   signal?: AbortSignal,
+  seriesBookIds?: string[],
 ): Promise<SeriesDetectiveResult> {
-  const seriesBooks = libraryBooks.filter((book) => {
-    const resolved = resolveEffectiveSeriesMetadata(book);
-    return Boolean(resolved && detectiveSeriesNamesCompatible(resolved.name, seriesName));
-  });
+  const scopedSeriesBookIds = new Set(seriesBookIds ?? []);
+  const seriesBooks = scopedSeriesBookIds.size > 0
+    ? libraryBooks.filter((book) => scopedSeriesBookIds.has(book.id))
+    : libraryBooks.filter((book) => {
+        const resolved = resolveEffectiveSeriesMetadata(book);
+        return Boolean(resolved && detectiveSeriesNamesCompatible(resolved.name, seriesName));
+      });
   const knownPositions = seriesBooks.flatMap((book) => {
     const resolved = resolveEffectiveSeriesMetadata(book);
     return typeof resolved?.position === 'number' && Number.isFinite(resolved.position)
