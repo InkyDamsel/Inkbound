@@ -57,7 +57,10 @@ for (const required of [
   'critical-reading-regressions.ts',
   'reporting-math-regressions.ts',
   'catalog-hardening-regressions.ts',
+  'google-series-regressions.ts',
+  'runtime-boundary-regressions.ts',
   'series-detective-regressions.ts',
+  'smart-collection-regressions.ts',
 ]) {
   if (!critical.includes(required)) failures.push(`package.json: test:critical is missing ${required}`);
 }
