@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Lock, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, Loader2, Lock, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
@@ -23,6 +23,9 @@ import {
   subscriptionServiceLabel,
 } from '../../domain/libraryTaxonomy';
 import { BookCover } from '../BookCover';
+import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
+import { createBookFromSearchEdition } from '../../features/book-search/mapping/bookSearchMapper';
+import { replaceCanonicalLibrary } from '../../features/library/libraryMutations';
 
 interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
@@ -56,6 +59,10 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
+  const [detectiveSeriesId, setDetectiveSeriesId] = useState<string | null>(null);
+  const [detectiveResult, setDetectiveResult] = useState<SeriesDetectiveResult | null>(null);
+  const [detectiveLoading, setDetectiveLoading] = useState(false);
+  const [detectiveError, setDetectiveError] = useState('');
 
   const series = useMemo(() => buildSeriesLibrary(books, overrides), [books, overrides]);
   const filtered = useMemo(() => {
@@ -214,6 +221,49 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
     if (expandedSeriesId === id) setExpandedSeriesId(null);
   };
 
+  const runSeriesDetective = async (item: (typeof series)[number]) => {
+    if (detectiveLoading) return;
+    setDetectiveSeriesId(item.id);
+    setDetectiveResult(null);
+    setDetectiveError('');
+    setDetectiveLoading(true);
+    try {
+      setDetectiveResult(await findMissingSeriesBooks(item.name, item.author, books));
+    } catch (error) {
+      setDetectiveError(error instanceof Error ? error.message : 'Series Detective could not check this series.');
+    } finally {
+      setDetectiveLoading(false);
+    }
+  };
+
+  const addDetectiveCandidate = (candidate: SeriesDetectiveResult['missing'][number]) => {
+    const created = createBookFromSearchEdition({
+      work: candidate.work,
+      edition: candidate.edition,
+      status: 'tbr',
+      ownership: 'none',
+    });
+    const book: UserBookRecord = {
+      ...created,
+      work: {
+        ...created.work,
+        seriesName: candidate.seriesName,
+        seriesOrder: candidate.position ?? created.work.seriesOrder,
+      },
+    };
+    if (!replaceCanonicalLibrary([...books, book])) {
+      setDetectiveError('Inkbound could not save this book to your library.');
+      return;
+    }
+    setDetectiveResult((current) => current ? {
+      ...current,
+      missing: current.missing.filter((item) =>
+        item.work.key !== candidate.work.key
+        || item.edition.externalEditionId !== candidate.edition.externalEditionId,
+      ),
+    } : current);
+  };
+
   const pagination = filtered.length > SERIES_PER_PAGE && (
     <nav className="inkbound-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Series pages">
       <p className="text-xs text-[var(--ink-muted)]">
@@ -316,6 +366,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                   {expanded && (
                     <div className="border-t border-[var(--ink-border-subtle)] px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
                       <div className="mb-4 flex flex-wrap justify-end gap-2">
+                        <button type="button" onClick={() => void runSeriesDetective(item)} disabled={detectiveLoading && detectiveSeriesId === item.id} className="quiet-shelf-secondary-action"><Sparkles className="h-4 w-4" />{detectiveLoading && detectiveSeriesId === item.id ? 'Checking…' : 'Series Detective'}</button>
                         <button type="button" onClick={() => openEdit(item)} className="quiet-shelf-secondary-action"><Pencil className="h-4 w-4" />{item.isManual ? 'Edit series' : 'Correct series'}</button>
                         {item.isManual && <button type="button" onClick={() => deleteManualSeries(item.id)} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" />Remove custom grouping</button>}
                       </div>
@@ -342,6 +393,42 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                           </button>
                         ))}
                       </div>
+
+                      {detectiveSeriesId === item.id && (
+                        <section className="mt-5 rounded-2xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 p-4 sm:p-5">
+                          <div className="flex items-start gap-3">
+                            {detectiveLoading ? <Loader2 className="mt-1 h-5 w-5 shrink-0 animate-spin text-[var(--ink-gold)]" /> : <Sparkles className="mt-1 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />}
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-serif text-xl text-[var(--ink-ivory)]">Series Detective</h4>
+                              {detectiveLoading ? (
+                                <p className="mt-2 text-sm text-[var(--ink-muted)]">Checking catalog metadata for missing books in {item.name}…</p>
+                              ) : detectiveError ? (
+                                <p className="mt-2 text-sm text-rose-300">{detectiveError}</p>
+                              ) : detectiveResult ? (
+                                detectiveResult.missing.length === 0 ? (
+                                  <p className="mt-2 text-sm text-[var(--ink-muted)]">No missing books were found from verified series evidence. Inkbound will not guess when the catalog cannot prove a match.</p>
+                                ) : (
+                                  <>
+                                    <p className="mt-2 text-sm text-[var(--ink-muted)]">Found {detectiveResult.missing.length} book{detectiveResult.missing.length === 1 ? '' : 's'} that appear to belong to this series but are not in your library.</p>
+                                    <div className="mt-4 grid gap-2">
+                                      {detectiveResult.missing.map((candidate) => (
+                                        <div key={candidate.work.key + ':' + candidate.edition.externalEditionId} className="flex items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3">
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-gold)]">{candidate.position !== null ? 'Book ' + candidate.position : 'Series book'}</p>
+                                            <p className="truncate font-serif text-lg text-[var(--ink-ivory)]">{candidate.work.title}</p>
+                                            <p className="truncate text-xs text-[var(--ink-muted)]">{candidate.work.authors.join(', ')}</p>
+                                          </div>
+                                          <button type="button" onClick={() => addDetectiveCandidate(candidate)} className="quiet-shelf-primary-action shrink-0"><Plus className="h-4 w-4" />Add to TBR</button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )
+                              ) : null}
+                            </div>
+                          </div>
+                        </section>
+                      )}
 
                       <section className="mt-5 rounded-2xl border border-[var(--ink-gold)]/20 bg-[var(--ink-gold)]/5 p-4 sm:p-5">
                         <div className="flex items-start gap-3">
