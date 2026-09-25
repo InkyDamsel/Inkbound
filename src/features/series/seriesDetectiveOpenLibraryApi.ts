@@ -176,8 +176,10 @@ const mapCandidate = (
 const fetchOpenLibrary = async (
   params: URLSearchParams,
   signal?: AbortSignal,
+  page = 1,
 ): Promise<OpenLibraryWork[]> => {
   params.set('limit', '100');
+  params.set('page', String(Math.max(1, page)));
   params.set('fields', FIELDS);
   const response = await fetch(`${ENDPOINT}?${params.toString()}`, {
     signal,
@@ -187,6 +189,71 @@ const fetchOpenLibrary = async (
   const payload = await response.json() as OpenLibraryResponse;
   return payload.docs ?? [];
 };
+
+const WORK_EDITION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const workEditionCache = new Map<string, { expiresAt: number; editions: OpenLibraryEdition[] }>();
+
+const fetchWorkEditions = async (
+  workKey: string,
+  signal?: AbortSignal,
+): Promise<OpenLibraryEdition[]> => {
+  const path = workKey.startsWith('/works/')
+    ? workKey
+    : /^OL\d+W$/i.test(workKey)
+      ? `/works/${workKey}`
+      : '';
+  if (!path) return [];
+
+  const cached = workEditionCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.editions;
+  if (cached) workEditionCache.delete(path);
+
+  try {
+    const response = await fetch(`https://openlibrary.org${path}/editions.json?limit=30`, {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return [];
+    const payload = await response.json() as { entries?: OpenLibraryEdition[] };
+    const editions = payload.entries ?? [];
+    workEditionCache.set(path, {
+      expiresAt: Date.now() + WORK_EDITION_CACHE_TTL_MS,
+      editions,
+    });
+    return editions;
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return [];
+  }
+};
+
+const hydrateWorksFromEditionDetails = async (
+  works: OpenLibraryWork[],
+  limit: number,
+  signal?: AbortSignal,
+): Promise<OpenLibraryWork[]> => Promise.all(works.map(async (work, index) => {
+  if (index >= limit || !work.key) return work;
+  const existing = work.editions?.docs ?? [];
+  const hasSeries = Boolean(
+    work.series?.some((value) => value?.trim())
+    || existing.some((edition) => edition.series?.some((value) => value?.trim())),
+  );
+  if (hasSeries && existing.length > 0) return work;
+
+  const detailed = await fetchWorkEditions(work.key, signal);
+  if (!detailed.length) return work;
+
+  const seen = new Set(existing.map((edition) => edition.key).filter(Boolean));
+  return {
+    ...work,
+    editions: {
+      docs: [
+        ...existing,
+        ...detailed.filter((edition) => !edition.key || !seen.has(edition.key)),
+      ],
+    },
+  };
+}));
 
 const flattenCandidates = (
   works: OpenLibraryWork[],
@@ -213,7 +280,8 @@ export async function searchDetectiveOpenLibrarySeries(
 
   const results = await Promise.all(queries.map(async (params) => {
     try {
-      return await fetchOpenLibrary(params, signal);
+      const works = await fetchOpenLibrary(params, signal);
+      return hydrateWorksFromEditionDetails(works, 30, signal);
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn('Series Detective Open Library query failed.', error);
@@ -240,7 +308,14 @@ export async function searchDetectiveOpenLibraryAuthor(
 
   const params = new URLSearchParams({ author: trimmed });
   try {
-    return flattenCandidates(await fetchOpenLibrary(params, signal), undefined, author);
+    const works: OpenLibraryWork[] = [];
+    for (let page = 1; page <= 4; page += 1) {
+      const pageWorks = await fetchOpenLibrary(new URLSearchParams(params), signal, page);
+      works.push(...pageWorks);
+      if (pageWorks.length < 100) break;
+    }
+    const hydrated = await hydrateWorksFromEditionDetails(works, 20, signal);
+    return flattenCandidates(hydrated, undefined, author);
   } catch (error) {
     if (signal?.aborted) throw error;
     console.warn('Series Detective Open Library author lookup failed.', error);
@@ -255,7 +330,8 @@ export async function searchDetectiveOpenLibraryBook(
 ): Promise<DetectiveOpenLibraryCandidate[]> {
   const params = new URLSearchParams({ title: title.trim(), author: author.trim() });
   try {
-    return flattenCandidates(await fetchOpenLibrary(params, signal), undefined, author)
+    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 8, signal);
+    return flattenCandidates(works, undefined, author)
       .filter((candidate) =>
         normalizeDetectiveText(candidate.work.title) === normalizeDetectiveText(title)
         || normalizeDetectiveText(candidate.edition.title) === normalizeDetectiveText(title),
