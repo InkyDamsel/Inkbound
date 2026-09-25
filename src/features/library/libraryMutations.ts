@@ -1,5 +1,5 @@
 import type { ReadingSession, UserBookRecord } from '../../types';
-import { writeRuntimeJson } from '../../platform/runtimeStorage';
+import { readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
@@ -25,6 +25,18 @@ export function replaceCanonicalLibrary(nextBooks: UserBookRecord[]) {
  */
 export function replaceCanonicalBook(currentBooks: UserBookRecord[], updatedBook: UserBookRecord) {
   return replaceCanonicalLibrary(currentBooks.map((book) => book.id === updatedBook.id ? updatedBook : book));
+}
+
+/**
+ * Append one book against the latest persisted canonical library rather than a
+ * render-time array. Embedded features may remain mounted while another
+ * mutation refresh is propagating; reading at the mutation boundary prevents a
+ * second quick add from replacing the first with stale UI state.
+ */
+export function appendCanonicalBook(book: UserBookRecord) {
+  const currentBooks = readRuntimeJson<UserBookRecord[]>(SYNC_STORAGE_KEYS.books, []);
+  if (currentBooks.some((current) => current.id === book.id)) return true;
+  return replaceCanonicalLibrary([...currentBooks, book]);
 }
 
 
