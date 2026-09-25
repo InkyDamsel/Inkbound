@@ -253,6 +253,88 @@ assert.equal(differentEditionMerge[0].seriesName, 'Selection series');
 assert.equal(differentEditionMerge[0].position, 2);
 assert.equal(differentEditionMerge[0].work.editions.length, 2);
 
+// Hardcover can supply the series relationship when Google is metadata-thin.
+const googleHardcoverMerge = mergeDetectiveCandidates([
+  {
+    provider: 'google-books',
+    seriesName: undefined,
+    position: null,
+    work: {
+      key: 'google-books:the-elite::kiera-cass',
+      title: 'The Elite',
+      authors: ['Kiera Cass'],
+      genres: [],
+      editions: [{
+        source: 'google-books',
+        externalEditionId: 'google-elite',
+        title: 'The Elite',
+        authors: ['Kiera Cass'],
+        genres: [],
+        publicationYear: 2013,
+        format: 'hardcover',
+        isbn13: '9780062059963',
+        pageCount: 336,
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'google-books',
+      externalEditionId: 'google-elite',
+      title: 'The Elite',
+      authors: ['Kiera Cass'],
+      genres: [],
+      publicationYear: 2013,
+      format: 'hardcover',
+      isbn13: '9780062059963',
+      pageCount: 336,
+      specialFeatures: [],
+    },
+  },
+  {
+    provider: 'hardcover',
+    seriesName: 'The Selection',
+    position: 2,
+    seriesProvider: 'hardcover',
+    seriesStructured: true,
+    work: {
+      key: 'hardcover:elite',
+      title: 'The Elite',
+      authors: ['Kiera Cass'],
+      genres: [],
+      editions: [{
+        source: 'hardcover',
+        externalEditionId: 'hc-elite',
+        title: 'The Elite',
+        authors: ['Kiera Cass'],
+        genres: [],
+        publicationYear: 2013,
+        format: 'hardcover',
+        isbn13: '9780062059963',
+        publisher: 'HarperTeen',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'hardcover',
+      externalEditionId: 'hc-elite',
+      title: 'The Elite',
+      authors: ['Kiera Cass'],
+      genres: [],
+      publicationYear: 2013,
+      format: 'hardcover',
+      isbn13: '9780062059963',
+      publisher: 'HarperTeen',
+      specialFeatures: [],
+    },
+  },
+]);
+
+assert.equal(googleHardcoverMerge.length, 1);
+assert.equal(googleHardcoverMerge[0].seriesName, 'The Selection');
+assert.equal(googleHardcoverMerge[0].position, 2);
+assert.equal(googleHardcoverMerge[0].edition.pageCount, 336);
+assert.equal(googleHardcoverMerge[0].edition.publisher, 'HarperTeen');
+
 // Strong structured exact-work evidence can verify one book.
 const strong = scoreDetectiveEvidence({
   seriesName: 'Dream Harbor',
