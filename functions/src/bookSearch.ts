@@ -8,9 +8,19 @@ const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const GOOGLE_BOOKS_CACHE_TTL_MS = 5 * 60 * 1000;
 const GOOGLE_BOOKS_CACHE_MAX = 500;
+const GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_MAX = 1000;
+const GOOGLE_SERIES_ENDPOINT = 'https://www.googleapis.com/books/v1/series/get';
+const GOOGLE_DETAIL_HYDRATION_LIMIT = 3;
 
-type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[] };
+type GoogleBibliographicSeriesInfo = { name: string; position?: number };
+type GoogleBooksCatalogPayload = {
+  totalItems: number;
+  items: unknown[];
+  seriesMetadataById?: Record<string, string>;
+};
 const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBooksCatalogPayload }>();
+const googleBibliographicSeriesCache = new Map<string, { expiresAt: number; value: GoogleBibliographicSeriesInfo | null }>();
 
 interface SearchResult {
   id?: number | string;
@@ -111,8 +121,35 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
   return payload.data;
 }
 
-function readGoogleBooksCache(query: string): GoogleBooksCatalogPayload | undefined {
-  const key = query.trim().toLowerCase();
+const googleBooksCacheKey = (query: string, startIndex: number, maxResults: number) =>
+  `${query.trim().toLowerCase()}::${startIndex}::${maxResults}`;
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+
+const googleVolumeInfo = (value: unknown): Record<string, unknown> | undefined =>
+  asRecord(asRecord(value)?.volumeInfo);
+
+const googleVolumeId = (value: unknown): string | undefined => {
+  const record = asRecord(value);
+  return typeof record?.id === 'string' && record.id.trim() ? record.id.trim() : undefined;
+};
+
+const googleSeriesIdsFromItems = (items: unknown[]): string[] => {
+  const ids = new Set<string>();
+  for (const item of items) {
+    const seriesInfo = asRecord(googleVolumeInfo(item)?.seriesInfo);
+    const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
+    for (const membership of memberships) {
+      const id = asRecord(membership)?.seriesId;
+      if (typeof id === 'string' && id.trim()) ids.add(id.trim());
+    }
+  }
+  return [...ids];
+};
+
+function readGoogleBooksCache(query: string, startIndex: number, maxResults: number): GoogleBooksCatalogPayload | undefined {
+  const key = googleBooksCacheKey(query, startIndex, maxResults);
   const cached = googleBooksCache.get(key);
   if (!cached) return undefined;
   if (cached.expiresAt <= Date.now()) {
@@ -124,8 +161,8 @@ function readGoogleBooksCache(query: string): GoogleBooksCatalogPayload | undefi
   return cached.payload;
 }
 
-function writeGoogleBooksCache(query: string, payload: GoogleBooksCatalogPayload) {
-  const key = query.trim().toLowerCase();
+function writeGoogleBooksCache(query: string, startIndex: number, maxResults: number, payload: GoogleBooksCatalogPayload) {
+  const key = googleBooksCacheKey(query, startIndex, maxResults);
   googleBooksCache.set(key, { expiresAt: Date.now() + GOOGLE_BOOKS_CACHE_TTL_MS, payload });
   while (googleBooksCache.size > GOOGLE_BOOKS_CACHE_MAX) {
     const oldestKey = googleBooksCache.keys().next().value as string | undefined;
@@ -134,29 +171,206 @@ function writeGoogleBooksCache(query: string, payload: GoogleBooksCatalogPayload
   }
 }
 
-async function googleBooksCatalog(query: string): Promise<GoogleBooksCatalogPayload> {
-  const cached = readGoogleBooksCache(query);
+const decodeGoogleBooksHtml = (value: string): string =>
+  value
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ');
+
+const stripGoogleBooksHtml = (value: string): string =>
+  decodeGoogleBooksHtml(value.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ' '))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim();
+
+const readGoogleBibliographicSeriesCache = (volumeId: string): GoogleBibliographicSeriesInfo | null | undefined => {
+  const cached = googleBibliographicSeriesCache.get(volumeId);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    googleBibliographicSeriesCache.delete(volumeId);
+    return undefined;
+  }
+  return cached.value;
+};
+
+const writeGoogleBibliographicSeriesCache = (volumeId: string, value: GoogleBibliographicSeriesInfo | null) => {
+  googleBibliographicSeriesCache.set(volumeId, {
+    expiresAt: Date.now() + GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_TTL_MS,
+    value,
+  });
+  while (googleBibliographicSeriesCache.size > GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_MAX) {
+    const oldestKey = googleBibliographicSeriesCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    googleBibliographicSeriesCache.delete(oldestKey);
+  }
+};
+
+const parseGoogleBooksBibliographicSeries = (
+  html: string,
+  authors: string[],
+): GoogleBibliographicSeriesInfo | null => {
+  const titleCell = html.match(/<td[^>]*>\s*Title\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/i)?.[1];
+  if (!titleCell) return null;
+  const lines = stripGoogleBooksHtml(titleCell).split('\n').map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+
+  const normalizedAuthors = authors.map((author) => author.trim().toLocaleLowerCase()).filter(Boolean);
+  for (const rawLine of lines.slice(1)) {
+    let line = rawLine.trim();
+    const lower = line.toLocaleLowerCase();
+    for (const author of normalizedAuthors) {
+      const suffix = ', ' + author;
+      if (lower.endsWith(suffix)) line = line.slice(0, -suffix.length).trim();
+    }
+
+    const numbered = line.match(/^Book\s+(\d+(?:\.\d+)?)\s+of\s+(.+)$/i);
+    if (numbered) {
+      const position = Number(numbered[1]);
+      const name = numbered[2].trim();
+      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
+    }
+
+    if (line.length >= 3 && line.length <= 100 && !/^(?:edition|volume|part)\b/i.test(line)) {
+      return { name: line };
+    }
+  }
+  return null;
+};
+
+async function fetchGoogleBooksBibliographicSeries(
+  volumeId: string,
+  authors: string[],
+): Promise<GoogleBibliographicSeriesInfo | null> {
+  const cached = readGoogleBibliographicSeriesCache(volumeId);
+  if (cached !== undefined) return cached;
+  try {
+    const response = await fetch('https://books.google.com/books?id=' + encodeURIComponent(volumeId));
+    if (!response.ok) {
+      writeGoogleBibliographicSeriesCache(volumeId, null);
+      return null;
+    }
+    const value = parseGoogleBooksBibliographicSeries(await response.text(), authors);
+    writeGoogleBibliographicSeriesCache(volumeId, value);
+    return value;
+  } catch (error) {
+    console.warn('Google Books bibliographic series lookup unavailable.', error);
+    return null;
+  }
+}
+
+const googleVolumeNeedsDetail = (value: unknown): boolean => {
+  const info = googleVolumeInfo(value);
+  if (!info) return true;
+  const seriesInfo = asRecord(info.seriesInfo);
+  const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
+  return memberships.length === 0;
+};
+
+async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string, query: string): Promise<unknown[]> {
+  const operatorMatch = query.trim().match(/^(intitle|inauthor|isbn):\s*(.+)$/i);
+  const operator = operatorMatch?.[1]?.toLocaleLowerCase();
+
+  return Promise.all(items.map(async (item, index) => {
+    const id = googleVolumeId(item);
+    if (!id || index >= GOOGLE_DETAIL_HYDRATION_LIMIT || !googleVolumeNeedsDetail(item)) return item;
+
+    const params = new URLSearchParams({ projection: 'full' });
+    if (apiKey) params.set('key', apiKey);
+
+    try {
+      const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(id)}?${params.toString()}`);
+      const hydrated = response.ok ? await response.json() as unknown : item;
+      const hydratedRecord = asRecord(hydrated) ?? asRecord(item);
+      if (!hydratedRecord) return hydrated;
+
+      const info = googleVolumeInfo(hydrated);
+      const seriesInfo = asRecord(info?.seriesInfo);
+      const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
+      if (memberships.length > 0) return hydrated;
+
+      if (operator !== 'inauthor' && operator !== 'isbn' && index >= 2) return hydrated;
+
+      const authors = Array.isArray(info?.authors)
+        ? info.authors.filter((value): value is string => typeof value === 'string')
+        : [];
+      const bibliographicSeries = await fetchGoogleBooksBibliographicSeries(id, authors);
+      return bibliographicSeries
+        ? { ...hydratedRecord, inkboundBibliographicSeries: bibliographicSeries }
+        : hydrated;
+    } catch (error) {
+      console.warn('Google Books volume hydration unavailable.', error);
+      return item;
+    }
+  }));
+}
+
+async function fetchGoogleSeriesTitles(items: unknown[], apiKey: string): Promise<Record<string, string>> {
+  const ids = googleSeriesIdsFromItems(items);
+  if (!ids.length) return {};
+
+  const params = new URLSearchParams();
+  ids.forEach((id) => params.append('series_id', id));
+  if (apiKey) params.set('key', apiKey);
+
+  try {
+    const response = await fetch(`${GOOGLE_SERIES_ENDPOINT}?${params.toString()}`);
+    if (!response.ok) return {};
+    const payload = await response.json() as { series?: unknown[] };
+    return Object.fromEntries((payload.series ?? []).flatMap((value) => {
+      const record = asRecord(value);
+      const seriesId = typeof record?.seriesId === 'string' ? record.seriesId.trim() : '';
+      const title = typeof record?.title === 'string' ? record.title.trim() : '';
+      return seriesId && title ? [[seriesId, title] as const] : [];
+    }));
+  } catch (error) {
+    console.warn('Google Books series-title lookup unavailable.', error);
+    return {};
+  }
+}
+
+async function googleBooksCatalog(
+  query: string,
+  startIndex = 0,
+  maxResults = 40,
+): Promise<GoogleBooksCatalogPayload> {
+  const safeStart = Math.max(0, startIndex);
+  const safeMax = Math.max(1, Math.min(40, maxResults));
+  const cached = readGoogleBooksCache(query, safeStart, safeMax);
   if (cached) return cached;
 
-  const apiKey = GOOGLE_BOOKS_API_KEY.value();
-  if (!apiKey) throw new HttpsError('failed-precondition', 'Google Books mobile search is not configured.');
-
+  const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
   const params = new URLSearchParams({
     q: query,
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
-    maxResults: '40',
-    key: apiKey,
+    startIndex: String(safeStart),
+    maxResults: String(safeMax),
   });
-  const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+  if (apiKey) params.set('key', apiKey);
+
+  let response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+  if (!response.ok && apiKey) {
+    // Referrer-restricted keys can fail in Cloud Functions/emulator. Public
+    // catalog lookup is valid without a key, so fall back instead of turning a
+    // metadata lookup into a hard failure.
+    params.delete('key');
+    response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+  }
   if (!response.ok) throw new Error(`Google Books returned ${response.status}.`);
+
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
+  const rawItems = Array.isArray(raw.items) ? raw.items : [];
+  const items = await hydrateGoogleCatalogItems(rawItems, apiKey, query);
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
-    items: Array.isArray(raw.items) ? raw.items : [],
+    items,
+    seriesMetadataById: await fetchGoogleSeriesTitles(items, apiKey),
   };
-  writeGoogleBooksCache(query, payload);
+  writeGoogleBooksCache(query, safeStart, safeMax, payload);
   return payload;
 }
 
@@ -303,10 +517,16 @@ export const searchHardcoverBooks = onCall(
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
     const provider = request.data?.provider === 'google-books' ? 'google-books' : 'hardcover';
+    const startIndex = typeof request.data?.startIndex === 'number' && Number.isFinite(request.data.startIndex)
+      ? Math.max(0, Math.floor(request.data.startIndex))
+      : 0;
+    const maxResults = typeof request.data?.maxResults === 'number' && Number.isFinite(request.data.maxResults)
+      ? Math.max(1, Math.min(40, Math.floor(request.data.maxResults)))
+      : 40;
 
     try {
       return provider === 'google-books'
-        ? await googleBooksCatalog(query)
+        ? await googleBooksCatalog(query, startIndex, maxResults)
         : await hardcoverCatalog(query);
     } catch (error) {
       if (provider === 'hardcover') {
