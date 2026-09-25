@@ -257,6 +257,7 @@ if (!bulkHistoricalSessionsSource.includes('onSave(nextSessions)')) {
 
 const fullCloudReconciliationSource = read('src/features/sync/FullCloudReconciliationBridge.tsx');
 const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
+const oneShotCloudHydrationSource = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 const accountLibraryMigrationSource = read('src/features/sync/accountLibraryMigration.ts');
 
 if (
@@ -268,6 +269,9 @@ if (
 }
 if (!cloudServerRefreshSource.includes('canReportCloudLibraryHealthy')) {
   violations.push('CloudServerRefreshBridge.tsx: manual refresh must block empty cloud from masquerading as a synced non-empty local library');
+}
+if (!oneShotCloudHydrationSource.includes('accountLibraryMigrationVersionKey(uid)')) {
+  violations.push('OneShotCloudHydrationBridge.tsx: verified cloud hydration must mark account-library migration safe for returning devices');
 }
 if (!accountLibraryMigrationSource.includes('if (!migrationVerified) return true')) {
   violations.push('accountLibraryMigration.ts: non-empty local libraries must remain migration-pending until round-trip verification completes');
