@@ -216,7 +216,9 @@ function installStorageBridge() {
 
   Storage.prototype.removeItem = function removeItem(key: string): void {
     if (isWindowLocalStorage(this) && isManagedKey(key)) {
-      if (startupHydrationPending && isStartupKey(key)) return;
+      if (startupHydrationPending && isStartupKey(key)) {
+        throw new Error(`Inkbound blocked a removal of ${key} until canonical large-storage hydration completed.`);
+      }
       cache.delete(key);
       trackWrite(deleteLargeValue(key));
     }
