@@ -11,7 +11,7 @@ interface IconStepRatingProps {
   allowZero?: boolean;
 }
 
-const ChiliPepperIcon = ({ className = '' }: { className?: string }) => (
+export const ChiliPepperIcon = ({ className = '' }: { className?: string }) => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
     <path d="M14.3 4.6c1.2-1.9 3.1-2.8 5.2-2.4-.1 2.1-1.2 3.8-3.2 4.8" />
     <path d="M15.8 6.4c2.1 1.8 2.4 5 .8 7.8-2.2 3.8-6.7 5.8-11.4 5.2 3.5-1.5 5.5-3.6 6.5-6.9.6-2.1 1.1-4.8 4.1-6.1Z" />
@@ -69,11 +69,10 @@ export const IconStepRating: React.FC<IconStepRatingProps> = ({
               {fill > 0 && (
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute left-1/2 top-1/2 h-7 -translate-x-1/2 -translate-y-1/2 overflow-hidden"
-                  style={{ width: `${fill}%`, transformOrigin: 'left center' }}
+                  className="pointer-events-none absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2"
                 >
-                  <span className="block h-7 w-7">
-                    <Icon className={`h-7 w-7 ${activeClass}`} />
+                  <span className="block h-7 overflow-hidden" style={{ width: `${fill}%` }}>
+                    <Icon className={`h-7 w-7 max-w-none ${activeClass}`} />
                   </span>
                 </span>
               )}
