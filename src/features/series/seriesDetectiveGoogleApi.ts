@@ -55,7 +55,7 @@ export interface DetectiveGoogleCatalog {
 }
 
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
-const DETAIL_LIMIT = 20;
+const DETAIL_LIMIT = 6;
 const detailCache = new Map<string, DetectiveGoogleVolume>();
 const seriesTitleCache = new Map<string, string>();
 
@@ -197,10 +197,14 @@ export async function searchDetectiveGoogleBooksPage(
     };
   }
 
-  const raw = functions && auth?.currentUser
+  const useProtectedSearch = Boolean(functions && auth?.currentUser);
+  const raw = useProtectedSearch
     ? await protectedSearch(trimmed, safeStart, safeMax)
     : await directSearch(trimmed, signal, safeStart, safeMax);
-  const hydrated = await hydrateDetails(raw, signal);
+  // The Firebase transport already hydrates and adds bibliographic series
+  // evidence. Re-hydrating the same page again in the browser multiplies quota
+  // usage without adding canonical evidence.
+  const hydrated = useProtectedSearch ? raw : await hydrateDetails(raw, signal);
   const items = hydrated.items ?? [];
 
   const serverSeriesTitles = hydrated.seriesMetadataById ?? {};
