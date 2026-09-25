@@ -12,6 +12,7 @@ const GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const GOOGLE_BIBLIOGRAPHIC_SERIES_CACHE_MAX = 1000;
 const GOOGLE_SERIES_ENDPOINT = 'https://www.googleapis.com/books/v1/series/get';
 const GOOGLE_DETAIL_HYDRATION_LIMIT = 3;
+const GOOGLE_DETECTIVE_DETAIL_HYDRATION_LIMIT = 14;
 
 type GoogleBibliographicSeriesInfo = { name: string; position?: number };
 type GoogleBooksCatalogPayload = {
@@ -121,8 +122,12 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
   return payload.data;
 }
 
-const googleBooksCacheKey = (query: string, startIndex: number, maxResults: number) =>
-  `${query.trim().toLowerCase()}::${startIndex}::${maxResults}`;
+const googleBooksCacheKey = (
+  query: string,
+  startIndex: number,
+  maxResults: number,
+  detectiveMode = false,
+) => `${query.trim().toLowerCase()}::${startIndex}::${maxResults}::${detectiveMode ? 'detective' : 'standard'}`;
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
@@ -148,8 +153,13 @@ const googleSeriesIdsFromItems = (items: unknown[]): string[] => {
   return [...ids];
 };
 
-function readGoogleBooksCache(query: string, startIndex: number, maxResults: number): GoogleBooksCatalogPayload | undefined {
-  const key = googleBooksCacheKey(query, startIndex, maxResults);
+function readGoogleBooksCache(
+  query: string,
+  startIndex: number,
+  maxResults: number,
+  detectiveMode = false,
+): GoogleBooksCatalogPayload | undefined {
+  const key = googleBooksCacheKey(query, startIndex, maxResults, detectiveMode);
   const cached = googleBooksCache.get(key);
   if (!cached) return undefined;
   if (cached.expiresAt <= Date.now()) {
@@ -161,8 +171,14 @@ function readGoogleBooksCache(query: string, startIndex: number, maxResults: num
   return cached.payload;
 }
 
-function writeGoogleBooksCache(query: string, startIndex: number, maxResults: number, payload: GoogleBooksCatalogPayload) {
-  const key = googleBooksCacheKey(query, startIndex, maxResults);
+function writeGoogleBooksCache(
+  query: string,
+  startIndex: number,
+  maxResults: number,
+  payload: GoogleBooksCatalogPayload,
+  detectiveMode = false,
+) {
+  const key = googleBooksCacheKey(query, startIndex, maxResults, detectiveMode);
   googleBooksCache.set(key, { expiresAt: Date.now() + GOOGLE_BOOKS_CACHE_TTL_MS, payload });
   while (googleBooksCache.size > GOOGLE_BOOKS_CACHE_MAX) {
     const oldestKey = googleBooksCache.keys().next().value as string | undefined;
@@ -269,13 +285,21 @@ const googleVolumeNeedsDetail = (value: unknown): boolean => {
   return memberships.length === 0;
 };
 
-async function hydrateGoogleCatalogItems(items: unknown[], apiKey: string, query: string): Promise<unknown[]> {
+async function hydrateGoogleCatalogItems(
+  items: unknown[],
+  apiKey: string,
+  query: string,
+  detectiveMode = false,
+): Promise<unknown[]> {
   const operatorMatch = query.trim().match(/^(intitle|inauthor|isbn):\s*(.+)$/i);
   const operator = operatorMatch?.[1]?.toLocaleLowerCase();
 
   return Promise.all(items.map(async (item, index) => {
     const id = googleVolumeId(item);
-    if (!id || index >= GOOGLE_DETAIL_HYDRATION_LIMIT || !googleVolumeNeedsDetail(item)) return item;
+    const hydrationLimit = detectiveMode
+      ? GOOGLE_DETECTIVE_DETAIL_HYDRATION_LIMIT
+      : GOOGLE_DETAIL_HYDRATION_LIMIT;
+    if (!id || index >= hydrationLimit || !googleVolumeNeedsDetail(item)) return item;
 
     const params = new URLSearchParams({ projection: 'full' });
     if (apiKey) params.set('key', apiKey);
@@ -335,10 +359,11 @@ async function googleBooksCatalog(
   query: string,
   startIndex = 0,
   maxResults = 40,
+  detectiveMode = false,
 ): Promise<GoogleBooksCatalogPayload> {
   const safeStart = Math.max(0, startIndex);
   const safeMax = Math.max(1, Math.min(40, maxResults));
-  const cached = readGoogleBooksCache(query, safeStart, safeMax);
+  const cached = readGoogleBooksCache(query, safeStart, safeMax, detectiveMode);
   if (cached) return cached;
 
   const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
@@ -376,13 +401,13 @@ async function googleBooksCatalog(
 
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
   const rawItems = Array.isArray(raw.items) ? raw.items : [];
-  const items = await hydrateGoogleCatalogItems(rawItems, effectiveApiKey, query);
+  const items = await hydrateGoogleCatalogItems(rawItems, effectiveApiKey, query, detectiveMode);
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
     items,
     seriesMetadataById: await fetchGoogleSeriesTitles(items, effectiveApiKey),
   };
-  writeGoogleBooksCache(query, safeStart, safeMax, payload);
+  writeGoogleBooksCache(query, safeStart, safeMax, payload, detectiveMode);
   return payload;
 }
 
@@ -529,6 +554,7 @@ export const searchHardcoverBooks = onCall(
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
     const provider = request.data?.provider === 'google-books' ? 'google-books' : 'hardcover';
+    const detectiveMode = request.data?.seriesDetective === true;
     const startIndex = typeof request.data?.startIndex === 'number' && Number.isFinite(request.data.startIndex)
       ? Math.max(0, Math.floor(request.data.startIndex))
       : 0;
@@ -538,7 +564,7 @@ export const searchHardcoverBooks = onCall(
 
     try {
       return provider === 'google-books'
-        ? await googleBooksCatalog(query, startIndex, maxResults)
+        ? await googleBooksCatalog(query, startIndex, maxResults, detectiveMode)
         : await hardcoverCatalog(query);
     } catch (error) {
       if (provider === 'hardcover') {
