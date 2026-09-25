@@ -54,6 +54,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
+  const [addedSearchKeys, setAddedSearchKeys] = useState<Set<string>>(() => new Set());
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [creatingCustomOwnership, setCreatingCustomOwnership] = useState(false);
   const [newCustomOwnershipName, setNewCustomOwnershipName] = useState('');
@@ -227,18 +228,29 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
   };
 
+  const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) =>
+    `${work.key}:${edition.source}:${edition.externalEditionId}`;
+
   const chooseSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
     setPendingSearchEdition({ work, edition });
   };
 
+  const quickAddSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
+    const key = searchEditionKey(work, edition);
+    if (addedSearchKeys.has(key)) return;
+    onAddBook(createBookFromSearchEdition({ work, edition, status: 'tbr' }));
+    setAddedSearchKeys((current) => new Set(current).add(key));
+  };
+
   const addSearchEditionToList = (selectedStatus: ReadingStatus) => {
     if (!pendingSearchEdition) return;
-    onAddBook(createBookFromSearchEdition({
-      work: pendingSearchEdition.work,
-      edition: pendingSearchEdition.edition,
-      status: selectedStatus,
-    }));
-    onClose();
+    const { work, edition } = pendingSearchEdition;
+    const key = searchEditionKey(work, edition);
+    if (!addedSearchKeys.has(key)) {
+      onAddBook(createBookFromSearchEdition({ work, edition, status: selectedStatus }));
+      setAddedSearchKeys((current) => new Set(current).add(key));
+    }
+    setPendingSearchEdition(null);
   };
 
   const handleManualAdd = () => {
@@ -295,7 +307,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="relative max-h-[100dvh] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
+      <section className="relative max-h-[100dvh] w-full max-w-5xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
         <button type="button" onClick={onClose} className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full bg-black/30 text-[#ad9fac]" aria-label="Close add reading material dialog"><X className="h-5 w-5" /></button>
 
         <header className="pr-12">
@@ -324,20 +336,40 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             {!hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65" /><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. You can correct the material type later if the source does not identify it reliably.</p></div>}
             {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">No matching material found</p><button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button></div>}
 
-            {results.map((work) => (
-              <article key={work.key} className="rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-4">
-                <h3 className="font-serif text-xl text-[#f4efe6]">{work.title}</h3>
-                <p className="mt-1 text-xs text-[#ad9fac]">{work.authors.join(', ')}</p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {work.editions.map((edition) => (
-                    <button key={edition.externalEditionId} type="button" onClick={() => chooseSearchEdition(work, edition)} className="flex min-h-36 gap-3 rounded-xl border border-white/7 bg-[#120c15] p-3 text-left">
-                      {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
-                      <span className="text-xs text-[#ad9fac]"><strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>{edition.pageCount && <span className="mt-1 block">{edition.pageCount} pages</span>}<span className="mt-3 block font-bold text-[#e2bd66]">Choose this edition</span></span>
-                    </button>
-                  ))}
-                </div>
-              </article>
-            ))}
+            {results.length > 0 && (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {results.map((work) => {
+                  const edition = work.editions[0];
+                  if (!edition) return null;
+                  const key = searchEditionKey(work, edition);
+                  const added = addedSearchKeys.has(key);
+                  return (
+                    <article key={work.key} className="flex min-w-0 flex-col rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-4">
+                      <h3 className="line-clamp-2 font-serif text-xl leading-tight text-[#f4efe6]">{work.title}</h3>
+                      <p className="mt-1 line-clamp-1 text-xs text-[#ad9fac]">{work.authors.join(', ')}</p>
+
+                      <div className={`mt-4 flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#17131b]' : 'border-white/7 bg-[#120c15]'}`}>
+                        {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
+                        <div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]">
+                          <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
+                          {edition.pageCount ? <span className="mt-1 block">{edition.pageCount} pages</span> : <span className="mt-1 block text-[#776b78]">Page count unavailable</span>}
+                          <div className="mt-auto pt-3">
+                            {added ? (
+                              <div className="rounded-lg border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2 text-center font-bold text-[#e5c158]">Added to TBR</div>
+                            ) : (
+                              <div className="flex flex-col gap-2">
+                                <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
+                                <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : activeTab === 'scan' ? (
           <div className="mt-6 space-y-5">
