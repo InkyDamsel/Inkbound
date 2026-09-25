@@ -514,7 +514,8 @@ const mergeCandidateFromGoogleVolume = (
   const format: Format = volume.saleInfo?.isEbook ? 'ebook' : 'hardcover';
   const authors = info?.authors?.length ? info.authors : ['Unknown author'];
   const canonicalWantedAuthor = canonicalDetectiveAuthor(wantedAuthor);
-  const exactAuthor = !canonicalWantedAuthor || authors.some((name) => canonicalDetectiveAuthor(name) === canonicalWantedAuthor);
+  const authorIsUsable = canonicalWantedAuthor && canonicalWantedAuthor !== 'unknown author';
+  const exactAuthor = !authorIsUsable || authors.some((name) => canonicalDetectiveAuthor(name) === canonicalWantedAuthor);
   const hasStructuredSeries = Boolean(
     (info?.seriesInfo?.volumeSeries ?? []).some((membership) => {
       const id = membership.seriesId?.trim();
@@ -522,10 +523,17 @@ const mergeCandidateFromGoogleVolume = (
     }),
   );
 
-  // Metadata-thin Google records are still useful supplements when the author
-  // matches. They cannot become a Series Detective result by themselves unless
-  // another source supplies compatible series evidence for the same work.
-  if (!hasStructuredSeries && !exactAuthor) return null;
+  const explicitBibliographicSeriesMatch = Boolean(
+    wantedSeriesName
+    && volume.inkboundBibliographicSeries?.name
+    && detectiveSeriesNamesCompatible(volume.inkboundBibliographicSeries.name, wantedSeriesName),
+  );
+
+  // Metadata-thin Google records are useful supplements when the author
+  // matches. Cross-author publisher/shared-world membership is accepted only
+  // when Google supplies explicit structured or bibliographic series evidence;
+  // title/description inference alone never bypasses the author gate.
+  if (!hasStructuredSeries && !explicitBibliographicSeriesMatch && !exactAuthor) return null;
 
   const edition: BookSearchEdition = {
     source: 'google-books',
