@@ -230,6 +230,24 @@ export async function searchDetectiveOpenLibrarySeries(
   });
 }
 
+
+export async function searchDetectiveOpenLibraryAuthor(
+  author: string,
+  signal?: AbortSignal,
+): Promise<DetectiveOpenLibraryCandidate[]> {
+  const trimmed = author.trim();
+  if (!trimmed) return [];
+
+  const params = new URLSearchParams({ author: trimmed });
+  try {
+    return flattenCandidates(await fetchOpenLibrary(params, signal), undefined, author);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    console.warn('Series Detective Open Library author lookup failed.', error);
+    return [];
+  }
+}
+
 export async function searchDetectiveOpenLibraryBook(
   title: string,
   author: string,
