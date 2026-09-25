@@ -65,8 +65,13 @@ export const IconStepRating: React.FC<IconStepRatingProps> = ({
             >
               {kind === 'spice' ? (
                 fill === 50 ? (
-                  <span aria-hidden="true" className={`relative block overflow-hidden ${iconSizeClass}`} style={{ width: '50%' }}>
-                    <ChiliPepperIcon className={`${iconSizeClass} max-w-none`} />
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${iconSizeClass}`}
+                  >
+                    <span className="block h-full w-1/2 overflow-hidden">
+                      <ChiliPepperIcon className={`${iconSizeClass} max-w-none`} />
+                    </span>
                   </span>
                 ) : (
                   <ChiliPepperIcon className={`${iconSizeClass} ${fill === 100 ? '' : emptyClass}`} />
