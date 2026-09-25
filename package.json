@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:critical": "tsx scripts/critical-reading-regressions.ts && tsx scripts/reporting-math-regressions.ts && tsx scripts/smart-collection-regressions.ts",
+    "test:critical": "tsx scripts/critical-reading-regressions.ts && tsx scripts/reporting-math-regressions.ts && tsx scripts/smart-collection-regressions.ts && npm run test:critical:sync",
     "verify:source-of-truth": "node scripts/verify-source-of-truth.mjs",
     "verify:parity": "node scripts/verify-cross-platform-parity.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
@@ -38,7 +38,8 @@
     "firebase:deploy:functions": "npm run functions:build && npx firebase-tools deploy --only functions --project inkbound-app",
     "firebase:deploy:security": "npm run functions:build && npx firebase-tools deploy --only firestore:rules,storage,functions --project inkbound-app",
     "firebase:deploy:web": "npm run release:verify && npx firebase-tools deploy --only hosting --project inkbound-app",
-    "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app"
+    "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app",
+    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
