@@ -44,7 +44,8 @@
     "dev:sync-catalog-secrets": "node scripts/sync-dev-catalog-secrets.mjs",
     "dev:emulator": "node scripts/start-dev.mjs --emulator",
     "verify:verifier": "node scripts/verify-verifier-integrity.mjs",
-    "verify:web-release": "npm run verify:verifier && npm run lint && npm run test:critical && npm run verify:source-of-truth && npm run verify:parity && npm run build && npm run verify:release-artifacts"
+    "verify:web-release": "npm run verify:verifier && npm run lint && npm run test:critical && npm run verify:source-of-truth && npm run verify:parity && npm run build && npm run verify:release-artifacts",
+    "firebase:deploy:admin-repair": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts --project inkbound-app"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
