@@ -120,7 +120,16 @@ const hardcoverContextCandidates = (
     if (!exactAuthor) return [];
 
     return work.editions.map((edition) => {
-      const metadata = knownSeriesMetadataFromCatalogWork(work, edition, wantedSeriesName);
+      const metadata = wantedSeriesName
+        ? knownSeriesMetadataFromCatalogWork(work, edition, wantedSeriesName)
+        : edition.seriesName?.trim()
+          ? {
+              name: edition.seriesName.trim(),
+              position: typeof edition.seriesOrder === 'number' && Number.isFinite(edition.seriesOrder)
+                ? edition.seriesOrder
+                : null,
+            }
+          : null;
       return {
         work,
         edition,
@@ -130,7 +139,7 @@ const hardcoverContextCandidates = (
         seriesProvider: metadata ? 'hardcover' as const : undefined,
         seriesStructured: Boolean(
           edition.seriesName
-          && detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName),
+          && (!wantedSeriesName || detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName)),
         ),
       };
     });
@@ -409,7 +418,14 @@ export async function detectSeriesForBook(
   signal?: AbortSignal,
 ): Promise<SeriesDetectiveMatch | null> {
   const { workQuery, identifiers } = buildSeriesDetectionQueries(book);
-  const [workAndIdentifierCatalogs, authorCatalogs, openLibraryExact, openLibraryAuthor, hardcoverAuthor] = await Promise.all([
+  const [
+    workAndIdentifierCatalogs,
+    authorCatalogs,
+    openLibraryExact,
+    openLibraryAuthor,
+    openLibraryContext,
+    hardcoverAuthor,
+  ] = await Promise.all([
     Promise.all([workQuery, ...identifiers].map(async (query, index) => ({
       sourceId: `google-query-${index}`,
       catalog: await safeDetectiveSearch(query, signal),
@@ -417,6 +433,7 @@ export async function detectSeriesForBook(
     collectGoogleAuthorCatalogs(book.work.author, signal),
     searchDetectiveOpenLibraryBook(book.work.title, book.work.author, signal),
     searchDetectiveOpenLibraryAuthor(book.work.author, signal),
+    searchDetectiveOpenLibraryContext(book.work.title, book.work.author, signal),
     searchHardcover(book.work.author),
   ]);
 
@@ -490,7 +507,19 @@ export async function detectSeriesForBook(
     });
   });
 
-  providerCandidates.push(...hardcoverDetectionCandidates(hardcoverAuthor.groups, book.work.author));
+  openLibraryContext.forEach((candidate) => {
+    providerCandidates.push({
+      work: candidate.work,
+      edition: candidate.edition,
+      seriesName: candidate.seriesName,
+      position: candidate.position,
+      provider: 'open-library',
+      seriesProvider: candidate.seriesName ? 'open-library' : undefined,
+      seriesStructured: Boolean(candidate.seriesName),
+    });
+  });
+
+  providerCandidates.push(...hardcoverContextCandidates(hardcoverAuthor.groups, '', book.work.author));
 
   const mergedEvidence = mergeDetectiveCandidates(providerCandidates)
     .filter((candidate): candidate is DetectiveMergeCandidate & { seriesName: string } => Boolean(candidate.seriesName))
@@ -516,7 +545,9 @@ export async function detectSeriesForBook(
 
   const evidence = [...googleEvidence, ...openLibraryEvidence, ...mergedEvidence];
   const match = selectVerifiedDetectiveEvidence(evidence);
-  return match ? { name: match.seriesName, position: match.position } : null;
+  if (match) return { name: match.seriesName, position: match.position };
+
+  return selectCorroboratedSubtitleSeries(providerCandidates, book);
 }
 
 const detectiveCoverUrl = (volume: DetectiveGoogleVolume): string | undefined => {
@@ -606,13 +637,24 @@ export async function findMissingSeriesBooks(
   libraryBooks: UserBookRecord[],
   signal?: AbortSignal,
 ): Promise<SeriesDetectiveResult> {
-  const knownPositions = libraryBooks.flatMap((book) => {
+  const seriesBooks = libraryBooks.filter((book) => {
     const resolved = resolveEffectiveSeriesMetadata(book);
-    if (!resolved || !detectiveSeriesNamesCompatible(resolved.name, seriesName)) return [];
-    return typeof resolved.position === 'number' && Number.isFinite(resolved.position)
+    return Boolean(resolved && detectiveSeriesNamesCompatible(resolved.name, seriesName));
+  });
+  const knownPositions = seriesBooks.flatMap((book) => {
+    const resolved = resolveEffectiveSeriesMetadata(book);
+    return typeof resolved?.position === 'number' && Number.isFinite(resolved.position)
       ? [resolved.position]
       : [];
   });
+  const preferredLanguages = new Set(
+    seriesBooks
+      .map((book) => {
+        const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+        return canonicalDetectiveLanguage(edition?.language);
+      })
+      .filter(Boolean),
+  );
   const wholePositions = knownPositions.filter((position) => Number.isInteger(position) && position > 0);
   const highest = wholePositions.length ? Math.max(...wholePositions) : 0;
   const knownPositionSet = new Set(wholePositions);
@@ -629,7 +671,6 @@ export async function findMissingSeriesBooks(
     `${seriesName} ${author}`,
     seriesName,
     `inauthor:"${author}" ${seriesName}`,
-    `inauthor:"${author}"`,
     ...positionQueries,
   ];
 
@@ -638,6 +679,7 @@ export async function findMissingSeriesBooks(
     googleAuthorCatalogs,
     openLibrarySeriesCandidates,
     openLibraryAuthorCandidates,
+    openLibraryContextCandidates,
     hardcoverSeriesAndAuthor,
     hardcoverSeriesOnly,
     hardcoverAuthor,
@@ -646,6 +688,7 @@ export async function findMissingSeriesBooks(
     collectGoogleAuthorCatalogs(author, signal),
     searchDetectiveOpenLibrarySeries(seriesName, author, signal),
     searchDetectiveOpenLibraryAuthor(author, signal),
+    searchDetectiveOpenLibraryContext(seriesName, author, signal),
     searchHardcover(`${seriesName} ${author}`),
     searchHardcover(seriesName),
     searchHardcover(author),
@@ -675,7 +718,19 @@ export async function findMissingSeriesBooks(
     });
   });
 
-  providerCandidates.push(...hardcoverMergeCandidates(
+  openLibraryContextCandidates.forEach((candidate) => {
+    providerCandidates.push({
+      work: candidate.work,
+      edition: candidate.edition,
+      seriesName: candidate.seriesName,
+      position: candidate.position,
+      provider: 'open-library',
+      seriesProvider: candidate.seriesName ? 'open-library' : undefined,
+      seriesStructured: Boolean(candidate.seriesName),
+    });
+  });
+
+  providerCandidates.push(...hardcoverContextCandidates(
     [
       ...hardcoverSeriesAndAuthor.groups,
       ...hardcoverSeriesOnly.groups,
@@ -700,11 +755,21 @@ export async function findMissingSeriesBooks(
   };
 
   mergedProviderCandidates.forEach((candidate) => {
-    if (!candidate.seriesName || !detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)) return;
+    const contextual = !candidate.seriesName && hasMergedKnownSeriesContext(candidate, seriesName);
+    const resolvedSeriesName = candidate.seriesName ?? (contextual ? seriesName : undefined);
+    if (!resolvedSeriesName || !detectiveSeriesNamesCompatible(resolvedSeriesName, seriesName)) return;
+
+    const candidateLanguage = canonicalDetectiveLanguage(candidate.edition.language);
+    if (
+      preferredLanguages.size > 0
+      && candidateLanguage
+      && !preferredLanguages.has(candidateLanguage)
+    ) return;
+
     addCandidate({
       work: candidate.work,
       edition: candidate.edition,
-      seriesName: candidate.seriesName,
+      seriesName: resolvedSeriesName,
       position: candidate.position,
     });
   });
