@@ -12,6 +12,8 @@ export interface DetectiveMergeCandidate {
   seriesName?: string;
   position: number | null;
   provider: 'google-books' | 'open-library';
+  seriesProvider?: 'google-books' | 'open-library';
+  seriesStructured?: boolean;
 }
 
 const nonEmpty = (value?: string): string | undefined => value?.trim() || undefined;
@@ -96,11 +98,26 @@ const mergeExactEdition = (
 const mergeSeries = (
   left: DetectiveMergeCandidate,
   right: DetectiveMergeCandidate,
-): { name?: string; position: number | null } => {
+): {
+  name?: string;
+  position: number | null;
+  provider?: 'google-books' | 'open-library';
+  structured?: boolean;
+} => {
   const leftName = left.seriesName?.trim();
   const rightName = right.seriesName?.trim();
-  if (!leftName) return { name: rightName, position: right.position };
-  if (!rightName) return { name: leftName, position: left.position };
+  if (!leftName) return {
+    name: rightName,
+    position: right.position,
+    provider: right.seriesProvider ?? right.provider,
+    structured: right.seriesStructured,
+  };
+  if (!rightName) return {
+    name: leftName,
+    position: left.position,
+    provider: left.seriesProvider ?? left.provider,
+    structured: left.seriesStructured,
+  };
   const compatible = detectiveSeriesNamesCompatible(leftName, rightName);
   if (!compatible) {
     // Do not manufacture a consensus when two providers disagree on the series.
@@ -109,12 +126,24 @@ const mergeSeries = (
     const winner = left.position !== null && right.position === null ? left
       : right.position !== null && left.position === null ? right
       : left;
-    return { name: winner.seriesName, position: winner.position };
+    return {
+      name: winner.seriesName,
+      position: winner.position,
+      provider: winner.seriesProvider ?? winner.provider,
+      structured: winner.seriesStructured,
+    };
   }
+
+  const preferredSeriesSource = left.seriesStructured ? left
+    : right.seriesStructured ? right
+    : left.position !== null ? left
+    : right;
 
   return {
     name: leftName || rightName,
     position: left.position ?? right.position,
+    provider: preferredSeriesSource.seriesProvider ?? preferredSeriesSource.provider,
+    structured: Boolean(left.seriesStructured || right.seriesStructured),
   };
 };
 
@@ -197,6 +226,8 @@ export const mergeDetectiveCandidates = (
       seriesName: series.name,
       position: series.position,
       provider: current.provider,
+      seriesProvider: series.provider,
+      seriesStructured: series.structured,
     };
   }
 
