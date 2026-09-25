@@ -1,4 +1,5 @@
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 const DB_NAME = 'inkbound-large-storage';
 const STORE_NAME = 'entries';
@@ -6,10 +7,11 @@ const DB_VERSION = 1;
 const LOCAL_STORAGE_SOFT_LIMIT = 1_500_000;
 
 export const LARGE_BROWSER_STORAGE_HYDRATED_EVENT = 'inkbound:large-browser-storage-hydrated';
+export const LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT = 'inkbound:large-browser-storage-write-failed';
 
 const exactManagedKeys = new Set([
-  'inkbound_books',
-  'inkbound_import_enrichment_queue_v3',
+  SYNC_STORAGE_KEYS.books,
+  SYNC_STORAGE_KEYS.importEnrichmentQueue,
   'inkbound_import_history_v1',
   'inkbound_import_metadata_pending_v1',
   'inkbound_import_verification_result_v2',
@@ -18,9 +20,10 @@ const exactManagedKeys = new Set([
 const managedPrefixes = [
   'inkbound_pending_sync_',
   'inkbound_sync_baseline_',
+  'inkbound_account_library_migration_snapshot_',
 ];
 
-const STARTUP_EXACT_KEYS = new Set(['inkbound_books']);
+const STARTUP_EXACT_KEYS = new Set<string>([SYNC_STORAGE_KEYS.books]);
 const STARTUP_PREFIXES = [
   'inkbound_pending_sync_',
   'inkbound_sync_baseline_',
@@ -56,10 +59,7 @@ function isWindowLocalStorage(storage: Storage) {
 function announceStartupHydrated() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event(LARGE_BROWSER_STORAGE_HYDRATED_EVENT));
-  // App already listens for cloud-data updates and reloads its canonical books
-  // collection. Reuse that path so a library restored from IndexedDB appears as
-  // soon as background hydration finishes, without reloading the page.
-  notifyCloudDataUpdated(['inkbound_books']);
+  notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
 }
 
 function openDatabase(): Promise<IDBDatabase | null> {
@@ -82,25 +82,24 @@ function openDatabase(): Promise<IDBDatabase | null> {
   return databasePromise;
 }
 
-async function putLargeValue(key: string, value: string) {
+async function putLargeValue(key: string, value: string): Promise<boolean> {
   const database = await openDatabase();
-  if (!database) return;
-  await new Promise<void>((resolve) => {
+  if (!database) return false;
+  return new Promise<boolean>((resolve) => {
     try {
       const transaction = database.transaction(STORE_NAME, 'readwrite');
-      const request = transaction.objectStore(STORE_NAME).put(value, key);
+      transaction.objectStore(STORE_NAME).put(value, key);
       let settled = false;
-      const finish = () => {
+      const finish = (saved: boolean) => {
         if (settled) return;
         settled = true;
-        resolve();
+        resolve(saved);
       };
-      request.onerror = finish;
-      transaction.oncomplete = finish;
-      transaction.onerror = finish;
-      transaction.onabort = finish;
+      transaction.oncomplete = () => finish(true);
+      transaction.onerror = () => finish(false);
+      transaction.onabort = () => finish(false);
     } catch {
-      resolve();
+      resolve(false);
     }
   });
 }
@@ -128,9 +127,10 @@ async function deleteLargeValue(key: string) {
   });
 }
 
-function trackWrite(promise: Promise<void>) {
-  pendingWrites.add(promise);
-  void promise.finally(() => pendingWrites.delete(promise));
+function trackWrite(promise: Promise<unknown>) {
+  const tracked = promise.then(() => undefined, () => undefined);
+  pendingWrites.add(tracked);
+  void tracked.finally(() => pendingWrites.delete(tracked));
 }
 
 async function readMatchingLargeValues(predicate: (key: string) => boolean): Promise<Array<[string, string]>> {
@@ -149,9 +149,7 @@ async function readMatchingLargeValues(predicate: (key: string) => boolean): Pro
           return;
         }
         const key = String(cursor.key);
-        if (predicate(key) && typeof cursor.value === 'string' && cursor.value.length > 0) {
-          entries.push([key, cursor.value]);
-        }
+        if (predicate(key) && typeof cursor.value === 'string' && cursor.value.length > 0) entries.push([key, cursor.value]);
         cursor.continue();
       };
       request.onerror = () => resolve(entries);
@@ -182,30 +180,78 @@ function installStorageBridge() {
       return;
     }
 
-    // React mounts before IndexedDB restoration now. During that brief window the
-    // app may try to persist its initial empty state. Never let that overwrite the
-    // reader's authoritative IndexedDB library or sync baselines.
-    if (startupHydrationPending && isStartupKey(key)) return;
+    if (startupHydrationPending && isStartupKey(key)) {
+      throw new Error(`Inkbound blocked a write to ${key} until canonical large-storage hydration completed.`);
+    }
 
     const normalized = String(value);
-    cache.set(key, normalized);
-    trackWrite(putLargeValue(key, normalized));
-
-    if (normalized.length > LOCAL_STORAGE_SOFT_LIMIT) {
-      try { originalRemoveItem!.call(this, key); } catch { /* IndexedDB copy remains authoritative. */ }
-      return;
+    const previousCached = cache.get(key);
+    let previousLocal: string | null = null;
+    try {
+      previousLocal = originalGetItem!.call(this, key);
+    } catch {
+      previousLocal = null;
     }
 
+    // Keep localStorage as the synchronous write-ahead copy when the payload
+    // fits, but do not require a large canonical library to fit inside the
+    // browser's much smaller localStorage quota. IndexedDB is the canonical
+    // large-payload backend for exactly that case.
+    let localBackupWritten = false;
     try {
       originalSetItem!.call(this, key, normalized);
+      localBackupWritten = originalGetItem!.call(this, key) === normalized;
     } catch {
-      try { originalRemoveItem!.call(this, key); } catch { /* IndexedDB copy remains authoritative. */ }
+      // Preserve the previous localStorage value if the new payload is too
+      // large. The new value will commit through IndexedDB below.
     }
+
+    cache.set(key, normalized);
+
+    const persist = putLargeValue(key, normalized).then((saved) => {
+      if (!saved && !localBackupWritten && cache.get(key) === normalized) {
+        if (previousCached === undefined) cache.delete(key);
+        else cache.set(key, previousCached);
+
+        // If a browser partially changed localStorage before throwing, restore
+        // the previous durable copy rather than leaving an uncertain value.
+        try {
+          if (previousLocal === null) originalRemoveItem!.call(window.localStorage, key);
+          else originalSetItem!.call(window.localStorage, key, previousLocal);
+        } catch { /* The restored cache still prevents publishing phantom state. */ }
+
+        console.error('[Inkbound persistence] IndexedDB commit failed after localStorage rejected a managed write.', {
+          key,
+          payloadLength: normalized.length,
+          timestamp: new Date().toISOString(),
+        });
+        window.dispatchEvent(new CustomEvent(LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT, {
+          detail: { key },
+        }));
+        return;
+      }
+
+      if (
+        saved
+        && normalized.length > LOCAL_STORAGE_SOFT_LIMIT
+        && localBackupWritten
+        && cache.get(key) === normalized
+      ) {
+        try {
+          if (originalGetItem!.call(window.localStorage, key) === normalized) {
+            originalRemoveItem!.call(window.localStorage, key);
+          }
+        } catch { /* Keeping the backup is safer than deleting uncertain state. */ }
+      }
+    });
+    trackWrite(persist);
   };
 
   Storage.prototype.removeItem = function removeItem(key: string): void {
     if (isWindowLocalStorage(this) && isManagedKey(key)) {
-      if (startupHydrationPending && isStartupKey(key)) return;
+      if (startupHydrationPending && isStartupKey(key)) {
+        throw new Error(`Inkbound blocked a removal of ${key} until canonical large-storage hydration completed.`);
+      }
       cache.delete(key);
       trackWrite(deleteLargeValue(key));
     }
@@ -221,12 +267,17 @@ function installStorageBridge() {
 
 async function migrateManagedLocalStorageValues(predicate: (key: string) => boolean) {
   for (const key of Object.keys(window.localStorage)) {
-    if (!isManagedKey(key) || !predicate(key) || cache.has(key)) continue;
+    if (!isManagedKey(key) || !predicate(key)) continue;
     try {
       const value = originalGetItem?.call(window.localStorage, key);
       if (value !== null) {
-        cache.set(key, value);
-        await putLargeValue(key, value);
+        // A localStorage copy is written synchronously before IndexedDB. If the
+        // two disagree after a crash/refresh, localStorage is the newer
+        // write-ahead value and must repair the stale IndexedDB/cache copy.
+        if (cache.get(key) !== value) {
+          cache.set(key, value);
+          await putLargeValue(key, value);
+        }
       }
     } catch {
       // Best effort only. Existing localStorage remains untouched.
@@ -242,37 +293,20 @@ export function hasPendingLargeBrowserStorageWrites(): boolean {
   return pendingWrites.size > 0;
 }
 
-/**
- * Synchronous readiness probe for React gates. The hydration event can fire before
- * a component effect subscribes on fast browsers (notably Safari/iPad). Consumers
- * must be able to observe the already-completed state instead of waiting forever
- * for an event that has already happened.
- */
 export function isLargeBrowserStorageHydrated(): boolean {
   return startupHydrationPromise !== null && !startupHydrationPending;
 }
 
 export async function flushLargeBrowserStorage(): Promise<void> {
-  while (pendingWrites.size > 0) {
-    await Promise.allSettled([...pendingWrites]);
-  }
+  while (pendingWrites.size > 0) await Promise.allSettled([...pendingWrites]);
 }
 
-/**
- * Install the localStorage bridge synchronously so React can render immediately.
- * Startup-managed writes are temporarily protected until IndexedDB restoration
- * completes, preventing an empty first render from clobbering an existing library.
- */
 export function prepareLargeBrowserStorageForStartup(): void {
   if (typeof window === 'undefined' || typeof Storage === 'undefined') return;
   startupHydrationPending = true;
   installStorageBridge();
 }
 
-/**
- * Restore the working library and sync-critical values after the application shell
- * is already visible. Nothing in this path is allowed to gate first paint.
- */
 export function hydrateLargeBrowserStorage(): Promise<void> {
   if (startupHydrationPromise) return startupHydrationPromise;
   if (typeof window === 'undefined' || typeof Storage === 'undefined') return Promise.resolve();
@@ -297,7 +331,6 @@ export function hydrateLargeBrowserStorage(): Promise<void> {
   return startupHydrationPromise;
 }
 
-/** Load non-critical import/history caches after the app is already visible. */
 export function hydrateDeferredLargeBrowserStorage(): Promise<void> {
   if (deferredHydrationPromise) return deferredHydrationPromise;
   if (typeof window === 'undefined' || typeof Storage === 'undefined' || typeof indexedDB === 'undefined') return Promise.resolve();
