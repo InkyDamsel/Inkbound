@@ -30,7 +30,7 @@ import {
 import { BookCover } from '../BookCover';
 import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
 import { createBookFromSearchEdition } from '../../features/book-search/mapping/bookSearchMapper';
-import { replaceCanonicalLibrary } from '../../features/library/libraryMutations';
+import { appendCanonicalBook } from '../../features/library/libraryMutations';
 
 interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
@@ -277,7 +277,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
         seriesOrder: candidate.position ?? created.work.seriesOrder,
       },
     };
-    if (!replaceCanonicalLibrary([...books, book])) {
+    if (!appendCanonicalBook(book)) {
       setDetectiveError('Inkbound could not save this book to your library.');
       return;
     }
