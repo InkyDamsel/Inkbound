@@ -7,6 +7,7 @@ import {
   canonicalDetectiveAuthor,
   canonicalDetectiveSeries,
   compactDetectiveIsbn,
+  comparableDetectiveTitle,
   detectiveSeriesNamesCompatible,
   inferDetectiveSeriesFromTitle,
   inferKnownDetectiveSeriesFromDescription,
@@ -152,13 +153,13 @@ const selectCorroboratedSubtitleSeries = (
   candidates: DetectiveMergeCandidate[],
   book: UserBookRecord,
 ): SeriesDetectiveMatch | null => {
-  const wantedTitle = normalizeDetectiveText(book.work.title);
+  const wantedTitle = comparableDetectiveTitle(book.work.title);
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
   const grouped = new Map<string, { name: string; providers: Set<string> }>();
 
   for (const candidate of candidates) {
-    const exactTitle = normalizeDetectiveText(candidate.work.title) === wantedTitle
-      || normalizeDetectiveText(candidate.edition.title) === wantedTitle;
+    const exactTitle = comparableDetectiveTitle(candidate.work.title) === wantedTitle
+      || comparableDetectiveTitle(candidate.edition.title) === wantedTitle;
     const exactAuthor = !wantedAuthor || candidate.work.authors
       .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor);
     if (!exactTitle || !exactAuthor) continue;
@@ -283,7 +284,7 @@ const evidenceForVolume = (
     .map(compactDetectiveIsbn)
     .filter(Boolean)
     .some((value) => libraryIdentifiers.has(value));
-  const exactTitle = normalizeDetectiveText(volume.volumeInfo?.title) === normalizeDetectiveText(book.work.title);
+  const exactTitle = comparableDetectiveTitle(volume.volumeInfo?.title) === comparableDetectiveTitle(book.work.title);
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
   const exactAuthor = !wantedAuthor || (volume.volumeInfo?.authors ?? [])
     .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor);
@@ -301,6 +302,7 @@ const evidenceForVolume = (
     isbn13,
     sourceId,
     recordId: volume.id,
+    providerId: 'google-books',
     structured,
     exactIdentifier,
     exactTitle,
@@ -413,7 +415,7 @@ export async function detectSeriesForBook(
   const libraryIdentifiers = new Set(book.editions.flatMap((edition) =>
     [edition.isbn13, edition.isbn10, edition.isbn].map(compactDetectiveIsbn).filter(Boolean),
   ));
-  const wantedTitle = normalizeDetectiveText(book.work.title);
+  const wantedTitle = comparableDetectiveTitle(book.work.title);
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
 
   const googleEvidence = catalogs.flatMap(({ sourceId, catalog }) =>
@@ -432,13 +434,14 @@ export async function detectSeriesForBook(
     isbn13: candidate.edition.isbn13,
     sourceId: 'open-library',
     recordId: `open-library:${candidate.recordId}`,
+    providerId: 'open-library',
     structured: true,
     exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
       .map(compactDetectiveIsbn)
       .filter(Boolean)
       .some((isbn) => libraryIdentifiers.has(isbn)),
-    exactTitle: normalizeDetectiveText(candidate.work.title) === wantedTitle
-      || normalizeDetectiveText(candidate.edition.title) === wantedTitle,
+    exactTitle: comparableDetectiveTitle(candidate.work.title) === wantedTitle
+      || comparableDetectiveTitle(candidate.edition.title) === wantedTitle,
     exactAuthor: !wantedAuthor || candidate.work.authors
       .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor),
   }));
@@ -450,8 +453,8 @@ export async function detectSeriesForBook(
       const candidate = mergeCandidateFromGoogleVolume(volume, catalog, undefined, book.work.author);
       if (!candidate) return;
 
-      const sameTitle = normalizeDetectiveText(candidate.work.title) === wantedTitle
-        || normalizeDetectiveText(candidate.edition.title) === wantedTitle;
+      const sameTitle = comparableDetectiveTitle(candidate.work.title) === wantedTitle
+        || comparableDetectiveTitle(candidate.edition.title) === wantedTitle;
       const exactIsbn = [candidate.edition.isbn13, candidate.edition.isbn10]
         .map(compactDetectiveIsbn)
         .filter(Boolean)
@@ -497,13 +500,15 @@ export async function detectSeriesForBook(
       isbn13: candidate.edition.isbn13,
       sourceId: `merged-${candidate.seriesProvider ?? candidate.provider}`,
       recordId: `merged:${normalizeDetectiveText(candidate.work.title)}:${canonicalDetectiveAuthor(candidate.work.authors[0])}`,
+      providerId: candidate.seriesProvider ?? candidate.provider,
+      providerCount: candidate.providerSources?.length ?? 1,
       structured: candidate.seriesStructured === true,
       exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
         .map(compactDetectiveIsbn)
         .filter(Boolean)
         .some((isbn) => libraryIdentifiers.has(isbn)),
-      exactTitle: normalizeDetectiveText(candidate.work.title) === wantedTitle
-        || normalizeDetectiveText(candidate.edition.title) === wantedTitle,
+      exactTitle: comparableDetectiveTitle(candidate.work.title) === wantedTitle
+        || comparableDetectiveTitle(candidate.edition.title) === wantedTitle,
       exactAuthor: !wantedAuthor || candidate.work.authors
         .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor),
     }));
