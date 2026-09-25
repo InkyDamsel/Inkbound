@@ -190,18 +190,6 @@ export default function App() {
   }, [isDarkMode]);
 
   useEffect(() => {
-    booksRef.current = books;
-    writeRuntimeJson(BOOKS_STORAGE_KEY, books);
-    removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
-  }, [books]);
-
-  useEffect(() => {
-    sessionsRef.current = sessions;
-    writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions);
-    removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY);
-  }, [sessions]);
-
-  useEffect(() => {
     const refreshCanonicalCollections = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
       const keys = detail?.keys ?? [];
@@ -231,8 +219,18 @@ export default function App() {
     // Persist first so runtimeStorage captures durable local intent before any
     // cloud listener can reconcile against this mutation. React state mirrors
     // that canonical local write; it is not the persistence owner.
+    if (!replaceCanonicalLibrary(next)) {
+      console.error('[Inkbound persistence] Canonical library write failed; keeping the previous in-memory library.', {
+        operation: 'commitCanonicalBooks',
+        previousCount: current.length,
+        attemptedCount: next.length,
+        timestamp: new Date().toISOString(),
+      });
+      showToast('Inkbound could not save that library change. Your previous library is still protected.');
+      return current;
+    }
     booksRef.current = next;
-    replaceCanonicalLibrary(next);
+    removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
     setBooks(next);
     return next;
   };
@@ -242,8 +240,18 @@ export default function App() {
   ): ReadingSession[] => {
     const current = sessionsRef.current;
     const next = typeof update === 'function' ? update(current) : update;
+    if (!replaceCanonicalSessions(next)) {
+      console.error('[Inkbound persistence] Canonical session write failed; keeping the previous in-memory sessions.', {
+        operation: 'commitCanonicalSessions',
+        previousCount: current.length,
+        attemptedCount: next.length,
+        timestamp: new Date().toISOString(),
+      });
+      showToast('Inkbound could not save that reading-session change. Your previous sessions are still protected.');
+      return current;
+    }
     sessionsRef.current = next;
-    replaceCanonicalSessions(next);
+    removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY);
     setSessions(next);
     return next;
   };
