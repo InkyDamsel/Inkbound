@@ -17,6 +17,10 @@ interface AdminUser {
   accountCreatedAt: string | null;
   lastSignInAt: string | null;
   lastSeenAt: string | null;
+  lastPlatform: string;
+  lastAppVersion: string;
+  lastBuildNumber: string;
+  lastUserAgent: string;
   basePlan: 'free' | 'premium';
   subscriptionStatus: string;
   vipEnabled: boolean;
