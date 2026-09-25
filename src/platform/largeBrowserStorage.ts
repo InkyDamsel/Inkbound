@@ -191,25 +191,29 @@ function installStorageBridge() {
     }
 
     const normalized = String(value);
-    cache.set(key, normalized);
 
-    // localStorage is the synchronous write-ahead copy when it fits. Do not
-    // discard an oversized-but-still-storable new value until IndexedDB has
-    // actually committed it; otherwise a fast refresh can resurrect the older
-    // IndexedDB snapshot and make loans/collections appear to disappear.
-    let localBackupWritten = false;
+    // Canonical user data may not be published until a synchronous durable
+    // write has completed and read back successfully. IndexedDB remains the
+    // large-storage mirror, but an asynchronous attempt alone is never treated
+    // as a successful save.
     try {
       originalSetItem!.call(this, key, normalized);
-      localBackupWritten = true;
-    } catch {
-      try { originalRemoveItem!.call(this, key); } catch { /* IndexedDB remains the only durable target. */ }
+      const verified = originalGetItem!.call(this, key);
+      if (verified !== normalized) {
+        throw new Error(`Inkbound could not verify the durable write for ${key}.`);
+      }
+    } catch (error) {
+      throw error instanceof Error
+        ? error
+        : new Error(`Inkbound could not durably save ${key}.`);
     }
+
+    cache.set(key, normalized);
 
     const persist = putLargeValue(key, normalized).then((saved) => {
       if (
         saved
         && normalized.length > LOCAL_STORAGE_SOFT_LIMIT
-        && localBackupWritten
         && cache.get(key) === normalized
       ) {
         try {
@@ -224,7 +228,9 @@ function installStorageBridge() {
 
   Storage.prototype.removeItem = function removeItem(key: string): void {
     if (isWindowLocalStorage(this) && isManagedKey(key)) {
-      if (startupHydrationPending && isStartupKey(key)) return;
+      if (startupHydrationPending && isStartupKey(key)) {
+        throw new Error(`Inkbound blocked a removal of ${key} until canonical large-storage hydration completed.`);
+      }
       cache.delete(key);
       trackWrite(deleteLargeValue(key));
     }
