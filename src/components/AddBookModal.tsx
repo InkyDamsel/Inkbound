@@ -24,6 +24,7 @@ interface AddBookModalProps {
   onClose: () => void;
   onAddBook: (newBook: UserBookRecord) => void;
   onAddMultipleBooks?: (newBooks: UserBookRecord[]) => void;
+  onRemoveBook?: (book: UserBookRecord) => void;
 }
 
 type AddBookTab = 'search' | 'scan' | 'manual';
@@ -46,7 +47,7 @@ const today = () => {
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const isCustomOwnershipSelection = (selection: OwnershipSelection): selection is CustomOwnershipSelection => selection.startsWith('custom:');
 
-export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, onAddMultipleBooks }) => {
+export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, onAddMultipleBooks, onRemoveBook }) => {
   const [activeTab, setActiveTab] = useState<AddBookTab>('search');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<BookSearchWorkGroup[]>([]);
@@ -54,7 +55,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
-  const [addedSearchKeys, setAddedSearchKeys] = useState<Set<string>>(() => new Set());
+  const [addedSearchBooks, setAddedSearchBooks] = useState<Map<string, UserBookRecord>>(() => new Map());
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [creatingCustomOwnership, setCreatingCustomOwnership] = useState(false);
   const [newCustomOwnershipName, setNewCustomOwnershipName] = useState('');
@@ -235,20 +236,43 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setPendingSearchEdition({ work, edition });
   };
 
+  const storeAddedSearchBook = (work: BookSearchWorkGroup, edition: BookSearchEdition, book: UserBookRecord) => {
+    const key = searchEditionKey(work, edition);
+    setAddedSearchBooks((current) => {
+      const next = new Map(current);
+      next.set(key, book);
+      return next;
+    });
+  };
+
   const quickAddSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
     const key = searchEditionKey(work, edition);
-    if (addedSearchKeys.has(key)) return;
-    onAddBook(createBookFromSearchEdition({ work, edition, status: 'tbr' }));
-    setAddedSearchKeys((current) => new Set(current).add(key));
+    if (addedSearchBooks.has(key)) return;
+    const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
+    onAddBook(book);
+    storeAddedSearchBook(work, edition, book);
+  };
+
+  const removeAddedSearchBook = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
+    const key = searchEditionKey(work, edition);
+    const book = addedSearchBooks.get(key);
+    if (!book || !onRemoveBook) return;
+    onRemoveBook(book);
+    setAddedSearchBooks((current) => {
+      const next = new Map(current);
+      next.delete(key);
+      return next;
+    });
   };
 
   const addSearchEditionToList = (selectedStatus: ReadingStatus) => {
     if (!pendingSearchEdition) return;
     const { work, edition } = pendingSearchEdition;
     const key = searchEditionKey(work, edition);
-    if (!addedSearchKeys.has(key)) {
-      onAddBook(createBookFromSearchEdition({ work, edition, status: selectedStatus }));
-      setAddedSearchKeys((current) => new Set(current).add(key));
+    if (!addedSearchBooks.has(key)) {
+      const book = createBookFromSearchEdition({ work, edition, status: selectedStatus });
+      onAddBook(book);
+      storeAddedSearchBook(work, edition, book);
     }
     setPendingSearchEdition(null);
   };
@@ -342,7 +366,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   const edition = work.editions[0];
                   if (!edition) return null;
                   const key = searchEditionKey(work, edition);
-                  const added = addedSearchKeys.has(key);
+                  const addedBook = addedSearchBooks.get(key);
+                  const added = Boolean(addedBook);
                   return (
                     <article key={work.key} className="flex min-w-0 flex-col rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-4">
                       <h3 className="line-clamp-2 font-serif text-xl leading-tight text-[#f4efe6]">{work.title}</h3>
@@ -354,8 +379,26 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                           <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
                           {edition.pageCount ? <span className="mt-1 block">{edition.pageCount} pages</span> : <span className="mt-1 block text-[#776b78]">Page count unavailable</span>}
                           <div className="mt-auto pt-3">
-                            {added ? (
-                              <div className="rounded-lg border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2 text-center font-bold text-[#e5c158]">Added to TBR</div>
+                            {addedBook ? (
+                              <div className="rounded-xl border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex min-w-0 items-center gap-2 font-semibold text-[#e5c158]">
+                                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#c5a059]/15"><Check className="h-3.5 w-3.5" /></span>
+                                    <span className="truncate">In your library</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeAddedSearchBook(work, edition)}
+                                    disabled={!onRemoveBook}
+                                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-[#8f8290] transition hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-40"
+                                    aria-label={`Remove ${work.title} from your library`}
+                                    title="Remove accidental add"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                <p className="mt-1.5 pl-8 text-[11px] font-medium text-[#bcaebe]">Added to TBR</p>
+                              </div>
                             ) : (
                               <div className="flex flex-col gap-2">
                                 <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
