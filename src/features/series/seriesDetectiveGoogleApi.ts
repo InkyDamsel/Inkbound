@@ -66,13 +66,25 @@ const protectedSearch = async (
 ): Promise<GooglePayload> => {
   if (!functions || !auth?.currentUser) return { items: [], totalItems: 0 };
   const callable = httpsCallable<
-    { query: string; provider: 'google-books'; startIndex: number; maxResults: number },
+    {
+      query: string;
+      provider: 'google-books';
+      startIndex: number;
+      maxResults: number;
+      seriesDetective: true;
+    },
     GooglePayload
   >(
     functions,
     'searchHardcoverBooks',
   );
-  const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
+  const response = await callable({
+    query,
+    provider: 'google-books',
+    startIndex,
+    maxResults,
+    seriesDetective: true,
+  });
   return response.data;
 };
 
