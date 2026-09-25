@@ -26,22 +26,7 @@ const comparableWorkTitle = (value?: string): string => {
   return normalizeDetectiveText(withoutSeriesSuffix);
 };
 
-const anyExactIsbnAcrossWork = (
-  left: DetectiveMergeCandidate,
-  right: DetectiveMergeCandidate,
-): boolean => {
-  const leftIsbns = new Set(
-    left.work.editions
-      .flatMap((edition) => [edition.isbn13, edition.isbn10])
-      .map(compactDetectiveIsbn)
-      .filter(Boolean),
-  );
-  return right.work.editions
-    .flatMap((edition) => [edition.isbn13, edition.isbn10])
-    .map(compactDetectiveIsbn)
-    .filter(Boolean)
-    .some((isbn) => leftIsbns.has(isbn));
-};
+
 
 const sameAuthor = (left: string[], right: string[]): boolean => {
   const leftIds = new Set(left.map(canonicalDetectiveAuthor).filter(Boolean));
@@ -54,8 +39,6 @@ export const detectiveCandidatesAreSameWork = (
   right: DetectiveMergeCandidate,
 ): boolean => {
   if (!sameAuthor(left.work.authors, right.work.authors)) return false;
-  if (anyExactIsbnAcrossWork(left, right)) return true;
-
   const leftTitle = comparableWorkTitle(left.work.title);
   const rightTitle = comparableWorkTitle(right.work.title);
   if (!leftTitle || !rightTitle) return false;
