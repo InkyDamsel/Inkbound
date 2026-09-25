@@ -177,6 +177,25 @@ export const AdminSupportConsole: React.FC<Props> = ({ reader, audit, onRefresh 
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => void copyText('Email', reader.email)} className="quiet-shelf-secondary-action"><Clipboard className="h-4 w-4" />Copy email</button>
         <button type="button" onClick={() => void copyText('Firebase UID', reader.uid)} className="quiet-shelf-secondary-action"><Clipboard className="h-4 w-4" />Copy UID</button>
+        <button
+          type="button"
+          onClick={() => void copyText('Support summary', [
+            `Reader: ${reader.displayName || 'Unnamed reader'}`,
+            `Email: ${reader.email}`,
+            `Email verified: ${reader.emailVerified ? 'Yes' : 'No'}`,
+            `Firebase UID: ${reader.uid}`,
+            `Sign-in methods: ${providers}`,
+            `Account created: ${formatDate(reader.accountCreatedAt)}`,
+            `Last Firebase sign-in: ${formatDate(reader.lastSignInAt)}`,
+            `Last Inkbound check-in: ${formatDate(reader.lastSeenAt)}`,
+            `Last platform: ${reader.lastPlatform || 'Not recorded'}`,
+            `App version: ${reader.lastAppVersion || 'Not recorded'}`,
+            `Build: ${reader.lastBuildNumber || 'Not recorded'}`,
+            `Plan: ${reader.vipEnabled ? 'VIP Premium' : reader.basePlan === 'premium' ? 'Premium' : 'Free'}`,
+            `Subscription status: ${reader.subscriptionStatus || 'none'}`,
+          ].join('\n'))}
+          className="quiet-shelf-secondary-action"
+        ><Clipboard className="h-4 w-4" />Copy support summary</button>
       </div>
 
       {!reader.emailVerified && (
