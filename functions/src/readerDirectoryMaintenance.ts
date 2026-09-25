@@ -143,7 +143,7 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
   const [directorySnapshot, entitlementsSnapshot, auditSnapshot, adminsSnapshot] = await Promise.all([
     db.collection('userDirectory').get(),
     db.collection('entitlements').get(),
-    db.collection('adminAudit').orderBy('createdAt', 'desc').limit(50).get(),
+    db.collection('adminAudit').orderBy('createdAt', 'desc').limit(200).get(),
     db.collection('admins').orderBy('email').get(),
   ]);
 
@@ -170,7 +170,14 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
         displayName,
         photoUrl,
         emailVerified: user.emailVerified,
+        authProviderIds: user.providerData.map((provider) => provider.providerId),
+        accountCreatedAt: user.metadata.creationTime ? new Date(user.metadata.creationTime).toISOString() : null,
+        lastSignInAt: user.metadata.lastSignInTime ? new Date(user.metadata.lastSignInTime).toISOString() : null,
         lastSeenAt: timestampToIso(record.lastSeenAt),
+        lastPlatform: text(record.lastPlatform),
+        lastAppVersion: text(record.lastAppVersion),
+        lastBuildNumber: text(record.lastBuildNumber),
+        lastUserAgent: text(record.lastUserAgent),
         basePlan: entitlement.basePlan === 'premium' ? 'premium' : 'free',
         subscriptionStatus: typeof entitlement.subscriptionStatus === 'string' ? entitlement.subscriptionStatus : 'none',
         vipEnabled: entitlement.vipEnabled === true,
@@ -201,6 +208,7 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
     return {
       id: document.id,
       action: typeof data.action === 'string' ? data.action : 'unknown',
+      targetUserId: typeof data.targetUserId === 'string' ? data.targetUserId : '',
       targetEmail: typeof data.targetEmail === 'string' ? data.targetEmail : '',
       performedByEmail: typeof data.performedByEmail === 'string' ? data.performedByEmail : '',
       reason: typeof data.reason === 'string' ? data.reason : '',
@@ -373,6 +381,154 @@ async function sendMergeCompletedEmail(user: UserRecord, sourceEmail: string, de
     text: `Hello ${name},\n\nInkbound support completed an account merge for you.\n\n${sourceEmail} was merged into ${destinationEmail}. Use ${destinationEmail} to sign in from now on.\n\nYour non-conflicting Inkbound library data was copied before the old login was removed.\n\nIf you did not request this merge or anything looks wrong, reply to this email and Inkbound support will help you.\n\nInkbound\nInky Dame Interactive`,
   });
 }
+
+async function sendAdminVerificationEmail(user: UserRecord) {
+  const email = normalizedEmail(user.email);
+  if (!email) throw new HttpsError('failed-precondition', 'This account does not have an email address.');
+  if (user.emailVerified) return { sent: true, alreadyVerified: true };
+
+  let verificationLink: string;
+  try {
+    verificationLink = await auth.generateEmailVerificationLink(email, {
+      url: APP_RETURN_URL,
+      handleCodeInApp: false,
+    });
+  } catch {
+    verificationLink = await auth.generateEmailVerificationLink(email);
+  }
+
+  const name = text(user.displayName) || 'Reader';
+  const body = `
+<p style="margin:24px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Hello ${escapeHtml(name)},</p>
+<p style="margin:16px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Inkbound support sent you a fresh verification link for <strong>${escapeHtml(email)}</strong>.</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:32px auto;"><tr><td align="center" style="background:#a66f91;border-radius:999px;"><a href="${escapeHtml(verificationLink)}" style="display:inline-block;padding:15px 30px;color:#171116;font-size:16px;font-weight:bold;text-decoration:none;">Verify My Email</a></td></tr></table>
+<p style="margin:0;color:#bdaeb8;font-size:14px;line-height:1.6;">If you did not request help with your Inkbound account, reply to this email and support will help you.</p>`;
+
+  const sent = await sendInkboundEmail({
+    to: email,
+    subject: 'Verify your Inkbound email',
+    html: emailShell('Verify your Inkbound email', body),
+    text: `Hello ${name},\n\nInkbound support sent you a fresh verification link for ${email}.\n\nVerify your email:\n${verificationLink}\n\nIf you did not request help with your Inkbound account, reply to this email.\n\nInkbound\nInky Dame Interactive`,
+  });
+  return { ...sent, alreadyVerified: false };
+}
+
+async function sendAdminPasswordReset(user: UserRecord) {
+  const email = normalizedEmail(user.email);
+  if (!email) throw new HttpsError('failed-precondition', 'This account does not have an email address.');
+
+  let resetLink: string;
+  try {
+    resetLink = await auth.generatePasswordResetLink(email, { url: APP_RETURN_URL, handleCodeInApp: false });
+  } catch {
+    resetLink = await auth.generatePasswordResetLink(email);
+  }
+
+  const name = text(user.displayName) || 'Reader';
+  const body = `
+<p style="margin:24px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Hello ${escapeHtml(name)},</p>
+<p style="margin:16px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Inkbound support sent you a password reset link for <strong>${escapeHtml(email)}</strong>.</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:32px auto;"><tr><td align="center" style="background:#a66f91;border-radius:999px;"><a href="${escapeHtml(resetLink)}" style="display:inline-block;padding:15px 30px;color:#171116;font-size:16px;font-weight:bold;text-decoration:none;">Reset My Password</a></td></tr></table>
+<p style="margin:0;color:#bdaeb8;font-size:14px;line-height:1.6;">If you did not request help signing in, you can ignore this message or reply to contact support.</p>`;
+
+  return sendInkboundEmail({
+    to: email,
+    subject: 'Reset your Inkbound password',
+    html: emailShell('Reset your Inkbound password', body),
+    text: `Hello ${name},\n\nInkbound support sent you a password reset link for ${email}.\n\nReset your password:\n${resetLink}\n\nIf you did not request help signing in, you can ignore this message.\n\nInkbound\nInky Dame Interactive`,
+  });
+}
+
+export const resendAdminVerificationEmail = onCall({
+  enforceAppCheck: ENFORCE_APP_CHECK,
+  secrets: [resendApiKey],
+}, async (request) => {
+  const admin = await requireAdmin(request, ['owner', 'support']);
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const input = request.data as Record<string, unknown> | undefined;
+  const targetUserId = text(input?.targetUserId);
+  const reason = requireReason(input?.reason);
+  if (!targetUserId) throw new HttpsError('invalid-argument', 'A reader is required.');
+
+  const user = await auth.getUser(targetUserId).catch(() => null);
+  if (!user) throw new HttpsError('not-found', 'That Firebase account no longer exists.');
+  const result = await sendAdminVerificationEmail(user);
+
+  await writeOwnerAudit({
+    action: 'resend_verification_email',
+    targetUserId,
+    targetEmail: normalizedEmail(user.email),
+    performedBy: request.auth.uid,
+    performedByEmail: admin.email,
+    reason,
+    previousValue: { emailVerified: user.emailVerified },
+    newValue: { notificationSent: result.sent, alreadyVerified: result.alreadyVerified },
+  });
+
+  return {
+    success: true,
+    alreadyVerified: result.alreadyVerified,
+    notificationSent: result.sent,
+    notificationError: result.sent ? null : result.error ?? 'Email notification could not be sent.',
+  };
+});
+
+export const sendAdminPasswordResetEmail = onCall({
+  enforceAppCheck: ENFORCE_APP_CHECK,
+  secrets: [resendApiKey],
+}, async (request) => {
+  const admin = await requireAdmin(request, ['owner', 'support']);
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const input = request.data as Record<string, unknown> | undefined;
+  const targetUserId = text(input?.targetUserId);
+  const reason = requireReason(input?.reason);
+  if (!targetUserId) throw new HttpsError('invalid-argument', 'A reader is required.');
+
+  const user = await auth.getUser(targetUserId).catch(() => null);
+  if (!user) throw new HttpsError('not-found', 'That Firebase account no longer exists.');
+  const result = await sendAdminPasswordReset(user);
+
+  await writeOwnerAudit({
+    action: 'send_password_reset_email',
+    targetUserId,
+    targetEmail: normalizedEmail(user.email),
+    performedBy: request.auth.uid,
+    performedByEmail: admin.email,
+    reason,
+    previousValue: null,
+    newValue: { notificationSent: result.sent },
+  });
+
+  return {
+    success: true,
+    notificationSent: result.sent,
+    notificationError: result.sent ? null : result.error ?? 'Email notification could not be sent.',
+  };
+});
+
+export const addAdminSupportNote = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+  const admin = await requireAdmin(request, ['owner', 'support']);
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const input = request.data as Record<string, unknown> | undefined;
+  const targetUserId = text(input?.targetUserId);
+  const note = requireReason(input?.note);
+  if (!targetUserId) throw new HttpsError('invalid-argument', 'A reader is required.');
+  const user = await auth.getUser(targetUserId).catch(() => null);
+  if (!user) throw new HttpsError('not-found', 'That Firebase account no longer exists.');
+
+  await writeOwnerAudit({
+    action: 'support_note',
+    targetUserId,
+    targetEmail: normalizedEmail(user.email),
+    performedBy: request.auth.uid,
+    performedByEmail: admin.email,
+    reason: note,
+    previousValue: null,
+    newValue: null,
+  });
+
+  return { success: true };
+});
 
 async function copyCollectionWithoutOverwrite(
   source: FirebaseFirestore.CollectionReference,
