@@ -12,6 +12,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { readCustomOwnershipCategories } from '../features/ownership/customOwnershipCategories';
 import type { Format, OwnershipStatus, Priority, ReadingStatus, UserBookRecord } from '../types';
+import { IconStepRating } from './reading/IconStepRating';
 
 export interface BatchEditChanges {
   status?: ReadingStatus;
@@ -20,9 +21,9 @@ export interface BatchEditChanges {
   format?: Format;
   priority?: Priority;
   rating?: number | null;
+  spiceLevel?: number | null;
   dateStarted?: string | null;
   dateFinished?: string | null;
-  libraryLoanDueDate?: string | null;
   addTag?: string;
   removeTag?: string;
   addCollection?: string;
@@ -75,12 +76,11 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const [priority, setPriority] = useState<string>(uniform((book) => book.priority) ? first.priority : 'multiple');
   const [format, setFormat] = useState('keep');
   const [rating, setRating] = useState('keep');
+  const [spiceLevel, setSpiceLevel] = useState('keep');
   const [startedMode, setStartedMode] = useState<DateMode>('keep');
   const [finishedMode, setFinishedMode] = useState<DateMode>('keep');
   const [dateStarted, setDateStarted] = useState('');
   const [dateFinished, setDateFinished] = useState('');
-  const [loanDueMode, setLoanDueMode] = useState<DateMode>('keep');
-  const [libraryLoanDueDate, setLibraryLoanDueDate] = useState('');
   const [tagAdd, setTagAdd] = useState('');
   const [tagRemove, setTagRemove] = useState('');
   const [collectionAdd, setCollectionAdd] = useState('');
@@ -103,15 +103,15 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
       priority: priority !== 'multiple' && priority !== 'keep' ? priority as Priority : undefined,
       format: format !== 'keep' ? format as Format : undefined,
       rating: rating === 'clear' ? null : rating !== 'keep' ? Number(rating) : undefined,
+      spiceLevel: spiceLevel === 'clear' ? null : spiceLevel !== 'keep' ? Number(spiceLevel) : undefined,
       dateStarted: startedMode === 'clear' ? null : startedMode === 'set' && dateStarted ? dateStarted : undefined,
       dateFinished: finishDateChange,
-      libraryLoanDueDate: loanDueMode === 'clear' ? null : loanDueMode === 'set' && libraryLoanDueDate ? libraryLoanDueDate : undefined,
       addTag: optionalText(tagAdd)?.toLowerCase(),
       removeTag: optionalText(tagRemove)?.toLowerCase(),
       addCollection: optionalText(collectionAdd),
       removeCollection: optionalText(collectionRemove),
     };
-  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, libraryLoanDueDate, loanDueMode, ownership, priority, rating, startedMode, status, tagAdd, tagRemove]);
+  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, spiceLevel, startedMode, status, tagAdd, tagRemove]);
 
   const preview = useMemo(() => {
     const items: string[] = [];
@@ -125,9 +125,9 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     if (changes.format) items.push(`Format → ${formatLabel(changes.format)}`);
     if (changes.priority) items.push(`Priority → ${priorityLabel(changes.priority)}`);
     if (changes.rating !== undefined) items.push(changes.rating === null ? 'Clear rating' : `Rating → ${changes.rating}/5`);
+    if (changes.spiceLevel !== undefined) items.push(changes.spiceLevel === null ? 'Clear spice level' : `Spice → ${changes.spiceLevel}/5`);
     if (changes.dateStarted !== undefined) items.push(changes.dateStarted === null ? 'Clear date started' : `Date started → ${changes.dateStarted}`);
     if (changes.dateFinished !== undefined) items.push(changes.dateFinished === null ? 'Clear date finished' : `Date finished → ${changes.dateFinished}`);
-    if (changes.libraryLoanDueDate !== undefined) items.push(changes.libraryLoanDueDate === null ? 'Clear library due date' : `Library due date → ${changes.libraryLoanDueDate}`);
     if (changes.addTag) items.push(`Add tag “${changes.addTag}”`);
     if (changes.removeTag) items.push(`Remove tag “${changes.removeTag}”`);
     if (changes.addCollection) items.push(`Add collection “${changes.addCollection}”`);
@@ -158,13 +158,12 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
             {field('Ownership', <select value={ownership} onChange={(event) => setOwnership(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{ownership === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom'))}{customOwnershipCategories.length > 0 && <optgroup label="Custom categories">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>)}
             {field('Primary Format', <select value={format} onChange={(event) => setFormat(event.target.value)} className={selectClass}><option value="keep">Keep Current Formats</option>{optionSet(FORMAT_OPTIONS)}</select>)}
             {field('Priority', <select value={priority} onChange={(event) => setPriority(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{priority === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(PRIORITY_OPTIONS)}</select>)}
-            {field('Rating', <select value={rating} onChange={(event) => setRating(event.target.value)} className={selectClass}><option value="keep">Keep Current Ratings</option>{[5,4,3,2,1].map((value) => <option key={value} value={value}>{value} stars</option>)}<option value="clear">Clear Rating</option></select>)}
+            {field('Rating', <div className="rounded-xl border border-[#3d2448] bg-[#120817] p-2"><div className="mb-1 flex flex-wrap items-center gap-2"><button type="button" onClick={() => setRating('keep')} className={`min-h-11 rounded-lg border px-3 text-[11px] font-bold ${rating === 'keep' ? 'border-[#c5a059]/60 bg-[#c5a059]/10 text-[#e5c158]' : 'border-[#3d2448] text-stone-400'}`}>Keep current</button>{rating === 'clear' && <span className="text-[11px] text-stone-400">Will clear rating</span>}</div><IconStepRating value={rating === 'keep' || rating === 'clear' ? undefined : Number(rating)} onChange={(value) => setRating(value === undefined ? 'clear' : String(value))} kind="star" ariaLabel="Batch book rating" /></div>)}{field('Spice Level', <div className="rounded-xl border border-[#3d2448] bg-[#120817] p-2"><div className="mb-1 flex flex-wrap items-center gap-2"><button type="button" onClick={() => setSpiceLevel('keep')} className={`min-h-11 rounded-lg border px-3 text-[11px] font-bold ${spiceLevel === 'keep' ? 'border-orange-300/50 bg-orange-300/10 text-orange-200' : 'border-[#3d2448] text-stone-400'}`}>Keep current</button>{spiceLevel === 'clear' && <span className="text-[11px] text-stone-400">Will clear spice level</span>}</div><IconStepRating value={spiceLevel === 'keep' || spiceLevel === 'clear' ? undefined : Number(spiceLevel)} onChange={(value) => setSpiceLevel(value === undefined ? 'clear' : String(value))} kind="spice" ariaLabel="Batch spice level" allowZero /></div>)}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {field('Date Started', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={startedMode} onChange={(event) => setStartedMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={dateStarted} onChange={(event) => setDateStarted(event.target.value)} disabled={startedMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
             {field('Date Finished', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={finishedMode} onChange={(event) => setFinishedMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={dateFinished} onChange={(event) => setDateFinished(event.target.value)} disabled={finishedMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
-            {field('Library Loan Due Date', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={loanDueMode} onChange={(event) => setLoanDueMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={libraryLoanDueDate} onChange={(event) => setLibraryLoanDueDate(event.target.value)} disabled={loanDueMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
