@@ -387,6 +387,7 @@ export default function App() {
       }
       if (changes.priority) updatedBook.priority = changes.priority;
       if (changes.rating !== undefined) updatedBook.rating = changes.rating ?? undefined;
+      if (changes.spiceLevel !== undefined) updatedBook.spiceLevel = changes.spiceLevel ?? undefined;
       if (changes.dateStarted !== undefined) updatedBook.dateStarted = changes.dateStarted ?? undefined;
       if (changes.dateFinished !== undefined) updatedBook.dateFinished = updatedBook.status === 'finished' ? changes.dateFinished ?? undefined : undefined;
       if (changes.addTag && !updatedBook.privateTags.includes(changes.addTag)) updatedBook.privateTags = [...updatedBook.privateTags, changes.addTag];
