@@ -3,7 +3,11 @@ import { BookOpen, ChevronLeft, ChevronRight, Loader2, Lock, Pencil, Plus, Searc
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
-import { clearLibrarySeriesFocusBookId, readLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
+import {
+  clearLibrarySeriesFocusBookId,
+  readLibrarySeriesFocusBookId,
+  SERIES_FOCUS_BOOK_STORAGE_KEY,
+} from '../../features/library/libraryNavigation';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
@@ -116,7 +120,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   useEffect(() => {
     const refreshPendingFocus = (event: Event) => {
       const key = (event as CustomEvent<{ key?: string }>).detail?.key;
-      if (key !== 'inkbound_library_series_focus_book') return;
+      if (key !== SERIES_FOCUS_BOOK_STORAGE_KEY) return;
       setPendingFocusBookId(readLibrarySeriesFocusBookId());
     };
 
