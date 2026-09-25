@@ -178,7 +178,9 @@ function installStorageBridge() {
       return;
     }
 
-    if (startupHydrationPending && isStartupKey(key)) return;
+    if (startupHydrationPending && isStartupKey(key)) {
+      throw new Error(`Inkbound blocked a write to ${key} until canonical large-storage hydration completed.`);
+    }
 
     const normalized = String(value);
     cache.set(key, normalized);
