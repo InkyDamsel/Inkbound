@@ -199,6 +199,7 @@ const fetchOpenLibrary = async (
 
 const WORK_EDITION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const workEditionCache = new Map<string, { expiresAt: number; editions: OpenLibraryEdition[] }>();
+const workEditionInFlight = new Map<string, Promise<OpenLibraryEdition[]>>();
 
 const fetchWorkEditions = async (
   workKey: string,
@@ -215,23 +216,30 @@ const fetchWorkEditions = async (
   if (cached && cached.expiresAt > Date.now()) return cached.editions;
   if (cached) workEditionCache.delete(path);
 
-  try {
-    const response = await fetch(`https://openlibrary.org${path}/editions.json?limit=30`, {
+  let pending = workEditionInFlight.get(path);
+  if (!pending) {
+    pending = fetch(`https://openlibrary.org${path}/editions.json?limit=30`, {
       signal,
       headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) return [];
-    const payload = await response.json() as { entries?: OpenLibraryEdition[] };
-    const editions = payload.entries ?? [];
-    workEditionCache.set(path, {
-      expiresAt: Date.now() + WORK_EDITION_CACHE_TTL_MS,
-      editions,
-    });
-    return editions;
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    return [];
+    })
+      .then(async (response) => {
+        if (!response.ok) return [];
+        const payload = await response.json() as { entries?: OpenLibraryEdition[] };
+        const editions = payload.entries ?? [];
+        workEditionCache.set(path, {
+          expiresAt: Date.now() + WORK_EDITION_CACHE_TTL_MS,
+          editions,
+        });
+        return editions;
+      })
+      .catch((error) => {
+        if (signal?.aborted) throw error;
+        return [];
+      })
+      .finally(() => workEditionInFlight.delete(path));
+    workEditionInFlight.set(path, pending);
   }
+  return pending;
 };
 
 const hydrateWorksFromEditionDetails = async (
@@ -281,7 +289,7 @@ export async function searchDetectiveOpenLibraryContext(
 ): Promise<DetectiveOpenLibraryContextCandidate[]> {
   const params = new URLSearchParams({ q: `${seriesName} ${author}`.trim() });
   try {
-    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 20, signal);
+    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 12, signal);
     const wantedAuthor = canonicalDetectiveAuthor(author);
 
     return works.flatMap((work) => {
@@ -359,7 +367,7 @@ export async function searchDetectiveOpenLibrarySeries(
   const results = await Promise.all(queries.map(async (params) => {
     try {
       const works = await fetchOpenLibrary(params, signal);
-      return hydrateWorksFromEditionDetails(works, 30, signal);
+      return hydrateWorksFromEditionDetails(works, 12, signal);
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn('Series Detective Open Library query failed.', error);
