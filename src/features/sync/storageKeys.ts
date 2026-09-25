@@ -12,6 +12,12 @@ export const SYNC_STORAGE_KEYS = {
   importEnrichmentActiveRetry: 'inkbound_import_enrichment_active_retry_v1',
 } as const;
 
+export const DEVICE_STORAGE_KEYS = {
+  collectionSort: 'inkbound_collection_sort',
+  loansSort: 'inkbound_loans_sort',
+  seriesSort: 'inkbound_series_sort',
+} as const;
+
 export const ACCOUNT_DATA_STORAGE_KEYS = {
   collectionDefinitions: 'inkbound_collection_definitions',
   seriesOverrides: 'inkbound_series_overrides_v1',
