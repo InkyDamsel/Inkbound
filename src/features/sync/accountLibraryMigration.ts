@@ -10,7 +10,7 @@ export function needsAccountLibraryMigration({
   migrationVerified,
 }: AccountLibraryMigrationHealth): boolean {
   if (localBookCount <= 0) return false;
-  if (cloudBookCount === 0) return true;
+  if (cloudBookCount < localBookCount) return true;
   if (!migrationVerified) return true;
   return false;
 }
