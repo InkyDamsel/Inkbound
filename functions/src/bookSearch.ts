@@ -313,7 +313,11 @@ async function hydrateGoogleCatalogItems(
       const info = googleVolumeInfo(hydrated);
       const seriesInfo = asRecord(info?.seriesInfo);
       const memberships = Array.isArray(seriesInfo?.volumeSeries) ? seriesInfo.volumeSeries : [];
-      if (memberships.length > 0) return hydrated;
+      // Standard search can trust Google's structured membership and resolve
+      // its title in one batched call. Detective mode also captures the
+      // bibliographic fallback so a temporary series-title endpoint failure
+      // cannot erase otherwise valid membership evidence.
+      if (memberships.length > 0 && !detectiveMode) return hydrated;
 
       if (operator !== 'inauthor' && operator !== 'isbn' && index >= 2) return hydrated;
 
