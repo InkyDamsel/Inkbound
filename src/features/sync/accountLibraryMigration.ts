@@ -11,7 +11,8 @@ export function needsAccountLibraryMigration({
 }: AccountLibraryMigrationHealth): boolean {
   if (localBookCount <= 0) return false;
   if (cloudBookCount === 0) return true;
-  return !migrationVerified && cloudBookCount < localBookCount;
+  if (!migrationVerified) return true;
+  return false;
 }
 
 export function canReportCloudLibraryHealthy(state: AccountLibraryMigrationHealth): boolean {
