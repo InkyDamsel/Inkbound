@@ -19,6 +19,7 @@ type GoogleBooksCatalogPayload = {
   totalItems: number;
   items: unknown[];
   seriesMetadataById?: Record<string, string>;
+  seriesDetectiveHydrated?: boolean;
 };
 const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBooksCatalogPayload }>();
 const googleBibliographicSeriesCache = new Map<string, { expiresAt: number; value: GoogleBibliographicSeriesInfo | null }>();
@@ -410,6 +411,7 @@ async function googleBooksCatalog(
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
     items,
     seriesMetadataById: await fetchGoogleSeriesTitles(items, effectiveApiKey),
+    seriesDetectiveHydrated: detectiveMode || undefined,
   };
   writeGoogleBooksCache(query, safeStart, safeMax, payload, detectiveMode);
   return payload;
