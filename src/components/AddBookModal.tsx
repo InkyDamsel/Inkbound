@@ -39,6 +39,8 @@ type BarcodeDetectorLike = {
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
+const SCANNER_REVIEW_PAGE_SIZE = 6;
+const statusLabel = (value: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value;
 const BUILT_IN_OWNERSHIP_OPTIONS = OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom');
 const today = () => {
   const value = new Date();
@@ -72,6 +74,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [priority, setPriority] = useState<Priority>('medium');
 
   const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>([]);
+  const [scannerCategory, setScannerCategory] = useState<ReadingStatus>('tbr');
+  const [scannerReviewPage, setScannerReviewPage] = useState(1);
   const [manualIsbn, setManualIsbn] = useState('');
   const [scannerBusy, setScannerBusy] = useState(false);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
@@ -150,7 +154,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
-      setScannedBooks((current) => [...current, { isbn, book }]);
+      setScannedBooks((current) => {
+        const next = [...current, { isbn, book }];
+        setScannerReviewPage(Math.ceil(next.length / SCANNER_REVIEW_PAGE_SIZE));
+        return next;
+      });
       setManualIsbn('');
       setScannerMessage(`Added “${work.title}” to this scan batch.`);
     } catch (error) {
@@ -205,10 +213,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const addScannedBatch = () => {
     if (scannedBooks.length === 0) return;
-    if (onAddMultipleBooks) onAddMultipleBooks(scannedBooks.map((item) => item.book));
-    else scannedBooks.forEach((item) => onAddBook(item.book));
+    const books = scannedBooks.map((item) => withReadingStatus(item.book, scannerCategory));
+    if (onAddMultipleBooks) onAddMultipleBooks(books);
+    else books.forEach(onAddBook);
+    setScannedBooks([]);
+    setScannerReviewPage(1);
+    stopCamera();
     onClose();
   };
+
+  const scannerReviewTotalPages = Math.max(1, Math.ceil(scannedBooks.length / SCANNER_REVIEW_PAGE_SIZE));
+  const scannerReviewStart = (scannerReviewPage - 1) * SCANNER_REVIEW_PAGE_SIZE;
+  const scannerReviewBooks = scannedBooks.slice(scannerReviewStart, scannerReviewStart + SCANNER_REVIEW_PAGE_SIZE);
 
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
@@ -337,7 +353,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         <header className="pr-12">
           <p className="inkbound-kicker">Build your library</p>
           <h2 id="add-book-title" className="mt-2 font-serif text-3xl text-[#f4efe6]">Add Reading Material</h2>
-          <p className="mt-2 text-sm text-[#ad9fac]">Add books, manga, comics, graphic novels, magazines, light novels, novellas, short stories, and anthologies.</p>
+          <p className="mt-2 text-sm text-[#ad9fac]">Search, scan a stack of books, or add something manually.</p>
         </header>
 
         <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
@@ -416,54 +432,99 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           </div>
         ) : activeTab === 'scan' ? (
           <div className="mt-6 space-y-5">
-            <div className="rounded-2xl border border-[#c5a059]/20 bg-[#120c15] p-5">
-              <div className="flex items-start gap-3">
-                <ScanLine className="mt-0.5 h-5 w-5 shrink-0 text-[#e2bd66]" />
+            <section className="rounded-2xl border border-[#c5a059]/25 bg-[#120c15] p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h3 className="font-serif text-xl text-[#f4efe6]">Scan book barcodes</h3>
-                  <p className="mt-1 text-sm text-[#ad9fac]">Scan ISBN barcodes one after another, review the batch, then add them to your library together.</p>
+                  <p className="inkbound-kicker">Stack scanner</p>
+                  <h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Review the stack first, then choose the reading list for the whole batch.</p>
                 </div>
+                <div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
-                <input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void lookupScannedIsbn(manualIsbn); } }} inputMode="numeric" placeholder="Enter ISBN manually" className="min-h-12 rounded-xl border border-[#c5a059]/20 bg-[#0d0910] px-4 text-sm text-[#f4efe6] outline-none" />
-                <button type="button" onClick={() => void lookupScannedIsbn(manualIsbn)} disabled={scannerBusy || !manualIsbn.trim()} className="quiet-shelf-primary-action min-h-12 px-5 disabled:opacity-50">{scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{scannerBusy ? 'Looking up…' : 'Add ISBN'}</button>
+              <div className="relative mt-5 aspect-[4/3] max-h-[420px] overflow-hidden rounded-2xl border border-white/10 bg-black">
+                <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
+                {cameraActive && (
+                  <div className="pointer-events-none absolute inset-[18%] rounded-2xl border-2 border-[#e5c158]/80">
+                    <span className="absolute left-1/2 top-1/2 w-3/4 -translate-x-1/2 border-t border-[#e5c158]/70" />
+                  </div>
+                )}
+                {!cameraActive && (
+                  <div className="absolute inset-0 grid place-items-center bg-[#120817]/90 px-6 text-center">
+                    <div>
+                      <Camera className="mx-auto h-10 w-10 text-[#c5a059]" />
+                      <p className="mt-3 text-sm text-[#ad9fac]">Use your camera to scan the ISBN barcode.</p>
+                      <button type="button" onClick={() => void startCamera()} disabled={scannerBusy} className="quiet-shelf-primary-action mt-4 disabled:opacity-50"><ScanLine className="h-4 w-4" /> Start Scanner</button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="mt-3">
-                <button type="button" onClick={() => cameraActive ? stopCamera() : void startCamera()} disabled={scannerBusy} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50"><Camera className="h-4 w-4" />{cameraActive ? 'Stop camera' : 'Scan with camera'}</button>
-              </div>
-
-              {cameraActive && <div className="mt-4 overflow-hidden rounded-2xl border border-[#c5a059]/20 bg-black"><video ref={videoRef} playsInline muted className="aspect-video w-full object-cover" /></div>}
-              {!cameraActive && <video ref={videoRef} playsInline muted className="hidden" />}
-
-              {scannerError && <div className="mt-4 rounded-xl border border-[#c97b7b]/40 bg-[#c97b7b]/10 p-3 text-sm text-[#efb6b6]">{scannerError}</div>}
-              {scannerMessage && <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-950/20 p-3 text-sm text-emerald-200"><Check className="h-4 w-4" />{scannerMessage}</div>}
-            </div>
-
-            <div className="rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div><p className="inkbound-kicker">Scan batch</p><h3 className="mt-1 font-serif text-xl text-[#f4efe6]">{scannedBooks.length} book{scannedBooks.length === 1 ? '' : 's'} ready</h3></div>
-                {scannedBooks.length > 0 && <button type="button" onClick={() => setScannedBooks([])} className="quiet-shelf-secondary-action text-[#efb6b6]"><Trash2 className="h-4 w-4" />Clear</button>}
-              </div>
-
-              {scannedBooks.length === 0 ? (
-                <div className="mt-4 rounded-xl border border-dashed border-[#c5a059]/20 px-5 py-8 text-center text-sm text-[#ad9fac]">Scanned books will appear here before anything is added to your library.</div>
-              ) : (
-                <div className="mt-4 space-y-2">
-                  {scannedBooks.map((item) => {
-                    const edition = item.book.editions.find((candidate) => candidate.id === item.book.activeEditionId) ?? item.book.editions[0];
-                    return <div key={item.isbn} className="flex items-center gap-3 rounded-xl border border-white/7 bg-[#120c15] p-3">
-                      {edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-16 w-11 shrink-0 rounded object-cover" /> : <span className="grid h-16 w-11 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-4 w-4" /></span>}
-                      <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author} · ISBN {item.isbn}</p></div>
-                      <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate.isbn !== item.isbn))} className="grid h-10 w-10 place-items-center rounded-lg text-[#ad9fac] hover:bg-white/5" aria-label={`Remove ${item.book.work.title} from scan batch`}><X className="h-4 w-4" /></button>
-                    </div>;
-                  })}
+              {cameraActive && (
+                <div className="mt-3 flex justify-end">
+                  <button type="button" onClick={stopCamera} className="quiet-shelf-secondary-action">Stop Camera</button>
                 </div>
               )}
 
-              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-5 min-h-12 w-full disabled:opacity-50">Add {scannedBooks.length || ''} scanned book{scannedBooks.length === 1 ? '' : 's'} to library</button>
-            </div>
+              <form onSubmit={(event) => { event.preventDefault(); void lookupScannedIsbn(manualIsbn); }} className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-h-11 min-w-0 flex-1" />
+                <button type="submit" disabled={!manualIsbn.trim() || scannerBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
+              </form>
+
+              {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
+              {scannerError && <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{scannerError}</p>}
+            </section>
+
+            <section className="rounded-2xl border border-[#3d2448] bg-[#1d1422] p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="inkbound-kicker">Review before saving</p>
+                  <h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scanned books</h3>
+                </div>
+                {scannedBooks.length > 0 && <button type="button" onClick={() => { setScannedBooks([]); setScannerReviewPage(1); }} className="text-xs font-bold text-rose-300">Clear all</button>}
+              </div>
+
+              {scannedBooks.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-dashed border-[#c5a059]/20 px-5 py-10 text-center text-sm text-[#ad9fac]">Your scanned books will collect here until you are ready to save them.</div>
+              ) : (
+                <>
+                  <div className="mt-4 space-y-3">
+                    {scannerReviewBooks.map((item) => {
+                      const edition = item.book.editions.find((candidate) => candidate.id === item.book.activeEditionId) ?? item.book.editions[0];
+                      return (
+                        <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">
+                          {edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover" /> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5" /></span>}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p>
+                            <p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p>
+                            <p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · {statusLabel(scannerCategory)}</p>
+                          </div>
+                          <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4" /></button>
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                  {scannerReviewTotalPages > 1 && (
+                    <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-[#120c15] p-2">
+                      <button type="button" onClick={() => setScannerReviewPage((current) => Math.max(1, current - 1))} disabled={scannerReviewPage === 1} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">← Previous</button>
+                      <span className="text-xs font-semibold text-[#ad9fac]">Page {scannerReviewPage} of {scannerReviewTotalPages} · {scannedBooks.length} books</span>
+                      <button type="button" onClick={() => setScannerReviewPage((current) => Math.min(scannerReviewTotalPages, current + 1))} disabled={scannerReviewPage === scannerReviewTotalPages} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">Next →</button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="mt-5">
+                <Field label="Add scanned books to">
+                  <select value={scannerCategory} onChange={(event) => setScannerCategory(event.target.value as ReadingStatus)}>
+                    {ADD_TO_LIST_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+
+              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {statusLabel(scannerCategory)}</button>
+            </section>
           </div>
         ) : (
           <div className="mt-6 space-y-4">
