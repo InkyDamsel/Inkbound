@@ -12,6 +12,12 @@ export const SYNC_STORAGE_KEYS = {
   importEnrichmentActiveRetry: 'inkbound_import_enrichment_active_retry_v1',
 } as const;
 
+export const DEVICE_STORAGE_KEYS = {
+  collectionSort: 'inkbound_collection_sort',
+  loansSort: 'inkbound_loans_sort',
+  seriesSort: 'inkbound_series_sort',
+} as const;
+
 export const ACCOUNT_DATA_STORAGE_KEYS = {
   collectionDefinitions: 'inkbound_collection_definitions',
   seriesOverrides: 'inkbound_series_overrides_v1',
@@ -48,12 +54,15 @@ export const syncBaselineStateKey = (uid: string) => `inkbound_sync_baseline_${u
 export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 export const fullReconciliationVersionKey = (uid: string) => `inkbound_full_reconciliation_${uid}_v1`;
+export const accountLibraryMigrationVersionKey = (uid: string) => `inkbound_account_library_migration_${uid}_v1`;
+export const accountLibraryMigrationSnapshotKey = (uid: string) => `inkbound_account_library_migration_snapshot_${uid}_v1`;
 export const manualCoverLedgerBaselineKey = (uid: string) => `inkbound_manual_cover_ledger_baseline_v1_${uid}`;
 
 // Single source of truth for the one-time full account reconciliation. Bumping
 // this value deliberately forces existing browser/device working copies through
 // one fresh full comparison before returning to low-cost delta sync.
-export const FULL_RECONCILIATION_VERSION = '3';
+export const ACCOUNT_LIBRARY_MIGRATION_VERSION = '1';
+export const FULL_RECONCILIATION_VERSION = '4';
 
 /**
  * Runtime keys whose local mutations should emit the debounced Inkbound change
