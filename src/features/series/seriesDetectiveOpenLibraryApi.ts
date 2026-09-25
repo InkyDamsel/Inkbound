@@ -54,6 +54,13 @@ export interface DetectiveOpenLibraryCandidate {
   recordId: string;
 }
 
+export interface DetectiveOpenLibraryContextCandidate {
+  work: BookSearchWorkGroup;
+  edition: BookSearchEdition;
+  seriesName?: string;
+  position: number | null;
+}
+
 const ENDPOINT = 'https://openlibrary.org/search.json';
 const FIELDS = [
   'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language', 'series',
@@ -266,6 +273,77 @@ const flattenCandidates = (
     return candidate ? [candidate] : [];
   });
 });
+
+export async function searchDetectiveOpenLibraryContext(
+  seriesName: string,
+  author: string,
+  signal?: AbortSignal,
+): Promise<DetectiveOpenLibraryContextCandidate[]> {
+  const params = new URLSearchParams({ q: `${seriesName} ${author}`.trim() });
+  try {
+    const works = await hydrateWorksFromEditionDetails(await fetchOpenLibrary(params, signal), 20, signal);
+    const wantedAuthor = canonicalDetectiveAuthor(author);
+
+    return works.flatMap((work) => {
+      const authors = work.author_name?.length ? work.author_name : ['Unknown author'];
+      if (
+        wantedAuthor
+        && !authors.some((candidate) => canonicalDetectiveAuthor(candidate) === wantedAuthor)
+      ) return [];
+
+      const docs = work.editions?.docs?.length ? work.editions.docs : [{}];
+      const preferred = docs.find((edition) => parseDetectiveOpenLibrarySeries(edition.series ?? work.series))
+        ?? docs[0];
+      const title = (preferred.title ?? work.title)?.trim();
+      if (!title) return [];
+
+      const metadata = parseDetectiveOpenLibrarySeries(preferred.series ?? work.series);
+      const isbn13 = preferred.isbn_13?.[0]
+        ?? preferred.isbn?.find((value) => compactIsbn(value).length === 13);
+      const isbn10 = preferred.isbn_10?.[0]
+        ?? preferred.isbn?.find((value) => compactIsbn(value).length === 10);
+      const edition: BookSearchEdition = {
+        source: 'open-library',
+        externalEditionId: preferred.key ?? `${work.key ?? normalizeDetectiveText(title)}:context`,
+        title,
+        subtitle: preferred.subtitle ?? work.subtitle,
+        authors,
+        genres: (work.subject ?? []).slice(0, 12),
+        publisher: first(preferred.publisher ?? work.publisher),
+        publicationDate: preferred.publish_date,
+        publicationYear: year(preferred.publish_date, preferred.publish_year ?? work.first_publish_year),
+        language: preferred.language?.[0] ?? work.language?.[0],
+        seriesName: metadata?.name,
+        seriesOrder: metadata?.position ?? undefined,
+        format: formatFor(preferred),
+        isbn10,
+        isbn13,
+        pageCount: preferred.number_of_pages ?? preferred.number_of_pages_median,
+        coverUrl: coverUrl(work, preferred),
+        binding: preferred.physical_format,
+        specialFeatures: [],
+      };
+      const mappedWork: BookSearchWorkGroup = {
+        key: `open-library:${work.key ?? `${normalizeDetectiveText(title)}:${canonicalDetectiveAuthor(authors[0])}`}`,
+        title: work.title ?? title,
+        subtitle: work.subtitle,
+        authors,
+        genres: (work.subject ?? []).slice(0, 12),
+        editions: [edition],
+      };
+      return [{
+        work: mappedWork,
+        edition,
+        seriesName: metadata?.name,
+        position: metadata?.position ?? null,
+      }];
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    console.warn('Series Detective Open Library contextual lookup failed.', error);
+    return [];
+  }
+}
 
 export async function searchDetectiveOpenLibrarySeries(
   seriesName: string,
