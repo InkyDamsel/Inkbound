@@ -35,6 +35,7 @@ export const IconStepRating: React.FC<IconStepRatingProps> = ({
   const Icon = kind === 'star' ? Star : ChiliPepperIcon;
   const activeClass = kind === 'star' ? 'text-[#e5c158]' : 'text-orange-300';
   const emptyClass = 'text-[#6f6370]';
+  const iconSizeClass = kind === 'spice' ? 'h-9 w-9' : 'h-7 w-7';
   const setValue = (next: number) => onChange(value === next ? undefined : next);
 
   return (
@@ -65,14 +66,14 @@ export const IconStepRating: React.FC<IconStepRatingProps> = ({
                 setValue(half ? step - 0.5 : step);
               }}
             >
-              <Icon className={`h-7 w-7 ${emptyClass}`} />
+              <Icon className={`${iconSizeClass} ${emptyClass}`} />
               {fill > 0 && (
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2"
+                  className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${iconSizeClass}`}
                 >
-                  <span className="block h-7 overflow-hidden" style={{ width: `${fill}%` }}>
-                    <Icon className={`h-7 w-7 max-w-none ${activeClass}`} />
+                  <span className="block h-full overflow-hidden" style={{ width: `${fill}%` }}>
+                    <Icon className={`${iconSizeClass} max-w-none ${activeClass}`} />
                   </span>
                 </span>
               )}
