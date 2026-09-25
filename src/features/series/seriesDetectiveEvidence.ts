@@ -40,13 +40,52 @@ export const canonicalDetectiveAuthor = (value?: string): string => {
   if (!raw) return '';
 
   const commaIndex = raw.indexOf(',');
-  if (commaIndex >= 0) {
+  if (commaIndex >= 0 && raw.indexOf(',', commaIndex + 1) < 0) {
     const family = normalizeDetectiveText(raw.slice(0, commaIndex));
     const given = normalizeDetectiveText(raw.slice(commaIndex + 1));
-    if (family && given) return `${given} ${family}`.replace(/\s+/g, ' ').trim();
+    const familyWords = family.split(' ').filter(Boolean);
+    const givenWords = given.split(' ').filter(Boolean);
+
+    // "Last, First" is common provider formatting. A comma between two
+    // multi-word names is much more likely Inkbound's stored author list
+    // ("Author One, Author Two"), so do not reverse that as one person.
+    const looksLikeSingleReversedName =
+      familyWords.length > 0
+      && givenWords.length > 0
+      && !(familyWords.length >= 2 && givenWords.length >= 2);
+    if (looksLikeSingleReversedName) {
+      return `${given} ${family}`.replace(/\s+/g, ' ').trim();
+    }
   }
 
   return normalizeDetectiveText(raw);
+};
+
+export const detectiveAuthorCandidates = (value?: string): string[] => {
+  const raw = value?.trim() ?? '';
+  if (!raw) return [];
+
+  const whole = canonicalDetectiveAuthor(raw);
+  const candidates = new Set<string>(whole ? [whole] : []);
+
+  const commaParts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  if (
+    commaParts.length >= 2
+    && commaParts.every((part) => normalizeDetectiveText(part).split(' ').filter(Boolean).length >= 2)
+  ) {
+    commaParts.forEach((part) => {
+      const normalized = canonicalDetectiveAuthor(part);
+      if (normalized) candidates.add(normalized);
+    });
+  }
+
+  return [...candidates];
+};
+
+export const detectiveAuthorsCompatible = (left?: string, right?: string): boolean => {
+  const leftIds = new Set(detectiveAuthorCandidates(left));
+  if (!leftIds.size) return true;
+  return detectiveAuthorCandidates(right).some((candidate) => leftIds.has(candidate));
 };
 
 export const canonicalDetectiveSeries = (value?: string): string =>
