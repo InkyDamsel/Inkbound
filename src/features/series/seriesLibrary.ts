@@ -58,7 +58,11 @@ export const seriesNamesAreCompatible = (left?: string, right?: string): boolean
   return Boolean(leftKey && rightKey && leftKey === rightKey);
 };
 
-const seriesId = (name: string) => canonicalSeriesIdentity(name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const seriesId = (name: string, discriminator = '') =>
+  `${canonicalSeriesIdentity(name)}::${discriminator}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 const GENERIC_SERIES_NAMES = new Set(['book', 'books', 'series', 'volume', 'vol', 'part', 'edition']);
 
 export function inferSeriesHintFromTitle(title: string): SeriesHint | null {
@@ -184,29 +188,60 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
   });
 
-  // Series identity is the normalized series itself, not "series + author".
-  // Publisher/shared-world series can legitimately span authors. Author is
-  // presentation metadata and must never split one canonical series into
-  // separate cards. Manual overrides remain authoritative for genuine
-  // same-name collisions the reader wants separated.
-  const metadataGroups = new Map<string, { name: string; authors: Set<string>; entries: SeriesBookEntry[] }>();
+  // Start conservatively with series + author. Some publisher/shared-world
+  // series legitimately span authors, but unrelated authors can also reuse the
+  // same series name. Cross-author groups merge only when explicit numbered
+  // positions exist on both sides and those positions do not conflict.
+  const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[] }>();
   books.forEach((book) => {
     if (manuallyAssignedBookIds.has(book.id)) return;
     const resolved = resolveSeriesMetadata(book);
     if (!resolved) return;
     const name = resolved.name;
     const author = book.work.author.trim() || 'Unknown author';
-    const key = canonicalSeriesIdentity(name);
-    const current = metadataGroups.get(key) ?? { name, authors: new Set<string>(), entries: [] };
-    current.authors.add(author);
+    const key = `${canonicalSeriesIdentity(name)}::${author.toLowerCase()}`;
+    const current = metadataGroups.get(key) ?? { name, author, entries: [] };
     current.entries.push({ book, position: resolved.position, displayPosition: seriesPositionLabel(book, resolved.position) });
     metadataGroups.set(key, current);
   });
 
-  metadataGroups.forEach(({ name, authors, entries }) => {
-    const authorList = [...authors].filter(Boolean);
-    const author = authorList.length === 1 ? authorList[0] : 'Various authors';
-    summaries.push(summarize(seriesId(name), name, author, entries, false));
+  type MetadataCluster = { name: string; authors: Set<string>; entries: SeriesBookEntry[] };
+  const clustersBySeries = new Map<string, MetadataCluster[]>();
+
+  const numberedPositions = (entries: SeriesBookEntry[]) =>
+    new Set(entries
+      .map((entry) => entry.position)
+      .filter((position): position is number => typeof position === 'number' && Number.isFinite(position)));
+
+  const canMergeCrossAuthor = (left: MetadataCluster, rightEntries: SeriesBookEntry[]) => {
+    const leftPositions = numberedPositions(left.entries);
+    const rightPositions = numberedPositions(rightEntries);
+    if (leftPositions.size === 0 || rightPositions.size === 0) return false;
+    return [...rightPositions].every((position) => !leftPositions.has(position));
+  };
+
+  metadataGroups.forEach(({ name, author, entries }) => {
+    const identity = canonicalSeriesIdentity(name);
+    const clusters = clustersBySeries.get(identity) ?? [];
+    const compatible = clusters.find((cluster) =>
+      cluster.authors.has(author) || canMergeCrossAuthor(cluster, entries),
+    );
+
+    if (compatible) {
+      compatible.authors.add(author);
+      compatible.entries.push(...entries);
+    } else {
+      clusters.push({ name, authors: new Set([author]), entries: [...entries] });
+    }
+    clustersBySeries.set(identity, clusters);
+  });
+
+  clustersBySeries.forEach((clusters) => {
+    clusters.forEach(({ name, authors, entries }) => {
+      const authorList = [...authors].sort();
+      const author = authorList.length === 1 ? authorList[0] : 'Various authors';
+      summaries.push(summarize(seriesId(name, authorList.join('|')), name, author, entries, false));
+    });
   });
   return summaries.sort((a, b) => a.name.localeCompare(b.name));
 }
