@@ -5,6 +5,7 @@ import { resolveEffectiveSeriesMetadata } from './seriesLibrary';
 import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
+  canonicalDetectiveSeries,
   compactDetectiveIsbn,
   detectiveSeriesNamesCompatible,
   inferDetectiveSeriesFromTitle,
@@ -25,10 +26,12 @@ import {
 import {
   searchDetectiveOpenLibraryAuthor,
   searchDetectiveOpenLibraryBook,
+  searchDetectiveOpenLibraryContext,
   searchDetectiveOpenLibrarySeries,
   type DetectiveOpenLibraryCandidate,
 } from './seriesDetectiveOpenLibraryApi';
 import {
+  detectiveCandidatesAreSameWork,
   mergeDetectiveCandidates,
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
@@ -104,6 +107,104 @@ const hardcoverMergeCandidates = (
       }];
     });
   });
+};
+
+const hardcoverContextCandidates = (
+  groups: BookSearchWorkGroup[],
+  wantedSeriesName: string,
+  wantedAuthor: string,
+): DetectiveMergeCandidate[] => {
+  const wanted = canonicalDetectiveAuthor(wantedAuthor);
+  return groups.flatMap((work) => {
+    const exactAuthor = !wanted || work.authors.some((author) => canonicalDetectiveAuthor(author) === wanted);
+    if (!exactAuthor) return [];
+
+    return work.editions.map((edition) => {
+      const metadata = knownSeriesMetadataFromCatalogWork(work, edition, wantedSeriesName);
+      return {
+        work,
+        edition,
+        seriesName: metadata?.name,
+        position: metadata?.position ?? null,
+        provider: 'hardcover' as const,
+        seriesProvider: metadata ? 'hardcover' as const : undefined,
+        seriesStructured: Boolean(
+          edition.seriesName
+          && detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName),
+        ),
+      };
+    });
+  });
+};
+
+const canonicalDetectiveLanguage = (value?: string): string => {
+  const raw = value?.trim().toLowerCase().replace(/_/g, '-') ?? '';
+  if (!raw) return '';
+  const base = raw.split('-')[0];
+  const aliases: Record<string, string> = {
+    eng: 'en', spa: 'es', fre: 'fr', fra: 'fr', ger: 'de', deu: 'de',
+    ita: 'it', por: 'pt', dut: 'nl', nld: 'nl', jpn: 'ja',
+  };
+  return aliases[base] ?? base;
+};
+
+const hasMergedKnownSeriesContext = (
+  candidate: DetectiveMergeCandidate,
+  wantedSeriesName: string,
+): boolean => {
+  if ((candidate.providerSources?.length ?? 1) < 2) return false;
+
+  const wanted = canonicalDetectiveSeries(wantedSeriesName);
+  if (!wanted) return false;
+
+  const wantedWords = wanted.split(' ').filter(Boolean).length;
+  const values = [
+    candidate.work.title,
+    candidate.work.subtitle,
+    candidate.edition.title,
+    candidate.edition.subtitle,
+  ].filter((value): value is string => Boolean(value?.trim()));
+
+  return values.some((value) => {
+    const normalized = canonicalDetectiveSeries(value);
+    if (!normalized || !normalized.includes(wanted)) return false;
+    const words = normalized.split(' ').filter(Boolean).length;
+    const brandOnly = normalized === wanted || (normalized.endsWith(` ${wanted}`) && words <= wantedWords + 1);
+    return !brandOnly;
+  });
+};
+
+const selectCorroboratedSubtitleSeries = (
+  candidates: DetectiveMergeCandidate[],
+  book: UserBookRecord,
+): SeriesDetectiveMatch | null => {
+  const wantedTitle = normalizeDetectiveText(book.work.title);
+  const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
+  const grouped = new Map<string, { name: string; providers: Set<string> }>();
+
+  for (const candidate of candidates) {
+    const exactTitle = normalizeDetectiveText(candidate.work.title) === wantedTitle
+      || normalizeDetectiveText(candidate.edition.title) === wantedTitle;
+    const exactAuthor = !wantedAuthor || candidate.work.authors
+      .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor);
+    if (!exactTitle || !exactAuthor) continue;
+
+    for (const subtitle of [candidate.edition.subtitle, candidate.work.subtitle]) {
+      const name = plausibleDetectiveSeriesSubtitle(subtitle);
+      if (!name) continue;
+      const key = canonicalDetectiveSeries(name);
+      if (!key) continue;
+      const current = grouped.get(key) ?? { name, providers: new Set<string>() };
+      current.providers.add(candidate.provider);
+      grouped.set(key, current);
+    }
+  }
+
+  const verified = [...grouped.values()]
+    .filter((item) => item.providers.size >= 2)
+    .sort((a, b) => b.providers.size - a.providers.size || a.name.localeCompare(b.name))[0];
+
+  return verified ? { name: verified.name, position: null } : null;
 };
 
 export interface SeriesDetectiveMatch {
