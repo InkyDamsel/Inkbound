@@ -12,10 +12,7 @@ interface IconStepRatingProps {
 }
 
 export const ChiliPepperIcon = ({ className = '' }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14.3 4.6c1.2-1.9 3.1-2.8 5.2-2.4-.1 2.1-1.2 3.8-3.2 4.8" />
-    <path d="M15.8 6.4c2.1 1.8 2.4 5 .8 7.8-2.2 3.8-6.7 5.8-11.4 5.2 3.5-1.5 5.5-3.6 6.5-6.9.6-2.1 1.1-4.8 4.1-6.1Z" />
-  </svg>
+  <span aria-hidden="true" className={`inline-flex items-center justify-center leading-none ${className}`}>🌶️</span>
 );
 
 function fillForStep(value: number | undefined, step: number): 0 | 50 | 100 {
@@ -33,9 +30,9 @@ export const IconStepRating: React.FC<IconStepRatingProps> = ({
   allowZero = false,
 }) => {
   const Icon = kind === 'star' ? Star : ChiliPepperIcon;
-  const activeClass = kind === 'star' ? 'text-[#e5c158]' : 'text-orange-300';
-  const emptyClass = 'text-[#6f6370]';
-  const iconSizeClass = kind === 'spice' ? 'h-9 w-9' : 'h-7 w-7';
+  const activeClass = kind === 'star' ? 'text-[#e5c158]' : '';
+  const emptyClass = kind === 'star' ? 'text-[#6f6370]' : 'grayscale opacity-35';
+  const iconSizeClass = kind === 'spice' ? 'h-9 w-9 text-[30px]' : 'h-7 w-7';
   const setValue = (next: number) => onChange(value === next ? undefined : next);
 
   return (
