@@ -13,7 +13,19 @@ export interface DetectiveGoogleVolume {
     subtitle?: string;
     authors?: string[];
     description?: string;
+    publisher?: string;
+    publishedDate?: string;
+    pageCount?: number;
+    categories?: string[];
     language?: string;
+    imageLinks?: {
+      smallThumbnail?: string;
+      thumbnail?: string;
+      small?: string;
+      medium?: string;
+      large?: string;
+      extraLarge?: string;
+    };
     industryIdentifiers?: GoogleIndustryIdentifier[];
     seriesInfo?: {
       bookDisplayNumber?: string;
@@ -24,6 +36,7 @@ export interface DetectiveGoogleVolume {
       }>;
     };
   };
+  saleInfo?: { isEbook?: boolean };
 }
 
 interface GooglePayload {
