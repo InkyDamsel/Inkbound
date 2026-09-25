@@ -251,10 +251,18 @@ export async function findMissingSeriesBooks(
       ? [resolved.position]
       : [];
   });
-  const highest = knownPositions.length ? Math.max(...knownPositions) : 0;
-  const positionQueries = highest > 0
-    ? Array.from({ length: 5 }, (_, index) => `${seriesName} book ${highest + index + 1} ${author}`)
+  const wholePositions = knownPositions.filter((position) => Number.isInteger(position) && position > 0);
+  const highest = wholePositions.length ? Math.max(...wholePositions) : 0;
+  const knownPositionSet = new Set(wholePositions);
+  const internalGaps = highest > 0
+    ? Array.from({ length: highest }, (_, index) => index + 1)
+      .filter((position) => !knownPositionSet.has(position))
     : [];
+  const forwardPositions = highest > 0
+    ? Array.from({ length: 5 }, (_, index) => highest + index + 1)
+    : [];
+  const positionQueries = [...internalGaps, ...forwardPositions]
+    .map((position) => `${seriesName} book ${position} ${author}`);
   const queries = [
     `${seriesName} ${author}`,
     seriesName,
