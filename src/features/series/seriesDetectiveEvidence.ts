@@ -25,11 +25,17 @@ export const compactDetectiveIsbn = (value?: string): string =>
   value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
 export const canonicalDetectiveAuthor = (value?: string): string => {
-  const normalized = normalizeDetectiveText(value);
-  if (!normalized) return '';
-  const parts = normalized.split(' ').filter(Boolean);
-  if (parts.length === 2 && value?.includes(',')) return `${parts[1]} ${parts[0]}`;
-  return normalized;
+  const raw = value?.trim() ?? '';
+  if (!raw) return '';
+
+  const commaIndex = raw.indexOf(',');
+  if (commaIndex >= 0) {
+    const family = normalizeDetectiveText(raw.slice(0, commaIndex));
+    const given = normalizeDetectiveText(raw.slice(commaIndex + 1));
+    if (family && given) return `${given} ${family}`.replace(/\s+/g, ' ').trim();
+  }
+
+  return normalizeDetectiveText(raw);
 };
 
 export const canonicalDetectiveSeries = (value?: string): string =>
