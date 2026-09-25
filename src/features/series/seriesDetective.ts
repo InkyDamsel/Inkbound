@@ -1,5 +1,6 @@
 import type { Format, UserBookRecord } from '../../types';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import { searchHardcover } from '../book-search/data/hardcoverApi';
 import { resolveEffectiveSeriesMetadata } from './seriesLibrary';
 import {
   buildSeriesDetectionQueries,
@@ -30,6 +31,79 @@ import {
   mergeDetectiveCandidates,
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
+
+
+type DetectiveSeriesAwareEdition = BookSearchEdition & {
+  seriesName?: string;
+  seriesOrder?: number;
+};
+
+const knownSeriesMetadataFromCatalogWork = (
+  work: BookSearchWorkGroup,
+  edition: BookSearchEdition,
+  wantedSeriesName: string,
+): SeriesDetectiveMatch | null => {
+  const seriesAware = edition as DetectiveSeriesAwareEdition;
+  if (
+    seriesAware.seriesName
+    && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName)
+  ) {
+    return {
+      name: seriesAware.seriesName,
+      position: typeof seriesAware.seriesOrder === 'number' ? seriesAware.seriesOrder : null,
+    };
+  }
+
+  for (const value of [edition.title, work.title, edition.subtitle, work.subtitle]) {
+    const inferred = inferKnownDetectiveSeriesFromText(value, wantedSeriesName)
+      ?? inferDetectiveSeriesFromTitle(value);
+    if (inferred && detectiveSeriesNamesCompatible(inferred.name, wantedSeriesName)) return inferred;
+  }
+
+  for (const description of [edition.publisherSummary, work.publisherSummary]) {
+    const inferred = inferKnownDetectiveSeriesFromDescription(description, wantedSeriesName);
+    if (inferred) return inferred;
+  }
+
+  for (const subtitle of [edition.subtitle, work.subtitle]) {
+    const candidate = plausibleDetectiveSeriesSubtitle(subtitle);
+    if (candidate && detectiveSeriesNamesCompatible(candidate, wantedSeriesName)) {
+      return { name: candidate, position: null };
+    }
+  }
+
+  return null;
+};
+
+const hardcoverMergeCandidates = (
+  groups: BookSearchWorkGroup[],
+  wantedSeriesName: string,
+  wantedAuthor: string,
+): DetectiveMergeCandidate[] => {
+  const wanted = canonicalDetectiveAuthor(wantedAuthor);
+  return groups.flatMap((work) => {
+    const exactAuthor = !wanted || work.authors.some((author) => canonicalDetectiveAuthor(author) === wanted);
+    return work.editions.flatMap((edition) => {
+      const metadata = knownSeriesMetadataFromCatalogWork(work, edition, wantedSeriesName);
+      if (!metadata) return [];
+      const seriesAware = edition as DetectiveSeriesAwareEdition;
+      const structured = Boolean(
+        seriesAware.seriesName
+        && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName),
+      );
+      if (!structured && !exactAuthor) return [];
+      return [{
+        work,
+        edition,
+        seriesName: metadata.name,
+        position: metadata.position,
+        provider: 'hardcover' as const,
+        seriesProvider: 'hardcover' as const,
+        seriesStructured: structured,
+      }];
+    });
+  });
+};
 
 export interface SeriesDetectiveMatch {
   name: string;
@@ -371,10 +445,20 @@ export async function findMissingSeriesBooks(
     ...positionQueries,
   ];
 
-  const [catalogs, openLibrarySeriesCandidates, openLibraryAuthorCandidates] = await Promise.all([
+  const [
+    catalogs,
+    openLibrarySeriesCandidates,
+    openLibraryAuthorCandidates,
+    hardcoverSeriesAndAuthor,
+    hardcoverSeriesOnly,
+    hardcoverAuthor,
+  ] = await Promise.all([
     Promise.all(queries.map((query) => safeDetectiveSearch(query, signal))),
     searchDetectiveOpenLibrarySeries(seriesName, author, signal),
     searchDetectiveOpenLibraryAuthor(author, signal),
+    searchHardcover(`${seriesName} ${author}`),
+    searchHardcover(seriesName),
+    searchHardcover(author),
   ]);
   const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
   const seen = new Map<string, SeriesDetectiveCandidate>();
@@ -399,6 +483,16 @@ export async function findMissingSeriesBooks(
       seriesStructured: true,
     });
   });
+
+  providerCandidates.push(...hardcoverMergeCandidates(
+    [
+      ...hardcoverSeriesAndAuthor.groups,
+      ...hardcoverSeriesOnly.groups,
+      ...hardcoverAuthor.groups,
+    ],
+    seriesName,
+    author,
+  ));
 
   const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates);
 
