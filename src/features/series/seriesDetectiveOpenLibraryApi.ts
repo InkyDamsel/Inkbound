@@ -3,6 +3,7 @@ import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/mode
 import {
   canonicalDetectiveAuthor,
   comparableDetectiveTitle,
+  detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
   normalizeDetectiveText,
 } from './seriesDetectiveEvidence';
@@ -143,7 +144,7 @@ const mapCandidate = (
   const authors = work.author_name?.length ? work.author_name : ['Unknown author'];
   if (wantedAuthor) {
     const wanted = canonicalDetectiveAuthor(wantedAuthor);
-    const exact = !wanted || authors.some((author) => canonicalDetectiveAuthor(author) === wanted);
+    const exact = !wanted || authors.some((author) => detectiveAuthorsCompatible(wantedAuthor, author));
     // Open Library's explicit structured series membership can span authors, so
     // author mismatch is not a hard rejection when the series itself matches.
     if (!exact && !wantedSeriesName) return null;
@@ -308,7 +309,7 @@ export async function searchDetectiveOpenLibraryContext(
       const authors = work.author_name?.length ? work.author_name : ['Unknown author'];
       if (
         wantedAuthor
-        && !authors.some((candidate) => canonicalDetectiveAuthor(candidate) === wantedAuthor)
+        && !authors.some((candidate) => detectiveAuthorsCompatible(author, candidate))
       ) return [];
 
       const docs = work.editions?.docs?.length ? work.editions.docs : [{}];
