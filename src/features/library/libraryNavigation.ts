@@ -25,6 +25,7 @@ export function openLibrarySeriesForBook(bookId: string) {
   writeRuntimeJson(SERIES_FOCUS_BOOK_STORAGE_KEY, bookId);
   notifyRuntimeStorageChanged(APP_TAB_STORAGE_KEY);
   notifyRuntimeStorageChanged(LIBRARY_SECTION_STORAGE_KEY);
+  notifyRuntimeStorageChanged(SERIES_FOCUS_BOOK_STORAGE_KEY);
 }
 
 /** Read the pending Series deep-link without destroying it.
