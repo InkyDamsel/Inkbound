@@ -412,14 +412,18 @@ async function requestCanonicalGoogleBooksPayload(
   startIndex = 0,
   maxResults = GOOGLE_BOOKS_PAGE_SIZE,
 ): Promise<GoogleVolumesResponse> {
-  const payload = shouldUseProtectedGoogleBooks()
-    ? await requestProtectedGoogleBooks(query, signal, startIndex, maxResults)
-    : await requestDirectGoogleBooks(query, signal, startIndex, maxResults);
+  if (shouldUseProtectedGoogleBooks()) {
+    try {
+      const protectedPayload = await requestProtectedGoogleBooks(query, signal, startIndex, maxResults);
+      return enrichGoogleSeriesMetadata(protectedPayload, signal);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Protected Google Books search unavailable; falling back to direct catalog search.', error);
+    }
+  }
 
-  // Both transports now return the canonical hydrated Google payload. Do not
-  // re-fetch every protected volume in the browser after the callable already
-  // expanded it server-side.
-  return enrichGoogleSeriesMetadata(payload, signal);
+  const directPayload = await requestDirectGoogleBooks(query, signal, startIndex, maxResults);
+  return enrichGoogleSeriesMetadata(directPayload, signal);
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -431,6 +435,10 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
   const groups = hardenCatalogGroups(groupGoogleEditions(editions));
   return { groups, totalItems: payload.totalItems ?? groups.length };
 }
+
+const looksLikePersonNameQuery = (value: string): boolean =>
+  /^[\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,3}$/u.test(value.trim())
+  && !/\d/.test(value);
 
 export async function searchGoogleBooksPage(
   query: string,
@@ -445,20 +453,64 @@ export async function searchGoogleBooksPage(
   const builtQuery = buildGoogleBooksQuery(trimmed);
 
   try {
-    const payload = await requestCanonicalGoogleBooksPayload(
-      builtQuery,
-      signal,
-      startIndex,
-      GOOGLE_BOOKS_PAGE_SIZE,
-    );
+    const personLike = startIndex === 0 && looksLikePersonNameQuery(trimmed);
+    const [payload, authorPayload] = await Promise.all([
+      requestCanonicalGoogleBooksPayload(
+        builtQuery,
+        signal,
+        startIndex,
+        GOOGLE_BOOKS_PAGE_SIZE,
+      ),
+      personLike
+        ? requestCanonicalGoogleBooksPayload(
+            `inauthor:${trimmed}`,
+            signal,
+            0,
+            GOOGLE_BOOKS_PAGE_SIZE,
+          ).catch((error) => {
+            if (signal?.aborted) throw error;
+            console.warn('Fast author-intent probe unavailable; continuing with normal catalog results.', error);
+            return null;
+          })
+        : Promise.resolve<GoogleVolumesResponse | null>(null),
+    ]);
 
     const rawItems = payload.items ?? [];
     const editions = rawItems
       .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
       .filter((item): item is BookSearchEdition => Boolean(item));
-    const groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
+    let groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
 
-    const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
+    if (authorPayload) {
+      const authorGroups = hardenCatalogGroups(
+        groupGoogleEditions(
+          (authorPayload.items ?? [])
+            .map((volume) => mapGoogleVolume(volume, authorPayload.seriesMetadataById))
+            .filter((item): item is BookSearchEdition => Boolean(item)),
+        ),
+        { preferredAuthor: trimmed },
+      );
+      const wantedAuthor = canonicalAuthorIdentity(trimmed);
+      const exactAuthorGroups = authorGroups.filter((group) =>
+        group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
+      );
+
+      if (exactAuthorGroups.length >= 2) {
+        groups = hardenCatalogGroups(
+          mergeGroups(exactAuthorGroups, [groups]),
+          { preferredAuthor: trimmed },
+        ).filter((group) =>
+          group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
+        );
+      }
+    }
+
+    const providerTotalItems = Math.max(
+      0,
+      authorPayload && groups.length >= 2
+        ? authorPayload.totalItems ?? payload.totalItems ?? 0
+        : payload.totalItems ?? 0,
+    );
     const nextStartIndex = startIndex + rawItems.length;
     const hasMore = rawItems.length > 0 && (
       providerTotalItems > 0
@@ -474,9 +526,13 @@ export async function searchGoogleBooksPage(
       hasMore,
     };
   } catch (error) {
-    if (!isGoogleQuotaError(error)) throw error;
-    googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
-    console.warn('Google Books quota is exhausted; using paged Open Library results instead.', error);
+    if (signal?.aborted) throw error;
+    if (isGoogleQuotaError(error)) {
+      googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+      console.warn('Google Books quota is exhausted; using paged Open Library results instead.', error);
+    } else {
+      console.warn('Google Books page search unavailable; using paged Open Library results instead.', error);
+    }
     return searchOpenLibraryPage(builtQuery, startIndex, GOOGLE_BOOKS_PAGE_SIZE, signal);
   }
 }
