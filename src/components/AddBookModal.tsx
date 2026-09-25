@@ -9,7 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { canonicalAuthorIdentity, enrichSelectedCatalogEdition, hardenCatalogGroups, inferCatalogAuthorIntent, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
+import { canonicalAuthorIdentity, enrichSelectedCatalogEdition, hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -19,7 +19,7 @@ import {
 } from '../features/ownership/customOwnershipCategories';
 import { withReadingStatus } from '../features/reading/bookReadingState';
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
-import { DEVICE_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { getRuntimeStorage, readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 import { CanonicalInput, CanonicalTextarea } from './form/CanonicalInput';
@@ -45,7 +45,6 @@ type AuthorPageState = {
   previousSearchNextStartIndex: number;
   previousSearchProviderTotal: number | null;
   previousSearchHasMore: boolean;
-  previousSearchPreferredAuthor: string | null;
 };
 
 type BarcodeDetectorLike = {
@@ -55,7 +54,7 @@ type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => Barc
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const SCANNER_REVIEW_PAGE_SIZE = 6;
-const SCANNER_DRAFT_STORAGE_KEY = DEVICE_STORAGE_KEYS.scannerReviewDraft;
+const SCANNER_DRAFT_STORAGE_KEY = 'inkbound_scanner_review_draft_v1';
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 
 const today = () => {
@@ -122,7 +121,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [searchProviderTotal, setSearchProviderTotal] = useState<number | null>(null);
   const [searchHasMore, setSearchHasMore] = useState(false);
   const [isLoadingSearchMore, setIsLoadingSearchMore] = useState(false);
-  const [searchPreferredAuthor, setSearchPreferredAuthor] = useState<string | null>(null);
   const [authorPage, setAuthorPage] = useState<AuthorPageState | null>(null);
   const [authorNextStartIndex, setAuthorNextStartIndex] = useState(0);
   const [authorProviderTotal, setAuthorProviderTotal] = useState<number | null>(null);
@@ -234,7 +232,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setSearchProviderTotal(null);
     setSearchHasMore(false);
     setIsLoadingSearchMore(false);
-    setSearchPreferredAuthor(null);
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
@@ -250,14 +247,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setSearchNextStartIndex(0);
         setSearchProviderTotal(exactResponse.totalItems || null);
         setSearchHasMore(false);
-        setSearchPreferredAuthor(null);
         return;
       }
 
       const catalogResponse = await searchGoogleBooks(trimmedQuery);
-      const resolvedAuthorIntent = inferCatalogAuthorIntent(catalogResponse.groups, trimmedQuery) ?? null;
       setResults(catalogResponse.groups);
-      setSearchPreferredAuthor(resolvedAuthorIntent);
       setSearchNextStartIndex(40);
       setSearchProviderTotal(catalogResponse.totalItems || null);
       // Initial search intentionally uses one canonical Google page (40 max).
@@ -277,18 +271,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setIsLoadingSearchMore(true);
     setSearchError(null);
     try {
-      const response = searchPreferredAuthor
-        ? await searchGoogleBooksAuthorPage(searchPreferredAuthor, searchNextStartIndex)
-        : await searchGoogleBooksPage(trimmedQuery, searchNextStartIndex);
-      const incoming = searchPreferredAuthor
-        ? filterExactAuthorResults(response.groups, searchPreferredAuthor)
-        : response.groups;
-      setResults((current) => mergeCatalogResultGroups(
-        current,
-        incoming,
-        searchPreferredAuthor ? undefined : trimmedQuery,
-        searchPreferredAuthor ?? undefined,
-      ));
+      const response = await searchGoogleBooksPage(trimmedQuery, searchNextStartIndex);
+      setResults((current) => mergeCatalogResultGroups(current, response.groups, trimmedQuery));
       setSearchNextStartIndex(response.nextStartIndex);
       setSearchProviderTotal(response.providerTotalItems || searchProviderTotal);
       setSearchHasMore(response.hasMore && response.nextStartIndex > searchNextStartIndex);
@@ -309,7 +293,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       previousSearchNextStartIndex: searchNextStartIndex,
       previousSearchProviderTotal: searchProviderTotal,
       previousSearchHasMore: searchHasMore,
-      previousSearchPreferredAuthor: searchPreferredAuthor,
     };
     setAuthorPage(previousState);
     setAuthorNextStartIndex(0);
