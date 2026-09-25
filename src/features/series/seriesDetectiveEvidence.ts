@@ -62,6 +62,59 @@ export const inferKnownSeriesFromBibliographicText = (
   };
 };
 
+const ORDINAL_WORD_POSITIONS: Record<string, number> = {
+  first: 1, second: 2, third: 3, fourth: 4, fifth: 5,
+  sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
+  eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15,
+  sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19, twentieth: 20,
+};
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^$()|[\]\\]/g, '\\$&');
+
+export const inferKnownSeriesFromBibliographicDescription = (
+  value: string | undefined,
+  wantedSeriesName: string,
+): { name: string; position: number | null } | null => {
+  const text = value?.trim();
+  if (!text) return null;
+
+  const normalized = normalize(text);
+  const seriesTokens = canonicalSeriesIdentity(wantedSeriesName).split(' ').filter(Boolean);
+  if (!normalized || !seriesTokens.length) return null;
+
+  const tokenPattern = seriesTokens.map(escapeRegExp).join('(?:\\s+(?:x|and|the))?\\s+');
+  const explicitSeries = new RegExp('\\b' + tokenPattern + '\\b(?:\\s+(?:series|saga|novels?|books?|collection))?', 'i');
+  const match = explicitSeries.exec(normalized);
+  if (!match) return null;
+
+  // Single-word series names need an explicit bibliographic qualifier so an
+  // incidental word such as "selection" is never treated as membership proof.
+  if (seriesTokens.length === 1 && !/\\b(?:series|saga|novels?|books?|collection)\\b/i.test(match[0])) return null;
+
+  const start = Math.max(0, match.index - 100);
+  const end = Math.min(normalized.length, match.index + match[0].length + 100);
+  const context = normalized.slice(start, end);
+  let position: number | null = null;
+
+  for (const pattern of [
+    /\\b(?:book|volume|vol|part)\\s*#?\\s*(\\d+(?:\\.\\d+)?)\\b/i,
+    /\\b(\\d+(?:\\.\\d+)?)\\s*(?:st|nd|rd|th)?\\s+(?:book|novel|volume|part)\\b/i,
+  ]) {
+    const numberMatch = context.match(pattern);
+    const parsed = numberMatch ? Number(numberMatch[1]) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > 0) { position = parsed; break; }
+  }
+
+  if (position === null) {
+    const ordinalMatch = context.match(new RegExp(
+      '\\b(' + Object.keys(ORDINAL_WORD_POSITIONS).join('|') + ')\\s+(?:book|novel|volume|part)\\b',
+      'i',
+    ));
+    if (ordinalMatch) position = ORDINAL_WORD_POSITIONS[ordinalMatch[1].toLocaleLowerCase()] ?? null;
+  }
+
+  return { name: wantedSeriesName.trim(), position };
+};
 export const hasKnownSeriesContextEvidence = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
