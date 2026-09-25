@@ -3,7 +3,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Loader2, Lock, Pencil, Plus, Searc
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
-import { consumeLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
+import { clearLibrarySeriesFocusBookId, readLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import {
@@ -112,20 +112,25 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   }, [sortMode]);
 
   useEffect(() => {
-    const targetBookId = consumeLibrarySeriesFocusBookId();
+    const targetBookId = readLibrarySeriesFocusBookId();
     if (!targetBookId) return;
-    const targetIndex = filtered.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
-    if (targetIndex < 0) return;
 
-    const targetSeries = filtered[targetIndex];
+    // Resolve against the complete series collection, not the currently
+    // filtered page. A user's existing Series search must never make a
+    // Book Details deep-link disappear.
+    const targetSeries = series.find((item) => item.books.some(({ book }) => book.id === targetBookId));
+    if (!targetSeries) return;
+
     setSearch('');
-    setCurrentPage(Math.floor(targetIndex / SERIES_PER_PAGE) + 1);
+    const targetIndex = series.findIndex((item) => item.id === targetSeries.id);
+    setCurrentPage(Math.floor(Math.max(0, targetIndex) / SERIES_PER_PAGE) + 1);
     setExpandedSeriesId(targetSeries.id);
+    clearLibrarySeriesFocusBookId(targetBookId);
 
     window.setTimeout(() => {
-      document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 0);
-  }, [filtered]);
+  }, [series]);
 
   const goToPage = (page: number) => {
     const next = Math.max(1, Math.min(page, totalPages));
