@@ -705,7 +705,7 @@ export async function findMissingSeriesBooks(
 
   const existingPositions = new Set(knownPositions);
   const existingTitles = new Set(libraryBooks.map((book) =>
-    `${normalizeDetectiveText(book.work.title)}::${canonicalDetectiveAuthor(book.work.author)}`,
+    `${comparableDetectiveTitle(book.work.title)}::${canonicalDetectiveAuthor(book.work.author)}`,
   ));
   const existingIsbns = new Set(libraryBooks.flatMap((book) =>
     book.editions.flatMap((edition) =>
@@ -721,7 +721,7 @@ export async function findMissingSeriesBooks(
   const missing = candidates.filter((candidate) => {
     if (candidate.position !== null && existingPositions.has(candidate.position)) return false;
     const candidateAuthor = canonicalDetectiveAuthor(candidate.work.authors[0]);
-    if (existingTitles.has(`${normalizeDetectiveText(candidate.work.title)}::${candidateAuthor}`)) return false;
+    if (existingTitles.has(`${comparableDetectiveTitle(candidate.work.title)}::${candidateAuthor}`)) return false;
     if (candidate.work.key && existingWorkIds.has(candidate.work.key)) return false;
     return ![candidate.edition.isbn13, candidate.edition.isbn10]
       .map(compactDetectiveIsbn)
