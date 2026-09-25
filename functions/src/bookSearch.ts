@@ -342,6 +342,7 @@ async function googleBooksCatalog(
   if (cached) return cached;
 
   const apiKey = GOOGLE_BOOKS_API_KEY.value().trim();
+  let effectiveApiKey = apiKey;
   const params = new URLSearchParams({
     q: query,
     printType: 'books',
@@ -352,23 +353,34 @@ async function googleBooksCatalog(
   });
   if (apiKey) params.set('key', apiKey);
 
-  let response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
-  if (!response.ok && apiKey) {
+  const runRequest = async (): Promise<Response> => {
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+      if (response.status !== 429 && response.status !== 503) break;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+    }
+    return response!;
+  };
+
+  let response = await runRequest();
+  if (!response.ok && apiKey && [400, 401, 403].includes(response.status)) {
     // Referrer-restricted keys can fail in Cloud Functions/emulator. Public
     // catalog lookup is valid without a key, so fall back instead of turning a
     // metadata lookup into a hard failure.
     params.delete('key');
-    response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+    effectiveApiKey = '';
+    response = await runRequest();
   }
   if (!response.ok) throw new Error(`Google Books returned ${response.status}.`);
 
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
   const rawItems = Array.isArray(raw.items) ? raw.items : [];
-  const items = await hydrateGoogleCatalogItems(rawItems, apiKey, query);
+  const items = await hydrateGoogleCatalogItems(rawItems, effectiveApiKey, query);
   const payload: GoogleBooksCatalogPayload = {
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
     items,
-    seriesMetadataById: await fetchGoogleSeriesTitles(items, apiKey),
+    seriesMetadataById: await fetchGoogleSeriesTitles(items, effectiveApiKey),
   };
   writeGoogleBooksCache(query, safeStart, safeMax, payload);
   return payload;
