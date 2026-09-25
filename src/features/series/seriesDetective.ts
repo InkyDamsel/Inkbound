@@ -127,21 +127,27 @@ const hasMergedKnownSeriesContext = (
   const wanted = canonicalDetectiveSeries(wantedSeriesName);
   if (!wanted) return false;
 
+  const workTitle = canonicalDetectiveSeries(candidate.work.title);
   const wantedWords = wanted.split(' ').filter(Boolean).length;
-  const values = [
+  const workTitleWords = workTitle.split(' ').filter(Boolean).length;
+  const brandOnlyWorkTitle = workTitle === wanted
+    || (workTitle.endsWith(` ${wanted}`) && workTitleWords <= wantedWords + 1);
+  if (brandOnlyWorkTitle) return false;
+
+  return [
     candidate.work.title,
     candidate.work.subtitle,
     candidate.edition.title,
     candidate.edition.subtitle,
-  ].filter((value): value is string => Boolean(value?.trim()));
-
-  return values.some((value) => {
-    const normalized = canonicalDetectiveSeries(value);
-    if (!normalized || !normalized.includes(wanted)) return false;
-    const words = normalized.split(' ').filter(Boolean).length;
-    const brandOnly = normalized === wanted || (normalized.endsWith(` ${wanted}`) && words <= wantedWords + 1);
-    return !brandOnly;
-  });
+  ]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .some((value) => {
+      const normalized = canonicalDetectiveSeries(value);
+      return Boolean(
+        normalized
+        && (normalized.includes(wanted) || detectiveSeriesNamesCompatible(value, wantedSeriesName)),
+      );
+    });
 };
 
 const selectCorroboratedSubtitleSeries = (
