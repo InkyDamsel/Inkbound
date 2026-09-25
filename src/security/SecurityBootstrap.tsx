@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import { onAuthStateChanged } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -7,11 +8,34 @@ import {
   functions,
   useFirebaseEmulators,
 } from '../lib/firebase';
+import { isAndroidRuntime } from '../platform/runtimePlatform';
 
 const OWNER_EMAILS = new Set([
   'blackdame494@gmail.com',
   'inkbound@inkydameinteractive.com',
 ]);
+
+async function supportRuntimeContext() {
+  const base = {
+    platform: isAndroidRuntime() ? 'android' : 'web',
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 500) : '',
+    appVersion: '',
+    buildNumber: '',
+  };
+
+  if (!isAndroidRuntime()) return base;
+
+  try {
+    const info = await CapacitorApp.getInfo();
+    return {
+      ...base,
+      appVersion: info.version ?? '',
+      buildNumber: info.build ?? '',
+    };
+  } catch {
+    return base;
+  }
+}
 
 export function SecurityBootstrap() {
   useEffect(() => {
@@ -30,7 +54,7 @@ export function SecurityBootstrap() {
         try {
           // Keep account creation and entitlement creation deterministic. The
           // directory call must finish before any access changes are applied.
-          await syncUserDirectory();
+          await syncUserDirectory(await supportRuntimeContext());
 
           if (email && OWNER_EMAILS.has(email) && user.emailVerified) {
             await bootstrapOwner();
