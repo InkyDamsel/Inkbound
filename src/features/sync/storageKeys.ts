@@ -48,6 +48,7 @@ export const syncBaselineStateKey = (uid: string) => `inkbound_sync_baseline_${u
 export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 export const fullReconciliationVersionKey = (uid: string) => `inkbound_full_reconciliation_${uid}_v1`;
+export const manualCoverLedgerBaselineKey = (uid: string) => `inkbound_manual_cover_ledger_baseline_v1_${uid}`;
 
 // Single source of truth for the one-time full account reconciliation. Bumping
 // this value deliberately forces existing browser/device working copies through
