@@ -11,8 +11,8 @@ export interface DetectiveMergeCandidate {
   edition: BookSearchEdition;
   seriesName?: string;
   position: number | null;
-  provider: 'google-books' | 'open-library';
-  seriesProvider?: 'google-books' | 'open-library';
+  provider: 'google-books' | 'open-library' | 'hardcover';
+  seriesProvider?: 'google-books' | 'open-library' | 'hardcover';
   seriesStructured?: boolean;
 }
 
@@ -101,7 +101,7 @@ const mergeSeries = (
 ): {
   name?: string;
   position: number | null;
-  provider?: 'google-books' | 'open-library';
+  provider?: 'google-books' | 'open-library' | 'hardcover';
   structured?: boolean;
 } => {
   const leftName = left.seriesName?.trim();
