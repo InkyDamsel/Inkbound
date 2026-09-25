@@ -7,7 +7,7 @@ import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage, searchOpenLibrarySeriesContext } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
-import { hardenCatalogGroups, mergeCatalogEditionData } from '../catalogHardening';
+import { hardenCatalogGroups, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
