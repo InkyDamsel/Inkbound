@@ -2,6 +2,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
+import { defineSecret } from 'firebase-functions/params';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
 const adminApp = getApps()[0] ?? initializeApp();
@@ -9,6 +10,10 @@ const db = getFirestore(adminApp);
 const auth = getAuth(adminApp);
 const bucket = getStorage(adminApp).bucket();
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
+const resendApiKey = defineSecret('RESEND_API_KEY');
+const EMAIL_SENDER = 'Inkbound <inkbound@inkydameinteractive.com>';
+const EMAIL_REPLY_TO = 'inkbound_support@inkydameinteractive.com';
+const APP_RETURN_URL = 'https://inkbound.inkydameinteractive.com/app';
 const OWNER_EMAILS = new Set([
   'blackdame494@gmail.com',
   'inkbound@inkydameinteractive.com',
@@ -256,6 +261,119 @@ async function writeOwnerAudit(input: {
   });
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+async function sendInkboundEmail(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<{ sent: boolean; providerId?: string; error?: string }> {
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${resendApiKey.value()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: EMAIL_SENDER,
+        to: [input.to],
+        reply_to: EMAIL_REPLY_TO,
+        subject: input.subject,
+        html: input.html,
+        text: input.text,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as { id?: string; message?: string; name?: string } | null;
+    if (!response.ok) {
+      const message = text(payload?.message || payload?.name || `Resend returned HTTP ${response.status}`);
+      console.error('Inkbound admin notification email was rejected.', {
+        to: input.to,
+        status: response.status,
+        message,
+      });
+      return { sent: false, error: message || 'Email delivery was rejected.' };
+    }
+
+    return { sent: true, providerId: payload?.id };
+  } catch (error) {
+    console.error('Inkbound admin notification email could not reach Resend.', {
+      to: input.to,
+      error,
+    });
+    return {
+      sent: false,
+      error: error instanceof Error ? error.message : 'Email delivery service unavailable.',
+    };
+  }
+}
+
+function emailShell(title: string, body: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(title)}</title></head>
+<body style="margin:0;padding:0;background:#171116;color:#f7f0e8;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#171116;padding:32px 16px;"><tr><td align="center">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#241a22;border:1px solid #5e4558;border-radius:22px;overflow:hidden;">
+<tr><td style="background:#3d2839;padding:38px 32px;text-align:center;"><div style="font-family:Georgia,serif;font-size:34px;font-weight:bold;color:#fff8ef;">Inkbound</div><div style="margin-top:8px;color:#d9c8d3;font-size:14px;">Your reading life, remembered.</div></td></tr>
+<tr><td style="padding:42px 36px;"><h1 style="margin:0;color:#fff8ef;font-family:Georgia,serif;font-size:28px;line-height:1.3;">${escapeHtml(title)}</h1>${body}</td></tr>
+<tr><td style="background:#1d151c;padding:22px 32px;color:#9f909a;font-size:12px;line-height:1.6;text-align:center;">Inkbound is created by Inky Dame Interactive.</td></tr>
+</table></td></tr></table></body></html>`;
+}
+
+async function sendCorrectedEmailVerification(user: UserRecord, newEmail: string) {
+  let verificationLink: string;
+  try {
+    verificationLink = await auth.generateEmailVerificationLink(newEmail, {
+      url: APP_RETURN_URL,
+      handleCodeInApp: false,
+    });
+  } catch {
+    verificationLink = await auth.generateEmailVerificationLink(newEmail);
+  }
+
+  const name = text(user.displayName) || 'Reader';
+  const body = `
+<p style="margin:24px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Hello ${escapeHtml(name)},</p>
+<p style="margin:16px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Your Inkbound account email was updated to <strong>${escapeHtml(newEmail)}</strong> by Inkbound support.</p>
+<p style="margin:16px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Please verify the corrected address so your account can continue using it normally.</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:32px auto;"><tr><td align="center" style="background:#a66f91;border-radius:999px;"><a href="${escapeHtml(verificationLink)}" style="display:inline-block;padding:15px 30px;color:#171116;font-size:16px;font-weight:bold;text-decoration:none;">Verify My Email</a></td></tr></table>
+<p style="margin:0;color:#bdaeb8;font-size:14px;line-height:1.6;">If you did not request this correction, reply to this email and Inkbound support will help you.</p>`;
+
+  return sendInkboundEmail({
+    to: newEmail,
+    subject: 'Your Inkbound email was updated — please verify it',
+    html: emailShell('Your email address was corrected', body),
+    text: `Hello ${name},\n\nYour Inkbound account email was updated to ${newEmail} by Inkbound support.\n\nPlease verify the corrected address:\n${verificationLink}\n\nIf you did not request this correction, reply to this email and Inkbound support will help you.\n\nInkbound\nInky Dame Interactive`,
+  });
+}
+
+async function sendMergeCompletedEmail(user: UserRecord, sourceEmail: string, destinationEmail: string) {
+  const name = text(user.displayName) || 'Reader';
+  const body = `
+<p style="margin:24px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Hello ${escapeHtml(name)},</p>
+<p style="margin:16px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Inkbound support completed an account merge for you.</p>
+<p style="margin:16px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">The account using <strong>${escapeHtml(sourceEmail)}</strong> was merged into <strong>${escapeHtml(destinationEmail)}</strong>. The destination account is now the account you should use to sign in.</p>
+<p style="margin:16px 0 0;font-size:16px;line-height:1.7;color:#efe5ec;">Your non-conflicting Inkbound library data was copied before the old login was removed.</p>
+<p style="margin:24px 0 0;color:#bdaeb8;font-size:14px;line-height:1.6;">If you did not request this merge or anything looks wrong, reply to this email and Inkbound support will help you.</p>`;
+
+  return sendInkboundEmail({
+    to: destinationEmail,
+    subject: 'Your Inkbound accounts were merged',
+    html: emailShell('Your Inkbound account merge is complete', body),
+    text: `Hello ${name},\n\nInkbound support completed an account merge for you.\n\n${sourceEmail} was merged into ${destinationEmail}. Use ${destinationEmail} to sign in from now on.\n\nYour non-conflicting Inkbound library data was copied before the old login was removed.\n\nIf you did not request this merge or anything looks wrong, reply to this email and Inkbound support will help you.\n\nInkbound\nInky Dame Interactive`,
+  });
+}
+
 async function copyCollectionWithoutOverwrite(
   source: FirebaseFirestore.CollectionReference,
   target: FirebaseFirestore.CollectionReference,
@@ -308,7 +426,7 @@ async function copyCollectionWithoutOverwrite(
   return { copied: writes.length };
 }
 
-export const correctAdminUserEmail = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+export const correctAdminUserEmail = onCall({ enforceAppCheck: ENFORCE_APP_CHECK, secrets: [resendApiKey] }, async (request) => {
   const admin = await requireAdmin(request, ['owner']);
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
   const input = request.data as Record<string, unknown> | undefined;
@@ -351,6 +469,11 @@ export const correctAdminUserEmail = onCall({ enforceAppCheck: ENFORCE_APP_CHECK
     await adminRef.set({ email: newEmail, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   }
 
+  const notification = await sendCorrectedEmailVerification(user, newEmail).catch((error: unknown) => ({
+    sent: false,
+    error: error instanceof Error ? error.message : String(error),
+  }));
+
   await writeOwnerAudit({
     action: 'correct_user_email',
     targetUserId,
@@ -359,16 +482,22 @@ export const correctAdminUserEmail = onCall({ enforceAppCheck: ENFORCE_APP_CHECK
     performedByEmail: admin.email,
     reason,
     previousValue: { email: currentEmail },
-    newValue: { email: newEmail, emailVerified: false },
+    newValue: { email: newEmail, emailVerified: false, notificationSent: notification.sent },
   });
 
-  return { success: true, email: newEmail };
+  return {
+    success: true,
+    email: newEmail,
+    verificationEmailSent: notification.sent,
+    notificationError: notification.sent ? null : notification.error ?? 'Email notification could not be sent.',
+  };
 });
 
 export const mergeAdminUserAccounts = onCall({
   enforceAppCheck: ENFORCE_APP_CHECK,
   memory: '512MiB',
   timeoutSeconds: 120,
+  secrets: [resendApiKey],
 }, async (request) => {
   const admin = await requireAdmin(request, ['owner']);
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -498,10 +627,17 @@ export const mergeAdminUserAccounts = onCall({
   await Promise.all(billingSnapshots.docs.map((document) => document.ref.delete()));
   await auth.deleteUser(sourceUserId);
 
+  const mergeNotification = await sendMergeCompletedEmail(targetUser, sourceEmail, targetEmail).catch((error: unknown) => ({
+    sent: false,
+    error: error instanceof Error ? error.message : String(error),
+  }));
+
   return {
     success: true,
     destinationUserId: targetUser.uid,
     destinationEmail: targetEmail,
+    notificationSent: mergeNotification.sent,
+    notificationError: mergeNotification.sent ? null : mergeNotification.error ?? 'Email notification could not be sent.',
     copied: {
       books: books.copied,
       sessions: sessions.copied,
