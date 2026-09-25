@@ -61,6 +61,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   const [bookQuery, setBookQuery] = useState('');
   const [coverPage, setCoverPage] = useState(1);
   const [bookPage, setBookPage] = useState(1);
+  const [selectedUnusedPaths, setSelectedUnusedPaths] = useState<Set<string>>(() => new Set());
 
   const loadAssets = async () => {
     const user = auth?.currentUser;
@@ -104,6 +105,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   useEffect(() => { setCoverPage(1); }, [coverQuery, showUnusedOnly]);
   useEffect(() => { setBookPage(1); }, [bookQuery]);
 
+
   const selectedAsset = assets.find((asset) => asset.fullPath === selectedAssetPath) ?? null;
   const selectedBook = books.find((book) => book.id === selectedBookId) ?? null;
   const selectedBookEdition = selectedBook ? activeEditionFor(selectedBook) : undefined;
@@ -113,6 +115,11 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
     [assets, books],
   );
   const unusedCount = unusedAssets.length;
+
+  useEffect(() => {
+    const unusedPaths = new Set(unusedAssets.map((asset) => asset.fullPath));
+    setSelectedUnusedPaths((current) => new Set([...current].filter((path) => unusedPaths.has(path))));
+  }, [unusedAssets]);
 
   const visibleAssets = useMemo(() => {
     const normalizedQuery = coverQuery.trim().toLowerCase();
@@ -179,6 +186,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       const failed = results.length - deletedPaths.size;
 
       setAssets((current) => current.filter((asset) => !deletedPaths.has(asset.fullPath)));
+      setSelectedUnusedPaths((current) => new Set([...current].filter((path) => !deletedPaths.has(path))));
       if (selectedAssetPath && deletedPaths.has(selectedAssetPath)) setSelectedAssetPath('');
       setCoverPage(1);
 
@@ -286,17 +294,21 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-bold text-[var(--ink-ivory)]">Unused cover cleanup</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Only files with zero references from any current book edition are eligible. Cleanup never rewrites your library records.</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Select the unused covers you want to remove. Only files with zero references from any current book edition are eligible.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void deleteUnusedAssets(unusedAssets)}
-            disabled={deleting}
-            className="quiet-shelf-secondary-action shrink-0 justify-center text-rose-300 disabled:opacity-40"
-          >
-            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            {deleting ? 'Cleaning…' : `Delete all ${unusedCount} unused cover${unusedCount === 1 ? '' : 's'}`}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setSelectedUnusedPaths(new Set(unusedAssets.map((asset) => asset.fullPath)))} disabled={deleting || selectedUnusedPaths.size === unusedCount} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Select all</button>
+            <button type="button" onClick={() => setSelectedUnusedPaths(new Set())} disabled={deleting || selectedUnusedPaths.size === 0} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Clear</button>
+            <button
+              type="button"
+              onClick={() => void deleteUnusedAssets(unusedAssets.filter((asset) => selectedUnusedPaths.has(asset.fullPath)))}
+              disabled={deleting || selectedUnusedPaths.size === 0}
+              className="quiet-shelf-secondary-action justify-center text-rose-300 disabled:opacity-40"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {deleting ? 'Deleting…' : `Delete selected (${selectedUnusedPaths.size})`}
+            </button>
+          </div>
         </div>
       )}
 
@@ -316,7 +328,29 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
               {paginatedAssets.map((asset) => {
                 const selected = selectedAssetPath === asset.fullPath;
                 const linkedBooks = linkedBooksFor(asset, books);
-                return <button key={asset.fullPath} type="button" onClick={() => setSelectedAssetPath(asset.fullPath)} className={`min-w-0 rounded-2xl border p-2 text-left transition ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}><img src={asset.url} alt="Manual book cover" className="aspect-[2/3] w-full rounded-xl object-cover" loading="lazy" /><p className="mt-2 line-clamp-2 text-xs font-bold text-[var(--ink-ivory)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.title).join(', ') : 'Unused cover'}</p><p className="mt-1 truncate text-[10px] text-[var(--ink-muted)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.author).join(', ') : asset.updatedAt ? new Date(asset.updatedAt).toLocaleString() : asset.name}</p></button>;
+                const unused = linkedBooks.length === 0;
+                const bulkSelected = selectedUnusedPaths.has(asset.fullPath);
+                return <div key={asset.fullPath} className="relative min-w-0">
+                  {unused && (
+                    <label className="absolute left-4 top-4 z-10 flex min-h-9 min-w-9 cursor-pointer items-center justify-center rounded-lg border border-[var(--ink-border)] bg-[var(--ink-surface)]/95 shadow">
+                      <input
+                        type="checkbox"
+                        checked={bulkSelected}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setSelectedUnusedPaths((current) => {
+                            const next = new Set(current);
+                            if (checked) next.add(asset.fullPath); else next.delete(asset.fullPath);
+                            return next;
+                          });
+                        }}
+                        aria-label={`Select unused cover ${asset.name} for deletion`}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                  )}
+                  <button type="button" onClick={() => setSelectedAssetPath(asset.fullPath)} className={`w-full min-w-0 rounded-2xl border p-2 text-left transition ${bulkSelected ? 'ring-2 ring-rose-400/70' : ''} ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}><img src={asset.url} alt="Manual book cover" className="aspect-[2/3] w-full rounded-xl object-cover" loading="lazy" /><p className="mt-2 line-clamp-2 text-xs font-bold text-[var(--ink-ivory)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.title).join(', ') : 'Unused cover'}</p><p className="mt-1 truncate text-[10px] text-[var(--ink-muted)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.author).join(', ') : asset.updatedAt ? new Date(asset.updatedAt).toLocaleString() : asset.name}</p></button>
+                </div>;
               })}
             </div>
             <PaginationControls page={safeCoverPage} totalItems={visibleAssets.length} pageSize={COVER_PAGE_SIZE} onPageChange={setCoverPage} itemLabel="covers" />
