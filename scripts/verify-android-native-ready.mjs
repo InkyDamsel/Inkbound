@@ -22,6 +22,69 @@ const normalizeSha1 = (value) => String(value ?? '')
 
 const formatSha1 = (value) => normalizeSha1(value).match(/.{1,2}/g)?.join(':') ?? normalizeSha1(value);
 
+const readJavaProperties = (filePath) => {
+  const properties = {};
+  for (const rawLine of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || line.startsWith('!')) continue;
+    const separator = line.search(/[=:]/);
+    if (separator < 0) continue;
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim()
+      .replace(/\\\\/g, '\\')
+      .replace(/\\:/g, ':')
+      .replace(/\\=/g, '=');
+    properties[key] = value;
+  }
+  return properties;
+};
+
+const readKeystoreSha1 = (properties) => {
+  const storeFileValue = properties.storeFile;
+  const storePassword = properties.storePassword;
+  const keyAlias = properties.keyAlias;
+  if (!storeFileValue || !storePassword || !keyAlias) {
+    fail('android/keystore.properties must define storeFile, storePassword, and keyAlias for release certificate verification.');
+  }
+
+  const storeFile = path.isAbsolute(storeFileValue)
+    ? storeFileValue
+    : path.resolve(androidDir, storeFileValue);
+
+  if (!fs.existsSync(storeFile)) {
+    fail(`release keystore does not exist at ${storeFile}.`);
+  }
+
+  const keytool = spawnSync('keytool', [
+    '-list',
+    '-v',
+    '-keystore', storeFile,
+    '-alias', keyAlias,
+    '-storepass', storePassword,
+  ], {
+    encoding: 'utf8',
+    shell: false,
+  });
+
+  if (keytool.error) {
+    fail(`could not run keytool to inspect the release certificate: ${keytool.error.message}`);
+  }
+  if (keytool.status !== 0) {
+    const details = (keytool.stderr || keytool.stdout || '').trim();
+    fail(`keytool could not inspect the release certificate${details ? `: ${details}` : '.'}`);
+  }
+
+  const output = `${keytool.stdout ?? ''}\n${keytool.stderr ?? ''}`.replace(/\r\n?/g, '\n');
+  const shaLine = output.split('\n').find((line) => /^\s*SHA1:\s*/i.test(line));
+  const sha1 = normalizeSha1(shaLine?.replace(/^\s*SHA1:\s*/i, ''));
+
+  if (!sha1 || sha1.length !== 40) {
+    fail('keytool inspected the release certificate but did not return a valid SHA-1 fingerprint.');
+  }
+
+  return sha1;
+};
+
 if (!fs.existsSync(googleServicesPath)) {
   fail('android/app/google-services.json is missing. Add the Firebase Android app configuration before native Firebase testing or release builds.');
 }
@@ -98,16 +161,21 @@ if (fs.existsSync(keystorePropertiesPath)) {
   const releaseLines = releaseStart >= 0
     ? reportLines.slice(releaseStart, releaseEnd >= 0 ? releaseEnd : reportLines.length)
     : [];
+  if (releaseStart < 0) {
+    fail('Gradle signingReport does not contain a release signing variant.');
+  }
+
   const releaseShaLine = releaseLines.find((line) => /^\s*SHA1:\s*/i.test(line));
   const rawReleaseSha1 = releaseShaLine?.replace(/^\s*SHA1:\s*/i, '').trim() ?? '';
-  const releaseSha1 = normalizeSha1(rawReleaseSha1);
+  let releaseSha1 = normalizeSha1(rawReleaseSha1);
 
   if (!releaseSha1 || releaseSha1.length !== 40) {
-    const releaseSummary = releaseLines
-      .filter((line) => /^\s*(?:Variant|Config|Store|Alias|SHA1):/i.test(line))
-      .join(' | ')
-      .trim();
-    fail(`the local release signing certificate SHA-1 could not be parsed from Gradle signingReport (release section: ${releaseSummary || '(missing)'}).`);
+    // AGP 9.x can report the configured release keystore and alias without
+    // printing certificate fingerprints. In that case verify the exact same
+    // keystore directly with the JDK rather than treating a missing Gradle
+    // display field as a missing certificate.
+    const keystoreProperties = readJavaProperties(keystorePropertiesPath);
+    releaseSha1 = readKeystoreSha1(keystoreProperties);
   }
 
   const configuredSha1s = androidOauthClients
