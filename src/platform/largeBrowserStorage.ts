@@ -7,6 +7,7 @@ const DB_VERSION = 1;
 const LOCAL_STORAGE_SOFT_LIMIT = 1_500_000;
 
 export const LARGE_BROWSER_STORAGE_HYDRATED_EVENT = 'inkbound:large-browser-storage-hydrated';
+export const LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT = 'inkbound:large-browser-storage-write-failed';
 
 const exactManagedKeys = new Set([
   SYNC_STORAGE_KEYS.books,
@@ -183,31 +184,56 @@ function installStorageBridge() {
     }
 
     const normalized = String(value);
+    const previousCached = cache.get(key);
+    let previousLocal: string | null = null;
+    try {
+      previousLocal = originalGetItem!.call(this, key);
+    } catch {
+      previousLocal = null;
+    }
 
-    // Canonical user data may not be published to React until at least one
-    // synchronous durable write has completed and read back successfully.
-    // IndexedDB remains the large-storage mirror, but an asynchronous attempt
-    // alone is never treated as a successful save. If WebView/localStorage is
-    // out of quota, throw so writeRuntimeJson() fails closed and the UI keeps the
-    // previous library instead of showing phantom changes that disappear later.
+    // Keep localStorage as the synchronous write-ahead copy when the payload
+    // fits, but do not require a large canonical library to fit inside the
+    // browser's much smaller localStorage quota. IndexedDB is the canonical
+    // large-payload backend for exactly that case.
+    let localBackupWritten = false;
     try {
       originalSetItem!.call(this, key, normalized);
-      const verified = originalGetItem!.call(this, key);
-      if (verified !== normalized) {
-        throw new Error(`Inkbound could not verify the durable write for ${key}.`);
-      }
-    } catch (error) {
-      throw error instanceof Error
-        ? error
-        : new Error(`Inkbound could not durably save ${key}.`);
+      localBackupWritten = originalGetItem!.call(this, key) === normalized;
+    } catch {
+      // Preserve the previous localStorage value if the new payload is too
+      // large. The new value will commit through IndexedDB below.
     }
 
     cache.set(key, normalized);
 
     const persist = putLargeValue(key, normalized).then((saved) => {
+      if (!saved && !localBackupWritten && cache.get(key) === normalized) {
+        if (previousCached === undefined) cache.delete(key);
+        else cache.set(key, previousCached);
+
+        // If a browser partially changed localStorage before throwing, restore
+        // the previous durable copy rather than leaving an uncertain value.
+        try {
+          if (previousLocal === null) originalRemoveItem!.call(window.localStorage, key);
+          else originalSetItem!.call(window.localStorage, key, previousLocal);
+        } catch { /* The restored cache still prevents publishing phantom state. */ }
+
+        console.error('[Inkbound persistence] IndexedDB commit failed after localStorage rejected a managed write.', {
+          key,
+          payloadLength: normalized.length,
+          timestamp: new Date().toISOString(),
+        });
+        window.dispatchEvent(new CustomEvent(LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT, {
+          detail: { key },
+        }));
+        return;
+      }
+
       if (
         saved
         && normalized.length > LOCAL_STORAGE_SOFT_LIMIT
+        && localBackupWritten
         && cache.get(key) === normalized
       ) {
         try {
