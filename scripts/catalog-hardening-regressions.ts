@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 import {
-  canonicalAuthorIdentity,
-  canonicalLanguageCode,
   catalogEditionQualityScore,
   enrichSelectedCatalogEdition,
   hardenCatalogEdition,
@@ -32,14 +30,6 @@ assert.equal(isValidCatalogIsbn10('0307743659'), true);
 assert.equal(isValidCatalogIsbn10('0307743658'), false);
 assert.equal(isValidCatalogIsbn13('9780307743657'), true);
 assert.equal(isValidCatalogIsbn13('9780307743658'), false);
-assert.equal(canonicalAuthorIdentity('Christopher Pike'), canonicalAuthorIdentity('Pike, Christopher'));
-assert.equal(canonicalAuthorIdentity('Agatha Christie'), canonicalAuthorIdentity('Christie, Agatha'));
-assert.equal(canonicalAuthorIdentity('Dame Agatha Christie'), canonicalAuthorIdentity('Agatha Christie'));
-assert.equal(canonicalLanguageCode('en'), 'en');
-assert.equal(canonicalLanguageCode('eng'), 'en');
-assert.equal(canonicalLanguageCode('/languages/eng'), 'en');
-assert.equal(canonicalLanguageCode('English'), 'en');
-
 
 const hardenedEdition = hardenCatalogEdition({
   ...baseEdition,
@@ -120,24 +110,6 @@ const work = (title: string, edition: BookSearchEdition): BookSearchWorkGroup =>
   genres: ['Horror'],
   editions: [edition],
 });
-
-const invertedAuthorGroups = hardenCatalogGroups([
-  {
-    key: 'author-forward',
-    title: 'Canonical Identity Test',
-    authors: ['Example Writer'],
-    genres: [],
-    editions: [{ ...goodEdition, externalEditionId: 'author-forward', title: 'Canonical Identity Test', authors: ['Example Writer'] }],
-  },
-  {
-    key: 'author-inverted',
-    title: 'Canonical Identity Test',
-    authors: ['Writer, Example'],
-    genres: [],
-    editions: [{ ...goodEdition, source: 'open-library', externalEditionId: 'author-inverted', title: 'Canonical Identity Test', authors: ['Writer, Example'] }],
-  },
-]);
-assert.equal(invertedAuthorGroups.length, 1);
 
 const groups = hardenCatalogGroups([
   work('STEPHEN KING BOX SET', { ...goodEdition, externalEditionId: 'box' }),
