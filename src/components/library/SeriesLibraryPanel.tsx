@@ -244,14 +244,17 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
             <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Your reading worlds</h2>
             <p className="mt-1 text-sm text-[var(--ink-muted)]">{series.length} series found in your library.</p>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:max-w-2xl sm:flex-row">
-            <label className="relative min-w-0 flex-1">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <label className="relative min-w-0 sm:w-[280px] lg:w-[340px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
               <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1); setExpandedSeriesId(null); }} placeholder="Search series or title" className="h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-10 pr-4 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55" />
             </label>
-            <select value={sortMode} onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)} className="inkbound-select min-h-11 min-w-[140px]" aria-label="Sort series">
-              {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            <label className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] px-3 text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">
+              <span>Sort</span>
+              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)} className="!w-auto min-w-[92px] border-0 bg-transparent p-0 text-sm font-semibold normal-case tracking-normal text-[var(--ink-ivory)] outline-none" aria-label="Sort series">
+                {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
             <button type="button" onClick={openCreate} className="quiet-shelf-primary-action shrink-0"><Plus className="h-4 w-4" />Create Series</button>
           </div>
         </div>
