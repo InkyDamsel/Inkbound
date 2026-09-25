@@ -100,6 +100,17 @@ const coverUrl = (work: OpenLibraryWork, edition: OpenLibraryEdition): string | 
   return isbn ? `https://covers.openlibrary.org/b/isbn/${compactIsbn(isbn)}-L.jpg` : undefined;
 };
 
+
+const chooseSeriesValues = (
+  editionSeries?: string[],
+  workSeries?: string[],
+): string[] | undefined => {
+  const editionValues = editionSeries?.filter((value) => value?.trim()) ?? [];
+  if (editionValues.length > 0) return editionValues;
+  const workValues = workSeries?.filter((value) => value?.trim()) ?? [];
+  return workValues.length > 0 ? workValues : undefined;
+};
+
 export const parseDetectiveOpenLibrarySeries = (
   values?: string[],
 ): { name: string; position: number | null } | null => {
@@ -124,7 +135,7 @@ const mapCandidate = (
 ): DetectiveOpenLibraryCandidate | null => {
   const title = (edition.title ?? work.title)?.trim();
   if (!title) return null;
-  const metadata = parseDetectiveOpenLibrarySeries(edition.series ?? work.series);
+  const metadata = parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series));
   if (!metadata) return null;
   if (wantedSeriesName && !detectiveSeriesNamesCompatible(metadata.name, wantedSeriesName)) return null;
 
@@ -300,12 +311,12 @@ export async function searchDetectiveOpenLibraryContext(
       ) return [];
 
       const docs = work.editions?.docs?.length ? work.editions.docs : [{}];
-      const preferred = docs.find((edition) => parseDetectiveOpenLibrarySeries(edition.series ?? work.series))
+      const preferred = docs.find((edition) => parseDetectiveOpenLibrarySeries(chooseSeriesValues(edition.series, work.series)))
         ?? docs[0];
       const title = (preferred.title ?? work.title)?.trim();
       if (!title) return [];
 
-      const metadata = parseDetectiveOpenLibrarySeries(preferred.series ?? work.series);
+      const metadata = parseDetectiveOpenLibrarySeries(chooseSeriesValues(preferred.series, work.series));
       const isbn13 = preferred.isbn_13?.[0]
         ?? preferred.isbn?.find((value) => compactIsbn(value).length === 13);
       const isbn10 = preferred.isbn_10?.[0]
