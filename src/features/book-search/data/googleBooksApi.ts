@@ -5,10 +5,9 @@ import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage, searchOpenLibrarySeriesContext } from './openLibraryApi';
-import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
-import { hardenCatalogGroups, hardenCatalogResponse, inferCatalogAuthorIntent, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
+import { hardenCatalogGroups, mergeCatalogEditionData } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -772,12 +771,11 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
   }
 }
 
-function cacheSearchResponse(cacheKey: string, response: BookSearchResponse, searchQuery?: string): BookSearchResponse {
-  const hardened = hardenCatalogResponse(response, { searchQuery });
-  if (hardened.groups.length > 0) {
-    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response: hardened });
+function cacheSearchResponse(cacheKey: string, response: BookSearchResponse): BookSearchResponse {
+  if (response.groups.length > 0) {
+    searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
   }
-  return hardened;
+  return response;
 }
 
 /**
@@ -843,123 +841,27 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const builtQuery = buildGoogleBooksQuery(trimmed);
   const isIsbnLookup = /^isbn:/i.test(builtQuery);
 
+  // Keep normal Add Reading Material search identical to the proven live
+  // Build 27 behavior. Strong Google results are authoritative for this UI;
+  // alternate providers are fallbacks, not additive noise.
   if (isIsbnLookup) {
-    const [trusted, google, openLibrary, hardcover, supplemental] = await Promise.all([
-      searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
-      searchGoogleBaseline(trimmed, signal),
-      searchOpenLibraryWithAuthorFallback(trimmed, signal),
-      searchHardcoverWithBackoff(trimmed),
-      searchSupplementalCatalogs(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
-    ]);
-    const combined = hardenCatalogGroups(
-      [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups, ...supplemental.groups],
-      { searchQuery: trimmed },
-    );
-    const exact = selectExactIsbnEdition(combined, compactIsbn(trimmed));
-    if (!exact) return { groups: [], totalItems: 0 };
-    return cacheSearchResponse(cacheKey, {
-      groups: [{ ...exact.work, editions: [exact.edition] }],
-      totalItems: 1,
-    }, trimmed);
+    const trusted = await searchTrustedCatalogBaseline(trimmed);
+    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
   }
 
-  const [google, openLibrary, trusted, hardcover] = await Promise.all([
-    searchGoogleBaseline(trimmed, signal),
-    searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
-    searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
-    searchHardcoverWithBackoff(trimmed),
-  ]);
+  const google = await searchGoogleBaseline(trimmed, signal);
+  if (google.groups.length > 0) return cacheSearchResponse(cacheKey, google);
 
-  let combined = hardenCatalogGroups(
-    [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
-    { searchQuery: trimmed },
-  );
+  const openLibrary = await searchOpenLibraryWithAuthorFallback(trimmed, signal);
+  if (openLibrary.groups.length > 0) return cacheSearchResponse(cacheKey, openLibrary);
 
-  // Resolve user intent from evidence rather than query shape alone. A phrase
-  // that looks like a person's name may also be a title/series family. Several
-  // works whose titles begin with the query are strong title-family evidence
-  // and prevent noisy exact-author records from hijacking that search.
-  const normalizedQuery = normalizeText(trimmed);
-  const titleFamilyEvidence = combined.filter((group) => {
-    const title = normalizeText(group.title);
-    return title === normalizedQuery || title.startsWith(`${normalizedQuery} `);
-  }).length;
-  const strongTitleFamilyIntent = titleFamilyEvidence >= 3;
-
-  let preferredAuthor = strongTitleFamilyIntent
-    ? undefined
-    : inferCatalogAuthorIntent(combined, trimmed);
-  const nameLikeQuery =
-    !strongTitleFamilyIntent
-    && !preferredAuthor
-    && /^[\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,3}$/u.test(trimmed)
-    && !/\d/.test(trimmed);
-
-  if (nameLikeQuery) {
-    const authorProbe = await searchGoogleBooksAuthorPage(trimmed, 0, signal)
-      .catch((error) => {
-        console.warn('Author-intent confirmation failed.', error);
-        return {
-          groups: [],
-          totalItems: 0,
-          providerTotalItems: 0,
-          nextStartIndex: 0,
-          hasMore: false,
-        };
-      });
-    const wantedAuthor = normalizeText(trimmed);
-    const exactAuthorWorks = authorProbe.groups.filter((group) =>
-      group.authors.some((candidate) => normalizeText(candidate) === wantedAuthor),
-    );
-    if (exactAuthorWorks.length >= 2) {
-      preferredAuthor = trimmed;
-      combined = hardenCatalogGroups(
-        [...combined, ...exactAuthorWorks],
-        { preferredAuthor },
-      );
-    }
+  if (!isIsbnLookup) {
+    const trusted = await searchTrustedCatalogBaseline(trimmed);
+    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
   }
 
-  const refinedExact = await refineExactTitleWithAuthor(combined, trimmed, signal);
-  if (refinedExact.length > 0) {
-    combined = hardenCatalogGroups(
-      [...combined, ...refinedExact],
-      preferredAuthor ? { preferredAuthor } : { searchQuery: trimmed },
-    );
-  }
+  const hardcover = await searchHardcoverWithBackoff(trimmed);
+  if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
 
-  combined = await repairVisibleEditionPageCounts(combined, signal);
-  combined = hardenCatalogGroups(
-    combined,
-    preferredAuthor ? { preferredAuthor } : { searchQuery: trimmed },
-  );
-
-  let supplemental: BookSearchResponse = { groups: [], totalItems: 0 };
-  if (google.groups.length === 0 || combined.length < 8) {
-    supplemental = await searchSupplementalCatalogs(trimmed)
-      .catch((error) => {
-        console.warn('Supplemental catalog providers unavailable.', error);
-        return { groups: [], totalItems: 0 };
-      });
-    combined = hardenCatalogGroups(
-      [...combined, ...supplemental.groups],
-      preferredAuthor ? { preferredAuthor } : { searchQuery: trimmed },
-    );
-  }
-
-  if (combined.length === 0) return { groups: [], totalItems: 0 };
-
-  // Supplemental providers fill gaps and provide resilience, but all records
-  // still pass through the same canonical work/edition resolver.
-  return cacheSearchResponse(cacheKey, {
-    groups: combined,
-    totalItems: Math.max(
-      google.totalItems,
-      openLibrary.totalItems,
-      trusted.totalItems,
-      hardcover.totalItems,
-      supplemental.totalItems,
-      combined.length,
-    ),
-  }, trimmed);
+  return { groups: [], totalItems: 0 };
 }
