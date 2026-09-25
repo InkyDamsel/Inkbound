@@ -87,9 +87,14 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
             <p className="mt-1 text-sm text-[#ad9fac]">Due dates and daily reading pace update from your current progress.</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
-            <label className="flex items-center gap-2 text-sm text-[#ad9fac]">
-              <span>Sort</span>
-              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)} className="inkbound-select min-w-[140px]" aria-label="Sort library loans">
+            <label className="flex shrink-0 items-center gap-3 whitespace-nowrap text-sm font-medium text-[var(--ink-muted)]">
+              Sort
+              <select
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)}
+                className="inkbound-select min-h-11 min-w-[150px]"
+                aria-label="Sort library loans"
+              >
                 {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
