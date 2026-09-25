@@ -138,6 +138,19 @@ const evidenceForVolume = (
   });
 };
 
+const safeDetectiveSearch = async (
+  query: string,
+  signal?: AbortSignal,
+): Promise<DetectiveGoogleCatalog> => {
+  try {
+    return await searchDetectiveGoogleBooks(query, signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    console.warn('Series Detective catalog query failed.', error);
+    return { items: [], seriesTitlesById: {} };
+  }
+};
+
 export async function detectSeriesForBook(
   book: UserBookRecord,
   signal?: AbortSignal,
@@ -146,7 +159,7 @@ export async function detectSeriesForBook(
   const queries = [workQuery, ...identifiers];
   const catalogs = await Promise.all(queries.map(async (query, index) => ({
     sourceId: `query-${index}`,
-    catalog: await searchDetectiveGoogleBooks(query, signal),
+    catalog: await safeDetectiveSearch(query, signal),
   })));
 
   const evidence = catalogs.flatMap(({ sourceId, catalog }) =>
@@ -249,7 +262,7 @@ export async function findMissingSeriesBooks(
     ...positionQueries,
   ];
 
-  const catalogs = await Promise.all(queries.map((query) => searchDetectiveGoogleBooks(query, signal)));
+  const catalogs = await Promise.all(queries.map((query) => safeDetectiveSearch(query, signal)));
   const seen = new Map<string, SeriesDetectiveCandidate>();
 
   catalogs.forEach((catalog) => {
@@ -280,11 +293,17 @@ export async function findMissingSeriesBooks(
       [edition.isbn13, edition.isbn10, edition.isbn].map(compactDetectiveIsbn).filter(Boolean),
     ),
   ));
+  const existingWorkIds = new Set(
+    libraryBooks
+      .map((book) => book.work.externalWorkId?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
 
   const missing = candidates.filter((candidate) => {
     if (candidate.position !== null && existingPositions.has(candidate.position)) return false;
     const candidateAuthor = canonicalDetectiveAuthor(candidate.work.authors[0]);
     if (existingTitles.has(`${normalizeDetectiveText(candidate.work.title)}::${candidateAuthor}`)) return false;
+    if (candidate.work.key && existingWorkIds.has(candidate.work.key)) return false;
     return ![candidate.edition.isbn13, candidate.edition.isbn10]
       .map(compactDetectiveIsbn)
       .filter(Boolean)
