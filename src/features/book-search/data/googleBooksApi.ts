@@ -412,18 +412,20 @@ async function requestCanonicalGoogleBooksPayload(
   startIndex = 0,
   maxResults = GOOGLE_BOOKS_PAGE_SIZE,
 ): Promise<GoogleVolumesResponse> {
-  if (shouldUseProtectedGoogleBooks()) {
-    try {
-      const protectedPayload = await requestProtectedGoogleBooks(query, signal, startIndex, maxResults);
-      return enrichGoogleSeriesMetadata(protectedPayload, signal);
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      console.warn('Protected Google Books search unavailable; falling back to direct catalog search.', error);
-    }
-  }
+  const protectedRequest = shouldUseProtectedGoogleBooks();
+  const payload = protectedRequest
+    ? await requestProtectedGoogleBooks(query, signal, startIndex, maxResults)
+    : await requestDirectGoogleBooks(query, signal, startIndex, maxResults);
 
-  const directPayload = await requestDirectGoogleBooks(query, signal, startIndex, maxResults);
-  return enrichGoogleSeriesMetadata(directPayload, signal);
+  // Direct browser search already hydrates details. Protected Firebase search
+  // returns the catalog list payload, so hydrate those same volume ids here
+  // before any mapper sees them. Dev/release/auth state must never change the
+  // metadata quality of the same Google Books result.
+  const hydrated = protectedRequest
+    ? await hydrateGoogleVolumeDetails(payload, signal)
+    : payload;
+
+  return enrichGoogleSeriesMetadata(hydrated, signal);
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -435,10 +437,6 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
   const groups = hardenCatalogGroups(groupGoogleEditions(editions));
   return { groups, totalItems: payload.totalItems ?? groups.length };
 }
-
-const looksLikePersonNameQuery = (value: string): boolean =>
-  /^[\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,3}$/u.test(value.trim())
-  && !/\d/.test(value);
 
 export async function searchGoogleBooksPage(
   query: string,
@@ -453,27 +451,12 @@ export async function searchGoogleBooksPage(
   const builtQuery = buildGoogleBooksQuery(trimmed);
 
   try {
-    const personLike = startIndex === 0 && looksLikePersonNameQuery(trimmed);
-    const [payload, authorPayload] = await Promise.all([
-      requestCanonicalGoogleBooksPayload(
-        builtQuery,
-        signal,
-        startIndex,
-        GOOGLE_BOOKS_PAGE_SIZE,
-      ),
-      personLike
-        ? requestCanonicalGoogleBooksPayload(
-            `inauthor:${trimmed}`,
-            signal,
-            0,
-            GOOGLE_BOOKS_PAGE_SIZE,
-          ).catch((error) => {
-            if (signal?.aborted) throw error;
-            console.warn('Fast author-intent probe unavailable; continuing with normal catalog results.', error);
-            return null;
-          })
-        : Promise.resolve<GoogleVolumesResponse | null>(null),
-    ]);
+    const payload = await requestCanonicalGoogleBooksPayload(
+      builtQuery,
+      signal,
+      startIndex,
+      GOOGLE_BOOKS_PAGE_SIZE,
+    );
 
     const rawItems = payload.items ?? [];
     const editions = rawItems
@@ -481,36 +464,33 @@ export async function searchGoogleBooksPage(
       .filter((item): item is BookSearchEdition => Boolean(item));
     let groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
 
-    if (authorPayload) {
-      const authorGroups = hardenCatalogGroups(
-        groupGoogleEditions(
-          (authorPayload.items ?? [])
-            .map((volume) => mapGoogleVolume(volume, authorPayload.seriesMetadataById))
-            .filter((item): item is BookSearchEdition => Boolean(item)),
-        ),
-        { preferredAuthor: trimmed },
-      );
-      const wantedAuthor = canonicalAuthorIdentity(trimmed);
-      const exactAuthorGroups = authorGroups.filter((group) =>
-        group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
+    // The Add Reading Material screen prefers this paged path. Enrich the first
+    // page with the same supplemental metadata sources used by the standard
+    // catalog chain so pagination does not silently lose series metadata.
+    if (startIndex === 0 && groups.length > 0) {
+      const [trusted, openLibrary, hardcover] = await Promise.all([
+        searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+        searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+        searchHardcoverWithBackoff(trimmed),
+      ]);
+      groups = hardenCatalogGroups(
+        mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
+        { searchQuery: trimmed },
       );
 
-      if (exactAuthorGroups.length >= 2) {
+      const refinedExact = await refineExactTitleWithAuthor(groups, trimmed, signal);
+      if (refinedExact.length > 0) {
         groups = hardenCatalogGroups(
-          mergeGroups(exactAuthorGroups, [groups]),
-          { preferredAuthor: trimmed },
-        ).filter((group) =>
-          group.authors.some((candidate) => canonicalAuthorIdentity(candidate) === wantedAuthor),
+          mergeGroups(groups, [refinedExact]),
+          { searchQuery: trimmed },
         );
       }
+
+      groups = await repairVisibleEditionPageCounts(groups, signal);
+      groups = hardenCatalogGroups(groups, { searchQuery: trimmed });
     }
 
-    const providerTotalItems = Math.max(
-      0,
-      authorPayload && groups.length >= 2
-        ? authorPayload.totalItems ?? payload.totalItems ?? 0
-        : payload.totalItems ?? 0,
-    );
+    const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
     const hasMore = rawItems.length > 0 && (
       providerTotalItems > 0
@@ -526,15 +506,10 @@ export async function searchGoogleBooksPage(
       hasMore,
     };
   } catch (error) {
-    if (signal?.aborted) throw error;
-    if (isGoogleQuotaError(error)) {
-      googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
-      console.warn('Google Books quota is exhausted; using paged Open Library results instead.', error);
-    } else {
-      console.warn('Google Books page search unavailable; using paged Open Library results instead.', error);
-    }
-    const fallbackQuery = looksLikePersonNameQuery(trimmed) ? `inauthor:${trimmed}` : builtQuery;
-    return searchOpenLibraryPage(fallbackQuery, startIndex, GOOGLE_BOOKS_PAGE_SIZE, signal);
+    if (!isGoogleQuotaError(error)) throw error;
+    googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+    console.warn('Google Books quota is exhausted; using paged Open Library results instead.', error);
+    return searchOpenLibraryPage(builtQuery, startIndex, GOOGLE_BOOKS_PAGE_SIZE, signal);
   }
 }
 
