@@ -374,10 +374,10 @@ if (!cloudDataRefreshBoundary.includes('fullReconciliationVersionKey(uid)') || !
 
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('originalSetItem!.call(this, key, normalized)')) {
-  violations.push('largeBrowserStorage.ts: managed web data must synchronously write the canonical write-ahead copy before IndexedDB mirroring.');
+  violations.push('largeBrowserStorage.ts: managed web data must attempt a synchronous localStorage write-ahead copy before IndexedDB persistence.');
 }
-if (!largeBrowserStorage.includes('const verified = originalGetItem!.call(this, key)')) {
-  violations.push('largeBrowserStorage.ts: managed web data must read back the synchronous write-ahead copy before reporting success.');
+if (!largeBrowserStorage.includes('let localBackupWritten = false')) {
+  violations.push('largeBrowserStorage.ts: managed web persistence must track whether the synchronous write-ahead copy actually fit.');
 }
 if (!largeBrowserStorage.includes('cache.get(key) !== value')) {
   violations.push('largeBrowserStorage.ts: startup must let newer localStorage repair stale IndexedDB cache state.');
@@ -391,11 +391,11 @@ if (largeBrowserStorage.includes('if (startupHydrationPending && isStartupKey(ke
 if (!largeBrowserStorage.includes('Inkbound blocked a write to')) {
   violations.push('largeBrowserStorage.ts: blocked startup writes must surface failure to the canonical mutation boundary');
 }
-if (!largeBrowserStorage.includes('const verified = originalGetItem!.call(this, key)')) {
-  violations.push('largeBrowserStorage.ts: canonical writes must read back the synchronous write-ahead copy before reporting success');
+if (!largeBrowserStorage.includes('LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT')) {
+  violations.push('largeBrowserStorage.ts: failed IndexedDB persistence after a rejected localStorage write must surface a recovery event.');
 }
-if (!largeBrowserStorage.includes('if (verified !== normalized)')) {
-  violations.push('largeBrowserStorage.ts: failed write verification must fail closed before the UI publishes canonical state');
+if (!largeBrowserStorage.includes('if (!saved && !localBackupWritten')) {
+  violations.push('largeBrowserStorage.ts: large writes must restore prior state when neither localStorage nor IndexedDB commits.');
 }
 
 const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
