@@ -7,7 +7,8 @@ import {
   PRIORITY_OPTIONS,
   READING_STATUS_OPTIONS,
 } from '../domain/libraryTaxonomy';
-import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
+import { searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
+import { searchGeneralBooks } from '../features/book-search/data/generalBookSearch';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { enrichSelectedCatalogEdition, hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
@@ -244,7 +245,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // for ISBN searches or the UI can reintroduce provider-specific edition
       // metadata before the shared exact-ISBN chain has resolved the record.
       if (isValidIsbn(trimmedQuery)) {
-        const exactResponse = await searchGoogleBooks(trimmedQuery);
+        const exactResponse = await searchGeneralBooks(trimmedQuery);
         setResults(exactResponse.groups);
         setSearchNextStartIndex(0);
         setSearchProviderTotal(exactResponse.totalItems || null);
@@ -252,7 +253,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
 
-      const catalogResponse = await searchGoogleBooks(trimmedQuery);
+      const catalogResponse = await searchGeneralBooks(trimmedQuery);
       setResults(catalogResponse.groups);
       setSearchNextStartIndex(40);
       setSearchProviderTotal(catalogResponse.totalItems || null);
@@ -436,7 +437,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerError(null);
     setScannerMessage(`ISBN ${isbn} detected — looking it up…`);
     try {
-      const response = await searchGoogleBooks(isbn);
+      const response = await searchGeneralBooks(isbn);
       const match = selectExactIsbnEdition(response.groups, isbn);
       if (!match) {
         setScannerError(`Inkbound could not find a book for ISBN ${isbn}. You can keep scanning and add this one manually later.`);
