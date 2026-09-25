@@ -6,6 +6,7 @@ import { inferSeriesHintFromTitle, resolveEffectiveSeriesMetadata, seriesNamesAr
 import {
   buildSeriesDetectionQueries,
   hasKnownSeriesContextEvidence,
+  inferKnownSeriesFromBibliographicDescription,
   inferKnownSeriesFromBibliographicText,
   plausibleSeriesSubtitle,
   scoreSeriesEvidence,
@@ -38,7 +39,7 @@ const candidateSeriesMetadata = (
   edition: BookSearchEdition,
   wantedSeriesName: string,
   providerAgreement = 1,
-): { name: string; position: number | null; evidence: 'structured' | 'title' | 'contextual' } | null => {
+): { name: string; position: number | null; evidence: 'structured' | 'title' | 'bibliographic' | 'contextual' } | null => {
   if (sameSeries(edition, wantedSeriesName)) {
     return {
       name: edition.seriesName!,
@@ -52,6 +53,17 @@ const candidateSeriesMetadata = (
       ?? inferKnownSeriesFromBibliographicText(value, wantedSeriesName);
     if (inferred && seriesNamesAreCompatible(inferred.name, wantedSeriesName)) {
       return { name: inferred.name, position: inferred.position, evidence: 'title' };
+    }
+  }
+
+  // Catalogs frequently put explicit series membership in publisher copy
+  // instead of a structured series field. Treat prose such as "the second book
+  // in the Selection series" as bibliographic evidence, while still requiring
+  // an author match below so generic marketing text cannot cross-link works.
+  for (const description of [edition.publisherSummary, work.publisherSummary]) {
+    const inferred = inferKnownSeriesFromBibliographicDescription(description, wantedSeriesName);
+    if (inferred) {
+      return { name: inferred.name, position: inferred.position, evidence: 'bibliographic' };
     }
   }
 
@@ -223,8 +235,8 @@ export async function findMissingSeriesBooks(
 
         // Structured/contextual series evidence may legitimately span authors.
         // Title-inferred evidence remains author-gated to prevent false joins.
-        if (metadata.evidence === 'title' && !exactAuthorMatch(work, author)) continue;
-        if (metadata.evidence !== 'structured' && metadata.evidence !== 'contextual' && !exactAuthorMatch(work, author)) continue;
+        if ((metadata.evidence === 'title' || metadata.evidence === 'bibliographic') && !exactAuthorMatch(work, author)) continue;
+        if (metadata.evidence !== 'structured' && metadata.evidence !== 'contextual' && metadata.evidence !== 'bibliographic' && !exactAuthorMatch(work, author)) continue;
         const candidateLanguage = canonicalLanguageCode(edition.language);
         if (preferredLanguages.size > 0 && candidateLanguage && !preferredLanguages.has(candidateLanguage)) continue;
 
