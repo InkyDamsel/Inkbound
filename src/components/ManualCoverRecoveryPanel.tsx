@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Image, LibraryBig, Loader2, RefreshCw, Search } from 'lucide-react';
-import { getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
+import { CheckCircle2, Image, LibraryBig, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { deleteObject, getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
 import type { UserBookRecord } from '../types';
 import { auth, storage } from '../lib/firebase';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
@@ -28,8 +28,23 @@ function activeEditionFor(book: UserBookRecord) {
   return book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 }
 
+function coverUrlReferencesAsset(coverUrl: string | undefined, asset: StoredManualCover) {
+  if (!coverUrl) return false;
+  const decoded = (() => {
+    try { return decodeURIComponent(coverUrl); } catch { return coverUrl; }
+  })();
+  return decoded.includes(asset.fullPath)
+    || decoded.includes(asset.name)
+    || coverUrl.includes(encodeURIComponent(asset.fullPath))
+    || coverUrl.includes(encodeURIComponent(asset.name));
+}
+
 function linkedBooksFor(asset: StoredManualCover, books: UserBookRecord[]) {
-  return books.filter((book) => book.editions.some((edition) => edition.coverUrl?.includes(asset.name)));
+  return books.filter((book) => book.editions.some((edition) => coverUrlReferencesAsset(edition.coverUrl, asset)));
+}
+
+function isUnusedCover(asset: StoredManualCover, books: UserBookRecord[]) {
+  return linkedBooksFor(asset, books).length === 0;
 }
 
 export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> = ({ books }) => {
@@ -39,6 +54,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   const [selectedAssetPath, setSelectedAssetPath] = useState('');
   const [selectedBookId, setSelectedBookId] = useState('');
   const [restoring, setRestoring] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [restoredMessage, setRestoredMessage] = useState<string | null>(null);
   const [showUnusedOnly, setShowUnusedOnly] = useState(false);
   const [coverQuery, setCoverQuery] = useState('');
@@ -92,10 +108,11 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   const selectedBook = books.find((book) => book.id === selectedBookId) ?? null;
   const selectedBookEdition = selectedBook ? activeEditionFor(selectedBook) : undefined;
 
-  const unusedCount = useMemo(
-    () => assets.filter((asset) => linkedBooksFor(asset, books).length === 0).length,
+  const unusedAssets = useMemo(
+    () => assets.filter((asset) => isUnusedCover(asset, books)),
     [assets, books],
   );
+  const unusedCount = unusedAssets.length;
 
   const visibleAssets = useMemo(() => {
     const normalizedQuery = coverQuery.trim().toLowerCase();
@@ -128,6 +145,60 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   useEffect(() => {
     if (bookPage > bookTotalPages) setBookPage(bookTotalPages);
   }, [bookPage, bookTotalPages]);
+
+  const deleteUnusedAssets = async (targets: StoredManualCover[]) => {
+    if (!storage || deleting || targets.length === 0) return;
+
+    // Re-check against the current canonical library immediately before delete.
+    const confirmedUnused = targets.filter((asset) => isUnusedCover(asset, books));
+    if (confirmedUnused.length === 0) {
+      setError('Those covers are now linked to a book, so Inkbound did not delete anything.');
+      return;
+    }
+
+    const count = confirmedUnused.length;
+    const confirmed = window.confirm(
+      count === 1
+        ? 'Delete this unused cover permanently? This removes only the stored cover file and does not change any book.'
+        : `Delete all ${count} unused covers permanently? This removes only cover files with zero current book references.`,
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    setRestoredMessage(null);
+    try {
+      const results = await Promise.allSettled(
+        confirmedUnused.map((asset) => deleteObject(ref(storage, asset.fullPath))),
+      );
+      const deletedPaths = new Set(
+        confirmedUnused
+          .filter((_, index) => results[index]?.status === 'fulfilled')
+          .map((asset) => asset.fullPath),
+      );
+      const failed = results.length - deletedPaths.size;
+
+      setAssets((current) => current.filter((asset) => !deletedPaths.has(asset.fullPath)));
+      if (selectedAssetPath && deletedPaths.has(selectedAssetPath)) setSelectedAssetPath('');
+      setCoverPage(1);
+
+      if (deletedPaths.size > 0) {
+        setRestoredMessage(
+          failed > 0
+            ? `Deleted ${deletedPaths.size} unused cover${deletedPaths.size === 1 ? '' : 's'}. ${failed} could not be deleted.`
+            : `Deleted ${deletedPaths.size} unused cover${deletedPaths.size === 1 ? '' : 's'}.`,
+        );
+      }
+      if (failed > 0 && deletedPaths.size === 0) {
+        setError('Inkbound could not delete the selected unused cover files. Nothing in your library was changed.');
+      }
+    } catch (caught) {
+      console.error('Inkbound unused cover cleanup failed.', caught);
+      setError('Inkbound could not clean up those unused covers. Nothing in your library was changed.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const useCover = () => {
     if (!selectedAsset || !selectedBook || restoring) return;
@@ -211,6 +282,24 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
         <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books in library</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{books.length.toLocaleString()}</p></div>
       </div>
 
+      {unusedCount > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[var(--ink-ivory)]">Unused cover cleanup</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Only files with zero references from any current book edition are eligible. Cleanup never rewrites your library records.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void deleteUnusedAssets(unusedAssets)}
+            disabled={deleting}
+            className="quiet-shelf-secondary-action shrink-0 justify-center text-rose-300 disabled:opacity-40"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {deleting ? 'Cleaning…' : `Delete all ${unusedCount} unused cover${unusedCount === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={coverQuery} onChange={(event) => setCoverQuery(event.target.value)} placeholder="Search covers by linked book title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></label>
         <label className="flex min-h-12 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 text-xs text-[var(--ink-muted)]"><input type="checkbox" checked={showUnusedOnly} onChange={(event) => setShowUnusedOnly(event.target.checked)} />Show unused only</label>
@@ -235,7 +324,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
 
           <aside className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
             <div className="flex items-center gap-2"><Image className="h-5 w-5 text-[var(--ink-gold)]" /><h3 className="font-serif text-lg font-bold text-[var(--ink-ivory)]">Use selected cover</h3></div>
-            {selectedAsset ? <div className="mt-4"><img src={selectedAsset.url} alt="Selected manual cover" className="mx-auto max-h-72 rounded-xl object-contain" />{linkedBooksFor(selectedAsset, books).length > 0 && <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">Currently used by: {linkedBooksFor(selectedAsset, books).map((book) => book.work.title).join(', ')}</p>}</div> : <div className="mt-4 grid h-56 place-items-center rounded-xl border border-dashed border-[var(--ink-border)] text-center text-xs text-[var(--ink-muted)]">Select a cover thumbnail first.</div>}
+            {selectedAsset ? <div className="mt-4"><img src={selectedAsset.url} alt="Selected manual cover" className="mx-auto max-h-72 rounded-xl object-contain" />{linkedBooksFor(selectedAsset, books).length > 0 ? <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">Currently used by: {linkedBooksFor(selectedAsset, books).map((book) => book.work.title).join(', ')}</p> : <div className="mt-3 space-y-2"><p className="text-xs leading-5 text-amber-200">This cover has zero current book references and is safe to remove if you no longer need it.</p><button type="button" onClick={() => void deleteUnusedAssets([selectedAsset])} disabled={deleting} className="quiet-shelf-secondary-action w-full justify-center text-rose-300 disabled:opacity-40">{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}{deleting ? 'Deleting…' : 'Delete This Unused Cover'}</button></div>}</div> : <div className="mt-4 grid h-56 place-items-center rounded-xl border border-dashed border-[var(--ink-border)] text-center text-xs text-[var(--ink-muted)]">Select a cover thumbnail first.</div>}
 
             <label className="relative mt-4 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={bookQuery} onChange={(event) => setBookQuery(event.target.value)} placeholder="Find a book by title or author" className="min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] pl-10 pr-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
             <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Choose a book</span><span className="text-[11px] text-[var(--ink-muted)]">{visibleBooks.length.toLocaleString()} of {books.length.toLocaleString()}</span></div>
