@@ -1,4 +1,4 @@
-import type { UserBookRecord } from '../../types';
+import type { ReadingSession, UserBookRecord } from '../../types';
 import { writeRuntimeJson } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
@@ -25,4 +25,15 @@ export function replaceCanonicalLibrary(nextBooks: UserBookRecord[]) {
  */
 export function replaceCanonicalBook(currentBooks: UserBookRecord[], updatedBook: UserBookRecord) {
   return replaceCanonicalLibrary(currentBooks.map((book) => book.id === updatedBook.id ? updatedBook : book));
+}
+
+
+/**
+ * Replace the whole canonical local session collection in one canonical write.
+ * Session mutations use the same persist-first contract as the library.
+ */
+export function replaceCanonicalSessions(nextSessions: ReadingSession[]) {
+  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.sessions, nextSessions)) return false;
+  notifyCloudDataUpdated([SYNC_STORAGE_KEYS.sessions]);
+  return true;
 }
