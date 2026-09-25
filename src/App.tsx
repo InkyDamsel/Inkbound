@@ -61,6 +61,7 @@ import {
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
 import { withBookOwnership } from './features/ownership/bookOwnership';
+import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
 import {
   applySessionProgressToBook,
@@ -167,6 +168,7 @@ export default function App() {
   const [books, setBooks] = useState<UserBookRecord[]>(() => readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []));
   const booksRef = useRef(books);
   const [sessions, setSessions] = useState<ReadingSession[]>(() => readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []));
+  const sessionsRef = useRef(sessions);
   const [previousBooksState, setPreviousBooksState] = useState<UserBookRecord[] | null>(null);
   const [previousSessionsState, setPreviousSessionsState] = useState<ReadingSession[] | null>(null);
   const [selectedBookForDetails, setSelectedBookForDetails] = useState<UserBookRecord | null>(null);
@@ -185,17 +187,6 @@ export default function App() {
   }, [isDarkMode]);
 
   useEffect(() => {
-    booksRef.current = books;
-    writeRuntimeJson(BOOKS_STORAGE_KEY, books);
-    removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
-  }, [books]);
-
-  useEffect(() => {
-    writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions);
-    removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY);
-  }, [sessions]);
-
-  useEffect(() => {
     const refreshCanonicalCollections = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
       const keys = detail?.keys ?? [];
@@ -207,13 +198,57 @@ export default function App() {
       }
 
       if (keys.includes(SESSIONS_STORAGE_KEY)) {
-        setSessions(readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []));
+        const nextSessions = readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []);
+        sessionsRef.current = nextSessions;
+        commitCanonicalSessions(nextSessions);
       }
     };
 
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, refreshCanonicalCollections);
     return () => window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, refreshCanonicalCollections);
   }, []);
+
+  const commitCanonicalBooks = (
+    update: UserBookRecord[] | ((current: UserBookRecord[]) => UserBookRecord[]),
+  ): UserBookRecord[] => {
+    const current = booksRef.current;
+    const next = typeof update === 'function' ? update(current) : update;
+    if (!replaceCanonicalLibrary(next)) {
+      console.error('[Inkbound persistence] Canonical library write failed; keeping the previous in-memory library.', {
+        operation: 'commitCanonicalBooks',
+        previousCount: current.length,
+        attemptedCount: next.length,
+        timestamp: new Date().toISOString(),
+      });
+      showToast('Inkbound could not save that library change. Your previous library is still protected.');
+      return current;
+    }
+    booksRef.current = next;
+    removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
+    setBooks(next);
+    return next;
+  };
+
+  const commitCanonicalSessions = (
+    update: ReadingSession[] | ((current: ReadingSession[]) => ReadingSession[]),
+  ): ReadingSession[] => {
+    const current = sessionsRef.current;
+    const next = typeof update === 'function' ? update(current) : update;
+    if (!replaceCanonicalSessions(next)) {
+      console.error('[Inkbound persistence] Canonical session write failed; keeping the previous in-memory sessions.', {
+        operation: 'commitCanonicalSessions',
+        previousCount: current.length,
+        attemptedCount: next.length,
+        timestamp: new Date().toISOString(),
+      });
+      showToast('Inkbound could not save that reading-session change. Your previous sessions are still protected.');
+      return current;
+    }
+    sessionsRef.current = next;
+    removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY);
+    setSessions(next);
+    return next;
+  };
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -285,7 +320,7 @@ export default function App() {
         if (runId !== importQueueRunId) return;
         const successful = results.filter((result) => result.success && result.enriched);
         const enrichedById = new Map(successful.map((result) => [result.item.targetBookId, result.enriched!]));
-        if (enrichedById.size > 0) setBooks((current) => current.map((book) => { const enriched = enrichedById.get(book.id); return enriched ? mergeEnrichedImportedBook(book, enriched) : book; }));
+        if (enrichedById.size > 0) commitCanonicalBooks((current) => current.map((book) => { const enriched = enrichedById.get(book.id); return enriched ? mergeEnrichedImportedBook(book, enriched) : book; }));
         results.forEach((result) => {
           if (result.success) { updatedCount += 1; if (result.foundCover) coverCount += 1; if (result.foundSummary) summaryCount += 1; }
           else retryItems.push({ ...result.item, attempts: (result.item.attempts ?? 0) + 1, lastAttemptAt: new Date().toISOString() });
@@ -333,10 +368,10 @@ export default function App() {
   const openTimer = (bookId?: string) => { setTimerInitialBookId(bookId); setIsTimerOpen(true); };
   const closeTimer = () => setIsTimerOpen(false);
   const handleToggleSelectBook = (id: string) => setSelectedBookIds((current) => current.includes(id) ? current.filter((bookId) => bookId !== id) : [...current, id]);
-  const handleUpdateBook = (updatedBook: UserBookRecord) => { setBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book))); setSelectedBookForDetails((current) => (current?.id === updatedBook.id ? updatedBook : current)); };
-  const handleDeleteBook = (bookToDelete: UserBookRecord) => { setBooks((current) => current.filter((book) => book.id !== bookToDelete.id)); setSessions((current) => current.filter((session) => session.bookId !== bookToDelete.id)); setSelectedBookIds((current) => current.filter((id) => id !== bookToDelete.id)); setSelectedBookForDetails(null); showToast(`Deleted “${bookToDelete.work.title}” and its reading sessions.`); };
-  const handleMergeDuplicateGroup = ({ keepBookId, removeBookIds, mergedBook }: DuplicateMergeRequest) => { const removeIds = new Set(removeBookIds); setPreviousBooksState(null); setPreviousSessionsState(null); setBooks((current) => current.filter((book) => !removeIds.has(book.id)).map((book) => book.id === keepBookId ? mergedBook : book)); setSessions((current) => current.map((session) => removeIds.has(session.bookId) ? { ...session, bookId: keepBookId } : session)); setSelectedBookIds((current) => current.filter((id) => !removeIds.has(id))); setSelectedBookForDetails((current) => current && removeIds.has(current.id) ? mergedBook : current?.id === keepBookId ? mergedBook : current); writeImportEnrichmentQueue(readImportEnrichmentQueue().filter((item) => !removeIds.has(item.targetBookId))); showToast(`Merged ${removeBookIds.length + 1} copies of “${mergedBook.work.title}” into one library record.`); };
-  const handleUpdateStatus = (bookId: string, status: ReadingStatus) => { const today = localDateKey(); setBooks((current) => current.map((book) => book.id !== bookId ? book : withReadingStatus(book, status, today))); showToast(`Updated reading status to ${status}.`); };
+  const handleUpdateBook = (updatedBook: UserBookRecord) => { commitCanonicalBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book))); setSelectedBookForDetails((current) => (current?.id === updatedBook.id ? updatedBook : current)); };
+  const handleDeleteBook = (bookToDelete: UserBookRecord) => { commitCanonicalBooks((current) => current.filter((book) => book.id !== bookToDelete.id)); commitCanonicalSessions((current) => current.filter((session) => session.bookId !== bookToDelete.id)); setSelectedBookIds((current) => current.filter((id) => id !== bookToDelete.id)); setSelectedBookForDetails(null); showToast(`Deleted “${bookToDelete.work.title}” and its reading sessions.`); };
+  const handleMergeDuplicateGroup = ({ keepBookId, removeBookIds, mergedBook }: DuplicateMergeRequest) => { const removeIds = new Set(removeBookIds); setPreviousBooksState(null); setPreviousSessionsState(null); commitCanonicalBooks((current) => current.filter((book) => !removeIds.has(book.id)).map((book) => book.id === keepBookId ? mergedBook : book)); commitCanonicalSessions((current) => current.map((session) => removeIds.has(session.bookId) ? { ...session, bookId: keepBookId } : session)); setSelectedBookIds((current) => current.filter((id) => !removeIds.has(id))); setSelectedBookForDetails((current) => current && removeIds.has(current.id) ? mergedBook : current?.id === keepBookId ? mergedBook : current); writeImportEnrichmentQueue(readImportEnrichmentQueue().filter((item) => !removeIds.has(item.targetBookId))); showToast(`Merged ${removeBookIds.length + 1} copies of “${mergedBook.work.title}” into one library record.`); };
+  const handleUpdateStatus = (bookId: string, status: ReadingStatus) => { const today = localDateKey(); commitCanonicalBooks((current) => current.map((book) => book.id !== bookId ? book : withReadingStatus(book, status, today))); showToast(`Updated reading status to ${status}.`); };
 
   const handleCorrectBookProgress = (bookId: string, correction: BookProgressCorrection) => {
     const sourceBook = books.find((book) => book.id === bookId);
@@ -350,14 +385,14 @@ export default function App() {
       const related = sessions.filter((session) => session.bookId === bookId).sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
       const latest = related.at(-1);
       if (latest && getSessionProgressEndpoint(latest, isAudiobook, 'end') === oldProgress) {
-        setSessions((current) => current.map((session) => {
+        commitCanonicalSessions((current) => current.map((session) => {
           if (session.id !== latest.id) return session;
           if (isAudiobook) { const endTimestampSec = correctedProgress * 60; const startTimestampSec = Math.min(session.startTimestampSec ?? endTimestampSec, endTimestampSec); return { ...session, startTimestampSec, endTimestampSec, minutesListened: Math.max(0, Math.round((endTimestampSec - startTimestampSec) / 60)) }; }
           const endPage = correctedProgress; const startPage = Math.min(session.startPage ?? endPage, endPage); return { ...session, startPage, endPage, pagesRead: Math.max(0, endPage - startPage) };
         }));
       }
     }
-    setBooks((current) => current.map((book) => {
+    commitCanonicalBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
       const activeEdition = getActiveEdition(book);
       if (!activeEdition) return book;
@@ -369,11 +404,11 @@ export default function App() {
     showToast('Corrected book progress and reconciled the latest reading session.');
   };
 
-  const handleUpdatePriority = (bookId: string, priority: Priority) => setBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
+  const handleUpdatePriority = (bookId: string, priority: Priority) => commitCanonicalBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
 
   const handleApplyBatchChanges = (changes: BatchEditChanges) => {
     setPreviousBooksState(books); setPreviousSessionsState(null); const today = localDateKey();
-    setBooks((current) => current.map((book) => {
+    commitCanonicalBooks((current) => current.map((book) => {
       if (!selectedBookIds.includes(book.id)) return book;
       let updatedBook: UserBookRecord = { ...book };
       if (changes.format) updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
@@ -398,32 +433,32 @@ export default function App() {
     const count = selectedBookIds.length; setSelectedBookIds([]); setIsBatchEditOpen(false); showToast(`Applied batch changes to ${count} books.`);
   };
 
-  const handleDeleteSelected = () => { setPreviousBooksState(books); setPreviousSessionsState(sessions); const selectedIds = new Set(selectedBookIds); const count = selectedBookIds.length; setBooks((current) => current.filter((book) => !selectedIds.has(book.id))); setSessions((current) => current.filter((session) => !selectedIds.has(session.bookId))); setSelectedBookIds([]); setIsBatchEditOpen(false); showToast(`Deleted ${count} books and their reading sessions.`); };
-  const handleUndoLastBatch = () => { if (!previousBooksState) return; booksRef.current = previousBooksState; setBooks(previousBooksState); if (previousSessionsState) setSessions(previousSessionsState); setPreviousBooksState(null); setPreviousSessionsState(null); showToast('Undid the most recent library change.'); };
+  const handleDeleteSelected = () => { setPreviousBooksState(books); setPreviousSessionsState(sessions); const selectedIds = new Set(selectedBookIds); const count = selectedBookIds.length; commitCanonicalBooks((current) => current.filter((book) => !selectedIds.has(book.id))); commitCanonicalSessions((current) => current.filter((session) => !selectedIds.has(session.bookId))); setSelectedBookIds([]); setIsBatchEditOpen(false); showToast(`Deleted ${count} books and their reading sessions.`); };
+  const handleUndoLastBatch = () => { if (!previousBooksState) return; commitCanonicalBooks(previousBooksState); if (previousSessionsState) commitCanonicalSessions(previousSessionsState); setPreviousBooksState(null); setPreviousSessionsState(null); showToast('Undid the most recent library change.'); };
 
   const updateBookFromSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
-    setBooks((current) => current.map((book) => applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes)));
+    commitCanonicalBooks((current) => current.map((book) => applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes)));
   };
 
   const reconcileBookProgressFromSessions = (bookId: string, nextSessions: ReadingSession[], changedSession?: ReadingSession) => {
-    setBooks((current) => current.map((book) => book.id === bookId ? reconcileBookAfterSessionMutation(book, nextSessions, changedSession) : book));
+    commitCanonicalBooks((current) => current.map((book) => book.id === bookId ? reconcileBookAfterSessionMutation(book, nextSessions, changedSession) : book));
   };
 
   const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessions]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
-  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => { maybeShowFirstSessionMilestone(newSession); setSessions((current) => [newSession, ...current]); updateBookFromSession(newSession, updatedPages, updatedMinutes); setTimerInitialBookId(undefined); setIsTimerOpen(false); showToast(`Saved a ${getSessionDurationMinutes(newSession)}-minute reading session.`); };
-  const handleSaveManualSession = (session: ReadingSession) => { maybeShowFirstSessionMilestone(session); setSessions((current) => [session, ...current]); updateBookFromSession(session, session.endPage ?? 0, Math.floor((session.endTimestampSec ?? 0) / 60)); showToast('Added reading session.'); };
+  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => { maybeShowFirstSessionMilestone(newSession); commitCanonicalSessions((current) => [newSession, ...current]); updateBookFromSession(newSession, updatedPages, updatedMinutes); setTimerInitialBookId(undefined); setIsTimerOpen(false); showToast(`Saved a ${getSessionDurationMinutes(newSession)}-minute reading session.`); };
+  const handleSaveManualSession = (session: ReadingSession) => { maybeShowFirstSessionMilestone(session); commitCanonicalSessions((current) => [session, ...current]); updateBookFromSession(session, session.endPage ?? 0, Math.floor((session.endTimestampSec ?? 0) / 60)); showToast('Added reading session.'); };
   const handleUpdateSession = (session: ReadingSession) => { const previous = sessions.find((item) => item.id === session.id); const nextSessions = sessions.map((item) => item.id === session.id ? session : item); setSessions(nextSessions); if (previous && previous.bookId !== session.bookId) { reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous); reconcileBookProgressFromSessions(session.bookId, nextSessions); } else reconcileBookProgressFromSessions(session.bookId, nextSessions, previous); showToast('Updated reading session and reconciled book progress.'); };
   const handleDeleteSession = (sessionId: string) => { const removed = sessions.find((session) => session.id === sessionId); const nextSessions = sessions.filter((session) => session.id !== sessionId); setSessions(nextSessions); if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed); showToast('Deleted reading session and reconciled book progress.'); };
 
   const handleExecuteImport = async (importedItems: ImportRecordItem[]): Promise<ImportRecordItem[]> => {
     const currentLibrary = booksRef.current; const { unique: acceptedItems, duplicates: writeDuplicates } = analyzeImportDuplicates(importedItems, currentLibrary);
     if (acceptedItems.length === 0) { showToast('No books were added because they already exist in your library.'); return []; }
-    setPreviousBooksState(currentLibrary); setPreviousSessionsState(null); const immediateBooks = acceptedItems.map(createFallbackImportedBook); const nextLibrary = [...currentLibrary, ...immediateBooks]; booksRef.current = nextLibrary; setBooks(nextLibrary);
+    setPreviousBooksState(currentLibrary); setPreviousSessionsState(null); const immediateBooks = acceptedItems.map(createFallbackImportedBook); const nextLibrary = [...currentLibrary, ...immediateBooks]; commitCanonicalBooks(nextLibrary);
     const existingQueue = readImportEnrichmentQueue(); const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item])); queueImportedItems(acceptedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item)); writeImportEnrichmentQueue([...queuedByBookId.values()]);
     const verificationSnapshot = getImportVerificationSnapshot(); appendImportHistory(acceptedItems, verificationSnapshot.duplicates.length + writeDuplicates.length); const skippedAtWrite = importedItems.length - acceptedItems.length; showToast(navigator.onLine ? `Added ${immediateBooks.length} books${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will update when Inkbound is online.`); void processImportEnrichmentQueue(); return acceptedItems;
   };
 
-  const handleResetData = () => { booksRef.current = []; setBooks([]); setSessions([]); setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY); removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY); removeRuntimeValue(DAYTIME_MAINTENANCE_KEY); writeImportEnrichmentQueue([]); writeImportHistory([]); writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared all Inkbound books and reading sessions.'); };
+  const handleResetData = () => { commitCanonicalBooks([]); commitCanonicalSessions([]); setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY); removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY); removeRuntimeValue(DAYTIME_MAINTENANCE_KEY); writeImportEnrichmentQueue([]); writeImportHistory([]); writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared all Inkbound books and reading sessions.'); };
   const currentSelectedBook = selectedBookForDetails ? books.find((book) => book.id === selectedBookForDetails.id) ?? selectedBookForDetails : null;
 
   return (
@@ -439,7 +474,7 @@ export default function App() {
       {currentSelectedBook && <BookDetailsModal book={currentSelectedBook} sessions={sessions} onClose={() => setSelectedBookForDetails(null)} onUpdateBook={handleUpdateBook} onCorrectProgress={handleCorrectBookProgress} onDeleteBook={handleDeleteBook} onStartSession={(book) => { setSelectedBookForDetails(null); openTimer(book.id); }} onUpdateSession={handleUpdateSession} onDeleteSession={handleDeleteSession} />}
       {isBatchEditOpen && <BatchEditModal selectedBookIds={selectedBookIds} books={books} onClose={() => setIsBatchEditOpen(false)} onApplyBatchChanges={handleApplyBatchChanges} onDeleteSelected={handleDeleteSelected} onUndoLastBatch={handleUndoLastBatch} />}
       {isTimerOpen && <ReadingSessionModal books={books} sessions={sessions} initialBookId={timerInitialBookId} onClose={closeTimer} onSaveSession={handleSaveSession} />}
-      {isAddBookOpen && <AddBookModal currentBookCount={books.length} onClose={() => setIsAddBookOpen(false)} onAddBook={(newBook) => { setBooks((current) => [newBook, ...current]); showToast(`Added “${newBook.work.title}” to Inkbound.`); }} onAddMultipleBooks={(newBooks) => { setBooks((current) => [...newBooks, ...current]); showToast(`Added ${newBooks.length} books to Inkbound.`); }} />}
+      {isAddBookOpen && <AddBookModal currentBookCount={books.length} onClose={() => setIsAddBookOpen(false)} onAddBook={(newBook) => { commitCanonicalBooks((current) => [newBook, ...current]); showToast(`Added “${newBook.work.title}” to Inkbound.`); }} onAddMultipleBooks={(newBooks) => { commitCanonicalBooks((current) => [...newBooks, ...current]); showToast(`Added ${newBooks.length} books to Inkbound.`); }} />}
       {sessionMilestone && <div className="fixed bottom-24 left-1/2 z-[150] w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl border border-[#c5a059]/45 bg-[#1c0f24]/95 p-4 text-[#f4efe6] shadow-2xl backdrop-blur"><div className="flex items-center justify-between gap-4"><div className="flex items-center gap-2"><Flame className="h-5 w-5 text-[#e5c158]" /><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Reading streak</p><p className="font-serif text-xl font-bold">{sessionMilestone.streak} day{sessionMilestone.streak === 1 ? '' : 's'}</p></div></div><div className="flex items-center gap-2 text-right"><Target className="h-5 w-5 text-[#e5c158]" /><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Daily goal</p><p className="font-serif text-xl font-bold">{sessionMilestone.dailyMinutes} / {sessionMilestone.dailyGoal}m</p><p className="text-xs text-stone-400">{sessionMilestone.dailyMinutes >= sessionMilestone.dailyGoal ? 'Goal reached!' : `${sessionMilestone.dailyGoal - sessionMilestone.dailyMinutes} minutes to go.`}</p></div></div></div></div>}
       {toastMessage && <div className="inkbound-toast" role="status"><Check className="h-4 w-4 text-[var(--ink-gold)]" /><span>{toastMessage}</span>{previousBooksState && <button type="button" onClick={handleUndoLastBatch}><RotateCcw className="h-3 w-3" /> Undo</button>}</div>}
     </ResponsiveShell>
