@@ -246,6 +246,15 @@ for (const [relative, source] of [
   }
 }
 
+const readingSessionsScreenSource = read('src/components/ReadingSessionsScreen.tsx');
+const bulkHistoricalSessionsSource = read('src/components/BulkHistoricalSessionsModal.tsx');
+if (!readingSessionsScreenSource.includes('onSaveManualSessions') || !readingSessionsScreenSource.includes('BulkHistoricalSessionsModal')) {
+  violations.push('ReadingSessionsScreen.tsx: Build 28 manual session entry must preserve both single and bulk historical session paths');
+}
+if (!bulkHistoricalSessionsSource.includes('onSave(nextSessions)')) {
+  violations.push('BulkHistoricalSessionsModal.tsx: bulk historical sessions must save through the parent canonical session mutation path');
+}
+
 const addBookModalSource = read('src/components/AddBookModal.tsx');
 if (!addBookModalSource.includes("import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';")) {
   violations.push('AddBookModal.tsx: clean Build 28 must keep the proven Build 27 general Search boundary');
