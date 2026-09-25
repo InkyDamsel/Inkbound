@@ -398,7 +398,7 @@ async function copyCollectionWithoutOverwrite(
         collisions.push(document.id);
         continue;
       }
-      targetId = `merged-${source.parent.parent?.id ?? 'source'}-${document.id}`;
+      targetId = `merged-${source.parent?.parent?.id ?? 'source'}-${document.id}`;
       targetRef = target.doc(targetId);
       targetSnapshot = await targetRef.get();
       if (targetSnapshot.exists) {
