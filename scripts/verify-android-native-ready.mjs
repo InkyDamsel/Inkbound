@@ -84,15 +84,30 @@ if (fs.existsSync(keystorePropertiesPath)) {
     fail(`could not read the Android signing report${details ? `: ${details}` : '.'}`);
   }
 
-  const report = signingReport.stdout ?? '';
-  const releaseSectionMatch = report.match(/Variant:\s*release\b[\s\S]*?(?=\nVariant:\s|\n----------|$)/i);
-  const releaseSection = releaseSectionMatch?.[0] ?? '';
-  const releaseShaLineMatch = /^SHA1:\s*(.+)$/im.exec(releaseSection);
-  const releaseSha1 = normalizeSha1(releaseShaLineMatch?.[1]);
+  // Gradle/AGP signingReport formatting varies across Windows/JDK versions.
+  // Normalize line endings, include stderr (some Gradle launchers route report
+  // text there), and locate the exact release variant by lines instead of using
+  // a fragile multiline regex boundary.
+  const report = `${signingReport.stdout ?? ''}\n${signingReport.stderr ?? ''}`
+    .replace(/\r\n?/g, '\n');
+  const reportLines = report.split('\n');
+  const releaseStart = reportLines.findIndex((line) => /^\s*Variant:\s*release\s*$/i.test(line));
+  const releaseEnd = releaseStart >= 0
+    ? reportLines.findIndex((line, index) => index > releaseStart && /^\s*Variant:\s*/i.test(line))
+    : -1;
+  const releaseLines = releaseStart >= 0
+    ? reportLines.slice(releaseStart, releaseEnd >= 0 ? releaseEnd : reportLines.length)
+    : [];
+  const releaseShaLine = releaseLines.find((line) => /^\s*SHA1:\s*/i.test(line));
+  const rawReleaseSha1 = releaseShaLine?.replace(/^\s*SHA1:\s*/i, '').trim() ?? '';
+  const releaseSha1 = normalizeSha1(rawReleaseSha1);
 
   if (!releaseSha1 || releaseSha1.length !== 40) {
-    const rawShaLine = releaseShaLineMatch?.[1]?.trim() || '(missing)';
-    fail(`the local release signing certificate SHA-1 could not be parsed from Gradle signingReport (raw SHA1 line: ${rawShaLine}).`);
+    const releaseSummary = releaseLines
+      .filter((line) => /^\s*(?:Variant|Config|Store|Alias|SHA1):/i.test(line))
+      .join(' | ')
+      .trim();
+    fail(`the local release signing certificate SHA-1 could not be parsed from Gradle signingReport (release section: ${releaseSummary || '(missing)'}).`);
   }
 
   const configuredSha1s = androidOauthClients
