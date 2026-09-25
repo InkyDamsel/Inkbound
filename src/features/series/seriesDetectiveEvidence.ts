@@ -8,6 +8,7 @@ export interface SeriesDetectionEvidence {
   isbn10?: string;
   isbn13?: string;
   sourceId: string;
+  recordId: string;
   structured: boolean;
   exactIdentifier: boolean;
   exactTitle: boolean;
@@ -42,6 +43,88 @@ export const detectiveSeriesNamesCompatible = (a?: string, b?: string): boolean 
   const left = canonicalDetectiveSeries(a);
   const right = canonicalDetectiveSeries(b);
   return Boolean(left && right && left === right);
+};
+
+const ORDINAL_POSITIONS: Record<string, number> = {
+  first: 1, second: 2, third: 3, fourth: 4, fifth: 5,
+  sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
+  eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15,
+  sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19, twentieth: 20,
+};
+
+const GENERIC_SUBTITLE_WORDS = new Set([
+  'novel', 'novella', 'memoir', 'romance', 'thriller', 'mystery', 'fantasy',
+  'story', 'stories', 'edition', 'editions', 'anniversary', 'illustrated',
+  'hardcover', 'paperback', 'ebook', 'audiobook',
+]);
+
+export const plausibleDetectiveSeriesSubtitle = (value?: string): string | null => {
+  const candidate = value?.trim().replace(/\s+/g, ' ') ?? '';
+  if (!candidate) return null;
+  const identity = canonicalDetectiveSeries(candidate);
+  const words = identity.split(' ').filter(Boolean);
+  if (words.length < 2 || words.length > 6) return null;
+  if (words.some((word) => GENERIC_SUBTITLE_WORDS.has(word))) return null;
+  return candidate;
+};
+
+export const inferKnownDetectiveSeriesFromText = (
+  value: string | undefined,
+  wantedSeriesName: string,
+): { name: string; position: number | null } | null => {
+  const text = value?.trim();
+  if (!text) return null;
+  const parts = text.split(':');
+  const candidate = (parts.length > 1 ? parts[parts.length - 1] : text).trim();
+  const match = candidate.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*)(\d+(?:\.\d+)?)\s*$/i);
+  if (!match) return null;
+  const name = match[1].trim().replace(/[,:;\-]+$/g, '');
+  if (!detectiveSeriesNamesCompatible(name, wantedSeriesName)) return null;
+  const parsed = Number.parseFloat(match[2]);
+  return { name, position: Number.isFinite(parsed) && parsed >= 0 ? parsed : null };
+};
+
+export const inferKnownDetectiveSeriesFromDescription = (
+  value: string | undefined,
+  wantedSeriesName: string,
+): { name: string; position: number | null } | null => {
+  const text = normalizeDetectiveText(value);
+  const seriesIdentity = canonicalDetectiveSeries(wantedSeriesName);
+  if (!text || !seriesIdentity) return null;
+
+  const seriesTokens = seriesIdentity.split(' ').filter(Boolean);
+  if (!seriesTokens.every((token) => text.includes(token))) return null;
+
+  const qualifierPattern = /\b(?:series|saga|novels?|books?|collection)\b/i;
+  if (seriesTokens.length === 1 && !qualifierPattern.test(text)) return null;
+
+  const seriesIndex = text.indexOf(seriesTokens[0]);
+  const start = Math.max(0, seriesIndex - 120);
+  const end = Math.min(text.length, seriesIndex + seriesIdentity.length + 120);
+  const context = text.slice(start, end);
+  let position: number | null = null;
+
+  for (const pattern of [
+    /\b(?:book|volume|vol|part)\s*#?\s*(\d+(?:\.\d+)?)\b/i,
+    /\b(\d+(?:\.\d+)?)\s*(?:st|nd|rd|th)?\s+(?:book|novel|volume|part)\b/i,
+  ]) {
+    const match = context.match(pattern);
+    const parsed = match ? Number(match[1]) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > 0) {
+      position = parsed;
+      break;
+    }
+  }
+
+  if (position === null) {
+    const match = context.match(new RegExp(
+      '\\b(' + Object.keys(ORDINAL_POSITIONS).join('|') + ')\\s+(?:book|novel|volume|part)\\b',
+      'i',
+    ));
+    if (match) position = ORDINAL_POSITIONS[match[1].toLowerCase()] ?? null;
+  }
+
+  return { name: wantedSeriesName.trim(), position };
 };
 
 export const inferDetectiveSeriesFromTitle = (
@@ -109,11 +192,11 @@ export const selectVerifiedDetectiveEvidence = (
   return [...groups.values()]
     .map((group) => ({
       best: [...group].sort((a, b) => b.score - a.score)[0],
-      distinctQueries: new Set(group.map((item) => item.sourceId)).size,
+      distinctRecords: new Set(group.map((item) => item.recordId)).size,
     }))
-    .filter(({ best, distinctQueries }) =>
+    .filter(({ best, distinctRecords }) =>
       best.structured && best.score >= 170
-      || !best.structured && distinctQueries >= 2 && best.score >= 100,
+      || !best.structured && distinctRecords >= 2 && best.score >= 100,
     )
-    .sort((a, b) => b.best.score - a.best.score || b.distinctQueries - a.distinctQueries)[0]?.best ?? null;
+    .sort((a, b) => b.best.score - a.best.score || b.distinctRecords - a.distinctRecords)[0]?.best ?? null;
 };
