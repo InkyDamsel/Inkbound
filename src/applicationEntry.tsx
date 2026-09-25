@@ -78,6 +78,7 @@ const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) =
 );
 
 const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
+  const nativeRuntime = isNativeRuntime();
   const ready = useSyncExternalStore(
     subscribeNativeRuntimeReadiness,
     isNativeRuntimeReady,
