@@ -84,7 +84,8 @@ for (const required of [
   'LEGACY_SYNC_STORAGE_KEYS',
   'ACCOUNT_DATA_STORAGE_KEYS',
   'subscribeToRuntimeResume',
-  'writeRuntimeJson',
+  'replaceCanonicalLibrary',
+  'replaceCanonicalSessions',
 ]) {
   if (!app.includes(required)) violations.push(`App.tsx: missing canonical ${required} consumer`);
 }
@@ -103,14 +104,24 @@ for (const literal of ["const BOOKS_STORAGE_KEY = 'inkbound_books'", "const SESS
 if (/\blocalStorage\./.test(app)) {
   violations.push('App.tsx: canonical app persistence must go through runtimeStorage so Android and web emit the same sync events');
 }
-if (!app.includes('writeRuntimeJson(BOOKS_STORAGE_KEY, books)') || !app.includes('writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions)')) {
-  violations.push('App.tsx: canonical books/sessions persistence must use writeRuntimeJson');
+if (/useEffect\(\(\) => \{[\s\S]{0,260}writeRuntimeJson\(BOOKS_STORAGE_KEY, books\)[\s\S]{0,160}\}, \[books\]\)/.test(app)) {
+  violations.push('App.tsx: canonical library must persist at the mutation boundary, never from a books-state effect');
+}
+if (!app.includes('if (!replaceCanonicalLibrary(next))') || !app.includes('if (!replaceCanonicalSessions(next))')) {
+  violations.push('App.tsx: canonical books/sessions mutations must fail closed when persistence fails');
 }
 if (/safeWriteLocalStorage/.test(app)) {
   violations.push('App.tsx: direct browser persistence helper must not bypass runtimeStorage');
 }
 if (!app.includes('onUpdateSession={handleUpdateSession}') || !app.includes('onDeleteSession={handleDeleteSession}')) {
   violations.push('App.tsx: Book Details session edits/deletes must flow through the canonical App session mutation path');
+}
+
+const libraryMutations = read('src/features/library/libraryMutations.ts');
+for (const required of ['replaceCanonicalLibrary', 'replaceCanonicalSessions', 'writeRuntimeJson']) {
+  if (!libraryMutations.includes(required)) {
+    violations.push(`libraryMutations.ts: persist-first canonical mutation boundary is missing ${required}`);
+  }
 }
 
 const bookReadingState = read('src/features/reading/bookReadingState.ts');
@@ -231,6 +242,15 @@ if (!applicationEntry.includes('<CanonicalLibraryNormalizationBridge />')) {
 }
 if (!applicationEntry.includes('<CrossDeviceDeltaSyncBridge />') || !applicationEntry.includes('<AuxiliaryAccountSyncBridge />')) {
   violations.push('applicationEntry.tsx: both canonical core and auxiliary cross-device sync bridges must remain mounted');
+}
+if (!applicationEntry.includes('prepareLargeBrowserStorageForStartup();')) {
+  violations.push('applicationEntry.tsx: every current runtime must install large-storage protection before React mounts');
+}
+if (/if \(!isNativeRuntime\(\)\) prepareLargeBrowserStorageForStartup\(\)/.test(applicationEntry)) {
+  violations.push('applicationEntry.tsx: Android must not bypass canonical large-storage startup protection');
+}
+if (!applicationEntry.includes('void hydrateLargeBrowserStorage().finally')) {
+  violations.push('applicationEntry.tsx: every current runtime must hydrate canonical large storage');
 }
 
 const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');
@@ -361,6 +381,12 @@ if (!largeBrowserStorage.includes('cache.get(key) !== value')) {
 }
 if (!largeBrowserStorage.includes('Promise<boolean>')) {
   violations.push('largeBrowserStorage.ts: IndexedDB writes must report commit success before oversized write-ahead copies are removed.');
+}
+if (largeBrowserStorage.includes('if (startupHydrationPending && isStartupKey(key)) return;')) {
+  violations.push('largeBrowserStorage.ts: startup-protected writes must fail loudly instead of being silently discarded');
+}
+if (!largeBrowserStorage.includes('Inkbound blocked a write to')) {
+  violations.push('largeBrowserStorage.ts: blocked startup writes must surface failure to the canonical mutation boundary');
 }
 
 const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
