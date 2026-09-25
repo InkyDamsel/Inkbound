@@ -104,6 +104,18 @@ for (const file of sourceFiles) {
   const relative = path.relative(root, file).replaceAll('\\', '/');
   if (relative === 'src/features/sync/storageKeys.ts') continue;
   const source = fs.readFileSync(file, 'utf8');
+
+  // Storage keys have one owner. Any new Inkbound/legacy storage literal must
+  // first be registered in storageKeys.ts rather than being invented inside a
+  // component, feature, bridge, or platform helper.
+  const storageLikeLiterals = [
+    ...source.matchAll(/['"]((?:inkbound|bookhaven)_[A-Za-z0-9_:-]+)['"]/g),
+  ].map((match) => match[1]);
+  for (const literal of storageLikeLiterals) {
+    if (!registeredStorageKeyLiterals.includes(literal)) {
+      violations.push(`${relative}: unregistered storage-like key ${literal}; declare it in storageKeys.ts first`);
+    }
+  }
   for (const key of retiredCollectionKeys) {
     if (source.includes(key)) violations.push(`${relative}: references retired collection store ${key}`);
   }
