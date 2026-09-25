@@ -498,6 +498,7 @@ const strong = scoreDetectiveEvidence({
   authors: ['Laurie Gilmore'],
   sourceId: 'isbn-query',
   recordId: 'google-volume-1',
+  providerId: 'google-books',
   structured: true,
   exactIdentifier: true,
   exactTitle: true,
@@ -513,6 +514,7 @@ const weak = scoreDetectiveEvidence({
   authors: ['Laurie Gilmore'],
   sourceId: 'title-query',
   recordId: 'google-volume-2',
+  providerId: 'google-books',
   structured: false,
   exactIdentifier: false,
   exactTitle: true,
@@ -526,12 +528,21 @@ assert.equal(selectVerifiedDetectiveEvidence([weak, duplicateQueryHit]), null);
 
 // Two genuinely distinct exact-work records can corroborate title-inferred metadata.
 const distinctEdition = { ...weak, sourceId: 'isbn-query', recordId: 'google-volume-3' };
-assert.equal(selectVerifiedDetectiveEvidence([weak, distinctEdition])?.seriesName, 'Dream Harbor');
+assert.equal(selectVerifiedDetectiveEvidence([weak, distinctEdition]), null);
+
+const secondProvider = {
+  ...weak,
+  sourceId: 'open-library',
+  recordId: 'open-library-volume-1',
+  providerId: 'open-library',
+};
+assert.equal(selectVerifiedDetectiveEvidence([weak, secondProvider])?.seriesName, 'Dream Harbor');
 
 // Wrong-author metadata must not verify an inferred relationship.
 const wrongAuthor = scoreDetectiveEvidence({
   ...weak,
   recordId: 'google-volume-4',
+  providerId: 'google-books',
   authors: ['Someone Else'],
   exactAuthor: false,
 });
