@@ -45,6 +45,8 @@ assert.equal(detectiveSeriesNamesCompatible('Hades x Persephone Saga', 'Adrian X
 // Author normalization must understand "Last, First" without hardcoding an author.
 assert.equal(canonicalDetectiveAuthor('Gilmore, Laurie'), 'laurie gilmore');
 assert.equal(canonicalDetectiveAuthor('Laurie Gilmore'), 'laurie gilmore');
+assert.equal(canonicalDetectiveAuthor('St. Clair, Scarlett'), 'scarlett st clair');
+assert.equal(canonicalDetectiveAuthor('Scarlett St. Clair'), 'scarlett st clair');
 
 // Explicit publisher copy is bibliographic evidence, including ordinal words.
 assert.deepEqual(
@@ -334,6 +336,159 @@ assert.equal(googleHardcoverMerge[0].seriesName, 'The Selection');
 assert.equal(googleHardcoverMerge[0].position, 2);
 assert.equal(googleHardcoverMerge[0].edition.pageCount, 336);
 assert.equal(googleHardcoverMerge[0].edition.publisher, 'HarperTeen');
+
+// Provider agreement must survive canonical merging so contextual series
+// evidence can distinguish one provider guess from independent corroboration.
+assert.deepEqual(
+  new Set(mergedProviders[0].providerSources),
+  new Set(['google-books', 'open-library']),
+);
+
+// Bibliographic suffixes may vary by provider without splitting one work.
+const suffixMerge = mergeDetectiveCandidates([
+  {
+    provider: 'google-books',
+    position: null,
+    work: {
+      key: 'google:example',
+      title: 'Example Story',
+      authors: ['Example Author'],
+      genres: [],
+      editions: [{
+        source: 'google-books',
+        externalEditionId: 'g-example',
+        title: 'Example Story',
+        authors: ['Example Author'],
+        genres: [],
+        publicationYear: 2020,
+        format: 'hardcover',
+        isbn13: '9780000000001',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'google-books',
+      externalEditionId: 'g-example',
+      title: 'Example Story',
+      authors: ['Example Author'],
+      genres: [],
+      publicationYear: 2020,
+      format: 'hardcover',
+      isbn13: '9780000000001',
+      specialFeatures: [],
+    },
+  },
+  {
+    provider: 'open-library',
+    seriesName: 'Example Saga',
+    position: 2,
+    seriesProvider: 'open-library',
+    seriesStructured: true,
+    work: {
+      key: 'open:example',
+      title: 'Example Story (Example Saga, Book 2)',
+      authors: ['Example Author'],
+      genres: [],
+      editions: [{
+        source: 'open-library',
+        externalEditionId: 'ol-example',
+        title: 'Example Story (Example Saga, Book 2)',
+        authors: ['Example Author'],
+        genres: [],
+        publicationYear: 2020,
+        format: 'paperback',
+        isbn13: '9780000000002',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'open-library',
+      externalEditionId: 'ol-example',
+      title: 'Example Story (Example Saga, Book 2)',
+      authors: ['Example Author'],
+      genres: [],
+      publicationYear: 2020,
+      format: 'paperback',
+      isbn13: '9780000000002',
+      specialFeatures: [],
+    },
+  },
+]);
+assert.equal(suffixMerge.length, 1);
+assert.equal(suffixMerge[0].seriesName, 'Example Saga');
+assert.equal(suffixMerge[0].work.editions.length, 2);
+
+// A reused/bad ISBN must never collapse unrelated works by the same author.
+const sharedBadIsbn = mergeDetectiveCandidates([
+  {
+    provider: 'google-books',
+    position: null,
+    work: {
+      key: 'google:first',
+      title: 'First Story',
+      authors: ['Example Author'],
+      genres: [],
+      editions: [{
+        source: 'google-books',
+        externalEditionId: 'g-first',
+        title: 'First Story',
+        authors: ['Example Author'],
+        genres: [],
+        publicationYear: 2020,
+        format: 'hardcover',
+        isbn13: '9780000000999',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'google-books',
+      externalEditionId: 'g-first',
+      title: 'First Story',
+      authors: ['Example Author'],
+      genres: [],
+      publicationYear: 2020,
+      format: 'hardcover',
+      isbn13: '9780000000999',
+      specialFeatures: [],
+    },
+  },
+  {
+    provider: 'open-library',
+    seriesName: 'Other Saga',
+    position: 3,
+    seriesProvider: 'open-library',
+    seriesStructured: true,
+    work: {
+      key: 'open:second',
+      title: 'Completely Different Story',
+      authors: ['Example Author'],
+      genres: [],
+      editions: [{
+        source: 'open-library',
+        externalEditionId: 'ol-second',
+        title: 'Completely Different Story',
+        authors: ['Example Author'],
+        genres: [],
+        publicationYear: 2021,
+        format: 'paperback',
+        isbn13: '9780000000999',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'open-library',
+      externalEditionId: 'ol-second',
+      title: 'Completely Different Story',
+      authors: ['Example Author'],
+      genres: [],
+      publicationYear: 2021,
+      format: 'paperback',
+      isbn13: '9780000000999',
+      specialFeatures: [],
+    },
+  },
+]);
+assert.equal(sharedBadIsbn.length, 2);
 
 // Strong structured exact-work evidence can verify one book.
 const strong = scoreDetectiveEvidence({
