@@ -114,6 +114,11 @@ export const AdminScreen: React.FC = () => {
       ?? null;
   });
   const [reason, setReason] = useState('');
+  const [correctedEmail, setCorrectedEmail] = useState('');
+  const [mergeTargetEmail, setMergeTargetEmail] = useState('');
+  const [mergeConfirmation, setMergeConfirmation] = useState('');
+  const [accountRepairReason, setAccountRepairReason] = useState('');
+  const [accountRepairBusy, setAccountRepairBusy] = useState(false);
   const [courtesyDays, setCourtesyDays] = useState(7);
   const [status, setStatus] = useState(() => cachedDashboard ? 'Owner data loaded.' : '');
   const [loading, setLoading] = useState(false);
@@ -204,6 +209,61 @@ export const AdminScreen: React.FC = () => {
       setStatus(error instanceof Error ? error.message : 'The account change could not be completed.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const correctSelectedEmail = async () => {
+    if (!functions || !selectedUser || !correctedEmail.trim() || !accountRepairReason.trim() || accountRepairBusy) return;
+    setAccountRepairBusy(true);
+    setStatus('');
+    try {
+      const callable = httpsCallable(functions, 'correctAdminUserEmail');
+      await callable({
+        targetUserId: selectedUser.uid,
+        currentEmail: selectedUser.email,
+        newEmail: correctedEmail.trim(),
+        reason: accountRepairReason.trim(),
+      });
+      setCorrectedEmail('');
+      setAccountRepairReason('');
+      setStatus('Reader email corrected. They will need to verify the corrected email address.');
+      await loadDashboard(query);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'The reader email could not be corrected.');
+    } finally {
+      setAccountRepairBusy(false);
+    }
+  };
+
+  const expectedMergePhrase = selectedUser && mergeTargetEmail.trim()
+    ? `MERGE ${selectedUser.email} INTO ${mergeTargetEmail.trim().toLowerCase()}`
+    : '';
+
+  const mergeSelectedAccount = async () => {
+    if (!functions || !selectedUser || !mergeTargetEmail.trim() || !accountRepairReason.trim() || accountRepairBusy) return;
+    if (mergeConfirmation.trim().toLowerCase() !== expectedMergePhrase.toLowerCase()) return;
+    setAccountRepairBusy(true);
+    setStatus('');
+    try {
+      const callable = httpsCallable(functions, 'mergeAdminUserAccounts');
+      await callable({
+        sourceUserId: selectedUser.uid,
+        sourceEmail: selectedUser.email,
+        targetEmail: mergeTargetEmail.trim(),
+        confirmation: mergeConfirmation.trim(),
+        reason: accountRepairReason.trim(),
+      });
+      setMergeTargetEmail('');
+      setMergeConfirmation('');
+      setAccountRepairReason('');
+      cachedSelectedUserId = null;
+      setSelectedUser(null);
+      setStatus('Accounts merged successfully. The source login was removed after its Inkbound data was copied.');
+      await loadDashboard(query);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'The accounts could not be merged.');
+    } finally {
+      setAccountRepairBusy(false);
     }
   };
 
@@ -300,6 +360,56 @@ export const AdminScreen: React.FC = () => {
             <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2"><div className="rounded-xl bg-[var(--ink-surface-soft)] p-3"><dt className="text-[var(--ink-muted)]">Effective plan</dt><dd className="mt-1 font-semibold text-[var(--ink-ivory)]">{effectivePlan}</dd></div><div className="rounded-xl bg-[var(--ink-surface-soft)] p-3"><dt className="text-[var(--ink-muted)]">Last seen</dt><dd className="mt-1 font-semibold text-[var(--ink-ivory)]">{formatDate(selectedUser.lastSeenAt)}</dd></div><div className="rounded-xl bg-[var(--ink-surface-soft)] p-3"><dt className="text-[var(--ink-muted)]">VIP</dt><dd className="mt-1 font-semibold text-[var(--ink-ivory)]">{selectedUser.vipEnabled ? 'Active' : 'Not active'}</dd></div><div className="rounded-xl bg-[var(--ink-surface-soft)] p-3"><dt className="text-[var(--ink-muted)]">Courtesy until</dt><dd className="mt-1 font-semibold text-[var(--ink-ivory)]">{selectedUser.courtesyPremiumUntil ? formatDate(selectedUser.courtesyPremiumUntil) : 'None'}</dd></div></dl>
             <label className="block text-sm font-semibold text-[var(--ink-ivory)]" htmlFor="admin-reason">Reason</label><textarea id="admin-reason" name="adminReason" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" placeholder="Required for the audit log" />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><button type="button" disabled={loading} onClick={() => void runAction(selectedUser.vipEnabled ? 'revokeVip' : 'grantVip')} className="quiet-shelf-primary-action justify-center">{selectedUser.vipEnabled ? 'Revoke VIP' : 'Grant VIP'}</button><select id="admin-courtesy-days" name="adminCourtesyDays" value={courtesyDays} onChange={(event) => setCourtesyDays(Number(event.target.value))} className="min-h-11 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value={1}>1 courtesy day</option><option value={3}>3 courtesy days</option><option value={7}>7 courtesy days</option><option value={14}>14 courtesy days</option><option value={30}>30 courtesy days</option><option value={60}>2 months</option><option value={90}>3 months</option><option value={180}>6 months</option><option value={365}>1 year</option></select><button type="button" disabled={loading} onClick={() => void runAction('addCourtesyTime')} className="quiet-shelf-secondary-action justify-center sm:col-span-2"><Gift />Add courtesy time</button></div>
+
+            <div className="border-t border-[var(--ink-border-subtle)] pt-5">
+              <h3 className="font-serif text-xl text-[var(--ink-ivory)]">Account repair</h3>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Owner-only tools for correcting a mistyped login email or combining an accidental duplicate account. Every action is written to the admin audit log.</p>
+
+              <div className="mt-4 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
+                <p className="font-semibold text-[var(--ink-ivory)]">Correct email address</p>
+                <p className="mt-1 text-xs text-[var(--ink-muted)]">Updates the Firebase login and reader directory. The corrected address is marked unverified until the reader verifies it.</p>
+                <input
+                  value={correctedEmail}
+                  onChange={(event) => setCorrectedEmail(event.target.value)}
+                  type="email"
+                  autoComplete="off"
+                  placeholder="Correct email address"
+                  className="mt-3 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[#0d0910] px-3 text-sm text-[var(--ink-ivory)] outline-none"
+                />
+                <button type="button" disabled={accountRepairBusy || !correctedEmail.trim() || !accountRepairReason.trim()} onClick={() => void correctSelectedEmail()} className="quiet-shelf-secondary-action mt-3 w-full justify-center disabled:opacity-40">
+                  Correct email
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-amber-400/25 bg-amber-400/5 p-4">
+                <p className="font-semibold text-amber-200">Merge duplicate account</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">The selected reader is the source account. Enter the email for the account that should remain. Inkbound copies non-conflicting reader data first and deletes the source login only after the copy succeeds. Paid source subscriptions must be resolved before merging.</p>
+                <input
+                  value={mergeTargetEmail}
+                  onChange={(event) => { setMergeTargetEmail(event.target.value); setMergeConfirmation(''); }}
+                  type="email"
+                  autoComplete="off"
+                  placeholder="Destination account email"
+                  className="mt-3 min-h-11 w-full rounded-xl border border-amber-400/25 bg-[#0d0910] px-3 text-sm text-[var(--ink-ivory)] outline-none"
+                />
+                {expectedMergePhrase && <>
+                  <label className="mt-3 block text-xs font-semibold text-[var(--ink-ivory)]">Type <span className="break-all font-mono text-amber-200">{expectedMergePhrase}</span></label>
+                  <input
+                    value={mergeConfirmation}
+                    onChange={(event) => setMergeConfirmation(event.target.value)}
+                    autoComplete="off"
+                    placeholder={expectedMergePhrase}
+                    className="mt-2 min-h-11 w-full rounded-xl border border-amber-400/25 bg-[#0d0910] px-3 text-sm text-[var(--ink-ivory)] outline-none"
+                  />
+                </>}
+                <button type="button" disabled={accountRepairBusy || !expectedMergePhrase || !accountRepairReason.trim() || mergeConfirmation.trim().toLowerCase() !== expectedMergePhrase.toLowerCase()} onClick={() => void mergeSelectedAccount()} className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-400/35 px-4 text-sm font-bold text-amber-200 disabled:cursor-not-allowed disabled:opacity-40">
+                  Merge into destination account
+                </button>
+              </div>
+
+              <label className="mt-4 block text-sm font-semibold text-[var(--ink-ivory)]">Account repair reason</label>
+              <textarea value={accountRepairReason} onChange={(event) => setAccountRepairReason(event.target.value)} rows={3} placeholder="Required for email corrections and account merges" className="mt-2 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" />
+            </div>
 
             <div className="border-t border-[var(--ink-border-subtle)] pt-5">
               <div className="flex items-start gap-3 rounded-2xl border border-[#c97b7b]/30 bg-[#c97b7b]/5 p-4">
