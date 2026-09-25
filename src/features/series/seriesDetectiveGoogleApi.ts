@@ -55,6 +55,7 @@ export interface DetectiveGoogleCatalog {
 }
 
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
+const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
 const DETAIL_LIMIT = 6;
 const detailCache = new Map<string, DetectiveGoogleVolume>();
 const seriesTitleCache = new Map<string, string>();
@@ -102,6 +103,7 @@ const directSearch = async (
     startIndex: String(startIndex),
     maxResults: String(maxResults),
   });
+  if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
   if (!response.ok) throw new Error(`Google Books Detective search failed (${response.status}).`);
   return response.json() as Promise<GooglePayload>;
@@ -167,6 +169,7 @@ const fetchSeriesTitles = async (
   try {
     const params = new URLSearchParams();
     missingIds.forEach((id) => params.append('series_id', id));
+    if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
     const response = await fetch(`https://www.googleapis.com/books/v1/series/get?${params.toString()}`, { signal });
     if (!response.ok) return {};
     const payload = await response.json() as { series?: Array<{ seriesId?: string; title?: string }> };
