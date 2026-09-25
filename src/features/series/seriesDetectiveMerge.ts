@@ -18,6 +18,30 @@ export interface DetectiveMergeCandidate {
 
 const nonEmpty = (value?: string): string | undefined => value?.trim() || undefined;
 
+const comparableWorkTitle = (value?: string): string => {
+  const raw = value?.trim() ?? '';
+  if (!raw) return '';
+  const withoutSeriesSuffix = raw.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
+  return normalizeDetectiveText(withoutSeriesSuffix);
+};
+
+const anyExactIsbnAcrossWork = (
+  left: DetectiveMergeCandidate,
+  right: DetectiveMergeCandidate,
+): boolean => {
+  const leftIsbns = new Set(
+    left.work.editions
+      .flatMap((edition) => [edition.isbn13, edition.isbn10])
+      .map(compactDetectiveIsbn)
+      .filter(Boolean),
+  );
+  return right.work.editions
+    .flatMap((edition) => [edition.isbn13, edition.isbn10])
+    .map(compactDetectiveIsbn)
+    .filter(Boolean)
+    .some((isbn) => leftIsbns.has(isbn));
+};
+
 const sameAuthor = (left: string[], right: string[]): boolean => {
   const leftIds = new Set(left.map(canonicalDetectiveAuthor).filter(Boolean));
   const rightIds = right.map(canonicalDetectiveAuthor).filter(Boolean);
@@ -27,9 +51,21 @@ const sameAuthor = (left: string[], right: string[]): boolean => {
 export const detectiveCandidatesAreSameWork = (
   left: DetectiveMergeCandidate,
   right: DetectiveMergeCandidate,
-): boolean =>
-  normalizeDetectiveText(left.work.title) === normalizeDetectiveText(right.work.title)
-  && sameAuthor(left.work.authors, right.work.authors);
+): boolean => {
+  if (!sameAuthor(left.work.authors, right.work.authors)) return false;
+  if (anyExactIsbnAcrossWork(left, right)) return true;
+
+  const leftTitle = comparableWorkTitle(left.work.title);
+  const rightTitle = comparableWorkTitle(right.work.title);
+  if (!leftTitle || !rightTitle) return false;
+  if (leftTitle === rightTitle) return true;
+
+  // Conservative subtitle compatibility: "Title" and "Title: Subtitle" may
+  // represent the same work, but short/generic titles never use containment.
+  const shorter = leftTitle.length <= rightTitle.length ? leftTitle : rightTitle;
+  const longer = shorter === leftTitle ? rightTitle : leftTitle;
+  return shorter.length >= 8 && longer.startsWith(`${shorter} `);
+};
 
 const exactIsbnMatch = (left: BookSearchEdition, right: BookSearchEdition): boolean => {
   const left13 = compactDetectiveIsbn(left.isbn13);
