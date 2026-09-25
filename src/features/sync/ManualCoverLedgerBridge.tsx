@@ -10,10 +10,9 @@ import {
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
-import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { manualCoverLedgerBaselineKey, SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
-const LEDGER_BASELINE_PREFIX = 'inkbound_manual_cover_ledger_baseline_v1_';
 
 interface ManualCoverLedgerEntry {
   bookId: string;
@@ -48,13 +47,9 @@ function collectManualAssignments(books: UserBookRecord[]): ManualCoverLedgerEnt
   });
 }
 
-function baselineKey(uid: string) {
-  return `${LEDGER_BASELINE_PREFIX}${uid}`;
-}
-
 function readPersistedSignatures(uid: string): Map<string, string> {
   try {
-    const raw = getRuntimeStorage().getItem(baselineKey(uid));
+    const raw = getRuntimeStorage().getItem(manualCoverLedgerBaselineKey(uid));
     if (!raw) return new Map();
     const parsed = JSON.parse(raw) as PersistedSignatureState;
     return new Map(Object.entries(parsed));
@@ -68,7 +63,7 @@ function writePersistedSignatures(uid: string, signatures: Map<string, string>) 
   signatures.forEach((signature, bookId) => {
     state[bookId] = signature;
   });
-  getRuntimeStorage().setItem(baselineKey(uid), JSON.stringify(state));
+  getRuntimeStorage().setItem(manualCoverLedgerBaselineKey(uid), JSON.stringify(state));
 }
 
 /**
