@@ -373,8 +373,11 @@ if (!cloudDataRefreshBoundary.includes('fullReconciliationVersionKey(uid)') || !
 }
 
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
-if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
-  violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
+if (!largeBrowserStorage.includes('originalSetItem!.call(this, key, normalized)')) {
+  violations.push('largeBrowserStorage.ts: managed web data must synchronously write the canonical write-ahead copy before IndexedDB mirroring.');
+}
+if (!largeBrowserStorage.includes('const verified = originalGetItem!.call(this, key)')) {
+  violations.push('largeBrowserStorage.ts: managed web data must read back the synchronous write-ahead copy before reporting success.');
 }
 if (!largeBrowserStorage.includes('cache.get(key) !== value')) {
   violations.push('largeBrowserStorage.ts: startup must let newer localStorage repair stale IndexedDB cache state.');
