@@ -388,6 +388,12 @@ if (largeBrowserStorage.includes('if (startupHydrationPending && isStartupKey(ke
 if (!largeBrowserStorage.includes('Inkbound blocked a write to')) {
   violations.push('largeBrowserStorage.ts: blocked startup writes must surface failure to the canonical mutation boundary');
 }
+if (!largeBrowserStorage.includes('const verified = originalGetItem!.call(this, key)')) {
+  violations.push('largeBrowserStorage.ts: canonical writes must read back the synchronous write-ahead copy before reporting success');
+}
+if (!largeBrowserStorage.includes('if (verified !== normalized)')) {
+  violations.push('largeBrowserStorage.ts: failed write verification must fail closed before the UI publishes canonical state');
+}
 
 const sourceOfTruthDoc = read('docs/DATA_SOURCE_OF_TRUTH.md');
 for (const required of [
