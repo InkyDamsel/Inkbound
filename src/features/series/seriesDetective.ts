@@ -25,6 +25,10 @@ import {
   searchDetectiveOpenLibrarySeries,
   type DetectiveOpenLibraryCandidate,
 } from './seriesDetectiveOpenLibraryApi';
+import {
+  mergeDetectiveCandidates,
+  type DetectiveMergeCandidate,
+} from './seriesDetectiveMerge';
 
 export interface SeriesDetectiveMatch {
   name: string;
@@ -217,14 +221,13 @@ const detectivePublicationYear = (value?: string): number => {
   return match ? Number(match[0]) : 0;
 };
 
-const candidateFromVolume = (
+const mergeCandidateFromGoogleVolume = (
   volume: DetectiveGoogleVolume,
   catalog: DetectiveGoogleCatalog,
   wantedSeriesName: string,
   wantedAuthor: string,
-): SeriesDetectiveCandidate | null => {
+): DetectiveMergeCandidate | null => {
   const metadata = knownSeriesMetadata(volume, catalog, wantedSeriesName);
-  if (!metadata) return null;
   const info = volume.volumeInfo;
   const title = info?.title?.trim();
   if (!title) return null;
@@ -239,7 +242,12 @@ const candidateFromVolume = (
       return Boolean(id && catalog.seriesTitlesById[id]);
     }),
   );
+
+  // Metadata-thin Google records are still useful supplements when the author
+  // matches. They cannot become a Series Detective result by themselves unless
+  // another source supplies compatible series evidence for the same work.
   if (!hasStructuredSeries && !exactAuthor) return null;
+
   const edition: BookSearchEdition = {
     source: 'google-books',
     externalEditionId: volume.id,
@@ -270,7 +278,13 @@ const candidateFromVolume = (
     editions: [edition],
   };
 
-  return { work, edition, seriesName: metadata.name, position: metadata.position };
+  return {
+    work,
+    edition,
+    seriesName: metadata?.name,
+    position: metadata?.position ?? null,
+    provider: 'google-books',
+  };
 };
 
 export async function findMissingSeriesBooks(
@@ -311,6 +325,27 @@ export async function findMissingSeriesBooks(
   ]);
   const seen = new Map<string, SeriesDetectiveCandidate>();
 
+  const providerCandidates: DetectiveMergeCandidate[] = [];
+
+  catalogs.forEach((catalog) => {
+    catalog.items.forEach((volume) => {
+      const candidate = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
+      if (candidate) providerCandidates.push(candidate);
+    });
+  });
+
+  openLibraryCandidates.forEach((candidate: DetectiveOpenLibraryCandidate) => {
+    providerCandidates.push({
+      work: candidate.work,
+      edition: candidate.edition,
+      seriesName: candidate.seriesName,
+      position: candidate.position,
+      provider: 'open-library',
+    });
+  });
+
+  const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates);
+
   const addCandidate = (candidate: SeriesDetectiveCandidate) => {
     const titleKey = normalizeDetectiveText(candidate.work.title);
     const isbnKey = compactDetectiveIsbn(candidate.edition.isbn13 ?? candidate.edition.isbn10);
@@ -323,14 +358,8 @@ export async function findMissingSeriesBooks(
     if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
   };
 
-  catalogs.forEach((catalog) => {
-    catalog.items.forEach((volume) => {
-      const candidate = candidateFromVolume(volume, catalog, seriesName, author);
-      if (candidate) addCandidate(candidate);
-    });
-  });
-
-  openLibraryCandidates.forEach((candidate: DetectiveOpenLibraryCandidate) => {
+  mergedProviderCandidates.forEach((candidate) => {
+    if (!candidate.seriesName || !detectiveSeriesNamesCompatible(candidate.seriesName, seriesName)) return;
     addCandidate({
       work: candidate.work,
       edition: candidate.edition,
