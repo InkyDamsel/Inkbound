@@ -11,8 +11,8 @@ interface IconStepRatingProps {
   allowZero?: boolean;
 }
 
-export const ChiliPepperIcon = ({ className = '' }: { className?: string }) => (
-  <span aria-hidden="true" className={`inline-flex items-center justify-center leading-none ${className}`}>🌶️</span>
+export const ChiliPepperIcon = ({ className = '', style }: { className?: string; style?: React.CSSProperties }) => (
+  <span aria-hidden="true" className={`inline-flex items-center justify-center leading-none ${className}`} style={style}>🌶️</span>
 );
 
 function fillForStep(value: number | undefined, step: number): 0 | 50 | 100 {
@@ -69,9 +69,14 @@ export const IconStepRating: React.FC<IconStepRatingProps> = ({
                     aria-hidden="true"
                     className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 ${iconSizeClass}`}
                   >
-                    <span className="block h-full w-1/2 overflow-hidden">
-                      <ChiliPepperIcon className={`${iconSizeClass} max-w-none`} />
-                    </span>
+                    <ChiliPepperIcon
+                      className={`absolute inset-0 ${iconSizeClass}`}
+                      style={{ clipPath: 'inset(0 50% 0 0)' }}
+                    />
+                    <ChiliPepperIcon
+                      className={`absolute inset-0 ${iconSizeClass} grayscale opacity-35`}
+                      style={{ clipPath: 'inset(0 0 0 50%)' }}
+                    />
                   </span>
                 ) : (
                   <ChiliPepperIcon className={`${iconSizeClass} ${fill === 100 ? '' : emptyClass}`} />
