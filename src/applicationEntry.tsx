@@ -149,20 +149,17 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
  * React's effect subscribes. Without the state probe that browser would wait for
  * an event that already fired and none of the cloud sync bridges would ever mount.
  *
- * Native Android does not use this browser IndexedDB startup path.
+ * Android currently uses the same WebView storage boundary unless/until a
+ * dedicated native RuntimeStorageAdapter is installed. It must therefore use
+ * the same protected IndexedDB hydration path as web; skipping it leaves large
+ * local-only libraries exposed to WebView localStorage quota and startup races.
  */
 const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
-  const nativeRuntime = isNativeRuntime();
   const [ready, setReady] = useState(
-    () => nativeRuntime || isLargeBrowserStorageHydrated(),
+    () => isLargeBrowserStorageHydrated(),
   );
 
   useEffect(() => {
-    if (nativeRuntime) {
-      setReady(true);
-      return undefined;
-    }
-
     const handleHydrated = () => setReady(true);
     window.addEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
 
@@ -171,7 +168,7 @@ const BrowserStorageHydrationGate = ({ children }: PropsWithChildren) => {
     if (isLargeBrowserStorageHydrated()) setReady(true);
 
     return () => window.removeEventListener(LARGE_BROWSER_STORAGE_HYDRATED_EVENT, handleHydrated);
-  }, [nativeRuntime]);
+  }, []);
 
   return ready ? <>{children}</> : null;
 };
@@ -211,7 +208,9 @@ const InkboundApplication = () => (
 );
 
 export async function mountApplication(rootElement: HTMLElement) {
-  if (!isNativeRuntime()) prepareLargeBrowserStorageForStartup();
+  // All current runtimes use the canonical WebView/browser storage adapter.
+  // Protect sync-critical local data before React can mount and write defaults.
+  prepareLargeBrowserStorageForStartup();
 
   isolateDevelopmentBrowserStorage();
   purgeUnverifiedLegacyImportMetadata();
@@ -237,11 +236,9 @@ export async function mountApplication(rootElement: HTMLElement) {
     </StrictMode>,
   );
 
-  if (!isNativeRuntime()) {
-    window.setTimeout(() => {
-      void hydrateLargeBrowserStorage().finally(() => {
-        void hydrateDeferredLargeBrowserStorage();
-      });
-    }, 0);
-  }
+  window.setTimeout(() => {
+    void hydrateLargeBrowserStorage().finally(() => {
+      void hydrateDeferredLargeBrowserStorage();
+    });
+  }, 0);
 }
