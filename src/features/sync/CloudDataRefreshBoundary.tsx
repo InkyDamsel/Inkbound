@@ -8,7 +8,7 @@ import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBoo
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
 import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
 import { INKBOUND_CLOUD_DATA_EVENT, notifyCloudDataUpdated } from './cloudSyncEvents';
-import { FULL_RECONCILIATION_VERSION, fullReconciliationVersionKey, SYNC_STORAGE_KEYS } from './storageKeys';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_STORAGE_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -28,7 +28,10 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
     if (!raw || !raw.trim().startsWith('[')) return false;
     const ownerUid = storage.getItem(OWNER_UID_KEY);
     if (ownerUid && ownerUid !== uid) return false;
-    if (storage.getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
+    // An existing local working copy must never be hidden behind a
+    // reconciliation-version bump. Reconciliation/migration runs in the
+    // background; the reader's established local library remains immediately
+    // available and protected while that work completes.
     if (ownerUid) return true;
     // Upgrade path for pre-owner-marker builds. A legacy non-empty library is a
     // real working copy; a bare [] can be App's fresh initialization and must
