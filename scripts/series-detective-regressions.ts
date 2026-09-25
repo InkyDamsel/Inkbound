@@ -5,6 +5,7 @@ import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/boo
 import {
   buildSeriesDetectionQueries,
   hasKnownSeriesContextEvidence,
+  inferKnownSeriesFromBibliographicDescription,
   inferKnownSeriesFromBibliographicText,
   plausibleSeriesSubtitle,
   scoreSeriesEvidence,
@@ -148,6 +149,31 @@ assert.deepEqual(
 );
 assert.equal(
   inferKnownSeriesFromBibliographicText('Unrelated Book: Different Saga #2', 'Crown Trials'),
+  null,
+);
+
+// Publisher descriptions are bibliographic evidence too. Many catalogs omit a
+// structured series field but explicitly state the installment relationship in
+// the publisher copy.
+assert.deepEqual(
+  inferKnownSeriesFromBibliographicDescription(
+    'The Elite is the second book in The Selection series.',
+    'selection series',
+  ),
+  { name: 'selection series', position: 2 },
+);
+assert.deepEqual(
+  inferKnownSeriesFromBibliographicDescription(
+    'A Touch of Ruin is the second novel in the Hades x Persephone Saga.',
+    'Hades x Persephone Saga',
+  ),
+  { name: 'Hades x Persephone Saga', position: 2 },
+);
+assert.equal(
+  inferKnownSeriesFromBibliographicDescription(
+    'A sweeping story about a difficult selection process.',
+    'Selection series',
+  ),
   null,
 );
 
@@ -387,6 +413,11 @@ assert.match(
   detectiveRuntimeSource,
   /const contextualCatalog = await searchSeriesContextCatalog\(seriesName\)/,
   'Series-context discovery must be additive even after other candidates are found',
+);
+assert.match(
+  detectiveRuntimeSource,
+  /inferKnownSeriesFromBibliographicDescription\(description, wantedSeriesName\)/,
+  'Series Detective must use explicit publisher-description series evidence',
 );
 assert.doesNotMatch(
   detectiveRuntimeSource,
