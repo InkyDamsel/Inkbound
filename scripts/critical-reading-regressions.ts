@@ -30,6 +30,7 @@ import {
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
 import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
+import { normalizeBookRating, normalizeSpiceLevel } from '../src/features/reading/bookRating';
 import { mergeIncomingBookLoanState, withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
   shouldApplyRemoteTombstone,
@@ -210,6 +211,25 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(report.duplicateSessionIdCount, 0);
   assert.equal(report.orphanSessionCount, 0);
   assert.equal(report.healthy, true);
+}
+
+// Ratings support half-star precision and spice stays within the canonical 0-5 scale.
+{
+  assert.equal(normalizeBookRating(4.49), 4.5);
+  assert.equal(normalizeBookRating(4.5), 4.5);
+  assert.equal(normalizeBookRating(5.8), 5);
+  assert.equal(normalizeBookRating(0.1), 0.5);
+  assert.equal(normalizeSpiceLevel(3.4), 3);
+  assert.equal(normalizeSpiceLevel(8), 5);
+  assert.equal(normalizeSpiceLevel(-2), 0);
+
+  const normalizedRatings = normalizeLibraryRecord({
+    ...baseBook(),
+    rating: 4.5,
+    spiceLevel: 4,
+  });
+  assert.equal(normalizedRatings.rating, 4.5);
+  assert.equal(normalizedRatings.spiceLevel, 4);
 }
 
 // Passive normalization must never erase library-loan metadata. A stale device
