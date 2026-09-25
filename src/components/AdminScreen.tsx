@@ -218,15 +218,18 @@ export const AdminScreen: React.FC = () => {
     setStatus('');
     try {
       const callable = httpsCallable(functions, 'correctAdminUserEmail');
-      await callable({
+      const response = await callable({
         targetUserId: selectedUser.uid,
         currentEmail: selectedUser.email,
         newEmail: correctedEmail.trim(),
         reason: accountRepairReason.trim(),
       });
+      const result = response.data as { verificationEmailSent?: boolean; notificationError?: string | null };
       setCorrectedEmail('');
       setAccountRepairReason('');
-      setStatus('Reader email corrected. They will need to verify the corrected email address.');
+      setStatus(result.verificationEmailSent === false
+        ? `Reader email corrected, but the verification email could not be sent${result.notificationError ? `: ${result.notificationError}` : '.'}`
+        : 'Reader email corrected and a verification email was sent to the new address.');
       await loadDashboard(query);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'The reader email could not be corrected.');
@@ -246,19 +249,22 @@ export const AdminScreen: React.FC = () => {
     setStatus('');
     try {
       const callable = httpsCallable(functions, 'mergeAdminUserAccounts');
-      await callable({
+      const response = await callable({
         sourceUserId: selectedUser.uid,
         sourceEmail: selectedUser.email,
         targetEmail: mergeTargetEmail.trim(),
         confirmation: mergeConfirmation.trim(),
         reason: accountRepairReason.trim(),
       });
+      const result = response.data as { notificationSent?: boolean; notificationError?: string | null };
       setMergeTargetEmail('');
       setMergeConfirmation('');
       setAccountRepairReason('');
       cachedSelectedUserId = null;
       setSelectedUser(null);
-      setStatus('Accounts merged successfully. The source login was removed after its Inkbound data was copied.');
+      setStatus(result.notificationSent === false
+        ? `Accounts merged successfully, but the completion email could not be sent${result.notificationError ? `: ${result.notificationError}` : '.'}`
+        : 'Accounts merged successfully. The source login was removed and a confirmation email was sent to the destination account.');
       await loadDashboard(query);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'The accounts could not be merged.');
