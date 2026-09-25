@@ -118,6 +118,11 @@ export const bootstrapOwner = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, asy
 
 export const syncUserDirectory = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const auth = requireAuthenticated(request); const email = normalizeEmail(auth.token.email);
+  const input = request.data as Record<string, unknown> | undefined;
+  const platform = typeof input?.platform === 'string' ? input.platform.trim().slice(0, 40) : '';
+  const appVersion = typeof input?.appVersion === 'string' ? input.appVersion.trim().slice(0, 80) : '';
+  const buildNumber = typeof input?.buildNumber === 'string' ? input.buildNumber.trim().slice(0, 80) : '';
+  const userAgent = typeof input?.userAgent === 'string' ? input.userAgent.trim().slice(0, 500) : '';
   const directoryRef = db.doc(`userDirectory/${auth.uid}`);
   const existingDirectory = await directoryRef.get();
   const existingDisplayName = typeof existingDirectory.get('displayName') === 'string' ? String(existingDirectory.get('displayName')).trim() : '';
@@ -131,6 +136,10 @@ export const syncUserDirectory = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
     photoUrl: existingPhotoUrl || tokenPhotoUrl,
     emailVerified: auth.token.email_verified === true,
     lastSeenAt: FieldValue.serverTimestamp(),
+    ...(platform ? { lastPlatform: platform } : {}),
+    ...(appVersion ? { lastAppVersion: appVersion } : {}),
+    ...(buildNumber ? { lastBuildNumber: buildNumber } : {}),
+    ...(userAgent ? { lastUserAgent: userAgent } : {}),
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
   const entitlementRef = db.doc(`entitlements/${auth.uid}`); const entitlement = await entitlementRef.get(); const seedOwnerVipInDev = IS_FUNCTIONS_EMULATOR && OWNER_EMAILS.has(email);
