@@ -249,9 +249,14 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
               <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1); setExpandedSeriesId(null); }} placeholder="Search series or title" className="h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-10 pr-4 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55" />
             </label>
-            <label className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] px-3 text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">
-              <span>Sort</span>
-              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)} className="!w-auto min-w-[92px] border-0 bg-transparent p-0 text-sm font-semibold normal-case tracking-normal text-[var(--ink-ivory)] outline-none" aria-label="Sort series">
+            <label className="flex items-center gap-3 text-sm font-medium text-[var(--ink-muted)]">
+              Sort
+              <select
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)}
+                className="inkbound-select min-h-11 min-w-[150px]"
+                aria-label="Sort series"
+              >
                 {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
