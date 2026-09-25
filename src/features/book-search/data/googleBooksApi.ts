@@ -424,12 +424,17 @@ async function requestCanonicalGoogleBooksPayload(
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  const payload = await requestCanonicalGoogleBooksPayload(query, signal);
+  // Keep normal Add Reading Material search behavior aligned with the proven
+  // live Build 27 pipeline. General search must not inherit Series Detective's
+  // additive catalog hardening or provider fanout.
+  const payload = functions && auth?.currentUser
+    ? await requestProtectedGoogleBooks(query, signal)
+    : await requestDirectGoogleBooks(query, signal);
 
   const editions = (payload.items ?? [])
     .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
     .filter((item): item is BookSearchEdition => Boolean(item));
-  const groups = hardenCatalogGroups(groupGoogleEditions(editions));
+  const groups = groupGoogleEditions(editions);
   return { groups, totalItems: payload.totalItems ?? groups.length };
 }
 
