@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
+import { buildSeriesLibrary } from '../src/features/series/seriesLibrary';
 import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
 import {
@@ -490,6 +491,47 @@ const sharedBadIsbn = mergeDetectiveCandidates([
 ]);
 assert.equal(sharedBadIsbn.length, 2);
 
+// Provider naming aliases must also collapse in the actual Series library,
+ // not only inside Detective evidence comparison.
+const aliasBookOne = {
+  id: 'hades-1',
+  work: {
+    title: 'A Touch of Darkness',
+    author: 'Scarlett St. Clair',
+    seriesName: 'Hades x Persephone Saga',
+    seriesOrder: 1,
+    publicationYear: 2019,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'hades-ed-1', format: 'paperback' }],
+  activeEditionId: 'hades-ed-1',
+} as unknown as UserBookRecord;
+const aliasBookTwo = {
+  id: 'hades-2',
+  work: {
+    title: 'A Touch of Ruin',
+    author: 'Scarlett St. Clair',
+    seriesName: 'Hades & Persephone',
+    seriesOrder: 2,
+    publicationYear: 2020,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'hades-ed-2', format: 'paperback' }],
+  activeEditionId: 'hades-ed-2',
+} as unknown as UserBookRecord;
+const aliasSeries = buildSeriesLibrary([aliasBookOne, aliasBookTwo]);
+assert.equal(aliasSeries.length, 1);
+assert.equal(aliasSeries[0].books.length, 2);
+assert.equal(aliasSeries[0].books[0].position, 1);
+assert.equal(aliasSeries[0].books[1].position, 2);
+
+// A branded title with no installment number is not proof of membership.
+assert.equal(inferDetectiveSeriesFromTitle('Disney A Twisted Tale'), null);
+
+// Same work with/without a bibliographic suffix must merge; unrelated works
+// sharing an ISBN must remain separate.
 // Strong structured exact-work evidence can verify one book.
 const strong = scoreDetectiveEvidence({
   seriesName: 'Dream Harbor',
