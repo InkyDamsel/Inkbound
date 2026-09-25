@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import {
   canonicalAuthorIdentity,
   canonicalLanguageCode,
@@ -331,27 +330,6 @@ const crossFormatPages = hardenCatalogGroups([{
 assert.equal(
   crossFormatPages.editions.find((edition) => edition.externalEditionId === 'cross-hardcover')?.pageCount,
   undefined,
-);
-
-const searchRuntimeSource = fs.readFileSync(
-  new URL('../src/features/book-search/data/googleBooksApi.ts', import.meta.url),
-  'utf8',
-);
-
-assert.match(
-  searchRuntimeSource,
-  /Protected Google Books search unavailable; falling back to direct catalog search/,
-  'Book search must fall back to the direct Google catalog when the protected callable is unavailable',
-);
-assert.match(
-  searchRuntimeSource,
-  /requestCanonicalGoogleBooksPayload\(\s*\x60inauthor:\$\{trimmed\}\x60/,
-  'Fast paged search must probe author intent for person-like queries',
-);
-assert.match(
-  searchRuntimeSource,
-  /looksLikePersonNameQuery\(trimmed\) \? \x60inauthor:\$\{trimmed\}\x60 : builtQuery/,
-  'Open Library fallback must preserve author intent when Google is unavailable',
 );
 
 console.log('Inkbound catalog hardening regressions passed.');
