@@ -1,6 +1,7 @@
 import React, { PropsWithChildren, useEffect, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage, readRuntimeJson } from '../../platform/runtimeStorage';
 import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
@@ -41,6 +42,7 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
   const { user } = useAccountSync();
   const uid = user?.uid;
+  const localOnlyDevelopment = import.meta.env.DEV && !db;
   const [readyUid, setReadyUid] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       return undefined;
     }
 
-    if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
+    if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
     else setReadyUid(null);
 
     // This boundary only gates a genuinely new/unhydrated account. Existing
@@ -67,7 +69,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       recoverIncompleteLatestImport();
       reconcileRepeatedImportHistory(readStoredBooks());
 
-      if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
+      if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
 
       void synchronizeProfileMedia(uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
@@ -82,7 +84,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, refresh);
       unsubscribeResume();
     };
-  }, [uid]);
+  }, [uid, localOnlyDevelopment]);
 
   if (uid && readyUid !== uid) {
     return <main className="grid min-h-[100dvh] place-items-center bg-[var(--ink-page)] px-6 text-center text-[var(--ink-ivory)]">Opening Inkbound...</main>;
