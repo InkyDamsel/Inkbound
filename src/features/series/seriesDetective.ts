@@ -18,6 +18,7 @@ import {
 } from './seriesDetectiveEvidence';
 import {
   searchDetectiveGoogleBooks,
+  searchDetectiveGoogleBooksPage,
   type DetectiveGoogleCatalog,
   type DetectiveGoogleVolume,
 } from './seriesDetectiveGoogleApi';
@@ -148,6 +149,16 @@ const seriesMetadata = (
 
   if (name) return { name, position };
 
+  const bibliographic = volume.inkboundBibliographicSeries;
+  if (bibliographic?.name?.trim()) {
+    return {
+      name: bibliographic.name.trim(),
+      position: typeof bibliographic.position === 'number' && Number.isFinite(bibliographic.position)
+        ? bibliographic.position
+        : position,
+    };
+  }
+
   return inferDetectiveSeriesFromTitle(volume.volumeInfo?.title)
     ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
 };
@@ -235,19 +246,92 @@ const safeDetectiveSearch = async (
   }
 };
 
+const SERIES_DISCOVERY_MAX_PAGES = 4;
+
+const collectGoogleAuthorCatalogs = async (
+  author: string,
+  signal?: AbortSignal,
+): Promise<DetectiveGoogleCatalog[]> => {
+  const catalogs: DetectiveGoogleCatalog[] = [];
+  let startIndex = 0;
+
+  for (let page = 0; page < SERIES_DISCOVERY_MAX_PAGES; page += 1) {
+    try {
+      const result = await searchDetectiveGoogleBooksPage(
+        `inauthor:"${author}"`,
+        startIndex,
+        40,
+        signal,
+      );
+      catalogs.push({ items: result.items, seriesTitlesById: result.seriesTitlesById });
+      if (!result.hasMore || result.nextStartIndex <= startIndex) break;
+      startIndex = result.nextStartIndex;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Series Detective paged author discovery failed.', error);
+      break;
+    }
+  }
+
+  return catalogs;
+};
+
+const hardcoverDetectionCandidates = (
+  groups: BookSearchWorkGroup[],
+  wantedAuthor: string,
+): DetectiveMergeCandidate[] => {
+  const wanted = canonicalDetectiveAuthor(wantedAuthor);
+  return groups.flatMap((work) => {
+    const exactAuthor = !wanted || work.authors.some((author) => canonicalDetectiveAuthor(author) === wanted);
+    if (!exactAuthor) return [];
+
+    return work.editions.flatMap((edition) => {
+      const seriesName = edition.seriesName?.trim();
+      if (!seriesName) return [];
+      return [{
+        work,
+        edition,
+        seriesName,
+        position: typeof edition.seriesOrder === 'number' && Number.isFinite(edition.seriesOrder)
+          ? edition.seriesOrder
+          : null,
+        provider: 'hardcover' as const,
+        seriesProvider: 'hardcover' as const,
+        seriesStructured: true,
+      }];
+    });
+  });
+};
+
 export async function detectSeriesForBook(
   book: UserBookRecord,
   signal?: AbortSignal,
 ): Promise<SeriesDetectiveMatch | null> {
   const { workQuery, identifiers } = buildSeriesDetectionQueries(book);
-  const queries = [workQuery, ...identifiers];
-  const [catalogs, openLibraryCandidates] = await Promise.all([
-    Promise.all(queries.map(async (query, index) => ({
+  const [workAndIdentifierCatalogs, authorCatalogs, openLibraryExact, openLibraryAuthor, hardcoverAuthor] = await Promise.all([
+    Promise.all([workQuery, ...identifiers].map(async (query, index) => ({
       sourceId: `google-query-${index}`,
       catalog: await safeDetectiveSearch(query, signal),
     }))),
+    collectGoogleAuthorCatalogs(book.work.author, signal),
     searchDetectiveOpenLibraryBook(book.work.title, book.work.author, signal),
+    searchDetectiveOpenLibraryAuthor(book.work.author, signal),
+    searchHardcover(book.work.author),
   ]);
+
+  const catalogs = [
+    ...workAndIdentifierCatalogs,
+    ...authorCatalogs.map((catalog, index) => ({
+      sourceId: `google-author-page-${index}`,
+      catalog,
+    })),
+  ];
+
+  const libraryIdentifiers = new Set(book.editions.flatMap((edition) =>
+    [edition.isbn13, edition.isbn10, edition.isbn].map(compactDetectiveIsbn).filter(Boolean),
+  ));
+  const wantedTitle = normalizeDetectiveText(book.work.title);
+  const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
 
   const googleEvidence = catalogs.flatMap(({ sourceId, catalog }) =>
     catalog.items
@@ -255,11 +339,7 @@ export async function detectSeriesForBook(
       .filter((item): item is SeriesDetectionEvidence => Boolean(item)),
   );
 
-  const libraryIdentifiers = new Set(book.editions.flatMap((edition) =>
-    [edition.isbn13, edition.isbn10, edition.isbn].map(compactDetectiveIsbn).filter(Boolean),
-  ));
-  const wantedTitle = normalizeDetectiveText(book.work.title);
-  const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
+  const openLibraryCandidates = [...openLibraryExact, ...openLibraryAuthor];
   const openLibraryEvidence = openLibraryCandidates.map((candidate) => scoreDetectiveEvidence({
     seriesName: candidate.seriesName,
     position: candidate.position,
@@ -286,9 +366,14 @@ export async function detectSeriesForBook(
     catalog.items.forEach((volume) => {
       const candidate = mergeCandidateFromGoogleVolume(volume, catalog, undefined, book.work.author);
       if (!candidate) return;
+
       const sameTitle = normalizeDetectiveText(candidate.work.title) === wantedTitle
         || normalizeDetectiveText(candidate.edition.title) === wantedTitle;
-      if (sameTitle) providerCandidates.push(candidate);
+      const exactIsbn = [candidate.edition.isbn13, candidate.edition.isbn10]
+        .map(compactDetectiveIsbn)
+        .filter(Boolean)
+        .some((isbn) => libraryIdentifiers.has(isbn));
+      if (sameTitle || exactIsbn) providerCandidates.push(candidate);
     });
   });
 
@@ -304,6 +389,8 @@ export async function detectSeriesForBook(
     });
   });
 
+  providerCandidates.push(...hardcoverDetectionCandidates(hardcoverAuthor.groups, book.work.author));
+
   const mergedEvidence = mergeDetectiveCandidates(providerCandidates)
     .filter((candidate): candidate is DetectiveMergeCandidate & { seriesName: string } => Boolean(candidate.seriesName))
     .map((candidate) => scoreDetectiveEvidence({
@@ -313,7 +400,7 @@ export async function detectSeriesForBook(
       authors: candidate.work.authors,
       isbn10: candidate.edition.isbn10,
       isbn13: candidate.edition.isbn13,
-      sourceId: 'merged-providers',
+      sourceId: `merged-${candidate.seriesProvider ?? candidate.provider}`,
       recordId: `merged:${normalizeDetectiveText(candidate.work.title)}:${canonicalDetectiveAuthor(candidate.work.authors[0])}`,
       structured: candidate.seriesStructured === true,
       exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
