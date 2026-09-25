@@ -254,15 +254,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
 
-      const catalogResponse = await searchGoogleBooks(trimmedQuery);
+      const catalogResponse = await searchGoogleBooksPage(trimmedQuery, 0);
       const resolvedAuthorIntent = inferCatalogAuthorIntent(catalogResponse.groups, trimmedQuery) ?? null;
       setResults(catalogResponse.groups);
       setSearchPreferredAuthor(resolvedAuthorIntent);
-      setSearchNextStartIndex(40);
-      setSearchProviderTotal(catalogResponse.totalItems || null);
-      // Initial search intentionally uses one canonical Google page (40 max).
-      // Only an explicit Load More action may request the next Google page.
-      setSearchHasMore((catalogResponse.totalItems || 0) > 40);
+      setSearchNextStartIndex(catalogResponse.nextStartIndex);
+      setSearchProviderTotal(catalogResponse.providerTotalItems || null);
+      // Initial search returns the first canonical catalog page immediately.
+      // Slower cross-provider enrichment belongs to explicit follow-up paths,
+      // never the blocking spinner for ordinary title/author search.
+      setSearchHasMore(catalogResponse.hasMore);
     } catch (error) {
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
