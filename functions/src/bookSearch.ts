@@ -26,6 +26,11 @@ interface SearchResult {
   slug?: string;
 }
 
+interface HardcoverSeriesMembership {
+  position?: number;
+  series?: { id?: number | string; name?: string };
+}
+
 interface HardcoverBook {
   id?: number | string;
   title?: string;
@@ -33,6 +38,7 @@ interface HardcoverBook {
   description?: string;
   release_year?: number;
   image?: { url?: string };
+  book_series?: HardcoverSeriesMembership[];
 }
 
 interface HardcoverEdition {
@@ -177,12 +183,16 @@ async function hardcoverCatalog(query: string) {
         `query SearchBookDetails($ids: [Int!]!) {
           books(where: { id: { _in: $ids } }, limit: 80) {
             id title subtitle description release_year image { url }
+            book_series { position series { id name } }
           }
           editions(where: { book_id: { _in: $ids } }, limit: 80) {
             id book_id title pages isbn_10 isbn_13 release_date edition_format
             image { url }
             publisher { name }
-            book { id title subtitle description release_year image { url } }
+            book {
+              id title subtitle description release_year image { url }
+              book_series { position series { id name } }
+            }
           }
         }`,
         { ids },
@@ -215,6 +225,14 @@ async function hardcoverCatalog(query: string) {
     const publisherSummary = matchedBook?.description
       ?? result.description
       ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
+    const seriesMembership = matchedBook?.book_series?.find((membership) => membership.series?.name?.trim())
+      ?? matchedEditions
+        .map((edition) => edition.book?.book_series?.find((membership) => membership.series?.name?.trim()))
+        .find(Boolean);
+    const seriesName = seriesMembership?.series?.name?.trim();
+    const seriesOrder = typeof seriesMembership?.position === 'number' && Number.isFinite(seriesMembership.position)
+      ? seriesMembership.position
+      : undefined;
     const normalizedEditions = matchedEditions.length > 0
       ? matchedEditions.map((edition) => ({
           source: 'hardcover' as const,
@@ -235,6 +253,8 @@ async function hardcoverCatalog(query: string) {
           editionName: edition.title,
           binding: edition.edition_format,
           specialFeatures: [],
+          seriesName: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.series?.name?.trim() ?? seriesName,
+          seriesOrder: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.position ?? seriesOrder,
         }))
       : [{
           source: 'hardcover' as const,
@@ -249,6 +269,8 @@ async function hardcoverCatalog(query: string) {
           pageCount: result.pages,
           coverUrl: matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
           specialFeatures: [],
+          seriesName,
+          seriesOrder,
         }];
 
     return {
