@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
 import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
+import { mergeDetectiveCandidates } from '../src/features/series/seriesDetectiveMerge';
 import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
@@ -87,6 +88,170 @@ assert.deepEqual(
   parseDetectiveOpenLibrarySeries(['Dream Harbor #3']),
   { name: 'Dream Harbor', position: 3 },
 );
+
+// Provider metadata is complementary. Google may know the exact edition
+// while Open Library supplies the missing series relationship.
+const mergedProviders = mergeDetectiveCandidates([
+  {
+    provider: 'google-books',
+    seriesName: undefined,
+    position: null,
+    work: {
+      key: 'google-books:a-touch-of-ruin::scarlett-st-clair',
+      title: 'A Touch of Ruin',
+      authors: ['Scarlett St. Clair'],
+      genres: ['Fiction'],
+      publisherSummary: 'Google summary',
+      editions: [{
+        source: 'google-books',
+        externalEditionId: 'google-ruin',
+        title: 'A Touch of Ruin',
+        authors: ['Scarlett St. Clair'],
+        genres: ['Fiction'],
+        publicationYear: 2020,
+        format: 'paperback',
+        isbn13: '9780991132379',
+        pageCount: 448,
+        coverUrl: 'https://example.test/google-cover.jpg',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'google-books',
+      externalEditionId: 'google-ruin',
+      title: 'A Touch of Ruin',
+      authors: ['Scarlett St. Clair'],
+      genres: ['Fiction'],
+      publicationYear: 2020,
+      format: 'paperback',
+      isbn13: '9780991132379',
+      pageCount: 448,
+      coverUrl: 'https://example.test/google-cover.jpg',
+      specialFeatures: [],
+    },
+  },
+  {
+    provider: 'open-library',
+    seriesName: 'Hades x Persephone Saga',
+    position: 2,
+    work: {
+      key: 'open-library:/works/OL-ruin',
+      title: 'A Touch of Ruin',
+      authors: ['Scarlett St. Clair'],
+      genres: [],
+      editions: [{
+        source: 'open-library',
+        externalEditionId: '/books/OL-ruin',
+        title: 'A Touch of Ruin',
+        authors: ['Scarlett St. Clair'],
+        genres: [],
+        publicationYear: 2020,
+        format: 'paperback',
+        isbn13: '9780991132379',
+        publisher: 'Bloom Books',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'open-library',
+      externalEditionId: '/books/OL-ruin',
+      title: 'A Touch of Ruin',
+      authors: ['Scarlett St. Clair'],
+      genres: [],
+      publicationYear: 2020,
+      format: 'paperback',
+      isbn13: '9780991132379',
+      publisher: 'Bloom Books',
+      specialFeatures: [],
+    },
+  },
+]);
+
+assert.equal(mergedProviders.length, 1);
+assert.equal(mergedProviders[0].seriesName, 'Hades x Persephone Saga');
+assert.equal(mergedProviders[0].position, 2);
+assert.equal(mergedProviders[0].edition.pageCount, 448);
+assert.equal(mergedProviders[0].edition.publisher, 'Bloom Books');
+assert.equal(mergedProviders[0].edition.coverUrl, 'https://example.test/google-cover.jpg');
+assert.equal(mergedProviders[0].work.publisherSummary, 'Google summary');
+
+// Different ISBNs are editions of the same work, not fields to flatten into
+// one fake edition. Work/series evidence may merge while editions remain distinct.
+const differentEditionMerge = mergeDetectiveCandidates([
+  {
+    provider: 'google-books',
+    seriesName: undefined,
+    position: null,
+    work: {
+      key: 'google-books:the-elite::kiera-cass',
+      title: 'The Elite',
+      authors: ['Kiera Cass'],
+      genres: [],
+      editions: [{
+        source: 'google-books',
+        externalEditionId: 'google-elite-hardcover',
+        title: 'The Elite',
+        authors: ['Kiera Cass'],
+        genres: [],
+        publicationYear: 2013,
+        format: 'hardcover',
+        isbn13: '9780062059963',
+        pageCount: 336,
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'google-books',
+      externalEditionId: 'google-elite-hardcover',
+      title: 'The Elite',
+      authors: ['Kiera Cass'],
+      genres: [],
+      publicationYear: 2013,
+      format: 'hardcover',
+      isbn13: '9780062059963',
+      pageCount: 336,
+      specialFeatures: [],
+    },
+  },
+  {
+    provider: 'open-library',
+    seriesName: 'Selection series',
+    position: 2,
+    work: {
+      key: 'open-library:/works/OL-elite',
+      title: 'The Elite',
+      authors: ['Kiera Cass'],
+      genres: [],
+      editions: [{
+        source: 'open-library',
+        externalEditionId: '/books/OL-elite-paperback',
+        title: 'The Elite',
+        authors: ['Kiera Cass'],
+        genres: [],
+        publicationYear: 2014,
+        format: 'paperback',
+        isbn13: '9780062059994',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'open-library',
+      externalEditionId: '/books/OL-elite-paperback',
+      title: 'The Elite',
+      authors: ['Kiera Cass'],
+      genres: [],
+      publicationYear: 2014,
+      format: 'paperback',
+      isbn13: '9780062059994',
+      specialFeatures: [],
+    },
+  },
+]);
+
+assert.equal(differentEditionMerge.length, 1);
+assert.equal(differentEditionMerge[0].seriesName, 'Selection series');
+assert.equal(differentEditionMerge[0].position, 2);
+assert.equal(differentEditionMerge[0].work.editions.length, 2);
 
 // Strong structured exact-work evidence can verify one book.
 const strong = scoreDetectiveEvidence({
