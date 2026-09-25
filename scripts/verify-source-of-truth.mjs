@@ -448,11 +448,17 @@ const firebaseHostingSource = read('firebase.json');
 if (!firebaseHostingSource.includes('https://www.googletagmanager.com')) {
   violations.push('firebase.json: production CSP must allow the GA4 Google Tag Manager runtime');
 }
-if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:parity')) {
-  violations.push('package.json: release:verify must include the web/Android parity gate');
+const releaseVerifyCommand = String(packageJson.scripts?.['release:verify'] ?? '');
+const aggregateReleaseVerifier = read('scripts/release-verify.mjs');
+if (releaseVerifyCommand !== 'node scripts/release-verify.mjs') {
+  violations.push('package.json: release:verify must delegate to the aggregate release verifier');
 }
-if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:source-of-truth')) {
-  violations.push('package.json: release:verify must include the source-of-truth gate');
+if (!aggregateReleaseVerifier.includes("script: 'verify:parity'")) {
+  violations.push('scripts/release-verify.mjs: aggregate release verification must include the web/Android parity gate');
+}
+if (!aggregateReleaseVerifier.includes("script: 'verify:source-boundary'")
+  || !aggregateReleaseVerifier.includes("script: 'verify:domain-taxonomy'")) {
+  violations.push('scripts/release-verify.mjs: aggregate release verification must include both source-of-truth gates');
 }
 
 if (violations.length) {
