@@ -21,6 +21,7 @@ import {
   type DetectiveGoogleVolume,
 } from './seriesDetectiveGoogleApi';
 import {
+  searchDetectiveOpenLibraryAuthor,
   searchDetectiveOpenLibraryBook,
   searchDetectiveOpenLibrarySeries,
   type DetectiveOpenLibraryCandidate,
@@ -366,13 +367,16 @@ export async function findMissingSeriesBooks(
     `${seriesName} ${author}`,
     seriesName,
     `inauthor:"${author}" ${seriesName}`,
+    `inauthor:"${author}"`,
     ...positionQueries,
   ];
 
-  const [catalogs, openLibraryCandidates] = await Promise.all([
+  const [catalogs, openLibrarySeriesCandidates, openLibraryAuthorCandidates] = await Promise.all([
     Promise.all(queries.map((query) => safeDetectiveSearch(query, signal))),
     searchDetectiveOpenLibrarySeries(seriesName, author, signal),
+    searchDetectiveOpenLibraryAuthor(author, signal),
   ]);
+  const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
   const seen = new Map<string, SeriesDetectiveCandidate>();
 
   const providerCandidates: DetectiveMergeCandidate[] = [];
