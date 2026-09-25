@@ -351,6 +351,14 @@ if (!String(packageJson.scripts?.['release:verify'] ?? '').includes('verify:sour
   violations.push('package.json: release:verify must include the source-of-truth gate');
 }
 
+const cloudDataRefreshBoundarySource = read('src/features/sync/CloudDataRefreshBoundary.tsx');
+if (
+  cloudDataRefreshBoundarySource.includes('fullReconciliationVersionKey(uid)')
+  || cloudDataRefreshBoundarySource.includes('FULL_RECONCILIATION_VERSION')
+) {
+  violations.push('CloudDataRefreshBoundary.tsx: reconciliation-version bump must never hide an established local library');
+}
+
 if (violations.length) {
   console.error('Inkbound source-of-truth verification failed.');
   for (const violation of [...new Set(violations)].sort()) console.error(`- ${violation}`);
