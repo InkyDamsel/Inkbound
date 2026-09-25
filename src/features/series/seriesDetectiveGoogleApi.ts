@@ -57,7 +57,7 @@ export interface DetectiveGoogleCatalog {
 
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
-const DETAIL_LIMIT = 6;
+const DETAIL_LIMIT = 14;
 const detailCache = new Map<string, DetectiveGoogleVolume>();
 const seriesTitleCache = new Map<string, string>();
 
@@ -172,7 +172,7 @@ const fetchSeriesTitles = async (
     missingIds.forEach((id) => params.append('series_id', id));
     if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
     const response = await fetch(`https://www.googleapis.com/books/v1/series/get?${params.toString()}`, { signal });
-    if (!response.ok) return {};
+    if (!response.ok) return resolved;
     const payload = await response.json() as { series?: Array<{ seriesId?: string; title?: string }> };
     for (const series of payload.series ?? []) {
       const id = series.seriesId?.trim();
@@ -225,12 +225,13 @@ export async function searchDetectiveGoogleBooksPage(
   }
 
   const protectedIsDetectiveCapable = protectedPayload?.seriesDetectiveHydrated === true;
-  const raw = protectedIsDetectiveCapable
-    ? protectedPayload!
-    : await directSearch(trimmed, signal, safeStart, safeMax);
+  const raw = protectedPayload
+    ?? await directSearch(trimmed, signal, safeStart, safeMax);
 
   // A current Firebase transport already performs Detective-depth hydration.
-  // Direct/stale-backend fallback hydrates locally instead.
+  // A stale-but-successful callable response is still valuable catalog data:
+  // hydrate it locally rather than discarding it and depending on a second
+  // network path. Direct search is only required when the callable itself fails.
   const hydrated = protectedIsDetectiveCapable ? raw : await hydrateDetails(raw, signal);
   const items = hydrated.items ?? [];
 
