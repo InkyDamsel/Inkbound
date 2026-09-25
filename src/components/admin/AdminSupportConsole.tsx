@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, Clipboard, KeyRound, MailCheck, MessageSquareText, ShieldAlert, UserRound, XCircle } from 'lucide-react';
+import { CheckCircle2, Clipboard, KeyRound, MailCheck, MessageSquareText, ShieldAlert, UserRound } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 
