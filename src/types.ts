@@ -104,6 +104,7 @@ export interface UserBookRecord {
   progressMinutes: number;
   progressPercentage: number;
   rating?: number;
+  spiceLevel?: number;
   review?: string;
   personalNotes?: string;
   favoriteQuotes?: FavoriteQuote[];
@@ -171,6 +172,7 @@ export interface ImportRecordItem {
   format: Format;
   status: ReadingStatus;
   rating?: number;
+  spiceLevel?: number;
   dateStarted?: string;
   dateRead?: string;
   dateAdded: string;
