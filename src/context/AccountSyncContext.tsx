@@ -27,6 +27,8 @@ import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import {
   LEGACY_SYNC_STORAGE_KEYS,
   SYNC_STORAGE_KEYS,
+  accountLibraryMigrationSnapshotKey,
+  accountLibraryMigrationVersionKey,
   crossDeviceCursorKey,
   localClearIntentKey,
   syncBaselineStateKey,
@@ -77,6 +79,8 @@ function clearSignedInDataFromDevice(uid: string) {
   removeRuntimeValue(syncPendingStateKey(uid));
   removeRuntimeValue(syncBaselineStateKey(uid));
   removeRuntimeValue(crossDeviceCursorKey(uid));
+  removeRuntimeValue(accountLibraryMigrationVersionKey(uid));
+  removeRuntimeValue(accountLibraryMigrationSnapshotKey(uid));
   // Older beta metadata is cleared too so returning accounts cannot inherit a
   // stale baseline from a pre-v2 build.
   removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`);
