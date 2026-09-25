@@ -171,7 +171,8 @@ export const AdminSupportConsole: React.FC<Props> = ({ reader, audit, onRefresh 
         <SupportMetric label="Last platform" value={reader.lastPlatform || 'Not recorded yet'} note={reader.lastAppVersion ? `Inkbound ${reader.lastAppVersion}${reader.lastBuildNumber ? ` · build ${reader.lastBuildNumber}` : ''}` : 'Older check-ins may not include app version.'} />
         <SupportMetric label="Firebase UID" value={<span className="font-mono text-xs">{reader.uid}</span>} />
         <SupportMetric label="Plan" value={reader.vipEnabled ? 'VIP Premium' : reader.basePlan === 'premium' ? 'Premium' : 'Free'} />
-        <SupportMetric label="Subscription" value={reader.subscriptionStatus || 'none'} />
+        <SupportMetric label="Subscription" value={reader.subscriptionStatus || 'none'} note={reader.paidPremiumUntil ? `Paid through ${formatDate(reader.paidPremiumUntil)}` : undefined} />
+        <SupportMetric label="Courtesy access" value={reader.courtesyPremiumUntil ? formatDate(reader.courtesyPremiumUntil) : 'None'} />
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
