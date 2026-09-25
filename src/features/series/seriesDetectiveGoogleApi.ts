@@ -8,6 +8,10 @@ interface GoogleIndustryIdentifier {
 
 export interface DetectiveGoogleVolume {
   id: string;
+  inkboundBibliographicSeries?: {
+    name?: string;
+    position?: number;
+  };
   volumeInfo?: {
     title?: string;
     subtitle?: string;
@@ -42,6 +46,7 @@ export interface DetectiveGoogleVolume {
 interface GooglePayload {
   totalItems?: number;
   items?: DetectiveGoogleVolume[];
+  seriesMetadataById?: Record<string, string>;
 }
 
 export interface DetectiveGoogleCatalog {
@@ -55,23 +60,36 @@ const DETAIL_LIMIT = 20;
 const detailCache = new Map<string, DetectiveGoogleVolume>();
 const seriesTitleCache = new Map<string, string>();
 
-const protectedSearch = async (query: string): Promise<GooglePayload> => {
+const protectedSearch = async (
+  query: string,
+  startIndex: number,
+  maxResults: number,
+): Promise<GooglePayload> => {
   if (!functions || !auth?.currentUser) return { items: [], totalItems: 0 };
-  const callable = httpsCallable<{ query: string; provider: 'google-books' }, GooglePayload>(
+  const callable = httpsCallable<
+    { query: string; provider: 'google-books'; startIndex: number; maxResults: number },
+    GooglePayload
+  >(
     functions,
     'searchHardcoverBooks',
   );
-  const response = await callable({ query, provider: 'google-books' });
+  const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
   return response.data;
 };
 
-const directSearch = async (query: string, signal?: AbortSignal): Promise<GooglePayload> => {
+const directSearch = async (
+  query: string,
+  signal: AbortSignal | undefined,
+  startIndex: number,
+  maxResults: number,
+): Promise<GooglePayload> => {
   const params = new URLSearchParams({
     q: query,
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
-    maxResults: '40',
+    startIndex: String(startIndex),
+    maxResults: String(maxResults),
   });
   if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
@@ -158,20 +176,62 @@ const fetchSeriesTitles = async (
   }
 };
 
+export interface DetectiveGoogleCatalogPage extends DetectiveGoogleCatalog {
+  totalItems: number;
+  nextStartIndex: number;
+  hasMore: boolean;
+}
+
+export async function searchDetectiveGoogleBooksPage(
+  query: string,
+  startIndex = 0,
+  maxResults = 40,
+  signal?: AbortSignal,
+): Promise<DetectiveGoogleCatalogPage> {
+  const trimmed = query.trim();
+  const safeStart = Math.max(0, startIndex);
+  const safeMax = Math.max(1, Math.min(40, maxResults));
+  if (!trimmed) {
+    return {
+      items: [],
+      seriesTitlesById: {},
+      totalItems: 0,
+      nextStartIndex: safeStart,
+      hasMore: false,
+    };
+  }
+
+  const raw = functions && auth?.currentUser
+    ? await protectedSearch(trimmed, safeStart, safeMax)
+    : await directSearch(trimmed, signal, safeStart, safeMax);
+  const hydrated = await hydrateDetails(raw, signal);
+  const items = hydrated.items ?? [];
+
+  const serverSeriesTitles = hydrated.seriesMetadataById ?? {};
+  Object.entries(serverSeriesTitles).forEach(([id, title]) => {
+    if (id && title) seriesTitleCache.set(id, title);
+  });
+  const clientSeriesTitles = await fetchSeriesTitles(items, signal);
+  const totalItems = Math.max(0, hydrated.totalItems ?? 0);
+  const nextStartIndex = safeStart + items.length;
+
+  return {
+    items,
+    seriesTitlesById: { ...clientSeriesTitles, ...serverSeriesTitles },
+    totalItems,
+    nextStartIndex,
+    hasMore: items.length > 0 && (
+      totalItems > 0
+        ? nextStartIndex < totalItems
+        : items.length === safeMax
+    ),
+  };
+}
+
 export async function searchDetectiveGoogleBooks(
   query: string,
   signal?: AbortSignal,
 ): Promise<DetectiveGoogleCatalog> {
-  const trimmed = query.trim();
-  if (!trimmed) return { items: [], seriesTitlesById: {} };
-
-  const raw = functions && auth?.currentUser
-    ? await protectedSearch(trimmed)
-    : await directSearch(trimmed, signal);
-  const hydrated = await hydrateDetails(raw, signal);
-  const items = hydrated.items ?? [];
-  return {
-    items,
-    seriesTitlesById: await fetchSeriesTitles(items, signal),
-  };
+  const page = await searchDetectiveGoogleBooksPage(query, 0, 40, signal);
+  return { items: page.items, seriesTitlesById: page.seriesTitlesById };
 }
