@@ -13,12 +13,18 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { IMPORT_ENRICHMENT_PAUSED_KEY } from '../import/importHistory';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { canReportCloudLibraryHealthy } from './accountLibraryMigration';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
   INKBOUND_FORCE_CLOUD_REFRESH_EVENT,
   publishCloudSyncHealth,
 } from './cloudSyncHealth';
-import { SYNC_STORAGE_KEYS, syncPendingStateKey } from './storageKeys';
+import {
+  ACCOUNT_LIBRARY_MIGRATION_VERSION,
+  accountLibraryMigrationVersionKey,
+  SYNC_STORAGE_KEYS,
+  syncPendingStateKey,
+} from './storageKeys';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -358,6 +364,26 @@ export const CloudServerRefreshBridge: React.FC = () => {
 
         const currentBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const currentSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
+        const migrationVerified = storage.getItem(accountLibraryMigrationVersionKey(uid))
+          === ACCOUNT_LIBRARY_MIGRATION_VERSION;
+
+        // Never describe an empty/partial cloud library as healthy while this
+        // device visibly holds an existing pre-account library. This is the
+        // exact P0 state where older builds reported "0 books checked" despite
+        // hundreds of local books and could later let empty cloud look
+        // authoritative.
+        if (!canReportCloudLibraryHealthy({
+          localBookCount: currentBooks.length,
+          cloudBookCount: serverBooks.length,
+          migrationVerified,
+        })) {
+          publishCloudSyncHealth({
+            status: 'error',
+            lastSuccessfulSyncAt: storage.getItem(LAST_SYNC_STORAGE_KEY),
+            message: `Inkbound found ${currentBooks.length.toLocaleString()} book${currentBooks.length === 1 ? '' : 's'} on this device but only ${serverBooks.length.toLocaleString()} saved to your account. Your local library was kept unchanged while Inkbound finishes attaching it to this account.`,
+          });
+          return;
+        }
         const nextBooks = mergeBooksFromServer(currentBooks, serverBooks, pending.books ?? {});
         const nextSessions = mergeMissingById(currentSessions, serverSessions, pending.sessions ?? {});
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
