@@ -9,6 +9,8 @@ export interface SeriesDetectionEvidence {
   isbn13?: string;
   sourceId: string;
   recordId: string;
+  providerId: string;
+  providerCount?: number;
   structured: boolean;
   exactIdentifier: boolean;
   exactTitle: boolean;
@@ -23,6 +25,15 @@ export const normalizeDetectiveText = (value?: string): string =>
 
 export const compactDetectiveIsbn = (value?: string): string =>
   value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
+
+export const comparableDetectiveTitle = (value?: string): string => {
+  const title = value?.trim() ?? '';
+  if (!title) return '';
+  const withoutSeriesSuffix = inferDetectiveSeriesFromTitle(title)
+    ? title.replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim()
+    : title;
+  return normalizeDetectiveText(withoutSeriesSuffix);
+};
 
 export const canonicalDetectiveAuthor = (value?: string): string => {
   const raw = value?.trim() ?? '';
@@ -198,11 +209,18 @@ export const selectVerifiedDetectiveEvidence = (
   return [...groups.values()]
     .map((group) => ({
       best: [...group].sort((a, b) => b.score - a.score)[0],
-      distinctRecords: new Set(group.map((item) => item.recordId)).size,
+      distinctProviders: new Set(group.map((item) => item.providerId)).size,
+      corroboratingProviders: Math.max(...group.map((item) => item.providerCount ?? 1)),
     }))
-    .filter(({ best, distinctRecords }) =>
+    .filter(({ best, distinctProviders, corroboratingProviders }) =>
       best.structured && best.score >= 170
-      || !best.structured && distinctRecords >= 2 && best.score >= 100,
+      || !best.structured
+        && Math.max(distinctProviders, corroboratingProviders) >= 2
+        && best.score >= 100,
     )
-    .sort((a, b) => b.best.score - a.best.score || b.distinctRecords - a.distinctRecords)[0]?.best ?? null;
+    .sort((a, b) =>
+      b.best.score - a.best.score
+      || b.corroboratingProviders - a.corroboratingProviders
+      || b.distinctProviders - a.distinctProviders,
+    )[0]?.best ?? null;
 };
