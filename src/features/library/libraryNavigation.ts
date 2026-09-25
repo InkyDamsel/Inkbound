@@ -11,7 +11,7 @@ export const LIBRARY_SECTION_STORAGE_KEY = 'inkbound_library_section';
 export const DEFAULT_LIBRARY_SECTION: LibrarySection = 'books';
 
 const APP_TAB_STORAGE_KEY = 'inkbound_active_tab';
-const SERIES_FOCUS_BOOK_STORAGE_KEY = 'inkbound_library_series_focus_book';
+export const SERIES_FOCUS_BOOK_STORAGE_KEY = 'inkbound_library_series_focus_book';
 
 /**
  * Navigate into My Library > Series and remember which library item should be
