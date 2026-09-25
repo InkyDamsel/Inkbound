@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const isWindows = process.platform === 'win32';
+const npmCommand = isWindows ? 'npm' : 'npm';
 
 const checks = [
   { id: 'lint', label: 'TypeScript / lint', script: 'lint' },
@@ -50,7 +51,7 @@ for (const check of checks) {
   const child = spawnSync(npmCommand, ['run', check.script], {
     cwd: process.cwd(),
     stdio: 'inherit',
-    shell: false,
+    shell: isWindows,
   });
   const durationSeconds = ((Date.now() - started) / 1000).toFixed(1);
 
