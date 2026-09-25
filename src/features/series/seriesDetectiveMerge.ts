@@ -14,6 +14,7 @@ export interface DetectiveMergeCandidate {
   provider: 'google-books' | 'open-library' | 'hardcover';
   seriesProvider?: 'google-books' | 'open-library' | 'hardcover';
   seriesStructured?: boolean;
+  providerSources?: Array<'google-books' | 'open-library' | 'hardcover'>;
 }
 
 const nonEmpty = (value?: string): string | undefined => value?.trim() || undefined;
@@ -207,6 +208,7 @@ export const mergeDetectiveCandidates = (
     if (workIndex < 0) {
       merged.push({
         ...incoming,
+        providerSources: [...new Set([...(incoming.providerSources ?? []), incoming.provider])],
         work: { ...incoming.work, editions: [...incoming.work.editions] },
         edition: { ...incoming.edition },
       });
@@ -223,6 +225,7 @@ export const mergeDetectiveCandidates = (
       // flattened into one truth. Preserve both for downstream verification.
       merged.push({
         ...incoming,
+        providerSources: [...new Set([...(incoming.providerSources ?? []), incoming.provider])],
         work: { ...incoming.work, editions: [...incoming.work.editions] },
         edition: { ...incoming.edition },
       });
@@ -264,6 +267,10 @@ export const mergeDetectiveCandidates = (
       provider: current.provider,
       seriesProvider: series.provider,
       seriesStructured: series.structured,
+      providerSources: [...new Set([
+        ...(current.providerSources ?? [current.provider]),
+        ...(incoming.providerSources ?? [incoming.provider]),
+      ])],
     };
   }
 
