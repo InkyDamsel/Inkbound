@@ -6,6 +6,7 @@ import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
   canonicalDetectiveSeries,
+  detectiveAuthorsCompatible,
   compactDetectiveIsbn,
   comparableDetectiveTitle,
   detectiveSeriesNamesCompatible,
@@ -82,7 +83,7 @@ const hardcoverContextCandidates = (
 ): DetectiveMergeCandidate[] => {
   const wanted = canonicalDetectiveAuthor(wantedAuthor);
   return groups.flatMap((work) => {
-    const exactAuthor = !wanted || work.authors.some((author) => canonicalDetectiveAuthor(author) === wanted);
+    const exactAuthor = !wanted || work.authors.some((author) => detectiveAuthorsCompatible(wantedAuthor, author));
 
     return work.editions.flatMap((edition) => {
       const metadata = wantedSeriesName
@@ -155,7 +156,7 @@ const selectCorroboratedSubtitleSeries = (
     const exactTitle = comparableDetectiveTitle(candidate.work.title) === wantedTitle
       || comparableDetectiveTitle(candidate.edition.title) === wantedTitle;
     const exactAuthor = !wantedAuthor || candidate.work.authors
-      .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor);
+      .some((author) => detectiveAuthorsCompatible(book.work.author, author));
     if (!exactTitle || !exactAuthor) continue;
 
     for (const subtitle of [candidate.edition.subtitle, candidate.work.subtitle]) {
@@ -281,7 +282,7 @@ const evidenceForVolume = (
   const exactTitle = comparableDetectiveTitle(volume.volumeInfo?.title) === comparableDetectiveTitle(book.work.title);
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
   const exactAuthor = !wantedAuthor || (volume.volumeInfo?.authors ?? [])
-    .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor);
+    .some((author) => detectiveAuthorsCompatible(book.work.author, author));
   const structured = Boolean(
     (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
       const id = membership.seriesId?.trim();
@@ -413,7 +414,7 @@ export async function detectSeriesForBook(
     exactTitle: comparableDetectiveTitle(candidate.work.title) === wantedTitle
       || comparableDetectiveTitle(candidate.edition.title) === wantedTitle,
     exactAuthor: !wantedAuthor || candidate.work.authors
-      .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor),
+      .some((author) => detectiveAuthorsCompatible(book.work.author, author)),
   }));
 
   const providerCandidates: DetectiveMergeCandidate[] = [];
@@ -480,7 +481,7 @@ export async function detectSeriesForBook(
       exactTitle: comparableDetectiveTitle(candidate.work.title) === wantedTitle
         || comparableDetectiveTitle(candidate.edition.title) === wantedTitle,
       exactAuthor: !wantedAuthor || candidate.work.authors
-        .some((author) => canonicalDetectiveAuthor(author) === wantedAuthor),
+        .some((author) => detectiveAuthorsCompatible(book.work.author, author)),
     }));
 
   const evidence = [...googleEvidence, ...openLibraryEvidence, ...mergedEvidence];
@@ -518,7 +519,7 @@ const mergeCandidateFromGoogleVolume = (
   const authors = info?.authors?.length ? info.authors : ['Unknown author'];
   const canonicalWantedAuthor = canonicalDetectiveAuthor(wantedAuthor);
   const authorIsUsable = canonicalWantedAuthor && canonicalWantedAuthor !== 'unknown author';
-  const exactAuthor = !authorIsUsable || authors.some((name) => canonicalDetectiveAuthor(name) === canonicalWantedAuthor);
+  const exactAuthor = !authorIsUsable || authors.some((name) => detectiveAuthorsCompatible(wantedAuthor, name));
   const hasStructuredSeries = Boolean(
     (info?.seriesInfo?.volumeSeries ?? []).some((membership) => {
       const id = membership.seriesId?.trim();
@@ -717,9 +718,6 @@ export async function findMissingSeriesBooks(
   });
 
   const existingPositions = new Set(knownPositions);
-  const existingTitles = new Set(libraryBooks.map((book) =>
-    `${comparableDetectiveTitle(book.work.title)}::${canonicalDetectiveAuthor(book.work.author)}`,
-  ));
   const existingIsbns = new Set(libraryBooks.flatMap((book) =>
     book.editions.flatMap((edition) =>
       [edition.isbn13, edition.isbn10, edition.isbn].map(compactDetectiveIsbn).filter(Boolean),
@@ -733,8 +731,11 @@ export async function findMissingSeriesBooks(
 
   const missing = candidates.filter((candidate) => {
     if (candidate.position !== null && existingPositions.has(candidate.position)) return false;
-    const candidateAuthor = canonicalDetectiveAuthor(candidate.work.authors[0]);
-    if (existingTitles.has(`${comparableDetectiveTitle(candidate.work.title)}::${candidateAuthor}`)) return false;
+    const existingWork = libraryBooks.some((book) =>
+      comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(candidate.work.title)
+      && candidate.work.authors.some((author) => detectiveAuthorsCompatible(book.work.author, author)),
+    );
+    if (existingWork) return false;
     if (candidate.work.key && existingWorkIds.has(candidate.work.key)) return false;
     return ![candidate.edition.isbn13, candidate.edition.isbn10]
       .map(compactDetectiveIsbn)
