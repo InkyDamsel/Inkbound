@@ -73,6 +73,7 @@ import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, lo
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
 import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
 import { subscribeToRuntimeResume } from './platform/runtimeLifecycle';
+import { LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT } from './platform/largeBrowserStorage';
 import {
   getRuntimeStorage,
   readRuntimeValue,
@@ -184,6 +185,23 @@ export default function App() {
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
     writeRuntimeValue(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
+
+  useEffect(() => {
+    const handleLargeStorageWriteFailure = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key !== BOOKS_STORAGE_KEY) return;
+      const restoredBooks = readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, booksRef.current);
+      booksRef.current = restoredBooks;
+      setBooks(restoredBooks);
+      setSelectedBookForDetails((current) => current
+        ? restoredBooks.find((book) => book.id === current.id) ?? current
+        : current);
+      showToast('Inkbound could not finish that library save. Your previous saved library was restored.');
+    };
+
+    window.addEventListener(LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT, handleLargeStorageWriteFailure);
+    return () => window.removeEventListener(LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT, handleLargeStorageWriteFailure);
+  }, []);
 
   useEffect(() => {
     const refreshCanonicalCollections = (event: Event) => {
@@ -367,7 +385,15 @@ export default function App() {
   const openTimer = (bookId?: string) => { setTimerInitialBookId(bookId); setIsTimerOpen(true); };
   const closeTimer = () => setIsTimerOpen(false);
   const handleToggleSelectBook = (id: string) => setSelectedBookIds((current) => current.includes(id) ? current.filter((bookId) => bookId !== id) : [...current, id]);
-  const handleUpdateBook = (updatedBook: UserBookRecord) => { commitCanonicalBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book))); setSelectedBookForDetails((current) => (current?.id === updatedBook.id ? updatedBook : current)); };
+  const handleUpdateBook = (updatedBook: UserBookRecord) => {
+    const committed = commitCanonicalBooks((current) => current.map((book) => (book.id === updatedBook.id ? updatedBook : book)));
+    const committedBook = committed.find((book) => book.id === updatedBook.id);
+    const didCommit = committedBook === updatedBook;
+    setSelectedBookForDetails((current) => {
+      if (current?.id !== updatedBook.id) return current;
+      return didCommit ? updatedBook : committedBook ?? current;
+    });
+  };
   const handleDeleteBook = (bookToDelete: UserBookRecord) => { commitCanonicalBooks((current) => current.filter((book) => book.id !== bookToDelete.id)); commitCanonicalSessions((current) => current.filter((session) => session.bookId !== bookToDelete.id)); setSelectedBookIds((current) => current.filter((id) => id !== bookToDelete.id)); setSelectedBookForDetails(null); showToast(`Deleted “${bookToDelete.work.title}” and its reading sessions.`); };
   const handleMergeDuplicateGroup = ({ keepBookId, removeBookIds, mergedBook }: DuplicateMergeRequest) => { const removeIds = new Set(removeBookIds); setPreviousBooksState(null); setPreviousSessionsState(null); commitCanonicalBooks((current) => current.filter((book) => !removeIds.has(book.id)).map((book) => book.id === keepBookId ? mergedBook : book)); commitCanonicalSessions((current) => current.map((session) => removeIds.has(session.bookId) ? { ...session, bookId: keepBookId } : session)); setSelectedBookIds((current) => current.filter((id) => !removeIds.has(id))); setSelectedBookForDetails((current) => current && removeIds.has(current.id) ? mergedBook : current?.id === keepBookId ? mergedBook : current); writeImportEnrichmentQueue(readImportEnrichmentQueue().filter((item) => !removeIds.has(item.targetBookId))); showToast(`Merged ${removeBookIds.length + 1} copies of “${mergedBook.work.title}” into one library record.`); };
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => { const today = localDateKey(); commitCanonicalBooks((current) => current.map((book) => book.id !== bookId ? book : withReadingStatus(book, status, today))); showToast(`Updated reading status to ${status}.`); };
