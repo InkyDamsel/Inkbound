@@ -224,6 +224,8 @@ export async function detectSeriesForBook(
       seriesName: candidate.seriesName,
       position: candidate.position,
       provider: 'open-library',
+      seriesProvider: 'open-library',
+      seriesStructured: true,
     });
   });
 
@@ -238,7 +240,7 @@ export async function detectSeriesForBook(
       isbn13: candidate.edition.isbn13,
       sourceId: 'merged-providers',
       recordId: `merged:${normalizeDetectiveText(candidate.work.title)}:${canonicalDetectiveAuthor(candidate.work.authors[0])}`,
-      structured: candidate.provider === 'open-library' || Boolean(candidate.seriesName),
+      structured: candidate.seriesStructured === true,
       exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
         .map(compactDetectiveIsbn)
         .filter(Boolean)
@@ -330,6 +332,8 @@ const mergeCandidateFromGoogleVolume = (
     seriesName: metadata?.name,
     position: metadata?.position ?? null,
     provider: 'google-books',
+    seriesProvider: metadata ? 'google-books' : undefined,
+    seriesStructured: metadata ? hasStructuredSeries : undefined,
   };
 };
 
