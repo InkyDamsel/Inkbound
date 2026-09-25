@@ -167,6 +167,7 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
     editions,
     status,
     rating: existing.rating ?? item.rating,
+    spiceLevel: existing.spiceLevel ?? item.spiceLevel,
     review: existing.review?.trim() ? existing.review : item.review,
     privateTags: mergeUnique(existing.privateTags, importedTags),
     collections: mergeUnique(existing.collections, [...sourceCollections, ...optionalShelfCollections]),
@@ -187,6 +188,7 @@ export function applyImportExtrasToNewBook(book: UserBookRecord, item: ImportRec
       seriesName: book.work.seriesName?.trim() ? book.work.seriesName : item.seriesName,
       seriesOrder: book.work.seriesOrder ?? item.seriesOrder,
     },
+    spiceLevel: book.spiceLevel ?? item.spiceLevel,
     privateTags: mergeUnique(book.privateTags, importedTags),
     collections: mergeUnique(book.collections, [...sourceCollections, ...optionalShelfCollections]),
   };
