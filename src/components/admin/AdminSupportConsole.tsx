@@ -12,6 +12,10 @@ export interface AdminSupportUser {
   accountCreatedAt: string | null;
   lastSignInAt: string | null;
   lastSeenAt: string | null;
+  lastPlatform: string;
+  lastAppVersion: string;
+  lastBuildNumber: string;
+  lastUserAgent: string;
   basePlan: 'free' | 'premium';
   subscriptionStatus: string;
   vipEnabled: boolean;
@@ -164,6 +168,7 @@ export const AdminSupportConsole: React.FC<Props> = ({ reader, audit, onRefresh 
         <SupportMetric label="Account created" value={formatDate(reader.accountCreatedAt)} />
         <SupportMetric label="Last Firebase sign-in" value={formatDate(reader.lastSignInAt)} />
         <SupportMetric label="Last Inkbound check-in" value={formatDate(reader.lastSeenAt)} />
+        <SupportMetric label="Last platform" value={reader.lastPlatform || 'Not recorded yet'} note={reader.lastAppVersion ? `Inkbound ${reader.lastAppVersion}${reader.lastBuildNumber ? ` · build ${reader.lastBuildNumber}` : ''}` : 'Older check-ins may not include app version.'} />
         <SupportMetric label="Firebase UID" value={<span className="font-mono text-xs">{reader.uid}</span>} />
         <SupportMetric label="Plan" value={reader.vipEnabled ? 'VIP Premium' : reader.basePlan === 'premium' ? 'Premium' : 'Free'} />
         <SupportMetric label="Subscription" value={reader.subscriptionStatus || 'none'} />
