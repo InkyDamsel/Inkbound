@@ -391,6 +391,8 @@ export async function findMissingSeriesBooks(
       seriesName: candidate.seriesName,
       position: candidate.position,
       provider: 'open-library',
+      seriesProvider: 'open-library',
+      seriesStructured: true,
     });
   });
 
