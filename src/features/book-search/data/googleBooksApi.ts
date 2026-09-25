@@ -412,20 +412,14 @@ async function requestCanonicalGoogleBooksPayload(
   startIndex = 0,
   maxResults = GOOGLE_BOOKS_PAGE_SIZE,
 ): Promise<GoogleVolumesResponse> {
-  const protectedRequest = shouldUseProtectedGoogleBooks();
-  const payload = protectedRequest
+  const payload = shouldUseProtectedGoogleBooks()
     ? await requestProtectedGoogleBooks(query, signal, startIndex, maxResults)
     : await requestDirectGoogleBooks(query, signal, startIndex, maxResults);
 
-  // Direct browser search already hydrates details. Protected Firebase search
-  // returns the catalog list payload, so hydrate those same volume ids here
-  // before any mapper sees them. Dev/release/auth state must never change the
-  // metadata quality of the same Google Books result.
-  const hydrated = protectedRequest
-    ? await hydrateGoogleVolumeDetails(payload, signal)
-    : payload;
-
-  return enrichGoogleSeriesMetadata(hydrated, signal);
+  // Both transports now return the canonical hydrated Google payload. Do not
+  // re-fetch every protected volume in the browser after the callable already
+  // expanded it server-side.
+  return enrichGoogleSeriesMetadata(payload, signal);
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -462,33 +456,7 @@ export async function searchGoogleBooksPage(
     const editions = rawItems
       .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
       .filter((item): item is BookSearchEdition => Boolean(item));
-    let groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
-
-    // The Add Reading Material screen prefers this paged path. Enrich the first
-    // page with the same supplemental metadata sources used by the standard
-    // catalog chain so pagination does not silently lose series metadata.
-    if (startIndex === 0 && groups.length > 0) {
-      const [trusted, openLibrary, hardcover] = await Promise.all([
-        searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
-        searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
-        searchHardcoverWithBackoff(trimmed),
-      ]);
-      groups = hardenCatalogGroups(
-        mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
-        { searchQuery: trimmed },
-      );
-
-      const refinedExact = await refineExactTitleWithAuthor(groups, trimmed, signal);
-      if (refinedExact.length > 0) {
-        groups = hardenCatalogGroups(
-          mergeGroups(groups, [refinedExact]),
-          { searchQuery: trimmed },
-        );
-      }
-
-      groups = await repairVisibleEditionPageCounts(groups, signal);
-      groups = hardenCatalogGroups(groups, { searchQuery: trimmed });
-    }
+    const groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
 
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
