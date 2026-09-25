@@ -1,4 +1,6 @@
-import type { UserBookRecord } from '../../types';
+import type { Format, UserBookRecord } from '../../types';
+import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import { resolveEffectiveSeriesMetadata } from './seriesLibrary';
 import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
@@ -22,11 +24,8 @@ export interface SeriesDetectiveMatch {
 }
 
 export interface SeriesDetectiveCandidate {
-  externalId: string;
-  title: string;
-  authors: string[];
-  isbn10?: string;
-  isbn13?: string;
+  work: BookSearchWorkGroup;
+  edition: BookSearchEdition;
   seriesName: string;
   position: number | null;
 }
@@ -128,6 +127,17 @@ export async function detectSeriesForBook(
   return match ? { name: match.seriesName, position: match.position } : null;
 }
 
+const detectiveCoverUrl = (volume: DetectiveGoogleVolume): string | undefined => {
+  const links = volume.volumeInfo?.imageLinks;
+  const source = links?.extraLarge ?? links?.large ?? links?.medium ?? links?.small ?? links?.thumbnail ?? links?.smallThumbnail;
+  return source?.replace(/^http:/, 'https:').replace('&edge=curl', '').replace('zoom=1', 'zoom=2');
+};
+
+const detectivePublicationYear = (value?: string): number => {
+  const match = value?.match(/\b(1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b/);
+  return match ? Number(match[0]) : 0;
+};
+
 const candidateFromVolume = (
   volume: DetectiveGoogleVolume,
   catalog: DetectiveGoogleCatalog,
@@ -135,17 +145,43 @@ const candidateFromVolume = (
 ): SeriesDetectiveCandidate | null => {
   const metadata = seriesMetadata(volume, catalog);
   if (!metadata || !detectiveSeriesNamesCompatible(metadata.name, wantedSeriesName)) return null;
-  const title = volume.volumeInfo?.title?.trim();
+  const info = volume.volumeInfo;
+  const title = info?.title?.trim();
   if (!title) return null;
-  return {
-    externalId: volume.id,
+
+  const format: Format = volume.saleInfo?.isEbook ? 'ebook' : 'hardcover';
+  const authors = info?.authors?.length ? info.authors : ['Unknown author'];
+  const edition: BookSearchEdition = {
+    source: 'google-books',
+    externalEditionId: volume.id,
     title,
-    authors: volume.volumeInfo?.authors ?? ['Unknown author'],
+    subtitle: info?.subtitle,
+    authors,
+    publisherSummary: info?.description,
+    genres: info?.categories ?? [],
+    publisher: info?.publisher,
+    publicationDate: info?.publishedDate,
+    publicationYear: detectivePublicationYear(info?.publishedDate),
+    language: info?.language,
+    format,
     isbn10: identifier(volume, 'ISBN_10'),
     isbn13: identifier(volume, 'ISBN_13'),
-    seriesName: metadata.name,
-    position: metadata.position,
+    pageCount: info?.pageCount,
+    coverUrl: detectiveCoverUrl(volume),
+    binding: volume.saleInfo?.isEbook ? 'Digital' : undefined,
+    specialFeatures: [],
   };
+  const work: BookSearchWorkGroup = {
+    key: `google-books:${normalizeDetectiveText(title)}::${canonicalDetectiveAuthor(authors[0])}`,
+    title,
+    subtitle: info?.subtitle,
+    authors,
+    publisherSummary: info?.description,
+    genres: info?.categories ?? [],
+    editions: [edition],
+  };
+
+  return { work, edition, seriesName: metadata.name, position: metadata.position };
 };
 
 export async function findMissingSeriesBooks(
@@ -155,9 +191,10 @@ export async function findMissingSeriesBooks(
   signal?: AbortSignal,
 ): Promise<SeriesDetectiveResult> {
   const knownPositions = libraryBooks.flatMap((book) => {
-    if (!detectiveSeriesNamesCompatible(book.work.seriesName, seriesName)) return [];
-    return typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder)
-      ? [book.work.seriesOrder]
+    const resolved = resolveEffectiveSeriesMetadata(book);
+    if (!resolved || !detectiveSeriesNamesCompatible(resolved.name, seriesName)) return [];
+    return typeof resolved.position === 'number' && Number.isFinite(resolved.position)
+      ? [resolved.position]
       : [];
   });
   const highest = knownPositions.length ? Math.max(...knownPositions) : 0;
@@ -180,9 +217,9 @@ export async function findMissingSeriesBooks(
       if (!candidate) return;
       const key = candidate.position !== null
         ? `position:${candidate.position}`
-        : `title:${normalizeDetectiveText(candidate.title)}`;
+        : `title:${normalizeDetectiveText(candidate.work.title)}`;
       const current = seen.get(key);
-      if (!current || (!current.isbn13 && candidate.isbn13)) seen.set(key, candidate);
+      if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
     });
   });
 
@@ -190,7 +227,7 @@ export async function findMissingSeriesBooks(
     if (a.position !== null && b.position !== null) return a.position - b.position;
     if (a.position !== null) return -1;
     if (b.position !== null) return 1;
-    return a.title.localeCompare(b.title);
+    return a.work.title.localeCompare(b.work.title);
   });
 
   const existingPositions = new Set(knownPositions);
@@ -205,9 +242,9 @@ export async function findMissingSeriesBooks(
 
   const missing = candidates.filter((candidate) => {
     if (candidate.position !== null && existingPositions.has(candidate.position)) return false;
-    const candidateAuthor = canonicalDetectiveAuthor(candidate.authors[0]);
-    if (existingTitles.has(`${normalizeDetectiveText(candidate.title)}::${candidateAuthor}`)) return false;
-    return ![candidate.isbn13, candidate.isbn10]
+    const candidateAuthor = canonicalDetectiveAuthor(candidate.work.authors[0]);
+    if (existingTitles.has(`${normalizeDetectiveText(candidate.work.title)}::${candidateAuthor}`)) return false;
+    return ![candidate.edition.isbn13, candidate.edition.isbn10]
       .map(compactDetectiveIsbn)
       .filter(Boolean)
       .some((isbn) => existingIsbns.has(isbn));
