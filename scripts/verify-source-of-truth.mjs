@@ -228,6 +228,66 @@ for (const relative of [
   }
 }
 
+const librarySectionSortSource = read('src/features/library/librarySectionSort.ts');
+const seriesLibraryPanelSource = read('src/components/library/SeriesLibraryPanel.tsx');
+const loansLibraryPanelSource = read('src/components/library/LoansLibraryPanel.tsx');
+const collectionsScreenSource = read('src/components/CollectionsScreen.tsx');
+
+if (!librarySectionSortSource.includes("export type LibrarySectionSortMode = 'az' | 'za' | 'newest' | 'oldest'")) {
+  violations.push('librarySectionSort.ts: Series, Collections, and Loans must share the canonical library-section sort modes');
+}
+for (const [relative, source] of [
+  ['SeriesLibraryPanel.tsx', seriesLibraryPanelSource],
+  ['LoansLibraryPanel.tsx', loansLibraryPanelSource],
+  ['CollectionsScreen.tsx', collectionsScreenSource],
+]) {
+  if (!source.includes('LIBRARY_SECTION_SORT_OPTIONS')) {
+    violations.push(`${relative}: library-section sorting must consume the shared canonical sort options`);
+  }
+}
+
+const readingSessionsScreenSource = read('src/components/ReadingSessionsScreen.tsx');
+const bulkHistoricalSessionsSource = read('src/components/BulkHistoricalSessionsModal.tsx');
+if (!readingSessionsScreenSource.includes('onSaveManualSessions') || !readingSessionsScreenSource.includes('BulkHistoricalSessionsModal')) {
+  violations.push('ReadingSessionsScreen.tsx: Build 28 manual session entry must preserve both single and bulk historical session paths');
+}
+if (!bulkHistoricalSessionsSource.includes('onSave(nextSessions)')) {
+  violations.push('BulkHistoricalSessionsModal.tsx: bulk historical sessions must save through the parent canonical session mutation path');
+}
+
+const fullCloudReconciliationSource = read('src/features/sync/FullCloudReconciliationBridge.tsx');
+const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
+const oneShotCloudHydrationSource = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
+const accountLibraryMigrationSource = read('src/features/sync/accountLibraryMigration.ts');
+
+if (
+  !fullCloudReconciliationSource.includes('uploadMissingMigrationRecords')
+  || !fullCloudReconciliationSource.includes('accountLibraryMigrationSnapshotKey')
+  || !fullCloudReconciliationSource.includes('verifiedBookSnapshot')
+) {
+  violations.push('FullCloudReconciliationBridge.tsx: local-only account libraries must snapshot, upload, and verify before migration completes');
+}
+if (!cloudServerRefreshSource.includes('canReportCloudLibraryHealthy')) {
+  violations.push('CloudServerRefreshBridge.tsx: manual refresh must block empty cloud from masquerading as a synced non-empty local library');
+}
+if (!oneShotCloudHydrationSource.includes('accountLibraryMigrationVersionKey(uid)')) {
+  violations.push('OneShotCloudHydrationBridge.tsx: verified cloud hydration must mark account-library migration safe for returning devices');
+}
+if (!accountLibraryMigrationSource.includes('if (!migrationVerified) return true')) {
+  violations.push('accountLibraryMigration.ts: non-empty local libraries must remain migration-pending until round-trip verification completes');
+}
+
+const addBookModalSource = read('src/components/AddBookModal.tsx');
+if (!addBookModalSource.includes("import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';")) {
+  violations.push('AddBookModal.tsx: clean Build 28 must keep the proven Build 27 general Search boundary');
+}
+if (!addBookModalSource.includes('const response = await searchGoogleBooks(trimmedQuery);')) {
+  violations.push('AddBookModal.tsx: normal Search must keep the proven Build 27 search call');
+}
+if (!addBookModalSource.includes("type AddBookTab = 'search' | 'scan' | 'manual';")) {
+  violations.push('AddBookModal.tsx: Build 28 scanner must remain additive to the proven Search UI');
+}
+
 const main = read('src/main.tsx');
 if (!main.includes("import('./applicationEntry.tsx')")) {
   violations.push('main.tsx: the non-public runtime must lazy-load the canonical application entry');
