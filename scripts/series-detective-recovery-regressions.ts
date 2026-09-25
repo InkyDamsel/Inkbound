@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import type { UserBookRecord } from '../src/types';
+import { parseDetectiveOpenLibrarySeries } from '../src/features/series/seriesDetectiveOpenLibraryApi';
 import {
   buildSeriesDetectionQueries,
   canonicalDetectiveAuthor,
@@ -71,6 +72,21 @@ assert.equal(
 assert.equal(plausibleDetectiveSeriesSubtitle('A Twisted Tale'), 'A Twisted Tale');
 assert.equal(plausibleDetectiveSeriesSubtitle('A Novel'), null);
 assert.equal(plausibleDetectiveSeriesSubtitle('Illustrated Edition'), null);
+
+// Open Library exposes series membership as strings, sometimes with the
+// installment number embedded and sometimes as a plain series name.
+assert.deepEqual(
+  parseDetectiveOpenLibrarySeries(['Hades x Persephone Saga, 2']),
+  { name: 'Hades x Persephone Saga', position: 2 },
+);
+assert.deepEqual(
+  parseDetectiveOpenLibrarySeries(['Selection series']),
+  { name: 'Selection series', position: null },
+);
+assert.deepEqual(
+  parseDetectiveOpenLibrarySeries(['Dream Harbor #3']),
+  { name: 'Dream Harbor', position: 3 },
+);
 
 // Strong structured exact-work evidence can verify one book.
 const strong = scoreDetectiveEvidence({
