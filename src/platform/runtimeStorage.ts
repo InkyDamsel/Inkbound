@@ -79,13 +79,22 @@ export function readRuntimeJson<T>(key: string, fallback: T): T {
 }
 
 export function writeRuntimeJson(key: string, value: unknown): boolean {
+  let serialized = '';
   try {
-    const serialized = JSON.stringify(value);
+    serialized = JSON.stringify(value);
     if (activeStorageAdapter.getItem(key) === serialized) return true;
     activeStorageAdapter.setItem(key, serialized);
     notifyLocalRuntimeMutation(key);
     return true;
-  } catch {
+  } catch (error) {
+    console.error('[Inkbound persistence] Runtime JSON write failed.', {
+      operation: 'writeRuntimeJson',
+      key,
+      backend: activeStorageAdapter === browserStorageAdapter ? 'browser-storage' : 'configured-runtime-adapter',
+      payloadBytes: serialized ? new Blob([serialized]).size : 0,
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }
@@ -96,7 +105,15 @@ export function writeRuntimeValue(key: string, value: string): boolean {
     activeStorageAdapter.setItem(key, value);
     notifyLocalRuntimeMutation(key);
     return true;
-  } catch {
+  } catch (error) {
+    console.error('[Inkbound persistence] Runtime value write failed.', {
+      operation: 'writeRuntimeValue',
+      key,
+      backend: activeStorageAdapter === browserStorageAdapter ? 'browser-storage' : 'configured-runtime-adapter',
+      payloadBytes: new Blob([value]).size,
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }
