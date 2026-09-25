@@ -95,6 +95,7 @@ export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_curs
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 export const fullReconciliationVersionKey = (uid: string) => `inkbound_full_reconciliation_${uid}_v1`;
 export const librarySyncCheckpointKey = (uid: string) => `inkbound_library_sync_checkpoint_v1_${uid}`;
+export const manualCoverLedgerBaselineKey = (uid: string) => `inkbound_manual_cover_ledger_baseline_v1_${uid}`;
 export const auxiliaryPendingStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.auxiliaryPending}${uid}_v2`;
 export const auxiliaryBaselineStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.auxiliaryBaseline}${uid}_v2`;
 export const legacyAuxiliaryPendingStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.auxiliaryPending}${uid}_v1`;
