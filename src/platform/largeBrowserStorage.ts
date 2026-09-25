@@ -186,7 +186,9 @@ function installStorageBridge() {
     // React mounts before IndexedDB restoration now. During that brief window the
     // app may try to persist its initial empty state. Never let that overwrite the
     // reader's authoritative IndexedDB library or sync baselines.
-    if (startupHydrationPending && isStartupKey(key)) return;
+    if (startupHydrationPending && isStartupKey(key)) {
+      throw new Error(`Inkbound blocked a write to ${key} until canonical large-storage hydration completed.`);
+    }
 
     const normalized = String(value);
     cache.set(key, normalized);
