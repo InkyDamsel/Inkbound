@@ -47,6 +47,16 @@ assert.equal(
 
 assert.equal(
   canReportCloudLibraryHealthy({
+    localBookCount: 243,
+    cloudBookCount: 242,
+    migrationVerified: true,
+  }),
+  false,
+  'A partial cloud library must not report healthy even after an earlier migration completed.',
+);
+
+assert.equal(
+  canReportCloudLibraryHealthy({
     localBookCount: 0,
     cloudBookCount: 0,
     migrationVerified: false,
