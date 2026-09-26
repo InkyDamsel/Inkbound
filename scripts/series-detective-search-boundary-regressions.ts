@@ -44,6 +44,7 @@ const sharedSearchFiles = [
   'src/features/book-search/data/openLibraryApi.ts',
   'src/features/book-search/data/hardcoverApi.ts',
   'src/features/book-search/mapping/bookSearchMapper.ts',
+  'src/features/book-search/catalogHardening.ts',
 ];
 
 for (const relative of sharedSearchFiles) {
@@ -56,3 +57,68 @@ for (const relative of sharedSearchFiles) {
 }
 
 console.log('Inkbound Series Detective/Search boundary regressions passed.');
+
+
+const searchMapper = fs.readFileSync(
+  path.join(ROOT, 'src/features/book-search/mapping/bookSearchMapper.ts'),
+  'utf8',
+);
+assert.match(
+  searchMapper,
+  /hardenCatalogGroups/,
+  'Canonical Search mapper must harden the work before persistence.',
+);
+assert.match(
+  searchMapper,
+  /enrichSelectedCatalogEdition/,
+  'Canonical Search mapper must enrich the selected edition before persistence.',
+);
+assert.match(
+  searchMapper,
+  /seriesName/,
+  'Canonical Search mapper must persist seriesName.',
+);
+assert.match(
+  searchMapper,
+  /seriesOrder/,
+  'Canonical Search mapper must persist seriesOrder.',
+);
+
+const detectiveMapper = fs.readFileSync(
+  path.join(ROOT, 'src/features/series/seriesDetectiveToLibrary.ts'),
+  'utf8',
+);
+assert.match(
+  detectiveMapper,
+  /seriesName/,
+  'Series Detective candidate mapper must persist seriesName.',
+);
+assert.match(
+  detectiveMapper,
+  /seriesOrder/,
+  'Series Detective candidate mapper must persist seriesOrder.',
+);
+
+const appSource = fs.readFileSync(path.join(ROOT, 'src/App.tsx'), 'utf8');
+assert.match(
+  appSource,
+  /const handleAddBook = \(newBook: UserBookRecord\)/,
+  'App must own the canonical single-book add mutation.',
+);
+assert.match(
+  appSource,
+  /onAddBook=\{handleAddBook\}/,
+  'Search and library surfaces must route single-book adds through App.handleAddBook.',
+);
+
+const detailsSource = fs.readFileSync(
+  path.join(ROOT, 'src/components/BookDetailsModalCore.tsx'),
+  'utf8',
+);
+assert.match(
+  detailsSource,
+  /detectSeriesForBook/,
+  'Series Recovery Book Details must retain the verified Detective reconciliation bridge.',
+);
+
+console.log('Inkbound canonical Search/Detective architecture guards passed.');
