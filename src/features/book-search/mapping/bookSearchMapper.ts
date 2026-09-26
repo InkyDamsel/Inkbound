@@ -7,6 +7,7 @@ import {
 } from '../../../types';
 import { withReadingStatus } from '../../reading/bookReadingState';
 import { BookSearchEdition, BookSearchWorkGroup } from '../model/bookSearch';
+import { enrichSelectedCatalogEdition, hardenCatalogGroups } from '../catalogHardening';
 
 interface CreateBookFromEditionOptions {
   work: BookSearchWorkGroup;
@@ -40,20 +41,26 @@ const providerLabel = (source: BookSearchEdition['source']): string => {
 export function createBookFromSearchEdition({
   work,
   edition,
-  format = hardenedEdition.format,
+  format,
   status = 'tbr',
   ownership = 'owned',
   priority = 'medium',
-  editionName = hardenedEdition.editionName,
-  binding = hardenedEdition.binding,
-  specialFeatures = hardenedEdition.specialFeatures,
+  editionName,
+  binding,
+  specialFeatures,
 }: CreateBookFromEditionOptions): UserBookRecord {
+  const hardenedWork = hardenCatalogGroups([work])[0] ?? work;
+  const hardenedEdition = enrichSelectedCatalogEdition(hardenedWork, edition);
+  const resolvedFormat = format ?? hardenedEdition.format;
+  const resolvedEditionName = editionName ?? hardenedEdition.editionName;
+  const resolvedBinding = binding ?? hardenedEdition.binding;
+  const resolvedSpecialFeatures = specialFeatures ?? hardenedEdition.specialFeatures;
   const bookId = uniqueId('book');
   const workId = uniqueId('work');
   const editionId = uniqueId('edition');
-  const publisherSummary = hardenedEdition.publisherSummary ?? work.publisherSummary;
+  const publisherSummary = hardenedEdition.publisherSummary ?? hardenedWork.publisherSummary;
   const addedOn = localDateKey();
-  const hasKnownPrintTotal = format !== 'audiobook'
+  const hasKnownPrintTotal = resolvedFormat !== 'audiobook'
     && typeof hardenedEdition.pageCount === 'number'
     && Number.isFinite(hardenedEdition.pageCount)
     && hardenedEdition.pageCount > 0;
@@ -65,7 +72,7 @@ export function createBookFromSearchEdition({
       title: hardenedWork.title,
       subtitle: hardenedWork.subtitle,
       author: hardenedWork.authors.join(', '),
-      summary: publisherSummary ?? 'No publisher summary was available for this hardenedEdition.',
+      summary: publisherSummary ?? 'No publisher summary was available for this edition.',
       publisherSummary,
       genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : hardenedWork.genres,
       ...(hardenedEdition.seriesName ? { seriesName: hardenedEdition.seriesName } : {}),
@@ -75,27 +82,25 @@ export function createBookFromSearchEdition({
       externalWorkId: hardenedWork.key,
     },
     activeEditionId: editionId,
-    editions: [
-      {
-        id: editionId,
-        format,
-        isbn: hardenedEdition.isbn13 ?? hardenedEdition.isbn10,
-        isbn10: hardenedEdition.isbn10,
-        isbn13: hardenedEdition.isbn13,
-        asin: hardenedEdition.asin,
-        pageCount: hardenedEdition.pageCount,
-        publisher: hardenedEdition.publisher,
-        publicationDate: hardenedEdition.publicationDate,
-        coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
-        coverUrl: hardenedEdition.coverUrl,
-        language: hardenedEdition.language,
-        editionName,
-        binding,
-        specialFeatures: specialFeatures.filter(Boolean),
-        externalSource: hardenedEdition.source,
-        externalEditionId: hardenedEdition.externalEditionId,
-      },
-    ],
+    editions: [{
+      id: editionId,
+      format: resolvedFormat,
+      isbn: hardenedEdition.isbn13 ?? hardenedEdition.isbn10,
+      isbn10: hardenedEdition.isbn10,
+      isbn13: hardenedEdition.isbn13,
+      asin: hardenedEdition.asin,
+      pageCount: hardenedEdition.pageCount,
+      publisher: hardenedEdition.publisher,
+      publicationDate: hardenedEdition.publicationDate,
+      coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
+      coverUrl: hardenedEdition.coverUrl,
+      language: hardenedEdition.language,
+      editionName: resolvedEditionName,
+      binding: resolvedBinding,
+      specialFeatures: resolvedSpecialFeatures.filter(Boolean),
+      externalSource: hardenedEdition.source,
+      externalEditionId: hardenedEdition.externalEditionId,
+    }],
     status: 'tbr',
     ownership,
     progressPages: status === 'finished' && hasKnownPrintTotal ? hardenedEdition.pageCount! : 0,
