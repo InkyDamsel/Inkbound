@@ -2,7 +2,9 @@ import { defineSecret } from 'firebase-functions/params';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
 const HARDCOVER_API_TOKEN = defineSecret('HARDCOVER_API_TOKEN');
+const GOOGLE_BOOKS_API_KEY = defineSecret('GOOGLE_BOOKS_API_KEY');
 const HARDCOVER_ENDPOINT = 'https://api.hardcover.app/v1/graphql';
+const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 
 interface SearchResult {
@@ -242,6 +244,92 @@ export const searchSeriesDetectiveHardcover = onCall(
     } catch (error) {
       console.warn('Series Detective Hardcover catalog unavailable.', error);
       return { groups: [], totalItems: 0 };
+    }
+  },
+);
+
+
+interface DetectiveGoogleVolume {
+  id?: string;
+  volumeInfo?: {
+    seriesInfo?: {
+      volumeSeries?: Array<{ seriesId?: string }>;
+    };
+  };
+}
+
+async function detectiveGoogleCatalog(
+  query: string,
+  startIndex: number,
+  maxResults: number,
+) {
+  const apiKey = GOOGLE_BOOKS_API_KEY.value();
+  if (!apiKey) throw new HttpsError('failed-precondition', 'Series Detective Google Books is not configured.');
+
+  const params = new URLSearchParams({
+    q: query,
+    printType: 'books',
+    projection: 'full',
+    orderBy: 'relevance',
+    startIndex: String(Math.max(0, startIndex)),
+    maxResults: String(Math.max(1, Math.min(40, maxResults))),
+    key: apiKey,
+  });
+  const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+  if (!response.ok) throw new Error(`Google Books returned ${response.status} to Series Detective.`);
+  const payload = await response.json() as { totalItems?: number; items?: DetectiveGoogleVolume[] };
+  const items = payload.items ?? [];
+
+  const seriesIds = [...new Set(items.flatMap((volume) =>
+    volume.volumeInfo?.seriesInfo?.volumeSeries
+      ?.map((membership) => membership.seriesId?.trim())
+      .filter((value): value is string => Boolean(value)) ?? [],
+  ))];
+  const seriesMetadataById: Record<string, string> = {};
+
+  if (seriesIds.length > 0) {
+    try {
+      const seriesParams = new URLSearchParams({ key: apiKey });
+      seriesIds.forEach((id) => seriesParams.append('series_id', id));
+      const seriesResponse = await fetch(
+        `https://www.googleapis.com/books/v1/series/get?${seriesParams.toString()}`,
+      );
+      if (seriesResponse.ok) {
+        const seriesPayload = await seriesResponse.json() as {
+          series?: Array<{ seriesId?: string; title?: string }>;
+        };
+        (seriesPayload.series ?? []).forEach((series) => {
+          const id = series.seriesId?.trim();
+          const title = series.title?.trim();
+          if (id && title) seriesMetadataById[id] = title;
+        });
+      }
+    } catch (error) {
+      console.warn('Series Detective Google series-title expansion unavailable.', error);
+    }
+  }
+
+  return {
+    totalItems: typeof payload.totalItems === 'number' ? payload.totalItems : items.length,
+    items,
+    seriesMetadataById,
+  };
+}
+
+export const searchSeriesDetectiveGoogleBooks = onCall(
+  { secrets: [GOOGLE_BOOKS_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Series Detective.');
+    const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+    const startIndex = Number(request.data?.startIndex ?? 0);
+    const maxResults = Number(request.data?.maxResults ?? 40);
+    if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid Series Detective query is required.');
+
+    try {
+      return await detectiveGoogleCatalog(query, startIndex, maxResults);
+    } catch (error) {
+      console.warn('Series Detective Google Books catalog unavailable.', error);
+      return { totalItems: 0, items: [], seriesMetadataById: {} };
     }
   },
 );
