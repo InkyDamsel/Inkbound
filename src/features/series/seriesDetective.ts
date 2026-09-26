@@ -10,6 +10,7 @@ import {
   compactDetectiveIsbn,
   comparableDetectiveTitle,
   detectiveSeriesNamesCompatible,
+  inferDetectiveSeriesFromDescription,
   inferDetectiveSeriesFromTitle,
   inferKnownDetectiveSeriesFromDescription,
   inferKnownDetectiveSeriesFromText,
@@ -298,7 +299,8 @@ const seriesMetadata = (
     };
   }
 
-  return inferDetectiveSeriesFromTitle(volume.volumeInfo?.title)
+  return inferDetectiveSeriesFromDescription(volume.volumeInfo?.description)
+    ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.title)
     ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
 };
 
@@ -378,12 +380,14 @@ const evidenceForVolume = (
   const wantedAuthor = canonicalDetectiveAuthor(book.work.author);
   const exactAuthor = !wantedAuthor || (volume.volumeInfo?.authors ?? [])
     .some((author) => detectiveAuthorsCompatible(book.work.author, author));
+  const explicitDescriptionSeries = inferDetectiveSeriesFromDescription(volume.volumeInfo?.description);
   const structured = Boolean(
     (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
       const id = membership.seriesId?.trim();
       return Boolean(id && catalog.seriesTitlesById[id]);
     })
-    || volume.inkboundBibliographicSeries?.name?.trim(),
+    || volume.inkboundBibliographicSeries?.name?.trim()
+    || explicitDescriptionSeries,
   );
 
   return scoreDetectiveEvidence({
@@ -700,6 +704,7 @@ const mergeCandidateFromGoogleVolume = (
           hasStructuredSeries
           || (volume.inkboundBibliographicSeries?.name?.trim()
             && volume.inkboundBibliographicSeries.explicit === true)
+          || inferDetectiveSeriesFromDescription(info?.description)
         )
       : undefined,
   };
