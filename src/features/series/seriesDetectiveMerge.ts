@@ -1,4 +1,4 @@
-import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import type { SeriesDetectiveEdition, SeriesDetectiveWorkGroup } from './seriesDetectiveCatalogTypes';
 import {
   compactDetectiveIsbn,
   detectiveAuthorsCompatible,
@@ -7,8 +7,8 @@ import {
 } from './seriesDetectiveEvidence';
 
 export interface DetectiveMergeCandidate {
-  work: BookSearchWorkGroup;
-  edition: BookSearchEdition;
+  work: SeriesDetectiveWorkGroup;
+  edition: SeriesDetectiveEdition;
   seriesName?: string;
   position: number | null;
   provider: 'google-books' | 'open-library' | 'hardcover';
@@ -60,7 +60,7 @@ export const detectiveCandidatesAreSameWork = (
   return colonVariantMatches(leftRaw, rightRaw) || colonVariantMatches(rightRaw, leftRaw);
 };
 
-const exactIsbnMatch = (left: BookSearchEdition, right: BookSearchEdition): boolean => {
+const exactIsbnMatch = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean => {
   const left13 = compactDetectiveIsbn(left.isbn13);
   const right13 = compactDetectiveIsbn(right.isbn13);
   if (left13 && right13) return left13 === right13;
@@ -70,12 +70,12 @@ const exactIsbnMatch = (left: BookSearchEdition, right: BookSearchEdition): bool
   return Boolean(left10 && right10 && left10 === right10);
 };
 
-const sameProviderEdition = (left: BookSearchEdition, right: BookSearchEdition): boolean =>
+const sameProviderEdition = (left: SeriesDetectiveEdition, right: SeriesDetectiveEdition): boolean =>
   left.source === right.source
   && Boolean(left.externalEditionId)
   && left.externalEditionId === right.externalEditionId;
 
-const editionQuality = (edition: BookSearchEdition): number => {
+const editionQuality = (edition: SeriesDetectiveEdition): number => {
   let score = 0;
   if (edition.isbn13) score += 20;
   if (edition.isbn10) score += 10;
@@ -93,9 +93,9 @@ const mergeString = (preferred?: string, supplement?: string): string | undefine
   nonEmpty(preferred) ?? nonEmpty(supplement);
 
 const mergeExactEdition = (
-  left: BookSearchEdition,
-  right: BookSearchEdition,
-): BookSearchEdition => {
+  left: SeriesDetectiveEdition,
+  right: SeriesDetectiveEdition,
+): SeriesDetectiveEdition => {
   const preferred = editionQuality(right) > editionQuality(left) ? right : left;
   const supplement = preferred === left ? right : left;
 
@@ -189,10 +189,10 @@ const mergeSeries = (
 };
 
 const mergeWork = (
-  left: BookSearchWorkGroup,
-  right: BookSearchWorkGroup,
-  editions: BookSearchEdition[],
-): BookSearchWorkGroup => ({
+  left: SeriesDetectiveWorkGroup,
+  right: SeriesDetectiveWorkGroup,
+  editions: SeriesDetectiveEdition[],
+): SeriesDetectiveWorkGroup => ({
   key: left.key || right.key,
   title: nonEmpty(left.title) ?? right.title,
   subtitle: mergeString(left.subtitle, right.subtitle),
