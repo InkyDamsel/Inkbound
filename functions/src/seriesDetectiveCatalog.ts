@@ -99,14 +99,14 @@ const parseGoogleBooksBibliographicSeries = (
     if (seriesThenBook) {
       const name = seriesThenBook[1].trim();
       const position = Number(seriesThenBook[2]);
-      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
+      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}), explicit: true };
     }
 
     const seriesThenNumber = line.match(/^(.+?)\s+#\s*(\d+(?:\.\d+)?)$/i);
     if (seriesThenNumber) {
       const name = seriesThenNumber[1].trim();
       const position = Number(seriesThenNumber[2]);
-      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
+      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}), explicit: true };
     }
 
     // Preserve a plain bibliographic series label as weak evidence only.
