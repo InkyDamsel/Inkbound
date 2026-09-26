@@ -30,11 +30,11 @@ import {
 import { BookCover } from '../BookCover';
 import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
 import { createBookFromSeriesDetectiveCandidate } from '../../features/series/seriesDetectiveToLibrary';
-import { appendCanonicalBook } from '../../features/library/libraryMutations';
 
 interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
   onSelectBook: (book: UserBookRecord) => void;
+  onAddBook: (book: UserBookRecord) => void;
 }
 
 type DraftBook = { bookId: string; position: string; label: string };
@@ -55,7 +55,7 @@ const pageWindow = (current: number, total: number): number[] => {
   return Array.from({ length: 5 }, (_, index) => start + index);
 };
 
-export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook }) => {
+export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
@@ -271,10 +271,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
 
   const addDetectiveCandidate = (candidate: SeriesDetectiveResult['missing'][number]) => {
     const book: UserBookRecord = createBookFromSeriesDetectiveCandidate(candidate);
-    if (!appendCanonicalBook(book)) {
-      setDetectiveError('Inkbound could not save this book to your library.');
-      return;
-    }
+    onAddBook(book);
     setDetectiveResult((current) => current ? {
       ...current,
       missing: current.missing.filter((item) =>
