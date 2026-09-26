@@ -696,13 +696,15 @@ export async function findMissingSeriesBooks(
   const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates);
 
   const addCandidate = (candidate: SeriesDetectiveCandidate) => {
-    const titleKey = normalizeDetectiveText(candidate.work.title);
+    const titleKey = comparableDetectiveTitle(candidate.work.title);
+    const authorKey = canonicalDetectiveAuthor(candidate.work.authors[0]);
     const isbnKey = compactDetectiveIsbn(candidate.edition.isbn13 ?? candidate.edition.isbn10);
-    const key = candidate.position !== null
-      ? `position:${candidate.position}`
-      : isbnKey
-        ? `isbn:${isbnKey}`
-        : `title:${titleKey}`;
+    // Series position is ordering metadata, not work identity. Two catalog
+    // records claiming the same slot must not cause one distinct work to be
+    // silently discarded.
+    const key = isbnKey
+      ? `isbn:${isbnKey}`
+      : `work:${titleKey}::${authorKey}`;
     const current = seen.get(key);
     if (!current || (!current.edition.isbn13 && candidate.edition.isbn13)) seen.set(key, candidate);
   };
@@ -727,7 +729,6 @@ export async function findMissingSeriesBooks(
     return a.work.title.localeCompare(b.work.title);
   });
 
-  const existingPositions = new Set(knownPositions);
   const existingIsbns = new Set(libraryBooks.flatMap((book) =>
     book.editions.flatMap((edition) =>
       [edition.isbn13, edition.isbn10, edition.isbn].map(compactDetectiveIsbn).filter(Boolean),
@@ -740,7 +741,6 @@ export async function findMissingSeriesBooks(
   );
 
   const missing = candidates.filter((candidate) => {
-    if (candidate.position !== null && existingPositions.has(candidate.position)) return false;
     const existingWork = libraryBooks.some((book) =>
       comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(candidate.work.title)
       && candidate.work.authors.some((author) => detectiveAuthorsCompatible(book.work.author, author)),
