@@ -120,12 +120,13 @@ const hydrateDetails = async (payload: GooglePayload, signal?: AbortSignal): Pro
       ...cached,
       volumeInfo: { ...volume.volumeInfo, ...cached.volumeInfo },
     };
-    if (index >= DETAIL_LIMIT || volume.volumeInfo?.seriesInfo?.volumeSeries?.length) {
+    if (index >= DETAIL_LIMIT) {
       detailCache.set(volume.id, volume);
       return volume;
     }
     try {
       const params = new URLSearchParams({ projection: 'full' });
+      if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
       const response = await fetch(
         `${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(volume.id)}?${params.toString()}`,
         { signal },
