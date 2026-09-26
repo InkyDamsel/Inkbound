@@ -1,6 +1,6 @@
 import type { Format, UserBookRecord } from '../../types';
-import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
-import { searchHardcover } from '../book-search/data/hardcoverApi';
+import type { SeriesDetectiveEdition, SeriesDetectiveWorkGroup } from './seriesDetectiveCatalogTypes';
+import { searchSeriesDetectiveHardcover } from './seriesDetectiveHardcoverApi';
 import { resolveEffectiveSeriesMetadata } from './seriesLibrary';
 import {
   buildSeriesDetectionQueries,
@@ -37,15 +37,15 @@ import {
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
 
-type DetectiveSeriesAwareEdition = BookSearchEdition & {
+type DetectiveSeriesAwareEdition = SeriesDetectiveEdition & {
   seriesName?: string;
   seriesOrder?: number;
 };
 
 
 const knownSeriesMetadataFromCatalogWork = (
-  work: BookSearchWorkGroup,
-  edition: BookSearchEdition,
+  work: SeriesDetectiveWorkGroup,
+  edition: SeriesDetectiveEdition,
   wantedSeriesName: string,
 ): SeriesDetectiveMatch | null => {
   const seriesAware = edition as DetectiveSeriesAwareEdition;
@@ -83,7 +83,7 @@ const knownSeriesMetadataFromCatalogWork = (
 
 
 const hardcoverContextCandidates = (
-  groups: BookSearchWorkGroup[],
+  groups: SeriesDetectiveWorkGroup[],
   wantedSeriesName: string,
   wantedAuthor: string,
 ): DetectiveMergeCandidate[] => {
@@ -196,8 +196,8 @@ export interface SeriesDetectiveMatch {
 }
 
 export interface SeriesDetectiveCandidate {
-  work: BookSearchWorkGroup;
-  edition: BookSearchEdition;
+  work: SeriesDetectiveWorkGroup;
+  edition: SeriesDetectiveEdition;
   seriesName: string;
   position: number | null;
 }
@@ -385,7 +385,7 @@ export async function detectSeriesForBook(
     searchDetectiveOpenLibraryBook(book.work.title, book.work.author, signal),
     searchDetectiveOpenLibraryAuthor(book.work.author, signal),
     searchDetectiveOpenLibraryContext(book.work.title, book.work.author, signal),
-    searchHardcover(book.work.author),
+    searchSeriesDetectiveHardcover(book.work.author),
   ]);
 
   const catalogs = [
@@ -552,7 +552,7 @@ const mergeCandidateFromGoogleVolume = (
   // title/description inference alone never bypasses the author gate.
   if (!hasStructuredSeries && !explicitBibliographicSeriesMatch && !exactAuthor) return null;
 
-  const edition: BookSearchEdition = {
+  const edition: SeriesDetectiveEdition = {
     source: 'google-books',
     externalEditionId: volume.id,
     title,
@@ -572,7 +572,7 @@ const mergeCandidateFromGoogleVolume = (
     binding: volume.saleInfo?.isEbook ? 'Digital' : undefined,
     specialFeatures: [],
   };
-  const work: BookSearchWorkGroup = {
+  const work: SeriesDetectiveWorkGroup = {
     key: `google-books:${normalizeDetectiveText(title)}::${canonicalDetectiveAuthor(authors[0])}`,
     title,
     subtitle: info?.subtitle,
@@ -649,9 +649,9 @@ export async function findMissingSeriesBooks(
     searchDetectiveOpenLibrarySeries(seriesName, author, signal),
     searchDetectiveOpenLibraryAuthor(author, signal),
     searchDetectiveOpenLibraryContext(seriesName, author, signal),
-    searchHardcover(`${seriesName} ${author}`),
-    searchHardcover(seriesName),
-    searchHardcover(author),
+    searchSeriesDetectiveHardcover(`${seriesName} ${author}`),
+    searchSeriesDetectiveHardcover(seriesName),
+    searchSeriesDetectiveHardcover(author),
   ]);
   const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
   const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
