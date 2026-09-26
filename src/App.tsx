@@ -285,7 +285,7 @@ export default function App() {
       const existingName = book.work.seriesName?.trim();
       if (existingName && !seriesNamesAreCompatible(existingName, detected.name)) return;
 
-      commitCanonicalBooks((current) => current.map((candidate) => {
+      const committed = commitCanonicalBooks((current) => current.map((candidate) => {
         if (candidate.id !== book.id) return candidate;
         return {
           ...candidate,
@@ -298,6 +298,12 @@ export default function App() {
           },
         };
       }));
+      const reconciledBook = committed.find((candidate) => candidate.id === book.id);
+      if (reconciledBook) {
+        setSelectedBookForDetails((current) =>
+          current?.id === book.id ? reconciledBook : current,
+        );
+      }
     } catch (error) {
       console.warn('Automatic series reconciliation unavailable for newly added book.', error);
     }
