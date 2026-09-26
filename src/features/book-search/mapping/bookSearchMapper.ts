@@ -40,65 +40,65 @@ const providerLabel = (source: BookSearchEdition['source']): string => {
 export function createBookFromSearchEdition({
   work,
   edition,
-  format = edition.format,
+  format = hardenedEdition.format,
   status = 'tbr',
   ownership = 'owned',
   priority = 'medium',
-  editionName = edition.editionName,
-  binding = edition.binding,
-  specialFeatures = edition.specialFeatures,
+  editionName = hardenedEdition.editionName,
+  binding = hardenedEdition.binding,
+  specialFeatures = hardenedEdition.specialFeatures,
 }: CreateBookFromEditionOptions): UserBookRecord {
   const bookId = uniqueId('book');
   const workId = uniqueId('work');
   const editionId = uniqueId('edition');
-  const publisherSummary = edition.publisherSummary ?? work.publisherSummary;
+  const publisherSummary = hardenedEdition.publisherSummary ?? work.publisherSummary;
   const addedOn = localDateKey();
   const hasKnownPrintTotal = format !== 'audiobook'
-    && typeof edition.pageCount === 'number'
-    && Number.isFinite(edition.pageCount)
-    && edition.pageCount > 0;
+    && typeof hardenedEdition.pageCount === 'number'
+    && Number.isFinite(hardenedEdition.pageCount)
+    && hardenedEdition.pageCount > 0;
 
   const baseBook: UserBookRecord = {
     id: bookId,
     work: {
       id: workId,
-      title: work.title,
-      subtitle: work.subtitle,
-      author: work.authors.join(', '),
-      summary: publisherSummary ?? 'No publisher summary was available for this edition.',
+      title: hardenedWork.title,
+      subtitle: hardenedWork.subtitle,
+      author: hardenedWork.authors.join(', '),
+      summary: publisherSummary ?? 'No publisher summary was available for this hardenedEdition.',
       publisherSummary,
-      genres: edition.genres.length > 0 ? edition.genres : work.genres,
-      ...(edition.seriesName ? { seriesName: edition.seriesName } : {}),
-      ...(typeof edition.seriesOrder === 'number' ? { seriesOrder: edition.seriesOrder } : {}),
-      publicationYear: edition.publicationYear,
-      originalLanguage: edition.language,
-      externalWorkId: work.key,
+      genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : hardenedWork.genres,
+      ...(hardenedEdition.seriesName ? { seriesName: hardenedEdition.seriesName } : {}),
+      ...(typeof hardenedEdition.seriesOrder === 'number' ? { seriesOrder: hardenedEdition.seriesOrder } : {}),
+      publicationYear: hardenedEdition.publicationYear,
+      originalLanguage: hardenedEdition.language,
+      externalWorkId: hardenedWork.key,
     },
     activeEditionId: editionId,
     editions: [
       {
         id: editionId,
         format,
-        isbn: edition.isbn13 ?? edition.isbn10,
-        isbn10: edition.isbn10,
-        isbn13: edition.isbn13,
-        asin: edition.asin,
-        pageCount: edition.pageCount,
-        publisher: edition.publisher,
-        publicationDate: edition.publicationDate,
+        isbn: hardenedEdition.isbn13 ?? hardenedEdition.isbn10,
+        isbn10: hardenedEdition.isbn10,
+        isbn13: hardenedEdition.isbn13,
+        asin: hardenedEdition.asin,
+        pageCount: hardenedEdition.pageCount,
+        publisher: hardenedEdition.publisher,
+        publicationDate: hardenedEdition.publicationDate,
         coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
-        coverUrl: edition.coverUrl,
-        language: edition.language,
+        coverUrl: hardenedEdition.coverUrl,
+        language: hardenedEdition.language,
         editionName,
         binding,
         specialFeatures: specialFeatures.filter(Boolean),
-        externalSource: edition.source,
-        externalEditionId: edition.externalEditionId,
+        externalSource: hardenedEdition.source,
+        externalEditionId: hardenedEdition.externalEditionId,
       },
     ],
     status: 'tbr',
     ownership,
-    progressPages: status === 'finished' && hasKnownPrintTotal ? edition.pageCount! : 0,
+    progressPages: status === 'finished' && hasKnownPrintTotal ? hardenedEdition.pageCount! : 0,
     progressMinutes: 0,
     progressPercentage: 0,
     favoriteQuotes: [],
@@ -106,7 +106,7 @@ export function createBookFromSearchEdition({
     priority,
     moods: [],
     collections: [],
-    sourceOfImport: providerLabel(edition.source),
+    sourceOfImport: providerLabel(hardenedEdition.source),
     dateAdded: addedOn,
   };
 
