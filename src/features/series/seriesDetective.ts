@@ -37,19 +37,25 @@ import {
   type DetectiveMergeCandidate,
 } from './seriesDetectiveMerge';
 
+type DetectiveSeriesAwareEdition = BookSearchEdition & {
+  seriesName?: string;
+  seriesOrder?: number;
+};
+
 
 const knownSeriesMetadataFromCatalogWork = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
   wantedSeriesName: string,
 ): SeriesDetectiveMatch | null => {
+  const seriesAware = edition as DetectiveSeriesAwareEdition;
   if (
-    edition.seriesName
-    && detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName)
+    seriesAware.seriesName
+    && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName)
   ) {
     return {
-      name: edition.seriesName,
-      position: typeof edition.seriesOrder === 'number' ? edition.seriesOrder : null,
+      name: seriesAware.seriesName,
+      position: typeof seriesAware.seriesOrder === 'number' ? seriesAware.seriesOrder : null,
     };
   }
 
@@ -86,20 +92,21 @@ const hardcoverContextCandidates = (
     const exactAuthor = !wanted || work.authors.some((author) => detectiveAuthorsCompatible(wantedAuthor, author));
 
     return work.editions.flatMap((edition) => {
+      const seriesAware = edition as DetectiveSeriesAwareEdition;
       const metadata = wantedSeriesName
         ? knownSeriesMetadataFromCatalogWork(work, edition, wantedSeriesName)
-        : edition.seriesName?.trim()
+        : seriesAware.seriesName?.trim()
           ? {
-              name: edition.seriesName.trim(),
-              position: typeof edition.seriesOrder === 'number' && Number.isFinite(edition.seriesOrder)
-                ? edition.seriesOrder
+              name: seriesAware.seriesName.trim(),
+              position: typeof seriesAware.seriesOrder === 'number' && Number.isFinite(seriesAware.seriesOrder)
+                ? seriesAware.seriesOrder
                 : null,
             }
           : null;
       const structuredSeriesMatch = Boolean(
         wantedSeriesName
-        && edition.seriesName
-        && detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName),
+        && seriesAware.seriesName
+        && detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName),
       );
       if (!exactAuthor && !structuredSeriesMatch) return [];
       return [{
@@ -110,8 +117,8 @@ const hardcoverContextCandidates = (
         provider: 'hardcover' as const,
         seriesProvider: metadata ? 'hardcover' as const : undefined,
         seriesStructured: Boolean(
-          edition.seriesName
-          && (!wantedSeriesName || detectiveSeriesNamesCompatible(edition.seriesName, wantedSeriesName)),
+          seriesAware.seriesName
+          && (!wantedSeriesName || detectiveSeriesNamesCompatible(seriesAware.seriesName, wantedSeriesName)),
         ),
       }];
     });
