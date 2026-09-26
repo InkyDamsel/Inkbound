@@ -4,6 +4,7 @@ import { FORMAT_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPTIONS } from '../dom
 import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
+import { detectSeriesForBook } from '../features/series/seriesDetective';
 import { getActiveEdition, getBookReadingState, withReadingStatus } from '../features/reading/bookReadingState';
 import {
   getSessionDurationMinutes,
@@ -236,11 +237,37 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       if (!match) return setSyncMessage('No safe title-and-author match was found. Inkbound left this book unchanged.');
       const { work: matchedWork, edition: matchedEdition } = match;
       const matchedSeriesEdition = candidates.find(({ edition }) => edition.seriesName?.trim())?.edition;
-      const matchedSeriesName = matchedEdition.seriesName?.trim()
+      let matchedSeriesName = matchedEdition.seriesName?.trim()
         || matchedSeriesEdition?.seriesName?.trim();
-      const matchedSeriesOrder = typeof matchedEdition.seriesOrder === 'number'
+      let matchedSeriesOrder = typeof matchedEdition.seriesOrder === 'number'
         ? matchedEdition.seriesOrder
         : matchedSeriesEdition?.seriesOrder;
+
+      // Canonical catalog providers get first chance. If they still leave a
+      // series gap, use Series Detective only as a verified reconciliation
+      // fallback. Search itself never depends on Detective.
+      if (
+        (!book.work.seriesName?.trim() && !matchedSeriesName)
+        || (typeof book.work.seriesOrder !== 'number' && typeof matchedSeriesOrder !== 'number')
+      ) {
+        try {
+          const detectedSeries = await detectSeriesForBook(book);
+          if (detectedSeries) {
+            const existingOrMatchedName = book.work.seriesName?.trim() || matchedSeriesName;
+            const compatibleWithKnown = !existingOrMatchedName
+              || normalize(existingOrMatchedName) === normalize(detectedSeries.name);
+            if (compatibleWithKnown) {
+              matchedSeriesName = matchedSeriesName || detectedSeries.name;
+              if (typeof matchedSeriesOrder !== 'number' && typeof detectedSeries.position === 'number') {
+                matchedSeriesOrder = detectedSeries.position;
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('Series Detective metadata reconciliation unavailable.', error);
+        }
+      }
+
       let matchedPublisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
       if (!book.work.publisherSummary && !matchedPublisherSummary) {
         try {
@@ -286,11 +313,14 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       setPublisherSummary(nextBook.work.publisherSummary ?? '');
       setSeriesName(nextBook.work.seriesName ?? '');
       setSeriesOrder(typeof nextBook.work.seriesOrder === 'number' ? String(nextBook.work.seriesOrder) : '');
-      setSyncMessage(matchedPublisherSummary
-        ? `Metadata synced. Publisher summary updated.`
-        : manualEdition
-          ? 'Metadata synced. Your manual edition values were preserved, but no publisher summary was available from Hardcover, Google Books, or Open Library.'
-          : `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}, but no publisher summary was available from Hardcover, Google Books, or Open Library.`);
+      const seriesWasBackfilled = !book.work.seriesName?.trim() && Boolean(nextBook.work.seriesName?.trim());
+      setSyncMessage(seriesWasBackfilled
+        ? `Metadata synced. Series identified as “${nextBook.work.seriesName}”${typeof nextBook.work.seriesOrder === 'number' ? ` · Book ${nextBook.work.seriesOrder}` : ''}.`
+        : matchedPublisherSummary
+          ? `Metadata synced. Publisher summary updated.`
+          : manualEdition
+            ? 'Metadata synced. Your manual edition values were preserved, but no publisher summary was available from Hardcover, Google Books, or Open Library.'
+            : `Metadata synced from ${matchedEdition.source.replaceAll('-', ' ')}, but no publisher summary was available from Hardcover, Google Books, or Open Library.`);
     } catch (error) {
       setSyncMessage(error instanceof Error ? error.message : 'Inkbound could not sync this book.');
     } finally {
