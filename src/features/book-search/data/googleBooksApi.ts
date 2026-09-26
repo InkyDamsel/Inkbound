@@ -290,11 +290,12 @@ export async function searchGoogleBooksAuthorPage(
   }
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  await waitUntilAdministrationInactive(signal);
-  const query = `inauthor:${trimmedAuthor}`;
+  // Build 28's hardened author-page path intentionally uses the same
+  // catalog query form as normal Search, then lets the author page keep only
+  // exact author matches. Google Books can reject some inauthor: queries.
   const payload = functions && auth?.currentUser
-    ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-    : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    ? await requestProtectedGoogleBooks(trimmedAuthor, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+    : await requestDirectGoogleBooks(trimmedAuthor, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
 
   const rawItems = payload.items ?? [];
   const editions = rawItems
