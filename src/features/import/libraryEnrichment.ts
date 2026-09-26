@@ -13,8 +13,8 @@ export const IMPORT_ENRICHMENT_BATCH_SIZE = 1;
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const LEGACY_BOOKS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.books;
-const IMPORT_SEARCH_TIMEOUT_MS = 3000;
-const IMPORT_BOOK_TIMEOUT_MS = 9000;
+const IMPORT_SEARCH_TIMEOUT_MS = 6000;
+const IMPORT_BOOK_TIMEOUT_MS = 18000;
 const importSearchCache = new Map<string, Promise<BookSearchWorkGroup[]>>();
 
 export interface ImportEnrichmentQueueItem extends ImportRecordItem {
@@ -367,6 +367,15 @@ function importSearchQueries(item: ImportRecordItem): string[] {
   const formatTerms = formatSearchTerms(item);
   const hasIsbn = Boolean(compactIsbn(item.isbn));
 
+  // Start with the same canonical title + author lookup that Book Details
+  // uses for manual Sync Metadata. Format-specific terms are refinements, not
+  // prerequisites; putting them first could exhaust the automatic enrichment
+  // timeout before the proven canonical query was attempted.
+  if (fullTitle && primaryAuthor) queries.push(`${fullTitle} ${primaryAuthor}`);
+  if (cleanedTitle && primaryAuthor && cleanedTitle !== fullTitle) {
+    queries.push(`${cleanedTitle} ${primaryAuthor}`);
+  }
+
   if (!hasIsbn && fullTitle && primaryAuthor) {
     formatTerms.forEach((term) => queries.push(`${fullTitle} ${primaryAuthor} ${term}`));
   }
@@ -374,8 +383,6 @@ function importSearchQueries(item: ImportRecordItem): string[] {
     formatTerms.forEach((term) => queries.push(`${cleanedTitle} ${primaryAuthor} ${term}`));
   }
 
-  if (fullTitle && primaryAuthor) queries.push(`${fullTitle} ${primaryAuthor}`);
-  if (cleanedTitle && primaryAuthor) queries.push(`${cleanedTitle} ${primaryAuthor}`);
   if (shortTitle && primaryAuthor) queries.push(`${shortTitle} ${primaryAuthor}`);
   if (attempts > 0 && shortTitle && alternateAuthor) queries.push(`${shortTitle} ${alternateAuthor}`);
   if (attempts > 1 && normalizedTitle && primaryAuthor) queries.push(`${normalizedTitle} ${primaryAuthor}`);
