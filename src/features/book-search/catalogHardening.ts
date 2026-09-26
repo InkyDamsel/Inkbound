@@ -264,9 +264,6 @@ export const catalogEditionQualityScore = (edition: BookSearchEdition): number =
   else if (edition.source === 'google-books') score += 18;
   else if (edition.source === 'hardcover') score += 14;
   else if (edition.source === 'open-library') score += 10;
-  else if (edition.source === 'crossref') score += 4;
-  else if (edition.source === 'library-of-congress') score += 2;
-  else if (edition.source === 'internet-archive') score += 2;
   if (isValidCatalogIsbn13(edition.isbn13)) score += 18;
   else if (isValidCatalogIsbn10(edition.isbn10)) score += 12;
   if (edition.coverUrl) score += 12;
