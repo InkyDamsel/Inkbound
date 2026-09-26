@@ -546,11 +546,21 @@ const mergeCandidateFromGoogleVolume = (
     && detectiveSeriesNamesCompatible(volume.inkboundBibliographicSeries.name, wantedSeriesName),
   );
 
-  // Metadata-thin Google records are useful supplements when the author
-  // matches. Cross-author publisher/shared-world membership is accepted only
-  // when Google supplies explicit structured or bibliographic series evidence;
-  // title/description inference alone never bypasses the author gate.
-  if (!hasStructuredSeries && !explicitBibliographicSeriesMatch && !exactAuthor) return null;
+  // A verified match to the requested series is stronger than an author-string
+  // mismatch. This matters for shared-world/multi-author series and for harmless
+  // catalog spelling differences (for example transposed letters in an author
+  // name). Metadata-thin records still require an author match.
+  const explicitCompatibleSeries = Boolean(
+    metadata?.name
+    && wantedSeriesName
+    && detectiveSeriesNamesCompatible(metadata.name, wantedSeriesName),
+  );
+  if (
+    !hasStructuredSeries
+    && !explicitBibliographicSeriesMatch
+    && !explicitCompatibleSeries
+    && !exactAuthor
+  ) return null;
 
   const edition: SeriesDetectiveEdition = {
     source: 'google-books',
