@@ -88,12 +88,15 @@ export const detectiveAuthorsCompatible = (left?: string, right?: string): boole
   return detectiveAuthorCandidates(right).some((candidate) => leftIds.has(candidate));
 };
 
-export const canonicalDetectiveSeries = (value?: string): string =>
-  normalizeDetectiveText(value)
-    .replace(/\b(?:the|series|saga|novels|novel|books|book|collection)\b/g, ' ')
-    .replace(/\b(?:x|and)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+export const canonicalDetectiveSeries = (value?: string): string => {
+  const tokens = normalizeDetectiveText(value).split(' ').filter(Boolean);
+  while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
+  while (
+    tokens.length > 1
+    && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections'].includes(tokens[tokens.length - 1])
+  ) tokens.pop();
+  return tokens.filter((token) => token !== 'x' && token !== 'and').join(' ');
+};
 
 export const detectiveSeriesNamesCompatible = (a?: string, b?: string): boolean => {
   const left = canonicalDetectiveSeries(a);
