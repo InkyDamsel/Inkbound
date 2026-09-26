@@ -128,7 +128,11 @@ function writeGoogleBooksCache(query: string, payload: GoogleBooksCatalogPayload
   }
 }
 
-async function googleBooksCatalog(query: string): Promise<GoogleBooksCatalogPayload> {
+async function googleBooksCatalog(
+  query: string,
+  startIndex = 0,
+  maxResults = 40,
+): Promise<GoogleBooksCatalogPayload> {
   const cached = readGoogleBooksCache(query);
   if (cached) return cached;
 
@@ -140,7 +144,7 @@ async function googleBooksCatalog(query: string): Promise<GoogleBooksCatalogPayl
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
-    maxResults: '40',
+    maxResults: String(Math.max(1, Math.min(40, maxResults))),
     key: apiKey,
   });
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
@@ -281,10 +285,18 @@ export const searchHardcoverBooks = onCall(
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
     const provider = request.data?.provider === 'google-books' ? 'google-books' : 'hardcover';
+    const requestedStartIndex = Number(request.data?.startIndex);
+    const requestedMaxResults = Number(request.data?.maxResults);
+    const startIndex = Number.isInteger(requestedStartIndex) && requestedStartIndex >= 0
+      ? requestedStartIndex
+      : 0;
+    const maxResults = Number.isInteger(requestedMaxResults) && requestedMaxResults > 0
+      ? Math.min(40, requestedMaxResults)
+      : 40;
 
     try {
       return provider === 'google-books'
-        ? await googleBooksCatalog(query)
+        ? await googleBooksCatalog(query, startIndex, maxResults)
         : await hardcoverCatalog(query);
     } catch (error) {
       if (provider === 'hardcover') {
