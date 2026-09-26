@@ -29,7 +29,7 @@ import {
 } from '../../domain/libraryTaxonomy';
 import { BookCover } from '../BookCover';
 import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
-import { createBookFromSearchEdition } from '../../features/book-search/mapping/bookSearchMapper';
+import { createBookFromSeriesDetectiveCandidate } from '../../features/series/seriesDetectiveToLibrary';
 import { appendCanonicalBook } from '../../features/library/libraryMutations';
 
 interface SeriesLibraryPanelProps {
@@ -270,20 +270,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   };
 
   const addDetectiveCandidate = (candidate: SeriesDetectiveResult['missing'][number]) => {
-    const created = createBookFromSearchEdition({
-      work: candidate.work,
-      edition: candidate.edition,
-      status: 'tbr',
-      ownership: 'none',
-    });
-    const book: UserBookRecord = {
-      ...created,
-      work: {
-        ...created.work,
-        seriesName: candidate.seriesName,
-        seriesOrder: candidate.position ?? created.work.seriesOrder,
-      },
-    };
+    const book: UserBookRecord = createBookFromSeriesDetectiveCandidate(candidate);
     if (!appendCanonicalBook(book)) {
       setDetectiveError('Inkbound could not save this book to your library.');
       return;
