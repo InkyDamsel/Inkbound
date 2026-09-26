@@ -29,6 +29,7 @@ interface LibraryScreenProps {
   onSelectAll: (ids: string[]) => void;
   onClearSelection: () => void;
   onSelectBook: (book: UserBookRecord) => void;
+  onAddBook: (book: UserBookRecord) => void;
   onUpdateBook?: (book: UserBookRecord) => void;
   onOpenBatchEdit: () => void;
   onOpenAddBook: () => void;
@@ -48,6 +49,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   onSelectAll,
   onClearSelection,
   onSelectBook,
+  onAddBook,
   onUpdateBook,
   onOpenBatchEdit,
   onOpenAddBook,
@@ -173,7 +175,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       </nav>
 
       {section === 'series' ? (
-        <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} />
+        <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} onAddBook={onAddBook} />
       ) : section === 'collections' ? (
         <CollectionsScreen books={books} onUpdateBook={updateLibraryBook} onSelectBook={onSelectBook} />
       ) : section === 'loans' ? (
