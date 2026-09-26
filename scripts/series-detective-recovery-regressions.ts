@@ -833,6 +833,16 @@ const collisionTwo = {
 } as unknown as UserBookRecord;
 assert.equal(buildSeriesLibrary([collisionOne, collisionTwo]).length, 2);
 
+const collisionDifferentPositions = buildSeriesLibrary([
+  collisionOne,
+  {
+    ...collisionTwo,
+    id: 'collision-3',
+    work: { ...collisionTwo.work, seriesOrder: 2 },
+  },
+]);
+assert.equal(collisionDifferentPositions.length, 2);
+
 // A branded title with no installment number is not proof of membership.
 assert.equal(inferDetectiveSeriesFromTitle('Disney A Twisted Tale'), null);
 
