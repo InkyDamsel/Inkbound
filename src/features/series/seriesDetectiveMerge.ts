@@ -43,11 +43,21 @@ export const detectiveCandidatesAreSameWork = (
   if (!leftTitle || !rightTitle) return false;
   if (leftTitle === rightTitle) return true;
 
-  // Conservative subtitle compatibility: "Title" and "Title: Subtitle" may
-  // represent the same work, but short/generic titles never use containment.
-  const shorter = leftTitle.length <= rightTitle.length ? leftTitle : rightTitle;
-  const longer = shorter === leftTitle ? rightTitle : leftTitle;
-  return shorter.length >= 8 && longer.startsWith(`${shorter} `);
+  // Only collapse an omitted subtitle when the provider text explicitly uses a
+  // colon separator. Broad prefix matching is unsafe for series where sequel
+  // titles share a franchise prefix (for example "Harry Potter ..." books).
+  const rawWithoutSeriesSuffix = (value?: string) =>
+    (value?.trim() ?? '').replace(/\s*[\[(][^\])]+[\])]\s*$/, '').trim();
+
+  const leftRaw = rawWithoutSeriesSuffix(left.work.title);
+  const rightRaw = rawWithoutSeriesSuffix(right.work.title);
+  const colonVariantMatches = (base: string, expanded: string) => {
+    const colonIndex = expanded.indexOf(':');
+    if (colonIndex < 0) return false;
+    return normalizeDetectiveText(expanded.slice(0, colonIndex)) === normalizeDetectiveText(base);
+  };
+
+  return colonVariantMatches(leftRaw, rightRaw) || colonVariantMatches(rightRaw, leftRaw);
 };
 
 const exactIsbnMatch = (left: BookSearchEdition, right: BookSearchEdition): boolean => {
