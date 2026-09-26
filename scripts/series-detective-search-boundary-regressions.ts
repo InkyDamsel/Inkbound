@@ -28,6 +28,13 @@ for (const relative of detectiveFiles) {
     false,
     `Series Detective boundary violation: ${relative} calls the shared Search Hardcover gateway.`,
   );
+  if (relative.includes('SeriesLibraryPanel')) {
+    assert.equal(
+      /appendCanonicalBook/.test(content),
+      false,
+      'Series Detective boundary violation: SeriesLibraryPanel must use the App-owned add path.',
+    );
+  }
 }
 
 const sharedSearchFiles = [
