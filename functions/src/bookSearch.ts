@@ -300,7 +300,8 @@ async function hydrateGoogleCatalogItems(
     const hydrationLimit = detectiveMode
       ? GOOGLE_DETECTIVE_DETAIL_HYDRATION_LIMIT
       : GOOGLE_DETAIL_HYDRATION_LIMIT;
-    if (!id || index >= hydrationLimit || !googleVolumeNeedsDetail(item)) return item;
+    const needsDetail = googleVolumeNeedsDetail(item);
+    if (!id || index >= hydrationLimit || (!detectiveMode && !needsDetail)) return item;
 
     const params = new URLSearchParams({ projection: 'full' });
     if (apiKey) params.set('key', apiKey);
@@ -320,7 +321,7 @@ async function hydrateGoogleCatalogItems(
       // cannot erase otherwise valid membership evidence.
       if (memberships.length > 0 && !detectiveMode) return hydrated;
 
-      if (operator !== 'inauthor' && operator !== 'isbn' && index >= 2) return hydrated;
+      if (!detectiveMode && operator !== 'inauthor' && operator !== 'isbn' && index >= 2) return hydrated;
 
       const authors = Array.isArray(info?.authors)
         ? info.authors.filter((value): value is string => typeof value === 'string')
