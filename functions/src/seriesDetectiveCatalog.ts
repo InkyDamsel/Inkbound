@@ -400,9 +400,26 @@ async function detectiveGoogleCatalog(
     orderBy: 'relevance',
     startIndex: String(Math.max(0, startIndex)),
     maxResults: String(Math.max(1, Math.min(40, maxResults))),
-    key: apiKey,
   });
-  const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+  if (apiKey) params.set('key', apiKey);
+
+  const runRequest = async (): Promise<Response> => {
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
+      if (response.status !== 429 && response.status !== 503) break;
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      }
+    }
+    return response!;
+  };
+
+  let response = await runRequest();
+  if (!response.ok && apiKey && [400, 401, 403].includes(response.status)) {
+    params.delete('key');
+    response = await runRequest();
+  }
   if (!response.ok) throw new Error(`Google Books returned ${response.status} to Series Detective.`);
   const payload = await response.json() as { totalItems?: number; items?: DetectiveGoogleVolume[] };
   const rawItems = payload.items ?? [];
