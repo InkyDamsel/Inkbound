@@ -115,7 +115,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
     setTitle(book?.work.title ?? '');
     setAuthor(book?.work.author ?? '');
     setSeriesName(book?.work.seriesName ?? '');
-    setSeriesOrder(book?.work.seriesOrder ? String(book.work.seriesOrder) : '');
+    setSeriesOrder(typeof book?.work.seriesOrder === 'number' ? String(book.work.seriesOrder) : '');
     setSummary(book?.work.personalSummary ?? '');
     setPublisherSummary(book?.work.publisherSummary ?? '');
     setNotes(book?.personalNotes ?? '');
@@ -172,7 +172,9 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         title: title.trim(),
         author: author.trim(),
         seriesName: seriesName.trim() || undefined,
-        seriesOrder: seriesOrder.trim() ? Math.max(0, Number(seriesOrder)) || undefined : undefined,
+        seriesOrder: seriesOrder.trim() && Number.isFinite(Number(seriesOrder))
+          ? Math.max(0, Number(seriesOrder))
+          : undefined,
       },
       privateTags: csvList(tags),
       collections: csvList(collections),
