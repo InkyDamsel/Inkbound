@@ -105,8 +105,15 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
   return payload.data;
 }
 
-function readGoogleBooksCache(query: string): GoogleBooksCatalogPayload | undefined {
-  const key = query.trim().toLowerCase();
+const googleBooksCacheKey = (query: string, startIndex: number, maxResults: number) =>
+  `${query.trim().toLowerCase()}::${startIndex}::${maxResults}`;
+
+function readGoogleBooksCache(
+  query: string,
+  startIndex: number,
+  maxResults: number,
+): GoogleBooksCatalogPayload | undefined {
+  const key = googleBooksCacheKey(query, startIndex, maxResults);
   const cached = googleBooksCache.get(key);
   if (!cached) return undefined;
   if (cached.expiresAt <= Date.now()) {
@@ -118,8 +125,13 @@ function readGoogleBooksCache(query: string): GoogleBooksCatalogPayload | undefi
   return cached.payload;
 }
 
-function writeGoogleBooksCache(query: string, payload: GoogleBooksCatalogPayload) {
-  const key = query.trim().toLowerCase();
+function writeGoogleBooksCache(
+  query: string,
+  startIndex: number,
+  maxResults: number,
+  payload: GoogleBooksCatalogPayload,
+) {
+  const key = googleBooksCacheKey(query, startIndex, maxResults);
   googleBooksCache.set(key, { expiresAt: Date.now() + GOOGLE_BOOKS_CACHE_TTL_MS, payload });
   while (googleBooksCache.size > GOOGLE_BOOKS_CACHE_MAX) {
     const oldestKey = googleBooksCache.keys().next().value as string | undefined;
@@ -133,7 +145,7 @@ async function googleBooksCatalog(
   startIndex = 0,
   maxResults = 40,
 ): Promise<GoogleBooksCatalogPayload> {
-  const cached = readGoogleBooksCache(query);
+  const cached = readGoogleBooksCache(query, startIndex, maxResults);
   if (cached) return cached;
 
   const apiKey = GOOGLE_BOOKS_API_KEY.value();
@@ -147,6 +159,7 @@ async function googleBooksCatalog(
     maxResults: String(Math.max(1, Math.min(40, maxResults))),
     key: apiKey,
   });
+  if (startIndex > 0) params.set('startIndex', String(startIndex));
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`);
   if (!response.ok) throw new Error(`Google Books returned ${response.status}.`);
   const raw = await response.json() as { totalItems?: unknown; items?: unknown };
@@ -154,7 +167,7 @@ async function googleBooksCatalog(
     totalItems: typeof raw.totalItems === 'number' ? raw.totalItems : 0,
     items: Array.isArray(raw.items) ? raw.items : [],
   };
-  writeGoogleBooksCache(query, payload);
+  writeGoogleBooksCache(query, startIndex, maxResults, payload);
   return payload;
 }
 
