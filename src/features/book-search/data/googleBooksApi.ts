@@ -6,6 +6,7 @@ import { searchInkboundTrustedCatalog } from '../../catalog/metadataContribution
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
+import { catalogTitlesAreCompatible, hardenCatalogGroups } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -181,140 +182,40 @@ const groupGoogleEditions = (editions: BookSearchEdition[]): BookSearchWorkGroup
   return order.map((key) => groups.get(key)).filter((group): group is BookSearchWorkGroup => Boolean(group));
 };
 
-const groupIdentity = (group: BookSearchWorkGroup): string =>
-  `${normalizeText(group.title)}::${normalizeText(group.authors[0])}`;
-
-const sameEdition = (
-  a: BookSearchWorkGroup['editions'][number],
-  b: BookSearchWorkGroup['editions'][number],
-): boolean => {
-  if (a.source === b.source && a.externalEditionId === b.externalEditionId) return true;
-  if (a.isbn13 && b.isbn13 && compactIsbn(a.isbn13) === compactIsbn(b.isbn13)) return true;
-  if (a.isbn10 && b.isbn10 && compactIsbn(a.isbn10) === compactIsbn(b.isbn10)) return true;
-  return false;
-};
-
-const mergeEditionMissingFields = (
-  current: BookSearchEdition,
-  supplement: BookSearchEdition,
-): BookSearchEdition => ({
-  ...current,
-  subtitle: current.subtitle || supplement.subtitle,
-  publisherSummary: current.publisherSummary || supplement.publisherSummary,
-  genres: current.genres.length ? current.genres : supplement.genres,
-  publisher: current.publisher || supplement.publisher,
-  publicationDate: current.publicationDate || supplement.publicationDate,
-  publicationYear: current.publicationYear || supplement.publicationYear,
-  language: current.language || supplement.language,
-  seriesName: current.seriesName || supplement.seriesName,
-  seriesOrder: typeof current.seriesOrder === 'number'
-    ? current.seriesOrder
-    : supplement.seriesOrder,
-  isbn10: current.isbn10 || supplement.isbn10,
-  isbn13: current.isbn13 || supplement.isbn13,
-  asin: current.asin || supplement.asin,
-  pageCount: current.pageCount || supplement.pageCount,
-  coverUrl: current.coverUrl || supplement.coverUrl,
-  editionName: current.editionName || supplement.editionName,
-  binding: current.binding || supplement.binding,
-  specialFeatures: current.specialFeatures.length
-    ? current.specialFeatures
-    : supplement.specialFeatures,
-});
-
-const seriesEvidenceForGroup = (
-  group: BookSearchWorkGroup,
-): { name?: string; order?: number } => {
-  const withSeries = group.editions.find((edition) => edition.seriesName?.trim());
-  return {
-    name: withSeries?.seriesName?.trim(),
-    order: typeof withSeries?.seriesOrder === 'number' ? withSeries.seriesOrder : undefined,
-  };
+const groupAuthorsCompatible = (left: BookSearchWorkGroup, right: BookSearchWorkGroup): boolean => {
+  const leftAuthor = normalizeText(left.authors[0]);
+  const rightAuthor = normalizeText(right.authors[0]);
+  return !leftAuthor
+    || !rightAuthor
+    || leftAuthor === 'unknown author'
+    || rightAuthor === 'unknown author'
+    || leftAuthor === rightAuthor;
 };
 
 const mergeGroups = (
   primary: BookSearchWorkGroup[],
   supplements: BookSearchWorkGroup[][],
 ): BookSearchWorkGroup[] => {
-  const merged = new Map<string, BookSearchWorkGroup>();
-  const order: string[] = [];
+  // The primary provider owns result ordering. Canonical hardening sees all
+  // compatible provider records so it can fill missing metadata field-by-field,
+  // but supplement-only works never get injected into a successful primary
+  // result set.
+  const hardened = hardenCatalogGroups([...primary, ...supplements.flat()]);
+  const used = new Set<string>();
+  const result: BookSearchWorkGroup[] = [];
 
-  primary.forEach((group) => {
-    const key = groupIdentity(group);
-    merged.set(key, {
-      ...group,
-      key: `inkbound:${key}`,
-      genres: [...group.genres],
-      editions: group.editions.map((edition) => ({
-        ...edition,
-        genres: [...edition.genres],
-        specialFeatures: [...edition.specialFeatures],
-      })),
-    });
-    order.push(key);
-  });
+  for (const primaryGroup of primary) {
+    const match = hardened.find((candidate) =>
+      !used.has(candidate.key)
+      && groupAuthorsCompatible(primaryGroup, candidate)
+      && catalogTitlesAreCompatible(primaryGroup.title, candidate.title),
+    );
+    if (!match) continue;
+    used.add(match.key);
+    result.push(match);
+  }
 
-  supplements.flat().forEach((group) => {
-    const key = groupIdentity(group);
-    const existing = merged.get(key);
-    if (!existing) return;
-
-    if (!existing.subtitle && group.subtitle) existing.subtitle = group.subtitle;
-    if (!existing.publisherSummary && group.publisherSummary) {
-      existing.publisherSummary = group.publisherSummary;
-    }
-    existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
-
-    // Series membership is work-level metadata. If any compatible provider has
-    // structured series evidence for this work, preserve it on otherwise
-    // metadata-thin editions without changing the selected provider/edition.
-    const existingSeries = seriesEvidenceForGroup(existing);
-    const supplementalSeries = seriesEvidenceForGroup(group);
-    const resolvedSeriesName = existingSeries.name || supplementalSeries.name;
-    const resolvedSeriesOrder = typeof existingSeries.order === 'number'
-      ? existingSeries.order
-      : supplementalSeries.order;
-
-    existing.editions = existing.editions.map((edition) => ({
-      ...edition,
-      seriesName: edition.seriesName || resolvedSeriesName,
-      seriesOrder: typeof edition.seriesOrder === 'number'
-        ? edition.seriesOrder
-        : resolvedSeriesOrder,
-    }));
-
-    group.editions.forEach((edition) => {
-      const duplicateIndex = existing.editions.findIndex((candidate) => sameEdition(candidate, edition));
-      if (duplicateIndex < 0) {
-        // Keep distinct editions available under Choose list, but do not let a
-        // supplemental provider replace the primary provider's ranking/order.
-        existing.editions.push({
-          ...edition,
-          seriesName: edition.seriesName || resolvedSeriesName,
-          seriesOrder: typeof edition.seriesOrder === 'number'
-            ? edition.seriesOrder
-            : resolvedSeriesOrder,
-        });
-        return;
-      }
-
-      existing.editions[duplicateIndex] = mergeEditionMissingFields(
-        existing.editions[duplicateIndex],
-        {
-          ...edition,
-          seriesName: edition.seriesName || resolvedSeriesName,
-          seriesOrder: typeof edition.seriesOrder === 'number'
-            ? edition.seriesOrder
-            : resolvedSeriesOrder,
-        },
-      );
-    });
-  });
-
-  return order
-    .map((key) => merged.get(key))
-    .filter((group): group is BookSearchWorkGroup => Boolean(group))
-    .slice(0, 50);
+  return result.slice(0, 50);
 };
 
 async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchResponse> {
