@@ -165,6 +165,50 @@ export const inferKnownDetectiveSeriesFromText = (
   return { name, position: parseDetectivePositionToken(match[2]) };
 };
 
+export const inferDetectiveSeriesFromDescription = (
+  value?: string,
+): { name: string; position: number | null } | null => {
+  const raw = value?.replace(/\s+/g, ' ').trim();
+  if (!raw) return null;
+
+  const position = detectivePositionPattern();
+  const patterns = [
+    new RegExp(
+      `\\b(?:the\\s+)?(${position})(?:st|nd|rd|th)?\\s+(?:book|novel|volume|installment|instalment|part)\\s+(?:in|of)\\s+(?:the\\s+)?(.{2,80}?)\\s+(?:series|saga|trilogy|duet|collection)\\b`,
+      'i',
+    ),
+    new RegExp(
+      `\\b(?:book|novel|volume|installment|instalment|part)\\s*#?\\s*(${position})\\s+(?:in|of)\\s+(?:the\\s+)?(.{2,80}?)\\s+(?:series|saga|trilogy|duet|collection)\\b`,
+      'i',
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (!match) continue;
+    const parsedPosition = parseDetectivePositionToken(match[1]);
+    const name = match[2]
+      ?.replace(/^[\s"'“”‘’]+|[\s"'“”‘’.,:;!?-]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!name || parsedPosition === null || parsedPosition <= 0) continue;
+
+    const canonical = canonicalDetectiveSeries(name);
+    const words = canonical.split(' ').filter(Boolean);
+    if (!canonical || words.length > 8) continue;
+
+    // Descriptive phrases such as "a dark hockey romance series" are not
+    // formal series identities. Require a proper-looking name rather than
+    // turning marketing copy into a made-up series.
+    if (/^(?:a|an)\s+/i.test(name)) continue;
+    if (/\b(?:romance|fantasy|mystery|thriller|fiction|novels?|books?)\b/i.test(name) && words.length >= 3) continue;
+
+    return { name, position: parsedPosition };
+  }
+
+  return null;
+};
+
 export const inferKnownDetectiveSeriesFromDescription = (
   value: string | undefined,
   wantedSeriesName: string,
