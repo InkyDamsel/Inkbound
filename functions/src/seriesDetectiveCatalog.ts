@@ -87,20 +87,30 @@ const parseGoogleBooksBibliographicSeries = (
       if (lower.endsWith(suffix)) line = line.slice(0, -suffix.length).trim();
     }
 
-    const numbered = line.match(/^Book\s+(\d+(?:\.\d+)?)\s+of\s+(.+)$/i);
-    if (numbered) {
-      const position = Number(numbered[1]);
-      const name = numbered[2].trim();
+    const bookOfSeries = line.match(/^Book\s+(\d+(?:\.\d+)?)\s+of\s+(.+)$/i);
+    if (bookOfSeries) {
+      const position = Number(bookOfSeries[1]);
+      const name = bookOfSeries[2].trim();
       if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
     }
 
-    if (
-      line.length >= 3
-      && line.length <= 100
-      && !/^(?:edition|volume|part)\b/i.test(line)
-    ) {
-      return { name: line };
+    const seriesThenBook = line.match(/^(.+?)(?:,|\s+-)?\s*Book\s+(\d+(?:\.\d+)?)$/i);
+    if (seriesThenBook) {
+      const name = seriesThenBook[1].trim();
+      const position = Number(seriesThenBook[2]);
+      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
     }
+
+    const seriesThenNumber = line.match(/^(.+?)\s+#\s*(\d+(?:\.\d+)?)$/i);
+    if (seriesThenNumber) {
+      const name = seriesThenNumber[1].trim();
+      const position = Number(seriesThenNumber[2]);
+      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
+    }
+
+    // Do not treat an arbitrary bibliographic subtitle/marketing line as a
+    // series name. That permissive fallback caused unrelated books to become
+    // "verified" Series Detective candidates after provider merging.
   }
 
   return null;
