@@ -108,6 +108,26 @@ const ORDINAL_POSITIONS: Record<string, number> = {
   sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19, twentieth: 20,
 };
 
+const CARDINAL_POSITIONS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5,
+  six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+  sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20,
+};
+
+const POSITION_WORDS = { ...ORDINAL_POSITIONS, ...CARDINAL_POSITIONS };
+
+export const parseDetectivePositionToken = (value?: string): number | null => {
+  const token = value?.trim().toLowerCase() ?? '';
+  if (!token) return null;
+  const numeric = Number(token);
+  if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  return POSITION_WORDS[token] ?? null;
+};
+
+const detectivePositionPattern = () =>
+  `(?:\\d+(?:\\.\\d+)?|${Object.keys(POSITION_WORDS).join('|')})`;
+
 const GENERIC_SUBTITLE_WORDS = new Set([
   'novel', 'novella', 'memoir', 'romance', 'thriller', 'mystery', 'fantasy',
   'story', 'stories', 'edition', 'editions', 'anniversary', 'illustrated',
@@ -132,12 +152,14 @@ export const inferKnownDetectiveSeriesFromText = (
   if (!text) return null;
   const parts = text.split(':');
   const candidate = (parts.length > 1 ? parts[parts.length - 1] : text).trim();
-  const match = candidate.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*)(\d+(?:\.\d+)?)\s*$/i);
+  const match = candidate.match(new RegExp(
+    `^(.*?)(?:\\s*,?\\s*)(?:#\\s*|book\\s*#?\\s*|vol(?:ume)?\\.?\\s*#?\\s*|part\\s*#?\\s*)(${detectivePositionPattern()})\\s*$`,
+    'i',
+  ));
   if (!match) return null;
   const name = match[1].trim().replace(/[,:;\-]+$/g, '');
   if (!detectiveSeriesNamesCompatible(name, wantedSeriesName)) return null;
-  const parsed = Number.parseFloat(match[2]);
-  return { name, position: Number.isFinite(parsed) && parsed >= 0 ? parsed : null };
+  return { name, position: parseDetectivePositionToken(match[2]) };
 };
 
 export const inferKnownDetectiveSeriesFromDescription = (
@@ -161,23 +183,16 @@ export const inferKnownDetectiveSeriesFromDescription = (
   let position: number | null = null;
 
   for (const pattern of [
-    /\b(?:book|volume|vol|part)\s*#?\s*(\d+(?:\.\d+)?)\b/i,
-    /\b(\d+(?:\.\d+)?)\s*(?:st|nd|rd|th)?\s+(?:book|novel|volume|part)\b/i,
+    new RegExp(`\\b(?:book|volume|vol|part)\\s*#?\\s*(${detectivePositionPattern()})\\b`, 'i'),
+    new RegExp(`\\b(${detectivePositionPattern()})\\s*(?:st|nd|rd|th)?\\s+(?:book|novel|volume|part)\\b`, 'i'),
+    new RegExp(`\\b(${detectivePositionPattern()})\\s+(?:in|of)\\s+(?:the\\s+)?(?:series|saga|collection)\\b`, 'i'),
   ]) {
     const match = context.match(pattern);
-    const parsed = match ? Number(match[1]) : Number.NaN;
-    if (Number.isFinite(parsed) && parsed > 0) {
+    const parsed = match ? parseDetectivePositionToken(match[1]) : null;
+    if (parsed !== null && parsed > 0) {
       position = parsed;
       break;
     }
-  }
-
-  if (position === null) {
-    const match = context.match(new RegExp(
-      '\\b(' + Object.keys(ORDINAL_POSITIONS).join('|') + ')\\s+(?:book|novel|volume|part)\\b',
-      'i',
-    ));
-    if (match) position = ORDINAL_POSITIONS[match[1].toLowerCase()] ?? null;
   }
 
   return { name: wantedSeriesName.trim(), position };
@@ -192,13 +207,15 @@ export const inferDetectiveSeriesFromTitle = (
   const candidate = suffix ?? text.split(':').slice(-1)[0]?.trim();
   if (!candidate) return null;
 
-  const match = candidate.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*)(\d+(?:\.\d+)?)\s*$/i);
+  const match = candidate.match(new RegExp(
+    `^(.*?)(?:\\s*,?\\s*)(?:#\\s*|book\\s*#?\\s*|vol(?:ume)?\\.?\\s*#?\\s*|part\\s*#?\\s*)(${detectivePositionPattern()})\\s*$`,
+    'i',
+  ));
   if (!match) return null;
 
   const name = match[1].trim().replace(/[,:;\-]+$/g, '');
   if (name.length < 2 || GENERIC_SERIES_WORDS.has(name.toLowerCase())) return null;
-  const parsed = Number.parseFloat(match[2]);
-  return { name, position: Number.isFinite(parsed) && parsed >= 0 ? parsed : null };
+  return { name, position: parseDetectivePositionToken(match[2]) };
 };
 
 export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: string; identifiers: string[] } => {
