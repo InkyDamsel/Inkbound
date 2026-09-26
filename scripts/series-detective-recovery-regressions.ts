@@ -82,6 +82,18 @@ assert.equal(plausibleDetectiveSeriesSubtitle('A Twisted Tale'), 'A Twisted Tale
 assert.equal(plausibleDetectiveSeriesSubtitle('A Novel'), null);
 assert.equal(plausibleDetectiveSeriesSubtitle('Illustrated Edition'), null);
 
+assert.deepEqual(
+  inferDetectiveSeriesFromTitle('Example (Crown Trials, Book Two)'),
+  { name: 'Crown Trials', position: 2 },
+);
+assert.deepEqual(
+  inferKnownDetectiveSeriesFromDescription(
+    'Book Three of the Crown Trials series.',
+    'Crown Trials',
+  ),
+  { name: 'Crown Trials', position: 3 },
+);
+
 // Open Library exposes series membership as strings, sometimes with the
 // installment number embedded and sometimes as a plain series name.
 assert.deepEqual(
@@ -94,6 +106,10 @@ assert.deepEqual(
 );
 assert.deepEqual(
   parseDetectiveOpenLibrarySeries(['Dream Harbor #3']),
+  { name: 'Dream Harbor', position: 3 },
+);
+assert.deepEqual(
+  parseDetectiveOpenLibrarySeries(['Dream Harbor, Book Three']),
   { name: 'Dream Harbor', position: 3 },
 );
 
