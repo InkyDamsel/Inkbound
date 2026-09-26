@@ -1,0 +1,265 @@
+import assert from 'node:assert/strict';
+import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
+import {
+  catalogTitlesAreCompatible,
+  enrichSelectedCatalogEdition,
+  hardenCatalogGroups,
+} from '../src/features/book-search/catalogHardening';
+import { createBookFromSearchEdition } from '../src/features/book-search/mapping/bookSearchMapper';
+import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
+
+const edition = (
+  source: BookSearchEdition['source'],
+  id: string,
+  title: string,
+  author: string,
+  overrides: Partial<BookSearchEdition> = {},
+): BookSearchEdition => ({
+  source,
+  externalEditionId: id,
+  title,
+  authors: [author],
+  genres: [],
+  publicationYear: 2020,
+  format: 'paperback',
+  specialFeatures: [],
+  ...overrides,
+});
+
+const group = (
+  key: string,
+  title: string,
+  author: string,
+  editions: BookSearchEdition[],
+): BookSearchWorkGroup => ({
+  key,
+  title,
+  authors: [author],
+  genres: [],
+  editions,
+});
+
+// Bibliographic series suffixes are the same work, even for short titles.
+assert.equal(
+  catalogTitlesAreCompatible('The Selection', 'The Selection (The Selection #1)'),
+  true,
+);
+assert.equal(
+  catalogTitlesAreCompatible(
+    'Conceal, Don\'t Feel',
+    'Conceal, Don\'t Feel (A Twisted Tale, Book 7)',
+  ),
+  true,
+);
+assert.equal(
+  catalogTitlesAreCompatible(
+    'Harry Potter',
+    'Harry Potter and the Chamber of Secrets',
+  ),
+  false,
+);
+
+// A Touch of Darkness: one provider owns the selected edition, another owns
+// the missing work-level series relationship. The selected edition must keep
+// its own identity while inheriting the valid series metadata.
+const darknessGoogleEdition = edition(
+  'google-books',
+  'google-darkness',
+  'A Touch of Darkness',
+  'Scarlett St. Clair',
+  {
+    isbn13: '9781728261706',
+    pageCount: 400,
+    coverUrl: 'https://example.test/darkness-google.jpg',
+  },
+);
+const darknessOpenLibraryEdition = edition(
+  'open-library',
+  'ol-darkness',
+  'A Touch of Darkness (Hades x Persephone Saga, Book 1)',
+  'Scarlett St. Clair',
+  {
+    isbn13: '9781728261713',
+    seriesName: 'Hades x Persephone Saga',
+    seriesOrder: 1,
+  },
+);
+const darknessGroups = hardenCatalogGroups([
+  group('google:darkness', 'A Touch of Darkness', 'Scarlett St. Clair', [darknessGoogleEdition]),
+  group(
+    'ol:darkness',
+    'A Touch of Darkness (Hades x Persephone Saga, Book 1)',
+    'Scarlett St. Clair',
+    [darknessOpenLibraryEdition],
+  ),
+]);
+assert.equal(darknessGroups.length, 1);
+assert.equal(darknessGroups[0].editions.length, 2);
+assert.equal(
+  darknessGroups[0].editions.find((item) => item.externalEditionId === 'google-darkness')?.seriesName,
+  'Hades x Persephone Saga',
+);
+assert.equal(
+  darknessGroups[0].editions.find((item) => item.externalEditionId === 'google-darkness')?.seriesOrder,
+  1,
+);
+
+const enrichedDarkness = enrichSelectedCatalogEdition(darknessGroups[0], darknessGoogleEdition);
+assert.equal(enrichedDarkness.seriesName, 'Hades x Persephone Saga');
+assert.equal(enrichedDarkness.seriesOrder, 1);
+assert.equal(enrichedDarkness.pageCount, 400);
+
+const savedDarkness = createBookFromSearchEdition({
+  work: darknessGroups[0],
+  edition: darknessGoogleEdition,
+});
+assert.equal(savedDarkness.work.seriesName, 'Hades x Persephone Saga');
+assert.equal(savedDarkness.work.seriesOrder, 1);
+assert.equal(normalizeLibraryRecord(savedDarkness).work.seriesName, 'Hades x Persephone Saga');
+assert.equal(normalizeLibraryRecord(savedDarkness).work.seriesOrder, 1);
+
+// Compatible series-name variants collapse to one canonical relationship.
+const hadesVariantGroups = hardenCatalogGroups([
+  group(
+    'hades-a',
+    'A Touch of Darkness',
+    'Scarlett St. Clair',
+    [edition('google-books', 'hades-a-ed', 'A Touch of Darkness', 'Scarlett St. Clair', {
+      seriesName: 'Hades x Persephone Saga',
+      seriesOrder: 1,
+    })],
+  ),
+  group(
+    'hades-b',
+    'A Touch of Darkness (Hades & Persephone, Book 1)',
+    'Scarlett St. Clair',
+    [edition('hardcover', 'hades-b-ed', 'A Touch of Darkness', 'Scarlett St. Clair', {
+      seriesName: 'Hades & Persephone',
+      seriesOrder: 1,
+    })],
+  ),
+]);
+assert.equal(hadesVariantGroups.length, 1);
+assert.equal(
+  new Set(hadesVariantGroups[0].editions.map((item) => item.seriesName)).size,
+  2,
+);
+assert.ok(hadesVariantGroups[0].editions.every((item) => item.seriesOrder === 1));
+
+// Selection: short primary title must merge with a provider that embeds the
+// series suffix, then persist that relationship.
+const selectionPrimary = edition(
+  'google-books',
+  'selection-google',
+  'The Selection',
+  'Kiera Cass',
+  { isbn13: '9780062059932' },
+);
+const selectionSeries = edition(
+  'open-library',
+  'selection-ol',
+  'The Selection (The Selection #1)',
+  'Kiera Cass',
+  {
+    isbn13: '9780062059949',
+    seriesName: 'The Selection',
+    seriesOrder: 1,
+  },
+);
+const selectionGroups = hardenCatalogGroups([
+  group('selection-google', 'The Selection', 'Kiera Cass', [selectionPrimary]),
+  group('selection-ol', 'The Selection (The Selection #1)', 'Kiera Cass', [selectionSeries]),
+]);
+assert.equal(selectionGroups.length, 1);
+const savedSelection = createBookFromSearchEdition({
+  work: selectionGroups[0],
+  edition: selectionPrimary,
+});
+assert.equal(savedSelection.work.seriesName, 'The Selection');
+assert.equal(savedSelection.work.seriesOrder, 1);
+
+// Twisted Tale: shared-series metadata is work-level. The selected edition may
+// omit it while a compatible provider exposes the relationship.
+const concealPrimary = edition(
+  'google-books',
+  'conceal-google',
+  'Conceal, Don\'t Feel',
+  'Jen Calonita',
+  { isbn13: '9781368052238' },
+);
+const concealSeries = edition(
+  'open-library',
+  'conceal-ol',
+  'Conceal, Don\'t Feel (A Twisted Tale, Book 7)',
+  'Jen Calonita',
+  {
+    seriesName: 'A Twisted Tale',
+    seriesOrder: 7,
+  },
+);
+const concealGroups = hardenCatalogGroups([
+  group('conceal-google', 'Conceal, Don\'t Feel', 'Jen Calonita', [concealPrimary]),
+  group(
+    'conceal-ol',
+    'Conceal, Don\'t Feel (A Twisted Tale, Book 7)',
+    'Jen Calonita',
+    [concealSeries],
+  ),
+]);
+assert.equal(concealGroups.length, 1);
+const savedConceal = createBookFromSearchEdition({
+  work: concealGroups[0],
+  edition: concealPrimary,
+});
+assert.equal(savedConceal.work.seriesName, 'A Twisted Tale');
+assert.equal(savedConceal.work.seriesOrder, 7);
+
+// Conflicting installment numbers must not be guessed onto an otherwise thin
+// sibling edition.
+const conflictThin = edition(
+  'google-books',
+  'conflict-thin',
+  'Example Story',
+  'Example Author',
+);
+const conflictGroups = hardenCatalogGroups([
+  group('conflict-google', 'Example Story', 'Example Author', [conflictThin]),
+  group('conflict-ol', 'Example Story', 'Example Author', [
+    edition('open-library', 'conflict-ol-ed', 'Example Story', 'Example Author', {
+      seriesName: 'Example Saga',
+      seriesOrder: 1,
+    }),
+  ]),
+  group('conflict-hc', 'Example Story', 'Example Author', [
+    edition('hardcover', 'conflict-hc-ed', 'Example Story', 'Example Author', {
+      seriesName: 'Example Saga Series',
+      seriesOrder: 2,
+    }),
+  ]),
+]);
+assert.equal(conflictGroups.length, 1);
+const thinAfterConflict = conflictGroups[0].editions.find(
+  (item) => item.externalEditionId === 'conflict-thin',
+);
+assert.equal(thinAfterConflict?.seriesName, 'Example Saga Series');
+assert.equal(thinAfterConflict?.seriesOrder, undefined);
+
+// Book 0 is legitimate metadata and must survive mapper + library normalization.
+const prequelEdition = edition(
+  'google-books',
+  'prequel',
+  'Before the Beginning',
+  'Example Author',
+  {
+    seriesName: 'Example Saga',
+    seriesOrder: 0,
+  },
+);
+const prequelBook = createBookFromSearchEdition({
+  work: group('prequel-work', 'Before the Beginning', 'Example Author', [prequelEdition]),
+  edition: prequelEdition,
+});
+assert.equal(prequelBook.work.seriesOrder, 0);
+assert.equal(normalizeLibraryRecord(prequelBook).work.seriesOrder, 0);
+
+console.log('Inkbound canonical catalog metadata regressions passed.');
