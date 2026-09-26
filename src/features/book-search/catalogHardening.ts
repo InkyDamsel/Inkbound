@@ -620,7 +620,7 @@ export const hardenCatalogGroups = (
 
       const [seriesKey, canonicalSeriesName] = [...seriesByKey.entries()][0];
       const matchingOrders = [...new Set(group.editions
-        .filter((edition) => normalizeKey(edition.seriesName) === seriesKey)
+        .filter((edition) => canonicalSeriesIdentity(edition.seriesName) === seriesKey)
         .map((edition) => edition.seriesOrder)
         .filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))];
       const canonicalOrder = matchingOrders.length === 1 ? matchingOrders[0] : undefined;
