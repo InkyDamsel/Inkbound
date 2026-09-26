@@ -63,6 +63,8 @@ import { getImportVerificationSnapshot } from './features/import/importVerificat
 import { withBookOwnership } from './features/ownership/bookOwnership';
 import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
+import { detectSeriesForBook } from './features/series/seriesDetective';
+import { seriesNamesAreCompatible } from './features/series/seriesLibrary';
 import {
   applySessionProgressToBook,
   getSessionProgressEndpoint,
@@ -271,9 +273,40 @@ export default function App() {
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(null), 4000);
   };
+  const reconcileAddedBookSeries = async (book: UserBookRecord) => {
+    const hasSeriesName = Boolean(book.work.seriesName?.trim());
+    const hasSeriesOrder = typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder);
+    if (hasSeriesName && hasSeriesOrder) return;
+
+    try {
+      const detected = await detectSeriesForBook(book);
+      if (!detected) return;
+
+      const existingName = book.work.seriesName?.trim();
+      if (existingName && !seriesNamesAreCompatible(existingName, detected.name)) return;
+
+      commitCanonicalBooks((current) => current.map((candidate) => {
+        if (candidate.id !== book.id) return candidate;
+        return {
+          ...candidate,
+          work: {
+            ...candidate.work,
+            seriesName: candidate.work.seriesName?.trim() || detected.name,
+            seriesOrder: typeof candidate.work.seriesOrder === 'number'
+              ? candidate.work.seriesOrder
+              : detected.position ?? undefined,
+          },
+        };
+      }));
+    } catch (error) {
+      console.warn('Automatic series reconciliation unavailable for newly added book.', error);
+    }
+  };
+
   const handleAddBook = (newBook: UserBookRecord) => {
     commitCanonicalBooks((current) => [newBook, ...current]);
     showToast(`Added “${newBook.work.title}” to Inkbound.`);
+    void reconcileAddedBookSeries(newBook);
   };
 
 
