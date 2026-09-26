@@ -6,6 +6,7 @@ import {
   detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
   normalizeDetectiveText,
+  parseDetectivePositionToken,
 } from './seriesDetectiveEvidence';
 
 interface OpenLibraryEdition {
@@ -119,12 +120,142 @@ export const parseDetectiveOpenLibrarySeries = (
   const raw = values?.find((value) => value?.trim())?.trim();
   if (!raw) return null;
   const primary = raw.split(';').map((value) => value.trim()).find(Boolean) ?? raw;
-  const match = primary.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*|,\s*)(\d+(?:\.\d+)?)\s*$/i);
+  const positionWords = [
+    'one','two','three','four','five','six','seven','eight','nine','ten',
+    'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty',
+    'first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth',
+    'eleventh','twelfth','thirteenth','fourteenth','fifteenth','sixteenth','seventeenth','eighteenth','nineteenth','twentieth',
+  ].join('|');
+  const match = primary.match(new RegExp(
+    `^(.*?)(?:\\s*,?\\s*)(?:#\\s*|book\\s*#?\\s*|vol(?:ume)?\\.?\\s*#?\\s*|part\\s*#?\\s*|,\\s*)(\\d+(?:\\.\\d+)?|${positionWords})\\s*import type { Format } from '../../types';
+import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import {
+  canonicalDetectiveAuthor,
+  comparableDetectiveTitle,
+  detectiveAuthorsCompatible,
+  detectiveSeriesNamesCompatible,
+  normalizeDetectiveText,
+  parseDetectivePositionToken,
+} from './seriesDetectiveEvidence';
+
+interface OpenLibraryEdition {
+  key?: string;
+  title?: string;
+  subtitle?: string;
+  publish_date?: string;
+  publish_year?: number;
+  publisher?: string[] | string;
+  isbn?: string[];
+  isbn_10?: string[];
+  isbn_13?: string[];
+  number_of_pages?: number;
+  number_of_pages_median?: number;
+  language?: string[];
+  physical_format?: string;
+  ebook_access?: string;
+  cover_i?: number;
+  cover_edition_key?: string;
+  series?: string[];
+}
+
+interface OpenLibraryWork {
+  key?: string;
+  title?: string;
+  subtitle?: string;
+  author_name?: string[];
+  first_publish_year?: number;
+  publisher?: string[] | string;
+  subject?: string[];
+  language?: string[];
+  isbn?: string[];
+  cover_i?: number;
+  cover_edition_key?: string;
+  series?: string[];
+  editions?: { docs?: OpenLibraryEdition[] };
+}
+
+interface OpenLibraryResponse {
+  docs?: OpenLibraryWork[];
+}
+
+export interface DetectiveOpenLibraryCandidate {
+  work: BookSearchWorkGroup;
+  edition: BookSearchEdition;
+  seriesName: string;
+  position: number | null;
+  recordId: string;
+}
+
+export interface DetectiveOpenLibraryContextCandidate {
+  work: BookSearchWorkGroup;
+  edition: BookSearchEdition;
+  seriesName?: string;
+  position: number | null;
+}
+
+const ENDPOINT = 'https://openlibrary.org/search.json';
+const FIELDS = [
+  'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language', 'series',
+  'isbn', 'cover_i', 'cover_edition_key', 'editions', 'editions.key', 'editions.title', 'editions.subtitle',
+  'editions.publish_date', 'editions.publish_year', 'editions.publisher', 'editions.isbn', 'editions.isbn_10',
+  'editions.isbn_13', 'editions.number_of_pages', 'editions.number_of_pages_median', 'editions.language',
+  'editions.physical_format', 'editions.ebook_access', 'editions.cover_i', 'editions.cover_edition_key',
+  'editions.series',
+].join(',');
+
+const compactIsbn = (value?: string): string =>
+  value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
+
+const first = (value?: string[] | string): string | undefined =>
+  Array.isArray(value) ? value.find(Boolean) : value || undefined;
+
+const year = (value?: string | number, fallback?: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const match = String(value ?? '').match(/\b(1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b/);
+  return match ? Number(match[0]) : fallback ?? 0;
+};
+
+const formatFor = (edition: OpenLibraryEdition): Format => {
+  const physical = edition.physical_format?.toLowerCase() ?? '';
+  if (/paperback|softcover|soft cover|mass market|trade paper/.test(physical)) return 'paperback';
+  if (/audio/.test(physical)) return 'audiobook';
+  if (/ebook|digital/.test(physical)) return 'ebook';
+  if (/hardcover|hardback|hard cover|library binding/.test(physical)) return 'hardcover';
+  const ebookAccess = edition.ebook_access?.toLowerCase();
+  return ebookAccess && ebookAccess !== 'no_ebook' ? 'ebook' : 'hardcover';
+};
+
+const coverUrl = (work: OpenLibraryWork, edition: OpenLibraryEdition): string | undefined => {
+  if (edition.cover_i) return `https://covers.openlibrary.org/b/id/${edition.cover_i}-L.jpg`;
+  if (edition.cover_edition_key) return `https://covers.openlibrary.org/b/olid/${edition.cover_edition_key}-L.jpg`;
+  const isbn = edition.isbn_13?.[0] ?? edition.isbn_10?.[0] ?? edition.isbn?.[0] ?? work.isbn?.[0];
+  return isbn ? `https://covers.openlibrary.org/b/isbn/${compactIsbn(isbn)}-L.jpg` : undefined;
+};
+
+
+const chooseSeriesValues = (
+  editionSeries?: string[],
+  workSeries?: string[],
+): string[] | undefined => {
+  const editionValues = editionSeries?.filter((value) => value?.trim()) ?? [];
+  if (editionValues.length > 0) return editionValues;
+  const workValues = workSeries?.filter((value) => value?.trim()) ?? [];
+  return workValues.length > 0 ? workValues : undefined;
+};
+
+export const parseDetectiveOpenLibrarySeries = (
+  values?: string[],
+): { name: string; position: number | null } | null => {
+  const raw = values?.find((value) => value?.trim())?.trim();
+  if (!raw) return null;
+  const primary = raw.split(';').map((value) => value.trim()).find(Boolean) ?? raw;
+,
+    'i',
+  ));
   if (!match) return { name: primary, position: null };
-  const parsed = Number(match[2]);
   return {
     name: match[1].replace(/[,:;\-]+$/g, '').trim() || primary,
-    position: Number.isFinite(parsed) ? parsed : null,
+    position: parseDetectivePositionToken(match[2]),
   };
 };
 
