@@ -1,6 +1,3 @@
-import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../../lib/firebase';
-
 interface GoogleIndustryIdentifier {
   type?: string;
   identifier?: string;
@@ -47,7 +44,6 @@ interface GooglePayload {
   totalItems?: number;
   items?: DetectiveGoogleVolume[];
   seriesMetadataById?: Record<string, string>;
-  seriesDetectiveHydrated?: boolean;
 }
 
 export interface DetectiveGoogleCatalog {
@@ -60,35 +56,6 @@ const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
 const DETAIL_LIMIT = 14;
 const detailCache = new Map<string, DetectiveGoogleVolume>();
 const seriesTitleCache = new Map<string, string>();
-
-const protectedSearch = async (
-  query: string,
-  startIndex: number,
-  maxResults: number,
-): Promise<GooglePayload> => {
-  if (!functions || !auth?.currentUser) return { items: [], totalItems: 0 };
-  const callable = httpsCallable<
-    {
-      query: string;
-      provider: 'google-books';
-      startIndex: number;
-      maxResults: number;
-      seriesDetective: true;
-    },
-    GooglePayload
-  >(
-    functions,
-    'searchHardcoverBooks',
-  );
-  const response = await callable({
-    query,
-    provider: 'google-books',
-    startIndex,
-    maxResults,
-    seriesDetective: true,
-  });
-  return response.data;
-};
 
 const directSearch = async (
   query: string,
@@ -214,26 +181,10 @@ export async function searchDetectiveGoogleBooksPage(
     };
   }
 
-  const useProtectedSearch = Boolean(functions && auth?.currentUser);
-  let protectedPayload: GooglePayload | null = null;
-  if (useProtectedSearch) {
-    try {
-      protectedPayload = await protectedSearch(trimmed, safeStart, safeMax);
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      console.warn('Protected Series Detective Google search unavailable; using direct catalog fallback.', error);
-    }
-  }
-
-  const protectedIsDetectiveCapable = protectedPayload?.seriesDetectiveHydrated === true;
-  const raw = protectedPayload
-    ?? await directSearch(trimmed, signal, safeStart, safeMax);
-
-  // A current Firebase transport already performs Detective-depth hydration.
-  // A stale-but-successful callable response is still valuable catalog data:
-  // hydrate it locally rather than discarding it and depending on a second
-  // network path. Direct search is only required when the callable itself fails.
-  const hydrated = protectedIsDetectiveCapable ? raw : await hydrateDetails(raw, signal);
+  // Series Detective owns its Google transport. Do not route through
+  // Inkbound's shared Add Reading Material Firebase search gateway.
+  const raw = await directSearch(trimmed, signal, safeStart, safeMax);
+  const hydrated = await hydrateDetails(raw, signal);
   const items = hydrated.items ?? [];
 
   const serverSeriesTitles = hydrated.seriesMetadataById ?? {};
