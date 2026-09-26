@@ -88,17 +88,21 @@ const parseGoogleBooksBibliographicSeries = (
       if (lower.endsWith(suffix)) line = line.slice(0, -suffix.length).trim();
     }
 
-    const bookOfSeries = line.match(/^Book\s+(\d+(?:\.\d+)?)\s+of\s+(.+)$/i);
-    if (bookOfSeries) {
-      const position = Number(bookOfSeries[1]);
-      const name = bookOfSeries[2].trim();
+    const numberedOfSeries = line.match(
+      /^(?:Book|Volume|Vol\.?|Part)\s+(\d+(?:\.\d+)?)\s+of\s+(.+)$/i,
+    );
+    if (numberedOfSeries) {
+      const position = Number(numberedOfSeries[1]);
+      const name = numberedOfSeries[2].trim();
       if (name) return { name, ...(Number.isFinite(position) ? { position } : {}), explicit: true };
     }
 
-    const seriesThenBook = line.match(/^(.+?)(?:,|\s+-)?\s*Book\s+(\d+(?:\.\d+)?)$/i);
-    if (seriesThenBook) {
-      const name = seriesThenBook[1].trim();
-      const position = Number(seriesThenBook[2]);
+    const seriesThenNumbered = line.match(
+      /^(.+?)(?:,|\s+-)?\s*(?:Book|Volume|Vol\.?|Part)\s+(\d+(?:\.\d+)?)$/i,
+    );
+    if (seriesThenNumbered) {
+      const name = seriesThenNumbered[1].trim();
+      const position = Number(seriesThenNumbered[2]);
       if (name) return { name, ...(Number.isFinite(position) ? { position } : {}), explicit: true };
     }
 
