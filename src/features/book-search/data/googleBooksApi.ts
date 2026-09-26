@@ -257,7 +257,11 @@ async function requestDirectGoogleBooks(
   if (startIndex > 0) params.set('startIndex', String(startIndex));
   if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
 
-  const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
+  let response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
+  if (!response.ok && GOOGLE_BOOKS_API_KEY && [400, 401, 403].includes(response.status)) {
+    params.delete('key');
+    response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
+  }
   if (!response.ok) throw new Error(`Google Books search failed (${response.status}).`);
   return response.json() as Promise<GoogleVolumesResponse>;
 }
@@ -290,12 +294,43 @@ export async function searchGoogleBooksAuthorPage(
   }
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
-  // Build 28's hardened author-page path intentionally uses the same
-  // catalog query form as normal Search, then lets the author page keep only
-  // exact author matches. Google Books can reject some inauthor: queries.
-  const payload = functions && auth?.currentUser
-    ? await requestProtectedGoogleBooks(trimmedAuthor, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-    : await requestDirectGoogleBooks(trimmedAuthor, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+  await waitUntilAdministrationInactive(signal);
+
+  let payload: GoogleVolumesResponse;
+  try {
+    payload = functions && auth?.currentUser
+      ? await requestProtectedGoogleBooks(trimmedAuthor, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+      : await requestDirectGoogleBooks(trimmedAuthor, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+  } catch (protectedError) {
+    if (signal?.aborted) throw protectedError;
+
+    try {
+      // Author pages must remain usable even when the local/protected callable
+      // is stale or unavailable. This uses the same canonical Google mapper and
+      // query shape as normal Search; only the transport falls back to public.
+      payload = await requestDirectGoogleBooks(
+        trimmedAuthor,
+        signal,
+        startIndex,
+        GOOGLE_BOOKS_PAGE_SIZE,
+      );
+    } catch (directError) {
+      console.warn(
+        'Google Books author lookup unavailable; falling back to canonical catalog search.',
+        protectedError,
+        directError,
+      );
+
+      const fallback = await searchGoogleBooks(trimmedAuthor, signal);
+      return {
+        groups: fallback.groups,
+        totalItems: fallback.totalItems,
+        providerTotalItems: fallback.totalItems,
+        nextStartIndex: startIndex + fallback.groups.length,
+        hasMore: false,
+      };
+    }
+  }
 
   const rawItems = payload.items ?? [];
   const editions = rawItems
