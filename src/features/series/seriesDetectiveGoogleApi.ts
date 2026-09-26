@@ -75,7 +75,7 @@ const directSearch = async (
   return response.data;
 };
 
-const hydrateDetails = async (payload: GooglePayload): Promise<GooglePayload> => {
+const hydrateDetails = async (payload: GooglePayload, _signal?: AbortSignal): Promise<GooglePayload> => {
   const items = payload.items ?? [];
   items.forEach((volume) => {
     if (volume.id) detailCache.set(volume.id, volume);
@@ -85,6 +85,7 @@ const hydrateDetails = async (payload: GooglePayload): Promise<GooglePayload> =>
 
 const fetchSeriesTitles = async (
   items: DetectiveGoogleVolume[],
+  _signal?: AbortSignal,
 ): Promise<Record<string, string>> => {
   const resolved: Record<string, string> = {};
   items.flatMap((volume) =>
