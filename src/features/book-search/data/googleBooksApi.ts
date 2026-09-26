@@ -194,44 +194,127 @@ const sameEdition = (
   return false;
 };
 
-const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWorkGroup[][]): BookSearchWorkGroup[] => {
+const mergeEditionMissingFields = (
+  current: BookSearchEdition,
+  supplement: BookSearchEdition,
+): BookSearchEdition => ({
+  ...current,
+  subtitle: current.subtitle || supplement.subtitle,
+  publisherSummary: current.publisherSummary || supplement.publisherSummary,
+  genres: current.genres.length ? current.genres : supplement.genres,
+  publisher: current.publisher || supplement.publisher,
+  publicationDate: current.publicationDate || supplement.publicationDate,
+  publicationYear: current.publicationYear || supplement.publicationYear,
+  language: current.language || supplement.language,
+  seriesName: current.seriesName || supplement.seriesName,
+  seriesOrder: typeof current.seriesOrder === 'number'
+    ? current.seriesOrder
+    : supplement.seriesOrder,
+  isbn10: current.isbn10 || supplement.isbn10,
+  isbn13: current.isbn13 || supplement.isbn13,
+  asin: current.asin || supplement.asin,
+  pageCount: current.pageCount || supplement.pageCount,
+  coverUrl: current.coverUrl || supplement.coverUrl,
+  editionName: current.editionName || supplement.editionName,
+  binding: current.binding || supplement.binding,
+  specialFeatures: current.specialFeatures.length
+    ? current.specialFeatures
+    : supplement.specialFeatures,
+});
+
+const seriesEvidenceForGroup = (
+  group: BookSearchWorkGroup,
+): { name?: string; order?: number } => {
+  const withSeries = group.editions.find((edition) => edition.seriesName?.trim());
+  return {
+    name: withSeries?.seriesName?.trim(),
+    order: typeof withSeries?.seriesOrder === 'number' ? withSeries.seriesOrder : undefined,
+  };
+};
+
+const mergeGroups = (
+  primary: BookSearchWorkGroup[],
+  supplements: BookSearchWorkGroup[][],
+): BookSearchWorkGroup[] => {
   const merged = new Map<string, BookSearchWorkGroup>();
   const order: string[] = [];
 
-  const add = (group: BookSearchWorkGroup) => {
+  primary.forEach((group) => {
+    const key = groupIdentity(group);
+    merged.set(key, {
+      ...group,
+      key: `inkbound:${key}`,
+      genres: [...group.genres],
+      editions: group.editions.map((edition) => ({
+        ...edition,
+        genres: [...edition.genres],
+        specialFeatures: [...edition.specialFeatures],
+      })),
+    });
+    order.push(key);
+  });
+
+  supplements.flat().forEach((group) => {
     const key = groupIdentity(group);
     const existing = merged.get(key);
-    if (!existing) {
-      merged.set(key, { ...group, key: `inkbound:${key}`, genres: [...group.genres], editions: [...group.editions] });
-      order.push(key);
-      return;
-    }
+    if (!existing) return;
+
     if (!existing.subtitle && group.subtitle) existing.subtitle = group.subtitle;
-    if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
+    if (!existing.publisherSummary && group.publisherSummary) {
+      existing.publisherSummary = group.publisherSummary;
+    }
     existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
+
+    // Series membership is work-level metadata. If any compatible provider has
+    // structured series evidence for this work, preserve it on otherwise
+    // metadata-thin editions without changing the selected provider/edition.
+    const existingSeries = seriesEvidenceForGroup(existing);
+    const supplementalSeries = seriesEvidenceForGroup(group);
+    const resolvedSeriesName = existingSeries.name || supplementalSeries.name;
+    const resolvedSeriesOrder = typeof existingSeries.order === 'number'
+      ? existingSeries.order
+      : supplementalSeries.order;
+
+    existing.editions = existing.editions.map((edition) => ({
+      ...edition,
+      seriesName: edition.seriesName || resolvedSeriesName,
+      seriesOrder: typeof edition.seriesOrder === 'number'
+        ? edition.seriesOrder
+        : resolvedSeriesOrder,
+    }));
+
     group.editions.forEach((edition) => {
       const duplicateIndex = existing.editions.findIndex((candidate) => sameEdition(candidate, edition));
       if (duplicateIndex < 0) {
-        existing.editions.push(edition);
+        // Keep distinct editions available under Choose list, but do not let a
+        // supplemental provider replace the primary provider's ranking/order.
+        existing.editions.push({
+          ...edition,
+          seriesName: edition.seriesName || resolvedSeriesName,
+          seriesOrder: typeof edition.seriesOrder === 'number'
+            ? edition.seriesOrder
+            : resolvedSeriesOrder,
+        });
         return;
       }
-      const current = existing.editions[duplicateIndex];
-      if (current.source === 'inkbound-catalog') {
-        existing.editions[duplicateIndex] = {
-          ...edition,
-          ...current,
-          coverUrl: current.coverUrl || edition.coverUrl,
-          publisherSummary: current.publisherSummary || edition.publisherSummary,
-          binding: current.binding || edition.binding,
-          specialFeatures: current.specialFeatures.length ? current.specialFeatures : edition.specialFeatures,
-        };
-      }
-    });
-  };
 
-  primary.forEach(add);
-  supplements.flat().forEach(add);
-  return order.map((key) => merged.get(key)).filter((group): group is BookSearchWorkGroup => Boolean(group)).slice(0, 50);
+      existing.editions[duplicateIndex] = mergeEditionMissingFields(
+        existing.editions[duplicateIndex],
+        {
+          ...edition,
+          seriesName: edition.seriesName || resolvedSeriesName,
+          seriesOrder: typeof edition.seriesOrder === 'number'
+            ? edition.seriesOrder
+            : resolvedSeriesOrder,
+        },
+      );
+    });
+  });
+
+  return order
+    .map((key) => merged.get(key))
+    .filter((group): group is BookSearchWorkGroup => Boolean(group))
+    .slice(0, 50);
 };
 
 async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchResponse> {
@@ -438,26 +521,56 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const builtQuery = buildGoogleBooksQuery(trimmed);
   const isIsbnLookup = /^isbn:/i.test(builtQuery);
 
-  // ISBN lookups are cheap and high-confidence in the trusted catalog, so try
-  // Inkbound first. Title/author searches go to Google first to avoid turning
-  // every imported book into several Firebase catalog calls.
+  // ISBN lookups remain trusted-catalog first because they are exact and cheap.
+  // For normal title/author search, preserve Google's relevance/order as the
+  // primary result set, then let Open Library and Hardcover fill missing fields
+  // on compatible works. Supplemental providers never replace the primary
+  // ranking or inject unrelated works into a successful primary result set.
   if (isIsbnLookup) {
     const trusted = await searchTrustedCatalogBaseline(trimmed);
-    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
+    if (trusted.groups.length > 0) {
+      const [google, openLibrary, hardcover] = await Promise.all([
+        searchGoogleBaseline(trimmed, signal),
+        searchOpenLibraryWithAuthorFallback(trimmed, signal),
+        searchHardcoverWithBackoff(trimmed),
+      ]);
+      return cacheSearchResponse(cacheKey, {
+        groups: mergeGroups(trusted.groups, [google.groups, openLibrary.groups, hardcover.groups]),
+        totalItems: trusted.totalItems,
+      });
+    }
   }
 
-  const google = await searchGoogleBaseline(trimmed, signal);
-  if (google.groups.length > 0) return cacheSearchResponse(cacheKey, google);
+  const [google, openLibrary, hardcover] = await Promise.all([
+    searchGoogleBaseline(trimmed, signal),
+    searchOpenLibraryWithAuthorFallback(trimmed, signal),
+    searchHardcoverWithBackoff(trimmed),
+  ]);
 
-  const openLibrary = await searchOpenLibraryWithAuthorFallback(trimmed, signal);
-  if (openLibrary.groups.length > 0) return cacheSearchResponse(cacheKey, openLibrary);
+  if (google.groups.length > 0) {
+    return cacheSearchResponse(cacheKey, {
+      groups: mergeGroups(google.groups, [openLibrary.groups, hardcover.groups]),
+      totalItems: google.totalItems,
+    });
+  }
+
+  if (openLibrary.groups.length > 0) {
+    return cacheSearchResponse(cacheKey, {
+      groups: mergeGroups(openLibrary.groups, [hardcover.groups]),
+      totalItems: openLibrary.totalItems,
+    });
+  }
 
   if (!isIsbnLookup) {
     const trusted = await searchTrustedCatalogBaseline(trimmed);
-    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
+    if (trusted.groups.length > 0) {
+      return cacheSearchResponse(cacheKey, {
+        groups: mergeGroups(trusted.groups, [hardcover.groups]),
+        totalItems: trusted.totalItems,
+      });
+    }
   }
 
-  const hardcover = await searchHardcoverWithBackoff(trimmed);
   if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
 
   return { groups: [], totalItems: 0 };
