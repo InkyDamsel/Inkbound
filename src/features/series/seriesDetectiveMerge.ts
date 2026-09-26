@@ -153,14 +153,26 @@ const mergeSeries = (
     };
   }
 
-  const preferredSeriesSource = left.seriesStructured ? left
-    : right.seriesStructured ? right
-    : left.position !== null ? left
-    : right;
+  const preferredSeriesSource = left.seriesStructured && !right.seriesStructured ? left
+    : right.seriesStructured && !left.seriesStructured ? right
+    : left.position !== null && right.position === null ? left
+    : right.position !== null && left.position === null ? right
+    : left;
+
+  let position = left.position ?? right.position;
+  if (
+    left.position !== null
+    && right.position !== null
+    && left.position !== right.position
+  ) {
+    if (left.seriesStructured && !right.seriesStructured) position = left.position;
+    else if (right.seriesStructured && !left.seriesStructured) position = right.position;
+    else position = null;
+  }
 
   return {
     name: leftName || rightName,
-    position: left.position ?? right.position,
+    position,
     provider: preferredSeriesSource.seriesProvider ?? preferredSeriesSource.provider,
     structured: Boolean(left.seriesStructured || right.seriesStructured),
   };
