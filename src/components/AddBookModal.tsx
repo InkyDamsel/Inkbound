@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
-import { BookOpen, Camera, Check, Loader2, ScanLine, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Camera, Check, Loader2, ScanLine, Search, Trash2, UserRound, X } from 'lucide-react';
 import {
   FORMAT_OPTIONS,
   MATERIAL_TYPE_OPTIONS,
@@ -7,7 +7,7 @@ import {
   PRIORITY_OPTIONS,
   READING_STATUS_OPTIONS,
 } from '../domain/libraryTaxonomy';
-import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
+import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
@@ -32,6 +32,12 @@ type PendingSearchEdition = { work: BookSearchWorkGroup; edition: BookSearchEdit
 type CustomOwnershipSelection = `custom:${string}`;
 type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
+type AuthorPageState = {
+  name: string;
+  previousQuery: string;
+  previousResults: BookSearchWorkGroup[];
+  previousHasSearched: boolean;
+};
 
 type BarcodeDetectorLike = {
   detect(source: HTMLVideoElement): Promise<Array<{ rawValue?: string }>>;
@@ -42,6 +48,71 @@ const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const SCANNER_REVIEW_PAGE_SIZE = 6;
 const statusLabel = (value: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value;
 const BUILT_IN_OWNERSHIP_OPTIONS = OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom');
+const normalizeAuthorName = (value: string) =>
+  value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const normalizeCatalogText = (value: string) =>
+  value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
+  const normalizedAuthor = normalizeAuthorName(authorName);
+  return groups.filter((work) =>
+    work.authors.some((candidate) => normalizeAuthorName(candidate) === normalizedAuthor),
+  );
+};
+
+const editionIsbnValues = (edition: BookSearchEdition) =>
+  [edition.isbn13, edition.isbn10]
+    .map((value) => value?.replace(/[^0-9Xx]/g, '').toUpperCase() ?? '')
+    .filter(Boolean);
+
+const sameCatalogEdition = (left: BookSearchEdition, right: BookSearchEdition) => {
+  if (left.source === right.source && left.externalEditionId === right.externalEditionId) return true;
+  const leftIsbns = editionIsbnValues(left);
+  const rightIsbns = new Set(editionIsbnValues(right));
+  return leftIsbns.some((isbn) => rightIsbns.has(isbn));
+};
+
+const mergeCatalogResultGroups = (
+  current: BookSearchWorkGroup[],
+  incoming: BookSearchWorkGroup[],
+): BookSearchWorkGroup[] => {
+  const merged = current.map((group) => ({
+    ...group,
+    genres: [...group.genres],
+    editions: [...group.editions],
+  }));
+  const byIdentity = new Map<string, BookSearchWorkGroup>();
+
+  merged.forEach((group) => {
+    byIdentity.set(
+      `${normalizeCatalogText(group.title)}::${normalizeAuthorName(group.authors[0] ?? '')}`,
+      group,
+    );
+  });
+
+  incoming.forEach((group) => {
+    const identity = `${normalizeCatalogText(group.title)}::${normalizeAuthorName(group.authors[0] ?? '')}`;
+    const existing = byIdentity.get(identity);
+    if (!existing) {
+      const added = { ...group, genres: [...group.genres], editions: [...group.editions] };
+      merged.push(added);
+      byIdentity.set(identity, added);
+      return;
+    }
+
+    group.editions.forEach((edition) => {
+      if (!existing.editions.some((candidate) => sameCatalogEdition(candidate, edition))) {
+        existing.editions.push(edition);
+      }
+    });
+    existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
+    if (!existing.publisherSummary && group.publisherSummary) {
+      existing.publisherSummary = group.publisherSummary;
+    }
+  });
+
+  return merged;
+};
 const today = () => {
   const value = new Date();
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
@@ -58,6 +129,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [hasSearched, setHasSearched] = useState(false);
   const [pendingSearchEdition, setPendingSearchEdition] = useState<PendingSearchEdition | null>(null);
   const [addedSearchBooks, setAddedSearchBooks] = useState<Map<string, UserBookRecord>>(() => new Map());
+  const [authorPage, setAuthorPage] = useState<AuthorPageState | null>(null);
+  const [authorNextStartIndex, setAuthorNextStartIndex] = useState(0);
+  const [authorProviderTotal, setAuthorProviderTotal] = useState<number | null>(null);
+  const [authorHasMore, setAuthorHasMore] = useState(false);
+  const [isLoadingAuthorMore, setIsLoadingAuthorMore] = useState(false);
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [creatingCustomOwnership, setCreatingCustomOwnership] = useState(false);
   const [newCustomOwnershipName, setNewCustomOwnershipName] = useState('');
@@ -93,11 +169,23 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setPendingSearchEdition(null);
         return;
       }
+      if (authorPage) {
+        setQuery(authorPage.previousQuery);
+        setResults(authorPage.previousResults);
+        setHasSearched(authorPage.previousHasSearched);
+        setSearchError(null);
+        setAuthorPage(null);
+        setAuthorNextStartIndex(0);
+        setAuthorProviderTotal(null);
+        setAuthorHasMore(false);
+        setIsLoadingAuthorMore(false);
+        return;
+      }
       onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, pendingSearchEdition]);
+  }, [onClose, pendingSearchEdition, authorPage]);
 
   useEffect(() => {
     const refresh = () => setCustomOwnershipCategories(readCustomOwnershipCategories());
@@ -230,6 +318,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     event.preventDefault();
     const trimmedQuery = query.trim();
     if (!trimmedQuery || isSearching) return;
+    setAuthorPage(null);
+    setAuthorNextStartIndex(0);
+    setAuthorProviderTotal(null);
+    setAuthorHasMore(false);
+    setIsLoadingAuthorMore(false);
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
@@ -247,6 +340,72 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) =>
     `${work.key}:${edition.source}:${edition.externalEditionId}`;
+
+
+  const openAuthorPage = async (authorName: string) => {
+    if (isSearching) return;
+    setAuthorPage({
+      name: authorName,
+      previousQuery: query,
+      previousResults: results,
+      previousHasSearched: hasSearched,
+    });
+    setAuthorNextStartIndex(0);
+    setAuthorProviderTotal(null);
+    setAuthorHasMore(false);
+    setIsLoadingAuthorMore(false);
+    setIsSearching(true);
+    setSearchError(null);
+    setHasSearched(true);
+    setPendingSearchEdition(null);
+
+    try {
+      const response = await searchGoogleBooksAuthorPage(authorName, 0);
+      const exactAuthorResults = filterExactAuthorResults(response.groups, authorName);
+      setResults(exactAuthorResults);
+      setAuthorNextStartIndex(response.nextStartIndex);
+      setAuthorProviderTotal(response.providerTotalItems || null);
+      setAuthorHasMore(response.hasMore);
+    } catch (error) {
+      setResults([]);
+      setAuthorHasMore(false);
+      setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const loadMoreAuthorBooks = async () => {
+    if (!authorPage || !authorHasMore || isLoadingAuthorMore) return;
+    setIsLoadingAuthorMore(true);
+    setSearchError(null);
+
+    try {
+      const response = await searchGoogleBooksAuthorPage(authorPage.name, authorNextStartIndex);
+      const exactAuthorResults = filterExactAuthorResults(response.groups, authorPage.name);
+      setResults((current) => mergeCatalogResultGroups(current, exactAuthorResults));
+      setAuthorNextStartIndex(response.nextStartIndex);
+      setAuthorProviderTotal(response.providerTotalItems || authorProviderTotal);
+      setAuthorHasMore(response.hasMore && response.nextStartIndex > authorNextStartIndex);
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : 'Could not load more books. Please try again.');
+    } finally {
+      setIsLoadingAuthorMore(false);
+    }
+  };
+
+  const closeAuthorPage = () => {
+    if (!authorPage) return;
+    setQuery(authorPage.previousQuery);
+    setResults(authorPage.previousResults);
+    setHasSearched(authorPage.previousHasSearched);
+    setSearchError(null);
+    setAuthorPage(null);
+    setAuthorNextStartIndex(0);
+    setAuthorProviderTotal(null);
+    setAuthorHasMore(false);
+    setIsLoadingAuthorMore(false);
+  };
 
   const chooseSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
     setPendingSearchEdition({ work, edition });
@@ -358,23 +517,43 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
           <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
-          <button type="button" onClick={() => setActiveTab('scan')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
-          <button type="button" onClick={() => setActiveTab('manual')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
+          <button type="button" onClick={() => { setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
+          <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
         </div>
 
         {activeTab === 'search' ? (
           <div className="mt-6 space-y-5">
-            <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
-              <label className="relative min-w-0 flex-1">
-                <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" />
-                <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" />
-              </label>
-              <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
-            </form>
+            {authorPage ? (
+              <section className="overflow-hidden rounded-2xl border border-[#c5a059]/25 bg-gradient-to-br from-[#241726] via-[#1d1422] to-[#120c15] p-5 sm:p-6">
+                <button type="button" onClick={closeAuthorPage} className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs font-bold text-[#d8c28b] transition hover:bg-white/5 hover:text-[#f1d37b]">
+                  <ArrowLeft className="h-4 w-4" /> Back to search results
+                </button>
+                <div className="mt-4 flex items-center gap-4">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-[#c5a059]/30 bg-[#c5a059]/10 text-[#e5c158]"><UserRound className="h-6 w-6" /></div>
+                  <div className="min-w-0">
+                    <p className="inkbound-kicker">Author catalog</p>
+                    <h3 className="mt-1 truncate font-serif text-3xl text-[#f4efe6]">{authorPage.name}</h3>
+                    <p className="mt-1 text-sm text-[#ad9fac]">
+                      {isSearching
+                        ? 'Finding books…'
+                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal ? ` of ${authorProviderTotal}` : ''}`}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
+                <label className="relative min-w-0 flex-1">
+                  <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" />
+                  <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" />
+                </label>
+                <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
+              </form>
+            )}
 
             {searchError && <div className="rounded-xl border border-[#c97b7b]/40 bg-[#c97b7b]/10 p-4 text-sm text-[#efb6b6]">{searchError}</div>}
-            {!hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65" /><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. You can correct the material type later if the source does not identify it reliably.</p></div>}
-            {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">No matching material found</p><button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button></div>}
+            {!authorPage && !hasSearched && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/65" /><p className="mt-4 text-sm text-[#ad9fac]">Search catalog metadata. You can correct the material type later if the source does not identify it reliably.</p></div>}
+            {hasSearched && !isSearching && !searchError && results.length === 0 && <div className="rounded-2xl border border-dashed border-[#c5a059]/25 px-6 py-10 text-center"><p className="font-serif text-xl text-[#f4efe6]">{authorPage ? `No books found for ${authorPage.name}` : 'No matching material found'}</p>{!authorPage && <button type="button" onClick={() => setActiveTab('manual')} className="quiet-shelf-secondary-action mt-5">Add Manually</button>}</div>}
 
             {results.length > 0 && (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -387,7 +566,21 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   return (
                     <article key={work.key} className="flex min-w-0 flex-col rounded-2xl border border-[#c5a059]/18 bg-[#1d1422] p-4">
                       <h3 className="line-clamp-2 font-serif text-xl leading-tight text-[#f4efe6]">{work.title}</h3>
-                      <p className="mt-1 line-clamp-1 text-xs text-[#ad9fac]">{work.authors.join(', ')}</p>
+                      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs">
+                        {work.authors.map((authorName, index) => (
+                          <React.Fragment key={`${work.key}-${authorName}`}>
+                            {index > 0 && <span className="text-[#6f6370]">·</span>}
+                            <button
+                              type="button"
+                              onClick={() => void openAuthorPage(authorName)}
+                              className="font-medium text-[#b9a9ba] underline decoration-transparent underline-offset-2 transition hover:text-[#e5c158] hover:decoration-[#c5a059]/45"
+                              title={`View books by ${authorName}`}
+                            >
+                              {authorName}
+                            </button>
+                          </React.Fragment>
+                        ))}
+                      </div>
 
                       <div className={`mt-4 flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#17131b]' : 'border-white/7 bg-[#120c15]'}`}>
                         {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
@@ -427,6 +620,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     </article>
                   );
                 })}
+              </div>
+            )}
+            {authorPage && authorHasMore && !isSearching && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => void loadMoreAuthorBooks()}
+                  disabled={isLoadingAuthorMore}
+                  className="quiet-shelf-secondary-action min-h-11 px-5 disabled:opacity-50"
+                >
+                  {isLoadingAuthorMore ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
+                  {isLoadingAuthorMore ? 'Loading…' : 'Load more books'}
+                </button>
               </div>
             )}
           </div>
