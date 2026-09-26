@@ -1,3 +1,5 @@
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../lib/firebase';
 interface GoogleIndustryIdentifier {
   type?: string;
   identifier?: string;
@@ -51,8 +53,6 @@ export interface DetectiveGoogleCatalog {
   seriesTitlesById: Record<string, string>;
 }
 
-const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
-const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
 const DETAIL_LIMIT = 14;
 const detailCache = new Map<string, DetectiveGoogleVolume>();
 const seriesTitleCache = new Map<string, string>();
@@ -63,97 +63,39 @@ const directSearch = async (
   startIndex: number,
   maxResults: number,
 ): Promise<GooglePayload> => {
-  const params = new URLSearchParams({
-    q: query,
-    printType: 'books',
-    projection: 'full',
-    orderBy: 'relevance',
-    startIndex: String(startIndex),
-    maxResults: String(maxResults),
-  });
-  if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
-  const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
-  if (!response.ok) throw new Error(`Google Books Detective search failed (${response.status}).`);
-  return response.json() as Promise<GooglePayload>;
+  if (!functions) return { totalItems: 0, items: [], seriesMetadataById: {} };
+  if (signal?.aborted) throw new DOMException('Series Detective search aborted.', 'AbortError');
+
+  const callable = httpsCallable<
+    { query: string; startIndex: number; maxResults: number },
+    GooglePayload
+  >(functions, 'searchSeriesDetectiveGoogleBooks');
+  const response = await callable({ query, startIndex, maxResults });
+  if (signal?.aborted) throw new DOMException('Series Detective search aborted.', 'AbortError');
+  return response.data;
 };
 
-const hydrateDetails = async (payload: GooglePayload, signal?: AbortSignal): Promise<GooglePayload> => {
+const hydrateDetails = async (payload: GooglePayload): Promise<GooglePayload> => {
   const items = payload.items ?? [];
-  const hydrated = await Promise.all(items.map(async (volume, index) => {
-    if (!volume.id) return volume;
-    const cached = detailCache.get(volume.id);
-    if (cached) return {
-      ...volume,
-      ...cached,
-      volumeInfo: { ...volume.volumeInfo, ...cached.volumeInfo },
-    };
-    if (index >= DETAIL_LIMIT) {
-      detailCache.set(volume.id, volume);
-      return volume;
-    }
-    try {
-      const params = new URLSearchParams({ projection: 'full' });
-      if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
-      const response = await fetch(
-        `${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(volume.id)}?${params.toString()}`,
-        { signal },
-      );
-      if (!response.ok) return volume;
-      const detail = await response.json() as DetectiveGoogleVolume;
-      const merged = {
-        ...volume,
-        ...detail,
-        volumeInfo: { ...volume.volumeInfo, ...detail.volumeInfo },
-      };
-      detailCache.set(volume.id, merged);
-      return merged;
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      return volume;
-    }
-  }));
-  return { ...payload, items: hydrated };
+  items.forEach((volume) => {
+    if (volume.id) detailCache.set(volume.id, volume);
+  });
+  return { ...payload, items };
 };
 
 const fetchSeriesTitles = async (
   items: DetectiveGoogleVolume[],
-  signal?: AbortSignal,
 ): Promise<Record<string, string>> => {
-  const ids = [...new Set(items.flatMap((volume) =>
-    volume.volumeInfo?.seriesInfo?.volumeSeries
-      ?.map((membership) => membership.seriesId?.trim())
-      .filter((value): value is string => Boolean(value)) ?? [],
-  ))];
-  if (!ids.length) return {};
-
   const resolved: Record<string, string> = {};
-  const missingIds: string[] = [];
-  ids.forEach((id) => {
+  items.flatMap((volume) =>
+    volume.volumeInfo?.seriesInfo?.volumeSeries ?? [],
+  ).forEach((membership) => {
+    const id = membership.seriesId?.trim();
+    if (!id) return;
     const cached = seriesTitleCache.get(id);
     if (cached) resolved[id] = cached;
-    else missingIds.push(id);
   });
-  if (!missingIds.length) return resolved;
-
-  try {
-    const params = new URLSearchParams();
-    missingIds.forEach((id) => params.append('series_id', id));
-    if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
-    const response = await fetch(`https://www.googleapis.com/books/v1/series/get?${params.toString()}`, { signal });
-    if (!response.ok) return resolved;
-    const payload = await response.json() as { series?: Array<{ seriesId?: string; title?: string }> };
-    for (const series of payload.series ?? []) {
-      const id = series.seriesId?.trim();
-      const title = series.title?.trim();
-      if (!id || !title) continue;
-      seriesTitleCache.set(id, title);
-      resolved[id] = title;
-    }
-    return resolved;
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    return resolved;
-  }
+  return resolved;
 };
 
 export interface DetectiveGoogleCatalogPage extends DetectiveGoogleCatalog {
