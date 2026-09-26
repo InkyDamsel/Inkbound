@@ -37,6 +37,16 @@ interface GoogleVolume {
     language?: string;
   };
   saleInfo?: { isEbook?: boolean };
+  seriesInfo?: {
+    shortSeriesBookTitle?: string;
+    bookDisplayNumber?: string;
+    volumeSeries?: Array<{
+      seriesId?: string;
+      seriesBookType?: string;
+      orderNumber?: number;
+      issue?: Array<{ issueOrderNumber?: number }>;
+    }>;
+  };
 }
 
 interface GoogleVolumesResponse {
@@ -119,6 +129,15 @@ const mapGoogleVolume = (volume: GoogleVolume): BookSearchEdition | null => {
     publicationDate: info.publishedDate,
     publicationYear: publicationYear(info.publishedDate),
     language: info.language,
+    seriesName: volume.seriesInfo?.shortSeriesBookTitle?.trim() || undefined,
+    seriesOrder: (() => {
+      const explicit = Number(volume.seriesInfo?.bookDisplayNumber);
+      if (Number.isFinite(explicit) && explicit >= 0) return explicit;
+      const order = volume.seriesInfo?.volumeSeries
+        ?.map((item) => item.orderNumber ?? item.issue?.[0]?.issueOrderNumber)
+        .find((value) => typeof value === 'number' && Number.isFinite(value));
+      return typeof order === 'number' ? order : undefined;
+    })(),
     format: inferFormat(volume),
     isbn10: getIdentifier(volume, 'ISBN_10'),
     isbn13: getIdentifier(volume, 'ISBN_13'),
