@@ -8,6 +8,7 @@ import {
   canonicalDetectiveAuthor,
   detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
+  inferDetectiveSeriesFromDescription,
   inferDetectiveSeriesFromTitle,
   inferKnownDetectiveSeriesFromDescription,
   inferKnownDetectiveSeriesFromText,
@@ -94,6 +95,27 @@ assert.deepEqual(
     'Crown Trials',
   ),
   { name: 'Crown Trials', position: 3 },
+);
+
+assert.deepEqual(
+  inferDetectiveSeriesFromDescription(
+    'From the bestselling author comes the third book in the Vipers series, a dark hockey romance.',
+  ),
+  { name: 'Vipers', position: 3 },
+);
+
+assert.deepEqual(
+  inferDetectiveSeriesFromDescription(
+    'Book Two of the Crown Trials series.',
+  ),
+  { name: 'Crown Trials', position: 2 },
+);
+
+assert.equal(
+  inferDetectiveSeriesFromDescription(
+    'The third in a dark hockey romance series from a bestselling author.',
+  ),
+  null,
 );
 
 // Open Library exposes series membership as strings, sometimes with the
