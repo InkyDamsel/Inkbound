@@ -235,6 +235,12 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         ?? candidates[0];
       if (!match) return setSyncMessage('No safe title-and-author match was found. Inkbound left this book unchanged.');
       const { work: matchedWork, edition: matchedEdition } = match;
+      const matchedSeriesEdition = candidates.find(({ edition }) => edition.seriesName?.trim())?.edition;
+      const matchedSeriesName = matchedEdition.seriesName?.trim()
+        || matchedSeriesEdition?.seriesName?.trim();
+      const matchedSeriesOrder = typeof matchedEdition.seriesOrder === 'number'
+        ? matchedEdition.seriesOrder
+        : matchedSeriesEdition?.seriesOrder;
       let matchedPublisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
       if (!book.work.publisherSummary && !matchedPublisherSummary) {
         try {
@@ -266,6 +272,10 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
           publisherSummary: book.work.publisherSummary || matchedPublisherSummary,
           summary: book.work.personalSummary || book.work.publisherSummary || matchedPublisherSummary || book.work.summary,
           genres: book.work.genres.length ? book.work.genres : matchedWork.genres,
+          seriesName: book.work.seriesName?.trim() || matchedSeriesName || undefined,
+          seriesOrder: typeof book.work.seriesOrder === 'number'
+            ? book.work.seriesOrder
+            : matchedSeriesOrder,
           publicationYear: book.work.publicationYear || matchedEdition.publicationYear,
           originalLanguage: book.work.originalLanguage || matchedEdition.language,
           externalWorkId: matchedWork.key,
@@ -274,6 +284,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       };
       onUpdateBook(nextBook);
       setPublisherSummary(nextBook.work.publisherSummary ?? '');
+      setSeriesName(nextBook.work.seriesName ?? '');
+      setSeriesOrder(typeof nextBook.work.seriesOrder === 'number' ? String(nextBook.work.seriesOrder) : '');
       setSyncMessage(matchedPublisherSummary
         ? `Metadata synced. Publisher summary updated.`
         : manualEdition
