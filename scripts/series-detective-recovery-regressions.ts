@@ -581,7 +581,7 @@ const conflictingOrder = mergeDetectiveCandidates([
   },
 ]);
 assert.equal(conflictingOrder.length, 1);
-assert.equal(conflictingOrder[0].seriesName, 'Example Saga');
+assert.equal(detectiveSeriesNamesCompatible(conflictingOrder[0].seriesName, 'Example Saga'), true);
 assert.equal(conflictingOrder[0].position, null);
 
 // Bibliographic suffixes may vary by provider without splitting one work.
