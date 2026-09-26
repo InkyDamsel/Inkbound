@@ -215,7 +215,15 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
       .map((entry) => entry.position)
       .filter((position): position is number => typeof position === 'number' && Number.isFinite(position)));
 
-  const canMergeCrossAuthor = (left: MetadataCluster, rightEntries: SeriesBookEntry[]) => {
+  const canMergeCrossAuthor = (
+    seriesIdentity: string,
+    left: MetadataCluster,
+    rightEntries: SeriesBookEntry[],
+  ) => {
+    // A one-word series name is too collision-prone to join across authors
+    // automatically. Multi-author publisher/shared-world series such as
+    // "A Twisted Tale" retain at least two canonical identity tokens.
+    if (seriesIdentity.split(' ').filter(Boolean).length < 2) return false;
     const leftPositions = numberedPositions(left.entries);
     const rightPositions = numberedPositions(rightEntries);
     if (leftPositions.size === 0 || rightPositions.size === 0) return false;
@@ -226,7 +234,7 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     const identity = canonicalSeriesIdentity(name);
     const clusters = clustersBySeries.get(identity) ?? [];
     const compatible = clusters.find((cluster) =>
-      cluster.authors.has(author) || canMergeCrossAuthor(cluster, entries),
+      cluster.authors.has(author) || canMergeCrossAuthor(identity, cluster, entries),
     );
 
     if (compatible) {
