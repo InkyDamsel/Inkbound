@@ -350,6 +350,222 @@ assert.deepEqual(
   new Set(['google-books', 'open-library']),
 );
 
+// Shared franchise prefixes are not work identity. Distinct installments by
+// the same author must never collapse just because one title starts with the
+// other's words.
+const sharedPrefixDistinct = mergeDetectiveCandidates([
+  {
+    provider: 'google-books',
+    position: 1,
+    seriesName: 'Harry Potter',
+    seriesProvider: 'google-books',
+    seriesStructured: true,
+    work: {
+      key: 'hp-1',
+      title: "Harry Potter and the Sorcerer's Stone",
+      authors: ['J. K. Rowling'],
+      genres: [],
+      editions: [{
+        source: 'google-books',
+        externalEditionId: 'hp-ed-1',
+        title: "Harry Potter and the Sorcerer's Stone",
+        authors: ['J. K. Rowling'],
+        genres: [],
+        publicationYear: 1998,
+        format: 'hardcover',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'google-books',
+      externalEditionId: 'hp-ed-1',
+      title: "Harry Potter and the Sorcerer's Stone",
+      authors: ['J. K. Rowling'],
+      genres: [],
+      publicationYear: 1998,
+      format: 'hardcover',
+      specialFeatures: [],
+    },
+  },
+  {
+    provider: 'open-library',
+    position: 2,
+    seriesName: 'Harry Potter Series',
+    seriesProvider: 'open-library',
+    seriesStructured: true,
+    work: {
+      key: 'hp-2',
+      title: 'Harry Potter and the Chamber of Secrets',
+      authors: ['J. K. Rowling'],
+      genres: [],
+      editions: [{
+        source: 'open-library',
+        externalEditionId: 'hp-ed-2',
+        title: 'Harry Potter and the Chamber of Secrets',
+        authors: ['J. K. Rowling'],
+        genres: [],
+        publicationYear: 1999,
+        format: 'hardcover',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'open-library',
+      externalEditionId: 'hp-ed-2',
+      title: 'Harry Potter and the Chamber of Secrets',
+      authors: ['J. K. Rowling'],
+      genres: [],
+      publicationYear: 1999,
+      format: 'hardcover',
+      specialFeatures: [],
+    },
+  },
+]);
+assert.equal(sharedPrefixDistinct.length, 2);
+
+// A provider omitting a colon subtitle is still the same work.
+const colonSubtitleMerge = mergeDetectiveCandidates([
+  {
+    provider: 'google-books',
+    position: 1,
+    work: {
+      key: 'colon-1',
+      title: 'The Atlas',
+      authors: ['Example Author'],
+      genres: [],
+      editions: [{
+        source: 'google-books',
+        externalEditionId: 'colon-ed-1',
+        title: 'The Atlas',
+        authors: ['Example Author'],
+        genres: [],
+        publicationYear: 2020,
+        format: 'hardcover',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'google-books',
+      externalEditionId: 'colon-ed-1',
+      title: 'The Atlas',
+      authors: ['Example Author'],
+      genres: [],
+      publicationYear: 2020,
+      format: 'hardcover',
+      specialFeatures: [],
+    },
+  },
+  {
+    provider: 'open-library',
+    position: 1,
+    work: {
+      key: 'colon-2',
+      title: 'The Atlas: A Novel',
+      authors: ['Example Author'],
+      genres: [],
+      editions: [{
+        source: 'open-library',
+        externalEditionId: 'colon-ed-2',
+        title: 'The Atlas: A Novel',
+        authors: ['Example Author'],
+        genres: [],
+        publicationYear: 2020,
+        format: 'paperback',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'open-library',
+      externalEditionId: 'colon-ed-2',
+      title: 'The Atlas: A Novel',
+      authors: ['Example Author'],
+      genres: [],
+      publicationYear: 2020,
+      format: 'paperback',
+      specialFeatures: [],
+    },
+  },
+]);
+assert.equal(colonSubtitleMerge.length, 1);
+
+// Equal-strength providers that disagree on installment number preserve the
+// series identity but do not invent an order.
+const conflictingOrder = mergeDetectiveCandidates([
+  {
+    provider: 'google-books',
+    seriesName: 'Example Saga',
+    position: 2,
+    seriesProvider: 'google-books',
+    seriesStructured: true,
+    work: {
+      key: 'order-example',
+      title: 'Order Example',
+      authors: ['Example Author'],
+      genres: [],
+      editions: [{
+        source: 'google-books',
+        externalEditionId: 'order-g',
+        title: 'Order Example',
+        authors: ['Example Author'],
+        genres: [],
+        publicationYear: 2020,
+        format: 'hardcover',
+        isbn13: '9780000000111',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'google-books',
+      externalEditionId: 'order-g',
+      title: 'Order Example',
+      authors: ['Example Author'],
+      genres: [],
+      publicationYear: 2020,
+      format: 'hardcover',
+      isbn13: '9780000000111',
+      specialFeatures: [],
+    },
+  },
+  {
+    provider: 'open-library',
+    seriesName: 'Example Saga Series',
+    position: 3,
+    seriesProvider: 'open-library',
+    seriesStructured: true,
+    work: {
+      key: 'order-example-ol',
+      title: 'Order Example',
+      authors: ['Example Author'],
+      genres: [],
+      editions: [{
+        source: 'open-library',
+        externalEditionId: 'order-ol',
+        title: 'Order Example',
+        authors: ['Example Author'],
+        genres: [],
+        publicationYear: 2020,
+        format: 'paperback',
+        isbn13: '9780000000111',
+        specialFeatures: [],
+      }],
+    },
+    edition: {
+      source: 'open-library',
+      externalEditionId: 'order-ol',
+      title: 'Order Example',
+      authors: ['Example Author'],
+      genres: [],
+      publicationYear: 2020,
+      format: 'paperback',
+      isbn13: '9780000000111',
+      specialFeatures: [],
+    },
+  },
+]);
+assert.equal(conflictingOrder.length, 1);
+assert.equal(conflictingOrder[0].seriesName, 'Example Saga');
+assert.equal(conflictingOrder[0].position, null);
+
 // Bibliographic suffixes may vary by provider without splitting one work.
 const suffixMerge = mergeDetectiveCandidates([
   {
