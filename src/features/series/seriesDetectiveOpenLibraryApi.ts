@@ -343,8 +343,6 @@ export async function searchDetectiveOpenLibraryContext(
         publicationDate: preferred.publish_date,
         publicationYear: year(preferred.publish_date, preferred.publish_year ?? work.first_publish_year),
         language: preferred.language?.[0] ?? work.language?.[0],
-        seriesName: metadata?.name,
-        seriesOrder: metadata?.position ?? undefined,
         format: formatFor(preferred),
         isbn10,
         isbn13,
