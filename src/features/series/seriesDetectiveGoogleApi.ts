@@ -10,6 +10,7 @@ export interface DetectiveGoogleVolume {
   inkboundBibliographicSeries?: {
     name?: string;
     position?: number;
+    explicit?: boolean;
   };
   volumeInfo?: {
     title?: string;
