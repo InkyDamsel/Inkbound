@@ -14,6 +14,8 @@ export interface BookSearchEdition {
   publicationDate?: string;
   publicationYear: number;
   language?: string;
+  seriesName?: string;
+  seriesOrder?: number;
   format: Format;
   isbn10?: string;
   isbn13?: string;
