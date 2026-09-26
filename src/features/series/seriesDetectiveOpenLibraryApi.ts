@@ -6,6 +6,7 @@ import {
   detectiveAuthorsCompatible,
   detectiveSeriesNamesCompatible,
   normalizeDetectiveText,
+  parseDetectivePositionToken,
 } from './seriesDetectiveEvidence';
 
 interface OpenLibraryEdition {
@@ -119,12 +120,20 @@ export const parseDetectiveOpenLibrarySeries = (
   const raw = values?.find((value) => value?.trim())?.trim();
   if (!raw) return null;
   const primary = raw.split(';').map((value) => value.trim()).find(Boolean) ?? raw;
-  const match = primary.match(/^(.*?)(?:\s*,?\s*)(?:#\s*|book\s*#?\s*|vol(?:ume)?\.?\s*#?\s*|part\s*#?\s*|,\s*)(\d+(?:\.\d+)?)\s*$/i);
+  const positionWords = [
+    'one','two','three','four','five','six','seven','eight','nine','ten',
+    'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty',
+    'first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth',
+    'eleventh','twelfth','thirteenth','fourteenth','fifteenth','sixteenth','seventeenth','eighteenth','nineteenth','twentieth',
+  ].join('|');
+  const match = primary.match(new RegExp(
+    `^(.*?)(?:\\s*,?\\s*)(?:#\\s*|book\\s*#?\\s*|vol(?:ume)?\\.?\\s*#?\\s*|part\\s*#?\\s*|,\\s*)(\\d+(?:\\.\\d+)?|${positionWords})\\s*$`,
+    'i',
+  ));
   if (!match) return { name: primary, position: null };
-  const parsed = Number(match[2]);
   return {
     name: match[1].replace(/[,:;\-]+$/g, '').trim() || primary,
-    position: Number.isFinite(parsed) ? parsed : null,
+    position: parseDetectivePositionToken(match[2]),
   };
 };
 
