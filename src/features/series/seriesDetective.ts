@@ -595,10 +595,18 @@ const mergeCandidateFromGoogleVolume = (
     }),
   );
 
-  const explicitBibliographicSeriesMatch = Boolean(
+  const bibliographicSeriesMatchesRequested = Boolean(
     wantedSeriesName
     && volume.inkboundBibliographicSeries?.name
     && detectiveSeriesNamesCompatible(volume.inkboundBibliographicSeries.name, wantedSeriesName),
+  );
+  const explicitBibliographicSeriesMatch = Boolean(
+    bibliographicSeriesMatchesRequested
+    && volume.inkboundBibliographicSeries?.explicit === true,
+  );
+  const weakBibliographicSeriesMatch = Boolean(
+    bibliographicSeriesMatchesRequested
+    && volume.inkboundBibliographicSeries?.explicit === false,
   );
 
   // A verified match to the requested series is stronger than an author-string
@@ -616,6 +624,12 @@ const mergeCandidateFromGoogleVolume = (
     && !explicitCompatibleSeries
     && !exactAuthor
   ) return null;
+
+  // Plain bibliographic series labels are useful discovery evidence, but they
+  // are not strong enough to override an author mismatch. This preserves later
+  // books in a same-author series without re-admitting unrelated Hades /
+  // Persephone retellings from other authors.
+  if (weakBibliographicSeriesMatch && !exactAuthor) return null;
 
   const edition: SeriesDetectiveEdition = {
     source: 'google-books',
@@ -655,7 +669,11 @@ const mergeCandidateFromGoogleVolume = (
     provider: 'google-books',
     seriesProvider: metadata ? 'google-books' : undefined,
     seriesStructured: metadata
-      ? Boolean(hasStructuredSeries || volume.inkboundBibliographicSeries?.name?.trim())
+      ? Boolean(
+          hasStructuredSeries
+          || (volume.inkboundBibliographicSeries?.name?.trim()
+            && volume.inkboundBibliographicSeries.explicit === true)
+        )
       : undefined,
   };
 };
