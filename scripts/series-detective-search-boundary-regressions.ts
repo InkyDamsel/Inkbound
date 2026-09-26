@@ -122,3 +122,51 @@ assert.match(
 );
 
 console.log('Inkbound canonical Search/Detective architecture guards passed.');
+
+
+const appSeriesRecoverySource = fs.readFileSync(path.join(ROOT, 'src/App.tsx'), 'utf8');
+assert.match(
+  appSeriesRecoverySource,
+  /const reconcileAddedBookSeries = async/,
+  'Automatic add reconciliation must remain App-owned.',
+);
+assert.match(
+  appSeriesRecoverySource,
+  /detectSeriesForBook\(book\)/,
+  'New books missing series metadata must use verified Series Detective reconciliation.',
+);
+assert.match(
+  appSeriesRecoverySource,
+  /void reconcileAddedBookSeries\(newBook\)/,
+  'Single-book adds must automatically reconcile missing series metadata.',
+);
+assert.match(
+  appSeriesRecoverySource,
+  /newBooks\.forEach[\s\S]*reconcileAddedBookSeries\(book\)/,
+  'Batch adds must automatically reconcile missing series metadata.',
+);
+
+const detectiveCatalogServer = fs.readFileSync(
+  path.join(ROOT, 'functions/src/seriesDetectiveCatalog.ts'),
+  'utf8',
+);
+assert.match(
+  detectiveCatalogServer,
+  /explicit\?: boolean/,
+  'Detective bibliographic evidence must carry an explicit/weak confidence marker.',
+);
+assert.match(
+  detectiveCatalogServer,
+  /return \{ name: line, explicit: false \}/,
+  'Detective must preserve plain bibliographic series labels as weak evidence.',
+);
+
+const detectiveEngineSource = fs.readFileSync(
+  path.join(ROOT, 'src/features/series/seriesDetective.ts'),
+  'utf8',
+);
+assert.match(
+  detectiveEngineSource,
+  /weakBibliographicSeriesMatch && !exactAuthor/,
+  'Weak bibliographic series evidence must never override an author mismatch.',
+);
