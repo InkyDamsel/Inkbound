@@ -44,6 +44,14 @@ interface GoogleVolumesResponse {
   items?: GoogleVolume[];
 }
 
+export interface GoogleBooksAuthorPage extends BookSearchResponse {
+  providerTotalItems: number;
+  nextStartIndex: number;
+  hasMore: boolean;
+}
+
+const GOOGLE_BOOKS_PAGE_SIZE = 40;
+
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY?.trim();
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -215,27 +223,38 @@ async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchRe
   return searchInkboundTrustedCatalog({ title: query.trim() });
 }
 
-async function requestProtectedGoogleBooks(query: string, signal?: AbortSignal): Promise<GoogleVolumesResponse> {
+async function requestProtectedGoogleBooks(
+  query: string,
+  signal?: AbortSignal,
+  startIndex = 0,
+  maxResults = GOOGLE_BOOKS_PAGE_SIZE,
+): Promise<GoogleVolumesResponse> {
   if (!functions || !auth?.currentUser) {
     throw new Error('Protected Google Books search requires a signed-in Inkbound account.');
   }
   const callable = httpsCallable<
-    { query: string; provider: 'google-books' },
+    { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
     GoogleVolumesResponse
   >(functions, 'searchHardcoverBooks');
-  const response = await callable({ query, provider: 'google-books' });
+  const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
   return response.data;
 }
 
-async function requestDirectGoogleBooks(query: string, signal?: AbortSignal): Promise<GoogleVolumesResponse> {
+async function requestDirectGoogleBooks(
+  query: string,
+  signal?: AbortSignal,
+  startIndex = 0,
+  maxResults = GOOGLE_BOOKS_PAGE_SIZE,
+): Promise<GoogleVolumesResponse> {
   const params = new URLSearchParams({
     q: query,
     printType: 'books',
     projection: 'full',
     orderBy: 'relevance',
-    maxResults: '40',
+    maxResults: String(maxResults),
   });
+  if (startIndex > 0) params.set('startIndex', String(startIndex));
   if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
 
   const response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
@@ -251,6 +270,52 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
   const editions = (payload.items ?? []).map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
   const groups = groupGoogleEditions(editions);
   return { groups, totalItems: payload.totalItems ?? groups.length };
+}
+
+
+export async function searchGoogleBooksAuthorPage(
+  authorName: string,
+  startIndex = 0,
+  signal?: AbortSignal,
+): Promise<GoogleBooksAuthorPage> {
+  const trimmedAuthor = authorName.trim();
+  if (!trimmedAuthor) {
+    return {
+      groups: [],
+      totalItems: 0,
+      providerTotalItems: 0,
+      nextStartIndex: startIndex,
+      hasMore: false,
+    };
+  }
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+
+  await waitUntilAdministrationInactive(signal);
+  const query = `inauthor:${trimmedAuthor}`;
+  const payload = functions && auth?.currentUser
+    ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+    : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+
+  const rawItems = payload.items ?? [];
+  const editions = rawItems
+    .map(mapGoogleVolume)
+    .filter((item): item is BookSearchEdition => Boolean(item));
+  const groups = groupGoogleEditions(editions);
+  const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
+  const nextStartIndex = startIndex + rawItems.length;
+  const hasMore = rawItems.length > 0 && (
+    providerTotalItems > 0
+      ? nextStartIndex < providerTotalItems
+      : rawItems.length === GOOGLE_BOOKS_PAGE_SIZE
+  );
+
+  return {
+    groups,
+    totalItems: providerTotalItems || groups.length,
+    providerTotalItems,
+    nextStartIndex,
+    hasMore,
+  };
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
