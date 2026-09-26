@@ -10,6 +10,7 @@ const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 interface GoogleBibliographicSeriesInfo {
   name: string;
   position?: number;
+  explicit?: boolean;
 }
 
 const GOOGLE_DETECTIVE_DETAIL_LIMIT = 14;
@@ -91,7 +92,7 @@ const parseGoogleBooksBibliographicSeries = (
     if (bookOfSeries) {
       const position = Number(bookOfSeries[1]);
       const name = bookOfSeries[2].trim();
-      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
+      if (name) return { name, ...(Number.isFinite(position) ? { position } : {}), explicit: true };
     }
 
     const seriesThenBook = line.match(/^(.+?)(?:,|\s+-)?\s*Book\s+(\d+(?:\.\d+)?)$/i);
@@ -108,9 +109,16 @@ const parseGoogleBooksBibliographicSeries = (
       if (name) return { name, ...(Number.isFinite(position) ? { position } : {}) };
     }
 
-    // Do not treat an arbitrary bibliographic subtitle/marketing line as a
-    // series name. That permissive fallback caused unrelated books to become
-    // "verified" Series Detective candidates after provider merging.
+    // Preserve a plain bibliographic series label as weak evidence only.
+    // The client admission gate must corroborate it against the requested
+    // series and author before it can be surfaced.
+    if (
+      line.length >= 3
+      && line.length <= 100
+      && !/^(?:edition|volume|part|translated|illustrated|revised)\b/i.test(line)
+    ) {
+      return { name: line, explicit: false };
+    }
   }
 
   return null;
