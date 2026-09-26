@@ -1,5 +1,5 @@
 import type { Format } from '../../types';
-import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import type { SeriesDetectiveEdition, SeriesDetectiveWorkGroup } from './seriesDetectiveCatalogTypes';
 import {
   canonicalDetectiveAuthor,
   comparableDetectiveTitle,
@@ -50,16 +50,16 @@ interface OpenLibraryResponse {
 }
 
 export interface DetectiveOpenLibraryCandidate {
-  work: BookSearchWorkGroup;
-  edition: BookSearchEdition;
+  work: SeriesDetectiveWorkGroup;
+  edition: SeriesDetectiveEdition;
   seriesName: string;
   position: number | null;
   recordId: string;
 }
 
 export interface DetectiveOpenLibraryContextCandidate {
-  work: BookSearchWorkGroup;
-  edition: BookSearchEdition;
+  work: SeriesDetectiveWorkGroup;
+  edition: SeriesDetectiveEdition;
   seriesName?: string;
   position: number | null;
 }
@@ -164,7 +164,7 @@ const mapCandidate = (
   const isbn10 = edition.isbn_10?.[0]
     ?? edition.isbn?.find((value) => compactIsbn(value).length === 10);
 
-  const mappedEdition: BookSearchEdition = {
+  const mappedEdition: SeriesDetectiveEdition = {
     source: 'open-library',
     externalEditionId: edition.key ?? `${work.key ?? normalizeDetectiveText(title)}:${index}`,
     title,
@@ -184,7 +184,7 @@ const mapCandidate = (
     specialFeatures: [],
   };
 
-  const mappedWork: BookSearchWorkGroup = {
+  const mappedWork: SeriesDetectiveWorkGroup = {
     key: `open-library:${work.key ?? `${normalizeDetectiveText(title)}:${canonicalDetectiveAuthor(authors[0])}`}`,
     title: work.title ?? title,
     subtitle: work.subtitle,
@@ -332,7 +332,7 @@ export async function searchDetectiveOpenLibraryContext(
         ?? preferred.isbn?.find((value) => compactIsbn(value).length === 13);
       const isbn10 = preferred.isbn_10?.[0]
         ?? preferred.isbn?.find((value) => compactIsbn(value).length === 10);
-      const edition: BookSearchEdition = {
+      const edition: SeriesDetectiveEdition = {
         source: 'open-library',
         externalEditionId: preferred.key ?? `${work.key ?? normalizeDetectiveText(title)}:context`,
         title,
@@ -351,7 +351,7 @@ export async function searchDetectiveOpenLibraryContext(
         binding: preferred.physical_format,
         specialFeatures: [],
       };
-      const mappedWork: BookSearchWorkGroup = {
+      const mappedWork: SeriesDetectiveWorkGroup = {
         key: `open-library:${work.key ?? `${normalizeDetectiveText(title)}:${canonicalDetectiveAuthor(authors[0])}`}`,
         title: work.title ?? title,
         subtitle: work.subtitle,
