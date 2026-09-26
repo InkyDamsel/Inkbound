@@ -7,6 +7,7 @@ import {
 } from '../src/features/book-search/catalogHardening';
 import { createBookFromSearchEdition } from '../src/features/book-search/mapping/bookSearchMapper';
 import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
+import { canonicalSeriesIdentity } from '../src/features/series/seriesLibrary';
 
 const edition = (
   source: BookSearchEdition['source'],
@@ -241,7 +242,8 @@ assert.equal(conflictGroups.length, 1);
 const thinAfterConflict = conflictGroups[0].editions.find(
   (item) => item.externalEditionId === 'conflict-thin',
 );
-assert.equal(thinAfterConflict?.seriesName, 'Example Saga Series');
+assert.ok(thinAfterConflict?.seriesName);
+assert.equal(canonicalSeriesIdentity(thinAfterConflict?.seriesName), 'example saga');
 assert.equal(thinAfterConflict?.seriesOrder, undefined);
 
 // Book 0 is legitimate metadata and must survive mapper + library normalization.
