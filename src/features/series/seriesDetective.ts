@@ -635,14 +635,19 @@ export async function findMissingSeriesBooks(
   const forwardPositions = highest > 0
     ? Array.from({ length: 5 }, (_, index) => highest + index + 1)
     : [];
-  const positionQueries = [...internalGaps, ...forwardPositions]
-    .map((position) => `${seriesName} book ${position} ${author}`);
-  const queries = [
+  const targetPositions = [...internalGaps, ...forwardPositions];
+  const positionQueries = targetPositions.flatMap((position) => [
+    `"${seriesName}" book ${position}`,
+    `${seriesName} book ${position} ${author}`,
+  ]);
+  const queries = [...new Set([
+    `"${seriesName}"`,
+    `"${seriesName}" ${author}`,
     `${seriesName} ${author}`,
     seriesName,
-    `inauthor:"${author}" ${seriesName}`,
+    `inauthor:"${author}" "${seriesName}"`,
     ...positionQueries,
-  ];
+  ])];
 
   const [
     queryCatalogs,
