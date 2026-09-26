@@ -68,6 +68,8 @@ export function createBookFromSearchEdition({
       summary: publisherSummary ?? 'No publisher summary was available for this edition.',
       publisherSummary,
       genres: edition.genres.length > 0 ? edition.genres : work.genres,
+      ...(edition.seriesName ? { seriesName: edition.seriesName } : {}),
+      ...(typeof edition.seriesOrder === 'number' ? { seriesOrder: edition.seriesOrder } : {}),
       publicationYear: edition.publicationYear,
       originalLanguage: edition.language,
       externalWorkId: work.key,
