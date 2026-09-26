@@ -43,6 +43,8 @@ assert.deepEqual(
 assert.equal(detectiveSeriesNamesCompatible('Hades x Persephone Saga', 'Hades & Persephone'), true);
 assert.equal(detectiveSeriesNamesCompatible('The Harry Potter Series', 'Harry Potter'), true);
 assert.equal(detectiveSeriesNamesCompatible('Hades x Persephone Saga', 'Adrian X Isolde'), false);
+assert.equal(detectiveSeriesNamesCompatible('A Twisted Tale', 'Twisted Tale Series'), true);
+assert.equal(detectiveSeriesNamesCompatible('Chronicles of the North', 'Chronicles of North'), false);
 
 // Author normalization must understand "Last, First" without hardcoding an author.
 assert.equal(canonicalDetectiveAuthor('Gilmore, Laurie'), 'laurie gilmore');
