@@ -302,6 +302,33 @@ const seriesMetadata = (
     ?? inferDetectiveSeriesFromTitle(volume.volumeInfo?.subtitle);
 };
 
+const structuredSeriesPosition = (
+  volume: DetectiveGoogleVolume,
+  confirmedSeriesIds: Set<string>,
+): number | null => {
+  const info = volume.volumeInfo?.seriesInfo;
+  const membership = (info?.volumeSeries ?? []).find((candidate) => {
+    const id = candidate.seriesId?.trim();
+    return Boolean(id && confirmedSeriesIds.has(id));
+  });
+  if (!membership) return null;
+
+  const positionCandidate = membership.orderNumber
+    ?? membership.issue?.find((issue) => typeof issue.issueOrderNumber === 'number')?.issueOrderNumber;
+  const displayPosition = Number(info?.bookDisplayNumber?.match(/\d+(?:\.\d+)?/)?.[0]);
+  return typeof positionCandidate === 'number' && Number.isFinite(positionCandidate)
+    ? positionCandidate
+    : Number.isFinite(displayPosition) ? displayPosition : null;
+};
+
+const volumeUsesConfirmedSeriesId = (
+  volume: DetectiveGoogleVolume,
+  confirmedSeriesIds: Set<string>,
+): boolean => (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).some((membership) => {
+  const id = membership.seriesId?.trim();
+  return Boolean(id && confirmedSeriesIds.has(id));
+});
+
 const knownSeriesMetadata = (
   volume: DetectiveGoogleVolume,
   catalog: DetectiveGoogleCatalog,
@@ -747,10 +774,44 @@ export async function findMissingSeriesBooks(
 
   const providerCandidates: DetectiveMergeCandidate[] = [];
 
+  // Google sometimes returns structured volumeSeries IDs while its separate
+  // series-title endpoint is incomplete. First establish which IDs belong to
+  // the requested series using candidates that already pass Detective's
+  // existing verification gates. Then reuse that structured identity for
+  // sibling volumes carrying the exact same seriesId.
+  const confirmedGoogleSeriesIds = new Set<string>();
+  catalogs.forEach((catalog) => {
+    catalog.items.forEach((volume) => {
+      const verified = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
+      if (
+        !verified?.seriesName
+        || !detectiveSeriesNamesCompatible(verified.seriesName, seriesName)
+      ) return;
+
+      (volume.volumeInfo?.seriesInfo?.volumeSeries ?? []).forEach((membership) => {
+        const id = membership.seriesId?.trim();
+        if (id) confirmedGoogleSeriesIds.add(id);
+      });
+    });
+  });
+
   catalogs.forEach((catalog) => {
     catalog.items.forEach((volume) => {
       const candidate = mergeCandidateFromGoogleVolume(volume, catalog, seriesName, author);
-      if (candidate) providerCandidates.push(candidate);
+      if (!candidate) return;
+
+      if (
+        !candidate.seriesName
+        && confirmedGoogleSeriesIds.size > 0
+        && volumeUsesConfirmedSeriesId(volume, confirmedGoogleSeriesIds)
+      ) {
+        candidate.seriesName = seriesName;
+        candidate.position = structuredSeriesPosition(volume, confirmedGoogleSeriesIds);
+        candidate.seriesProvider = 'google-books';
+        candidate.seriesStructured = true;
+      }
+
+      providerCandidates.push(candidate);
     });
   });
 
