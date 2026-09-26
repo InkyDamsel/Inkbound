@@ -125,6 +125,61 @@ const hardcoverContextCandidates = (
   });
 };
 
+const DERIVATIVE_SERIES_PRODUCT_PATTERN =
+  /\b(?:box(?:ed)?\s+set|collection\s+set|series\s+sampler|sampler|coloring\s+book|colouring\s+book|omnibus|anthology|complete\s+.*\s+set|\d+[- ]book\s+(?:box\s+)?set|\d+[- ]book\s+collection)\b/i;
+
+const isDerivativeSeriesProduct = (candidate: DetectiveMergeCandidate): boolean => {
+  const values = [
+    candidate.work.title,
+    candidate.work.subtitle,
+    candidate.edition.title,
+    candidate.edition.subtitle,
+    candidate.edition.editionName,
+  ].filter((value): value is string => Boolean(value?.trim()));
+  return values.some((value) => DERIVATIVE_SERIES_PRODUCT_PATTERN.test(value));
+};
+
+const detectiveAdmissionScore = (
+  candidate: DetectiveMergeCandidate,
+  wantedAuthor: string,
+): number => {
+  let score = 0;
+  if (candidate.seriesStructured) score += 40;
+  score += Math.max(0, (candidate.providerSources?.length ?? 1) - 1) * 18;
+  if (candidate.work.authors.some((author) => detectiveAuthorsCompatible(wantedAuthor, author))) score += 20;
+  if (candidate.edition.isbn13) score += 8;
+  if (candidate.edition.isbn10) score += 4;
+  if (candidate.edition.pageCount && candidate.edition.pageCount > 0) score += 3;
+  if (candidate.edition.coverUrl) score += 2;
+  score -= Math.min(12, Math.floor(candidate.work.title.length / 25));
+  return score;
+};
+
+const strongestNumberedCandidates = (
+  candidates: DetectiveMergeCandidate[],
+  wantedAuthor: string,
+): DetectiveMergeCandidate[] => {
+  const bestByPosition = new Map<number, DetectiveMergeCandidate>();
+  const unnumbered: DetectiveMergeCandidate[] = [];
+
+  for (const candidate of candidates) {
+    if (candidate.position === null) {
+      unnumbered.push(candidate);
+      continue;
+    }
+
+    const current = bestByPosition.get(candidate.position);
+    if (
+      !current
+      || detectiveAdmissionScore(candidate, wantedAuthor) > detectiveAdmissionScore(current, wantedAuthor)
+    ) {
+      bestByPosition.set(candidate.position, candidate);
+    }
+  }
+
+  return [...bestByPosition.values(), ...unnumbered];
+};
+
 const hasMergedKnownSeriesContext = (
   candidate: DetectiveMergeCandidate,
   wantedSeriesName: string,
@@ -715,7 +770,11 @@ export async function findMissingSeriesBooks(
     author,
   ));
 
-  const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates);
+  const mergedProviderCandidates = strongestNumberedCandidates(
+    mergeDetectiveCandidates(providerCandidates)
+      .filter((candidate) => !isDerivativeSeriesProduct(candidate)),
+    author,
+  );
 
   const addCandidate = (candidate: SeriesDetectiveCandidate) => {
     const titleKey = comparableDetectiveTitle(candidate.work.title);
@@ -763,10 +822,17 @@ export async function findMissingSeriesBooks(
   );
 
   const missing = candidates.filter((candidate) => {
-    const existingWork = libraryBooks.some((book) =>
-      comparableDetectiveTitle(book.work.title) === comparableDetectiveTitle(candidate.work.title)
-      && candidate.work.authors.some((author) => detectiveAuthorsCompatible(book.work.author, author)),
-    );
+    const candidateTitle = comparableDetectiveTitle(candidate.work.title);
+    const existingWork = libraryBooks.some((book) => {
+      const sameTitle = comparableDetectiveTitle(book.work.title) === candidateTitle;
+      if (!sameTitle) return false;
+
+      // Once a candidate has passed the requested-series admission gate, exact
+      // title identity is enough to recognize it as already owned. This avoids
+      // offering the same work again because one catalog says "Keira Cass" and
+      // another says "Kiera Cass".
+      return true;
+    });
     if (existingWork) return false;
     if (candidate.work.key && existingWorkIds.has(candidate.work.key)) return false;
     return ![candidate.edition.isbn13, candidate.edition.isbn10]
