@@ -229,6 +229,16 @@ const authorNames = (result: SearchResult): string[] => {
 const normalizeHardcoverText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
+const normalizeHardcoverSeries = (value?: string): string => {
+  const tokens = normalizeHardcoverText(value).split(' ').filter(Boolean);
+  while (tokens.length > 1 && ['a', 'an', 'the'].includes(tokens[0])) tokens.shift();
+  while (
+    tokens.length > 1
+    && ['series', 'saga', 'novel', 'novels', 'book', 'books', 'collection', 'collections'].includes(tokens[tokens.length - 1])
+  ) tokens.pop();
+  return tokens.filter((token) => token !== 'x' && token !== 'and').join(' ');
+};
+
 const hardcoverBookAuthors = (book?: HardcoverBook, fallback: string[] = []): string[] => {
   const authors = book?.contributions
     ?.map((contribution) => contribution.author?.name?.trim())
@@ -390,10 +400,10 @@ async function detectiveHardcoverCatalog(
 
       const seriesData = await hardcoverGraphql<{ series?: HardcoverSeries[] }>(
         token,
-        `query SeriesDetectiveDirectSeries($seriesName: String!) {
+        `query SeriesDetectiveDirectSeries($seriesPattern: String!) {
           series(
             where: {
-              name: { _eq: $seriesName }
+              name: { _ilike: $seriesPattern }
               books_count: { _gt: 0 }
               canonical_id: { _is_null: true }
             }
@@ -420,11 +430,16 @@ async function detectiveHardcoverCatalog(
             }
           }
         }`,
-        { seriesName: requestedSeries },
+        { seriesPattern: `%${requestedSeries}%` },
       );
 
+      const requestedSeriesIdentity = normalizeHardcoverSeries(requestedSeries);
       const matchingSeries = (seriesData.series ?? []).filter((series) => {
-        if (!anchors.length) return false;
+        if (
+          !requestedSeriesIdentity
+          || normalizeHardcoverSeries(series.name) !== requestedSeriesIdentity
+          || !anchors.length
+        ) return false;
         return (series.book_series ?? []).some((membership) => {
           const title = normalizeHardcoverText(membership.book?.title);
           return Boolean(title && anchors.includes(title));
@@ -496,7 +511,7 @@ async function detectiveHardcoverCatalog(
     }
   }
 
-  if (expandSeries && books.length > 0) {
+  if (expandSeries && books.length > 0 && !options.seriesName?.trim()) {
     const seriesIds = [...new Set(books.flatMap((book) =>
       (book.book_series ?? [])
         .map((membership) => membership.series?.id)
