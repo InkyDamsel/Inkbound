@@ -205,6 +205,41 @@ interface HardcoverEdition {
   book?: HardcoverBook;
 }
 
+interface NormalizedHardcoverEdition {
+  source: 'hardcover';
+  externalEditionId: string;
+  title: string;
+  subtitle?: string;
+  authors: string[];
+  publisherSummary?: string;
+  genres: string[];
+  publisher?: string;
+  publicationDate?: string;
+  publicationYear: number;
+  language?: string;
+  format: 'hardcover' | 'paperback' | 'ebook' | 'audiobook';
+  isbn10?: string;
+  isbn13?: string;
+  asin?: string;
+  pageCount?: number;
+  coverUrl?: string;
+  editionName?: string;
+  binding?: string;
+  specialFeatures: string[];
+  seriesName?: string;
+  seriesOrder?: number;
+}
+
+interface NormalizedHardcoverGroup {
+  key: string;
+  title: string;
+  subtitle?: string;
+  authors: string[];
+  publisherSummary?: string;
+  genres: string[];
+  editions: NormalizedHardcoverEdition[];
+}
+
 const normalizeFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' => {
   const normalized = value?.toLowerCase() ?? '';
   if (normalized.includes('audio')) return 'audiobook';
@@ -447,24 +482,23 @@ async function detectiveHardcoverCatalog(
       });
 
       const memberships = matchingSeries.flatMap((series) => series.book_series ?? []);
-      const directSeriesBooks = memberships
-        .map((membership) => {
-          const book = membership.book;
-          if (!book) return undefined;
-          return {
-            ...book,
-            book_series: [{
-              position: membership.position,
-              series: membership.series ?? {
-                id: matchingSeries.find((candidate) =>
-                  candidate.book_series?.includes(membership))?.id,
-                name: matchingSeries.find((candidate) =>
-                  candidate.book_series?.includes(membership))?.name,
-              },
-            }],
-          } satisfies HardcoverBook;
-        })
-        .filter((book): book is HardcoverBook => Boolean(book?.id));
+      const directSeriesBooks: HardcoverBook[] = memberships.flatMap((membership) => {
+        const book = membership.book;
+        if (!book?.id) return [];
+        const parentSeries = matchingSeries.find((candidate) =>
+          candidate.book_series?.includes(membership));
+        const directBook: HardcoverBook = {
+          ...book,
+          book_series: [{
+            position: membership.position,
+            series: membership.series ?? {
+              id: parentSeries?.id,
+              name: parentSeries?.name,
+            },
+          }],
+        };
+        return [directBook];
+      });
 
       directSeriesBooks.forEach((book) => {
         const key = String(book.id ?? '');
@@ -612,7 +646,7 @@ async function detectiveHardcoverCatalog(
     editionsByBook.set(key, [...(editionsByBook.get(key) ?? []), edition]);
   });
 
-  const groups = searchResults.map((result) => {
+  const groups: NormalizedHardcoverGroup[] = searchResults.map((result) => {
     const id = String(result.id ?? result.slug ?? result.title);
     const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
     const matchedBook = booksById.get(String(result.id ?? ''));
@@ -623,7 +657,7 @@ async function detectiveHardcoverCatalog(
         .find((description): description is string => Boolean(description?.trim()));
 
     const bookMembership = matchedBook?.book_series?.find((membership) => membership.series?.name?.trim());
-    const normalizedEditions = matchedEditions.length > 0
+    const normalizedEditions: NormalizedHardcoverEdition[] = matchedEditions.length > 0
       ? matchedEditions.map((edition) => {
           const membership = edition.book?.book_series?.find((item) => item.series?.name?.trim()) ?? bookMembership;
           return {
@@ -688,7 +722,7 @@ async function detectiveHardcoverCatalog(
 
     const matchedEditions = editionsByBook.get(id) ?? [];
     const authors = hardcoverBookAuthors(book);
-    const normalizedEditions = matchedEditions.length > 0
+    const normalizedEditions: NormalizedHardcoverEdition[] = matchedEditions.length > 0
       ? matchedEditions.map((edition) => ({
           source: 'hardcover' as const,
           externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
