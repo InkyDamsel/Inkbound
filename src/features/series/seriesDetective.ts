@@ -140,47 +140,6 @@ const isDerivativeSeriesProduct = (candidate: DetectiveMergeCandidate): boolean 
   return values.some((value) => DERIVATIVE_SERIES_PRODUCT_PATTERN.test(value));
 };
 
-const detectiveAdmissionScore = (
-  candidate: DetectiveMergeCandidate,
-  wantedAuthor: string,
-): number => {
-  let score = 0;
-  if (candidate.seriesStructured) score += 40;
-  score += Math.max(0, (candidate.providerSources?.length ?? 1) - 1) * 18;
-  if (candidate.work.authors.some((author) => detectiveAuthorsCompatible(wantedAuthor, author))) score += 20;
-  if (candidate.edition.isbn13) score += 8;
-  if (candidate.edition.isbn10) score += 4;
-  if (candidate.edition.pageCount && candidate.edition.pageCount > 0) score += 3;
-  if (candidate.edition.coverUrl) score += 2;
-  score -= Math.min(12, Math.floor(candidate.work.title.length / 25));
-  return score;
-};
-
-const strongestNumberedCandidates = (
-  candidates: DetectiveMergeCandidate[],
-  wantedAuthor: string,
-): DetectiveMergeCandidate[] => {
-  const bestByPosition = new Map<number, DetectiveMergeCandidate>();
-  const unnumbered: DetectiveMergeCandidate[] = [];
-
-  for (const candidate of candidates) {
-    if (candidate.position === null) {
-      unnumbered.push(candidate);
-      continue;
-    }
-
-    const current = bestByPosition.get(candidate.position);
-    if (
-      !current
-      || detectiveAdmissionScore(candidate, wantedAuthor) > detectiveAdmissionScore(current, wantedAuthor)
-    ) {
-      bestByPosition.set(candidate.position, candidate);
-    }
-  }
-
-  return [...bestByPosition.values(), ...unnumbered];
-};
-
 const hasMergedKnownSeriesContext = (
   candidate: DetectiveMergeCandidate,
   wantedSeriesName: string,
@@ -461,6 +420,7 @@ export async function detectSeriesForBook(
     openLibraryExact,
     openLibraryAuthor,
     openLibraryContext,
+    hardcoverExact,
     hardcoverAuthor,
   ] = await Promise.all([
     Promise.all([workQuery, ...identifiers].map(async (query, index) => ({
@@ -471,6 +431,9 @@ export async function detectSeriesForBook(
     searchDetectiveOpenLibraryBook(book.work.title, book.work.author, signal),
     searchDetectiveOpenLibraryAuthor(book.work.author, signal),
     searchDetectiveOpenLibraryContext(book.work.title, book.work.author, signal),
+    // Seed reconciliation should ask Hardcover for the exact work first.
+    // Author-wide search remains a fallback for metadata-thin records.
+    searchSeriesDetectiveHardcover(`${book.work.title} ${book.work.author}`),
     searchSeriesDetectiveHardcover(book.work.author),
   ]);
 
@@ -557,7 +520,11 @@ export async function detectSeriesForBook(
     });
   });
 
-  providerCandidates.push(...hardcoverContextCandidates(hardcoverAuthor.groups, '', book.work.author));
+  providerCandidates.push(...hardcoverContextCandidates(
+    [...hardcoverExact.groups, ...hardcoverAuthor.groups],
+    '',
+    book.work.author,
+  ));
 
   const mergedEvidence = mergeDetectiveCandidates(providerCandidates)
     .filter((candidate): candidate is DetectiveMergeCandidate & { seriesName: string } => Boolean(candidate.seriesName))
@@ -856,11 +823,11 @@ export async function findMissingSeriesBooks(
     author,
   ));
 
-  const mergedProviderCandidates = strongestNumberedCandidates(
-    mergeDetectiveCandidates(providerCandidates)
-      .filter((candidate) => !isDerivativeSeriesProduct(candidate)),
-    author,
-  );
+  // Position is ordering metadata, never work identity. Providers frequently
+  // omit or misreport it, so pruning to one candidate per position can delete
+  // legitimate sibling works. Merge/dedupe by work identity and ISBN only.
+  const mergedProviderCandidates = mergeDetectiveCandidates(providerCandidates)
+    .filter((candidate) => !isDerivativeSeriesProduct(candidate));
 
   const addCandidate = (candidate: SeriesDetectiveCandidate) => {
     const titleKey = comparableDetectiveTitle(candidate.work.title);
