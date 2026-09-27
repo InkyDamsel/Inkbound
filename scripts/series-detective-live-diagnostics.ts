@@ -284,7 +284,13 @@ const hardcoverGraphql = async <T>(
     },
     body: JSON.stringify({ query, variables }),
   });
-  if (!response.ok) throw new Error(`Hardcover returned ${response.status}`);
+  if (!response.ok) {
+    const body = (await response.text()).trim();
+    const safeBody = body.length > 2000 ? body.slice(0, 2000) + '…' : body;
+    throw new Error(
+      `Hardcover HTTP ${response.status}${safeBody ? ` — response: ${safeBody}` : ''}`,
+    );
+  }
   const payload = await response.json() as { data?: T; errors?: Array<{ message?: string }> };
   if (payload.errors?.length) throw new Error(payload.errors.map((error) => error.message).join('; '));
   if (!payload.data) throw new Error('Hardcover returned no data');
