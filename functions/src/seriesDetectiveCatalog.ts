@@ -171,6 +171,7 @@ interface SearchResult {
 interface HardcoverSeriesMembership {
   position?: number;
   series?: { id?: number | string; name?: string };
+  book?: HardcoverBook;
 }
 
 interface HardcoverBook {
@@ -257,7 +258,7 @@ async function hardcoverGraphql<T>(
   return payload.data;
 }
 
-async function detectiveHardcoverCatalog(query: string) {
+async function detectiveHardcoverCatalog(query: string, expandSeries = false) {
   const token = HARDCOVER_API_TOKEN.value();
   if (!token) throw new HttpsError('failed-precondition', 'Series Detective Hardcover search is not configured.');
 
@@ -296,6 +297,94 @@ async function detectiveHardcoverCatalog(query: string) {
     );
     editions = detailData.editions ?? [];
     books = detailData.books ?? [];
+  }
+
+  if (expandSeries && books.length > 0) {
+    const seriesIds = [...new Set(books.flatMap((book) =>
+      (book.book_series ?? [])
+        .map((membership) => membership.series?.id)
+        .filter((id): id is string | number => id !== undefined && id !== null),
+    ))];
+
+    if (seriesIds.length > 0) {
+      try {
+        const membershipData = await hardcoverGraphql<{
+          book_series?: HardcoverSeriesMembership[];
+        }>(
+          token,
+          `query SeriesDetectiveExpandSeries($seriesIds: [Int!]!) {
+            book_series(
+              where: { series_id: { _in: $seriesIds } }
+              order_by: { position: asc }
+              limit: 400
+            ) {
+              position
+              series { id name }
+              book { id title subtitle description release_year image { url } }
+            }
+          }`,
+          { seriesIds: seriesIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)) },
+        );
+
+        const memberships = membershipData.book_series ?? [];
+        const expandedBooks = memberships
+          .map((membership) => membership.book)
+          .filter((book): book is HardcoverBook => Boolean(book?.id));
+
+        const expandedIds = [...new Set(expandedBooks
+          .map((book) => Number(book.id))
+          .filter((id) => Number.isFinite(id)))];
+
+        if (expandedIds.length > 0) {
+          const expandedEditionData = await hardcoverGraphql<{ editions?: HardcoverEdition[] }>(
+            token,
+            `query SeriesDetectiveExpandedEditions($ids: [Int!]!) {
+              editions(where: { book_id: { _in: $ids } }, limit: 600) {
+                id book_id title pages isbn_10 isbn_13 release_date edition_format
+                image { url }
+                publisher { name }
+                book { id title subtitle description release_year image { url } }
+              }
+            }`,
+            { ids: expandedIds },
+          );
+
+          const membershipByBookId = new Map<string, HardcoverSeriesMembership[]>();
+          memberships.forEach((membership) => {
+            const key = String(membership.book?.id ?? '');
+            if (!key) return;
+            membershipByBookId.set(key, [...(membershipByBookId.get(key) ?? []), membership]);
+          });
+
+          expandedBooks.forEach((book) => {
+            const key = String(book.id ?? '');
+            const membershipsForBook = membershipByBookId.get(key) ?? [];
+            const existing = books.find((candidate) => String(candidate.id ?? '') === key);
+            const mergedMemberships = [
+              ...(existing?.book_series ?? []),
+              ...membershipsForBook.map((membership) => ({
+                position: membership.position,
+                series: membership.series,
+              })),
+            ];
+            const nextBook = { ...existing, ...book, book_series: mergedMemberships };
+            const index = books.findIndex((candidate) => String(candidate.id ?? '') === key);
+            if (index >= 0) books[index] = nextBook;
+            else books.push(nextBook);
+          });
+
+          const knownEditionIds = new Set(editions.map((edition) => String(edition.id ?? '')).filter(Boolean));
+          for (const edition of expandedEditionData.editions ?? []) {
+            const id = String(edition.id ?? '');
+            if (id && knownEditionIds.has(id)) continue;
+            editions.push(edition);
+            if (id) knownEditionIds.add(id);
+          }
+        }
+      } catch (error) {
+        console.warn('Series Detective Hardcover series expansion unavailable.', error);
+      }
+    }
   }
 
   const booksById = new Map<string, HardcoverBook>();
@@ -376,6 +465,67 @@ async function detectiveHardcoverCatalog(query: string) {
     };
   });
 
+  const searchResultBookIds = new Set(searchResults.map((result) => String(result.id ?? '')).filter(Boolean));
+  books.forEach((book) => {
+    const id = String(book.id ?? '');
+    if (!id || searchResultBookIds.has(id)) return;
+
+    const memberships = book.book_series ?? [];
+    const membership = memberships.find((item) => item.series?.name?.trim());
+    if (!membership?.series?.name?.trim()) return;
+
+    const matchedEditions = editionsByBook.get(id) ?? [];
+    const authors = ['Unknown author'];
+    const normalizedEditions = matchedEditions.length > 0
+      ? matchedEditions.map((edition) => ({
+          source: 'hardcover' as const,
+          externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
+          title: edition.title ?? book.title ?? 'Untitled',
+          subtitle: edition.book?.subtitle ?? book.subtitle,
+          authors,
+          publisherSummary: edition.book?.description ?? book.description,
+          genres: [] as string[],
+          publisher: edition.publisher?.name,
+          publicationDate: edition.release_date,
+          publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || book.release_year || new Date().getFullYear(),
+          format: normalizeFormat(edition.edition_format),
+          isbn10: edition.isbn_10,
+          isbn13: edition.isbn_13,
+          pageCount: edition.pages,
+          coverUrl: edition.image?.url ?? edition.book?.image?.url ?? book.image?.url,
+          editionName: edition.title,
+          binding: edition.edition_format,
+          specialFeatures: [] as string[],
+          seriesName: membership.series?.name?.trim(),
+          seriesOrder: typeof membership.position === 'number' ? membership.position : undefined,
+        }))
+      : [{
+          source: 'hardcover' as const,
+          externalEditionId: id,
+          title: book.title ?? 'Untitled',
+          subtitle: book.subtitle,
+          authors,
+          publisherSummary: book.description,
+          genres: [] as string[],
+          publicationYear: book.release_year || new Date().getFullYear(),
+          format: 'hardcover' as const,
+          coverUrl: book.image?.url,
+          specialFeatures: [] as string[],
+          seriesName: membership.series?.name?.trim(),
+          seriesOrder: typeof membership.position === 'number' ? membership.position : undefined,
+        }];
+
+    groups.push({
+      key: `hardcover:${id}`,
+      title: book.title ?? 'Untitled',
+      subtitle: book.subtitle,
+      authors,
+      publisherSummary: book.description,
+      genres: [] as string[],
+      editions: normalizedEditions,
+    });
+  });
+
   return { groups, totalItems: groups.length };
 }
 
@@ -384,10 +534,11 @@ export const searchSeriesDetectiveHardcover = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Series Detective.');
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+    const expandSeries = request.data?.expandSeries === true;
     if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid Series Detective query is required.');
 
     try {
-      return await detectiveHardcoverCatalog(query);
+      return await detectiveHardcoverCatalog(query, expandSeries);
     } catch (error) {
       console.warn('Series Detective Hardcover catalog unavailable.', error);
       return { groups: [], totalItems: 0 };
