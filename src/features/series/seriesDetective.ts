@@ -769,8 +769,8 @@ export async function findMissingSeriesBooks(
     searchDetectiveOpenLibrarySeries(seriesName, author, signal),
     searchDetectiveOpenLibraryAuthor(author, signal),
     searchDetectiveOpenLibraryContext(seriesName, author, signal),
-    searchSeriesDetectiveHardcover(`${seriesName} ${author}`),
-    searchSeriesDetectiveHardcover(seriesName),
+    searchSeriesDetectiveHardcover(`${seriesName} ${author}`, true),
+    searchSeriesDetectiveHardcover(seriesName, true),
     searchSeriesDetectiveHardcover(author),
   ]);
   const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
