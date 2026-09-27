@@ -48,7 +48,8 @@
     "firebase:deploy:admin-repair": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts --project inkbound-app",
     "firebase:deploy:admin-support": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:getAdminDashboard,functions:syncUserDirectory,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts,functions:resendAdminVerificationEmail,functions:sendAdminPasswordResetEmail,functions:addAdminSupportNote --project inkbound-app",
     "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts",
-    "test:critical:series": "tsx scripts/series-detective-recovery-regressions.ts"
+    "test:critical:series": "tsx scripts/series-detective-recovery-regressions.ts",
+    "test:detective:live": "tsx scripts/series-detective-live-diagnostics.ts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
