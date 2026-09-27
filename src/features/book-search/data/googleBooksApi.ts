@@ -6,7 +6,7 @@ import { searchInkboundTrustedCatalog } from '../../catalog/metadataContribution
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { catalogTitlesAreCompatible, hardenCatalogGroups } from '../catalogHardening';
+import { hardenCatalogGroups } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -182,40 +182,15 @@ const groupGoogleEditions = (editions: BookSearchEdition[]): BookSearchWorkGroup
   return order.map((key) => groups.get(key)).filter((group): group is BookSearchWorkGroup => Boolean(group));
 };
 
-const groupAuthorsCompatible = (left: BookSearchWorkGroup, right: BookSearchWorkGroup): boolean => {
-  const leftAuthor = normalizeText(left.authors[0]);
-  const rightAuthor = normalizeText(right.authors[0]);
-  return !leftAuthor
-    || !rightAuthor
-    || leftAuthor === 'unknown author'
-    || rightAuthor === 'unknown author'
-    || leftAuthor === rightAuthor;
-};
-
 const mergeGroups = (
-  primary: BookSearchWorkGroup[],
-  supplements: BookSearchWorkGroup[][],
+  query: string,
+  providerGroups: BookSearchWorkGroup[][],
 ): BookSearchWorkGroup[] => {
-  // The primary provider owns result ordering. Canonical hardening sees all
-  // compatible provider records so it can fill missing metadata field-by-field,
-  // but supplement-only works never get injected into a successful primary
-  // result set.
-  const hardened = hardenCatalogGroups([...primary, ...supplements.flat()]);
-  const used = new Set<string>();
-  const result: BookSearchWorkGroup[] = [];
-
-  for (const primaryGroup of primary) {
-    const match = hardened.find((candidate) =>
-      !used.has(candidate.key)
-      && groupAuthorsCompatible(primaryGroup, candidate)
-      && catalogTitlesAreCompatible(primaryGroup.title, candidate.title),
-    );
-    if (!match) continue;
-    used.add(match.key);
-    result.push(match);
-  }
-
-  return result.slice(0, 50);
+  // All live catalog providers contribute to one canonical evidence pool.
+  // Matching works are merged field-by-field by hardenCatalogGroups; relevant
+  // provider-only works are retained instead of being discarded merely because
+  // another provider happened to return results first.
+  return hardenCatalogGroups(providerGroups.flat(), { searchQuery: query }).slice(0, 50);
 };
 
 async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchResponse> {
@@ -436,7 +411,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
         searchHardcoverWithBackoff(trimmed),
       ]);
       return cacheSearchResponse(cacheKey, {
-        groups: mergeGroups(trusted.groups, [google.groups, openLibrary.groups, hardcover.groups]),
+        groups: mergeGroups(trimmed, [trusted.groups, google.groups, openLibrary.groups, hardcover.groups]),
         totalItems: trusted.totalItems,
       });
     }
@@ -448,17 +423,11 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     searchHardcoverWithBackoff(trimmed),
   ]);
 
-  if (google.groups.length > 0) {
+  const liveGroups = mergeGroups(trimmed, [google.groups, openLibrary.groups, hardcover.groups]);
+  if (liveGroups.length > 0) {
     return cacheSearchResponse(cacheKey, {
-      groups: mergeGroups(google.groups, [openLibrary.groups, hardcover.groups]),
-      totalItems: google.totalItems,
-    });
-  }
-
-  if (openLibrary.groups.length > 0) {
-    return cacheSearchResponse(cacheKey, {
-      groups: mergeGroups(openLibrary.groups, [hardcover.groups]),
-      totalItems: openLibrary.totalItems,
+      groups: liveGroups,
+      totalItems: Math.max(google.totalItems, openLibrary.totalItems, hardcover.totalItems, liveGroups.length),
     });
   }
 
@@ -466,13 +435,11 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     const trusted = await searchTrustedCatalogBaseline(trimmed);
     if (trusted.groups.length > 0) {
       return cacheSearchResponse(cacheKey, {
-        groups: mergeGroups(trusted.groups, [hardcover.groups]),
+        groups: mergeGroups(trimmed, [trusted.groups]),
         totalItems: trusted.totalItems,
       });
     }
   }
-
-  if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
 
   return { groups: [], totalItems: 0 };
 }
