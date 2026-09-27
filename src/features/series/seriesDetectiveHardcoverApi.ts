@@ -9,16 +9,17 @@ interface SeriesDetectiveHardcoverPayload {
 
 export async function searchSeriesDetectiveHardcover(
   query: string,
+  expandSeries = false,
 ): Promise<SeriesDetectiveCatalogResponse> {
   const trimmed = query.trim();
   if (!trimmed || !functions) return { groups: [], totalItems: 0 };
 
   try {
-    const callable = httpsCallable<{ query: string }, SeriesDetectiveHardcoverPayload>(
+    const callable = httpsCallable<{ query: string; expandSeries?: boolean }, SeriesDetectiveHardcoverPayload>(
       functions,
       'searchSeriesDetectiveHardcover',
     );
-    const response = await callable({ query: trimmed });
+    const response = await callable({ query: trimmed, expandSeries });
     const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
     return {
       groups,
