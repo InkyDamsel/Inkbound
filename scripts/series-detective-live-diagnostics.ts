@@ -385,15 +385,44 @@ const runFixture = async (
   console.log(`${fixture.series} — anchor: ${fixture.anchorTitle} — seed author: ${fixture.author}`);
   console.log('='.repeat(88));
 
-  const [google, openLibrary, hardcover] = await Promise.all([
+  const [googleResult, openLibraryResult, hardcoverResult] = await Promise.allSettled([
     googleCandidates(googleKey, fixture),
     openLibraryCandidates(fixture),
     hardcoverCandidates(hardcoverToken, fixture),
   ]);
 
-  printProvider('Google Books', google);
-  printProvider('Open Library', openLibrary);
-  printProvider(`Hardcover (anchored series matches: ${hardcover.seriesMatches})`, hardcover.candidates);
+  const google = googleResult.status === 'fulfilled' ? googleResult.value : [];
+  const openLibrary = openLibraryResult.status === 'fulfilled' ? openLibraryResult.value : [];
+  const hardcover = hardcoverResult.status === 'fulfilled'
+    ? hardcoverResult.value
+    : { candidates: [], seriesMatches: 0 };
+
+  if (googleResult.status === 'rejected') {
+    console.warn(
+      '\nGoogle Books: unavailable for this fixture —',
+      googleResult.reason instanceof Error ? googleResult.reason.message : googleResult.reason,
+    );
+  } else {
+    printProvider('Google Books', google);
+  }
+
+  if (openLibraryResult.status === 'rejected') {
+    console.warn(
+      '\nOpen Library: unavailable for this fixture —',
+      openLibraryResult.reason instanceof Error ? openLibraryResult.reason.message : openLibraryResult.reason,
+    );
+  } else {
+    printProvider('Open Library', openLibrary);
+  }
+
+  if (hardcoverResult.status === 'rejected') {
+    console.warn(
+      '\nHardcover: unavailable for this fixture —',
+      hardcoverResult.reason instanceof Error ? hardcoverResult.reason.message : hardcoverResult.reason,
+    );
+  } else {
+    printProvider(`Hardcover (anchored series matches: ${hardcover.seriesMatches})`, hardcover.candidates);
+  }
 
   const merged = mergeDetectiveCandidates([
     ...google,
