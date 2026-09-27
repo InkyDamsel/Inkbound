@@ -769,8 +769,10 @@ export async function findMissingSeriesBooks(
     searchDetectiveOpenLibrarySeries(seriesName, author, signal),
     searchDetectiveOpenLibraryAuthor(author, signal),
     searchDetectiveOpenLibraryContext(seriesName, author, signal),
+    // Only the series + author query may expand Hardcover's structured
+    // series ID. A bare series name can collide across unrelated authors.
     searchSeriesDetectiveHardcover(`${seriesName} ${author}`, true),
-    searchSeriesDetectiveHardcover(seriesName, true),
+    searchSeriesDetectiveHardcover(seriesName),
     searchSeriesDetectiveHardcover(author),
   ]);
   const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
