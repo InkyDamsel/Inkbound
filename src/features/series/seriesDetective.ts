@@ -433,7 +433,11 @@ export async function detectSeriesForBook(
     searchDetectiveOpenLibraryContext(book.work.title, book.work.author, signal),
     // Seed reconciliation should ask Hardcover for the exact work first.
     // Author-wide search remains a fallback for metadata-thin records.
-    searchSeriesDetectiveHardcover(`${book.work.title} ${book.work.author}`),
+    searchSeriesDetectiveHardcover(
+      `${book.work.title} ${book.work.author}`,
+      false,
+      { exactTitle: book.work.title },
+    ),
     searchSeriesDetectiveHardcover(book.work.author),
   ]);
 
@@ -738,7 +742,14 @@ export async function findMissingSeriesBooks(
     searchDetectiveOpenLibraryContext(seriesName, author, signal),
     // Only the series + author query may expand Hardcover's structured
     // series ID. A bare series name can collide across unrelated authors.
-    searchSeriesDetectiveHardcover(`${seriesName} ${author}`, true),
+    searchSeriesDetectiveHardcover(
+      `${seriesName} ${author}`,
+      true,
+      {
+        seriesName,
+        anchorTitles: seriesBooks.map((book) => book.work.title),
+      },
+    ),
     searchSeriesDetectiveHardcover(seriesName),
     searchSeriesDetectiveHardcover(author),
   ]);
