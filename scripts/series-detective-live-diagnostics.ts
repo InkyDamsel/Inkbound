@@ -378,15 +378,20 @@ const printProvider = (name: string, items: DetectiveMergeCandidate[]) => {
 
 const runFixture = async (
   fixture: CaseFixture,
-  googleKey: string,
+  googleKey: string | null,
   hardcoverToken: string,
+  includeGoogle: boolean,
 ) => {
   console.log('\n' + '='.repeat(88));
   console.log(`${fixture.series} — anchor: ${fixture.anchorTitle} — seed author: ${fixture.author}`);
   console.log('='.repeat(88));
 
+  const googlePromise = includeGoogle && googleKey
+    ? googleCandidates(googleKey, fixture)
+    : Promise.resolve([] as DetectiveMergeCandidate[]);
+
   const [googleResult, openLibraryResult, hardcoverResult] = await Promise.allSettled([
-    googleCandidates(googleKey, fixture),
+    googlePromise,
     openLibraryCandidates(fixture),
     hardcoverCandidates(hardcoverToken, fixture),
   ]);
@@ -397,7 +402,9 @@ const runFixture = async (
     ? hardcoverResult.value
     : { candidates: [], seriesMatches: 0 };
 
-  if (googleResult.status === 'rejected') {
+  if (!includeGoogle) {
+    console.log('\nGoogle Books: skipped (use --google to include it)');
+  } else if (googleResult.status === 'rejected') {
     console.warn(
       '\nGoogle Books: unavailable for this fixture —',
       googleResult.reason instanceof Error ? googleResult.reason.message : googleResult.reason,
@@ -455,11 +462,18 @@ const main = async () => {
   console.log('No Firebase writes. No Firestore. No deploy. No production functions.');
   console.log('Secrets are read into memory and are never printed or written to disk.\n');
 
-  const googleKey = readSecret('GOOGLE_BOOKS_API_KEY');
-  const hardcoverToken = readSecret('HARDCOVER_API_TOKEN');
-  console.log('Secrets: Google Books FOUND; Hardcover FOUND');
+  const args = process.argv.slice(2);
+  const includeGoogle = args.includes('--google');
+  const requested = args.filter((arg) => !arg.startsWith('--')).join(' ').trim();
 
-  const requested = process.argv.slice(2).join(' ').trim();
+  const hardcoverToken = readSecret('HARDCOVER_API_TOKEN');
+  const googleKey = includeGoogle ? readSecret('GOOGLE_BOOKS_API_KEY') : null;
+  console.log(
+    includeGoogle
+      ? 'Secrets: Google Books FOUND; Hardcover FOUND'
+      : 'Secrets: Hardcover FOUND; Google Books not requested',
+  );
+
   const selected = requested
     ? fixtures.filter((fixture) =>
         normalize(fixture.series).includes(normalize(requested))
@@ -473,7 +487,7 @@ const main = async () => {
   }
 
   for (const fixture of selected) {
-    await runFixture(fixture, googleKey, hardcoverToken);
+    await runFixture(fixture, googleKey, hardcoverToken, includeGoogle);
   }
 
   console.log('\nRead-only diagnostics complete. Nothing was written or deployed.');
