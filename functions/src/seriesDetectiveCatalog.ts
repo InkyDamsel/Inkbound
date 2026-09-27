@@ -181,6 +181,13 @@ interface HardcoverBook {
   description?: string;
   release_year?: number;
   image?: { url?: string };
+  contributions?: Array<{ author?: { name?: string } }>;
+  book_series?: HardcoverSeriesMembership[];
+}
+
+interface HardcoverSeries {
+  id?: number | string;
+  name?: string;
   book_series?: HardcoverSeriesMembership[];
 }
 
@@ -217,6 +224,22 @@ const authorNames = (result: SearchResult): string[] => {
       .filter(Boolean);
   }
   return ['Unknown author'];
+};
+
+const normalizeHardcoverText = (value?: string): string =>
+  value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+
+const hardcoverBookAuthors = (book?: HardcoverBook, fallback: string[] = []): string[] => {
+  const authors = book?.contributions
+    ?.map((contribution) => contribution.author?.name?.trim())
+    .filter((name): name is string => Boolean(name)) ?? [];
+  return authors.length ? authors : fallback.length ? fallback : ['Unknown author'];
+};
+
+const hardcoverTitlesMatch = (left?: string, right?: string): boolean => {
+  const a = normalizeHardcoverText(left);
+  const b = normalizeHardcoverText(right);
+  return Boolean(a && b && a === b);
 };
 
 const parseSearchResults = (value: unknown): SearchResult[] => {
@@ -258,7 +281,15 @@ async function hardcoverGraphql<T>(
   return payload.data;
 }
 
-async function detectiveHardcoverCatalog(query: string, expandSeries = false) {
+async function detectiveHardcoverCatalog(
+  query: string,
+  expandSeries = false,
+  options: {
+    exactTitle?: string;
+    seriesName?: string;
+    anchorTitles?: string[];
+  } = {},
+) {
   const token = HARDCOVER_API_TOKEN.value();
   if (!token) throw new HttpsError('failed-precondition', 'Series Detective Hardcover search is not configured.');
 
@@ -275,12 +306,55 @@ async function detectiveHardcoverCatalog(query: string, expandSeries = false) {
 
   let editions: HardcoverEdition[] = [];
   let books: HardcoverBook[] = [];
+
+  // Search is useful for discovery, but seed reconciliation should not depend
+  // on ranking. When Inkbound already knows the title, ask Hardcover's catalog
+  // directly for that title and read its structured book_series relationship.
+  if (options.exactTitle?.trim()) {
+    try {
+      const exactTitle = options.exactTitle.trim();
+      const direct = await hardcoverGraphql<{ books?: HardcoverBook[] }>(
+        token,
+        `query SeriesDetectiveExactBook($titlePattern: String!) {
+          books(
+            where: {
+              title: { _ilike: $titlePattern }
+              canonical_id: { _is_null: true }
+            }
+            limit: 40
+          ) {
+            id title subtitle description release_year image { url }
+            contributions { author { name } }
+            book_series { position series { id name } }
+          }
+        }`,
+        { titlePattern: exactTitle },
+      );
+      const exactBooks = (direct.books ?? []).filter((book) => hardcoverTitlesMatch(book.title, exactTitle));
+      for (const book of exactBooks) {
+        const id = String(book.id ?? '');
+        if (!id) continue;
+        const index = books.findIndex((candidate) => String(candidate.id ?? '') === id);
+        if (index >= 0) books[index] = { ...books[index], ...book };
+        else books.push(book);
+      }
+      exactBooks
+        .map((book) => Number(book.id))
+        .filter((id) => Number.isFinite(id))
+        .forEach((id) => {
+          if (!ids.includes(id)) ids.push(id);
+        });
+    } catch (error) {
+      console.warn('Series Detective Hardcover exact-title lookup unavailable.', error);
+    }
+  }
   if (ids.length > 0) {
     const detailData = await hardcoverGraphql<{ editions?: HardcoverEdition[]; books?: HardcoverBook[] }>(
       token,
       `query SeriesDetectiveDetails($ids: [Int!]!) {
         books(where: { id: { _in: $ids } }, limit: 160) {
           id title subtitle description release_year image { url }
+          contributions { author { name } }
           book_series { position series { id name } }
         }
         editions(where: { book_id: { _in: $ids } }, limit: 240) {
@@ -289,6 +363,7 @@ async function detectiveHardcoverCatalog(query: string, expandSeries = false) {
           publisher { name }
           book {
             id title subtitle description release_year image { url }
+            contributions { author { name } }
             book_series { position series { id name } }
           }
         }
@@ -296,7 +371,129 @@ async function detectiveHardcoverCatalog(query: string, expandSeries = false) {
       { ids },
     );
     editions = detailData.editions ?? [];
-    books = detailData.books ?? [];
+    const detailedBooks = detailData.books ?? [];
+    detailedBooks.forEach((book) => {
+      const key = String(book.id ?? '');
+      if (!key) return;
+      const index = books.findIndex((candidate) => String(candidate.id ?? '') === key);
+      if (index >= 0) books[index] = { ...books[index], ...book };
+      else books.push(book);
+    });
+  }
+
+  if (expandSeries && options.seriesName?.trim()) {
+    try {
+      const requestedSeries = options.seriesName.trim();
+      const anchors = (options.anchorTitles ?? [])
+        .map(normalizeHardcoverText)
+        .filter(Boolean);
+
+      const seriesData = await hardcoverGraphql<{ series?: HardcoverSeries[] }>(
+        token,
+        `query SeriesDetectiveDirectSeries($seriesName: String!) {
+          series(
+            where: {
+              name: { _eq: $seriesName }
+              books_count: { _gt: 0 }
+              canonical_id: { _is_null: true }
+            }
+          ) {
+            id
+            name
+            book_series(
+              distinct_on: position
+              order_by: [{ position: asc }, { book: { users_count: desc } }]
+              where: {
+                book: {
+                  canonical_id: { _is_null: true }
+                  is_partial_book: { _eq: false }
+                }
+                compilation: { _eq: false }
+              }
+            ) {
+              position
+              series { id name }
+              book {
+                id title subtitle description release_year image { url }
+                contributions { author { name } }
+              }
+            }
+          }
+        }`,
+        { seriesName: requestedSeries },
+      );
+
+      const matchingSeries = (seriesData.series ?? []).filter((series) => {
+        if (!anchors.length) return false;
+        return (series.book_series ?? []).some((membership) => {
+          const title = normalizeHardcoverText(membership.book?.title);
+          return Boolean(title && anchors.includes(title));
+        });
+      });
+
+      const memberships = matchingSeries.flatMap((series) => series.book_series ?? []);
+      const directSeriesBooks = memberships
+        .map((membership) => {
+          const book = membership.book;
+          if (!book) return undefined;
+          return {
+            ...book,
+            book_series: [{
+              position: membership.position,
+              series: membership.series ?? {
+                id: matchingSeries.find((candidate) =>
+                  candidate.book_series?.includes(membership))?.id,
+                name: matchingSeries.find((candidate) =>
+                  candidate.book_series?.includes(membership))?.name,
+              },
+            }],
+          } satisfies HardcoverBook;
+        })
+        .filter((book): book is HardcoverBook => Boolean(book?.id));
+
+      directSeriesBooks.forEach((book) => {
+        const key = String(book.id ?? '');
+        const index = books.findIndex((candidate) => String(candidate.id ?? '') === key);
+        if (index >= 0) {
+          const existingMemberships = books[index].book_series ?? [];
+          books[index] = {
+            ...books[index],
+            ...book,
+            book_series: [...existingMemberships, ...(book.book_series ?? [])],
+          };
+        } else {
+          books.push(book);
+        }
+      });
+
+      const directIds = [...new Set(directSeriesBooks
+        .map((book) => Number(book.id))
+        .filter((id) => Number.isFinite(id)))];
+
+      if (directIds.length > 0) {
+        const directEditionData = await hardcoverGraphql<{ editions?: HardcoverEdition[] }>(
+          token,
+          `query SeriesDetectiveDirectSeriesEditions($ids: [Int!]!) {
+            editions(where: { book_id: { _in: $ids } }, limit: 600) {
+              id book_id title pages isbn_10 isbn_13 release_date edition_format
+              image { url }
+              publisher { name }
+              book { id title subtitle description release_year image { url } contributions { author { name } } }
+            }
+          }`,
+          { ids: directIds },
+        );
+        const knownEditionIds = new Set(editions.map((edition) => String(edition.id ?? '')).filter(Boolean));
+        for (const edition of directEditionData.editions ?? []) {
+          const id = String(edition.id ?? '');
+          if (id && knownEditionIds.has(id)) continue;
+          editions.push(edition);
+          if (id) knownEditionIds.add(id);
+        }
+      }
+    } catch (error) {
+      console.warn('Series Detective Hardcover direct series lookup unavailable.', error);
+    }
   }
 
   if (expandSeries && books.length > 0) {
@@ -402,9 +599,9 @@ async function detectiveHardcoverCatalog(query: string, expandSeries = false) {
 
   const groups = searchResults.map((result) => {
     const id = String(result.id ?? result.slug ?? result.title);
-    const authors = authorNames(result);
     const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
     const matchedBook = booksById.get(String(result.id ?? ''));
+    const authors = hardcoverBookAuthors(matchedBook, authorNames(result));
     const publisherSummary = matchedBook?.description
       ?? result.description
       ?? matchedEditions.map((edition) => edition.book?.description)
@@ -475,7 +672,7 @@ async function detectiveHardcoverCatalog(query: string, expandSeries = false) {
     if (!membership?.series?.name?.trim()) return;
 
     const matchedEditions = editionsByBook.get(id) ?? [];
-    const authors = ['Unknown author'];
+    const authors = hardcoverBookAuthors(book);
     const normalizedEditions = matchedEditions.length > 0
       ? matchedEditions.map((edition) => ({
           source: 'hardcover' as const,
@@ -535,10 +732,23 @@ export const searchSeriesDetectiveHardcover = onCall(
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Series Detective.');
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     const expandSeries = request.data?.expandSeries === true;
+    const exactTitle = typeof request.data?.exactTitle === 'string' ? request.data.exactTitle.trim() : '';
+    const seriesName = typeof request.data?.seriesName === 'string' ? request.data.seriesName.trim() : '';
+    const anchorTitles = Array.isArray(request.data?.anchorTitles)
+      ? request.data.anchorTitles
+        .filter((value: unknown): value is string => typeof value === 'string')
+        .map((value: string) => value.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+      : [];
     if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid Series Detective query is required.');
 
     try {
-      return await detectiveHardcoverCatalog(query, expandSeries);
+      return await detectiveHardcoverCatalog(query, expandSeries, {
+        exactTitle: exactTitle || undefined,
+        seriesName: seriesName || undefined,
+        anchorTitles,
+      });
     } catch (error) {
       console.warn('Series Detective Hardcover catalog unavailable.', error);
       return { groups: [], totalItems: 0 };
