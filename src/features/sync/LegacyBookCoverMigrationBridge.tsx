@@ -4,13 +4,14 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { prepareBookCoverImage } from '../../platform/prepareBookCoverImage';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
+import { SYNC_STORAGE_KEYS } from './storageKeys';
   getCloudDataRevision,
   INKBOUND_CLOUD_DATA_EVENT,
   notifyCloudDataUpdated,
   notifyLocalDataChanged,
 } from './cloudSyncEvents';
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const LOCAL_DATA_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
 const LEGACY_COVER_PREFIX = 'data:image/';
 
