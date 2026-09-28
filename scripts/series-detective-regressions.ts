@@ -8,6 +8,7 @@ import {
   selectVerifiedSubtitleSeriesEvidence,
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
+import { migrateSeriesOverridesToCanonicalBooks } from '../src/features/series/seriesOverrides';
 import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetective';
 
 const book = {
@@ -336,3 +337,50 @@ assert.ok(aliasEvidenceA && aliasEvidenceB);
 assert.ok(selectVerifiedSeriesEvidence([aliasEvidenceA!, aliasEvidenceB!]));
 
 console.log('Inkbound Series Detective regressions passed.');
+
+
+// Legacy manual series organization is migration-only. Once folded into the
+// canonical book, every consumer must see the same name/order/label/source.
+const legacySeriesBook = {
+  id: 'legacy-series-book',
+  work: {
+    title: 'Example Legacy Book',
+    author: 'Example Author',
+    genres: [],
+    publicationYear: 2020,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'legacy-edition', format: 'paperback' }],
+  activeEditionId: 'legacy-edition',
+} as unknown as UserBookRecord;
+const legacySeriesUnrelated = {
+  ...legacySeriesBook,
+  id: 'unrelated-book',
+  work: { ...legacySeriesBook.work, title: 'Standalone Example' },
+} as UserBookRecord;
+const migratedLegacySeries = migrateSeriesOverridesToCanonicalBooks(
+  [legacySeriesBook, legacySeriesUnrelated],
+  {
+    'legacy-manual-series': {
+      id: 'legacy-manual-series',
+      name: 'Reader Corrected Series',
+      author: 'Example Author',
+      books: [{ bookId: 'legacy-series-book', position: 2.5, label: 'Novella' }],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    },
+  },
+);
+assert.deepEqual(migratedLegacySeries.migratedBookIds, ['legacy-series-book']);
+const migratedBook = migratedLegacySeries.books.find((item) => item.id === 'legacy-series-book')!;
+assert.equal(migratedBook.work.seriesName, 'Reader Corrected Series');
+assert.equal(migratedBook.work.seriesOrder, 2.5);
+assert.equal(migratedBook.work.seriesLabel, 'Novella');
+assert.equal(migratedBook.work.seriesSource, 'manual');
+assert.equal(migratedLegacySeries.books.find((item) => item.id === 'unrelated-book')?.work.seriesName, undefined);
+const migratedSeriesLibrary = buildSeriesLibrary(migratedLegacySeries.books);
+assert.equal(migratedSeriesLibrary.length, 1);
+assert.equal(migratedSeriesLibrary[0].name, 'Reader Corrected Series');
+assert.equal(migratedSeriesLibrary[0].isManual, true);
+assert.equal(migratedSeriesLibrary[0].books[0].displayPosition, 'Novella');
