@@ -165,6 +165,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         author: author.trim(),
         seriesName: seriesName.trim() || undefined,
         seriesOrder: seriesOrder.trim() ? Math.max(0, Number(seriesOrder)) || undefined : undefined,
+        seriesLabel: seriesName.trim() ? book.work.seriesLabel : undefined,
+        seriesSource: seriesName.trim() ? 'manual' : undefined,
       },
       privateTags: csvList(tags),
     });
@@ -228,6 +230,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
           ...book.work,
           seriesName: detected.name,
           seriesOrder: detected.position ?? undefined,
+          seriesLabel: undefined,
+          seriesSource: 'metadata',
         },
       };
       onUpdateBook(updated);
