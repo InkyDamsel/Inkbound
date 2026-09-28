@@ -1,6 +1,7 @@
 import React, { PropsWithChildren, useEffect, useState } from 'react';
 import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { db, readDb } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { getRuntimeStorage, readRuntimeJson } from '../../platform/runtimeStorage';
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
@@ -26,7 +27,16 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
     if (!raw || !raw.trim().startsWith('[')) return false;
     const ownerUid = storage.getItem(OWNER_UID_KEY);
     if (ownerUid && ownerUid !== uid) return false;
-    if (storage.getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
+
+    // Protected development mode is deliberately local-only: readDb may exist
+    // for Auth/bootstrap support while db is disabled to block production
+    // Firestore reads/writes. Requiring a cloud reconciliation marker here would
+    // deadlock the app on "Opening Inkbound..." even though the local working
+    // copy is the only permitted source in this mode.
+    const protectedLocalOnlyMode = Boolean(readDb && !db);
+    if (!protectedLocalOnlyMode
+      && storage.getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
+
     if (ownerUid) return true;
     // Upgrade path for pre-owner-marker builds. A legacy non-empty library is a
     // real working copy; a bare [] can be App's fresh initialization and must
