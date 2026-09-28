@@ -182,7 +182,7 @@ function reconcileCollection<T extends { id: string }>(
       stats.pendingLocalProtected += 1;
       return;
     }
-    if (baseline[item.id] === undefined) {
+    if (shouldPromoteLocalRecordMissingFromCloud({ baselineFingerprint: baseline[item.id] })) {
       // A record that has never existed in the cloud baseline is legitimate
       // local-only data (for example, a pre-account library being attached to a
       // newly registered account). Preserving it in memory is not enough: create
