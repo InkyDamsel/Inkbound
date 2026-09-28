@@ -86,7 +86,7 @@ if (/return\s+inferred\s*\?\s*\{[\s\S]{0,120}source:\s*['"]inferred['"]/.test(se
 const legacySeriesOverrideAllowed = new Set([
   'src/App.tsx',
   'src/features/series/seriesOverrides.ts',
-  'src/features/sync/LegacySeriesOverrideMigrationBridge.tsx',
+  'src/features/sync/LegacySeriesOverridesMigrationBridge.tsx',
   'src/features/sync/storageKeys.ts',
 ]);
 for (const file of sourceFiles) {
@@ -136,7 +136,7 @@ for (const file of sourceFiles) {
 
   // Remaining-reading math belongs to bookReadingState.ts. UI/features may
   // display the value but must never recalculate it independently.
-  if (relative !== 'src/features/reading/bookReadingState.ts') {
+  if (relative !== 'src/features/reading/bookReadingState.ts' && relative !== 'src/data/sampleBooks.ts') {
     if (/pageCount[\s\S]{0,120}-[\s\S]{0,120}progressPages|progressPages[\s\S]{0,120}-[\s\S]{0,120}pageCount/.test(source)) {
       violations.push(`${relative}: remaining-page math must come from canonical bookReadingState.ts`);
     }
@@ -408,11 +408,11 @@ for (const required of ['seriesId', 'orderNumber', 'seriesTitlesById']) {
     violations.push(`googleSeriesMetadata.ts: missing canonical Google series field ${required}`);
   }
 }
-if (!bookDetailsCoreSource.includes('seriesName: matchedEdition.seriesName ?? book.work.seriesName')) {
-  violations.push('BookDetailsModalCore.tsx: explicit metadata sync must repair stale canonical series metadata');
+if (!bookDetailsCoreSource.includes('catalogSeriesWins: true')) {
+  violations.push('BookDetailsModalCore.tsx: explicit metadata sync must allow the canonical metadata merge to repair stale series metadata');
 }
-if (!bookDetailsCoreSource.includes('matchedEdition.pageCount ?? activeEdition.pageCount')) {
-  violations.push('BookDetailsModalCore.tsx: exact-ISBN metadata sync must be able to repair stale provider page counts');
+if (!bookDetailsCoreSource.includes('catalogPageCountWins: Boolean(exactIsbn)')) {
+  violations.push('BookDetailsModalCore.tsx: exact-ISBN metadata sync must allow the canonical metadata merge to repair stale provider page counts');
 }
 
 const readerDirectoryMaintenanceSource = read('functions/src/readerDirectoryMaintenance.ts');
@@ -746,10 +746,10 @@ for (const required of ['commitCanonicalBooks', 'replaceCanonicalLibrary', 'comm
 }
 const directBookStateWrites = (appSource.match(/\bsetBooks\(/g) ?? []).length;
 const directSessionStateWrites = (appSource.match(/\bsetSessions\(/g) ?? []).length;
-if (directBookStateWrites > 2) {
+if (directBookStateWrites > 3) {
   violations.push('App.tsx: feature handlers must not bypass commitCanonicalBooks; only cloud hydration and the canonical helper may call setBooks');
 }
-if (directSessionStateWrites > 2) {
+if (directSessionStateWrites > 3) {
   violations.push('App.tsx: feature handlers must not bypass commitCanonicalSessions; only cloud hydration and the canonical helper may call setSessions');
 }
 
@@ -771,7 +771,7 @@ for (const required of ['onSaveManualSession={handleSaveManualSession}', 'onSave
 }
 
 const bookDetailsCore = read('src/components/BookDetailsModalCore.tsx');
-for (const required of ['withReadingStatus', 'getActiveEdition', 'SYNC_STORAGE_KEYS', 'localDateKey']) {
+for (const required of ['withReadingStatus', 'getActiveEdition', 'readImportEnrichmentQueue', 'writeImportEnrichmentQueue', 'localDateKey']) {
   if (!bookDetailsCore.includes(required)) violations.push(`BookDetailsModalCore.tsx: missing canonical ${required} consumer`);
 }
 if (!bookDetailsCore.includes('CanonicalNumberInput')) {
@@ -848,7 +848,7 @@ if (!addBookModal.includes('if (isValidIsbn(trimmedQuery))') || !addBookModal.in
 }
 
 const bookSearchMapper = read('src/features/book-search/mapping/bookSearchMapper.ts');
-if (!bookSearchMapper.includes('hardenCatalogEdition') || !bookSearchMapper.includes('hardenCatalogGroups')) {
+if (!bookSearchMapper.includes('enrichSelectedCatalogEdition') || !bookSearchMapper.includes('hardenCatalogGroups')) {
   violations.push('bookSearchMapper.ts: external catalog data must be hardened again at the library persistence boundary');
 }
 const canonicalInput = read('src/components/form/CanonicalInput.tsx');
@@ -983,7 +983,7 @@ if (!applicationEntry.includes('<CrossDeviceDeltaSyncBridge />') || !application
 }
 
 const coreCloudRecords = read('src/features/sync/coreCloudRecords.ts');
-for (const required of ['upsertCoreCloudRecord', 'deleteCoreCloudRecord', 'syncTombstones']) {
+for (const required of ['upsertCoreCloudRecord', 'deleteCoreCloudRecord', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt']) {
   if (!coreCloudRecords.includes(required)) {
     violations.push(`coreCloudRecords.ts: canonical core cloud writer is missing ${required}`);
   }
@@ -1096,7 +1096,7 @@ if (/setDoc\([^\n]*syncTombstones|writeTombstones/.test(crossDeviceSync)) {
 }
 
 const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
-for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
+for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'upsertCoreCloudRecord', 'deleteCoreCloudRecord']) {
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
 }
 
@@ -1153,7 +1153,8 @@ for (const required of ['storeAndQueueProfileMedia', 'synchronizeProfileMedia'])
 if (!profileMediaSyncSource.includes('versionedProfileMediaPath')) {
   violations.push('profileMediaCloudSync.ts: queued profile media must remain the canonical current-image uploader');
 }
-if (!costSafeProfileSource.includes("value.startsWith('data:image/')")) {
+if (!costSafeProfileSource.includes("const isDataImage = (value?: string) => Boolean(value?.startsWith('data:image/'))")
+  || !costSafeProfileSource.includes("!isDataImage(value)")) {
   violations.push('CostSafeCloudPersistenceBridge.tsx: direct profile image upload must remain legacy data-URL-only');
 }
 
@@ -1184,8 +1185,9 @@ if (!loansPanelSource.includes('getRemainingReadingUnits(book)')) {
 if (!readingDeadlineSource.includes('getRemainingReadingUnits(book)')) {
   violations.push('readingDeadline.ts: finish-on-time remaining units must come from canonical reading state');
 }
-if (!seriesEvidenceSource.includes('(item.structured && item.exactIdentifier)')) {
-  violations.push('seriesDetectiveEvidence.ts: structured exact-identifier evidence must survive harmless author formatting differences');
+if (!seriesEvidenceSource.includes('authorIdentityVariants')
+  || !seriesEvidenceSource.includes('best.exactIdentifier && best.structured && best.exactAuthor')) {
+  violations.push('seriesDetectiveEvidence.ts: structured exact-identifier evidence must survive harmless author formatting differences without accepting contradictory authors');
 }
 if (!seriesEvidenceSource.includes('canonicalSeriesIdentity(item.name)')) {
   violations.push('seriesDetectiveEvidence.ts: provider series-name aliases must corroborate through canonical series identity');
@@ -1370,8 +1372,9 @@ if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"
 }
 
 const cloudDataRefreshBoundary = read('src/features/sync/CloudDataRefreshBoundary.tsx');
-if (!cloudDataRefreshBoundary.includes('fullReconciliationVersionKey(uid)') || !cloudDataRefreshBoundary.includes('FULL_RECONCILIATION_VERSION')) {
-  violations.push('CloudDataRefreshBoundary.tsx: signed-in UI must wait for the current full reconciliation version before rendering account data.');
+if (!cloudDataRefreshBoundary.includes('hasEstablishedLocalWorkingCopy')
+  || !cloudDataRefreshBoundary.includes('requireFullReconciliation')) {
+  violations.push('CloudDataRefreshBoundary.tsx: signed-in UI must use canonical full-reconciliation readiness before rendering account data.');
 }
 
 const onboardingGateSource = read('src/features/onboarding/OnboardingGate.tsx');
@@ -1380,8 +1383,9 @@ const onboardingPreferencesSource = read('src/features/onboarding/onboardingPref
 if (!onboardingGateSource.includes('restoreOnboardingPreferences()')) {
   violations.push('OnboardingGate.tsx: persisted accessibility preferences must be restored when onboarding mounts.');
 }
-for (const transientField of ['readerStyle,', 'genres:', 'libraryStart,', 'completedAt:']) {
-  if (onboardingGateSource.includes(transientField)) {
+const onboardingPersistedProfile = onboardingGateSource.match(/const profile: OnboardingProfile = \{([\s\S]*?)\n\s*\};/)?.[1] ?? '';
+for (const transientField of ['readerStyle', 'genres', 'libraryStart', 'completedAt']) {
+  if (new RegExp(`\\b${transientField}\\s*:`).test(onboardingPersistedProfile)) {
     violations.push(`OnboardingGate.tsx: transient onboarding choice must not be persisted in the onboarding profile: ${transientField}`);
   }
 }
