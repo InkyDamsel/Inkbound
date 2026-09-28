@@ -1,7 +1,6 @@
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from '../../lib/firebase';
 import { readRuntimeJson, removeRuntimeValue, writeRuntimeJson } from '../../platform/runtimeStorage';
-import { notifyLocalDataChanged } from '../sync/cloudSyncEvents';
 import { DEVICE_FEATURE_STORAGE_KEYS, DEVICE_FEATURE_STORAGE_PREFIXES, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import {
   dataUrlToBlob,
@@ -140,7 +139,6 @@ async function runProfileMediaSynchronization(uid: string): Promise<void> {
       delete latestProfile.bannerMediaKey;
     }
     writeRuntimeJson(PROFILE_STORAGE_KEY, latestProfile);
-    notifyLocalDataChanged([PROFILE_STORAGE_KEY]);
 
     const latestQueue = readQueue(uid);
     if (latestQueue[item.kind]?.mediaKey === item.mediaKey && latestQueue[item.kind]?.queuedAt === item.queuedAt) {
