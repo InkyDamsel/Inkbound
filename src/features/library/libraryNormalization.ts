@@ -40,6 +40,21 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
     normalized = { ...normalized, editions: normalizedEditions };
   }
 
+  const normalizedPublicationYear = typeof normalized.work.publicationYear === 'number'
+    && Number.isFinite(normalized.work.publicationYear)
+    && normalized.work.publicationYear > 0
+    ? normalized.work.publicationYear
+    : undefined;
+  if (normalizedPublicationYear !== normalized.work.publicationYear) {
+    normalized = {
+      ...normalized,
+      work: {
+        ...normalized.work,
+        publicationYear: normalizedPublicationYear,
+      },
+    };
+  }
+
   const normalizedRating = normalizeBookRating(normalized.rating);
   const normalizedSpiceLevel = normalizeSpiceLevel(normalized.spiceLevel);
   if (normalizedRating !== normalized.rating || normalizedSpiceLevel !== normalized.spiceLevel) {
