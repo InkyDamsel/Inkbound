@@ -1,7 +1,5 @@
 import React, { useEffect, useRef } from 'react';
 import { purgeUnverifiedLegacyImportMetadata } from '../import/purgeLegacyImportMetadata';
-import { notifyCloudDataUpdated } from './cloudSyncEvents';
-import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 /**
  * One-time legacy import cleanup.
@@ -19,8 +17,7 @@ export const LegacyImportMetadataPurgeBridge: React.FC = () => {
     if (ran.current) return;
     ran.current = true;
 
-    const purged = purgeUnverifiedLegacyImportMetadata();
-    if (purged > 0) notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
+    purgeUnverifiedLegacyImportMetadata();
   }, []);
 
   return null;
