@@ -1,4 +1,5 @@
 import {
+  Edition,
   Format,
   OwnershipStatus,
   Priority,
@@ -116,5 +117,120 @@ export function createBookFromSearchEdition({
     dateAdded: addedOn,
     dateStarted: status === 'currently-reading' || isFinished ? addedOn : undefined,
     dateFinished: isFinished ? addedOn : undefined,
+  };
+}
+
+export interface CatalogBookMetadataMergeOptions {
+  /** Explicit repair may replace stale series values with verified catalog data. */
+  catalogSeriesWins?: boolean;
+  /** Exact-edition repair may replace an existing page count with the catalog value. */
+  catalogPageCountWins?: boolean;
+  /** Explicit repair may move provider identity to the newly verified edition. */
+  catalogIdentityWins?: boolean;
+  /** Manual editions are reader-owned and must not be rewritten by catalog metadata. */
+  preserveActiveEdition?: boolean;
+}
+
+const activeUserEdition = (book: UserBookRecord): Edition | undefined =>
+  book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
+
+const isPlaceholderPublisherSummary = (value?: string): boolean => {
+  const normalized = value?.trim().toLocaleLowerCase() ?? '';
+  return !normalized
+    || normalized === 'summary unavailable.'
+    || normalized.startsWith('no publisher description')
+    || normalized.startsWith('no publisher summary');
+};
+
+/**
+ * Canonical catalog -> existing-library merge.
+ *
+ * Search, imports and Book Details may decide *when* metadata should be applied,
+ * but field precedence lives here so those paths cannot silently disagree about
+ * covers, page counts, series, edition identity or reader-owned values.
+ */
+export function mergeCatalogBookMetadata(
+  current: UserBookRecord,
+  catalogBook: UserBookRecord,
+  options: CatalogBookMetadataMergeOptions = {},
+): UserBookRecord {
+  const currentEdition = activeUserEdition(current);
+  const catalogEdition = activeUserEdition(catalogBook);
+
+  let mergedEdition = currentEdition;
+  if (currentEdition && catalogEdition && !options.preserveActiveEdition) {
+    const catalogPageCount = catalogEdition.pageCount;
+    const pageCount = options.catalogPageCountWins && catalogPageCount
+      ? catalogPageCount
+      : currentEdition.pageCount || catalogPageCount;
+
+    mergedEdition = {
+      ...catalogEdition,
+      ...currentEdition,
+      id: currentEdition.id,
+      format: currentEdition.format,
+      coverGradient: currentEdition.coverGradient || catalogEdition.coverGradient,
+      coverUrl: currentEdition.coverUrl || catalogEdition.coverUrl,
+      isbn: currentEdition.isbn || catalogEdition.isbn,
+      isbn10: currentEdition.isbn10 || catalogEdition.isbn10,
+      isbn13: currentEdition.isbn13 || catalogEdition.isbn13,
+      asin: currentEdition.asin || catalogEdition.asin,
+      lccn: currentEdition.lccn || catalogEdition.lccn,
+      pageCount,
+      audiobookDurationMins: currentEdition.audiobookDurationMins || catalogEdition.audiobookDurationMins,
+      narrator: currentEdition.narrator || catalogEdition.narrator,
+      publisher: currentEdition.publisher || catalogEdition.publisher,
+      publicationDate: currentEdition.publicationDate || catalogEdition.publicationDate,
+      language: currentEdition.language || catalogEdition.language,
+      editionName: currentEdition.editionName || catalogEdition.editionName,
+      binding: currentEdition.binding || catalogEdition.binding,
+      specialFeatures: currentEdition.specialFeatures?.length
+        ? currentEdition.specialFeatures
+        : catalogEdition.specialFeatures,
+      externalSource: currentEdition.externalSource === 'manual'
+        ? currentEdition.externalSource
+        : options.catalogIdentityWins
+          ? catalogEdition.externalSource || currentEdition.externalSource
+          : currentEdition.externalSource || catalogEdition.externalSource,
+      externalEditionId: options.catalogIdentityWins
+        ? catalogEdition.externalEditionId || currentEdition.externalEditionId
+        : currentEdition.externalEditionId || catalogEdition.externalEditionId,
+    };
+  } else if (!currentEdition && catalogEdition) {
+    mergedEdition = catalogEdition;
+  }
+
+  const catalogSeriesName = catalogBook.work.seriesName;
+  const catalogSeriesOrder = catalogBook.work.seriesOrder;
+  const publisherSummary = current.work.publisherSummary || catalogBook.work.publisherSummary;
+  const visibleSummary = current.work.personalSummary
+    || (!isPlaceholderPublisherSummary(current.work.summary) ? current.work.summary : undefined)
+    || publisherSummary
+    || catalogBook.work.summary
+    || current.work.summary;
+
+  return {
+    ...current,
+    work: {
+      ...current.work,
+      subtitle: current.work.subtitle || catalogBook.work.subtitle,
+      summary: visibleSummary,
+      publisherSummary,
+      genres: current.work.genres?.length ? current.work.genres : catalogBook.work.genres,
+      seriesName: options.catalogSeriesWins
+        ? catalogSeriesName ?? current.work.seriesName
+        : current.work.seriesName ?? catalogSeriesName,
+      seriesOrder: options.catalogSeriesWins
+        ? (typeof catalogSeriesOrder === 'number' ? catalogSeriesOrder : current.work.seriesOrder)
+        : (typeof current.work.seriesOrder === 'number' ? current.work.seriesOrder : catalogSeriesOrder),
+      publicationYear: current.work.publicationYear || catalogBook.work.publicationYear,
+      originalLanguage: current.work.originalLanguage || catalogBook.work.originalLanguage,
+      externalWorkId: options.catalogIdentityWins
+        ? catalogBook.work.externalWorkId || current.work.externalWorkId
+        : current.work.externalWorkId || catalogBook.work.externalWorkId,
+    },
+    editions: mergedEdition && currentEdition
+      ? current.editions.map((edition) => edition.id === currentEdition.id ? mergedEdition! : edition)
+      : current.editions,
   };
 }
