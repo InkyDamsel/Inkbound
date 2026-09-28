@@ -60,6 +60,14 @@ if (!applicationEntrySource.includes('<LegacySeriesOverrideMigrationBridge />'))
   violations.push('applicationEntry.tsx: legacy series migration must remain mounted behind core hydration');
 }
 
+const seriesLibrarySource = read('src/features/series/seriesLibrary.ts');
+if (/return\s+inferSeriesHintFromTitle\(book\.work\.title\)/.test(seriesLibrarySource)) {
+  violations.push('seriesLibrary.ts: Series library must not infer membership from titles; membership must be persisted on UserBookRecord.work');
+}
+if (/return\s+inferred\s*\?\s*\{[\s\S]{0,120}source:\s*['"]inferred['"]/.test(seriesLibrarySource)) {
+  violations.push('seriesLibrary.ts: inferred title hints must not become effective series membership');
+}
+
 const legacySeriesOverrideAllowed = new Set([
   'src/App.tsx',
   'src/features/series/seriesOverrides.ts',
