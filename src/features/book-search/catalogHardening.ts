@@ -70,6 +70,51 @@ const catalogSearchResultIsRelevant = (group: BookSearchWorkGroup, query?: strin
 };
 
 
+export const catalogWorkMatchesIdentity = (
+  group: BookSearchWorkGroup,
+  title: string,
+  author: string,
+): boolean => {
+  const wantedTitle = meaningfulSearchWords(title);
+  const candidateTitle = new Set(meaningfulSearchWords(group.title));
+  if (wantedTitle.length > 0) {
+    const matchedTitleWords = wantedTitle.filter((word) => candidateTitle.has(word)).length;
+    const requiredTitleMatches = wantedTitle.length <= 2
+      ? wantedTitle.length
+      : Math.max(2, Math.ceil(wantedTitle.length * 0.67));
+    if (matchedTitleWords < requiredTitleMatches) return false;
+  }
+
+  const wantedAuthor = meaningfulSearchWords(author);
+  if (wantedAuthor.length === 0) return true;
+  const candidateAuthor = new Set(meaningfulSearchWords(group.authors.join(' ')));
+  const matchedAuthorWords = wantedAuthor.filter((word) => candidateAuthor.has(word)).length;
+  const lastName = wantedAuthor.at(-1);
+  return matchedAuthorWords >= Math.max(1, Math.ceil(wantedAuthor.length * 0.5))
+    || Boolean(lastName && candidateAuthor.has(lastName));
+};
+
+export const selectBestCatalogMetadataCandidate = (
+  groups: BookSearchWorkGroup[],
+  options: { title: string; author: string; preferredFormat?: BookSearchEdition['format'] },
+): { work: BookSearchWorkGroup; edition: BookSearchEdition } | null => {
+  const candidates = groups
+    .filter((group) => catalogWorkMatchesIdentity(group, options.title, options.author))
+    .flatMap((work) => work.editions.map((edition) => ({ work, edition })));
+
+  const score = ({ work, edition }: { work: BookSearchWorkGroup; edition: BookSearchEdition }) => {
+    let total = catalogEditionQualityScore(edition);
+    if (options.preferredFormat && edition.format === options.preferredFormat) total += 30;
+    if (edition.pageCount) total += 20;
+    if (edition.seriesName) total += 25;
+    if (typeof edition.seriesOrder === 'number') total += 10;
+    if ((edition.publisherSummary ?? work.publisherSummary)?.trim()) total += 4;
+    return total;
+  };
+
+  return [...candidates].sort((left, right) => score(right) - score(left))[0] ?? null;
+};
+
 export const catalogTitlesAreCompatible = (left?: string, right?: string): boolean => {  const a = normalizeKey(left);
   const b = normalizeKey(right);
   if (!a || !b) return false;
