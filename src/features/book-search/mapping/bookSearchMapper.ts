@@ -72,7 +72,7 @@ export function createBookFromSearchEdition({
       title: hardenedWork.title,
       subtitle: hardenedWork.subtitle,
       author: hardenedWork.authors.join(', '),
-      summary: publisherSummary ?? 'No publisher summary was available for this edition.',
+      summary: publisherSummary ?? '',
       publisherSummary,
       genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : hardenedWork.genres,
       ...(hardenedEdition.seriesName ? { seriesName: hardenedEdition.seriesName, seriesSource: 'metadata' as const } : {}),
