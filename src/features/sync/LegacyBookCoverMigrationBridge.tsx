@@ -3,7 +3,6 @@ import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { prepareBookCoverImage } from '../../platform/prepareBookCoverImage';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
-import {
 import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import {
   getCloudDataRevision,
