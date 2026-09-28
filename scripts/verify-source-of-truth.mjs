@@ -91,6 +91,21 @@ if (fs.existsSync(path.join(root, 'src/features/sync/CloudPersistenceBridge.tsx'
   violations.push('CloudPersistenceBridge.tsx: retired duplicate persistence implementation must not exist; AdaptiveCloudPersistenceBridge owns the canonical path');
 }
 
+const demoSeedExports = ['INITIAL_COLLECTIONS', 'SAMPLE_BOOKS', 'INITIAL_READING_SESSIONS', 'MOCK_IMPORT_RECORDS'];
+for (const file of sourceFiles) {
+  const relative = path.relative(root, file).replaceAll('\\', '/');
+  if (relative === 'src/data/sampleBooks.ts') continue;
+  const source = fs.readFileSync(file, 'utf8');
+  for (const symbol of demoSeedExports) {
+    if (source.includes(symbol)) {
+      violations.push(`${relative}: production runtime must not consume demo seed data (${symbol})`);
+    }
+  }
+  if (/\b(?:Junei|Andrea)\b/.test(source)) {
+    violations.push(`${relative}: tester-specific production logic is forbidden`);
+  }
+}
+
 // ONE SOURCE OF TRUTH LAW: feature/UI code may consume canonical catalog
 // services, but it must never assemble provider pipelines of its own.
 for (const file of sourceFiles) {
