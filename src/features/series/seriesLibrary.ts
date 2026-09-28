@@ -32,7 +32,7 @@ export interface SeriesHint {
 
 export interface EffectiveSeriesMetadata extends SeriesHint {
   label: string;
-  source: 'manual' | 'metadata' | 'inferred';
+  source: 'manual' | 'metadata';
 }
 
 const normalizeSeriesName = (value: string) => value.trim().replace(/\s+/g, ' ');
