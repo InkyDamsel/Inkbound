@@ -226,6 +226,16 @@ async function enforceRateLimit(uid: string) {
   });
 }
 
+function normalizeTrustedFormat(value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | undefined {
+  const normalized = value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ') ?? '';
+  if (!normalized) return undefined;
+  if (/\b(?:audio|audiobook|cd|mp3)\b/.test(normalized)) return 'audiobook';
+  if (/\b(?:ebook|e book|kindle|digital|epub)\b/.test(normalized)) return 'ebook';
+  if (/\b(?:paperback|softcover|soft cover|mass market|trade paper)\b/.test(normalized)) return 'paperback';
+  if (/\b(?:hardcover|hardback|hard cover|library binding)\b/.test(normalized)) return 'hardcover';
+  return undefined;
+}
+
 function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
   const fields = (
     record.fields && typeof record.fields === 'object' && !Array.isArray(record.fields)
@@ -233,6 +243,10 @@ function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
       : {}
   ) as Partial<CatalogFields>;
   if (!fields.title || !fields.author) return null;
+  const format = normalizeTrustedFormat(fields.format);
+  // Trusted edition data must never invent a physical/digital format. Older
+  // records without a verified format are not authoritative edition evidence.
+  if (!format) return null;
 
   return {
     key: `inkbound-catalog:${id}`,
@@ -251,7 +265,7 @@ function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
       publicationDate: fields.publicationDate,
       publicationYear: publicationYear(fields.publicationDate),
       language: fields.language,
-      format: fields.format ?? 'ebook',
+      format,
       isbn10: fields.isbn10,
       isbn13: fields.isbn13,
       asin: fields.asin,
