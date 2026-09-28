@@ -13,14 +13,14 @@ import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { IMPORT_ENRICHMENT_PAUSED_KEY } from '../import/importHistory';
 import { db } from '../../lib/firebase';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { getRuntimeStorage, removeRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
   INKBOUND_FORCE_CLOUD_REFRESH_EVENT,
   publishCloudSyncHealth,
 } from './cloudSyncHealth';
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
-import { SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
+import { DEVICE_FEATURE_STORAGE_KEYS, SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
 import { upsertCoreCloudRecord } from './coreCloudRecords';
 import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
 import { compactCloudProfileForRuntime } from './profileSyncMerge';
@@ -29,7 +29,7 @@ const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const LAST_SYNC_STORAGE_KEY = SYNC_STORAGE_KEYS.lastCloudSyncAt;
-const LEGACY_AUTOPAUSE_MIGRATION_KEY = 'inkbound_import_enrichment_autopause_cleanup_v1';
+const LEGACY_AUTOPAUSE_MIGRATION_KEY = DEVICE_FEATURE_STORAGE_KEYS.legacyImportEnrichmentAutopauseCleanup;
 const REPAIR_UPLOAD_BATCH_SIZE = 100;
 
 interface CloudRecord<T> {
@@ -179,8 +179,8 @@ export const CloudServerRefreshBridge: React.FC = () => {
     // state did not represent a reader choice, so clear it exactly once after the
     // fixed build opens. Future pause semantics remain untouched after migration.
     if (storage.getItem(LEGACY_AUTOPAUSE_MIGRATION_KEY) !== '1') {
-      storage.removeItem(IMPORT_ENRICHMENT_PAUSED_KEY);
-      storage.setItem(LEGACY_AUTOPAUSE_MIGRATION_KEY, '1');
+      removeRuntimeValue(IMPORT_ENRICHMENT_PAUSED_KEY);
+      writeRuntimeValue(LEGACY_AUTOPAUSE_MIGRATION_KEY, '1');
     }
 
     const libraryManifestRef = doc(db, 'users', uid, 'syncState', 'library');
