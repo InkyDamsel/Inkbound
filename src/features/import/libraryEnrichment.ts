@@ -701,7 +701,7 @@ export function buildRepairQueueItems(
       title: book.work.title,
       author: book.work.author,
       isbn: activeEdition?.isbn13 || activeEdition?.isbn10 || activeEdition?.isbn,
-      format: activeEdition?.format || 'hardcover',
+      format: activeEdition?.format || 'unknown',
       status: book.status,
       rating: book.rating,
       dateStarted: book.dateStarted,
