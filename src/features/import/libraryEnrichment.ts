@@ -5,6 +5,7 @@ import type {
 import { getRuntimeStorage, removeRuntimeValue, writeRuntimeJson } from '../../platform/runtimeStorage';
 import { searchGoogleBooks } from '../book-search/data/googleBooksApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
+import { createBookFromSearchEdition, mergeCatalogBookMetadata } from '../book-search/mapping/bookSearchMapper';
 import { LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
 export const IMPORT_ENRICHMENT_QUEUE_KEY = SYNC_STORAGE_KEYS.importEnrichmentQueue;
@@ -527,53 +528,54 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       return { item, foundCover: false, foundSummary: false, success: false };
     }
 
-    const publisherSummary = work.publisherSummary?.trim();
+    // Provider -> Inkbound mapping belongs to the same canonical mapper used by
+    // Add Book/Search. Import enrichment may overlay source-owned values, but it
+    // must not rebuild bibliographic metadata independently.
+    const mapped = createBookFromSearchEdition({
+      work,
+      edition,
+      format: item.format,
+      status: item.status,
+      ownership: 'owned',
+      priority: 'medium',
+    });
+    const mappedEdition = mapped.editions[0];
+    const publisherSummary = mapped.work.publisherSummary?.trim();
     const sourcePageCount = typeof item.pageCount === 'number' && Number.isFinite(item.pageCount) && item.pageCount > 0
       ? Math.round(item.pageCount)
       : undefined;
     const sourceCoverUrl = item.coverUrl?.trim() || undefined;
-    const coverUrl = sourceCoverUrl || coverEdition?.coverUrl;
+    const coverUrl = sourceCoverUrl || coverEdition?.coverUrl || mappedEdition.coverUrl;
     const editionId = `edition-enriched-${item.id}`;
-    const pageCount = sourcePageCount || edition.pageCount;
     const dateAdded = normalizeImportDate(item.dateAdded) ?? new Date().toISOString().slice(0, 10);
     const dateStarted = normalizeImportDate(item.dateStarted);
     const dateFinished = item.status === 'finished' ? normalizeImportDate(item.dateRead) : undefined;
+    const importedIsbn = compactIsbn(item.isbn);
+
     const enriched: UserBookRecord = {
+      ...mapped,
       id: item.targetBookId,
       work: {
+        ...mapped.work,
         id: `work-enriched-${item.id}`,
+        // Preserve the reader's source-library spelling while retaining all
+        // canonical metadata (including series) from the shared mapper.
         title: item.title,
-        subtitle: work.subtitle,
         author: item.author,
-        summary: publisherSummary || 'Summary unavailable.',
-        publisherSummary: publisherSummary || undefined,
         personalSummary: item.review?.trim() || undefined,
-        genres: work.genres,
-        publicationYear: edition.publicationYear || new Date().getFullYear(),
-        originalLanguage: edition.language,
-        externalWorkId: work.key,
       },
       activeEditionId: editionId,
       editions: [{
+        ...mappedEdition,
         id: editionId,
         format: item.format,
-        isbn: item.isbn || edition.isbn13 || edition.isbn10,
-        isbn10: compactIsbn(item.isbn).length === 10 ? compactIsbn(item.isbn) : edition.isbn10,
-        isbn13: compactIsbn(item.isbn).length === 13 ? compactIsbn(item.isbn) : edition.isbn13,
-        pageCount,
-        publisher: edition.publisher,
-        publicationDate: edition.publicationDate,
+        isbn: item.isbn || mappedEdition.isbn,
+        isbn10: importedIsbn.length === 10 ? importedIsbn : mappedEdition.isbn10,
+        isbn13: importedIsbn.length === 13 ? importedIsbn : mappedEdition.isbn13,
+        pageCount: sourcePageCount || mappedEdition.pageCount,
         coverGradient: item.coverGradient,
         coverUrl,
-        language: edition.language,
-        editionName: edition.editionName,
-        binding: edition.binding,
-        specialFeatures: edition.specialFeatures,
-        externalSource: edition.source,
-        externalEditionId: edition.externalEditionId,
       }],
-      status: item.status,
-      ownership: 'owned',
       // Metadata enrichment must never invent reading progress. Finished history
       // and a known page count do not prove the exact tracked endpoint.
       progressPages: 0,
@@ -581,11 +583,7 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       progressPercentage: 0,
       rating: item.rating,
       review: item.review,
-      favoriteQuotes: [],
       privateTags: ['imported'],
-      priority: 'medium',
-      moods: [],
-      collections: [],
       sourceOfImport: 'Library import + verified metadata',
       importMetadataVerified: true,
       importMetadataReviewNeeded: false,
@@ -633,51 +631,18 @@ const isPlaceholderSummary = (value?: string): boolean => {
 
 export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: UserBookRecord): UserBookRecord {
   const activeEdition = current.editions.find((edition) => edition.id === current.activeEditionId) ?? current.editions[0];
-  const enrichedEdition = enriched.editions[0];
-
-  const mergedActiveEdition = activeEdition && enrichedEdition
-    ? {
-        ...enrichedEdition,
-        ...activeEdition,
-        id: activeEdition.id,
-        format: activeEdition.format,
-        coverGradient: activeEdition.coverGradient,
-        coverUrl: activeEdition.coverUrl || enrichedEdition.coverUrl,
-        isbn: activeEdition.isbn || enrichedEdition.isbn,
-        isbn10: activeEdition.isbn10 || enrichedEdition.isbn10,
-        isbn13: activeEdition.isbn13 || enrichedEdition.isbn13,
-        pageCount: activeEdition.pageCount || enrichedEdition.pageCount,
-        publisher: activeEdition.publisher || enrichedEdition.publisher,
-        publicationDate: activeEdition.publicationDate || enrichedEdition.publicationDate,
-        language: activeEdition.language || enrichedEdition.language,
-        editionName: activeEdition.editionName || enrichedEdition.editionName,
-        binding: activeEdition.binding || enrichedEdition.binding,
-        externalSource: activeEdition.externalSource === 'manual' ? activeEdition.externalSource : enrichedEdition.externalSource,
-        externalEditionId: activeEdition.externalEditionId || enrichedEdition.externalEditionId,
-      }
-    : activeEdition ?? enrichedEdition;
-
-  const publisherSummary = current.work.publisherSummary || enriched.work.publisherSummary;
-  const visibleSummary = isPlaceholderSummary(current.work.summary)
-    ? publisherSummary || enriched.work.summary || current.work.summary
-    : current.work.summary;
+  const merged = mergeCatalogBookMetadata(current, enriched, {
+    // Automatic enrichment fills blanks. It never overrides reader/manual series
+    // choices or an existing edition/page count.
+    preserveActiveEdition: activeEdition?.externalSource === 'manual',
+  });
 
   return {
-    ...current,
+    ...merged,
     work: {
-      ...current.work,
-      subtitle: current.work.subtitle || enriched.work.subtitle,
-      summary: visibleSummary,
-      publisherSummary,
+      ...merged.work,
       personalSummary: current.work.personalSummary || enriched.work.personalSummary,
-      genres: current.work.genres?.length ? current.work.genres : enriched.work.genres,
-      publicationYear: current.work.publicationYear || enriched.work.publicationYear,
-      originalLanguage: current.work.originalLanguage || enriched.work.originalLanguage,
-      externalWorkId: current.work.externalWorkId || enriched.work.externalWorkId,
     },
-    editions: mergedActiveEdition
-      ? current.editions.map((edition) => edition.id === current.activeEditionId ? mergedActiveEdition : edition)
-      : current.editions,
     // Keep current reading progress/status authoritative. Enrichment supplies
     // metadata only and may fill missing historical dates, never page endpoints.
     dateStarted: current.dateStarted || enriched.dateStarted,
