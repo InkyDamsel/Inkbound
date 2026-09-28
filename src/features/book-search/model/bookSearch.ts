@@ -12,7 +12,7 @@ export interface BookSearchEdition {
   genres: string[];
   publisher?: string;
   publicationDate?: string;
-  publicationYear: number;
+  publicationYear?: number;
   language?: string;
   seriesName?: string;
   seriesOrder?: number;
