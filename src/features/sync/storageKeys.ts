@@ -25,6 +25,7 @@ export const DEVICE_UI_STORAGE_KEYS = {
   collectionView: 'inkbound_collection_view',
   collectionSort: 'inkbound_collection_sort',
   libraryMaintenanceCollapsedSections: 'inkbound_library_maintenance_collapsed_sections',
+  sharePreferences: 'inkbound_share_preferences',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
