@@ -126,6 +126,21 @@ if (!safeReimportSource.includes('replaceCanonicalLibrary')) {
   violations.push('safeReimportMerge.ts: re-import must persist the canonical library through replaceCanonicalLibrary');
 }
 
+const importVerificationSource = read('src/features/import/importVerificationJob.ts');
+if (!importVerificationSource.includes('replaceCanonicalLibrary')) {
+  violations.push('importVerificationJob.ts: canonical library writes must use replaceCanonicalLibrary');
+}
+if (/writeRuntimeJson\(SYNC_STORAGE_KEYS\.books/.test(importVerificationSource)) {
+  violations.push('importVerificationJob.ts: direct canonical books writes are forbidden');
+}
+const legacyImportPurgeSource = read('src/features/import/purgeLegacyImportMetadata.ts');
+if (!legacyImportPurgeSource.includes('replaceCanonicalLibrary')) {
+  violations.push('purgeLegacyImportMetadata.ts: cleanup must persist through replaceCanonicalLibrary');
+}
+if (/writeRuntimeJson\(BOOKS_STORAGE_KEY/.test(legacyImportPurgeSource)) {
+  violations.push('purgeLegacyImportMetadata.ts: direct canonical books writes are forbidden');
+}
+
 const importEnrichmentSource = read('src/features/import/libraryEnrichment.ts');
 for (const required of ['createBookFromSearchEdition', 'mergeCatalogBookMetadata']) {
   if (!importEnrichmentSource.includes(required)) {
