@@ -202,6 +202,25 @@ export default function App() {
   }, [sessions]);
 
   useEffect(() => {
+    const refreshCanonicalRuntimeStorage = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key === BOOKS_STORAGE_KEY) {
+        const nextBooks = readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []);
+        booksRef.current = nextBooks;
+        setBooks(nextBooks);
+      }
+      if (key === SESSIONS_STORAGE_KEY) {
+        const nextSessions = readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []);
+        sessionsRef.current = nextSessions;
+        setSessions(nextSessions);
+      }
+    };
+
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, refreshCanonicalRuntimeStorage);
+    return () => window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, refreshCanonicalRuntimeStorage);
+  }, []);
+
+  useEffect(() => {
     const refreshCanonicalCollections = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
       const keys = detail?.keys ?? [];
