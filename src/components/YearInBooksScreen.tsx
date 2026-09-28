@@ -7,12 +7,13 @@ import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
+import { DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface YearInBooksScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; onSelectBook: (book: UserBookRecord) => void; }
 type YearbookTheme = 'quiet-library' | 'winter-study' | 'celestial';
 type ExportFormat = 'story' | 'portrait' | 'square';
 interface YearbookPreferences { year: number; page: number; theme: YearbookTheme; exportFormat: ExportFormat; }
-const STORAGE_KEY = 'inkbound_year_in_books_preferences';
+const STORAGE_KEY = DEVICE_UI_STORAGE_KEYS.yearInBooksPreferences;
 const YEARBOOK_BACKGROUND_URL = '/assets/yearbook/cozy-yearbook-background.svg';
 const themes: Record<YearbookTheme, { label: string; background: string; accent: string; text: string }> = {
   'quiet-library': { label: 'Quiet Library', background: '#171217', accent: '#a87d92', text: '#f4ece3' },
