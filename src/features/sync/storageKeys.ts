@@ -37,6 +37,12 @@ export const DEVICE_UI_STORAGE_KEYS = {
   readingInsightsRange: 'inkbound_reading_insights_range',
   readingInsightsCategory: 'inkbound_reading_insights_category',
   readingInsightsDismissed: 'inkbound_reading_insights_dismissed',
+  memorySelectedBook: 'inkbound_memory_selected_book',
+  activeSessionDraft: 'inkbound_active_session_draft',
+  timeCapsuleFilter: 'inkbound_time_capsule_filter',
+  timelineFilter: 'inkbound_timeline_filter',
+  timelineSearch: 'inkbound_timeline_search',
+  timelineCollapsedMonths: 'inkbound_timeline_collapsed_months',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
