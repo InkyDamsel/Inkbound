@@ -7,6 +7,7 @@ import {
   getBookReadingState,
   getRemainingReadingUnits,
   reconcileFinishedBookProgress,
+  withCorrectedReadingProgress,
   withReadingStatus,
 } from '../src/features/reading/bookReadingState';
 import { hasTrustworthyFinishedHistory } from '../src/features/reading/inkboundActivity';
@@ -177,6 +178,22 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(partialSession.status, 'finished');
   assert.equal(partialSession.progressPercentage, 100);
   assert.equal(partialSession.dateFinished, '2026-08-15');
+}
+
+// Manual progress correction uses the canonical reading-state owner.
+{
+  const corrected = withCorrectedReadingProgress(baseBook(), { progressPages: 250 });
+  assert.equal(corrected.progressPages, 250);
+  assert.equal(corrected.progressPercentage, 50);
+  assert.equal(corrected.status, 'currently-reading');
+
+  const clearedTotal = withCorrectedReadingProgress(baseBook(), { pageCount: 0 });
+  assert.equal(getActiveEdition(clearedTotal)?.pageCount, undefined);
+
+  const finished = withCorrectedReadingProgress(baseBook(), { progressPages: 500 }, '2026-08-20');
+  assert.equal(finished.status, 'finished');
+  assert.equal(finished.progressPercentage, 100);
+  assert.equal(finished.dateFinished, '2026-08-20');
 }
 
 // Reading analytics use real session values and deterministic date anchors.
