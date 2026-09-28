@@ -3,6 +3,7 @@ import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Sear
 import { FORMAT_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPTIONS } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
+import { catalogSeriesMetadataForPersistence } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import { detectSeriesForBook } from '../features/series/seriesDetective';
 import { seriesNamesAreCompatible } from '../features/series/seriesLibrary';
@@ -239,30 +240,52 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         ?? candidates[0];
       if (!match) return setSyncMessage('No safe title-and-author match was found. Inkbound left this book unchanged.');
       const { work: matchedWork, edition: matchedEdition } = match;
-      const matchedSeriesEdition = candidates.find(({ edition }) => edition.seriesName?.trim())?.edition;
-      let matchedSeriesName = matchedEdition.seriesName?.trim()
-        || matchedSeriesEdition?.seriesName?.trim();
-      let matchedSeriesOrder = typeof matchedEdition.seriesOrder === 'number'
-        ? matchedEdition.seriesOrder
-        : matchedSeriesEdition?.seriesOrder;
+      const matchedSeries = catalogSeriesMetadataForPersistence(matchedWork, matchedEdition);
+      const fallbackSeries = candidates
+        .map((candidate) => catalogSeriesMetadataForPersistence(candidate.work, candidate.edition))
+        .find((metadata) => metadata.seriesName?.trim());
+      let matchedSeriesName = matchedSeries.seriesName?.trim()
+        || fallbackSeries?.seriesName?.trim();
+      let matchedSeriesOrder = typeof matchedSeries.seriesOrder === 'number'
+        ? matchedSeries.seriesOrder
+        : fallbackSeries?.seriesOrder;
+      let replaceStoredSeries = false;
 
       // Canonical catalog providers get first chance. If they still leave a
       // series gap, use Series Detective only as a verified reconciliation
-      // fallback. Search itself never depends on Detective.
+      // fallback. A legacy Open Library series label that embeds an installment
+      // marker (for example "tome 2" / "book 2") is edition-scoped evidence,
+      // not canonical work identity, and may be repaired by verified Detective
+      // evidence during this explicit metadata-sync action.
+      const storedSeries = book.work.seriesName?.trim();
+      const storedSeriesLooksEditionScoped = Boolean(
+        storedSeries
+        && book.sourceOfImport === 'Open Library'
+        && /\b(?:tome|book|vol(?:ume)?\.?|part)\s*#?\s*\d+(?:\.\d+)?\b/i.test(storedSeries),
+      );
       if (
-        (!book.work.seriesName?.trim() && !matchedSeriesName)
+        (!storedSeries && !matchedSeriesName)
         || (typeof book.work.seriesOrder !== 'number' && typeof matchedSeriesOrder !== 'number')
+        || storedSeriesLooksEditionScoped
       ) {
         try {
           const detectedSeries = await detectSeriesForBook(book);
           if (detectedSeries) {
-            const existingOrMatchedName = book.work.seriesName?.trim() || matchedSeriesName;
+            const existingOrMatchedName = storedSeries || matchedSeriesName;
             const compatibleWithKnown = !existingOrMatchedName
               || seriesNamesAreCompatible(existingOrMatchedName, detectedSeries.name);
-            if (compatibleWithKnown) {
-              matchedSeriesName = matchedSeriesName || detectedSeries.name;
-              if (typeof matchedSeriesOrder !== 'number' && typeof detectedSeries.position === 'number') {
-                matchedSeriesOrder = detectedSeries.position;
+            if (compatibleWithKnown || storedSeriesLooksEditionScoped) {
+              if (storedSeriesLooksEditionScoped && storedSeries && !seriesNamesAreCompatible(storedSeries, detectedSeries.name)) {
+                matchedSeriesName = detectedSeries.name;
+                matchedSeriesOrder = typeof detectedSeries.position === 'number'
+                  ? detectedSeries.position
+                  : matchedSeriesOrder;
+                replaceStoredSeries = true;
+              } else {
+                matchedSeriesName = matchedSeriesName || detectedSeries.name;
+                if (typeof matchedSeriesOrder !== 'number' && typeof detectedSeries.position === 'number') {
+                  matchedSeriesOrder = detectedSeries.position;
+                }
               }
             }
           }
@@ -302,10 +325,14 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
           publisherSummary: book.work.publisherSummary || matchedPublisherSummary,
           summary: book.work.personalSummary || book.work.publisherSummary || matchedPublisherSummary || book.work.summary,
           genres: book.work.genres.length ? book.work.genres : matchedWork.genres,
-          seriesName: book.work.seriesName?.trim() || matchedSeriesName || undefined,
-          seriesOrder: typeof book.work.seriesOrder === 'number'
-            ? book.work.seriesOrder
-            : matchedSeriesOrder,
+          seriesName: replaceStoredSeries
+            ? matchedSeriesName || undefined
+            : book.work.seriesName?.trim() || matchedSeriesName || undefined,
+          seriesOrder: replaceStoredSeries
+            ? matchedSeriesOrder
+            : typeof book.work.seriesOrder === 'number'
+              ? book.work.seriesOrder
+              : matchedSeriesOrder,
           publicationYear: book.work.publicationYear || matchedEdition.publicationYear,
           originalLanguage: book.work.originalLanguage || matchedEdition.language,
           externalWorkId: matchedWork.key,
