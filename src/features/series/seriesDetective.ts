@@ -208,6 +208,7 @@ const selectCorroboratedSubtitleSeries = (
 export interface SeriesDetectiveMatch {
   name: string;
   position: number | null;
+  discoveryAuthor?: string;
 }
 
 export interface SeriesDetectiveCandidate {
@@ -556,7 +557,13 @@ export async function detectSeriesForBook(
 
   const evidence = [...googleEvidence, ...openLibraryEvidence, ...mergedEvidence];
   const match = selectVerifiedDetectiveEvidence(evidence);
-  if (match) return { name: match.seriesName, position: match.position };
+  if (match) {
+    return {
+      name: match.seriesName,
+      position: match.position,
+      discoveryAuthor: match.authors.find((author) => author?.trim())?.trim(),
+    };
+  }
 
   return selectCorroboratedSubtitleSeries(providerCandidates, book);
 }
