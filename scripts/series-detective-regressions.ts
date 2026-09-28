@@ -6,10 +6,10 @@ import {
   scoreSeriesEvidence,
   selectVerifiedSeriesEvidence,
   selectVerifiedSubtitleSeriesEvidence,
+  buildSeriesDetectionQueries,
 } from '../src/features/series/seriesDetectiveEvidence';
 import { buildSeriesLibrary, canonicalSeriesIdentity, seriesNamesAreCompatible } from '../src/features/series/seriesLibrary';
 import { migrateSeriesOverridesToCanonicalBooks } from '../src/features/series/seriesOverrides';
-import { buildSeriesDetectionQueries } from '../src/features/series/seriesDetective';
 
 const book = {
   id: 'book-1',
