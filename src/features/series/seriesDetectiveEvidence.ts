@@ -15,9 +15,28 @@ const comparableTitle = (value?: string) => {
   return normalize(withoutSeriesSuffix);
 };
 
+const authorIdentityVariants = (value?: string): Set<string> => {
+  const raw = value?.trim() ?? '';
+  const variants = new Set<string>();
+  const normalized = normalize(raw);
+  if (normalized) variants.add(normalized);
+
+  const comma = raw.match(/^([^,]+),\s*(.+)$/);
+  if (comma) {
+    const reordered = normalize(`${comma[2]} ${comma[1]}`);
+    if (reordered) variants.add(reordered);
+  }
+
+  return variants;
+};
+
 const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
-  const wanted = normalize(author);
-  return !wanted || group.authors.some((candidate) => normalize(candidate) === wanted);
+  const wanted = authorIdentityVariants(author);
+  if (!wanted.size) return true;
+  return group.authors.some((candidate) => {
+    const candidateVariants = authorIdentityVariants(candidate);
+    return [...candidateVariants].some((identity) => wanted.has(identity));
+  });
 };
 
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
@@ -170,8 +189,7 @@ export const scoreSeriesEvidence = (
 
 export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): SeriesEvidence | null => {
   const eligible = evidence.filter((item) =>
-    (item.exactAuthor && (item.exactTitle || item.exactIdentifier))
-    || (item.structured && item.exactIdentifier),
+    item.exactAuthor && (item.exactTitle || item.exactIdentifier),
   );
   if (!eligible.length) return null;
 
@@ -191,7 +209,7 @@ export const selectVerifiedSeriesEvidence = (evidence: SeriesEvidence[]): Series
     // relationships need independent provider agreement; one strong structured
     // record may still verify when it matches this exact book.
     const verified =
-      best.exactIdentifier && best.structured
+      best.exactIdentifier && best.structured && best.exactAuthor
       || best.structured && best.exactAuthor && best.exactTitle && best.score >= 150
       || distinctSources >= 2 && best.score >= 110;
     return { best, distinctSources, verified };
