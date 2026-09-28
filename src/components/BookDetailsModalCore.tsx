@@ -1,8 +1,7 @@
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Search, Sparkles, Star, Trash2, Upload, X } from 'lucide-react';
 import { FORMAT_OPTIONS, OWNERSHIP_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPTIONS } from '../domain/libraryTaxonomy';
-import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
-import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
+import { fetchCatalogPublisherSummary, searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import { catalogEditionQualityScore, isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../features/book-search/catalogHardening';
 import { getActiveEdition, withReadingStatus } from '../features/reading/bookReadingState';
@@ -303,7 +302,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       let matchedPublisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
       if (!book.work.publisherSummary && !matchedPublisherSummary) {
         try {
-          matchedPublisherSummary = await fetchOpenLibrarySummary(book.work.title, book.work.author);
+          matchedPublisherSummary = await fetchCatalogPublisherSummary(book.work.title, book.work.author);
         } catch (error) {
           console.warn('Open Library work summary lookup failed.', error);
         }
