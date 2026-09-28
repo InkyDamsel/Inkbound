@@ -25,8 +25,8 @@ interface DeletedTimeCapsule {
   index: number;
 }
 
-const CAPSULES_KEY = 'inkbound_reading_time_capsules';
-const CAPSULE_FILTER_KEY = 'inkbound_time_capsule_filter';
+const CAPSULES_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingTimeCapsules;
+const CAPSULE_FILTER_KEY = DEVICE_UI_STORAGE_KEYS.timeCapsuleFilter;
 const UNDO_DELETE_MS = 7000;
 const TIME_CAPSULE_BACKGROUND_URL = '/assets/time-capsules/cozy-time-capsule-background.png';
 
