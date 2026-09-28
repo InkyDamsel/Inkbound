@@ -13,7 +13,7 @@ import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { IMPORT_ENRICHMENT_PAUSED_KEY } from '../import/importHistory';
 import { db } from '../../lib/firebase';
-import { getRuntimeStorage, removeRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { applyRuntimeJsonFromExternalSource, getRuntimeStorage, removeRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
   INKBOUND_FORCE_CLOUD_REFRESH_EVENT,
@@ -342,11 +342,11 @@ export const CloudServerRefreshBridge: React.FC = () => {
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (JSON.stringify(currentBooks) !== JSON.stringify(nextBooks)) {
-          writeJson(BOOKS_KEY, nextBooks);
+          applyRuntimeJsonFromExternalSource(BOOKS_KEY, nextBooks);
           changedKeys.push(BOOKS_KEY);
         }
         if (JSON.stringify(currentSessions) !== JSON.stringify(nextSessions)) {
-          writeJson(SESSIONS_KEY, nextSessions);
+          applyRuntimeJsonFromExternalSource(SESSIONS_KEY, nextSessions);
           changedKeys.push(SESSIONS_KEY);
         }
 
@@ -357,7 +357,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
             const serialized = stableSyncValue(compactProfile);
             baseline.profile = stableSyncValue(cloudProfile);
             if (storage.getItem(PROFILE_KEY) !== serialized) {
-              storage.setItem(PROFILE_KEY, serialized);
+              applyRuntimeJsonFromExternalSource(PROFILE_KEY, compactProfile);
               changedKeys.push(PROFILE_KEY);
             }
           }
