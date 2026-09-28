@@ -415,6 +415,21 @@ if (!navbarSource.includes('aria-label="Help & Guides"')) {
 
 const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
 const firstHydrationSync = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
+for (const relative of [
+  'src/features/sync/CloudServerRefreshBridge.tsx',
+  'src/features/sync/FullCloudReconciliationBridge.tsx',
+  'src/features/sync/CrossDeviceDeltaSyncBridge.tsx',
+]) {
+  const source = read(relative);
+  if (!source.includes('mergePendingLocalBookWithRemoteMetadata')) {
+    violations.push(`${relative}: core sync paths must share bookSyncMerge.ts for pending-local book conflicts`);
+  }
+}
+const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
+if (cloudServerRefreshSource.includes('function mergeServerMetadataIntoBook')) {
+  violations.push('CloudServerRefreshBridge.tsx: private book merge logic is forbidden; use bookSyncMerge.ts');
+}
+
 const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 const auxiliarySyncBridge = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
 const persistentStateHook = read('src/hooks/usePersistentState.ts');
