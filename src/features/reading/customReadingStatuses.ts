@@ -57,6 +57,12 @@ export const renameCustomReadingStatus = (id: string, name: string): boolean => 
 export const customReadingStatusLabel = (statusId?: string): string | undefined =>
   statusId ? readCustomReadingStatuses().find((status) => status.id === statusId)?.name : undefined;
 
+export const deleteCustomReadingStatusDefinition = (id: string): boolean => {
+  const current = readCustomReadingStatuses();
+  if (!current.some((status) => status.id === id)) return false;
+  return writeStatuses(current.filter((status) => status.id !== id));
+};
+
 export const readingStatusLabelForBook = (book: UserBookRecord): string => {
   if (book.status === 'custom') return customReadingStatusLabel(book.customReadingStatusId) ?? 'Custom';
   if (book.status === 'currently-reading') return 'Currently Reading';
