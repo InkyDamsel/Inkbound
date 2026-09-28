@@ -8,6 +8,7 @@ import {
   isValidCatalogIsbn13,
   mergeCatalogEditionData,
   selectExactIsbnEdition,
+  shouldRunStructuredTitleFallback,
 } from '../src/features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 
@@ -680,3 +681,36 @@ assert.equal(languageConflict.edition.language, 'en');
 assert.equal(languageConflict.edition.format, 'paperback');
 assert.equal(languageConflict.edition.pageCount, 323);
 assert.equal(languageConflict.edition.coverUrl, undefined);
+
+
+// Structured title fallback rescues buried title matches without hijacking
+// explicit author intent.
+{
+  const authorResults = [
+    work(edition('google-books', {
+      title: 'The Shining',
+      authors: ['Stephen King'],
+    }), { title: 'The Shining', authors: ['Stephen King'] }),
+    work(edition('open-library', {
+      title: 'Misery',
+      authors: ['Stephen King'],
+    }), { title: 'Misery', authors: ['Stephen King'] }),
+  ];
+  assert.equal(shouldRunStructuredTitleFallback(authorResults, 'Stephen King'), false);
+
+  const broadResults = [
+    work(edition('google-books', {
+      title: 'Zoo Stories',
+      authors: ['Example Author'],
+    }), { title: 'Zoo Stories', authors: ['Example Author'] }),
+  ];
+  assert.equal(shouldRunStructuredTitleFallback(broadResults, "The Zookeeper's Wife"), true);
+
+  const exactTitleResults = [
+    work(edition('google-books', {
+      title: "The Zookeeper's Wife",
+      authors: ['Diane Ackerman'],
+    }), { title: "The Zookeeper's Wife", authors: ['Diane Ackerman'] }),
+  ];
+  assert.equal(shouldRunStructuredTitleFallback(exactTitleResults, "The Zookeeper’s Wife"), false);
+}
