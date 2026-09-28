@@ -1105,6 +1105,21 @@ for (const required of ['shouldRemoteChangeReplacePending', 'subscribeToRuntimeR
   }
 }
 
+const profileScreenSource = read('src/components/ProfileScreen.tsx');
+const profileMediaSyncSource = read('src/features/profile/profileMediaCloudSync.ts');
+const costSafeProfileSource = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
+for (const required of ['storeAndQueueProfileMedia', 'synchronizeProfileMedia']) {
+  if (!profileScreenSource.includes(required)) {
+    violations.push(`ProfileScreen.tsx: profile image ownership must stay queued for current UI changes (${required})`);
+  }
+}
+if (!profileMediaSyncSource.includes('versionedProfileMediaPath')) {
+  violations.push('profileMediaCloudSync.ts: queued profile media must remain the canonical current-image uploader');
+}
+if (!costSafeProfileSource.includes("value.startsWith('data:image/')")) {
+  violations.push('CostSafeCloudPersistenceBridge.tsx: direct profile image upload must remain legacy data-URL-only');
+}
+
 const accountSync = read('src/context/AccountSyncContext.tsx');
 for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey', 'localClearIntentKey', 'IMPORT_ENRICHMENT_QUEUE_KEY']) {
   if (!accountSync.includes(required)) violations.push(`AccountSyncContext.tsx: account cleanup must use canonical ${required}`);
