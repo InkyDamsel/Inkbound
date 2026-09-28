@@ -43,7 +43,6 @@ import {
 } from '../platform/runtimeSubscriptionManagement';
 import { removeRuntimeValuesByPrefix, writeRuntimeValue } from '../platform/runtimeStorage';
 import type { ReadingSession, UserBookRecord } from '../types';
-import { CustomReadingStatusManager } from './reading/CustomReadingStatusManager';
 
 interface SettingsScreenProps {
   books: UserBookRecord[];
@@ -51,13 +50,12 @@ interface SettingsScreenProps {
   isDarkMode: boolean;
   setIsDarkMode: React.Dispatch<React.SetStateAction<boolean>>;
   onResetData: () => void;
-  onUpdateBook: (book: UserBookRecord) => void;
 }
 
 const CLEAR_DEVICE_PHRASE = 'CLEAR THIS DEVICE';
 const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions, isDarkMode, setIsDarkMode, onResetData, onUpdateBook }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions, isDarkMode, setIsDarkMode, onResetData }) => {
   const { userPlan, accessSource, trialPremiumUntil, openUpgradeModal } = useUserPlan();
   const { user, signOutAccount } = useAccountSync();
   const [annualGoal, setAnnualGoal] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal, '25');
@@ -151,8 +149,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
       <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Appearance</h2><div className="mt-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="font-semibold text-[var(--ink-ivory)]">Color theme</p><p className="mt-1 text-sm text-[var(--ink-muted)]">Your choice is saved automatically and follows your account when you are signed in.</p></div><button type="button" onClick={() => setIsDarkMode((current) => !current)} className="quiet-shelf-secondary-action justify-center">{isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{isDarkMode ? 'Use light mode' : 'Use dark mode'}</button></div></section>
 
       <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Reading goals</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Changes save automatically.</p><ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16} className="mt-5"><label className="text-sm font-semibold text-[var(--ink-ivory)]">Annual reading goal<input type="number" inputMode="numeric" min="1" max="1000" value={annualGoal} onChange={(event) => setAnnualGoal(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label><label className="text-sm font-semibold text-[var(--ink-ivory)]">Daily reading target in minutes<input type="number" inputMode="numeric" min="1" max="1440" value={dailyGoalMins} onChange={(event) => setDailyGoalMins(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label></ResponsiveGrid></section>
-
-      <CustomReadingStatusManager books={books} onUpdateBook={onUpdateBook} />
 
       <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Export your data</h2><p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Download a complete Inkbound backup, or a spreadsheet-friendly copy of your library. Series corrections, ownership, subscription access, and Collections are included.</p><div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap"><button type="button" onClick={() => void handleExportJSON()} className="quiet-shelf-primary-action justify-center"><Download className="h-4 w-4" /> Complete JSON backup</button><button type="button" onClick={() => void handleExportCSV()} className="quiet-shelf-secondary-action justify-center"><FileSpreadsheet className="h-4 w-4" /> Library CSV</button>{exported && <span className="inline-flex items-center gap-2 px-2 text-sm font-semibold text-emerald-400"><Check className="h-4 w-4" /> Export ready</span>}</div></section>
 
