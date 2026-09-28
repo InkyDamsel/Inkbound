@@ -8,6 +8,7 @@ export const DEVICE_FEATURE_STORAGE_KEYS = {
   legacyLibrarySanctuary: 'inkbound_library_sanctuary_v1',
   legacyProfileMediaSyncQueue: 'inkbound_profile_media_sync_queue_v1',
   pendingRecoveryRestore: 'inkbound_pending_recovery_restore_v1',
+  scannerReviewDraft: 'inkbound_scanner_review_draft_v1',
 } as const;
 
 export const DEVICE_FEATURE_STORAGE_PREFIXES = {
@@ -19,6 +20,11 @@ export const DEVICE_UI_STORAGE_KEYS = {
   librarySection: 'inkbound_library_section',
   librarySeriesFocusTarget: 'inkbound_library_series_focus_target',
   legacyLibrarySeriesFocusBook: 'inkbound_library_series_focus_book',
+  achievementFilter: 'inkbound_achievement_filter',
+  bookshelfThroughTimePreferences: 'inkbound_bookshelf_through_time_preferences',
+  collectionView: 'inkbound_collection_view',
+  collectionSort: 'inkbound_collection_sort',
+  libraryMaintenanceCollapsedSections: 'inkbound_library_maintenance_collapsed_sections',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
@@ -71,6 +77,7 @@ export const LEGACY_SYNC_STORAGE_KEYS = {
   sessions: 'bookhaven_sessions',
   libraryCustomLists: 'inkbound_library_custom_lists',
   libraryCustomListMembers: 'inkbound_library_custom_list_members',
+  ignoredDuplicateGroups: 'inkbound_duplicate_groups_ignored',
 } as const;
 
 export const SYNC_STORAGE_PREFIXES = {
