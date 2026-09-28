@@ -2,39 +2,24 @@ import React, { useEffect, useRef } from 'react';
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
-import { readRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
-import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { persistInkboundTheme, readInkboundTheme, type InkboundTheme } from './themePreference';
 
-const THEME_STORAGE_KEY = SYNC_STORAGE_KEYS.theme;
 const THEME_POLL_MS = 1500;
-
-type InkboundTheme = 'dark' | 'light';
 
 interface CloudThemeRecord {
   theme?: InkboundTheme;
   clientUpdatedAt?: string;
 }
 
-const readLocalTheme = (): InkboundTheme =>
-  readRuntimeValue(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
-
-const applyTheme = (theme: InkboundTheme) => {
-  writeRuntimeValue(THEME_STORAGE_KEY, theme);
-  if (typeof document === 'undefined') return;
-  document.documentElement.classList.toggle('dark', theme === 'dark');
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
-};
-
 export const ThemePersistenceBridge: React.FC = () => {
   const sync = useAccountSync();
-  const lastTheme = useRef<InkboundTheme>(readLocalTheme());
+  const lastTheme = useRef<InkboundTheme>(readInkboundTheme());
   const hydrated = useRef(false);
 
   useEffect(() => {
-    lastTheme.current = readLocalTheme();
+    lastTheme.current = readInkboundTheme();
     hydrated.current = false;
-    applyTheme(lastTheme.current);
+    persistInkboundTheme(lastTheme.current);
 
     if (!sync.user || !db) return undefined;
 
@@ -49,10 +34,10 @@ export const ThemePersistenceBridge: React.FC = () => {
         const cloudTheme = (snapshot.data() as CloudThemeRecord).theme;
         if (cloudTheme === 'dark' || cloudTheme === 'light') {
           lastTheme.current = cloudTheme;
-          applyTheme(cloudTheme);
+          persistInkboundTheme(cloudTheme);
         }
       } else {
-        const localTheme = readLocalTheme();
+        const localTheme = readInkboundTheme();
         lastTheme.current = localTheme;
         await setDoc(preferenceRef, {
           theme: localTheme,
@@ -71,12 +56,12 @@ export const ThemePersistenceBridge: React.FC = () => {
       const cloudTheme = (snapshot.data() as CloudThemeRecord).theme;
       if ((cloudTheme !== 'dark' && cloudTheme !== 'light') || cloudTheme === lastTheme.current) return;
       lastTheme.current = cloudTheme;
-      applyTheme(cloudTheme);
+      persistInkboundTheme(cloudTheme);
     });
 
     const poll = window.setInterval(() => {
       if (!hydrated.current || disposed) return;
-      const localTheme = readLocalTheme();
+      const localTheme = readInkboundTheme();
       if (localTheme === lastTheme.current) return;
       lastTheme.current = localTheme;
       void setDoc(
