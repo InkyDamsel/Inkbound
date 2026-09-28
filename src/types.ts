@@ -5,7 +5,7 @@ export interface UserPlanState {
   freeBookLimit: number;
 }
 
-export type Format = 'hardcover' | 'paperback' | 'ebook' | 'audiobook';
+export type Format = 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | 'unknown';
 
 export type ReadingMaterialType =
   | 'book'
