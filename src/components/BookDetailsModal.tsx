@@ -10,7 +10,6 @@ import { normalizeLibraryRecord } from '../features/library/libraryNormalization
 import { openLibrarySeriesForBook } from '../features/library/libraryNavigation';
 import { getEffectiveBookProgressPages } from '../features/reading/readingPageTotals';
 import { resolveEffectiveSeriesMetadata, seriesPositionLabel } from '../features/series/seriesLibrary';
-import { readSeriesOverrides } from '../features/series/seriesOverrides';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 import type { Edition, UserBookRecord } from '../types';
@@ -54,10 +53,9 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
     () => props.book ? normalizeBookIdentifiers(props.book) : null,
     [props.book],
   );
-  const seriesOverrides = useMemo(() => readSeriesOverrides(), [normalizedBook?.id]);
   const effectiveSeries = useMemo(
-    () => normalizedBook ? resolveEffectiveSeriesMetadata(normalizedBook, seriesOverrides) : null,
-    [normalizedBook, seriesOverrides],
+    () => normalizedBook ? resolveEffectiveSeriesMetadata(normalizedBook) : null,
+    [normalizedBook],
   );
   const availableTags = useMemo(() => {
     const books = readRuntimeJson<UserBookRecord[]>(SYNC_STORAGE_KEYS.books, []);
