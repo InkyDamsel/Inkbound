@@ -22,6 +22,7 @@ import {
   type CoreCloudReconciledDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { deleteCoreCloudRecord, upsertCoreCloudRecord } from './coreCloudRecords';
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import {
   SYNC_STORAGE_KEYS,
@@ -237,7 +238,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       writePending(uid, latestPending);
     };
 
-    const uploadRecordEntries = async <T,>(
+    const uploadRecordEntries = async <T extends { id: string },>(
       kind: RecordKind,
       entries: Array<[string, RecordMutation<T>]>,
     ): Promise<number> => {
