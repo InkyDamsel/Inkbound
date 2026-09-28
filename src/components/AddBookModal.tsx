@@ -17,6 +17,13 @@ import {
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
 import { withReadingStatus } from '../features/reading/bookReadingState';
+import {
+  CUSTOM_READING_STATUSES_CHANGED_EVENT,
+  createCustomReadingStatus,
+  readCustomReadingStatuses,
+  type CustomReadingStatus,
+  withCustomReadingStatus,
+} from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 
 interface AddBookModalProps {
@@ -29,6 +36,8 @@ interface AddBookModalProps {
 
 type AddBookTab = 'search' | 'scan' | 'manual';
 type PendingSearchEdition = { work: BookSearchWorkGroup; edition: BookSearchEdition };
+type CustomReadingStatusSelection = `custom:${string}`;
+type ReadingStatusSelection = Exclude<ReadingStatus, 'custom' | 'wishlist'> | CustomReadingStatusSelection;
 type CustomOwnershipSelection = `custom:${string}`;
 type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
@@ -46,7 +55,9 @@ type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => Barc
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const SCANNER_REVIEW_PAGE_SIZE = 6;
-const statusLabel = (value: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value;
+const builtInStatusLabel = (value: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value;
+const isCustomReadingStatusSelection = (selection: ReadingStatusSelection): selection is CustomReadingStatusSelection =>
+  selection.startsWith('custom:');
 const BUILT_IN_OWNERSHIP_OPTIONS = OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom');
 const normalizeAuthorName = (value: string) =>
   value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -135,6 +146,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [authorHasMore, setAuthorHasMore] = useState(false);
   const [isLoadingAuthorMore, setIsLoadingAuthorMore] = useState(false);
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
+  const [customReadingStatuses, setCustomReadingStatuses] = useState<CustomReadingStatus[]>(() => readCustomReadingStatuses());
+  const [creatingCustomReadingStatus, setCreatingCustomReadingStatus] = useState(false);
+  const [newCustomReadingStatusName, setNewCustomReadingStatusName] = useState('');
   const [creatingCustomOwnership, setCreatingCustomOwnership] = useState(false);
   const [newCustomOwnershipName, setNewCustomOwnershipName] = useState('');
 
@@ -145,12 +159,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [pageCount, setPageCount] = useState('');
   const [format, setFormat] = useState<Format>('hardcover');
   const [materialType, setMaterialType] = useState<ReadingMaterialType>('book');
-  const [status, setStatus] = useState<ReadingStatus>('tbr');
+  const [statusSelection, setStatusSelection] = useState<ReadingStatusSelection>('tbr');
   const [ownershipSelection, setOwnershipSelection] = useState<OwnershipSelection>('owned');
   const [priority, setPriority] = useState<Priority>('medium');
 
   const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>([]);
-  const [scannerCategory, setScannerCategory] = useState<ReadingStatus>('tbr');
+  const [scannerCategory, setScannerCategory] = useState<ReadingStatusSelection>('tbr');
   const [scannerReviewPage, setScannerReviewPage] = useState(1);
   const [manualIsbn, setManualIsbn] = useState('');
   const [scannerBusy, setScannerBusy] = useState(false);
@@ -193,10 +207,42 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     return () => window.removeEventListener(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT, refresh);
   }, []);
 
+  useEffect(() => {
+    const refreshReadingStatuses = () => setCustomReadingStatuses(readCustomReadingStatuses());
+    window.addEventListener(CUSTOM_READING_STATUSES_CHANGED_EVENT, refreshReadingStatuses);
+    return () => window.removeEventListener(CUSTOM_READING_STATUSES_CHANGED_EVENT, refreshReadingStatuses);
+  }, []);
+
   useEffect(() => () => {
     if (scanLoopRef.current !== null) cancelAnimationFrame(scanLoopRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
+
+  const readingStatusSelectionLabel = (selection: ReadingStatusSelection) => {
+    if (isCustomReadingStatusSelection(selection)) {
+      const id = selection.slice('custom:'.length);
+      return customReadingStatuses.find((status) => status.id === id)?.name ?? 'Custom';
+    }
+    return builtInStatusLabel(selection);
+  };
+
+  const applyReadingStatusSelection = (book: UserBookRecord, selection: ReadingStatusSelection, date?: string) => {
+    if (isCustomReadingStatusSelection(selection)) {
+      return withCustomReadingStatus(book, selection.slice('custom:'.length));
+    }
+    return withReadingStatus(book, selection, date);
+  };
+
+  const createAndSelectCustomReadingStatus = (
+    assign: (selection: ReadingStatusSelection) => void,
+  ) => {
+    const customStatus = createCustomReadingStatus(newCustomReadingStatusName);
+    if (!customStatus) return;
+    setCustomReadingStatuses(readCustomReadingStatuses());
+    setNewCustomReadingStatusName('');
+    setCreatingCustomReadingStatus(false);
+    assign(`custom:${customStatus.id}`);
+  };
 
   const createAndSelectCustomOwnership = () => {
     const created = createCustomOwnershipCategory(newCustomOwnershipName);
@@ -301,7 +347,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const addScannedBatch = () => {
     if (scannedBooks.length === 0) return;
-    const books = scannedBooks.map((item) => withReadingStatus(item.book, scannerCategory));
+    const books = scannedBooks.map((item) => applyReadingStatusSelection(item.book, scannerCategory));
     if (onAddMultipleBooks) onAddMultipleBooks(books);
     else books.forEach(onAddBook);
     setScannedBooks([]);
@@ -440,12 +486,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     });
   };
 
-  const addSearchEditionToList = (selectedStatus: ReadingStatus) => {
+  const addSearchEditionToList = (selectedStatus: ReadingStatusSelection) => {
     if (!pendingSearchEdition) return;
     const { work, edition } = pendingSearchEdition;
     const key = searchEditionKey(work, edition);
     if (!addedSearchBooks.has(key)) {
-      const book = createBookFromSearchEdition({ work, edition, status: selectedStatus });
+      const baseBook = createBookFromSearchEdition({ work, edition, status: 'tbr' });
+      const book = applyReadingStatusSelection(baseBook, selectedStatus);
       onAddBook(book);
       storeAddedSearchBook(work, edition, book);
     }
@@ -460,7 +507,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     const parsedPageCount = Number.parseInt(pageCount, 10);
     const validPageCount = Number.isFinite(parsedPageCount) && parsedPageCount > 0 ? parsedPageCount : undefined;
     const hasKnownPrintTotal = format !== 'audiobook' && validPageCount !== undefined;
-    const isFinished = status === 'finished';
+    const isFinished = statusSelection === 'finished';
     const addedOn = today();
     const customOwnership = isCustomOwnershipSelection(ownershipSelection);
     const ownership: OwnershipStatus = customOwnership ? 'custom' : ownershipSelection;
@@ -500,7 +547,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       dateAdded: addedOn,
     };
 
-    onAddBook(withReadingStatus(baseBook, status, addedOn));
+    onAddBook(applyReadingStatusSelection(baseBook, statusSelection, addedOn));
     onClose();
   };
 
@@ -703,7 +750,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p>
                             <p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p>
-                            <p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · {statusLabel(scannerCategory)}</p>
+                            <p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · {readingStatusSelectionLabel(scannerCategory)}</p>
                           </div>
                           <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4" /></button>
                         </article>
@@ -723,13 +770,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
               <div className="mt-5">
                 <Field label="Add scanned books to">
-                  <select value={scannerCategory} onChange={(event) => setScannerCategory(event.target.value as ReadingStatus)}>
+                  <select value={scannerCategory} onChange={(event) => setScannerCategory(event.target.value as ReadingStatusSelection)}>
                     {ADD_TO_LIST_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {customReadingStatuses.length > 0 && <optgroup label="Custom statuses">{customReadingStatuses.map((customStatus) => <option key={customStatus.id} value={`custom:${customStatus.id}`}>{customStatus.name}</option>)}</optgroup>}
                   </select>
                 </Field>
               </div>
 
-              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {statusLabel(scannerCategory)}</button>
+              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {readingStatusSelectionLabel(scannerCategory)}</button>
             </section>
           </div>
         ) : (
@@ -741,7 +789,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               <Field label="Genres"><input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance" /></Field>
               {format !== 'audiobook' && <Field label="Page count"><input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" /></Field>}
               <Field label="Format"><select value={format} onChange={(event) => setFormat(event.target.value as Format)}>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
-              <Field label="Reading status"><select value={status} onChange={(event) => setStatus(event.target.value as ReadingStatus)}>{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+              <div><Field label="Reading status"><select value={statusSelection} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomReadingStatus(true); return; } setStatusSelection(event.target.value as ReadingStatusSelection); setCreatingCustomReadingStatus(false); }}>{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}{customReadingStatuses.length > 0 && <optgroup label="Custom statuses">{customReadingStatuses.map((customStatus) => <option key={customStatus.id} value={`custom:${customStatus.id}`}>{customStatus.name}</option>)}</optgroup>}<option value="__new__">+ Create custom status…</option></select></Field>{creatingCustomReadingStatus && <div className="mt-2 flex gap-2"><input value={newCustomReadingStatusName} onChange={(event) => setNewCustomReadingStatusName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createAndSelectCustomReadingStatus(setStatusSelection); } }} placeholder="e.g. Buddy Read, Up Next" className="min-h-11 min-w-0 flex-1 rounded-xl border border-[#c5a059]/18 bg-[#0d0910] px-3 text-sm text-[#f4efe6] outline-none" autoFocus /><button type="button" onClick={() => createAndSelectCustomReadingStatus(setStatusSelection)} disabled={!newCustomReadingStatusName.trim()} className="quiet-shelf-secondary-action px-3 disabled:opacity-50">Create</button></div>}</div>
               <div>
                 <Field label="Ownership"><select value={ownershipSelection} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomOwnership(true); return; } setOwnershipSelection(event.target.value as OwnershipSelection); setCreatingCustomOwnership(false); }}><optgroup label="Ownership">{BUILT_IN_OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customOwnershipCategories.length > 0 && <optgroup label="Custom ownership">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}<option value="__new__">+ Create custom ownership…</option></select></Field>
                 {creatingCustomOwnership && <div className="mt-2 flex gap-2"><input value={newCustomOwnershipName} onChange={(event) => setNewCustomOwnershipName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createAndSelectCustomOwnership(); } }} placeholder="e.g. Home Library" className="min-h-11 min-w-0 flex-1 rounded-xl border border-[#c5a059]/18 bg-[#0d0910] px-3 text-sm text-[#f4efe6] outline-none" autoFocus /><button type="button" onClick={createAndSelectCustomOwnership} disabled={!newCustomOwnershipName.trim()} className="quiet-shelf-secondary-action px-3 disabled:opacity-50">Create</button></div>}
@@ -759,6 +807,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               <div className="flex justify-between"><div><p className="inkbound-kicker">Add to your library</p><h3 className="mt-2 font-serif text-2xl text-[#f4efe6]">Which reading status?</h3><p className="mt-2 text-sm text-[#ad9fac]">{pendingSearchEdition.work.title}</p></div><button type="button" onClick={() => setPendingSearchEdition(null)} className="grid h-11 w-11 place-items-center"><X /></button></div>
               <div className="mt-4 grid gap-2">
                 {ADD_TO_LIST_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => addSearchEditionToList(option.value)} className="min-h-12 rounded-xl border border-[#c5a059]/18 bg-[#120c15] px-4 py-3 text-left"><span className="block text-sm font-bold text-[#f4efe6]">{option.label}</span><span className="text-xs text-[#ad9fac]">{option.description}</span></button>)}
+                {customReadingStatuses.map((customStatus) => <button key={customStatus.id} type="button" onClick={() => addSearchEditionToList(`custom:${customStatus.id}`)} className="min-h-12 rounded-xl border border-[#c5a059]/18 bg-[#120c15] px-4 py-3 text-left"><span className="block text-sm font-bold text-[#f4efe6]">{customStatus.name}</span><span className="text-xs text-[#ad9fac]">Your custom reading status.</span></button>)}
+                {!creatingCustomReadingStatus ? <button type="button" onClick={() => setCreatingCustomReadingStatus(true)} className="min-h-12 rounded-xl border border-dashed border-[#c5a059]/35 bg-[#120c15] px-4 py-3 text-left text-sm font-bold text-[#e5c158]">+ Create custom status</button> : <div className="rounded-xl border border-[#c5a059]/25 bg-[#120c15] p-3"><p className="text-xs font-bold text-[#f4efe6]">Create custom reading status</p><div className="mt-2 flex gap-2"><input value={newCustomReadingStatusName} onChange={(event) => setNewCustomReadingStatusName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createAndSelectCustomReadingStatus((selection) => addSearchEditionToList(selection)); } }} placeholder="e.g. Buddy Read, Up Next" className="min-h-11 min-w-0 flex-1 rounded-xl border border-[#c5a059]/18 bg-[#0d0910] px-3 text-sm text-[#f4efe6] outline-none" autoFocus /><button type="button" onClick={() => createAndSelectCustomReadingStatus((selection) => addSearchEditionToList(selection))} disabled={!newCustomReadingStatusName.trim()} className="quiet-shelf-secondary-action px-3 disabled:opacity-50">Create</button></div></div>}
               </div>
             </section>
           </div>
