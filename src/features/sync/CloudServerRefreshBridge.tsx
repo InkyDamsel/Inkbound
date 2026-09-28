@@ -21,6 +21,7 @@ import {
 } from './cloudSyncHealth';
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import { SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
+import { upsertCoreCloudRecord } from './coreCloudRecords';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -279,15 +280,9 @@ export const CloudServerRefreshBridge: React.FC = () => {
       for (let index = 0; index < missingBooks.length; index += REPAIR_UPLOAD_BATCH_SIZE) {
         if (disposed) return uploaded;
         const batch = missingBooks.slice(index, index + REPAIR_UPLOAD_BATCH_SIZE);
-        const results = await Promise.allSettled(batch.map((book) => setDoc(
-          doc(db!, 'users', uid, 'books', book.id),
-          {
-            data: book,
-            updatedAt: serverTimestamp(),
-            clientUpdatedAt,
-          },
-          { merge: true },
-        )));
+        const results = await Promise.allSettled(
+          batch.map((book) => upsertCoreCloudRecord(uid, 'books', book, clientUpdatedAt)),
+        );
 
         results.forEach((result) => {
           if (result.status === 'rejected') {
