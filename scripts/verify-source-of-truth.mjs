@@ -118,6 +118,14 @@ for (const file of sourceFiles) {
   }
 }
 
+const safeReimportSource = read('src/features/import/safeReimportMerge.ts');
+if (safeReimportSource.includes('SERIES_OVERRIDES_STORAGE_KEY') || safeReimportSource.includes('readSeriesOverrides(')) {
+  violations.push('safeReimportMerge.ts: re-import must not restore retired seriesOverrides; manual series belongs on canonical books');
+}
+if (!safeReimportSource.includes('replaceCanonicalLibrary')) {
+  violations.push('safeReimportMerge.ts: re-import must persist the canonical library through replaceCanonicalLibrary');
+}
+
 const importEnrichmentSource = read('src/features/import/libraryEnrichment.ts');
 for (const required of ['createBookFromSearchEdition', 'mergeCatalogBookMetadata']) {
   if (!importEnrichmentSource.includes(required)) {
