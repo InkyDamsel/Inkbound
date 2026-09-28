@@ -16,7 +16,7 @@ interface RuntimeModeArchive {
 
 // These settings are device UI preferences, not reader/account data, so they are
 // safe to carry between emulator development and intentional live-cloud checks.
-const PRESERVED_LOCAL_KEYS = new Set([
+const PRESERVED_LOCAL_KEYS = new Set<string>([
   RUNTIME_MODE_STORAGE_KEY,
   SYNC_STORAGE_KEYS.theme,
   DEVICE_UI_STORAGE_KEYS.activeTab,
