@@ -13,6 +13,7 @@ import {
 } from '../features/reading/sessionAnalytics';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { removeRuntimeValue } from '../platform/runtimeStorage';
+import { DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface ReadingSessionModalProps {
   books: UserBookRecord[];
@@ -46,7 +47,7 @@ interface SessionDraft {
   location: string;
 }
 
-const SESSION_DRAFT_KEY = 'inkbound_active_session_draft';
+const SESSION_DRAFT_KEY = DEVICE_UI_STORAGE_KEYS.activeSessionDraft;
 const MAX_BACKGROUND_RECOVERY_SECONDS = 8 * 60 * 60;
 
 const localDateKey = (timestamp: number) => {
