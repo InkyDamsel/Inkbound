@@ -33,6 +33,7 @@ import {
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
 import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
 import { compactCloudProfileForRuntime } from '../src/features/sync/profileSyncMerge';
+import { mergePendingLocalBookWithRemoteMetadata } from '../src/features/sync/bookSyncMerge';
 import { mergeIncomingBookLoanState, withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
   shouldApplyRemoteTombstone,
