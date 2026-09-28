@@ -108,6 +108,7 @@ export const LEGACY_SYNC_STORAGE_KEYS = {
 export const SYNC_STORAGE_PREFIXES = {
   pending: 'inkbound_pending_sync_',
   baseline: 'inkbound_sync_baseline_',
+  legacyBaselineV1: 'inkbound_sync_baseline_',
 } as const;
 
 export const syncPendingStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.pending}${uid}_v1`;
@@ -116,6 +117,7 @@ export const syncPendingStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.pen
 // an older account can rebuild a clean baseline without losing unsynced edits
 // or replaying its full delta history.
 export const syncBaselineStateKey = (uid: string) => `${SYNC_STORAGE_PREFIXES.baseline}${uid}_v3`;
+export const legacySyncBaselineV1Key = (uid: string) => `${SYNC_STORAGE_PREFIXES.legacyBaselineV1}${uid}_v1`;
 export const crossDeviceCursorKey = (uid: string) => `inkbound_cross_device_cursor_${uid}_v2`;
 export const localClearIntentKey = (uid: string) => `inkbound_local_clear_intent_${uid}`;
 export const fullReconciliationVersionKey = (uid: string) => `inkbound_full_reconciliation_${uid}_v1`;
