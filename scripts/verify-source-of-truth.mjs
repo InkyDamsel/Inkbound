@@ -712,6 +712,13 @@ if (!main.includes("import('./applicationEntry.tsx')")) {
 }
 
 const applicationEntry = read('src/applicationEntry.tsx');
+if (applicationEntry.includes('purgeUnverifiedLegacyImportMetadata();')) {
+  violations.push('applicationEntry.tsx: Legacy import cleanup must run only after runtime storage hydration');
+}
+if (!applicationEntry.includes('<LegacyImportMetadataPurgeBridge />')) {
+  violations.push('applicationEntry.tsx: hydrated legacy import cleanup bridge must remain mounted');
+}
+
 if (/from ['"].*CloudPersistenceBridge['"]/.test(applicationEntry) && !applicationEntry.includes('AdaptiveCloudPersistenceBridge')) {
   violations.push('applicationEntry.tsx: legacy CloudPersistenceBridge must not replace the adaptive canonical sync path');
 }
@@ -720,6 +727,33 @@ if (!applicationEntry.includes('<CanonicalLibraryNormalizationBridge />')) {
 }
 if (!applicationEntry.includes('<CrossDeviceDeltaSyncBridge />') || !applicationEntry.includes('<AuxiliaryAccountSyncBridge />')) {
   violations.push('applicationEntry.tsx: both canonical core and auxiliary cross-device sync bridges must remain mounted');
+}
+
+const coreCloudRecords = read('src/features/sync/coreCloudRecords.ts');
+for (const required of ['upsertCoreCloudRecord', 'deleteCoreCloudRecord', 'syncTombstones']) {
+  if (!coreCloudRecords.includes(required)) {
+    violations.push(`coreCloudRecords.ts: canonical core cloud writer is missing ${required}`);
+  }
+}
+for (const relative of [
+  'src/features/sync/CostSafeCloudPersistenceBridge.tsx',
+  'src/features/sync/LibrarySyncCheckpointBridge.tsx',
+  'src/features/sync/CloudServerRefreshBridge.tsx',
+]) {
+  const source = read(relative);
+  if (!source.includes('upsertCoreCloudRecord')) {
+    violations.push(`${relative}: core book/session cloud writes must use coreCloudRecords.ts`);
+  }
+}
+for (const relative of sourceFiles.map((file) => path.relative(root, file).replaceAll('\\', '/'))) {
+  if (
+    relative === 'src/features/sync/coreCloudRecords.ts'
+    || relative === 'src/features/recovery/dataRecovery.ts'
+  ) continue;
+  const source = read(relative);
+  if (/setDoc\(\s*doc\([^\n]*['"]users['"][^\n]*['"](?:books|sessions)['"]/.test(source)) {
+    violations.push(`${relative}: direct core Firestore record writes are forbidden; use coreCloudRecords.ts`);
+  }
 }
 
 const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');
