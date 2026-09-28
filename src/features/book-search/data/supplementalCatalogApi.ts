@@ -8,10 +8,10 @@ const inFlight = new Map<string, Promise<BookSearchResponse>>();
 
 const compact = (value?: string) => value?.replace(/\s+/g, ' ').trim() ?? '';
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
-const yearFrom = (value: unknown): number => {
+const yearFrom = (value: unknown): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
   const match = String(value ?? '').match(/\b(1[5-9]\d{2}|20\d{2}|21\d{2})\b/);
-  return match ? Number(match[1]) : 0;
+  return match ? Number(match[1]) : undefined;
 };
 const formatFromText = (value?: string): Format => {
   const text = value?.toLowerCase() ?? '';
