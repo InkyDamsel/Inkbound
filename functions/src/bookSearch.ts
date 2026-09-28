@@ -58,14 +58,14 @@ interface HardcoverEdition {
   book?: HardcoverBook;
 }
 
-const normalizeFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | undefined => {
+const normalizeFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | 'unknown' => {
   const normalized = value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ') ?? '';
-  if (!normalized) return undefined;
+  if (!normalized) return 'unknown';
   if (/\b(?:audio|audiobook|cd|mp3)\b/.test(normalized)) return 'audiobook';
   if (/\b(?:ebook|e book|digital|kindle|epub)\b/.test(normalized)) return 'ebook';
   if (/\b(?:paperback|paper back|softcover|soft cover|mass market|trade paper)\b/.test(normalized)) return 'paperback';
   if (/\b(?:hardcover|hard cover|hardback|hard back|library binding)\b/.test(normalized)) return 'hardcover';
-  return undefined;
+  return 'unknown';
 };
 
 const imageUrl = (value?: SearchResult['image']): string | undefined =>
@@ -501,13 +501,9 @@ async function hardcoverCatalog(query: string) {
     const publisherSummary = matchedBook?.description
       ?? result.description
       ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
-    const normalizedEditions = matchedEditions.flatMap((edition) => {
+    const normalizedEditions = matchedEditions.map((edition) => {
       const format = normalizeFormat(edition.edition_format);
-      // Hardcover's work-level search result does not identify a physical/digital
-      // format. Unknown edition formats are therefore skipped rather than silently
-      // becoming hardcovers.
-      if (!format) return [];
-      return [{
+      return {
         source: 'hardcover' as const,
         externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
         title: edition.title ?? edition.book?.title ?? matchedBook?.title ?? result.title ?? 'Untitled',
@@ -530,10 +526,25 @@ async function hardcoverCatalog(query: string) {
         editionName: edition.title,
         binding: edition.edition_format,
         specialFeatures: [],
-      }];
+      };
     });
 
-    if (normalizedEditions.length === 0) return [];
+    const workOnlyEdition = normalizedEditions.length === 0 ? [{
+      source: 'hardcover' as const,
+      externalEditionId: id,
+      title: matchedBook?.title ?? result.title ?? 'Untitled',
+      subtitle: matchedBook?.subtitle ?? result.subtitle,
+      authors,
+      publisherSummary,
+      seriesName,
+      seriesOrder,
+      genres: [],
+      publicationYear: matchedBook?.release_year || result.release_year || new Date().getFullYear(),
+      format: 'unknown' as const,
+      pageCount: result.pages,
+      coverUrl: matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
+      specialFeatures: [],
+    }] : normalizedEditions;
 
     return [{
       key: `hardcover:${id}`,
@@ -542,7 +553,7 @@ async function hardcoverCatalog(query: string) {
       authors,
       publisherSummary,
       genres: [],
-      editions: normalizedEditions,
+      editions: workOnlyEdition,
     }];
   });
 
