@@ -58,12 +58,14 @@ interface HardcoverEdition {
   book?: HardcoverBook;
 }
 
-const normalizeFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' => {
-  const normalized = value?.toLowerCase() ?? '';
-  if (normalized.includes('audio')) return 'audiobook';
-  if (normalized.includes('ebook') || normalized.includes('digital') || normalized.includes('kindle')) return 'ebook';
-  if (normalized.includes('paper')) return 'paperback';
-  return 'hardcover';
+const normalizeFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | undefined => {
+  const normalized = value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ') ?? '';
+  if (!normalized) return undefined;
+  if (/\b(?:audio|audiobook|cd|mp3)\b/.test(normalized)) return 'audiobook';
+  if (/\b(?:ebook|e book|digital|kindle|epub)\b/.test(normalized)) return 'ebook';
+  if (/\b(?:paperback|paper back|softcover|soft cover|mass market|trade paper)\b/.test(normalized)) return 'paperback';
+  if (/\b(?:hardcover|hard cover|hardback|hard back|library binding)\b/.test(normalized)) return 'hardcover';
+  return undefined;
 };
 
 const imageUrl = (value?: SearchResult['image']): string | undefined =>
@@ -485,7 +487,7 @@ async function hardcoverCatalog(query: string) {
     editionsByBook.set(key, [...(editionsByBook.get(key) ?? []), edition]);
   });
 
-  const groups = searchResults.map((result) => {
+  const groups = searchResults.flatMap((result) => {
     const id = String(result.id ?? result.slug ?? result.title);
     const authors = authorNames(result);
     const matchedEditions = editionsByBook.get(String(result.id ?? '')) ?? [];
@@ -499,49 +501,41 @@ async function hardcoverCatalog(query: string) {
     const publisherSummary = matchedBook?.description
       ?? result.description
       ?? matchedEditions.map((edition) => edition.book?.description).find((description): description is string => Boolean(description?.trim()));
-    const normalizedEditions = matchedEditions.length > 0
-      ? matchedEditions.map((edition) => ({
-          source: 'hardcover' as const,
-          externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
-          title: edition.title ?? edition.book?.title ?? matchedBook?.title ?? result.title ?? 'Untitled',
-          subtitle: edition.book?.subtitle ?? matchedBook?.subtitle ?? result.subtitle,
-          authors,
-          publisherSummary: matchedBook?.description ?? edition.book?.description ?? publisherSummary,
-          seriesName: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.series?.name?.trim() ?? seriesName,
-          seriesOrder: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.position ?? seriesOrder,
-          genres: [],
-          publisher: edition.publisher?.name,
-          publicationDate: edition.release_date,
-          publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || matchedBook?.release_year || result.release_year || new Date().getFullYear(),
-          format: normalizeFormat(edition.edition_format),
-          isbn10: edition.isbn_10,
-          isbn13: edition.isbn_13,
-          // result.pages is work/search-result metadata and may belong to a
-          // different edition. Exact ISBN editions may only use edition.pages.
-          pageCount: edition.pages,
-          coverUrl: edition.image?.url ?? edition.book?.image?.url ?? matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
-          editionName: edition.title,
-          binding: edition.edition_format,
-          specialFeatures: [],
-        }))
-      : [{
-          source: 'hardcover' as const,
-          externalEditionId: id,
-          title: matchedBook?.title ?? result.title ?? 'Untitled',
-          subtitle: matchedBook?.subtitle ?? result.subtitle,
-          authors,
-          publisherSummary,
-          seriesName,
-          seriesOrder,
-          genres: [],
-          publicationYear: matchedBook?.release_year || result.release_year || new Date().getFullYear(),
-          format: 'hardcover' as const,
-          pageCount: result.pages,
-          coverUrl: matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
-          specialFeatures: [],
-        }];
+    const normalizedEditions = matchedEditions.flatMap((edition) => {
+      const format = normalizeFormat(edition.edition_format);
+      // Hardcover's work-level search result does not identify a physical/digital
+      // format. Unknown edition formats are therefore skipped rather than silently
+      // becoming hardcovers.
+      if (!format) return [];
+      return [{
+        source: 'hardcover' as const,
+        externalEditionId: String(edition.id ?? `${id}-${edition.isbn_13 ?? edition.isbn_10 ?? edition.title ?? 'edition'}`),
+        title: edition.title ?? edition.book?.title ?? matchedBook?.title ?? result.title ?? 'Untitled',
+        subtitle: edition.book?.subtitle ?? matchedBook?.subtitle ?? result.subtitle,
+        authors,
+        publisherSummary: matchedBook?.description ?? edition.book?.description ?? publisherSummary,
+        seriesName: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.series?.name?.trim() ?? seriesName,
+        seriesOrder: edition.book?.book_series?.find((membership) => membership.series?.name?.trim())?.position ?? seriesOrder,
+        genres: [],
+        publisher: edition.publisher?.name,
+        publicationDate: edition.release_date,
+        publicationYear: Number(edition.release_date?.slice(0, 4)) || edition.book?.release_year || matchedBook?.release_year || result.release_year || new Date().getFullYear(),
+        format,
+        isbn10: edition.isbn_10,
+        isbn13: edition.isbn_13,
+        // result.pages is work/search-result metadata and may belong to a
+        // different edition. Exact ISBN editions may only use edition.pages.
+        pageCount: edition.pages,
+        coverUrl: edition.image?.url ?? edition.book?.image?.url ?? matchedBook?.image?.url ?? result.image_url ?? imageUrl(result.image),
+        editionName: edition.title,
+        binding: edition.edition_format,
+        specialFeatures: [],
+      }];
+    });
 
-    return {
+    if (normalizedEditions.length === 0) return [];
+
+    return [{
       key: `hardcover:${id}`,
       title: matchedBook?.title ?? result.title ?? 'Untitled',
       subtitle: matchedBook?.subtitle ?? result.subtitle,
@@ -549,7 +543,7 @@ async function hardcoverCatalog(query: string) {
       publisherSummary,
       genres: [],
       editions: normalizedEditions,
-    };
+    }];
   });
 
   return { groups, totalItems: groups.length };
