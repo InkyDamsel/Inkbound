@@ -550,7 +550,6 @@ for (const required of [
   'LEGACY_SYNC_STORAGE_KEYS',
   'ACCOUNT_DATA_STORAGE_KEYS',
   'subscribeToRuntimeResume',
-  'writeRuntimeJson',
 ]) {
   if (!app.includes(required)) violations.push(`App.tsx: missing canonical ${required} consumer`);
 }
@@ -569,8 +568,8 @@ for (const literal of ["const BOOKS_STORAGE_KEY = 'inkbound_books'", "const SESS
 if (/\blocalStorage\./.test(app)) {
   violations.push('App.tsx: canonical app persistence must go through runtimeStorage so Android and web emit the same sync events');
 }
-if (!app.includes('writeRuntimeJson(BOOKS_STORAGE_KEY, books)') || !app.includes('writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions)')) {
-  violations.push('App.tsx: canonical books/sessions persistence must use writeRuntimeJson');
+if (!app.includes('commitCanonicalBooks') || !app.includes('commitCanonicalSessions')) {
+  violations.push('App.tsx: books/sessions mutations must flow through canonical commit helpers');
 }
 if (/safeWriteLocalStorage/.test(app)) {
   violations.push('App.tsx: direct browser persistence helper must not bypass runtimeStorage');
