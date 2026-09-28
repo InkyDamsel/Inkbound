@@ -26,6 +26,8 @@ interface ProtectedBookDetails {
     personalSummary?: string;
     seriesName?: string;
     seriesOrder?: number;
+    seriesLabel?: string;
+    seriesSource?: 'manual' | 'metadata';
     genres: string[];
     tropes?: string[];
     contentWarnings?: string[];
@@ -75,6 +77,8 @@ function detailsFor(book: UserBookRecord): ProtectedBookDetails {
       personalSummary: book.work.personalSummary,
       seriesName: book.work.seriesName,
       seriesOrder: book.work.seriesOrder,
+      seriesLabel: book.work.seriesLabel,
+      seriesSource: book.work.seriesSource,
       genres: book.work.genres,
       tropes: book.work.tropes,
       contentWarnings: book.work.contentWarnings,
