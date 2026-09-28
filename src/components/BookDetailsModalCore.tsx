@@ -2,7 +2,7 @@ import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'rea
 import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Search, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { FORMAT_OPTIONS, OWNERSHIP_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPTIONS } from '../domain/libraryTaxonomy';
 import { fetchCatalogPublisherSummary, searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
-import type { BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
+import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import { catalogWorkMatchesIdentity, isValidCatalogIsbn10, isValidCatalogIsbn13, selectBestCatalogMetadataCandidate, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import { createBookFromSearchEdition, mergeCatalogBookMetadata } from '../features/book-search/mapping/bookSearchMapper';
 import { getActiveEdition, withReadingStatus, type ReadingProgressCorrection } from '../features/reading/bookReadingState';
