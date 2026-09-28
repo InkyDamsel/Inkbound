@@ -189,7 +189,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         ...book.work,
         personalSummary: summary.trim() || undefined,
         publisherSummary: publisherSummary.trim() || undefined,
-        summary: summary.trim() || publisherSummary.trim() || book.work.summary || 'Summary unavailable.',
+        summary: summary.trim() || publisherSummary.trim() || book.work.summary || '',
       },
       personalNotes: notes.trim() || undefined,
       review: review.trim() || undefined,
