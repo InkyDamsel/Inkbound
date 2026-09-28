@@ -2,8 +2,9 @@ import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'rea
 import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Search, Sparkles, Star, Trash2, Upload, X } from 'lucide-react';
 import { FORMAT_OPTIONS, OWNERSHIP_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPTIONS } from '../domain/libraryTaxonomy';
 import { fetchCatalogPublisherSummary, searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
-import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
-import { catalogEditionQualityScore, isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../features/book-search/catalogHardening';
+import type { BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
+import { catalogWorkMatchesIdentity, isValidCatalogIsbn10, isValidCatalogIsbn13, selectBestCatalogMetadataCandidate } from '../features/book-search/catalogHardening';
+import { createBookFromSearchEdition, mergeCatalogBookMetadata } from '../features/book-search/mapping/bookSearchMapper';
 import { getActiveEdition, withReadingStatus } from '../features/reading/bookReadingState';
 import {
   getSessionDurationMinutes,
@@ -51,25 +52,7 @@ type CoverMode = 'choices' | 'search';
 const MAX_COVER_FILE_BYTES = 12 * 1024 * 1024;
 const ACCEPTED_COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const ENRICHMENT_QUEUE_KEY = SYNC_STORAGE_KEYS.importEnrichmentQueue;
-const MATCH_STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'book', 'books', 'series', 'complete', 'edition']);
-
-const normalize = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
-const tokens = (value?: string) => [...new Set(normalize(value).split(' ').filter((token) => token.length >= 3 && !MATCH_STOP_WORDS.has(token)))];
 const csvList = (value: string) => [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
-
-const candidateMatchesBookIdentity = (book: UserBookRecord, work: BookSearchWorkGroup) => {
-  const wantedTitle = tokens(book.work.title);
-  const candidateTitle = normalize(work.title);
-  const titleMatches = wantedTitle.filter((token) => candidateTitle.includes(token)).length;
-  const required = wantedTitle.length <= 2 ? wantedTitle.length : Math.max(2, Math.ceil(wantedTitle.length * 0.67));
-  if (wantedTitle.length > 0 && titleMatches < required) return false;
-  const wantedAuthor = tokens(book.work.author);
-  if (wantedAuthor.length === 0) return true;
-  const candidateAuthor = normalize(work.authors.join(' '));
-  const lastName = wantedAuthor.at(-1);
-  return wantedAuthor.filter((token) => candidateAuthor.includes(token)).length >= Math.max(1, Math.ceil(wantedAuthor.length * 0.5))
-    || Boolean(lastName && candidateAuthor.includes(lastName));
-};
 
 const stopAutomaticEnrichmentForBook = (bookId: string) => {
   try {
@@ -272,31 +255,27 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       const exactIsbn = activeIdentifiers[0];
 
       let response = await searchGoogleBooks(exactIsbn || `${book.work.title} ${book.work.author}`);
-      let candidates = (exactIsbn
+      let match = exactIsbn && response.groups.length > 0
         ? response.groups
-        : response.groups.filter((work) => candidateMatchesBookIdentity(book, work)))
-        .flatMap((work) => work.editions.map((edition) => ({ work, edition })));
+          .flatMap((work) => work.editions.map((edition) => ({ work, edition })))[0] ?? null
+        : selectBestCatalogMetadataCandidate(response.groups, {
+          title: book.work.title,
+          author: book.work.author,
+          preferredFormat: activeEdition.format,
+        });
 
       // Exact edition identity is preferred whenever Inkbound has an ISBN. If a
-      // provider cannot resolve that identifier, fall back to conservative
-      // title-and-author matching rather than silently borrowing page counts or
-      // publisher data from a different edition.
-      if (exactIsbn && candidates.length === 0) {
+      // provider cannot resolve that identifier, fall back through the same
+      // canonical title/author selector used by the catalog layer.
+      if (exactIsbn && !match) {
         response = await searchGoogleBooks(`${book.work.title} ${book.work.author}`);
-        candidates = response.groups
-          .filter((work) => candidateMatchesBookIdentity(book, work))
-          .flatMap((work) => work.editions.map((edition) => ({ work, edition })));
+        match = selectBestCatalogMetadataCandidate(response.groups, {
+          title: book.work.title,
+          author: book.work.author,
+          preferredFormat: activeEdition.format,
+        });
       }
-      const candidateScore = ({ work, edition }: { work: BookSearchWorkGroup; edition: BookSearchEdition }) => {
-        let score = catalogEditionQualityScore(edition);
-        if (edition.format === activeEdition.format) score += 30;
-        if (edition.pageCount) score += 20;
-        if (edition.seriesName) score += 25;
-        if (typeof edition.seriesOrder === 'number') score += 10;
-        if ((edition.publisherSummary ?? work.publisherSummary)?.trim()) score += 4;
-        return score;
-      };
-      const match = [...candidates].sort((left, right) => candidateScore(right) - candidateScore(left))[0];
+
       if (!match) return setSyncMessage('No safe title-and-author match was found. Inkbound left this book unchanged.');
       const { work: matchedWork, edition: matchedEdition } = match;
       let matchedPublisherSummary = matchedEdition.publisherSummary ?? matchedWork.publisherSummary;
@@ -304,47 +283,30 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         try {
           matchedPublisherSummary = await fetchCatalogPublisherSummary(book.work.title, book.work.author);
         } catch (error) {
-          console.warn('Open Library work summary lookup failed.', error);
+          console.warn('Catalog summary lookup failed.', error);
         }
       }
-      const manualEdition = activeEdition.externalSource === 'manual';
-      const nextEdition: Edition = manualEdition ? activeEdition : {
-        ...activeEdition,
-        isbn: activeEdition.isbn || matchedEdition.isbn13 || matchedEdition.isbn10,
-        isbn10: activeEdition.isbn10 || matchedEdition.isbn10,
-        isbn13: activeEdition.isbn13 || matchedEdition.isbn13,
-        pageCount: exactIsbn
-          ? (matchedEdition.pageCount ?? activeEdition.pageCount)
-          : (activeEdition.pageCount || matchedEdition.pageCount),
-        publisher: activeEdition.publisher || matchedEdition.publisher,
-        publicationDate: activeEdition.publicationDate || matchedEdition.publicationDate,
-        coverUrl: activeEdition.coverUrl || matchedEdition.coverUrl,
-        language: activeEdition.language || matchedEdition.language,
-        editionName: activeEdition.editionName || matchedEdition.editionName,
-        externalSource: matchedEdition.source,
-        externalEditionId: matchedEdition.externalEditionId,
-      };
-      const nextBook: UserBookRecord = {
-        ...book,
+
+      const catalogBook = createBookFromSearchEdition({
         work: {
-          ...book.work,
-          subtitle: book.work.subtitle || matchedWork.subtitle,
-          publisherSummary: book.work.publisherSummary || matchedPublisherSummary,
-          summary: book.work.personalSummary || book.work.publisherSummary || matchedPublisherSummary || book.work.summary,
-          genres: book.work.genres.length ? book.work.genres : matchedWork.genres,
-          // Sync Metadata is an explicit repair action. Verified catalog
-          // series metadata should repair stale/incorrect auto-filled values;
-          // preserve the existing value only when the catalog still has no answer.
-          seriesName: matchedEdition.seriesName ?? book.work.seriesName,
-          seriesOrder: typeof matchedEdition.seriesOrder === 'number'
-            ? matchedEdition.seriesOrder
-            : book.work.seriesOrder,
-          publicationYear: book.work.publicationYear || matchedEdition.publicationYear,
-          originalLanguage: book.work.originalLanguage || matchedEdition.language,
-          externalWorkId: matchedWork.key,
+          ...matchedWork,
+          publisherSummary: matchedPublisherSummary ?? matchedWork.publisherSummary,
         },
-        editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition),
-      };
+        edition: {
+          ...matchedEdition,
+          publisherSummary: matchedPublisherSummary ?? matchedEdition.publisherSummary,
+        },
+        status: book.status,
+        ownership: book.ownership,
+        priority: book.priority,
+      });
+      const manualEdition = activeEdition.externalSource === 'manual';
+      const nextBook = mergeCatalogBookMetadata(book, catalogBook, {
+        catalogSeriesWins: true,
+        catalogPageCountWins: Boolean(exactIsbn),
+        catalogIdentityWins: true,
+        preserveActiveEdition: manualEdition,
+      });
       onUpdateBook(nextBook);
       setPublisherSummary(nextBook.work.publisherSummary ?? '');
       setSyncMessage(matchedPublisherSummary
@@ -366,7 +328,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
     setCoverError(null);
     try {
       const response = await searchGoogleBooks(coverQuery.trim());
-      setCoverResults(response.groups.filter((group) => candidateMatchesBookIdentity(book, group) && group.editions.some((edition) => edition.coverUrl)));
+      setCoverResults(response.groups.filter((group) => catalogWorkMatchesIdentity(group, book.work.title, book.work.author) && group.editions.some((edition) => edition.coverUrl)));
     } catch (error) {
       setCoverResults([]);
       setCoverError(error instanceof Error ? error.message : 'Cover search failed.');
