@@ -22,9 +22,9 @@ import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
 import { formatTrialDaysRemaining } from '../features/billing/trialAccess';
 import { buildInkboundBackup, buildLibraryCsv } from '../features/export/libraryExport';
+import { getAnnualReadingGoal, getDailyReadingGoalMinutes, setAnnualReadingGoal, setDailyReadingGoalMinutes } from '../features/reading/readingPreferences';
 import { localDateKey } from '../features/reading/sessionAnalytics';
-import { ACCOUNT_DATA_STORAGE_KEYS, INKBOUND_STORAGE_NAMESPACE_PREFIX, localClearIntentKey } from '../features/sync/storageKeys';
-import { usePersistentState } from '../hooks/usePersistentState';
+import { INKBOUND_STORAGE_NAMESPACE_PREFIX, localClearIntentKey } from '../features/sync/storageKeys';
 import { functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
 import { restartRuntimeApp } from '../platform/runtimeAppControl';
@@ -54,8 +54,8 @@ const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions, isDarkMode, setIsDarkMode, onResetData }) => {
   const { userPlan, accessSource, trialPremiumUntil, openUpgradeModal } = useUserPlan();
   const { user, signOutAccount } = useAccountSync();
-  const [annualGoal, setAnnualGoal] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal, '25');
-  const [dailyGoalMins, setDailyGoalMins] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes, '30');
+  const [annualGoal, setAnnualGoalDraft] = useState(() => String(getAnnualReadingGoal()));
+  const [dailyGoalMins, setDailyGoalMinsDraft] = useState(() => String(getDailyReadingGoalMinutes()));
   const [exported, setExported] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState('');
@@ -142,7 +142,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
 
       <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Appearance</h2><div className="mt-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="font-semibold text-[var(--ink-ivory)]">Color theme</p><p className="mt-1 text-sm text-[var(--ink-muted)]">Your choice is saved automatically and follows your account when you are signed in.</p></div><button type="button" onClick={() => setIsDarkMode((current) => !current)} className="quiet-shelf-secondary-action justify-center">{isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{isDarkMode ? 'Use light mode' : 'Use dark mode'}</button></div></section>
 
-      <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Reading goals</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Changes save automatically.</p><ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16} className="mt-5"><label className="text-sm font-semibold text-[var(--ink-ivory)]">Annual reading goal<input type="number" inputMode="numeric" min="1" max="1000" value={annualGoal} onChange={(event) => setAnnualGoal(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label><label className="text-sm font-semibold text-[var(--ink-ivory)]">Daily reading target in minutes<input type="number" inputMode="numeric" min="1" max="1440" value={dailyGoalMins} onChange={(event) => setDailyGoalMins(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label></ResponsiveGrid></section>
+      <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Reading goals</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Changes save automatically.</p><ResponsiveGrid minItemWidth={240} maxColumns={2} gap={16} className="mt-5"><label className="text-sm font-semibold text-[var(--ink-ivory)]">Annual reading goal<input type="number" inputMode="numeric" min="1" max="1000" value={annualGoal} onChange={(event) => { const value = event.target.value; setAnnualGoalDraft(value); if (Number(value) > 0) setAnnualReadingGoal(value); }} onBlur={() => setAnnualGoalDraft(String(getAnnualReadingGoal()))} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label><label className="text-sm font-semibold text-[var(--ink-ivory)]">Daily reading target in minutes<input type="number" inputMode="numeric" min="1" max="1440" value={dailyGoalMins} onChange={(event) => { const value = event.target.value; setDailyGoalMinsDraft(value); if (Number(value) > 0) setDailyReadingGoalMinutes(value); }} onBlur={() => setDailyGoalMinsDraft(String(getDailyReadingGoalMinutes()))} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label></ResponsiveGrid></section>
 
       <section className="inkbound-panel rounded-3xl p-6"><h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Export your data</h2><p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">Download a complete Inkbound backup, or a spreadsheet-friendly copy of your library. Series corrections, ownership, subscription access, and Collections are included.</p><div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap"><button type="button" onClick={() => void handleExportJSON()} className="quiet-shelf-primary-action justify-center"><Download className="h-4 w-4" /> Complete JSON backup</button><button type="button" onClick={() => void handleExportCSV()} className="quiet-shelf-secondary-action justify-center"><FileSpreadsheet className="h-4 w-4" /> Library CSV</button>{exported && <span className="inline-flex items-center gap-2 px-2 text-sm font-semibold text-emerald-400"><Check className="h-4 w-4" /> Export ready</span>}</div></section>
 
