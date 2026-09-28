@@ -73,6 +73,13 @@ export const migrateSeriesOverridesToCanonicalBooks = (
   const migrated = books.map((book) => {
     const assignment = assignmentByBookId.get(book.id);
     if (!assignment) return book;
+    // Canonical manual intent is newer/stronger than any retired override store.
+    // Legacy migration may fill missing/metadata series state, never roll back a
+    // correction the reader already made in the canonical book record.
+    if (book.work.seriesSource === 'manual') {
+      migratedBookIds.push(book.id);
+      return book;
+    }
     const { override, entry } = assignment;
     migratedBookIds.push(book.id);
     return {
