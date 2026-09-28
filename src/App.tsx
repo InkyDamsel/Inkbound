@@ -481,7 +481,21 @@ export default function App() {
       if (book.id !== bookId) return book;
       const activeEdition = getActiveEdition(book);
       if (!activeEdition) return book;
-      const nextEdition = { ...activeEdition, ...(correction.pageCount !== undefined ? { pageCount: Math.max(0, correction.pageCount), externalSource: 'manual' as const } : {}), ...(correction.audiobookDurationMins !== undefined ? { audiobookDurationMins: Math.max(0, correction.audiobookDurationMins), externalSource: 'manual' as const } : {}) };
+      const nextEdition = {
+        ...activeEdition,
+        ...(correction.pageCount !== undefined
+          ? {
+              pageCount: correction.pageCount > 0 ? correction.pageCount : undefined,
+              externalSource: 'manual' as const,
+            }
+          : {}),
+        ...(correction.audiobookDurationMins !== undefined
+          ? {
+              audiobookDurationMins: correction.audiobookDurationMins > 0 ? correction.audiobookDurationMins : undefined,
+              externalSource: 'manual' as const,
+            }
+          : {}),
+      };
       const nextPages = Math.max(0, correction.progressPages ?? book.progressPages); const nextMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes); const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount; const nextCompleted = isAudiobook ? nextMinutes : nextPages; const progressPercentage = nextTotal && nextTotal > 0 ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100)) : book.progressPercentage; const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal!); const status = reachedEnd ? 'finished' : book.status;
       const updatedBook: UserBookRecord = { ...book, editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition), progressPages: nextPages, progressMinutes: nextMinutes, progressPercentage, status, dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished };
       setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected); return updatedBook;
