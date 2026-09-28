@@ -35,6 +35,7 @@ interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
   onSelectBook: (book: UserBookRecord) => void;
   onAddBook: (book: UserBookRecord) => void;
+  onUpdateBook?: (book: UserBookRecord) => void;
 }
 
 type DraftBook = { bookId: string; position: string; label: string };
@@ -55,7 +56,7 @@ const pageWindow = (current: number, total: number): number[] => {
   return Array.from({ length: 5 }, (_, index) => start + index);
 };
 
-export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook }) => {
+export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook, onUpdateBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
@@ -262,6 +263,32 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
       const discoveryAuthor = detectedAnchor?.discoveryAuthor?.trim()
         || anchorBook?.work.author?.trim()
         || item.author;
+
+      const storedSeries = anchorBook?.work.seriesName?.trim();
+      const storedSeriesLooksEditionScoped = Boolean(
+        anchorBook
+        && storedSeries
+        && anchorBook.sourceOfImport === 'Open Library'
+        && /\b(?:tome|book|vol(?:ume)?\.?|part)\s*#?\s*\d+(?:\.\d+)?\b/i.test(storedSeries),
+      );
+      if (
+        anchorBook
+        && onUpdateBook
+        && detectedAnchor
+        && storedSeriesLooksEditionScoped
+        && !seriesNamesAreCompatible(storedSeries, detectedAnchor.name)
+      ) {
+        onUpdateBook({
+          ...anchorBook,
+          work: {
+            ...anchorBook.work,
+            seriesName: detectedAnchor.name,
+            seriesOrder: typeof detectedAnchor.position === 'number'
+              ? detectedAnchor.position
+              : undefined,
+          },
+        });
+      }
 
       setDetectiveResult(await findMissingSeriesBooks(
         discoverySeriesName,
