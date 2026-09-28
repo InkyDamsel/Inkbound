@@ -34,8 +34,8 @@ const RECOVERY_COLLECTION = 'recoverySnapshots';
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
-const PHOTO_REVISION_KEY = 'inkbound_photo_memory_cloud_revisions_v1';
-const RESTORE_REQUEST_KEY = 'inkbound_pending_recovery_restore_v1';
+const PHOTO_REVISION_KEY = DEVICE_FEATURE_STORAGE_KEYS.photoMemoryCloudRevisions;
+const RESTORE_REQUEST_KEY = DEVICE_FEATURE_STORAGE_KEYS.pendingRecoveryRestore;
 const MAX_LISTED_RECOVERY_POINTS = 12;
 const WRITE_BATCH_SIZE = 350;
 
