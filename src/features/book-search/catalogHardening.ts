@@ -553,6 +553,17 @@ export const inferCatalogAuthorIntent = (
   return exactMatches >= 2 ? candidate : undefined;
 };
 
+export const shouldRunStructuredTitleFallback = (
+  groups: BookSearchWorkGroup[],
+  query?: string,
+): boolean => {
+  const wanted = normalizeKey(query);
+  if (!wanted) return false;
+  if (groups.some((group) => normalizeKey(group.title) === wanted)) return false;
+  return !inferCatalogAuthorIntent(groups, query);
+};
+
+
 export const hardenCatalogGroups = (
   groups: BookSearchWorkGroup[],
   options: { preferredAuthor?: string; searchQuery?: string } = {},
