@@ -173,7 +173,7 @@ const cleanAuthors = (authors: string[]): string[] => {
     seen.add(key);
     cleaned.push(author);
   }
-  return cleaned.length ? cleaned : ['Unknown author'];
+  return cleaned;
 };
 
 const cleanGenres = (genres: string[]): string[] => {
@@ -600,13 +600,14 @@ export const hardenCatalogGroups = (
 
     const titleKey = normalizeKey(hardened.title);
     const primaryAuthorKey = normalizeKey(hardened.authors[0]);
-    const authorIsUnknown = primaryAuthorKey === 'unknown author';
+    const authorIsUnknown = !primaryAuthorKey || primaryAuthorKey === 'unknown author';
     const compatibleIdentity = order.find((candidateKey) => {
       const candidate = merged.get(candidateKey);
       if (!candidate) return false;
 
       const candidateAuthorKey = normalizeKey(candidate.authors[0]);
       const authorCompatible = authorIsUnknown
+        || !candidateAuthorKey
         || candidateAuthorKey === 'unknown author'
         || candidateAuthorKey === primaryAuthorKey;
       if (!authorCompatible) return false;
@@ -628,7 +629,7 @@ export const hardenCatalogGroups = (
       continue;
     }
 
-    if (normalizeKey(existing.authors[0]) === 'unknown author' && !authorIsUnknown) {
+    if ((!normalizeKey(existing.authors[0]) || normalizeKey(existing.authors[0]) === 'unknown author') && !authorIsUnknown) {
       existing.authors = hardened.authors;
     }
 
