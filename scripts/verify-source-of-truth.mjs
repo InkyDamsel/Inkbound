@@ -630,6 +630,12 @@ if (/<input[^>]*type=["']number["'][^>]*(?!readOnly)[^>]*onChange=/.test(reading
 const typesSource = read('src/types.ts');
 const bookSearchModelSource = read('src/features/book-search/model/bookSearch.ts');
 const bookSearchMapperSource = read('src/features/book-search/mapping/bookSearchMapper.ts');
+const catalogHardeningSource = read('src/features/book-search/catalogHardening.ts');
+if (catalogHardeningSource.includes("return cleaned.length ? cleaned : ['Unknown author']")) {
+  violations.push('catalogHardening.ts: missing authors must remain canonical-empty');
+}
+
+
 const bookDetailsSummarySource = read('src/components/BookDetailsModalCore.tsx');
 if (bookSearchMapperSource.includes("No publisher summary was available for this edition.")) {
   violations.push('bookSearchMapper.ts: missing summaries must remain canonical-empty');
