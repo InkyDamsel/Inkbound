@@ -23,10 +23,6 @@ import { useUserPlan } from '../context/UserPlanContext';
 import { formatTrialDaysRemaining } from '../features/billing/trialAccess';
 import { buildInkboundBackup, buildLibraryCsv } from '../features/export/libraryExport';
 import { localDateKey } from '../features/reading/sessionAnalytics';
-import {
-  SERIES_OVERRIDES_STORAGE_KEY,
-  type SeriesOverrides,
-} from '../features/series/seriesOverrides';
 import { ACCOUNT_DATA_STORAGE_KEYS, localClearIntentKey } from '../features/sync/storageKeys';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { functions } from '../lib/firebase';
@@ -60,7 +56,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
   const { user, signOutAccount } = useAccountSync();
   const [annualGoal, setAnnualGoal] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal, '25');
   const [dailyGoalMins, setDailyGoalMins] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes, '30');
-  const [seriesOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [exported, setExported] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState('');
@@ -84,7 +79,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
     const data = buildInkboundBackup(
       books,
       sessions,
-      seriesOverrides,
       { annualGoal, dailyGoalMins, theme: isDarkMode ? 'dark' : 'light' },
     );
     await exportRuntimeTextFile({ filename: `inkbound-library-backup-${localDateKey()}.json`, mimeType: 'application/json;charset=utf-8', contents: JSON.stringify(data, null, 2) });
@@ -92,7 +86,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
   };
 
   const handleExportCSV = async () => {
-    await exportRuntimeTextFile({ filename: `inkbound-library-${localDateKey()}.csv`, mimeType: 'text/csv;charset=utf-8', contents: buildLibraryCsv(books, seriesOverrides) });
+    await exportRuntimeTextFile({ filename: `inkbound-library-${localDateKey()}.csv`, mimeType: 'text/csv;charset=utf-8', contents: buildLibraryCsv(books) });
     markExported();
   };
 
