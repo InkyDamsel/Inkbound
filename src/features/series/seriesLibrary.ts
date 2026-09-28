@@ -102,6 +102,8 @@ export function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
 
 /** Canonical resolver for any screen/export that needs the series the reader sees. */
 export function resolveEffectiveSeriesMetadata(book: UserBookRecord, overrides: SeriesOverrides = {}): EffectiveSeriesMetadata | null {
+  // Legacy overrides are migration-only compatibility. New manual corrections
+  // live on the canonical book record itself.
   for (const override of orderedSeriesOverrides(overrides)) {
     const entry = override.books.find((candidate) => candidate.bookId === book.id);
     if (!entry) continue;
@@ -113,7 +115,13 @@ export function resolveEffectiveSeriesMetadata(book: UserBookRecord, overrides: 
     };
   }
   const explicitName = book.work.seriesName?.trim();
-  if (explicitName) return { ...resolveSeriesMetadata(book)!, label: '', source: 'metadata' };
+  if (explicitName) {
+    return {
+      ...resolveSeriesMetadata(book)!,
+      label: book.work.seriesLabel?.trim() ?? '',
+      source: book.work.seriesSource === 'manual' ? 'manual' : 'metadata',
+    };
+  }
   const inferred = inferSeriesHintFromTitle(book.work.title);
   return inferred ? { ...inferred, label: '', source: 'inferred' } : null;
 }
@@ -184,19 +192,25 @@ export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOve
     if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
   });
 
-  const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[] }>();
+  const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[]; isManual: boolean }>();
   books.forEach((book) => {
     if (manuallyAssignedBookIds.has(book.id)) return;
-    const resolved = resolveSeriesMetadata(book);
+    const resolved = resolveEffectiveSeriesMetadata(book);
     if (!resolved) return;
     const name = resolved.name;
     const author = book.work.author.trim() || 'Unknown author';
     const key = `${canonicalSeriesIdentity(name)}::${author.toLowerCase()}`;
-    const current = metadataGroups.get(key) ?? { name, author, entries: [] };
-    current.entries.push({ book, position: resolved.position, displayPosition: seriesPositionLabel(book, resolved.position) });
+    const current = metadataGroups.get(key) ?? { name, author, entries: [], isManual: false };
+    current.entries.push({
+      book,
+      position: resolved.position,
+      displayPosition: seriesPositionLabel(book, resolved.position, resolved.label),
+    });
+    current.isManual ||= resolved.source === 'manual';
     metadataGroups.set(key, current);
   });
 
-  metadataGroups.forEach(({ name, author, entries }) => summaries.push(summarize(seriesId(name, author), name, author, entries, false)));
+  metadataGroups.forEach(({ name, author, entries, isManual }) =>
+    summaries.push(summarize(seriesId(name, author), name, author, entries, isManual)));
   return summaries.sort((a, b) => a.name.localeCompare(b.name));
 }
