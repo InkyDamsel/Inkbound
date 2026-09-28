@@ -151,7 +151,9 @@ function normalizeFields(value: unknown): CatalogFields {
   const subtitle = optionalString(input.subtitle, 300);
   const seriesName = optionalString(input.seriesName, 200);
   const language = optionalString(input.language, 80);
-  const format = optionalString(input.format, 80);
+  const rawFormat = optionalString(input.format, 80);
+  const normalizedFormat = rawFormat ? normalizeTrustedFormat(rawFormat) : 'unknown';
+  const format = normalizedFormat === 'unknown' ? undefined : normalizedFormat;
 
   return {
     title,
