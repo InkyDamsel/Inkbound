@@ -23,6 +23,7 @@ import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import { SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
 import { upsertCoreCloudRecord } from './coreCloudRecords';
 import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
+import { compactCloudProfileForRuntime } from './profileSyncMerge';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -146,15 +147,6 @@ function mergeBooksFromServer(
   });
 
   return merged;
-}
-
-function compactProfileForRuntime(profile: Record<string, unknown>): Record<string, unknown> {
-  const compact = { ...profile };
-  delete compact.avatarImageData;
-  delete compact.bannerImageData;
-  delete compact.avatarMediaKey;
-  delete compact.bannerMediaKey;
-  return compact;
 }
 
 /**
@@ -361,7 +353,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
         if (!pending.profile && profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<Record<string, unknown>>).data;
           if (cloudProfile) {
-            const compactProfile = compactProfileForRuntime(cloudProfile);
+            const compactProfile = compactCloudProfileForRuntime(cloudProfile);
             const serialized = stableSyncValue(compactProfile);
             baseline.profile = stableSyncValue(cloudProfile);
             if (storage.getItem(PROFILE_KEY) !== serialized) {
