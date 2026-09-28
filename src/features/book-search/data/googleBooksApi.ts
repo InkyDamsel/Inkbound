@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
+import { DEVICE_UI_STORAGE_KEYS } from '../../sync/storageKeys';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
 import { fetchOpenLibrarySummary, searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage } from './openLibraryApi';
@@ -68,7 +69,6 @@ export type GoogleBooksAuthorPage = GoogleBooksCatalogPage;
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
-const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const GOOGLE_BOOKS_PAGE_SIZE = 40;
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
 const inFlightGoogleRequests = new Map<string, Promise<GoogleVolumesResponse>>();
@@ -84,7 +84,7 @@ const normalizeText = (value?: string): string =>
 const compactIsbn = (value: string): string => value.replace(/[^0-9X]/gi, '').toUpperCase();
 
 const isAdministrationActive = (): boolean =>
-  readRuntimeJson<string>(ACTIVE_TAB_STORAGE_KEY, 'home') === 'admin';
+  readRuntimeJson<string>(DEVICE_UI_STORAGE_KEYS.activeTab, 'home') === 'admin';
 
 const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<void> => {
   while (isAdministrationActive()) {
