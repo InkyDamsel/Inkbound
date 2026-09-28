@@ -26,6 +26,12 @@ export const DEVICE_UI_STORAGE_KEYS = {
   collectionSort: 'inkbound_collection_sort',
   libraryMaintenanceCollapsedSections: 'inkbound_library_maintenance_collapsed_sections',
   sharePreferences: 'inkbound_share_preferences',
+  monthlyWrappedPreferences: 'inkbound_monthly_wrapped_preferences',
+  photoMemoryFilter: 'inkbound_photo_memory_filter',
+  notificationsRead: 'inkbound_notifications_read',
+  libraryLoanRemindersRead: 'inkbound_library_loan_reminders_read',
+  navigationCollapsedGroups: 'inkbound_navigation_collapsed_groups',
+  sidebarCollapsed: 'inkbound_sidebar_collapsed',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
