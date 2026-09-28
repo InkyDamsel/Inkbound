@@ -4,6 +4,7 @@ import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { PhotoMemoryRecord } from '../features/memories/photoMemoryStore';
 import { usePhotoMemories } from '../features/memories/usePhotoMemories';
+import { DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 export type PhotoMemory = PhotoMemoryRecord;
 
@@ -17,7 +18,7 @@ interface DeletedPhotoMemory {
   index: number;
 }
 
-const PHOTO_FILTER_KEY = 'inkbound_photo_memory_filter';
+const PHOTO_FILTER_KEY = DEVICE_UI_STORAGE_KEYS.photoMemoryFilter;
 const PHOTO_MEMORIES_BACKGROUND_URL = '/assets/photos-memories/cozy-photo-background.png';
 const MAX_SOURCE_IMAGE_BYTES = 12 * 1024 * 1024;
 const UNDO_DELETE_MS = 7000;

@@ -1,6 +1,7 @@
 import type { UserBookRecord } from '../../types';
 import { reconcileFinishedBookProgress } from '../reading/bookReadingState';
 import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
+import { normalizeBookRating, normalizeSpiceLevel } from '../reading/bookRating';
 
 /**
  * Imported catalog exports sometimes mark every row as owned, including
@@ -15,17 +16,94 @@ import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
 export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
   let normalized = reconcileFinishedBookProgress(book);
 
+  // Canonical edition totals are either a positive known value or absent.
+  // Historical builds could persist 0 when a reader cleared a field; keeping 0
+  // makes every downstream consumer interpret "unknown" differently.
+  const normalizedEditions = normalized.editions.map((edition) => {
+    const pageCount = typeof edition.pageCount === 'number'
+      && Number.isFinite(edition.pageCount)
+      && edition.pageCount > 0
+      ? edition.pageCount
+      : undefined;
+    const audiobookDurationMins = typeof edition.audiobookDurationMins === 'number'
+      && Number.isFinite(edition.audiobookDurationMins)
+      && edition.audiobookDurationMins > 0
+      ? edition.audiobookDurationMins
+      : undefined;
+
+    if (pageCount === edition.pageCount && audiobookDurationMins === edition.audiobookDurationMins) {
+      return edition;
+    }
+    return { ...edition, pageCount, audiobookDurationMins };
+  });
+  if (normalizedEditions.some((edition, index) => edition !== normalized.editions[index])) {
+    normalized = { ...normalized, editions: normalizedEditions };
+  }
+
+  const normalizedPublicationYear = typeof normalized.work.publicationYear === 'number'
+    && Number.isFinite(normalized.work.publicationYear)
+    && normalized.work.publicationYear > 0
+    ? normalized.work.publicationYear
+    : undefined;
+  if (normalizedPublicationYear !== normalized.work.publicationYear) {
+    normalized = {
+      ...normalized,
+      work: {
+        ...normalized.work,
+        publicationYear: normalizedPublicationYear,
+      },
+    };
+  }
+
+  const normalizedAuthor = normalized.work.author.trim().toLowerCase() === 'unknown author'
+    ? ''
+    : normalized.work.author;
+  if (normalizedAuthor !== normalized.work.author) {
+    normalized = {
+      ...normalized,
+      work: {
+        ...normalized.work,
+        author: normalizedAuthor,
+      },
+    };
+  }
+
+  const summaryKey = normalized.work.summary.trim().toLowerCase();
+  const normalizedSummary = (
+    !summaryKey
+    || summaryKey === 'summary unavailable.'
+    || summaryKey.startsWith('no publisher summary')
+    || summaryKey.startsWith('no publisher description')
+  ) ? '' : normalized.work.summary;
+  if (normalizedSummary !== normalized.work.summary) {
+    normalized = {
+      ...normalized,
+      work: {
+        ...normalized.work,
+        summary: normalizedSummary,
+      },
+    };
+  }
+
+  const normalizedRating = normalizeBookRating(normalized.rating);
+  const normalizedSpiceLevel = normalizeSpiceLevel(normalized.spiceLevel);
+  if (normalizedRating !== normalized.rating || normalizedSpiceLevel !== normalized.spiceLevel) {
+    normalized = {
+      ...normalized,
+      rating: normalizedRating,
+      spiceLevel: normalizedSpiceLevel,
+    };
+  }
+
   // Ownership and reading status are independent facts. A reader can move a
   // previously finished book to the Wishlist ownership bucket without erasing
   // its finish date/history. Do not normalize one field by rewriting the other.
 
-  // Library-loan dates only belong to actual library loans. If ownership moves to
-  // owned, subscription, borrowed-from-person, wishlist, custom, or none, keeping
-  // a stale due date would continue surfacing countdown/reminder UI for a book that
-  // is no longer checked out from a library.
-  if (normalized.ownership !== 'borrowed-library' && normalized.libraryLoan) {
-    normalized = { ...normalized, libraryLoan: undefined };
-  }
+  // Never erase library-loan metadata during passive normalization. A stale
+  // device or legacy record may temporarily disagree about ownership while sync
+  // is reconciling. Clearing dates here turns a transient mismatch into permanent
+  // user-data loss that can then sync to every device. Explicit ownership changes
+  // clear loan dates through withBookOwnership() instead.
 
   const isFutureUntitledSeriesPlaceholder = /^untitled\b/i.test(normalized.work.title.trim())
     && Boolean(inferSeriesHintFromTitle(normalized.work.title))

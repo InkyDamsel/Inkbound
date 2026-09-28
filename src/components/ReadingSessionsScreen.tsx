@@ -21,6 +21,7 @@ import { BookCover } from './BookCover';
 import { ResponsiveGrid } from '../layout/responsive';
 import { SessionEditorModal } from './SessionEditorModal';
 import { BulkHistoricalSessionsModal } from './BulkHistoricalSessionsModal';
+import { CanonicalInput } from './form/CanonicalInput';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getDailyReadingGoalMinutes } from '../features/reading/readingPreferences';
 import {
@@ -253,10 +254,10 @@ export const ReadingSessionsScreen: React.FC<ReadingSessionsScreenProps> = ({
       <div className="inkbound-panel grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_220px]">
         <label className="relative block">
           <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[var(--ink-mauve)]" />
-          <input
+          <CanonicalInput
             type="search"
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onValueChange={setSearchQuery}
             placeholder="Search notes, books, moods, or places..."
             className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] py-3 pl-11 pr-4 text-sm text-[var(--ink-text-primary)] outline-none placeholder:text-[var(--ink-text-muted)] focus:border-[var(--ink-mauve)] focus:ring-2 focus:ring-[var(--ink-mauve)]/25"
           />

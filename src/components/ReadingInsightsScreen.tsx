@@ -5,6 +5,7 @@ import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getSessionDurationMinutes, getSessionPagesRead, localDateKey } from '../features/reading/sessionAnalytics';
+import { DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 type InsightRange = '30-days' | '90-days' | 'all-time';
 type InsightCategory = 'all' | 'habits' | 'taste' | 'progress';
@@ -34,9 +35,9 @@ const hasTrustworthyFinishedHistory = (book: UserBookRecord) => {
 
 export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ books, sessions }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
-  const [range, setRange] = usePersistentState<InsightRange>('inkbound_reading_insights_range', '90-days');
-  const [category, setCategory] = usePersistentState<InsightCategory>('inkbound_reading_insights_category', 'all');
-  const [dismissedIds, setDismissedIds] = usePersistentState<string[]>('inkbound_reading_insights_dismissed', []);
+  const [range, setRange] = usePersistentState<InsightRange>(DEVICE_UI_STORAGE_KEYS.readingInsightsRange, '90-days');
+  const [category, setCategory] = usePersistentState<InsightCategory>(DEVICE_UI_STORAGE_KEYS.readingInsightsCategory, 'all');
+  const [dismissedIds, setDismissedIds] = usePersistentState<string[]>(DEVICE_UI_STORAGE_KEYS.readingInsightsDismissed, []);
 
   const rangeWindow = useMemo(() => {
     const through = parseLocalDateKey(localDateKey())!;

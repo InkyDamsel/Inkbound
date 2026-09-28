@@ -21,8 +21,10 @@ import {
 } from 'firebase/firestore';
 import { Functions, connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 import { FirebaseStorage, connectStorageEmulator, getStorage } from 'firebase/storage';
+import { Analytics, getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 import { getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
 import { isNativeRuntime } from '../platform/runtimePlatform';
+import { INKBOUND_GA4_MEASUREMENT_ID } from '../config/analytics';
 
 const readEnv = (value: string | undefined): string => value?.trim() ?? '';
 const readBooleanEnv = (value: string | undefined): boolean => readEnv(value).toLowerCase() === 'true';
@@ -34,6 +36,7 @@ const firebaseConfig = {
   storageBucket: readEnv(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET),
   messagingSenderId: readEnv(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
   appId: readEnv(import.meta.env.VITE_FIREBASE_APP_ID),
+  measurementId: INKBOUND_GA4_MEASUREMENT_ID,
 };
 
 const appCheckSiteKey = readEnv(import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY);
@@ -53,8 +56,10 @@ export const isFirebaseConfigured = missingFirebaseEnvironmentVariables.length =
 
 const requestedFirebaseMode = readEnv(import.meta.env.VITE_FIREBASE_MODE).toLowerCase();
 const effectiveFirebaseMode = requestedFirebaseMode || 'local';
+const requestedFunctionsMode = readEnv(import.meta.env.VITE_FIREBASE_FUNCTIONS_MODE).toLowerCase();
 
 export const useFirebaseEmulators = import.meta.env.DEV && effectiveFirebaseMode === 'emulator';
+export const useFunctionsEmulator = import.meta.env.DEV && (useFirebaseEmulators || requestedFunctionsMode === 'emulator');
 export const firebaseRuntimeMode = useFirebaseEmulators ? 'emulator' : 'production';
 
 const explicitProductionMode = import.meta.env.DEV && requestedFirebaseMode === 'production';
@@ -81,6 +86,7 @@ let readDb: Firestore | null = null;
 let db: Firestore | null = null;
 let functions: Functions | null = null;
 let storage: FirebaseStorage | null = null;
+let analytics: Analytics | null = null;
 
 function isIosBrowserRuntime(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -151,15 +157,32 @@ if (isFirebaseConfigured) {
     } : {}),
   });
 
-  functions = allowProductionFirebaseFunctions ? getFunctions(app) : null;
+  functions = (allowProductionFirebaseFunctions || useFunctionsEmulator) ? getFunctions(app) : null;
   storage = firebaseConfig.storageBucket ? getStorage(app) : null;
+
+  // Analytics is intentionally web-only and production-only. Local development
+  // must not pollute GA4 with developer sessions, and native Android does not
+  // use the web analytics SDK.
+  if (!useFirebaseEmulators && !isNativeRuntime() && !import.meta.env.DEV) {
+    void isAnalyticsSupported()
+      .then((supported) => {
+        if (supported && app) analytics = getAnalytics(app);
+      })
+      .catch((error) => {
+        console.warn('Inkbound web analytics could not initialize.', error);
+      });
+  }
+
+  if (useFunctionsEmulator && functions) {
+    const emulatorHost = window.location.hostname || 'localhost';
+    connectFunctionsEmulator(functions, emulatorHost, 5001);
+  }
 
   if (useFirebaseEmulators) {
     const emulatorHost = window.location.hostname || '127.0.0.1';
 
     connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
     connectFirestoreEmulator(readDb, emulatorHost, 8080);
-    if (functions) connectFunctionsEmulator(functions, emulatorHost, 5001);
     if (storage) connectStorageEmulator(storage, emulatorHost, 9199);
 
     db = readDb;
@@ -186,7 +209,13 @@ if (isFirebaseConfigured) {
         'Inkbound live-cloud beta test mode: production reads, functions, and Firestore writes are enabled by explicit VITE_FIREBASE_MODE=production.',
       );
     }
+
+    if (import.meta.env.DEV && useFunctionsEmulator && !useFirebaseEmulators) {
+      console.info(
+        'Inkbound hybrid DEV mode: production Auth/Firestore/Storage with local Cloud Functions emulator.',
+      );
+    }
   }
 }
 
-export { app, appCheck, auth, readDb, db, functions, storage };
+export { app, appCheck, auth, readDb, db, functions, storage, analytics };

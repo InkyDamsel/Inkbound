@@ -25,7 +25,6 @@ import {
 } from '../features/profile/profileMediaCloudSync';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
-  notifyLocalDataChanged,
   type CloudDataUpdatedDetail,
 } from '../features/sync/cloudSyncEvents';
 import { AccountSyncCard } from './account/AccountSyncCard';
@@ -84,7 +83,6 @@ const saveStoredProfile = (profile: StoredProfile): boolean => {
     console.error('Inkbound could not store the reader profile on this device.');
     return false;
   }
-  notifyLocalDataChanged([PROFILE_STORAGE_KEY]);
   return true;
 };
 

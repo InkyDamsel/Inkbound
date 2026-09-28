@@ -1,8 +1,6 @@
 import type { ImportRecordItem, ReadingStatus, UserBookRecord } from '../../types';
-import { readSeriesOverrides, SERIES_OVERRIDES_STORAGE_KEY, makeSeriesOverrideId, type SeriesOverrides } from '../series/seriesOverrides';
-import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
-import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
-import { writeRuntimeJson } from '../../platform/runtimeStorage';
+import { normalizeBookRating, normalizeSpiceLevel } from '../reading/bookRating';
+import { replaceCanonicalLibrary } from '../library/libraryMutations';
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 const normalizeText = (value?: string) => value?.trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -84,53 +82,30 @@ export function isUserSeriesSource(value?: string): boolean {
 }
 
 export function restoreManualSeriesOverridesFromImport(items: ImportRecordItem[], library: UserBookRecord[]): number {
-  const manualItems = items.filter((item) => isUserSeriesSource(item.seriesSource) && item.seriesName?.trim());
-  if (manualItems.length === 0) return 0;
-
-  const current = readSeriesOverrides();
-  const next: SeriesOverrides = Object.fromEntries(
-    Object.entries(current).map(([key, value]) => [key, { ...value, books: value.books.map((book) => ({ ...book })) }]),
-  );
-  const alreadyManuallyAssigned = new Set(Object.values(current).flatMap((override) => override.books.map((book) => book.bookId)));
-  const now = new Date().toISOString();
+  // Compatibility name retained for existing callers/tests. The retired
+  // seriesOverrides store is no longer written: imported manual corrections are
+  // folded directly into the canonical book work record.
   let restored = 0;
 
-  for (const item of manualItems) {
+  for (const item of items) {
+    if (!isUserSeriesSource(item.seriesSource) || !item.seriesName?.trim()) continue;
     const matched = item.matchedBookId
       ? library.find((book) => book.id === item.matchedBookId)
       : findExistingImportMatch(item, library);
-    if (!matched || alreadyManuallyAssigned.has(matched.id)) continue;
+    if (!matched || matched.work.seriesSource === 'manual') continue;
 
-    const seriesName = item.seriesName!.trim();
-    const author = matched.work.author?.trim() || item.author.trim() || 'Unknown Author';
-    const overrideId = makeSeriesOverrideId(seriesName, author);
-    const existingOverride = next[overrideId];
-    const bookEntry = {
-      bookId: matched.id,
-      position: typeof item.seriesOrder === 'number' && Number.isFinite(item.seriesOrder) ? item.seriesOrder : null,
-      ...(item.seriesLabel?.trim() ? { label: item.seriesLabel.trim() } : {}),
+    matched.work = {
+      ...matched.work,
+      seriesName: item.seriesName.trim(),
+      seriesOrder: typeof item.seriesOrder === 'number' && Number.isFinite(item.seriesOrder)
+        ? item.seriesOrder
+        : undefined,
+      seriesLabel: item.seriesLabel?.trim() || undefined,
+      seriesSource: 'manual',
     };
-
-    if (existingOverride) {
-      if (existingOverride.books.some((book) => book.bookId === matched.id)) continue;
-      existingOverride.books.push(bookEntry);
-      existingOverride.updatedAt = now;
-    } else {
-      next[overrideId] = {
-        id: overrideId,
-        name: seriesName,
-        author,
-        books: [bookEntry],
-        createdAt: now,
-        updatedAt: now,
-      };
-    }
-
-    alreadyManuallyAssigned.add(matched.id);
     restored += 1;
   }
 
-  if (restored > 0) writeRuntimeJson(SERIES_OVERRIDES_STORAGE_KEY, next);
   return restored;
 }
 
@@ -163,10 +138,13 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
       author: existing.work.author?.trim() && normalizeText(existing.work.author) !== 'unknown author' ? existing.work.author : item.author,
       seriesName: existing.work.seriesName?.trim() ? existing.work.seriesName : item.seriesName,
       seriesOrder: existing.work.seriesOrder ?? item.seriesOrder,
+      seriesLabel: existing.work.seriesLabel ?? (isUserSeriesSource(item.seriesSource) ? item.seriesLabel?.trim() || undefined : undefined),
+      seriesSource: existing.work.seriesSource ?? (isUserSeriesSource(item.seriesSource) && item.seriesName?.trim() ? 'manual' : item.seriesName?.trim() ? 'metadata' : undefined),
     },
     editions,
     status,
-    rating: existing.rating ?? item.rating,
+    rating: existing.rating ?? normalizeBookRating(item.rating),
+    spiceLevel: existing.spiceLevel ?? normalizeSpiceLevel(item.spiceLevel),
     review: existing.review?.trim() ? existing.review : item.review,
     privateTags: mergeUnique(existing.privateTags, importedTags),
     collections: mergeUnique(existing.collections, [...sourceCollections, ...optionalShelfCollections]),
@@ -186,7 +164,11 @@ export function applyImportExtrasToNewBook(book: UserBookRecord, item: ImportRec
       ...book.work,
       seriesName: book.work.seriesName?.trim() ? book.work.seriesName : item.seriesName,
       seriesOrder: book.work.seriesOrder ?? item.seriesOrder,
+      seriesLabel: book.work.seriesLabel ?? (isUserSeriesSource(item.seriesSource) ? item.seriesLabel?.trim() || undefined : undefined),
+      seriesSource: book.work.seriesSource ?? (isUserSeriesSource(item.seriesSource) && item.seriesName?.trim() ? 'manual' : item.seriesName?.trim() ? 'metadata' : undefined),
     },
+    rating: book.rating ?? normalizeBookRating(item.rating),
+    spiceLevel: book.spiceLevel ?? normalizeSpiceLevel(item.spiceLevel),
     privateTags: mergeUnique(book.privateTags, importedTags),
     collections: mergeUnique(book.collections, [...sourceCollections, ...optionalShelfCollections]),
   };
@@ -210,8 +192,7 @@ export function applySafeReimportUpdates(items: ImportRecordItem[], library: Use
     const item = byBookId.get(book.id);
     return item ? mergeImportIntoExistingBook(book, item) : book;
   });
-  writeRuntimeJson(SYNC_STORAGE_KEYS.books, updatedLibrary);
   const seriesRestored = restoreManualSeriesOverridesFromImport(mergeItems, updatedLibrary);
-  notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
+  replaceCanonicalLibrary(updatedLibrary);
   return { updatedCount: byBookId.size, seriesRestored };
 }

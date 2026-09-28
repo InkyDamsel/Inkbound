@@ -7,6 +7,7 @@ import {
   readPhotoMemoriesFromDevice,
   replacePhotoMemoriesOnDevice,
 } from './photoMemoryStore';
+import { DEVICE_FEATURE_STORAGE_KEYS } from '../sync/storageKeys';
 import {
   completePhotoMemorySyncOperation,
   PhotoMemorySyncOperation,
@@ -29,7 +30,7 @@ interface CloudPhotoMemory {
 }
 
 const MAX_PHOTO_MEMORY_BYTES = 3 * 1024 * 1024;
-const PHOTO_CLOUD_REVISIONS_KEY = 'inkbound_photo_memory_cloud_revisions_v1';
+const PHOTO_CLOUD_REVISIONS_KEY = DEVICE_FEATURE_STORAGE_KEYS.photoMemoryCloudRevisions;
 
 type CloudRevisionMap = Record<string, string>;
 

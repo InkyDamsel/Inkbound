@@ -9,22 +9,27 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { IMPORT_ENRICHMENT_PAUSED_KEY } from '../import/importHistory';
 import { db } from '../../lib/firebase';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { applyRuntimeJsonFromExternalSource, getRuntimeStorage, removeRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
   INKBOUND_FORCE_CLOUD_REFRESH_EVENT,
   publishCloudSyncHealth,
 } from './cloudSyncHealth';
-import { SYNC_STORAGE_KEYS, syncPendingStateKey } from './storageKeys';
+import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
+import { DEVICE_FEATURE_STORAGE_KEYS, SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from './storageKeys';
+import { upsertCoreCloudRecord } from './coreCloudRecords';
+import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
+import { compactCloudProfileForRuntime } from './profileSyncMerge';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const LAST_SYNC_STORAGE_KEY = SYNC_STORAGE_KEYS.lastCloudSyncAt;
-const LEGACY_AUTOPAUSE_MIGRATION_KEY = 'inkbound_import_enrichment_autopause_cleanup_v1';
+const LEGACY_AUTOPAUSE_MIGRATION_KEY = DEVICE_FEATURE_STORAGE_KEYS.legacyImportEnrichmentAutopauseCleanup;
 const REPAIR_UPLOAD_BATCH_SIZE = 100;
 
 interface CloudRecord<T> {
@@ -41,6 +46,12 @@ interface PendingSyncState {
   books: Record<string, PendingMutation<UserBookRecord>>;
   sessions: Record<string, PendingMutation<ReadingSession>>;
   profile?: { data: Record<string, unknown>; clientUpdatedAt: string };
+}
+
+interface SyncBaseline {
+  books: Record<string, string>;
+  sessions: Record<string, string>;
+  profile?: string;
 }
 
 interface LibrarySyncManifest {
@@ -63,114 +74,79 @@ function writeJson(key: string, value: unknown) {
   getRuntimeStorage().setItem(key, JSON.stringify(value));
 }
 
-function mergeMissingById<T extends { id: string }>(
+function reconcileServerRecords<T extends { id: string }>(
   current: T[],
   server: T[],
   pending: Record<string, PendingMutation<T>>,
+  baseline: Record<string, string>,
 ): T[] {
-  const merged = new Map(current.map((item) => [item.id, item]));
+  const currentById = new Map(current.map((item) => [item.id, item]));
+  const serverIds = new Set(server.map((item) => item.id));
+  const next = new Map<string, T>();
+
   server.forEach((item) => {
-    if (!pending[item.id] && !merged.has(item.id)) merged.set(item.id, item);
-  });
-  return [...merged.values()];
-}
-
-function preferredText(localValue?: string, serverValue?: string) {
-  return localValue?.trim() ? localValue : serverValue;
-}
-
-function mergeServerMetadataIntoBook(localBook: UserBookRecord, serverBook: UserBookRecord): UserBookRecord {
-  const serverEditions = new Map(serverBook.editions.map((edition) => [edition.id, edition]));
-  const mergedEditions = localBook.editions.map((localEdition) => {
-    const serverEdition = serverEditions.get(localEdition.id);
-    if (!serverEdition) return localEdition;
-    serverEditions.delete(localEdition.id);
-
-    return {
-      ...serverEdition,
-      ...localEdition,
-      coverUrl: preferredText(localEdition.coverUrl, serverEdition.coverUrl),
-      isbn: preferredText(localEdition.isbn, serverEdition.isbn),
-      isbn10: preferredText(localEdition.isbn10, serverEdition.isbn10),
-      isbn13: preferredText(localEdition.isbn13, serverEdition.isbn13),
-      publisher: preferredText(localEdition.publisher, serverEdition.publisher),
-      publicationDate: preferredText(localEdition.publicationDate, serverEdition.publicationDate),
-      language: preferredText(localEdition.language, serverEdition.language),
-      editionName: preferredText(localEdition.editionName, serverEdition.editionName),
-      binding: preferredText(localEdition.binding, serverEdition.binding),
-      externalSource: localEdition.externalSource ?? serverEdition.externalSource,
-      externalEditionId: preferredText(localEdition.externalEditionId, serverEdition.externalEditionId),
-      pageCount: localEdition.pageCount || serverEdition.pageCount,
-      specialFeatures: localEdition.specialFeatures?.length ? localEdition.specialFeatures : serverEdition.specialFeatures,
-      coverGradient: localEdition.coverGradient || serverEdition.coverGradient,
-    };
+    const mutation = pending[item.id];
+    if (mutation?.operation === 'delete') return;
+    if (mutation?.operation === 'upsert' && mutation.data) {
+      next.set(item.id, mutation.data);
+      return;
+    }
+    next.set(item.id, item);
   });
 
-  serverEditions.forEach((edition) => mergedEditions.push(edition));
+  currentById.forEach((item, id) => {
+    if (next.has(id) || serverIds.has(id)) return;
+    const mutation = pending[id];
+    if (mutation?.operation === 'delete') return;
+    if (mutation?.operation === 'upsert' && mutation.data) {
+      next.set(id, mutation.data);
+      return;
+    }
 
-  const localSummary = localBook.work.summary?.trim();
-  const localSummaryMissing = !localSummary || localSummary.toLowerCase() === 'summary unavailable.';
+    // A record that was in the acknowledged baseline but is now absent from a
+    // complete server snapshot was deleted remotely. Preserve only true
+    // local-only legacy records that never had a cloud baseline.
+    if (baseline[id] === undefined) next.set(id, item);
+  });
 
-  return {
-    ...serverBook,
-    ...localBook,
-    work: {
-      ...serverBook.work,
-      ...localBook.work,
-      subtitle: preferredText(localBook.work.subtitle, serverBook.work.subtitle),
-      summary: localSummaryMissing
-        ? (preferredText(serverBook.work.summary, serverBook.work.publisherSummary) ?? localBook.work.summary)
-        : localBook.work.summary,
-      publisherSummary: preferredText(localBook.work.publisherSummary, serverBook.work.publisherSummary),
-      genres: localBook.work.genres?.length ? localBook.work.genres : serverBook.work.genres,
-      publicationYear: localBook.work.publicationYear || serverBook.work.publicationYear,
-      originalLanguage: preferredText(localBook.work.originalLanguage, serverBook.work.originalLanguage),
-      externalWorkId: preferredText(localBook.work.externalWorkId, serverBook.work.externalWorkId),
-    },
-    editions: mergedEditions,
-    activeEditionId: mergedEditions.some((edition) => edition.id === localBook.activeEditionId)
-      ? localBook.activeEditionId
-      : serverBook.activeEditionId,
-    importMetadataVerified: localBook.importMetadataVerified === true || serverBook.importMetadataVerified === true,
-    importMetadataReviewNeeded: localBook.importMetadataReviewNeeded ?? serverBook.importMetadataReviewNeeded,
-    sourceOfImport: localBook.sourceOfImport || serverBook.sourceOfImport,
-  };
+  return [...next.values()];
 }
 
 function mergeBooksFromServer(
   current: UserBookRecord[],
   server: UserBookRecord[],
   pending: Record<string, PendingMutation<UserBookRecord>>,
+  baseline: Record<string, string>,
 ): UserBookRecord[] {
-  const serverById = new Map(server.map((book) => [book.id, book]));
-  const merged = current.map((localBook) => {
-    const serverBook = serverById.get(localBook.id);
-    if (!serverBook) return localBook;
-    serverById.delete(localBook.id);
+  const currentById = new Map(current.map((book) => [book.id, book]));
+  const serverIds = new Set(server.map((book) => book.id));
+  const merged: UserBookRecord[] = [];
 
-    const pendingMutation = pending[localBook.id];
-    if (pendingMutation?.operation === 'delete') return localBook;
-
-    const sourceBook = pendingMutation?.operation === 'upsert' && pendingMutation.data
-      ? pendingMutation.data
-      : localBook;
-    return mergeServerMetadataIntoBook(sourceBook, serverBook);
+  server.forEach((serverBook) => {
+    const pendingMutation = pending[serverBook.id];
+    if (pendingMutation?.operation === 'delete') return;
+    if (pendingMutation?.operation === 'upsert' && pendingMutation.data) {
+      merged.push(mergePendingLocalBookWithRemoteMetadata(pendingMutation.data, serverBook));
+      return;
+    }
+    // With no durable local intent, the complete server snapshot is the
+    // authoritative core record. Do not let a stale local status/progress copy
+    // silently overwrite it during an explicit refresh.
+    merged.push(mergeIncomingBookLoanState(currentById.get(serverBook.id), serverBook));
   });
 
-  serverById.forEach((serverBook, id) => {
-    if (pending[id]?.operation !== 'delete') merged.push(serverBook);
+  currentById.forEach((localBook, id) => {
+    if (serverIds.has(id)) return;
+    const pendingMutation = pending[id];
+    if (pendingMutation?.operation === 'delete') return;
+    if (pendingMutation?.operation === 'upsert' && pendingMutation.data) {
+      merged.push(pendingMutation.data);
+      return;
+    }
+    if (baseline[id] === undefined) merged.push(localBook);
   });
 
   return merged;
-}
-
-function compactProfileForRuntime(profile: Record<string, unknown>): Record<string, unknown> {
-  const compact = { ...profile };
-  delete compact.avatarImageData;
-  delete compact.bannerImageData;
-  delete compact.avatarMediaKey;
-  delete compact.bannerMediaKey;
-  return compact;
 }
 
 /**
@@ -203,8 +179,8 @@ export const CloudServerRefreshBridge: React.FC = () => {
     // state did not represent a reader choice, so clear it exactly once after the
     // fixed build opens. Future pause semantics remain untouched after migration.
     if (storage.getItem(LEGACY_AUTOPAUSE_MIGRATION_KEY) !== '1') {
-      storage.removeItem(IMPORT_ENRICHMENT_PAUSED_KEY);
-      storage.setItem(LEGACY_AUTOPAUSE_MIGRATION_KEY, '1');
+      removeRuntimeValue(IMPORT_ENRICHMENT_PAUSED_KEY);
+      writeRuntimeValue(LEGACY_AUTOPAUSE_MIGRATION_KEY, '1');
     }
 
     const libraryManifestRef = doc(db, 'users', uid, 'syncState', 'library');
@@ -235,15 +211,9 @@ export const CloudServerRefreshBridge: React.FC = () => {
       for (let index = 0; index < missingBooks.length; index += REPAIR_UPLOAD_BATCH_SIZE) {
         if (disposed) return uploaded;
         const batch = missingBooks.slice(index, index + REPAIR_UPLOAD_BATCH_SIZE);
-        const results = await Promise.allSettled(batch.map((book) => setDoc(
-          doc(db!, 'users', uid, 'books', book.id),
-          {
-            data: book,
-            updatedAt: serverTimestamp(),
-            clientUpdatedAt,
-          },
-          { merge: true },
-        )));
+        const results = await Promise.allSettled(
+          batch.map((book) => upsertCoreCloudRecord(uid, 'books', book, clientUpdatedAt)),
+        );
 
         results.forEach((result) => {
           if (result.status === 'rejected') {
@@ -340,6 +310,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
         if (disposed) return;
 
         const pending = pendingState();
+        const baseline = readJson<SyncBaseline>(syncBaselineStateKey(uid), { books: {}, sessions: {} });
         const serverBooks = bookSnapshot.docs
           .map((item) => (item.data() as CloudRecord<UserBookRecord>).data)
           .filter(Boolean);
@@ -358,30 +329,43 @@ export const CloudServerRefreshBridge: React.FC = () => {
 
         const currentBooks = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const currentSessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
-        const nextBooks = mergeBooksFromServer(currentBooks, serverBooks, pending.books ?? {});
-        const nextSessions = mergeMissingById(currentSessions, serverSessions, pending.sessions ?? {});
+        const nextBooks = mergeBooksFromServer(currentBooks, serverBooks, pending.books ?? {}, baseline.books ?? {});
+        const nextSessions = reconcileServerRecords(currentSessions, serverSessions, pending.sessions ?? {}, baseline.sessions ?? {});
+
+        // This is a verified complete server snapshot. Refresh the canonical
+        // baseline from what actually exists in cloud so later deletes cannot be
+        // mistaken for never-synced local-only records. Pending mutations remain
+        // separate durable intent and are deliberately not written into baseline.
+        baseline.books = Object.fromEntries(serverBooks.map((book) => [book.id, fingerprintSyncValue(book)]));
+        baseline.sessions = Object.fromEntries(serverSessions.map((session) => [session.id, fingerprintSyncValue(session)]));
+
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (JSON.stringify(currentBooks) !== JSON.stringify(nextBooks)) {
-          writeJson(BOOKS_KEY, nextBooks);
+          applyRuntimeJsonFromExternalSource(BOOKS_KEY, nextBooks);
           changedKeys.push(BOOKS_KEY);
         }
         if (JSON.stringify(currentSessions) !== JSON.stringify(nextSessions)) {
-          writeJson(SESSIONS_KEY, nextSessions);
+          applyRuntimeJsonFromExternalSource(SESSIONS_KEY, nextSessions);
           changedKeys.push(SESSIONS_KEY);
         }
 
         if (!pending.profile && profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<Record<string, unknown>>).data;
           if (cloudProfile) {
-            const serialized = JSON.stringify(compactProfileForRuntime(cloudProfile));
+            const compactProfile = compactCloudProfileForRuntime(cloudProfile);
+            const serialized = stableSyncValue(compactProfile);
+            baseline.profile = stableSyncValue(cloudProfile);
             if (storage.getItem(PROFILE_KEY) !== serialized) {
-              storage.setItem(PROFILE_KEY, serialized);
+              applyRuntimeJsonFromExternalSource(PROFILE_KEY, compactProfile);
               changedKeys.push(PROFILE_KEY);
             }
           }
+        } else if (!profileSnapshot.exists() && !pending.profile) {
+          delete baseline.profile;
         }
 
+        writeJson(syncBaselineStateKey(uid), baseline);
         if (changedKeys.length) notifyCloudDataUpdated(changedKeys);
         const syncedAt = new Date().toISOString();
         storage.setItem(LAST_SYNC_STORAGE_KEY, syncedAt);

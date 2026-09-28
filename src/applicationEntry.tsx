@@ -6,7 +6,6 @@ import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { readImportEnrichmentRetryProgress } from './features/import/importHistory.ts';
-import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { CanonicalLibraryNormalizationBridge } from './features/library/CanonicalLibraryNormalizationBridge.tsx';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
 import { ReadingMemoryCloudSyncBridge } from './features/memories/ReadingMemoryCloudSyncBridge.tsx';
@@ -17,6 +16,8 @@ import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBounda
 import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBridge.tsx';
 import { CrossDeviceDeltaSyncBridge } from './features/sync/CrossDeviceDeltaSyncBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
+import { LegacyImportMetadataPurgeBridge } from './features/sync/LegacyImportMetadataPurgeBridge.tsx';
+import { LegacySeriesOverrideMigrationBridge } from './features/sync/LegacySeriesOverrideMigrationBridge.tsx';
 import { LibrarySyncCheckpointBridge } from './features/sync/LibrarySyncCheckpointBridge.tsx';
 import { ManualCoverLedgerBridge } from './features/sync/ManualCoverLedgerBridge.tsx';
 import { ProtectedBookDetailsLedgerBridge } from './features/sync/ProtectedBookDetailsLedgerBridge.tsx';
@@ -78,6 +79,7 @@ const OpeningScreen = ({ message, actionLabel, onAction }: OpeningScreenProps) =
 );
 
 const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
+  const nativeRuntime = isNativeRuntime();
   const ready = useSyncExternalStore(
     subscribeNativeRuntimeReadiness,
     isNativeRuntimeReady,
@@ -90,14 +92,16 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
   );
 
   useEffect(() => {
-    if (ready || error || !isAndroidRuntime()) return undefined;
+    if (!nativeRuntime || ready || error || !isAndroidRuntime()) return undefined;
 
     const timer = window.setTimeout(() => {
       markNativeRuntimeFailed(new Error('Secure Android services took too long to respond. Check your connection and try again.'));
     }, NATIVE_RUNTIME_TIMEOUT_MS);
 
     return () => window.clearTimeout(timer);
-  }, [ready, error]);
+  }, [nativeRuntime, ready, error]);
+
+  if (!nativeRuntime) return <>{children}</>;
 
   if (error) {
     return (
@@ -195,10 +199,12 @@ const InkboundApplication = () => (
               <ReadOnlyCloudHydrationBridge />
               <PhotoMemoryAutoSyncBridge />
               <LegacyBookCoverMigrationBridge />
+              <LegacyImportMetadataPurgeBridge />
               <CanonicalLibraryNormalizationBridge />
             </BrowserStorageHydrationGate>
             <ThemePersistenceBridge />
             <CloudDataRefreshBoundary>
+              <LegacySeriesOverrideMigrationBridge />
               <RecoverySafetyBridge />
               <App />
             </CloudDataRefreshBoundary>
@@ -214,8 +220,6 @@ export async function mountApplication(rootElement: HTMLElement) {
   if (!isNativeRuntime()) prepareLargeBrowserStorageForStartup();
 
   isolateDevelopmentBrowserStorage();
-  purgeUnverifiedLegacyImportMetadata();
-
   if (!isNativeRuntime()) {
     window.addEventListener('beforeunload', (event) => {
       const retry = readImportEnrichmentRetryProgress();

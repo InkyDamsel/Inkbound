@@ -4,6 +4,7 @@ import type { Edition, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
@@ -11,7 +12,7 @@ import {
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 
-const BOOKS_KEY = 'inkbound_books';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const LEDGER_COLLECTION = 'protectedBookDetails';
 
 interface ProtectedBookDetails {
@@ -25,6 +26,8 @@ interface ProtectedBookDetails {
     personalSummary?: string;
     seriesName?: string;
     seriesOrder?: number;
+    seriesLabel?: string;
+    seriesSource?: 'manual' | 'metadata';
     genres: string[];
     tropes?: string[];
     contentWarnings?: string[];
@@ -33,6 +36,8 @@ interface ProtectedBookDetails {
     externalWorkId?: string;
   };
   reader: {
+    rating?: number;
+    spiceLevel?: number;
     review?: string;
     personalNotes?: string;
     favoriteQuotes?: UserBookRecord['favoriteQuotes'];
@@ -74,6 +79,8 @@ function detailsFor(book: UserBookRecord): ProtectedBookDetails {
       personalSummary: book.work.personalSummary,
       seriesName: book.work.seriesName,
       seriesOrder: book.work.seriesOrder,
+      seriesLabel: book.work.seriesLabel,
+      seriesSource: book.work.seriesSource,
       genres: book.work.genres,
       tropes: book.work.tropes,
       contentWarnings: book.work.contentWarnings,
@@ -82,6 +89,8 @@ function detailsFor(book: UserBookRecord): ProtectedBookDetails {
       externalWorkId: book.work.externalWorkId,
     },
     reader: {
+      rating: book.rating,
+      spiceLevel: book.spiceLevel,
       review: book.review,
       personalNotes: book.personalNotes,
       favoriteQuotes: book.favoriteQuotes,

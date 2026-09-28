@@ -22,6 +22,7 @@ export interface BatchEditChanges {
   rating?: number | null;
   dateStarted?: string | null;
   dateFinished?: string | null;
+  libraryLoanDueDate?: string | null;
   addTag?: string;
   removeTag?: string;
   addCollection?: string;
@@ -78,6 +79,8 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const [finishedMode, setFinishedMode] = useState<DateMode>('keep');
   const [dateStarted, setDateStarted] = useState('');
   const [dateFinished, setDateFinished] = useState('');
+  const [loanDueMode, setLoanDueMode] = useState<DateMode>('keep');
+  const [libraryLoanDueDate, setLibraryLoanDueDate] = useState('');
   const [tagAdd, setTagAdd] = useState('');
   const [tagRemove, setTagRemove] = useState('');
   const [collectionAdd, setCollectionAdd] = useState('');
@@ -102,12 +105,13 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
       rating: rating === 'clear' ? null : rating !== 'keep' ? Number(rating) : undefined,
       dateStarted: startedMode === 'clear' ? null : startedMode === 'set' && dateStarted ? dateStarted : undefined,
       dateFinished: finishDateChange,
+      libraryLoanDueDate: loanDueMode === 'clear' ? null : loanDueMode === 'set' && libraryLoanDueDate ? libraryLoanDueDate : undefined,
       addTag: optionalText(tagAdd)?.toLowerCase(),
       removeTag: optionalText(tagRemove)?.toLowerCase(),
       addCollection: optionalText(collectionAdd),
       removeCollection: optionalText(collectionRemove),
     };
-  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, startedMode, status, tagAdd, tagRemove]);
+  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, libraryLoanDueDate, loanDueMode, ownership, priority, rating, startedMode, status, tagAdd, tagRemove]);
 
   const preview = useMemo(() => {
     const items: string[] = [];
@@ -123,6 +127,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     if (changes.rating !== undefined) items.push(changes.rating === null ? 'Clear rating' : `Rating → ${changes.rating}/5`);
     if (changes.dateStarted !== undefined) items.push(changes.dateStarted === null ? 'Clear date started' : `Date started → ${changes.dateStarted}`);
     if (changes.dateFinished !== undefined) items.push(changes.dateFinished === null ? 'Clear date finished' : `Date finished → ${changes.dateFinished}`);
+    if (changes.libraryLoanDueDate !== undefined) items.push(changes.libraryLoanDueDate === null ? 'Clear library due date' : `Library due date → ${changes.libraryLoanDueDate}`);
     if (changes.addTag) items.push(`Add tag “${changes.addTag}”`);
     if (changes.removeTag) items.push(`Remove tag “${changes.removeTag}”`);
     if (changes.addCollection) items.push(`Add collection “${changes.addCollection}”`);
@@ -159,6 +164,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {field('Date Started', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={startedMode} onChange={(event) => setStartedMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={dateStarted} onChange={(event) => setDateStarted(event.target.value)} disabled={startedMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
             {field('Date Finished', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={finishedMode} onChange={(event) => setFinishedMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={dateFinished} onChange={(event) => setDateFinished(event.target.value)} disabled={finishedMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
+            {field('Library Loan Due Date', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={loanDueMode} onChange={(event) => setLoanDueMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={libraryLoanDueDate} onChange={(event) => setLibraryLoanDueDate(event.target.value)} disabled={loanDueMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

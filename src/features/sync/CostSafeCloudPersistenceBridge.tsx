@@ -10,7 +10,7 @@ import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, storage } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { applyRuntimeJsonFromExternalSource, applyRuntimeValueFromExternalSource, getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
   INKBOUND_CLOUD_DATA_EVENT,
@@ -22,6 +22,8 @@ import {
   type CoreCloudReconciledDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { deleteCoreCloudRecord, upsertCoreCloudRecord } from './coreCloudRecords';
+import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import {
   SYNC_STORAGE_KEYS,
   localClearIntentKey,
@@ -63,16 +65,8 @@ interface PendingSyncState {
 interface SyncBaseline { books: Record<string, string>; sessions: Record<string, string>; profile?: string }
 
 const runtimeStorage = () => getRuntimeStorage();
-const stable = (value: unknown) => JSON.stringify(value);
-const hashText = (value: string) => {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-};
-const fingerprint = (value: unknown) => hashText(stable(value));
+const stable = stableSyncValue;
+const fingerprint = fingerprintSyncValue;
 const emptyPending = (): PendingSyncState => ({ books: {}, sessions: {} });
 const emptyBaseline = (): SyncBaseline => ({ books: {}, sessions: {} });
 
@@ -159,7 +153,7 @@ async function optimizeProfileImage(value: string, kind: 'avatar' | 'banner'): P
 async function uploadProfileImage(uid: string, kind: 'avatar' | 'banner', value?: string) {
   if (!value || !isDataImage(value) || !storage) return value;
   const blob = await optimizeProfileImage(value, kind);
-  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${hashText(value)}.webp`);
+  const imageRef = ref(storage, `users/${uid}/profile/${kind}-${fingerprintSyncValue(value)}.webp`);
   await uploadBytes(imageRef, blob, { contentType: 'image/webp', cacheControl: 'public,max-age=31536000,immutable' });
   return getDownloadURL(imageRef);
 }
@@ -222,7 +216,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     };
 
     resetWorkingFingerprints();
-    runtimeStorage().setItem(OWNER_UID_KEY, uid);
+    applyRuntimeValueFromExternalSource(OWNER_UID_KEY, uid);
 
     const checkpointRecordBatch = <T,>(
       kind: RecordKind,
@@ -244,7 +238,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       writePending(uid, latestPending);
     };
 
-    const uploadRecordEntries = async <T,>(
+    const uploadRecordEntries = async <T extends { id: string },>(
       kind: RecordKind,
       entries: Array<[string, RecordMutation<T>]>,
     ): Promise<number> => {
@@ -253,27 +247,10 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         if (disposed) return failedWrites;
         const batch = entries.slice(index, index + UPLOAD_BATCH_SIZE);
         const results = await Promise.allSettled(batch.map(async ([id, mutation]) => {
-          const target = doc(db!, 'users', uid, kind, id);
           if (mutation.operation === 'delete') {
-            await Promise.all([
-              deleteDoc(target),
-              setDoc(
-                doc(db!, 'users', uid, 'syncTombstones', `${kind}_${id}`),
-                {
-                  kind,
-                  recordId: id,
-                  clientUpdatedAt: mutation.clientUpdatedAt,
-                  deletedAt: serverTimestamp(),
-                },
-                { merge: true },
-              ),
-            ]);
-          } else if (mutation.data) {
-            await setDoc(target, {
-              data: mutation.data,
-              updatedAt: serverTimestamp(),
-              clientUpdatedAt: mutation.clientUpdatedAt,
-            }, { merge: true });
+            await deleteCoreCloudRecord(uid, kind, id, mutation.clientUpdatedAt);
+          } else if (mutation.data && 'id' in mutation.data) {
+            await upsertCoreCloudRecord(uid, kind, mutation.data as T & { id: string }, mutation.clientUpdatedAt);
           }
         }));
 
@@ -329,7 +306,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
             delete latestPending.profile;
             writeBaseline(uid, latestBaseline);
             writePending(uid, latestPending);
-            runtimeStorage().setItem(PROFILE_KEY, preparedValue);
+            applyRuntimeJsonFromExternalSource(PROFILE_KEY, preparedProfile);
             profileFingerprint.current = preparedValue;
           }
         } catch (error) {

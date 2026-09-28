@@ -26,7 +26,6 @@ export const READING_MEMORIES_ACCOUNT_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingMem
  */
 export const AUXILIARY_ACCOUNT_KEYS = {
   collectionDefinitions: ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions,
-  seriesOverrides: ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides,
   customOwnershipCategories: ACCOUNT_DATA_STORAGE_KEYS.customOwnershipCategories,
   ignoredDuplicateGroups: ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups,
   annualReadingGoal: ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal,
@@ -50,6 +49,11 @@ export const LEGACY_AUXILIARY_ACCOUNT_KEYS = [
 ] as const;
 
 export const CORE_ACCOUNT_RUNTIME_KEYS = CANONICAL_SYNC_COLLECTION_KEYS;
+export const ALL_ACCOUNT_RUNTIME_KEYS = [
+  ...CORE_ACCOUNT_RUNTIME_KEYS,
+  ...Object.values(AUXILIARY_ACCOUNT_KEYS),
+  READING_MEMORIES_ACCOUNT_KEY,
+] as const;
 export const ACCOUNT_OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 export type AuxiliaryAccountKeyName = keyof typeof AUXILIARY_ACCOUNT_KEYS;
 
@@ -73,5 +77,5 @@ export const getAccountOwnedKeysToClearForOwnerChange = (
   previousOwnerUid: string | null,
   nextOwnerUid: string,
 ) => previousOwnerUid && previousOwnerUid !== nextOwnerUid
-  ? [...CORE_ACCOUNT_RUNTIME_KEYS, ...Object.values(AUXILIARY_ACCOUNT_KEYS), READING_MEMORIES_ACCOUNT_KEY]
+  ? [...ALL_ACCOUNT_RUNTIME_KEYS]
   : [];

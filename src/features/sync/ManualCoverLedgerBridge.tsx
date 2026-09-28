@@ -10,9 +10,10 @@ import {
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
+import { DEVICE_FEATURE_STORAGE_PREFIXES, SYNC_STORAGE_KEYS } from './storageKeys';
 
-const BOOKS_KEY = 'inkbound_books';
-const LEDGER_BASELINE_PREFIX = 'inkbound_manual_cover_ledger_baseline_v1_';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
+const LEDGER_BASELINE_PREFIX = DEVICE_FEATURE_STORAGE_PREFIXES.manualCoverLedgerBaseline;
 
 interface ManualCoverLedgerEntry {
   bookId: string;

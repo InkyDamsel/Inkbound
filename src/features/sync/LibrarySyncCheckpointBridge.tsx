@@ -16,10 +16,11 @@ import {
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
-import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { DEVICE_FEATURE_STORAGE_PREFIXES, SYNC_STORAGE_KEYS } from './storageKeys';
+import { upsertCoreCloudRecord } from './coreCloudRecords';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
-const CHECKPOINT_KEY_PREFIX = 'inkbound_library_sync_checkpoint_v1_';
+const CHECKPOINT_KEY_PREFIX = DEVICE_FEATURE_STORAGE_PREFIXES.librarySyncCheckpoint;
 const VERIFY_DELAY_MS = 15000;
 const REPAIR_BATCH_SIZE = 100;
 
@@ -102,15 +103,9 @@ async function repairMissingGrowthRecords(uid: string, checkpoint: LocalCheckpoi
   let uploaded = 0;
   for (let index = 0; index < missingBooks.length; index += REPAIR_BATCH_SIZE) {
     const batch = missingBooks.slice(index, index + REPAIR_BATCH_SIZE);
-    const results = await Promise.allSettled(batch.map((book) => setDoc(
-      doc(db!, 'users', uid, 'books', book.id),
-      {
-        data: book,
-        updatedAt: serverTimestamp(),
-        clientUpdatedAt,
-      },
-      { merge: true },
-    )));
+    const results = await Promise.allSettled(
+      batch.map((book) => upsertCoreCloudRecord(uid, 'books', book, clientUpdatedAt)),
+    );
     uploaded += results.filter((result) => result.status === 'fulfilled').length;
     results.forEach((result) => {
       if (result.status === 'rejected') {

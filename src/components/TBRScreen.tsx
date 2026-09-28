@@ -14,8 +14,6 @@ import {
 import { FORMAT_OPTIONS, priorityLabel } from '../domain/libraryTaxonomy';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { resolveEffectiveSeriesMetadata } from '../features/series/seriesLibrary';
-import { SERIES_OVERRIDES_STORAGE_KEY, type SeriesOverrides } from '../features/series/seriesOverrides';
-import { usePersistentState } from '../hooks/usePersistentState';
 import type { Priority, ReadingStatus, UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
 import { TBRBookGrid } from './tbr/TBRBookGrid';
@@ -53,8 +51,6 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
   const [pickerOwnedOnly, setPickerOwnedOnly] = useState(false);
   const [recommendedBook, setRecommendedBook] = useState<UserBookRecord | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [seriesOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
-
   const tbrBooks = useMemo(() => books.filter((book) => book.status === 'tbr'), [books]);
 
   const priorityBooks = useMemo(
@@ -69,11 +65,11 @@ export const TBRScreen: React.FC<TBRScreenProps> = ({
 
   const seriesGroups = useMemo(() => {
     return tbrBooks.reduce<Record<string, UserBookRecord[]>>((groups, book) => {
-      const key = resolveEffectiveSeriesMetadata(book, seriesOverrides)?.name ?? 'Standalone Titles';
+      const key = resolveEffectiveSeriesMetadata(book)?.name ?? 'Standalone Titles';
       groups[key] = [...(groups[key] || []), book];
       return groups;
     }, {});
-  }, [seriesOverrides, tbrBooks]);
+  }, [tbrBooks]);
 
   const genreGroups = useMemo(() => {
     return tbrBooks.reduce<Record<string, UserBookRecord[]>>((groups, book) => {

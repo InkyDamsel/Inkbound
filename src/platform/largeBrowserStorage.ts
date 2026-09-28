@@ -1,4 +1,5 @@
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { IMPORT_STORAGE_KEYS, SYNC_STORAGE_KEYS, SYNC_STORAGE_PREFIXES } from '../features/sync/storageKeys';
 
 const DB_NAME = 'inkbound-large-storage';
 const STORE_NAME = 'entries';
@@ -7,23 +8,23 @@ const LOCAL_STORAGE_SOFT_LIMIT = 1_500_000;
 
 export const LARGE_BROWSER_STORAGE_HYDRATED_EVENT = 'inkbound:large-browser-storage-hydrated';
 
-const exactManagedKeys = new Set([
-  'inkbound_books',
-  'inkbound_import_enrichment_queue_v3',
-  'inkbound_import_history_v1',
-  'inkbound_import_metadata_pending_v1',
-  'inkbound_import_verification_result_v2',
+const exactManagedKeys = new Set<string>([
+  SYNC_STORAGE_KEYS.books,
+  SYNC_STORAGE_KEYS.importEnrichmentQueue,
+  IMPORT_STORAGE_KEYS.history,
+  IMPORT_STORAGE_KEYS.metadataPending,
+  IMPORT_STORAGE_KEYS.verificationSnapshot,
 ]);
 
 const managedPrefixes = [
-  'inkbound_pending_sync_',
-  'inkbound_sync_baseline_',
+  SYNC_STORAGE_PREFIXES.pending,
+  SYNC_STORAGE_PREFIXES.baseline,
 ];
 
-const STARTUP_EXACT_KEYS = new Set(['inkbound_books']);
+const STARTUP_EXACT_KEYS = new Set<string>([SYNC_STORAGE_KEYS.books]);
 const STARTUP_PREFIXES = [
-  'inkbound_pending_sync_',
-  'inkbound_sync_baseline_',
+  SYNC_STORAGE_PREFIXES.pending,
+  SYNC_STORAGE_PREFIXES.baseline,
 ];
 
 const cache = new Map<string, string>();
@@ -59,7 +60,7 @@ function announceStartupHydrated() {
   // App already listens for cloud-data updates and reloads its canonical books
   // collection. Reuse that path so a library restored from IndexedDB appears as
   // soon as background hydration finishes, without reloading the page.
-  notifyCloudDataUpdated(['inkbound_books']);
+  notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
 }
 
 function openDatabase(): Promise<IDBDatabase | null> {
@@ -82,25 +83,24 @@ function openDatabase(): Promise<IDBDatabase | null> {
   return databasePromise;
 }
 
-async function putLargeValue(key: string, value: string) {
+async function putLargeValue(key: string, value: string): Promise<boolean> {
   const database = await openDatabase();
-  if (!database) return;
-  await new Promise<void>((resolve) => {
+  if (!database) return false;
+  return new Promise<boolean>((resolve) => {
     try {
       const transaction = database.transaction(STORE_NAME, 'readwrite');
-      const request = transaction.objectStore(STORE_NAME).put(value, key);
+      transaction.objectStore(STORE_NAME).put(value, key);
       let settled = false;
-      const finish = () => {
+      const finish = (saved: boolean) => {
         if (settled) return;
         settled = true;
-        resolve();
+        resolve(saved);
       };
-      request.onerror = finish;
-      transaction.oncomplete = finish;
-      transaction.onerror = finish;
-      transaction.onabort = finish;
+      transaction.oncomplete = () => finish(true);
+      transaction.onerror = () => finish(false);
+      transaction.onabort = () => finish(false);
     } catch {
-      resolve();
+      resolve(false);
     }
   });
 }
@@ -128,9 +128,10 @@ async function deleteLargeValue(key: string) {
   });
 }
 
-function trackWrite(promise: Promise<void>) {
-  pendingWrites.add(promise);
-  void promise.finally(() => pendingWrites.delete(promise));
+function trackWrite(promise: Promise<unknown>) {
+  const tracked = promise.then(() => undefined, () => undefined);
+  pendingWrites.add(tracked);
+  void tracked.finally(() => pendingWrites.delete(tracked));
 }
 
 async function readMatchingLargeValues(predicate: (key: string) => boolean): Promise<Array<[string, string]>> {
@@ -189,18 +190,34 @@ function installStorageBridge() {
 
     const normalized = String(value);
     cache.set(key, normalized);
-    trackWrite(putLargeValue(key, normalized));
 
-    if (normalized.length > LOCAL_STORAGE_SOFT_LIMIT) {
-      try { originalRemoveItem!.call(this, key); } catch { /* IndexedDB copy remains authoritative. */ }
-      return;
-    }
-
+    // localStorage is the synchronous write-ahead copy when it fits. Do not
+    // discard an oversized-but-still-storable new value until IndexedDB has
+    // actually committed it; otherwise a fast refresh can resurrect the older
+    // IndexedDB snapshot and make loans/collections appear to disappear.
+    let localBackupWritten = false;
     try {
       originalSetItem!.call(this, key, normalized);
+      localBackupWritten = true;
     } catch {
-      try { originalRemoveItem!.call(this, key); } catch { /* IndexedDB copy remains authoritative. */ }
+      try { originalRemoveItem!.call(this, key); } catch { /* IndexedDB remains the only durable target. */ }
     }
+
+    const persist = putLargeValue(key, normalized).then((saved) => {
+      if (
+        saved
+        && normalized.length > LOCAL_STORAGE_SOFT_LIMIT
+        && localBackupWritten
+        && cache.get(key) === normalized
+      ) {
+        try {
+          if (originalGetItem!.call(window.localStorage, key) === normalized) {
+            originalRemoveItem!.call(window.localStorage, key);
+          }
+        } catch { /* Keeping the backup is safer than deleting uncertain state. */ }
+      }
+    });
+    trackWrite(persist);
   };
 
   Storage.prototype.removeItem = function removeItem(key: string): void {
@@ -221,12 +238,17 @@ function installStorageBridge() {
 
 async function migrateManagedLocalStorageValues(predicate: (key: string) => boolean) {
   for (const key of Object.keys(window.localStorage)) {
-    if (!isManagedKey(key) || !predicate(key) || cache.has(key)) continue;
+    if (!isManagedKey(key) || !predicate(key)) continue;
     try {
       const value = originalGetItem?.call(window.localStorage, key);
       if (value !== null) {
-        cache.set(key, value);
-        await putLargeValue(key, value);
+        // A localStorage copy is written synchronously before IndexedDB. If the
+        // two disagree after a crash/refresh, localStorage is the newer
+        // write-ahead value and must repair the stale IndexedDB/cache copy.
+        if (cache.get(key) !== value) {
+          cache.set(key, value);
+          await putLargeValue(key, value);
+        }
       }
     } catch {
       // Best effort only. Existing localStorage remains untouched.

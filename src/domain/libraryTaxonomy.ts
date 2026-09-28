@@ -52,6 +52,7 @@ export const MATERIAL_TYPE_OPTIONS: LibraryOption<ReadingMaterialType>[] = [
 ];
 
 export const FORMAT_OPTIONS: LibraryOption<Format>[] = [
+  { value: 'unknown', label: 'Unknown / Not specified' },
   { value: 'hardcover', label: 'Hardcover' },
   { value: 'paperback', label: 'Paperback' },
   { value: 'ebook', label: 'Ebook / Digital' },

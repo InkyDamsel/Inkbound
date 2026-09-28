@@ -22,6 +22,7 @@ import {
   getSessionListeningMinutes,
   getSessionPagesRead,
 } from '../features/reading/sessionAnalytics';
+import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface ReadingTimelineScreenProps {
   books: UserBookRecord[];
@@ -55,10 +56,10 @@ interface TimelineEvent {
   meta?: string;
 }
 
-const FILTER_KEY = 'inkbound_timeline_filter';
-const SEARCH_KEY = 'inkbound_timeline_search';
-const COLLAPSED_KEY = 'inkbound_timeline_collapsed_months';
-const MEMORIES_KEY = 'inkbound_timeline_memories';
+const FILTER_KEY = DEVICE_UI_STORAGE_KEYS.timelineFilter;
+const SEARCH_KEY = DEVICE_UI_STORAGE_KEYS.timelineSearch;
+const COLLAPSED_KEY = DEVICE_UI_STORAGE_KEYS.timelineCollapsedMonths;
+const MEMORIES_KEY = ACCOUNT_DATA_STORAGE_KEYS.timelineMemories;
 const UNDO_DELETE_MS = 7000;
 
 const filterOptions: Array<{ id: TimelineFilter; label: string }> = [

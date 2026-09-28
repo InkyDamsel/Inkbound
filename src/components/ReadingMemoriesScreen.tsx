@@ -4,6 +4,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionListeningMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface ReadingMemoryEntry {
   feeling: string;
@@ -19,8 +20,8 @@ interface ReadingMemoriesScreenProps {
   onSelectBook: (book: UserBookRecord) => void;
 }
 
-const MEMORIES_STORAGE_KEY = 'inkbound_book_memories';
-const SELECTED_BOOK_STORAGE_KEY = 'inkbound_memory_selected_book';
+const MEMORIES_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingMemories;
+const SELECTED_BOOK_STORAGE_KEY = DEVICE_UI_STORAGE_KEYS.memorySelectedBook;
 const MEMORIES_BANNER_URL = '/assets/memories/cozy-memories-banner.png';
 
 const emptyMemory = (): ReadingMemoryEntry => ({

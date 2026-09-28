@@ -49,6 +49,33 @@ for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(cand
   }
 }
 
+// Shared feature-action classes are a cross-platform contract. A component may
+// reflow or wrap them on small screens, but it may not combine those canonical
+// action classes with responsive "hidden" utilities that remove the feature on
+// Android/phone widths.
+for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(candidate))) {
+  const relative = rel(file);
+  const contents = fs.readFileSync(file, 'utf8');
+  const hiddenSharedAction = /className=["'][^"']*quiet-shelf-(?:primary|secondary)-action[^"']*(?:\bhidden\b|(?:sm|md|lg|xl):hidden)[^"']*["']/g;
+  if (hiddenSharedAction.test(contents)) {
+    errors.push(`${relative} responsively hides a canonical feature action. Reflow it instead so web and Android expose the same action.`);
+  }
+}
+
+// Any actionable control that exists on web must remain reachable on compact
+// Android widths. Responsive layout may reflow controls, but hiding the actual
+// button/link is a feature-parity regression. Navigation chrome is handled
+// separately by the canonical Navbar/mobile-navigation checks below.
+for (const file of sharedUiFiles.filter((candidate) => /\.(?:ts|tsx)$/.test(candidate))) {
+  const relative = rel(file);
+  if (relative === 'src/components/Navbar.tsx') continue;
+  const contents = fs.readFileSync(file, 'utf8');
+  const hiddenAction = /<(?:button|a)\b[^>]*className=["'][^"']*(?:\bhidden\b|(?:sm|md|lg|xl):hidden)[^"']*["'][^>]*>/g;
+  if (hiddenAction.test(contents)) {
+    errors.push(`${relative} responsively hides an actionable control. Reflow it instead so the same web action remains reachable on Android.`);
+  }
+}
+
 // The public website is intentionally code-split from the signed-in app so the
 // marketing surface does not download Firebase/persistence code. Web /app and
 // Android must still enter the exact same applicationEntry tree.
@@ -99,7 +126,7 @@ for (const itemsMatch of navbar.matchAll(/items:\s*\[([\s\S]*?)\]\s*}/g)) {
   }
 }
 navIds.add('home');
-const redirectedNavIds = new Set(['import-history']);
+const redirectedNavIds = new Set(['import-history', 'help']);
 for (const id of navIds) {
   if (redirectedNavIds.has(id)) continue;
   const routePattern = new RegExp(`activeTab\\s*===\\s*['"]${id}['"]`);
@@ -131,12 +158,11 @@ for (const file of sourceFiles.filter((candidate) => candidate.endsWith('.css'))
   const rules = contents.matchAll(/([^{}]+)\{([^{}]*display\s*:\s*none[^{}]*)\}/g);
   for (const match of rules) {
     const selector = match[1];
-    const legacyShellRuleSafelyOverridden = relative === 'src/styles/app-shell.css' && parityImportedAfterAppShell && hasCompactActionOverride;
-    if (selector.includes('.quiet-shelf-secondary-action') && !selector.includes('.quiet-shelf-topbar') && !legacyShellRuleSafelyOverridden) {
+    if (selector.includes('.quiet-shelf-secondary-action') && !selector.includes('.quiet-shelf-topbar')) {
       errors.push(`${relative} hides .quiet-shelf-secondary-action outside the top bar. Shared feature actions must remain reachable on Android.`);
     }
-    if (selector.includes('.quiet-shelf-primary-action') && !selector.includes('.quiet-shelf-topbar') && !selector.includes('span') && !legacyShellRuleSafelyOverridden) {
-      errors.push(`${relative} hides .quiet-shelf-primary-action outside the top bar. Shared feature actions must remain reachable on Android.`);
+    if (selector.includes('.quiet-shelf-primary-action') && !selector.includes('.quiet-shelf-topbar')) {
+      errors.push(`${relative} hides .quiet-shelf-primary-action or its label outside the top bar. Shared feature actions and labels must remain reachable on Android.`);
     }
   }
 }

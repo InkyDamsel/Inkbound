@@ -5,7 +5,9 @@ import {
   getActiveEdition,
   getAverageBookProgress,
   getBookReadingState,
+  getRemainingReadingUnits,
   reconcileFinishedBookProgress,
+  withCorrectedReadingProgress,
   withReadingStatus,
 } from '../src/features/reading/bookReadingState';
 import { hasTrustworthyFinishedHistory } from '../src/features/reading/inkboundActivity';
@@ -29,11 +31,32 @@ import {
   getAccountOwnedKeysToClearForOwnerChange,
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
+import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
+import { compactCloudProfileForRuntime } from '../src/features/sync/profileSyncMerge';
+import { mergePendingLocalBookWithRemoteMetadata } from '../src/features/sync/bookSyncMerge';
+import { mergeIncomingBookLoanState, withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
   shouldApplyRemoteTombstone,
   shouldPromoteLocalRecordMissingFromCloud,
   shouldRemoteChangeReplacePending,
 } from '../src/features/sync/syncConflictPolicy';
+
+const canonicalInputSource = fs.readFileSync(new URL('../src/components/form/CanonicalInput.tsx', import.meta.url), 'utf8');
+const readingSessionModalSource = fs.readFileSync(new URL('../src/components/ReadingSessionModal.tsx', import.meta.url), 'utf8');
+const sessionEditorSource = fs.readFileSync(new URL('../src/components/SessionEditorModal.tsx', import.meta.url), 'utf8');
+const bulkHistoricalSource = fs.readFileSync(new URL('../src/components/BulkHistoricalSessionsModal.tsx', import.meta.url), 'utf8');
+
+assert.match(canonicalInputSource, /export const CanonicalNumberInput/);
+assert.match(canonicalInputSource, /const \[draft, setDraft\]/);
+assert.match(canonicalInputSource, /onDraftChange\?\./);
+for (const [name, source] of [
+  ['ReadingSessionModal', readingSessionModalSource],
+  ['SessionEditorModal', sessionEditorSource],
+  ['BulkHistoricalSessionsModal', bulkHistoricalSource],
+] as const) {
+  assert.match(source, /CanonicalNumberInput/, `${name} must use the canonical numeric progress editor`);
+  assert.doesNotMatch(source, /CanonicalInput[^>]*type=["']number["']/, `${name} must not implement its own editable numeric progress input`);
+}
 
 const baseBook = (): UserBookRecord => ({
   id: 'book-1',
@@ -159,6 +182,22 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(partialSession.dateFinished, '2026-08-15');
 }
 
+// Manual progress correction uses the canonical reading-state owner.
+{
+  const corrected = withCorrectedReadingProgress(baseBook(), { progressPages: 250 });
+  assert.equal(corrected.progressPages, 250);
+  assert.equal(corrected.progressPercentage, 50);
+  assert.equal(corrected.status, 'currently-reading');
+
+  const clearedTotal = withCorrectedReadingProgress(baseBook(), { pageCount: 0 });
+  assert.equal(getActiveEdition(clearedTotal)?.pageCount, undefined);
+
+  const finished = withCorrectedReadingProgress(baseBook(), { progressPages: 500 }, '2026-08-20');
+  assert.equal(finished.status, 'finished');
+  assert.equal(finished.progressPercentage, 100);
+  assert.equal(finished.dateFinished, '2026-08-20');
+}
+
 // Reading analytics use real session values and deterministic date anchors.
 {
   const sessions = [
@@ -201,6 +240,191 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(report.healthy, true);
 }
 
+// Unknown author sentinel normalizes to empty canonical metadata.
+{
+  const unknownAuthor = {
+    ...baseBook(),
+    work: {
+      ...baseBook().work,
+      author: 'Unknown author',
+    },
+  };
+  const normalized = normalizeLibraryRecord(unknownAuthor);
+  assert.equal(normalized.work.author, '');
+}
+
+// Summary placeholder text normalizes to empty canonical metadata.
+{
+  const placeholderSummary = {
+    ...baseBook(),
+    work: {
+      ...baseBook().work,
+      summary: 'Summary unavailable.',
+    },
+  };
+  const normalized = normalizeLibraryRecord(placeholderSummary);
+  assert.equal(normalized.work.summary, '');
+}
+
+// Invalid publication years normalize to unknown instead of persisting sentinel 0.
+{
+  const invalidYear = {
+    ...baseBook(),
+    work: {
+      ...baseBook().work,
+      publicationYear: 0,
+    },
+  };
+  const normalized = normalizeLibraryRecord(invalidYear);
+  assert.equal(normalized.work.publicationYear, undefined);
+}
+
+// Rating and spice values normalize to canonical half-steps.
+{
+  const rated = {
+    ...baseBook(),
+    rating: 4.74,
+    spiceLevel: 3.24,
+  };
+  const normalized = normalizeLibraryRecord(rated);
+  assert.equal(normalized.rating, 4.5);
+  assert.equal(normalized.spiceLevel, 3);
+}
+
+// Zero/malformed edition totals normalize to unknown rather than becoming
+// authoritative 0-page/0-minute metadata.
+{
+  const invalidTotals = {
+    ...baseBook(),
+    editions: [
+      { id: 'zero-pages', format: 'hardcover' as const, pageCount: 0, coverGradient: '' },
+      { id: 'zero-audio', format: 'audiobook' as const, audiobookDurationMins: 0, coverGradient: '' },
+      { id: 'valid-pages', format: 'paperback' as const, pageCount: 487, coverGradient: '' },
+    ],
+    activeEditionId: 'zero-pages',
+  };
+  const normalized = normalizeLibraryRecord(invalidTotals);
+  assert.equal(normalized.editions[0].pageCount, undefined);
+  assert.equal(normalized.editions[1].audiobookDurationMins, undefined);
+  assert.equal(normalized.editions[2].pageCount, 487);
+}
+
+// Passive normalization must never erase library-loan metadata. A stale device
+// can temporarily carry older ownership while sync reconciles; that mismatch
+// must not become permanent cross-device data loss.
+{
+  const loan = {
+    ...baseBook(),
+    ownership: 'owned' as const,
+    libraryLoan: { borrowedDate: '2026-09-01', dueDate: '2026-09-22' },
+  };
+  const normalized = normalizeLibraryRecord(loan);
+  assert.deepEqual(normalized.libraryLoan, loan.libraryLoan);
+
+  const activeLoan = {
+    ...baseBook(),
+    ownership: 'borrowed-library' as const,
+    libraryLoan: { borrowedDate: '2026-09-01', dueDate: '2026-09-22' },
+  };
+  assert.deepEqual(withBookOwnership(activeLoan, 'borrowed-library').libraryLoan, activeLoan.libraryLoan);
+  assert.equal(withBookOwnership(activeLoan, 'owned').libraryLoan, undefined);
+
+  const partialRemoteLoan = { ...activeLoan };
+  delete partialRemoteLoan.libraryLoan;
+  assert.deepEqual(mergeIncomingBookLoanState(activeLoan, partialRemoteLoan).libraryLoan, activeLoan.libraryLoan);
+
+  const explicitRemoteClear = { ...activeLoan, libraryLoan: {} };
+  assert.deepEqual(mergeIncomingBookLoanState(activeLoan, explicitRemoteClear).libraryLoan, {});
+
+  const explicitOwnershipChange = { ...activeLoan, ownership: 'owned' as const };
+  delete explicitOwnershipChange.libraryLoan;
+  assert.equal(mergeIncomingBookLoanState(activeLoan, explicitOwnershipChange).libraryLoan, undefined);
+}
+
+// Cloud profile projection strips device-only media state consistently.
+{
+  const projected = compactCloudProfileForRuntime({
+    displayName: 'Reader',
+    bio: 'Bio',
+    avatarImage: 'https://example.com/avatar.webp',
+    avatarImageData: 'data:image/webp;base64,abc',
+    bannerImageData: 'data:image/webp;base64,def',
+    avatarMediaKey: 'local-avatar',
+    bannerMediaKey: 'local-banner',
+  });
+  assert.equal(projected.displayName, 'Reader');
+  assert.equal(projected.bio, 'Bio');
+  assert.equal(projected.avatarImage, 'https://example.com/avatar.webp');
+  assert.equal('avatarImageData' in projected, false);
+  assert.equal('bannerImageData' in projected, false);
+  assert.equal('avatarMediaKey' in projected, false);
+  assert.equal('bannerMediaKey' in projected, false);
+}
+
+// Pending local reader intent keeps ownership while absorbing missing remote metadata.
+{
+  const local = {
+    ...baseBook(),
+    progressPages: 250,
+    progressPercentage: 50,
+    rating: 4.5,
+    work: {
+      ...baseBook().work,
+      seriesName: 'Reader Corrected Series',
+      seriesOrder: 2,
+      seriesLabel: 'Novella',
+      seriesSource: 'manual' as const,
+      publisherSummary: undefined,
+    },
+    editions: [{
+      id: 'paper-500',
+      format: 'hardcover' as const,
+      pageCount: 500,
+      coverGradient: '',
+      coverUrl: undefined,
+      publisher: undefined,
+    }],
+    activeEditionId: 'paper-500',
+  };
+  const remote = {
+    ...local,
+    progressPages: 100,
+    progressPercentage: 20,
+    rating: 2,
+    work: {
+      ...local.work,
+      seriesName: 'Remote Metadata Series',
+      seriesOrder: 9,
+      seriesLabel: undefined,
+      seriesSource: 'metadata' as const,
+      publisherSummary: 'Remote publisher summary',
+    },
+    editions: [{
+      ...local.editions[0],
+      coverUrl: 'https://example.com/cover.jpg',
+      publisher: 'Remote Publisher',
+    }],
+  };
+
+  const merged = mergePendingLocalBookWithRemoteMetadata(local, remote);
+  assert.equal(merged.progressPages, 250);
+  assert.equal(merged.rating, 4.5);
+  assert.equal(merged.work.seriesName, 'Reader Corrected Series');
+  assert.equal(merged.work.seriesOrder, 2);
+  assert.equal(merged.work.seriesLabel, 'Novella');
+  assert.equal(merged.work.seriesSource, 'manual');
+  assert.equal(merged.work.publisherSummary, 'Remote publisher summary');
+  assert.equal(merged.editions[0].coverUrl, 'https://example.com/cover.jpg');
+  assert.equal(merged.editions[0].publisher, 'Remote Publisher');
+}
+
+// Never-baselined local records are promoted to cloud; baseline-confirmed
+// records missing from cloud are treated as remote deletions.
+{
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({ baselineFingerprint: undefined }), true);
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({ baselineFingerprint: 'previous-cloud-fingerprint' }), false);
+}
+
 // Sync conflict rules protect newer/pending local work from stale cloud data.
 {
   assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T11:59:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), false);
@@ -241,24 +465,56 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(auxiliaryOnly.includes(READING_MEMORIES_ACCOUNT_KEY), true);
 
   assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange(previousUid, previousUid), []);
+  assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange(null, nextUid), []);
   assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange(null, nextUid), []);
 }
 
 // Persistence-law guardrails: stale core pending writes must wait for a successful
 // cloud reconciliation, and Collection icons must not be truncated before saving.
 {
+  const fullHydrationSource = fs.readFileSync(new URL('../src/features/sync/OneShotCloudHydrationBridge.tsx', import.meta.url), 'utf8');
+  const auxiliarySyncSource = fs.readFileSync(new URL('../src/features/sync/AuxiliaryAccountSyncBridge.tsx', import.meta.url), 'utf8');
   const costSafeSource = fs.readFileSync(new URL('../src/features/sync/CostSafeCloudPersistenceBridge.tsx', import.meta.url), 'utf8');
   const deltaSource = fs.readFileSync(new URL('../src/features/sync/CrossDeviceDeltaSyncBridge.tsx', import.meta.url), 'utf8');
   const auxiliarySource = fs.readFileSync(new URL('../src/features/sync/AuxiliaryAccountSyncBridge.tsx', import.meta.url), 'utf8');
   const collectionsSource = fs.readFileSync(new URL('../src/components/CollectionsScreen.tsx', import.meta.url), 'utf8');
+  const cloudRefreshBoundarySource = fs.readFileSync(new URL('../src/features/sync/CloudDataRefreshBoundary.tsx', import.meta.url), 'utf8');
+  const enrichmentSource = fs.readFileSync(new URL('../src/features/import/libraryEnrichment.ts', import.meta.url), 'utf8');
 
+  assert.match(fullHydrationSource, /fullReconciliationVersionKey\(uid\).*FULL_RECONCILIATION_VERSION/s);
+  assert.match(auxiliarySyncSource, /legacyCloudDocNameById/);
+  assert.match(auxiliarySyncSource, /legacyOnlyCloudNames/);
   assert.match(costSafeSource, /INKBOUND_CORE_RECONCILED_EVENT/);
   assert.match(costSafeSource, /let coreReconciled = false/);
   assert.match(costSafeSource, /if \(!coreReconciled\) return Promise\.resolve\(\)/);
   assert.match(deltaSource, /notifyCoreCloudReconciled\(uid\)/);
   assert.match(auxiliarySource, /remoteServerMillis: remote\.updatedAt\?\.toMillis\(\) \?\? 0/);
+  assert.match(deltaSource, /if \(baselineMatchesRemote\) return false/);
+  assert.match(deltaSource, /baseline\.profile === stable\(profileRecord\.data\)/);
+  assert.match(auxiliarySource, /baseline\[name\] === remoteFingerprint/);
+  assert.doesNotMatch(auxiliarySource, /pending\[name\] = \{ data: localValue, clientUpdatedAt: now \};[\s\S]{0,120}localChangedAgainstKnownCloud/);
   assert.doesNotMatch(collectionsSource, /setEmoji\([^\n]*slice\(0,\s*4\)/);
   assert.match(collectionsSource, /updatedAt: now/);
+  assert.match(collectionsSource, /Persist the actual deletion immediately/);
+  assert.match(collectionsSource, /setCollections\(\(current\) => current\.filter\(\(item\) => item\.id !== collection\.id\)\)/);
+  assert.doesNotMatch(cloudRefreshBoundarySource, /recoverIncompleteLatestImport/);
+  assert.match(enrichmentSource, /function needsPageCount\(/);
+  assert.match(enrichmentSource, /!needsPageCount\(book\)/);
+}
+
+
+{
+  const finishedLoan = baseBook();
+  finishedLoan.status = 'finished';
+  finishedLoan.progressPercentage = 100;
+  finishedLoan.progressPages = 337;
+  finishedLoan.ownership = 'borrowed-library';
+  finishedLoan.libraryLoan = { dueDate: '2026-09-26' };
+
+  const remaining = getRemainingReadingUnits(finishedLoan);
+  assert.equal(remaining.totalUnits, 500);
+  assert.equal(remaining.completedUnits, 337);
+  assert.equal(remaining.remainingUnits, 0);
 }
 
 console.log('Inkbound critical reading regressions passed.');

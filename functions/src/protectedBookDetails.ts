@@ -12,6 +12,8 @@ const WORK_KEYS = new Set([
   'personalSummary',
   'seriesName',
   'seriesOrder',
+  'seriesLabel',
+  'seriesSource',
   'genres',
   'tropes',
   'contentWarnings',
@@ -21,6 +23,8 @@ const WORK_KEYS = new Set([
 ]);
 
 const READER_KEYS = new Set([
+  'rating',
+  'spiceLevel',
   'review',
   'personalNotes',
   'favoriteQuotes',

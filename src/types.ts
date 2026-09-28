@@ -5,7 +5,7 @@ export interface UserPlanState {
   freeBookLimit: number;
 }
 
-export type Format = 'hardcover' | 'paperback' | 'ebook' | 'audiobook';
+export type Format = 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | 'unknown';
 
 export type ReadingMaterialType =
   | 'book'
@@ -29,7 +29,7 @@ export type SubscriptionService = 'kindle-unlimited' | 'audible-plus' | 'everand
 
 export type Priority = 'top' | 'high' | 'medium' | 'low';
 
-export type EditionSource = 'google-books' | 'open-library' | 'hardcover' | 'inkbound-catalog' | 'manual' | 'import';
+export type EditionSource = 'google-books' | 'open-library' | 'hardcover' | 'inkbound-catalog' | 'crossref' | 'library-of-congress' | 'internet-archive' | 'manual' | 'import';
 
 export interface BookWork {
   id: string;
@@ -42,10 +42,14 @@ export interface BookWork {
   materialType?: ReadingMaterialType;
   seriesName?: string;
   seriesOrder?: number;
+  /** Optional reader-facing label such as Prequel or Novella. */
+  seriesLabel?: string;
+  /** Manual means reader intent; metadata means catalog-derived. */
+  seriesSource?: 'manual' | 'metadata';
   genres: string[];
   tropes?: string[];
   contentWarnings?: string[];
-  publicationYear: number;
+  publicationYear?: number;
   originalLanguage?: string;
   externalWorkId?: string;
 }
@@ -103,6 +107,7 @@ export interface UserBookRecord {
   progressMinutes: number;
   progressPercentage: number;
   rating?: number;
+  spiceLevel?: number;
   review?: string;
   personalNotes?: string;
   favoriteQuotes?: FavoriteQuote[];
@@ -170,6 +175,7 @@ export interface ImportRecordItem {
   format: Format;
   status: ReadingStatus;
   rating?: number;
+  spiceLevel?: number;
   dateStarted?: string;
   dateRead?: string;
   dateAdded: string;

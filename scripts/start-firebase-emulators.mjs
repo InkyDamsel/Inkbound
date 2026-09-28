@@ -4,7 +4,11 @@ import path from 'node:path';
 
 const exportDirectory = '.firebase-emulator-data';
 const exportMetadata = path.join(exportDirectory, 'firebase-export-metadata.json');
-const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const npmExecPath = process.env.npm_execpath;
+const npxExecPath = npmExecPath ? path.join(path.dirname(npmExecPath), 'npx-cli.js') : undefined;
+const npxInvocation = process.platform === 'win32' && npxExecPath
+  ? { command: process.execPath, prefixArgs: [npxExecPath] }
+  : { command: 'npx', prefixArgs: [] };
 const args = [
   'firebase-tools',
   'emulators:start',
@@ -23,7 +27,7 @@ if (existsSync(exportMetadata)) {
 
 args.push(`--export-on-exit=${exportDirectory}`);
 
-const child = spawn(npxCommand, args, {
+const child = spawn(npxInvocation.command, [...npxInvocation.prefixArgs, ...args], {
   stdio: 'inherit',
   shell: false,
 });

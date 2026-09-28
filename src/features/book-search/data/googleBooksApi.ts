@@ -2,11 +2,15 @@ import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
+import { isNativeRuntime } from '../../../platform/runtimePlatform';
+import { DEVICE_UI_STORAGE_KEYS } from '../../sync/storageKeys';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
-import { searchOpenLibrary, searchOpenLibraryPage } from './openLibraryApi';
+import { fetchOpenLibrarySummary, searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage } from './openLibraryApi';
+import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { hardenCatalogGroups, hardenCatalogResponse } from '../catalogHardening';
+import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
+import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition, shouldRunStructuredTitleFallback } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -24,6 +28,10 @@ interface GoogleImageLinks {
 
 interface GoogleVolume {
   id: string;
+  inkboundBibliographicSeries?: {
+    name: string;
+    position?: number;
+  };
   volumeInfo?: {
     title?: string;
     subtitle?: string;
@@ -36,18 +44,19 @@ interface GoogleVolume {
     categories?: string[];
     imageLinks?: GoogleImageLinks;
     language?: string;
+    seriesInfo?: {
+      shortSeriesBookTitle?: string;
+      bookDisplayNumber?: string;
+      volumeSeries?: Array<{ seriesId?: string; seriesBookType?: string; orderNumber?: number; issue?: Array<{ issueOrderNumber?: number }> }>;
+    };
   };
   saleInfo?: { isEbook?: boolean };
-  seriesInfo?: {
-    shortSeriesBookTitle?: string;
-    bookDisplayNumber?: string;
-    volumeSeries?: Array<{ seriesId?: string; seriesBookType?: string; orderNumber?: number; issue?: Array<{ issueOrderNumber?: number }> }>;
-  };
 }
 
 interface GoogleVolumesResponse {
   totalItems?: number;
   items?: GoogleVolume[];
+  seriesMetadataById?: Record<string, string>;
 }
 
 export interface GoogleBooksCatalogPage extends BookSearchResponse {
@@ -61,11 +70,14 @@ export type GoogleBooksAuthorPage = GoogleBooksCatalogPage;
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
-const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const GOOGLE_BOOKS_PAGE_SIZE = 40;
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
+const inFlightGoogleRequests = new Map<string, Promise<GoogleVolumesResponse>>();
 let googleBackoffUntil = 0;
 let hardcoverBackoffUntil = 0;
+
+const shouldUseProtectedGoogleBooks = (): boolean =>
+  isNativeRuntime() || Boolean(functions && auth?.currentUser);
 
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -73,7 +85,7 @@ const normalizeText = (value?: string): string =>
 const compactIsbn = (value: string): string => value.replace(/[^0-9X]/gi, '').toUpperCase();
 
 const isAdministrationActive = (): boolean =>
-  readRuntimeJson<string>(ACTIVE_TAB_STORAGE_KEY, 'home') === 'admin';
+  readRuntimeJson<string>(DEVICE_UI_STORAGE_KEYS.activeTab, 'home') === 'admin';
 
 const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<void> => {
   while (isAdministrationActive()) {
@@ -112,12 +124,12 @@ export const buildGoogleBooksQuery = (value: string): string => {
   return trimmed;
 };
 
-const publicationYear = (value?: string): number => {
+const publicationYear = (value?: string): number | undefined => {
   const match = value?.match(/\d{4}/);
-  return match ? Number(match[0]) : 0;
+  return match ? Number(match[0]) : undefined;
 };
 
-const inferFormat = (volume: GoogleVolume): Format => volume.saleInfo?.isEbook ? 'ebook' : 'hardcover';
+const inferFormat = (volume: GoogleVolume): Format => volume.saleInfo?.isEbook === true ? 'ebook' : 'unknown';
 
 const getIdentifier = (volume: GoogleVolume, type: 'ISBN_10' | 'ISBN_13'): string | undefined =>
   volume.volumeInfo?.industryIdentifiers?.find((item) => item.type === type)?.identifier;
@@ -128,7 +140,10 @@ const coverUrl = (volume: GoogleVolume): string | undefined => {
   return source?.replace(/^http:/, 'https:').replace('&edge=curl', '').replace('zoom=1', 'zoom=2');
 };
 
-const mapGoogleVolume = (volume: GoogleVolume): BookSearchEdition | null => {
+const mapGoogleVolume = (
+  volume: GoogleVolume,
+  seriesMetadataById: Record<string, string> = {},
+): BookSearchEdition | null => {
   const info = volume.volumeInfo;
   if (!info?.title) return null;
   return {
@@ -136,20 +151,23 @@ const mapGoogleVolume = (volume: GoogleVolume): BookSearchEdition | null => {
     externalEditionId: volume.id,
     title: info.title,
     subtitle: info.subtitle,
-    authors: info.authors?.length ? info.authors : ['Unknown author'],
+    authors: info.authors?.length ? info.authors : [],
     publisherSummary: info.description,
     genres: info.categories ?? [],
     publisher: info.publisher,
     publicationDate: info.publishedDate,
     publicationYear: publicationYear(info.publishedDate),
     language: info.language,
-    seriesName: volume.seriesInfo?.shortSeriesBookTitle?.trim() || undefined,
-    seriesOrder: (() => {
-      const explicit = Number(volume.seriesInfo?.bookDisplayNumber);
-      if (Number.isFinite(explicit) && explicit >= 0) return explicit;
-      const order = volume.seriesInfo?.volumeSeries?.map((item) => item.orderNumber ?? item.issue?.[0]?.issueOrderNumber).find((value) => typeof value === 'number' && Number.isFinite(value));
-      return typeof order === 'number' ? order : undefined;
-    })(),
+    seriesName: resolveGoogleSeriesMetadata(
+      info.seriesInfo,
+      seriesMetadataById,
+      volume.inkboundBibliographicSeries,
+    ).name,
+    seriesOrder: resolveGoogleSeriesMetadata(
+      info.seriesInfo,
+      seriesMetadataById,
+      volume.inkboundBibliographicSeries,
+    ).order,
     format: inferFormat(volume),
     isbn10: getIdentifier(volume, 'ISBN_10'),
     isbn13: getIdentifier(volume, 'ISBN_13'),
@@ -228,16 +246,7 @@ const mergeGroups = (primary: BookSearchWorkGroup[], supplements: BookSearchWork
         return;
       }
       const current = existing.editions[duplicateIndex];
-      existing.editions[duplicateIndex] = {
-        ...edition,
-        ...current,
-        coverUrl: current.coverUrl || edition.coverUrl,
-        publisherSummary: current.publisherSummary || edition.publisherSummary,
-        seriesName: current.seriesName || edition.seriesName,
-        seriesOrder: typeof current.seriesOrder === 'number' ? current.seriesOrder : edition.seriesOrder,
-        binding: current.binding || edition.binding,
-        specialFeatures: current.specialFeatures.length ? current.specialFeatures : edition.specialFeatures,
-      };
+      existing.editions[duplicateIndex] = mergeCatalogEditionData(current, edition);
     });
   };
 
@@ -254,6 +263,89 @@ async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchRe
   return searchInkboundTrustedCatalog({ title: query.trim() });
 }
 
+const GOOGLE_DETAIL_HYDRATION_LIMIT = 20;
+
+async function hydrateGoogleVolumeDetails(
+  payload: GoogleVolumesResponse,
+  signal?: AbortSignal,
+): Promise<GoogleVolumesResponse> {
+  const items = payload.items ?? [];
+  if (items.length === 0) return payload;
+
+  const hydrated = await Promise.all(items.map(async (volume, index) => {
+    const info = volume.volumeInfo;
+    const needsDetail = !info?.pageCount || !info?.seriesInfo?.volumeSeries?.length;
+    if (!needsDetail || index >= GOOGLE_DETAIL_HYDRATION_LIMIT || !volume.id) return volume;
+
+    try {
+      const response = await fetch(
+        `${GOOGLE_BOOKS_ENDPOINT}/${encodeURIComponent(volume.id)}?projection=full`,
+        { signal },
+      );
+      if (!response.ok) return volume;
+      const detail = await response.json() as GoogleVolume;
+      return {
+        ...volume,
+        ...detail,
+        volumeInfo: {
+          ...volume.volumeInfo,
+          ...detail.volumeInfo,
+          // Preserve any list-only values while preferring the fully hydrated
+          // volume detail for page count and series metadata.
+          seriesInfo: detail.volumeInfo?.seriesInfo ?? volume.volumeInfo?.seriesInfo,
+          pageCount: detail.volumeInfo?.pageCount ?? volume.volumeInfo?.pageCount,
+        },
+        saleInfo: {
+          ...volume.saleInfo,
+          ...detail.saleInfo,
+        },
+      };
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Google Books volume detail lookup unavailable.', error);
+      return volume;
+    }
+  }));
+
+  return { ...payload, items: hydrated };
+}
+
+async function enrichGoogleSeriesMetadata(
+  payload: GoogleVolumesResponse,
+  signal?: AbortSignal,
+): Promise<GoogleVolumesResponse> {
+  if (payload.seriesMetadataById && Object.keys(payload.seriesMetadataById).length > 0) return payload;
+
+  const ids = [...new Set((payload.items ?? []).flatMap((volume) =>
+    volume.volumeInfo?.seriesInfo?.volumeSeries
+      ?.map((item) => item.seriesId?.trim())
+      .filter((value): value is string => Boolean(value)) ?? [],
+  ))];
+  if (ids.length === 0) return payload;
+
+  try {
+    const seriesParams = new URLSearchParams();
+    ids.forEach((id) => seriesParams.append('series_id', id));
+    const seriesResponse = await fetch(`https://www.googleapis.com/books/v1/series/get?${seriesParams.toString()}`, { signal });
+    if (!seriesResponse.ok) return payload;
+    const seriesPayload = await seriesResponse.json() as { series?: Array<{ seriesId?: string; title?: string }> };
+    return {
+      ...payload,
+      seriesMetadataById: Object.fromEntries(
+        (seriesPayload.series ?? []).flatMap((series) =>
+          series.seriesId?.trim() && series.title?.trim()
+            ? [[series.seriesId.trim(), series.title.trim()] as const]
+            : [],
+        ),
+      ),
+    };
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    console.warn('Google Books series metadata lookup unavailable in browser search.', error);
+    return payload;
+  }
+}
+
 async function requestProtectedGoogleBooks(
   query: string,
   signal?: AbortSignal,
@@ -263,13 +355,36 @@ async function requestProtectedGoogleBooks(
   if (!functions || !auth?.currentUser) {
     throw new Error('Protected Google Books search requires a signed-in Inkbound account.');
   }
-  const callable = httpsCallable<
-    { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
-    GoogleVolumesResponse
-  >(functions, 'searchHardcoverBooks');
-  const response = await callable({ query, provider: 'google-books', startIndex, maxResults });
+  const requestKey = `${query.trim().toLocaleLowerCase()}::${startIndex}::${maxResults}`;
+  let pending = inFlightGoogleRequests.get(requestKey);
+  if (!pending) {
+    if (isNativeRuntime()) {
+      const callable = httpsCallable<
+        { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
+        GoogleVolumesResponse
+      >(functions, 'searchHardcoverBooks');
+      pending = callable({ query, provider: 'google-books', startIndex, maxResults })
+        .then((response) => response.data)
+        .finally(() => {
+          inFlightGoogleRequests.delete(requestKey);
+        });
+    } else {
+      const callable = httpsCallable<
+        { query: string; startIndex?: number; maxResults?: number },
+        GoogleVolumesResponse
+      >(functions, 'searchGoogleBooksCatalog');
+      pending = callable({ query, startIndex, maxResults })
+        .then((response) => response.data)
+        .finally(() => {
+          inFlightGoogleRequests.delete(requestKey);
+        });
+    }
+    inFlightGoogleRequests.set(requestKey, pending);
+  }
+
+  const payload = await pending;
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-  return response.data;
+  return payload;
 }
 
 async function requestDirectGoogleBooks(
@@ -295,15 +410,36 @@ async function requestDirectGoogleBooks(
     const detail = googleBooksErrorDetail(await response.text());
     throw new Error(`Google Books search failed (${response.status})${detail ? `: ${detail}` : '.'}`);
   }
-  return response.json() as Promise<GoogleVolumesResponse>;
+  const payload = await response.json() as GoogleVolumesResponse;
+  const hydrated = await hydrateGoogleVolumeDetails(payload, signal);
+  return enrichGoogleSeriesMetadata(hydrated, signal);
+}
+
+async function requestCanonicalGoogleBooksPayload(
+  query: string,
+  signal?: AbortSignal,
+  startIndex = 0,
+  maxResults = GOOGLE_BOOKS_PAGE_SIZE,
+): Promise<GoogleVolumesResponse> {
+  const protectedRequest = shouldUseProtectedGoogleBooks();
+  if (protectedRequest) {
+    // Protected Firebase catalog responses are already hydrated server-side,
+    // including volume details and Google series metadata. Never follow a native
+    // callable with direct www.googleapis.com requests from the Android WebView.
+    return requestProtectedGoogleBooks(query, signal, startIndex, maxResults);
+  }
+
+  // Browser-only unsigned fallback. Native Android must fail closed to alternate
+  // providers when Firebase/auth is unavailable rather than bypassing App Check.
+  return requestDirectGoogleBooks(query, signal, startIndex, maxResults);
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  const payload = functions && auth?.currentUser
-    ? await requestProtectedGoogleBooks(query, signal)
-    : await requestDirectGoogleBooks(query, signal);
+  const payload = await requestCanonicalGoogleBooksPayload(query, signal);
 
-  const editions = (payload.items ?? []).map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
+  const editions = (payload.items ?? [])
+    .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
+    .filter((item): item is BookSearchEdition => Boolean(item));
   const groups = hardenCatalogGroups(groupGoogleEditions(editions));
   return { groups, totalItems: payload.totalItems ?? groups.length };
 }
@@ -321,26 +457,43 @@ export async function searchGoogleBooksPage(
   const builtQuery = buildGoogleBooksQuery(trimmed);
 
   try {
-    const payload = functions && auth?.currentUser
-      ? await requestProtectedGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-      : await requestDirectGoogleBooks(builtQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    const payload = await requestCanonicalGoogleBooksPayload(
+      builtQuery,
+      signal,
+      startIndex,
+      GOOGLE_BOOKS_PAGE_SIZE,
+    );
 
     const rawItems = payload.items ?? [];
-    const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
+    const editions = rawItems
+      .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
+      .filter((item): item is BookSearchEdition => Boolean(item));
     let groups = hardenCatalogGroups(groupGoogleEditions(editions), { searchQuery: trimmed });
 
     // The Add Reading Material screen prefers this paged path. Enrich the first
     // page with the same supplemental metadata sources used by the standard
     // catalog chain so pagination does not silently lose series metadata.
     if (startIndex === 0 && groups.length > 0) {
-      const [trusted, hardcover] = await Promise.all([
+      const [trusted, openLibrary, hardcover] = await Promise.all([
         searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+        searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
         searchHardcoverWithBackoff(trimmed),
       ]);
       groups = hardenCatalogGroups(
-        mergeGroups(groups, [trusted.groups, hardcover.groups]),
+        mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
         { searchQuery: trimmed },
       );
+
+      const refinedExact = await refineExactTitleWithAuthor(groups, trimmed, signal);
+      if (refinedExact.length > 0) {
+        groups = hardenCatalogGroups(
+          mergeGroups(groups, [refinedExact]),
+          { searchQuery: trimmed },
+        );
+      }
+
+      groups = await repairVisibleEditionPageCounts(groups, signal);
+      groups = hardenCatalogGroups(groups, { searchQuery: trimmed });
     }
 
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
@@ -379,13 +532,43 @@ export async function searchGoogleBooksAuthorPage(
   const query = `inauthor:${trimmedAuthor}`;
 
   try {
-    const payload = functions && auth?.currentUser
-      ? await requestProtectedGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-      : await requestDirectGoogleBooks(query, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    const payload = await requestCanonicalGoogleBooksPayload(
+      query,
+      signal,
+      startIndex,
+      GOOGLE_BOOKS_PAGE_SIZE,
+    );
 
     const rawItems = payload.items ?? [];
-    const editions = rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
-    const groups = hardenCatalogGroups(groupGoogleEditions(editions), { preferredAuthor: trimmedAuthor });
+    const editions = rawItems
+      .map((volume) => mapGoogleVolume(volume, payload.seriesMetadataById))
+      .filter((item): item is BookSearchEdition => Boolean(item));
+    let groups = hardenCatalogGroups(groupGoogleEditions(editions), { preferredAuthor: trimmedAuthor });
+
+    // Author discovery is part of the same canonical catalog pipeline as title
+    // and ISBN search. The first page must be enriched by the same providers so
+    // Series Detective and author browsing cannot see thinner metadata than
+    // normal search.
+    if (startIndex === 0 && groups.length > 0) {
+      const [trusted, openLibrary, hardcover] = await Promise.all([
+        searchTrustedCatalogBaseline(trimmedAuthor).catch(() => ({ groups: [], totalItems: 0 })),
+        searchOpenLibraryPage(query, 0, GOOGLE_BOOKS_PAGE_SIZE, signal).catch(() => ({
+          groups: [],
+          totalItems: 0,
+          providerTotalItems: 0,
+          nextStartIndex: 0,
+          hasMore: false,
+        })),
+        searchHardcoverWithBackoff(trimmedAuthor),
+      ]);
+      groups = hardenCatalogGroups(
+        mergeGroups(groups, [trusted.groups, openLibrary.groups, hardcover.groups]),
+        { preferredAuthor: trimmedAuthor },
+      );
+      groups = await repairVisibleEditionPageCounts(groups, signal);
+      groups = hardenCatalogGroups(groups, { preferredAuthor: trimmedAuthor });
+    }
+
     const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
     const nextStartIndex = startIndex + rawItems.length;
     const hasMore = rawItems.length > 0 && (
@@ -409,16 +592,122 @@ export async function searchGoogleBooksAuthorPage(
   }
 }
 
+const exactTitleGroupNeedsRepair = (group: BookSearchWorkGroup): boolean => {
+  const hasThinPrintEdition = group.editions.some((edition) =>
+    edition.format !== 'audiobook' && !edition.pageCount,
+  );
+  const hasNoSeriesEvidence = group.editions.every((edition) => !edition.seriesName);
+  return hasThinPrintEdition || hasNoSeriesEvidence;
+};
+
+async function refineExactTitleWithAuthor(
+  groups: BookSearchWorkGroup[],
+  query: string,
+  signal?: AbortSignal,
+): Promise<BookSearchWorkGroup[]> {
+  const wanted = normalizeText(query);
+  if (!wanted) return [];
+
+  const exact = groups.find((group) =>
+    normalizeText(group.title) === wanted
+    && normalizeText(group.authors[0]) !== 'unknown author',
+  );
+  if (!exact || !exactTitleGroupNeedsRepair(exact)) return [];
+
+  const author = exact.authors[0]?.trim();
+  if (!author) return [];
+
+  const safeTitle = query.trim().replace(/"/g, '');
+  const safeAuthor = author.replace(/"/g, '');
+  const [googleRefined, openLibraryRefined] = await Promise.all([
+    searchGoogleBaseline(
+      `intitle:"${safeTitle}" inauthor:"${safeAuthor}"`,
+      signal,
+    ),
+    searchOpenLibraryExactTitleAuthor(safeTitle, safeAuthor, signal)
+      .catch((error) => {
+        console.warn('Open Library exact title/author enrichment failed.', error);
+        return { groups: [], totalItems: 0 };
+      }),
+  ]);
+
+  return hardenCatalogGroups(
+    mergeGroups(googleRefined.groups, [openLibraryRefined.groups]),
+    { searchQuery: safeTitle },
+  );
+}
+
+
+const editionRepairIsbn = (edition: BookSearchEdition): string =>
+  compactIsbn(edition.isbn13 || edition.isbn10 || '');
+
+async function repairVisibleEditionPageCounts(
+  groups: BookSearchWorkGroup[],
+  signal?: AbortSignal,
+): Promise<BookSearchWorkGroup[]> {
+  // Repair only the highest-ranked visible results. This keeps search responsive
+  // while ensuring the editions users are actually choosing from get one exact-
+  // ISBN metadata pass before we concede that a page count is unavailable.
+  const candidates = groups
+    .slice(0, 8)
+    .flatMap((group, groupIndex) =>
+      group.editions
+        .filter((edition) =>
+          edition.format !== 'audiobook'
+          && !edition.pageCount
+          && Boolean(editionRepairIsbn(edition)),
+        )
+        .map((edition) => ({ groupIndex, edition })),
+    )
+    .slice(0, 4);
+
+  if (!candidates.length) return groups;
+
+  const repaired = groups.map((group) => ({ ...group, editions: [...group.editions] }));
+
+  await Promise.all(candidates.map(async ({ groupIndex, edition }) => {
+    const isbn = editionRepairIsbn(edition);
+    if (!isbn) return;
+
+    const [trusted, google, openLibrary, hardcover] = await Promise.all([
+      searchTrustedCatalogBaseline(isbn).catch(() => ({ groups: [], totalItems: 0 })),
+      searchGoogleBaseline(isbn, signal),
+      searchOpenLibraryWithAuthorFallback(isbn, signal).catch(() => ({ groups: [], totalItems: 0 })),
+      searchHardcoverWithBackoff(isbn),
+    ]);
+
+    const exact = selectExactIsbnEdition(
+      hardenCatalogGroups(
+        [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
+        { searchQuery: isbn },
+      ),
+      isbn,
+    );
+    if (!exact?.edition.pageCount) return;
+
+    const targetGroup = repaired[groupIndex];
+    const editionIndex = targetGroup.editions.findIndex((candidate) =>
+      candidate.source === edition.source
+      && candidate.externalEditionId === edition.externalEditionId,
+    );
+    if (editionIndex < 0) return;
+    targetGroup.editions[editionIndex] = mergeCatalogEditionData(edition, exact.edition);
+  }));
+
+  return repaired;
+}
+
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
+
   try {
     return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
     if (shouldBackOffCatalog(error)) {
       googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
-      console.warn('Google Books is cooling down after a provider rate limit/outage; alternate catalogs remain available.', error);
+      console.warn('Google Books is unavailable; Inkbound is continuing with alternate catalog providers.', error);
     } else {
-      console.warn('Google Books search unavailable; using alternate catalogs.', error);
+      console.warn('Google Books search failed; Inkbound is continuing with alternate catalog providers.', error);
     }
     return { groups: [], totalItems: 0 };
   }
@@ -452,12 +741,22 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
   }
 }
 
-function cacheSearchResponse(cacheKey: string, response: BookSearchResponse): BookSearchResponse {
-  const hardened = hardenCatalogResponse(response);
+function cacheSearchResponse(cacheKey: string, response: BookSearchResponse, searchQuery?: string): BookSearchResponse {
+  const hardened = hardenCatalogResponse(response, { searchQuery });
   if (hardened.groups.length > 0) {
     searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response: hardened });
   }
   return hardened;
+}
+
+export async function fetchCatalogPublisherSummary(
+  title: string,
+  author: string,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  // Provider-specific summary fallback belongs in the catalog orchestration
+  // layer. Feature/UI code must never call an individual metadata provider.
+  return fetchOpenLibrarySummary(title, author, signal);
 }
 
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
@@ -476,23 +775,96 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const isIsbnLookup = /^isbn:/i.test(builtQuery);
 
   if (isIsbnLookup) {
-    const trusted = await searchTrustedCatalogBaseline(trimmed);
-    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
+    const [trusted, google, openLibrary, hardcover, supplemental] = await Promise.all([
+      searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+      searchGoogleBaseline(trimmed, signal),
+      searchOpenLibraryWithAuthorFallback(trimmed, signal),
+      searchHardcoverWithBackoff(trimmed),
+      searchSupplementalCatalogs(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+    ]);
+    const combined = hardenCatalogGroups(
+      [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups, ...supplemental.groups],
+      { searchQuery: trimmed },
+    );
+    const exact = selectExactIsbnEdition(combined, compactIsbn(trimmed));
+    if (!exact) return { groups: [], totalItems: 0 };
+    return cacheSearchResponse(cacheKey, {
+      groups: [{ ...exact.work, editions: [exact.edition] }],
+      totalItems: 1,
+    }, trimmed);
   }
 
-  const google = await searchGoogleBaseline(trimmed, signal);
-  if (google.groups.length > 0) return cacheSearchResponse(cacheKey, google);
+  const [google, openLibrary, trusted, hardcover] = await Promise.all([
+    searchGoogleBaseline(trimmed, signal),
+    searchOpenLibraryWithAuthorFallback(trimmed, signal).catch(() => ({ groups: [], totalItems: 0 })),
+    searchTrustedCatalogBaseline(trimmed).catch(() => ({ groups: [], totalItems: 0 })),
+    searchHardcoverWithBackoff(trimmed),
+  ]);
 
-  const openLibrary = await searchOpenLibraryWithAuthorFallback(trimmed, signal);
-  if (openLibrary.groups.length > 0) return cacheSearchResponse(cacheKey, openLibrary);
+  let combined = hardenCatalogGroups(
+    [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
+    { searchQuery: trimmed },
+  );
 
-  if (!isIsbnLookup) {
-    const trusted = await searchTrustedCatalogBaseline(trimmed);
-    if (trusted.groups.length > 0) return cacheSearchResponse(cacheKey, trusted);
+  // Broad provider ranking can bury a legitimate exact-title work outside the
+  // first result window even though an ISBN lookup finds the same work. When the
+  // merged first window has no exact title and the query is not clearly an author
+  // lookup, make one structured title pass and feed it back through the same
+  // canonical hardening/merge pipeline. This is a general retrieval fallback,
+  // never a title-specific exception.
+  if (shouldRunStructuredTitleFallback(combined, trimmed)) {
+    const safeTitle = trimmed.replace(/"/g, '');
+    const [googleTitleFallback, openLibraryTitleFallback] = await Promise.all([
+      searchGoogleBaseline(`intitle:"${safeTitle}"`, signal),
+      searchOpenLibrary(`intitle:"${safeTitle}"`, signal)
+        .catch((error) => {
+          console.warn('Open Library structured-title fallback failed.', error);
+          return { groups: [], totalItems: 0 };
+        }),
+    ]);
+    combined = hardenCatalogGroups(
+      mergeGroups(combined, [googleTitleFallback.groups, openLibraryTitleFallback.groups]),
+      { searchQuery: trimmed },
+    );
   }
 
-  const hardcover = await searchHardcoverWithBackoff(trimmed);
-  if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
+  const refinedExact = await refineExactTitleWithAuthor(combined, trimmed, signal);
+  if (refinedExact.length > 0) {
+    combined = hardenCatalogGroups(
+      [...combined, ...refinedExact],
+      { searchQuery: trimmed },
+    );
+  }
 
-  return { groups: [], totalItems: 0 };
+  combined = await repairVisibleEditionPageCounts(combined, signal);
+  combined = hardenCatalogGroups(combined, { searchQuery: trimmed });
+
+  let supplemental: BookSearchResponse = { groups: [], totalItems: 0 };
+  if (google.groups.length === 0 || combined.length < 8) {
+    supplemental = await searchSupplementalCatalogs(trimmed)
+      .catch((error) => {
+        console.warn('Supplemental catalog providers unavailable.', error);
+        return { groups: [], totalItems: 0 };
+      });
+    combined = hardenCatalogGroups(
+      [...combined, ...supplemental.groups],
+      { searchQuery: trimmed },
+    );
+  }
+
+  if (combined.length === 0) return { groups: [], totalItems: 0 };
+
+  // Supplemental providers fill gaps and provide resilience, but all records
+  // still pass through the same canonical work/edition resolver.
+  return cacheSearchResponse(cacheKey, {
+    groups: combined,
+    totalItems: Math.max(
+      google.totalItems,
+      openLibrary.totalItems,
+      trusted.totalItems,
+      hardcover.totalItems,
+      supplemental.totalItems,
+      combined.length,
+    ),
+  }, trimmed);
 }

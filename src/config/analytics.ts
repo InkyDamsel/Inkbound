@@ -1,0 +1,1 @@
+export const INKBOUND_GA4_MEASUREMENT_ID = 'G-2LDXP8Z4S0' as const;

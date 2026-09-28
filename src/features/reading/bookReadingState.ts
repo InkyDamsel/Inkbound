@@ -11,6 +11,13 @@ export interface BookReadingState {
   progressNeedsCorrection: boolean;
 }
 
+export interface ReadingProgressCorrection {
+  progressPages?: number;
+  progressMinutes?: number;
+  pageCount?: number;
+  audiobookDurationMins?: number;
+}
+
 export function getActiveEdition(book: UserBookRecord): Edition | undefined {
   return book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0];
 }
@@ -71,6 +78,29 @@ export function getCanonicalProgressPercentage(book: UserBookRecord): number {
   return getBookReadingState(book).progressPercentage;
 }
 
+export function getRemainingReadingUnits(book: UserBookRecord): {
+  isAudiobook: boolean;
+  totalUnits?: number;
+  completedUnits: number;
+  remainingUnits?: number;
+} {
+  const state = getBookReadingState(book);
+  const isAudiobook = state.activeEdition?.format === 'audiobook';
+  const remainingUnits = state.totalUnits === undefined
+    ? undefined
+    : state.isFinished
+      ? 0
+      : Math.max(0, state.totalUnits - state.completedUnits);
+
+  return {
+    isAudiobook,
+    totalUnits: state.totalUnits,
+    completedUnits: state.completedUnits,
+    remainingUnits,
+  };
+}
+
+
 /**
  * Canonical aggregate progress for any derived book grouping (collections,
  * series, dashboards, etc.). Keeping the average here prevents feature screens
@@ -119,5 +149,64 @@ export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, d
     status,
     dateStarted: status === 'currently-reading' ? book.dateStarted ?? date : book.dateStarted,
     dateFinished: undefined,
+  };
+}
+
+
+/**
+ * Canonical manual reading-progress correction.
+ *
+ * UI surfaces may decide which values the reader edited, but total validation,
+ * completion percentage, finished-state promotion, and finish-date behavior
+ * belong here so those rules cannot drift between Book Details and sessions.
+ */
+export function withCorrectedReadingProgress(
+  book: UserBookRecord,
+  correction: ReadingProgressCorrection,
+  date = localDateKey(),
+): UserBookRecord {
+  const activeEdition = getActiveEdition(book);
+  if (!activeEdition) return book;
+
+  const isAudiobook = activeEdition.format === 'audiobook';
+  const nextEdition: Edition = {
+    ...activeEdition,
+    ...(correction.pageCount !== undefined
+      ? {
+          pageCount: correction.pageCount > 0 ? correction.pageCount : undefined,
+          externalSource: 'manual' as const,
+        }
+      : {}),
+    ...(correction.audiobookDurationMins !== undefined
+      ? {
+          audiobookDurationMins: correction.audiobookDurationMins > 0
+            ? correction.audiobookDurationMins
+            : undefined,
+          externalSource: 'manual' as const,
+        }
+      : {}),
+  };
+
+  const progressPages = Math.max(0, correction.progressPages ?? book.progressPages);
+  const progressMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes);
+  const totalUnits = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount;
+  const completedUnits = isAudiobook ? progressMinutes : progressPages;
+  const hasKnownTotal = typeof totalUnits === 'number' && Number.isFinite(totalUnits) && totalUnits > 0;
+  const reachedEnd = Boolean(hasKnownTotal && completedUnits >= totalUnits!);
+  const status: ReadingStatus = reachedEnd ? 'finished' : book.status;
+  const progressPercentage = status === 'finished'
+    ? 100
+    : hasKnownTotal
+      ? Math.max(0, Math.min(100, Math.round((completedUnits / totalUnits!) * 100)))
+      : book.progressPercentage;
+
+  return {
+    ...book,
+    editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition),
+    progressPages,
+    progressMinutes,
+    progressPercentage,
+    status,
+    dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? date) : book.dateFinished,
   };
 }

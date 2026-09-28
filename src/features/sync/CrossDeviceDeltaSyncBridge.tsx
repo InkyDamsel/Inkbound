@@ -15,9 +15,10 @@ import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import {
+  applyRuntimeJsonFromExternalSource,
   getRuntimeStorage,
-  notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
@@ -29,8 +30,13 @@ import {
   shouldApplyRemoteTombstone,
   shouldRemoteChangeReplacePending,
 } from './syncConflictPolicy';
+import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
+import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
+import { compactCloudProfileForRuntime } from './profileSyncMerge';
 import {
   crossDeviceCursorKey,
+  FULL_RECONCILIATION_VERSION,
+  fullReconciliationVersionKey,
   syncBaselineStateKey,
   syncPendingStateKey,
   SYNC_STORAGE_KEYS,
@@ -82,16 +88,8 @@ interface SyncBaseline {
 }
 
 const runtimeStorage = () => getRuntimeStorage();
-const stable = (value: unknown) => JSON.stringify(value);
-const hashText = (value: string) => {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-};
-const fingerprint = (value: unknown) => hashText(stable(value));
+const stable = stableSyncValue;
+const fingerprint = fingerprintSyncValue;
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -138,16 +136,35 @@ function upsertById<T extends { id: string }>(current: T[], incoming: T[]): T[] 
   return [...next.values()];
 }
 
+function upsertBooksById(current: UserBookRecord[], incoming: UserBookRecord[]): UserBookRecord[] {
+  if (!incoming.length) return current;
+  const next = new Map(current.map((item) => [item.id, item]));
+  incoming.forEach((item) => next.set(item.id, mergeIncomingBookLoanState(next.get(item.id), item)));
+  return [...next.values()];
+}
+
 function removeIds<T extends { id: string }>(current: T[], removed: Set<string>): T[] {
   if (!removed.size) return current;
   return current.filter((item) => !removed.has(item.id));
 }
 
-function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpdatedAt: string }): boolean {
+function cloudRecordWinsPending<T>(
+  record: CloudRecord<T>,
+  pending: { clientUpdatedAt: string } | undefined,
+  baselineMatchesRemote: boolean,
+): boolean {
+  if (!pending) return true;
+
+  // If the cloud payload is exactly the state this device already acknowledged
+  // in its baseline, it is not a competing newer edit. A durable pending
+  // mutation was made after that baseline and must win even when Firestore's
+  // server timestamp is later than the reader device's wall clock.
+  if (baselineMatchesRemote) return false;
+
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
-    pendingClientUpdatedAt: pending?.clientUpdatedAt,
+    pendingClientUpdatedAt: pending.clientUpdatedAt,
   });
 }
 
@@ -186,6 +203,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
     const coreHydrationComplete = () => (
       runtimeStorage().getItem(OWNER_UID_KEY) === uid
       && runtimeStorage().getItem(HYDRATION_REQUIRED_UID_KEY) !== uid
+      && runtimeStorage().getItem(fullReconciliationVersionKey(uid)) === FULL_RECONCILIATION_VERSION
     );
 
     const pullDeltas = async () => {
@@ -233,7 +251,16 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const id = record.data?.id;
           if (!id) return;
           bookUpdateMillis.set(id, updatedMillis);
-          if (!cloudRecordWinsPending(record, pending.books[id])) return;
+          const pendingMutation = pending.books[id];
+          if (!cloudRecordWinsPending(record, pendingMutation, baseline.books[id] === fingerprint(record.data))) {
+            if (pendingMutation?.operation === 'upsert' && pendingMutation.data) {
+              const mergedPending = mergePendingLocalBookWithRemoteMetadata(pendingMutation.data, record.data);
+              pendingMutation.data = mergedPending;
+              acceptedBooks.push(mergedPending);
+              baseline.books[id] = fingerprint(record.data);
+            }
+            return;
+          }
           delete pending.books[id];
           acceptedBooks.push(record.data);
           baseline.books[id] = fingerprint(record.data);
@@ -246,7 +273,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const id = record.data?.id;
           if (!id) return;
           sessionUpdateMillis.set(id, updatedMillis);
-          if (!cloudRecordWinsPending(record, pending.sessions[id])) return;
+          if (!cloudRecordWinsPending(record, pending.sessions[id], baseline.sessions[id] === fingerprint(record.data))) return;
           delete pending.sessions[id];
           acceptedSessions.push(record.data);
           baseline.sessions[id] = fingerprint(record.data);
@@ -287,8 +314,8 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const profileRecord = profileSnapshot.data() as CloudRecord<Record<string, unknown>>;
           const updatedMillis = profileRecord.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
-          if (updatedMillis > lowerBound.toMillis() && cloudRecordWinsPending(profileRecord, pending.profile)) {
-            acceptedProfile = profileRecord.data;
+          if (updatedMillis > lowerBound.toMillis() && cloudRecordWinsPending(profileRecord, pending.profile, baseline.profile === stable(profileRecord.data))) {
+            acceptedProfile = compactCloudProfileForRuntime(profileRecord.data);
             delete pending.profile;
             baseline.profile = stable(profileRecord.data);
           }
@@ -296,26 +323,23 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
 
         const books = readJson<UserBookRecord[]>(BOOKS_KEY, []);
         const sessions = readJson<ReadingSession[]>(SESSIONS_KEY, []);
-        const nextBooks = removeIds(upsertById(books, acceptedBooks), removedBooks);
+        const nextBooks = removeIds(upsertBooksById(books, acceptedBooks), removedBooks);
         const nextSessions = removeIds(upsertById(sessions, acceptedSessions), removedSessions);
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (stable(books) !== stable(nextBooks)) {
-          writeJson(BOOKS_KEY, nextBooks);
+          applyRuntimeJsonFromExternalSource(BOOKS_KEY, nextBooks);
           knownBookIds.current = new Set(nextBooks.map((book) => book.id));
-          notifyRuntimeStorageChanged(BOOKS_KEY);
           changedKeys.push(BOOKS_KEY);
         }
 
         if (stable(sessions) !== stable(nextSessions)) {
-          writeJson(SESSIONS_KEY, nextSessions);
-          notifyRuntimeStorageChanged(SESSIONS_KEY);
+          applyRuntimeJsonFromExternalSource(SESSIONS_KEY, nextSessions);
           changedKeys.push(SESSIONS_KEY);
         }
 
         if (acceptedProfile && runtimeStorage().getItem(PROFILE_KEY) !== stable(acceptedProfile)) {
-          writeJson(PROFILE_KEY, acceptedProfile);
-          notifyRuntimeStorageChanged(PROFILE_KEY);
+          applyRuntimeJsonFromExternalSource(PROFILE_KEY, acceptedProfile);
           changedKeys.push(PROFILE_KEY);
         }
 

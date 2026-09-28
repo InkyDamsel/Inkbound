@@ -1,5 +1,6 @@
 import type { Edition, ReadingSession, UserBookRecord } from '../../types';
 import { getSessionDurationMinutes, getSessionPagesRead } from './sessionAnalytics';
+import { getRemainingReadingUnits } from './bookReadingState';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -54,11 +55,11 @@ export const buildReadingDeadlinePlan = (
   const rawDayDifference = Math.round((deadlineDate.getTime() - today.getTime()) / DAY_MS);
   const overdueDays = rawDayDifference < 0 ? Math.abs(rawDayDifference) : 0;
   const daysRemaining = rawDayDifference <= 0 ? (rawDayDifference === 0 ? 1 : 0) : rawDayDifference;
-  const isAudiobook = edition?.format === 'audiobook';
-  const total = isAudiobook ? edition?.audiobookDurationMins : edition?.pageCount;
-  const totalUnits = typeof total === 'number' && Number.isFinite(total) && total > 0 ? total : null;
-  const completedUnits = Math.max(0, isAudiobook ? book.progressMinutes : book.progressPages);
-  const remainingUnits = totalUnits === null ? null : Math.max(0, totalUnits - completedUnits);
+  const readingUnits = getRemainingReadingUnits(book);
+  const isAudiobook = readingUnits.isAudiobook;
+  const totalUnits = readingUnits.totalUnits ?? null;
+  const completedUnits = readingUnits.completedUnits;
+  const remainingUnits = readingUnits.remainingUnits ?? null;
   const isComplete = book.status === 'finished' || remainingUnits === 0;
   const unitsPerDay = !isComplete && remainingUnits !== null && daysRemaining > 0
     ? Math.ceil(remainingUnits / daysRemaining)

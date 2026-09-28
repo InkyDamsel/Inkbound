@@ -15,6 +15,7 @@ import { auth, functions } from '../lib/firebase';
 import { configureRuntimeAuthentication } from './runtimeAuthentication';
 import { configureRuntimeExport } from './runtimeExport';
 import { configureRuntimeLifecycle } from './runtimeLifecycle';
+import { configureRuntimeBackNavigation } from './runtimeBackNavigation';
 import { initializeNativeSecurityRuntime } from './runtimeNativeSecurityBootstrap';
 import {
   PremiumBillingPlan,
@@ -271,6 +272,20 @@ export async function initializeAndroidRuntime() {
       return () => {
         removed = true;
         window.removeEventListener('online', handleOnline);
+        void handlePromise.then((handle) => handle.remove());
+      };
+    },
+  });
+
+  configureRuntimeBackNavigation({
+    subscribe: (listener) => {
+      let removed = false;
+      const handlePromise = CapacitorApp.addListener('backButton', () => {
+        if (!removed) listener();
+      });
+
+      return () => {
+        removed = true;
         void handlePromise.then((handle) => handle.remove());
       };
     },

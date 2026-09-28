@@ -9,7 +9,7 @@ import {
 } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks, searchGoogleBooksAuthorPage, searchGoogleBooksPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13 } from '../features/book-search/catalogHardening';
+import { enrichSelectedCatalogEdition, hardenCatalogGroups, isValidCatalogIsbn10, isValidCatalogIsbn13, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -19,9 +19,10 @@ import {
 } from '../features/ownership/customOwnershipCategories';
 import { withReadingStatus } from '../features/reading/bookReadingState';
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
-import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { DEVICE_FEATURE_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { getRuntimeStorage, readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
+import { CanonicalInput, CanonicalTextarea } from './form/CanonicalInput';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -32,8 +33,8 @@ interface AddBookModalProps {
 
 type AddBookTab = 'search' | 'scan' | 'manual';
 type PendingSearchEdition = { work: BookSearchWorkGroup; edition: BookSearchEdition };
-type CustomCategorySelection = `custom:${string}`;
-type CategorySelection = ReadingStatus | CustomCategorySelection;
+type CustomOwnershipSelection = `custom:${string}`;
+type OwnershipSelection = OwnershipStatus | CustomOwnershipSelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
 type IsbnInputSource = 'camera' | 'manual';
 type AuthorPageState = {
@@ -53,7 +54,7 @@ type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => Barc
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const SCANNER_REVIEW_PAGE_SIZE = 6;
-const SCANNER_DRAFT_STORAGE_KEY = 'inkbound_scanner_review_draft_v1';
+const SCANNER_DRAFT_STORAGE_KEY = DEVICE_FEATURE_STORAGE_KEYS.scannerReviewDraft;
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 
 const today = () => {
@@ -61,15 +62,13 @@ const today = () => {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 };
 const uniqueId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const isCustomCategorySelection = (selection: CategorySelection): selection is CustomCategorySelection => selection.startsWith('custom:');
-const categoryStatus = (selection: CategorySelection): ReadingStatus => isCustomCategorySelection(selection) ? 'custom' : selection;
-const categoryId = (selection: CategorySelection): string | undefined => isCustomCategorySelection(selection) ? selection.slice('custom:'.length) : undefined;
+const isCustomOwnershipSelection = (selection: OwnershipSelection): selection is CustomOwnershipSelection => selection.startsWith('custom:');
+const ownershipStatus = (selection: OwnershipSelection): OwnershipStatus => isCustomOwnershipSelection(selection) ? 'custom' : selection;
+const ownershipCategoryId = (selection: OwnershipSelection): string | undefined => isCustomOwnershipSelection(selection) ? selection.slice('custom:'.length) : undefined;
 const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
-const editionIsbnValues = (edition: BookSearchEdition) => [edition.isbn13, edition.isbn10].map((value) => normalizeIsbn(value ?? '')).filter(Boolean);
 const searchEditionKey = (work: BookSearchWorkGroup, edition: BookSearchEdition) => `${work.key}:${edition.source}:${edition.externalEditionId}`;
 const statusLabel = (status: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
 const normalizeAuthorName = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-const normalizeCatalogText = (value: string) => value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
   const normalizedAuthor = normalizeAuthorName(authorName);
@@ -78,39 +77,15 @@ const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: str
   );
 };
 
-const sameCatalogEdition = (left: BookSearchEdition, right: BookSearchEdition) => {
-  if (left.source === right.source && left.externalEditionId === right.externalEditionId) return true;
-  const leftIsbns = editionIsbnValues(left);
-  const rightIsbns = new Set(editionIsbnValues(right));
-  return leftIsbns.some((isbn) => rightIsbns.has(isbn));
-};
-
-const mergeCatalogResultGroups = (current: BookSearchWorkGroup[], incoming: BookSearchWorkGroup[], searchQuery?: string, preferredAuthor?: string) => {
-  const merged = current.map((group) => ({ ...group, genres: [...group.genres], editions: [...group.editions] }));
-  const byIdentity = new Map<string, BookSearchWorkGroup>();
-  merged.forEach((group) => {
-    byIdentity.set(`${normalizeCatalogText(group.title)}::${normalizeAuthorName(group.authors[0] ?? '')}`, group);
-  });
-
-  incoming.forEach((group) => {
-    const identity = `${normalizeCatalogText(group.title)}::${normalizeAuthorName(group.authors[0] ?? '')}`;
-    const existing = byIdentity.get(identity);
-    if (!existing) {
-      const added = { ...group, genres: [...group.genres], editions: [...group.editions] };
-      merged.push(added);
-      byIdentity.set(identity, added);
-      return;
-    }
-
-    group.editions.forEach((edition) => {
-      if (!existing.editions.some((candidate) => sameCatalogEdition(candidate, edition))) existing.editions.push(edition);
-    });
-    existing.genres = [...new Set([...existing.genres, ...group.genres])].slice(0, 16);
-    if (!existing.publisherSummary && group.publisherSummary) existing.publisherSummary = group.publisherSummary;
-  });
-
-  return hardenCatalogGroups(merged, { searchQuery, preferredAuthor });
-};
+const mergeCatalogResultGroups = (
+  current: BookSearchWorkGroup[],
+  incoming: BookSearchWorkGroup[],
+  searchQuery?: string,
+  preferredAuthor?: string,
+) => hardenCatalogGroups(
+  [...current, ...incoming],
+  { searchQuery, preferredAuthor },
+);
 
 const isValidIsbn = (value: string) => isValidCatalogIsbn10(value) || isValidCatalogIsbn13(value);
 
@@ -162,13 +137,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [summary, setSummary] = useState('');
   const [genres, setGenres] = useState('');
   const [pageCount, setPageCount] = useState('');
-  const [format, setFormat] = useState<Format>('hardcover');
+  const [format, setFormat] = useState<Format>('unknown');
   const [materialType, setMaterialType] = useState<ReadingMaterialType>('book');
-  const [category, setCategory] = useState<CategorySelection>('tbr');
-  const [ownership, setOwnership] = useState<OwnershipStatus>('owned');
+  const [category, setCategory] = useState<ReadingStatus>('tbr');
+  const [ownership, setOwnership] = useState<OwnershipSelection>('owned');
   const [priority, setPriority] = useState<Priority>('medium');
 
   const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>(readScannerDraft);
+  const [scannerCategory, setScannerCategory] = useState<ReadingStatus>('tbr');
   const [scannerReviewPage, setScannerReviewPage] = useState(1);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -240,7 +216,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     const created = createCustomOwnershipCategory(newCustomCategoryName);
     if (!created) return;
     setCustomCategories(readCustomOwnershipCategories());
-    setCategory(`custom:${created.id}`);
+    setOwnership(`custom:${created.id}`);
     setNewCustomCategoryName('');
     setCreatingCustomCategory(false);
   };
@@ -263,25 +239,26 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(true);
     setPendingSearchEdition(null);
     try {
-      let googlePage = null;
-      try {
-        googlePage = await searchGoogleBooksPage(trimmedQuery, 0);
-      } catch (error) {
-        console.warn('Paged Google Books search unavailable; falling back to the standard catalog chain.', error);
+      // ISBN entry, barcode scan, and any other exact-edition lookup must enter
+      // the same canonical resolver. Do not prepend the paged Google-only path
+      // for ISBN searches or the UI can reintroduce provider-specific edition
+      // metadata before the shared exact-ISBN chain has resolved the record.
+      if (isValidIsbn(trimmedQuery)) {
+        const exactResponse = await searchGoogleBooks(trimmedQuery);
+        setResults(exactResponse.groups);
+        setSearchNextStartIndex(0);
+        setSearchProviderTotal(exactResponse.totalItems || null);
+        setSearchHasMore(false);
+        return;
       }
 
-      if (googlePage && googlePage.groups.length > 0) {
-        setResults(googlePage.groups);
-        setSearchNextStartIndex(googlePage.nextStartIndex);
-        setSearchProviderTotal(googlePage.providerTotalItems || null);
-        setSearchHasMore(googlePage.hasMore);
-      } else {
-        const response = await searchGoogleBooks(trimmedQuery);
-        setResults(response.groups);
-        setSearchNextStartIndex(0);
-        setSearchProviderTotal(null);
-        setSearchHasMore(false);
-      }
+      const catalogResponse = await searchGoogleBooks(trimmedQuery);
+      setResults(catalogResponse.groups);
+      setSearchNextStartIndex(40);
+      setSearchProviderTotal(catalogResponse.totalItems || null);
+      // Initial search intentionally uses one canonical Google page (40 max).
+      // Only an explicit Load More action may request the next Google page.
+      setSearchHasMore((catalogResponse.totalItems || 0) > 40);
     } catch (error) {
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
@@ -424,25 +401,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     storeAddedSearchBook(work, edition, book);
   };
 
-  const addSearchEditionToList = (selection: CategorySelection) => {
+  const addSearchEditionToList = (status: ReadingStatus) => {
     if (!pendingSearchEdition) return;
     const { work, edition } = pendingSearchEdition;
     const key = searchEditionKey(work, edition);
-    const customCategoryId = categoryId(selection);
-    const status = categoryStatus(selection);
     const existing = addedSearchBooks.get(key);
 
     if (existing) {
-      const updated = {
-        ...withReadingStatus(existing, status),
-        customOwnershipCategoryId: customCategoryId,
-      };
-      replaceStoredSearchBook(work, edition, updated);
+      // Reading-list changes must never rewrite the independent ownership value.
+      replaceStoredSearchBook(work, edition, withReadingStatus(existing, status));
     } else {
-      const book = {
-        ...createBookFromSearchEdition({ work, edition, status }),
-        customOwnershipCategoryId: customCategoryId,
-      };
+      const book = createBookFromSearchEdition({ work, edition, status });
       onAddBook(book);
       storeAddedSearchBook(work, edition, book);
     }
@@ -468,9 +437,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerMessage(`ISBN ${isbn} detected — looking it up…`);
     try {
       const response = await searchGoogleBooks(isbn);
-      const candidates = response.groups.flatMap((work) => work.editions.map((edition) => ({ work, edition })));
-      const exact = candidates.find(({ edition }) => editionIsbnValues(edition).includes(isbn));
-      const match = exact ?? candidates[0];
+      const match = selectExactIsbnEdition(response.groups, isbn);
       if (!match) {
         setScannerError(`Inkbound could not find a book for ISBN ${isbn}. You can keep scanning and add this one manually later.`);
         return;
@@ -558,7 +525,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const saveScannedBooks = () => {
     if (scannedBooks.length === 0) return;
-    const books = scannedBooks.map((item) => ({ ...item.book, status: 'tbr' as const, dateStarted: undefined, dateFinished: undefined }));
+    const books = scannedBooks.map((item) => withReadingStatus(item.book, scannerCategory));
     if (onAddMultipleBooks) onAddMultipleBooks(books);
     else books.forEach(onAddBook);
     setScannedBooks([]);
@@ -575,8 +542,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     const parsedPageCount = Number.parseInt(pageCount, 10);
     const validPageCount = Number.isFinite(parsedPageCount) && parsedPageCount > 0 ? parsedPageCount : undefined;
     const hasKnownPrintTotal = format !== 'audiobook' && validPageCount !== undefined;
-    const selectedStatus = categoryStatus(category);
-    const selectedCustomCategoryId = categoryId(category);
+    const selectedStatus = category;
+    const selectedOwnership = ownershipStatus(ownership);
+    const selectedCustomCategoryId = ownershipCategoryId(ownership);
     const isFinished = selectedStatus === 'finished';
     const addedOn = today();
     const newBook: UserBookRecord = {
@@ -589,7 +557,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         publisherSummary: summary.trim() || undefined,
         materialType,
         genres: genres.split(',').map((genre) => genre.trim()).filter(Boolean),
-        publicationYear: new Date().getFullYear(),
       },
       activeEditionId: editionId,
       editions: [{
@@ -599,7 +566,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
       }],
       status: selectedStatus,
-      ownership,
+      ownership: selectedOwnership,
       customOwnershipCategoryId: selectedCustomCategoryId,
       progressPages: isFinished && hasKnownPrintTotal ? validPageCount! : 0,
       progressMinutes: 0,
@@ -646,15 +613,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           </div>
           <div className="mt-4 grid gap-3">
             {work.editions.map((edition) => {
+              const displayEdition = enrichSelectedCatalogEdition(work, edition);
               const key = searchEditionKey(work, edition);
               const addedBook = addedSearchBooks.get(key);
               const added = Boolean(addedBook);
               return (
                 <div key={edition.externalEditionId} className={`flex min-h-36 gap-3 rounded-xl border p-3 ${added ? 'border-[#c5a059]/35 bg-[#17131b]' : 'border-white/7 bg-[#120c15]'}`}>
-                  {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
+                  {displayEdition.coverUrl ? <img src={displayEdition.coverUrl} alt="" className="h-28 w-20 shrink-0 rounded object-cover" /> : <span className="grid h-28 w-20 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen /></span>}
                   <div className="flex min-w-0 flex-1 flex-col text-xs text-[#ad9fac]">
-                    <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === edition.format)?.label ?? edition.format}</strong>
-                    {typeof edition.pageCount === 'number' && edition.pageCount > 0 ? <span className="mt-1 block">{edition.pageCount} pages</span> : <span className="mt-1 block text-[#776b78]">Page count unavailable</span>}
+                    <strong className="block text-[#f4efe6]">{FORMAT_OPTIONS.find((option) => option.value === displayEdition.format)?.label ?? displayEdition.format}</strong>
+                    {typeof displayEdition.pageCount === 'number' && displayEdition.pageCount > 0 ? <span className="mt-1 block">{displayEdition.pageCount} pages</span> : <span className="mt-1 block text-[#776b78]">Page count unavailable</span>}
                     <div className="mt-auto pt-3">
                       {addedBook ? (
                         <div className="rounded-xl border border-[#c5a059]/20 bg-[#1d1720] px-3 py-2.5">
@@ -665,12 +633,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                             </div>
                             <button type="button" onClick={() => removeStoredSearchBook(work, edition)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-[#8f8290] transition hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-300 focus:border-rose-400/50 focus:text-rose-300" aria-label={`Remove ${work.title} from your library`} title="Remove from library"><Trash2 className="h-3.5 w-3.5" /></button>
                           </div>
-                          <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="mt-2 min-h-8 w-full rounded-lg border border-[#c5a059]/15 bg-[#120c15]/70 px-2 text-[11px] font-bold text-[#d8c28b] transition hover:border-[#c5a059]/35 hover:bg-[#c5a059]/5">Change list</button>
+                          <button type="button" onClick={() => chooseSearchEdition(work, displayEdition)} className="mt-2 min-h-8 w-full rounded-lg border border-[#c5a059]/15 bg-[#120c15]/70 px-2 text-[11px] font-bold text-[#d8c28b] transition hover:border-[#c5a059]/35 hover:bg-[#c5a059]/5">Change list</button>
                         </div>
                       ) : (
                         <div className="flex flex-col gap-2">
-                          <button type="button" onClick={() => quickAddSearchEdition(work, edition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
-                          <button type="button" onClick={() => chooseSearchEdition(work, edition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
+                          <button type="button" onClick={() => quickAddSearchEdition(work, displayEdition)} className="quiet-shelf-primary-action min-h-10 justify-center px-3">+ Add</button>
+                          <button type="button" onClick={() => chooseSearchEdition(work, displayEdition)} className="min-h-9 text-xs font-bold text-[#d8c28b]">Choose list</button>
                         </div>
                       )}
                     </div>
@@ -707,7 +675,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 <div>
                   <p className="inkbound-kicker">Stack scanner</p>
                   <h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3>
-                  <p className="mt-2 max-w-2xl text-sm text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Your review stack stays saved on this device until you save or clear it. When you are finished, save the whole stack to your TBR.</p>
+                  <p className="mt-2 max-w-2xl text-sm text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Your review stack stays saved on this device until you save or clear it. When you are finished, choose the reading list for the whole stack.</p>
                 </div>
                 <div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div>
               </div>
@@ -726,7 +694,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </div>
               {cameraActive && <div className="mt-3 flex justify-end"><button type="button" onClick={stopCamera} className="quiet-shelf-secondary-action">Stop Camera</button></div>}
               <form onSubmit={addManualIsbn} className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-w-0 flex-1" />
+                <CanonicalInput value={manualIsbn} onValueChange={setManualIsbn} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-w-0 flex-1" />
                 <button type="submit" disabled={!manualIsbn.trim() || scanLookupBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scanLookupBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
               </form>
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
@@ -748,7 +716,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                       return (
                         <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">
                           {edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover" /> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5" /></span>}
-                          <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p><p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · TBR</p></div>
+                          <div className="min-w-0 flex-1"><p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p><p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p><p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · {statusLabel(scannerCategory)}</p></div>
                           <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4" /></button>
                         </article>
                       );
@@ -763,7 +731,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   )}
                 </>
               )}
-              <button type="button" onClick={saveScannedBooks} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-5 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to TBR</button>
+              <div className="mt-5">
+                <Field label="Add scanned books to">
+                  <select value={scannerCategory} onChange={(event) => setScannerCategory(event.target.value as ReadingStatus)}>
+                    {ADD_TO_LIST_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <button type="button" onClick={saveScannedBooks} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {statusLabel(scannerCategory)}</button>
             </section>
           </div>
         ) : activeTab === 'search' ? (
@@ -790,7 +765,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             ) : (
               <>
                 <form onSubmit={handleSearch} className="flex flex-col gap-3 sm:flex-row">
-                  <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
+                  <label className="relative min-w-0 flex-1"><Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#807482]" /><CanonicalInput type="search" value={query} onValueChange={setQuery} placeholder="Search by title, author, or ISBN" autoFocus className="h-12 w-full rounded-xl border border-[#c5a059]/20 bg-[#0d0910] pl-12 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
                   <button type="submit" disabled={!query.trim() || isSearching} className="quiet-shelf-primary-action min-h-12 px-6 disabled:opacity-50">{isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{isSearching ? 'Searching…' : 'Search'}</button>
                 </form>
                 {!isSearching && hasSearched && results.length > 0 && searchProviderTotal !== null && (
@@ -823,20 +798,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         ) : (
           <div className="mt-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Title *"><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" /></Field>
-              <Field label="Author / creator *"><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Author or creator" /></Field>
+              <Field label="Title *"><CanonicalInput value={title} onValueChange={setTitle} placeholder="Title" /></Field>
+              <Field label="Author / creator *"><CanonicalInput value={author} onValueChange={setAuthor} placeholder="Author or creator" /></Field>
               <Field label="Reading material"><select value={materialType} onChange={(event) => setMaterialType(event.target.value as ReadingMaterialType)}>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
-              <Field label="Genres"><input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance" /></Field>
-              {format !== 'audiobook' && <Field label="Page count"><input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" /></Field>}
+              <Field label="Genres"><CanonicalInput value={genres} onValueChange={setGenres} placeholder="Fantasy, Romance" /></Field>
+              {format !== 'audiobook' && <Field label="Page count"><CanonicalInput type="number" min="1" value={pageCount} onValueChange={setPageCount} placeholder="Optional" /></Field>}
               <Field label="Format"><select value={format} onChange={(event) => setFormat(event.target.value as Format)}>{FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
               <div>
-                <Field label="Reading status / category"><select value={category} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomCategory(true); return; } setCategory(event.target.value as CategorySelection); setCreatingCustomCategory(false); }}><optgroup label="Reading status">{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom categories">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}<option value="__new__">+ New custom category…</option></select></Field>
-                {creatingCustomCategory && <div className="mt-2 flex gap-2"><input value={newCustomCategoryName} onChange={(event) => setNewCustomCategoryName(event.target.value)} placeholder="Category name" className="inkbound-select min-w-0 flex-1" /><button type="button" onClick={createAndSelectCustomCategory} className="quiet-shelf-secondary-action">Create</button></div>}
+                <Field label="Reading status"><select value={category} onChange={(event) => setCategory(event.target.value as ReadingStatus)}>{READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
               </div>
-              <Field label="Ownership"><select value={ownership} onChange={(event) => setOwnership(event.target.value as OwnershipStatus)}>{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+              <div><Field label="Ownership"><select value={ownership} onChange={(event) => { if (event.target.value === '__new__') { setCreatingCustomCategory(true); return; } setOwnership(event.target.value as OwnershipSelection); setCreatingCustomCategory(false); }}><optgroup label="Ownership">{OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom').map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customCategories.length > 0 && <optgroup label="Custom ownership">{customCategories.map((customCategory) => <option key={customCategory.id} value={`custom:${customCategory.id}`}>{customCategory.name}</option>)}</optgroup>}<option value="__new__">+ Create custom ownership…</option></select></Field>{creatingCustomCategory && <div className="mt-2 flex gap-2"><CanonicalInput value={newCustomCategoryName} onValueChange={setNewCustomCategoryName} placeholder="Ownership name" className="inkbound-select min-w-0 flex-1" /><button type="button" onClick={createAndSelectCustomCategory} className="quiet-shelf-secondary-action">Create</button></div>}</div>
               <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
             </div>
-            <Field label="Summary"><textarea rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Optional" /></Field>
+            <Field label="Summary"><CanonicalTextarea rows={4} value={summary} onValueChange={setSummary} placeholder="Optional" /></Field>
             <button type="button" onClick={handleManualAdd} disabled={!title.trim() || !author.trim()} className="quiet-shelf-primary-action w-full justify-center disabled:opacity-50">Add to Inkbound</button>
           </div>
         )}
@@ -847,7 +821,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               <h3 className="font-serif text-2xl text-[#f4efe6]">{addedSearchBooks.has(searchEditionKey(pendingSearchEdition.work, pendingSearchEdition.edition)) ? 'Change reading list' : 'Add to which list?'}</h3>
               <p className="mt-2 text-sm text-[#ad9fac]">Your search results will stay open so you can keep building your library.</p>
               <div className="mt-5 grid gap-2">
-                {ADD_TO_LIST_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => addSearchEditionToList(option.value as CategorySelection)} className="quiet-shelf-secondary-action justify-between">{option.label}<span>→</span></button>)}
+                {ADD_TO_LIST_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => addSearchEditionToList(option.value)} className="quiet-shelf-secondary-action justify-between">{option.label}<span>→</span></button>)}
               </div>
               <button type="button" onClick={() => setPendingSearchEdition(null)} className="mt-4 min-h-11 w-full text-sm font-semibold text-[#ad9fac]">Cancel</button>
             </section>

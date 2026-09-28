@@ -3,18 +3,13 @@ import { BookOpen, ChevronLeft, ChevronRight, Loader2, Lock, Pencil, Plus, Searc
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
-import { consumeLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
+import { consumeLibrarySeriesFocusTarget, type LibrarySeriesFocusTarget } from '../../features/library/libraryNavigation';
+import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import {
   buildSeriesLibrary,
   seriesBookDisplayTitle,
   seriesPositionLabel,
 } from '../../features/series/seriesLibrary';
-import {
-  makeSeriesOverrideId,
-  SERIES_OVERRIDES_STORAGE_KEY,
-  type SeriesOverride,
-  type SeriesOverrides,
-} from '../../features/series/seriesOverrides';
 import {
   ownershipLabel,
   readingStatusLabel,
@@ -23,11 +18,13 @@ import {
 import { BookCover } from '../BookCover';
 import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
 import { createBookFromSearchEdition } from '../../features/book-search/mapping/bookSearchMapper';
+import { DEVICE_UI_STORAGE_KEYS } from '../../features/sync/storageKeys';
 
 interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
   onSelectBook: (book: UserBookRecord) => void;
   onAddBook: (book: UserBookRecord) => void;
+  onUpdateBook: (book: UserBookRecord) => void;
 }
 
 type DraftBook = { bookId: string; position: string; label: string };
@@ -48,10 +45,11 @@ const pageWindow = (current: number, total: number): number[] => {
   return Array.from({ length: 5 }, (_, index) => start + index);
 };
 
-export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook }) => {
+export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook, onUpdateBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
-  const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_UI_STORAGE_KEYS.seriesSort, 'az');
+  const [pendingFocusTarget, setPendingFocusTarget] = useState<LibrarySeriesFocusTarget | null>(() => consumeLibrarySeriesFocusTarget());
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -61,16 +59,35 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const [detectiveLoading, setDetectiveLoading] = useState(false);
   const [detectiveError, setDetectiveError] = useState('');
 
-  const series = useMemo(() => buildSeriesLibrary(books, overrides), [books, overrides]);
+  const series = useMemo(() => buildSeriesLibrary(books), [books]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return series;
-    return series.filter((item) =>
-      item.name.toLowerCase().includes(query)
-      || item.author.toLowerCase().includes(query)
-      || item.books.some(({ book }) => book.work.title.toLowerCase().includes(query)),
-    );
-  }, [search, series]);
+    const source = query
+      ? series.filter((item) =>
+          item.name.toLowerCase().includes(query)
+          || item.author.toLowerCase().includes(query)
+          || item.books.some(({ book }) => book.work.title.toLowerCase().includes(query)),
+        )
+      : [...series];
+
+    const seriesDate = (item: (typeof series)[number], newest: boolean) => {
+      const dates = item.books.map(({ book }) => book.dateAdded).filter(Boolean);
+      if (!dates.length) return '';
+      const ordered = [...dates].sort(compareLibraryDates);
+      return ordered[newest ? ordered.length - 1 : 0];
+    };
+
+    return source.sort((a, b) => {
+      if (sortMode === 'za') return compareLibraryLabels(b.name, a.name);
+      if (sortMode === 'newest') {
+        return compareLibraryDates(seriesDate(b, true), seriesDate(a, true)) || compareLibraryLabels(a.name, b.name);
+      }
+      if (sortMode === 'oldest') {
+        return compareLibraryDates(seriesDate(a, false), seriesDate(b, false)) || compareLibraryLabels(a.name, b.name);
+      }
+      return compareLibraryLabels(a.name, b.name);
+    });
+  }, [search, series, sortMode]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / SERIES_PER_PAGE));
   const pagedSeries = useMemo(() => {
@@ -85,20 +102,43 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   }, [currentPage, totalPages]);
 
   useEffect(() => {
-    const targetBookId = consumeLibrarySeriesFocusBookId();
-    if (!targetBookId) return;
-    const targetIndex = series.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
+    setCurrentPage(1);
+    setExpandedSeriesId(null);
+  }, [sortMode]);
+
+  useEffect(() => {
+    if (!pendingFocusTarget) return;
+    if (search) {
+      setSearch('');
+      return;
+    }
+
+    const normalizedTargetName = pendingFocusTarget.seriesName?.trim().toLowerCase();
+    const normalizedTargetAuthor = pendingFocusTarget.author?.trim().toLowerCase();
+    const targetIndex = filtered.findIndex((item) => {
+      if (normalizedTargetName) {
+        const sameName = item.name.trim().toLowerCase() === normalizedTargetName;
+        const sameAuthor = !normalizedTargetAuthor || item.author.trim().toLowerCase() === normalizedTargetAuthor;
+        if (sameName && sameAuthor) return true;
+      }
+      return item.books.some(({ book }) => book.id === pendingFocusTarget.bookId);
+    });
     if (targetIndex < 0) return;
 
-    const targetSeries = series[targetIndex];
-    setSearch('');
+    const targetSeries = filtered[targetIndex];
     setCurrentPage(Math.floor(targetIndex / SERIES_PER_PAGE) + 1);
     setExpandedSeriesId(targetSeries.id);
+  }, [filtered, pendingFocusTarget, search]);
 
-    window.setTimeout(() => {
-      document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
-  }, [series]);
+  useEffect(() => {
+    if (!pendingFocusTarget || !expandedSeriesId) return;
+    if (!pagedSeries.some((item) => item.id === expandedSeriesId)) return;
+
+    window.requestAnimationFrame(() => {
+      document.querySelector(`[data-series-id="${CSS.escape(expandedSeriesId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setPendingFocusTarget(null);
+    });
+  }, [expandedSeriesId, pagedSeries, pendingFocusTarget]);
 
   const goToPage = (page: number) => {
     const next = Math.max(1, Math.min(page, totalPages));
@@ -148,7 +188,6 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const saveDraft = () => {
     if (!draft) return;
     const name = draft.name.trim();
-    const author = draft.author.trim();
     if (!name) {
       setError('Give the series a name.');
       return;
@@ -164,32 +203,59 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
       return;
     }
 
-    const id = draft.id ?? makeSeriesOverrideId(name, author || 'Unknown author');
-    const now = new Date().toISOString();
-    const existing = overrides[id];
-    const next: SeriesOverride = {
-      id,
-      name,
-      author: author || 'Unknown author',
-      books: draft.books.map((entry) => ({
-        bookId: entry.bookId,
-        position: entry.position.trim() === '' ? null : Number(entry.position),
-        label: entry.label.trim() || undefined,
-      })),
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
+    const selectedById = new Map(draft.books.map((entry) => [entry.bookId, entry]));
+    const previousSeries = draft.id ? series.find((item) => item.id === draft.id) : undefined;
 
-    setOverrides((current) => ({ ...current, [id]: next }));
-    setExpandedSeriesId(id);
+    // Removing a book from an existing *manual* series clears only manual series
+    // intent. Metadata-owned series assignments are never erased by editing some
+    // other group.
+    previousSeries?.books.forEach(({ book }) => {
+      if (selectedById.has(book.id) || book.work.seriesSource !== 'manual') return;
+      onUpdateBook({
+        ...book,
+        work: {
+          ...book.work,
+          seriesName: undefined,
+          seriesOrder: undefined,
+          seriesLabel: undefined,
+          seriesSource: undefined,
+        },
+      });
+    });
+
+    draft.books.forEach((entry) => {
+      const book = books.find((candidate) => candidate.id === entry.bookId);
+      if (!book) return;
+      onUpdateBook({
+        ...book,
+        work: {
+          ...book.work,
+          seriesName: name,
+          seriesOrder: entry.position.trim() === '' ? undefined : Number(entry.position),
+          seriesLabel: entry.label.trim() || undefined,
+          seriesSource: 'manual',
+        },
+      });
+    });
+
+    setExpandedSeriesId(null);
     setDraft(null);
   };
 
   const deleteManualSeries = (id: string) => {
-    setOverrides((current) => {
-      const next = { ...current };
-      delete next[id];
-      return next;
+    const target = series.find((item) => item.id === id);
+    target?.books.forEach(({ book }) => {
+      if (book.work.seriesSource !== 'manual') return;
+      onUpdateBook({
+        ...book,
+        work: {
+          ...book.work,
+          seriesName: undefined,
+          seriesOrder: undefined,
+          seriesLabel: undefined,
+          seriesSource: undefined,
+        },
+      });
     });
     if (expandedSeriesId === id) setExpandedSeriesId(null);
   };
@@ -211,12 +277,24 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   };
 
   const addDetectiveCandidate = (candidate: SeriesDetectiveResult['missing'][number]) => {
-    const book = createBookFromSearchEdition({
+    const created = createBookFromSearchEdition({
       work: candidate.work,
       edition: candidate.edition,
       status: 'tbr',
       ownership: 'none',
     });
+    // Detective already verified this relationship. Persist that accepted series
+    // fact on the canonical book instead of leaving it trapped in Detective UI
+    // state or depending on a provider edition to happen to repeat it.
+    const book: UserBookRecord = {
+      ...created,
+      work: {
+        ...created.work,
+        seriesName: candidate.seriesName,
+        seriesOrder: candidate.position ?? created.work.seriesOrder,
+        seriesSource: 'metadata',
+      },
+    };
     onAddBook(book);
     setDetectiveResult((current) => current ? {
       ...current,
@@ -254,10 +332,16 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
             <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Your reading worlds</h2>
             <p className="mt-1 text-sm text-[var(--ink-muted)]">{series.length} series found in your library.</p>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:max-w-lg sm:flex-row">
+          <div className="flex w-full flex-col gap-2 lg:max-w-3xl lg:flex-row lg:items-center">
             <label className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
               <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1); setExpandedSeriesId(null); }} placeholder="Search series or title" className="h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-10 pr-4 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55" />
+            </label>
+            <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--ink-muted)]">
+              <span className="shrink-0 whitespace-nowrap">Sort</span>
+              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as LibrarySectionSortMode)} className="inkbound-select min-w-[140px]" aria-label="Sort series">
+                {LIBRARY_SECTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
             </label>
             <button type="button" onClick={openCreate} className="quiet-shelf-primary-action shrink-0"><Plus className="h-4 w-4" />Create Series</button>
           </div>

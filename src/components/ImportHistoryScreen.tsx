@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { readRuntimeValue, writeRuntimeValue } from '../platform/runtimeStorage';
+import { IMPORT_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Download, FileClock, Loader2, Play, Search } from 'lucide-react';
 import type { UserBookRecord } from '../types';
 import { exportRuntimeTextFile } from '../platform/runtimeExport';
@@ -25,14 +27,14 @@ interface ImportHistoryScreenProps {
 type RetryRuntimeWindow = Window & { __inkboundImportRetryRunning?: boolean };
 interface PendingRetry { entry: ImportHistoryEntry; targetBookIds: string[]; }
 
-const IMPORTED_LIBRARY_COLLAPSED_KEY = 'inkbound_import_history_library_collapsed_v1';
+const IMPORTED_LIBRARY_COLLAPSED_KEY = IMPORT_STORAGE_KEYS.historyLibraryCollapsed;
 const DETAIL_PASS_LIMIT = 100;
 
 function readCollapsedPreference(key: string): boolean {
-  try { return localStorage.getItem(key) === '1'; } catch { return false; }
+  return readRuntimeValue(key) === '1';
 }
 function persistCollapsedPreference(key: string, collapsed: boolean) {
-  try { localStorage.setItem(key, collapsed ? '1' : '0'); } catch { /* device-only preference */ }
+  writeRuntimeValue(key, collapsed ? '1' : '0');
 }
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;

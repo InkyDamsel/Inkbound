@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import {
@@ -9,8 +10,9 @@ import {
 } from '../../platform/largeBrowserStorage';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { isNativeRuntime } from '../../platform/runtimePlatform';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { applyRuntimeJsonFromExternalSource, removeRuntimeValueFromExternalSource, getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
+import { compactCloudProfileForRuntime } from './profileSyncMerge';
 import {
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
@@ -55,6 +57,10 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
   try {
     const storage = getRuntimeStorage();
     if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
+    // A sync-engine migration can invalidate an otherwise "established" local
+    // cache. Until this device has completed the current full reconciliation,
+    // cloud remains the authoritative repair source for existing account data.
+    if (storage.getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
 
     const raw = storage.getItem(BOOKS_KEY);
     if (!raw) return false;
@@ -72,6 +78,12 @@ function hasEstablishedLocalWorkingCopy(uid: string): boolean {
 function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): T[] {
   const merged = new Map(localItems.map((item) => [item.id, item]));
   cloudItems.forEach((item) => merged.set(item.id, item));
+  return [...merged.values()];
+}
+
+function mergeBooksById(localItems: UserBookRecord[], cloudItems: UserBookRecord[]): UserBookRecord[] {
+  const merged = new Map(localItems.map((item) => [item.id, item]));
+  cloudItems.forEach((item) => merged.set(item.id, mergeIncomingBookLoanState(merged.get(item.id), item)));
   return [...merged.values()];
 }
 
@@ -98,7 +110,7 @@ function newestSnapshotUpdateMillis(
  * Android keeps the normal Build 27.6 startup/auth path. Only after a signed-in
  * account actually needs first-device hydration do we restore/install the same
  * canonical large-library storage bridge used by web. This avoids WebView
- * localStorage quota failures for very large libraries without adding a second
+ * browser-storage quota failures for very large libraries without adding a second
  * Android persistence owner or gating authentication on IndexedDB startup.
  */
 export const OneShotCloudHydrationBridge: React.FC = () => {
@@ -121,7 +133,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
       hydrationRunning = true;
       try {
-        // A large Android library may have been moved out of raw localStorage on
+        // A large Android library may have been moved out of raw browser storage on
         // a previous run. Restore that canonical IndexedDB-backed value before
         // deciding that this device needs another full cloud download.
         if (isNativeRuntime()) {
@@ -153,15 +165,16 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
         const localBooks = sameAccountLocalData ? readJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
         const localSessions = sameAccountLocalData ? readJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
-        writeJson(BOOKS_KEY, mergeById(localBooks, cloudBooks));
-        writeJson(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
+        const hadPreexistingLocalData = sameAccountLocalData && (localBooks.length > 0 || localSessions.length > 0);
+        applyRuntimeJsonFromExternalSource(BOOKS_KEY, mergeBooksById(localBooks, cloudBooks));
+        applyRuntimeJsonFromExternalSource(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
 
         if (profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<ReaderProfile>).data;
-          if (cloudProfile) writeJson(PROFILE_KEY, cloudProfile);
-          else if (!sameAccountLocalData) storage.removeItem(PROFILE_KEY);
+          if (cloudProfile) applyRuntimeJsonFromExternalSource(PROFILE_KEY, compactCloudProfileForRuntime(cloudProfile));
+          else if (!sameAccountLocalData) removeRuntimeValueFromExternalSource(PROFILE_KEY);
         } else if (!sameAccountLocalData) {
-          storage.removeItem(PROFILE_KEY);
+          removeRuntimeValueFromExternalSource(PROFILE_KEY);
         }
 
         // If the books payload crossed the large-storage threshold, wait until
@@ -191,7 +204,17 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
-        storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
+        // A true new-device bootstrap came entirely from the current cloud
+        // snapshot and can skip the separate full reconciliation. If local data
+        // already existed, however, this bridge only establishes a working copy;
+        // it must not independently decide local-vs-cloud conflicts. Leave the
+        // reconciliation marker unset so FullCloudReconciliationBridge applies
+        // the canonical pending/baseline/tombstone policy immediately afterward.
+        if (!hadPreexistingLocalData) {
+          storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
+        } else {
+          storage.removeItem(fullReconciliationVersionKey(uid));
+        }
         if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) {
           storage.removeItem(HYDRATION_REQUIRED_UID_KEY);
         }

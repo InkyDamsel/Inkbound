@@ -1,8 +1,9 @@
 import { firebaseRuntimeMode } from '../../lib/firebase';
 import { getRuntimeStorage, readRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { DEVICE_FEATURE_STORAGE_KEYS, DEVICE_FEATURE_STORAGE_PREFIXES, DEVICE_UI_STORAGE_KEYS, INKBOUND_STORAGE_NAMESPACE_PREFIX, SYNC_STORAGE_KEYS } from './storageKeys';
 
-const RUNTIME_MODE_STORAGE_KEY = 'inkbound_runtime_storage_mode_v1';
-const RUNTIME_MODE_ARCHIVE_PREFIX = 'inkbound_runtime_mode_archive_v2_';
+const RUNTIME_MODE_STORAGE_KEY = DEVICE_FEATURE_STORAGE_KEYS.runtimeStorageMode;
+const RUNTIME_MODE_ARCHIVE_PREFIX = DEVICE_FEATURE_STORAGE_PREFIXES.runtimeModeArchive;
 
 type RuntimeMode = 'emulator' | 'production';
 
@@ -15,12 +16,12 @@ interface RuntimeModeArchive {
 
 // These settings are device UI preferences, not reader/account data, so they are
 // safe to carry between emulator development and intentional live-cloud checks.
-const PRESERVED_LOCAL_KEYS = new Set([
+const PRESERVED_LOCAL_KEYS = new Set<string>([
   RUNTIME_MODE_STORAGE_KEY,
-  'inkbound_theme',
-  'inkbound_active_tab',
-  'inkbound_navigation_collapsed_groups',
-  'inkbound_notifications_read',
+  SYNC_STORAGE_KEYS.theme,
+  DEVICE_UI_STORAGE_KEYS.activeTab,
+  DEVICE_UI_STORAGE_KEYS.navigationCollapsedGroups,
+  DEVICE_UI_STORAGE_KEYS.notificationsRead,
 ]);
 
 const archiveKey = (mode: RuntimeMode) => `${RUNTIME_MODE_ARCHIVE_PREFIX}${mode}`;
@@ -31,7 +32,7 @@ function isModeArchiveKey(key: string) {
 
 function isAccountCacheKey(key: string) {
   if (PRESERVED_LOCAL_KEYS.has(key) || isModeArchiveKey(key)) return false;
-  return key.startsWith('inkbound_') || key.startsWith('bookhaven_');
+  return key.startsWith(INKBOUND_STORAGE_NAMESPACE_PREFIX) || key.startsWith('bookhaven_');
 }
 
 function saveModeArchive(mode: RuntimeMode, keys: string[]) {

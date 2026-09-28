@@ -1,4 +1,4 @@
-export type ImportFieldKey = 'title' | 'author' | 'isbn' | 'format' | 'status' | 'rating' | 'dateStarted' | 'dateRead' | 'dateAdded' | 'pageCount' | 'coverUrl' | 'review' | 'tags' | 'shelves' | 'collections' | 'seriesName' | 'seriesOrder' | 'seriesLabel' | 'seriesSource';
+export type ImportFieldKey = 'title' | 'author' | 'isbn' | 'format' | 'status' | 'rating' | 'spiceLevel' | 'dateStarted' | 'dateRead' | 'dateAdded' | 'pageCount' | 'coverUrl' | 'review' | 'tags' | 'shelves' | 'collections' | 'seriesName' | 'seriesOrder' | 'seriesLabel' | 'seriesSource';
 
 export const IMPORT_FIELD_OPTIONS: Array<{ key: ImportFieldKey; label: string; required?: boolean }> = [
   { key: 'title', label: 'Title', required: true },
@@ -7,6 +7,7 @@ export const IMPORT_FIELD_OPTIONS: Array<{ key: ImportFieldKey; label: string; r
   { key: 'format', label: 'Format' },
   { key: 'status', label: 'Reading Status' },
   { key: 'rating', label: 'Rating' },
+  { key: 'spiceLevel', label: 'Spice Level' },
   { key: 'dateStarted', label: 'Started Date' },
   { key: 'dateRead', label: 'Finished Date' },
   { key: 'dateAdded', label: 'Date Added' },
@@ -31,6 +32,7 @@ const aliases: Record<ImportFieldKey, string[]> = {
   format: ['binding', 'format', 'media type', 'media_type', 'book format', 'book_format', 'edition format'],
   status: ['exclusive shelf', 'status', 'reading status', 'read status', 'read_status', 'shelf', 'bookshelf'],
   rating: ['my rating', 'rating', 'star rating', 'star_rating', 'stars', 'score'],
+  spiceLevel: ['spice level', 'spice', 'heat level', 'heat', 'pepper rating', 'peppers'],
   dateStarted: ['date started', 'datestarted', 'started date', 'start date', 'date_started', 'started_at', 'reading started', 'date started reading'],
   dateRead: ['date read', 'dateread', 'date finished', 'finished date', 'date_finished', 'finished_at', 'completed date', 'date completed'],
   dateAdded: ['date added', 'dateadded', 'created_at', 'added_at', 'added date', 'imported date'],

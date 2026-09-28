@@ -3,6 +3,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { Save, Trash2, X } from 'lucide-react';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
+import { CanonicalInput, CanonicalNumberInput, CanonicalTextarea } from './form/CanonicalInput';
 
 interface SessionEditorModalProps {
   books: UserBookRecord[];
@@ -23,12 +24,6 @@ const minutesBetween = (startTime: string, endTime: string) => {
   return Math.max(1, end - start);
 };
 
-const progressValue = (value: string) => {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
-};
-
 export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, session, onClose, onSave, onDelete }) => {
   const initialBook = books.find((book) => book.id === session?.bookId) ?? books[0];
   const initialEdition = initialBook ? getActiveEdition(initialBook) : undefined;
@@ -47,8 +42,8 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   const [date, setDate] = useState(session?.date ?? localDateKey());
   const [startTime, setStartTime] = useState(session?.startTime ?? '19:00');
   const [endTime, setEndTime] = useState(session?.endTime ?? '19:30');
-  const [startProgress, setStartProgress] = useState(String(initialProgress));
-  const [endProgress, setEndProgress] = useState(String(initialEndProgress));
+  const [startProgress, setStartProgress] = useState<number | undefined>(initialProgress);
+  const [endProgress, setEndProgress] = useState<number | undefined>(initialEndProgress);
   const [notes, setNotes] = useState(session?.notes ?? '');
   const [mood, setMood] = useState(session?.mood ?? '');
   const [location, setLocation] = useState(session?.location ?? '');
@@ -78,8 +73,8 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
     const nextEdition = getActiveEdition(nextBook);
     const nextIsAudiobook = nextEdition?.format === 'audiobook';
     const currentProgress = nextIsAudiobook ? nextBook.progressMinutes : nextBook.progressPages;
-    setStartProgress(String(currentProgress));
-    setEndProgress(String(currentProgress));
+    setStartProgress(currentProgress);
+    setEndProgress(currentProgress);
   };
 
   const save = () => {
@@ -100,9 +95,9 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
       return;
     }
 
-    const parsedStartProgress = progressValue(startProgress);
-    const parsedEndProgress = progressValue(endProgress);
-    if (parsedStartProgress === null || parsedEndProgress === null) {
+    const parsedStartProgress = startProgress;
+    const parsedEndProgress = endProgress;
+    if (parsedStartProgress === undefined || parsedEndProgress === undefined) {
       setError(isAudiobook ? 'Enter starting and ending minutes.' : 'Enter a starting and ending page.');
       return;
     }
@@ -157,7 +152,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Find book
-            <input value={bookSearch} onChange={(event) => setBookSearch(event.target.value)} placeholder="Search title, author, or series" className="inkbound-select mt-1 w-full" />
+            <CanonicalInput value={bookSearch} onValueChange={setBookSearch} placeholder="Search title, author, or series" className="inkbound-select mt-1 w-full" />
           </label>
           <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Book
             <select value={bookId} onChange={(event) => handleBookChange(event.target.value)} className="inkbound-select mt-1 w-full">
@@ -169,11 +164,11 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Duration (minutes)<input type="number" value={durationMinutes ?? ''} readOnly className="inkbound-select mt-1 w-full cursor-default opacity-80" aria-describedby="session-duration-help" /><span id="session-duration-help" className="mt-1 block font-normal text-[var(--ink-text-muted)]">Calculated from start and end time.</span></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Start time<input type="time" value={startTime} onChange={(event) => { setStartTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">End time<input type="time" value={endTime} onChange={(event) => { setEndTime(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Starting minute' : 'Starting page'}<input type="number" inputMode="numeric" min={0} value={startProgress} onChange={(event) => { setStartProgress(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Ending minute' : 'Ending page'}<input type="number" inputMode="numeric" min={0} value={endProgress} onChange={(event) => { setEndProgress(event.target.value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Mood <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><input value={mood} onChange={(event) => setMood(event.target.value)} placeholder="e.g. Cozy, tense, emotional" className="inkbound-select mt-1 w-full" /></label>
-          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Location <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="e.g. Home, commute, café" className="inkbound-select mt-1 w-full" /></label>
-          <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} className="inkbound-select mt-1 w-full resize-y" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Starting minute' : 'Starting page'}<CanonicalNumberInput inputMode="numeric" min={0} value={startProgress} allowEmpty onDraftChange={(raw) => { if (!raw.trim()) setStartProgress(undefined); setError(''); }} onCommit={(value) => { setStartProgress(value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">{isAudiobook ? 'Ending minute' : 'Ending page'}<CanonicalNumberInput inputMode="numeric" min={0} value={endProgress} allowEmpty onDraftChange={(raw) => { if (!raw.trim()) setEndProgress(undefined); setError(''); }} onCommit={(value) => { setEndProgress(value); setError(''); }} className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Mood <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalInput value={mood} onValueChange={setMood} placeholder="e.g. Cozy, tense, emotional" className="inkbound-select mt-1 w-full" /></label>
+          <label className="text-xs font-bold text-[var(--ink-text-primary)]">Location <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalInput value={location} onValueChange={setLocation} placeholder="e.g. Home, commute, café" className="inkbound-select mt-1 w-full" /></label>
+          <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Notes <span className="font-normal text-[var(--ink-text-muted)]">(optional)</span><CanonicalTextarea rows={4} value={notes} onValueChange={setNotes} className="inkbound-select mt-1 w-full resize-y" /></label>
         </div>
 
         {error && <p className="mt-4 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>}

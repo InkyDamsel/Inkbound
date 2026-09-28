@@ -151,7 +151,9 @@ function normalizeFields(value: unknown): CatalogFields {
   const subtitle = optionalString(input.subtitle, 300);
   const seriesName = optionalString(input.seriesName, 200);
   const language = optionalString(input.language, 80);
-  const format = optionalString(input.format, 80);
+  const rawFormat = optionalString(input.format, 80);
+  const normalizedFormat = rawFormat ? normalizeTrustedFormat(rawFormat) : 'unknown';
+  const format = normalizedFormat === 'unknown' ? undefined : normalizedFormat;
 
   return {
     title,
@@ -226,6 +228,16 @@ async function enforceRateLimit(uid: string) {
   });
 }
 
+function normalizeTrustedFormat(value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | 'unknown' {
+  const normalized = value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ') ?? '';
+  if (!normalized) return 'unknown';
+  if (/\b(?:audio|audiobook|cd|mp3)\b/.test(normalized)) return 'audiobook';
+  if (/\b(?:ebook|e book|kindle|digital|epub)\b/.test(normalized)) return 'ebook';
+  if (/\b(?:paperback|softcover|soft cover|mass market|trade paper)\b/.test(normalized)) return 'paperback';
+  if (/\b(?:hardcover|hardback|hard cover|library binding)\b/.test(normalized)) return 'hardcover';
+  return 'unknown';
+}
+
 function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
   const fields = (
     record.fields && typeof record.fields === 'object' && !Array.isArray(record.fields)
@@ -233,7 +245,9 @@ function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
       : {}
   ) as Partial<CatalogFields>;
   if (!fields.title || !fields.author) return null;
-
+  const format = normalizeTrustedFormat(fields.format);
+  // Unknown is a real absence of evidence, not a reason to invent ebook or
+  // hardcover and not a reason to hide an otherwise useful trusted record.
   return {
     key: `inkbound-catalog:${id}`,
     title: fields.title,
@@ -251,7 +265,7 @@ function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
       publicationDate: fields.publicationDate,
       publicationYear: publicationYear(fields.publicationDate),
       language: fields.language,
-      format: fields.format ?? 'ebook',
+      format,
       isbn10: fields.isbn10,
       isbn13: fields.isbn13,
       asin: fields.asin,

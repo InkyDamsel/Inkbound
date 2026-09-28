@@ -3,6 +3,7 @@ import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, 
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
+import { getBookReadingState } from '../features/reading/bookReadingState';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -194,7 +195,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       </nav>
 
       {section === 'series' ? (
-        <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} onAddBook={onAddBook} />
+        <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} onAddBook={onAddBook} onUpdateBook={updateLibraryBook} />
       ) : section === 'collections' ? (
         <CollectionsScreen books={books} onUpdateBook={updateLibraryBook} onSelectBook={onSelectBook} />
       ) : section === 'loans' ? (
@@ -229,7 +230,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         ) : viewMode === 'grid' ? (
           <LibraryBookGrid books={paginatedBooks} selectedBookIds={selectedBookIds} onToggleSelectBook={onToggleSelectBook} onSelectBook={onSelectBook} />
         ) : (
-          <div className="space-y-3">{paginatedBooks.map((book) => <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="inkbound-panel flex w-full items-center gap-4 p-4 text-left"><BookCover work={book.work} edition={book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0]} size="sm" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-serif text-lg text-[#f4efe6]">{book.work.title}</h3><span className="rounded-full border border-[#c5a059]/20 px-2 py-0.5 text-[10px] font-bold uppercase text-[#cdbbca]">{materialTypeLabel(book.work.materialType ?? 'book', true)}</span></div><p className="text-xs text-[#ad9fac]">{book.work.author}</p></div><div className="hidden text-right sm:block"><p className="text-sm font-bold text-[#e2bd66]">{book.progressPercentage}%</p>{book.rating && <p className="flex items-center justify-end gap-1 text-xs text-[#ad9fac]"><Star className="h-3 w-3 fill-[#e2bd66] text-[#e2bd66]" />{book.rating}</p>}</div></button>)}</div>
+          <div className="space-y-3">{paginatedBooks.map((book) => {
+            const isSelected = selectedBookIds.includes(book.id);
+            const readingState = getBookReadingState(book);
+            return <article key={book.id} role="button" tabIndex={0} onClick={() => onSelectBook(book)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectBook(book); } }} className={`inkbound-panel flex w-full cursor-pointer items-center gap-4 p-4 text-left ${isSelected ? 'border-[#c5a059] bg-[#c5a059]/12' : ''}`}><BookCover work={book.work} edition={readingState.activeEdition} size="sm" progressPercentage={readingState.progressPercentage} isFinished={readingState.isFinished} rating={book.rating} isSelected={isSelected} onSelectToggle={() => onToggleSelectBook(book.id)} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-serif text-lg text-[#f4efe6]">{book.work.title}</h3><span className="rounded-full border border-[#c5a059]/20 px-2 py-0.5 text-[10px] font-bold uppercase text-[#cdbbca]">{materialTypeLabel(book.work.materialType ?? 'book', true)}</span></div><p className="text-xs text-[#ad9fac]">{book.work.author}</p></div><div className="hidden text-right sm:block"><p className="text-sm font-bold text-[#e2bd66]">{readingState.progressPercentage}%</p>{book.rating && <p className="flex items-center justify-end gap-1 text-xs text-[#ad9fac]"><Star className="h-3 w-3 fill-[#e2bd66] text-[#e2bd66]" />{book.rating}</p>}</div></article>;
+          })}</div>
         )}
 
         <PaginationControls page={safePage} totalItems={filteredBooks.length} pageSize={LIBRARY_PAGE_SIZE} onPageChange={setPage} itemLabel="items" />

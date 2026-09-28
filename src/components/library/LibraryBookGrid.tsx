@@ -10,6 +10,7 @@ import {
   INKBOUND_CLOUD_DATA_EVENT,
   type CloudDataUpdatedDetail,
 } from '../../features/sync/cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { BookCover } from '../BookCover';
 
 interface LibraryBookGridProps {
@@ -19,7 +20,7 @@ interface LibraryBookGridProps {
   onToggleSelectBook: (id: string) => void;
 }
 
-const LOCAL_DATA_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+const LOCAL_DATA_OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const HYDRATION_FALLBACK_MS = 4000;
 const INITIAL_RENDER_COUNT = 120;
 const RENDER_STEP = 120;
@@ -37,7 +38,7 @@ export function LibraryBookGrid({ books, selectedBookIds, onSelectBook, onToggle
     setHydrationTimedOut(false);
     const handleCloudUpdate = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
-      if (detail?.keys.includes('inkbound_books')) {
+      if (detail?.keys.includes(SYNC_STORAGE_KEYS.books)) {
         setCloudLibraryReady(true);
         setHydrationTimedOut(false);
       }

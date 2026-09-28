@@ -42,8 +42,8 @@ android {
         applicationId "com.inkydameinteractive.inkbound"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2804
-        versionName "28.0.4"
+        versionCode 2809
+        versionName "28.0.9"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
@@ -90,6 +90,18 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+}
+
+
+def verifyInkboundWebBundle = tasks.register('verifyInkboundWebBundle', Exec) {
+    workingDir rootProject.projectDir.parentFile
+    commandLine 'node', 'scripts/verify-android-web-bundle-fresh.mjs'
+}
+
+tasks.matching { task ->
+    task.name == 'preReleaseBuild'
+}.configureEach {
+    dependsOn verifyInkboundWebBundle
 }
 
 apply from: 'capacitor.build.gradle'

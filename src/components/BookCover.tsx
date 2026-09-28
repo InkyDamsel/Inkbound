@@ -34,7 +34,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
   showFormatBadge = true,
   className = '',
 }) => {
-  const format = edition?.format || 'hardcover';
+  const format = edition?.format || 'unknown';
   const gradient = edition?.coverGradient || 'from-amber-950 via-stone-900 to-amber-900';
   const coverUrl = normalizeCoverUrl(edition?.coverUrl);
   const [imageFailed, setImageFailed] = useState(false);
@@ -55,6 +55,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
     audiobook: Headphones,
     hardcover: BookOpen,
     paperback: BookOpen,
+    unknown: BookOpen,
     other_physical: Bookmark,
   }[format];
 

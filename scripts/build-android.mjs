@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { config as loadDotenv } from 'dotenv';
+import { androidWebBundleFingerprint } from './android-web-bundle-fingerprint.mjs';
 
 const cwd = process.cwd();
 
@@ -26,6 +27,19 @@ const result = spawnSync('npm', ['run', 'build'], {
 });
 
 if (result.status !== 0) process.exit(result.status ?? 1);
+
+const release = JSON.parse(fs.readFileSync(path.join(cwd, 'android-release.json'), 'utf8'));
+const stamp = {
+  versionCode: release.versionCode,
+  versionName: release.versionName,
+  sourceFingerprint: androidWebBundleFingerprint(cwd),
+  builtAt: new Date().toISOString(),
+};
+fs.writeFileSync(
+  path.join(cwd, 'dist', '.inkbound-build-stamp.json'),
+  `${JSON.stringify(stamp, null, 2)}\n`,
+  'utf8',
+);
 
 if (browserGoogleBooksKey) {
   const assetsDir = path.join(cwd, 'dist', 'assets');

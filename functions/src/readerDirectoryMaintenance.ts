@@ -1,13 +1,11 @@
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type UserRecord } from 'firebase-admin/auth';
-import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
+import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 
 const adminApp = getApps()[0] ?? initializeApp();
 const db = getFirestore(adminApp);
 const auth = getAuth(adminApp);
-const bucket = getStorage(adminApp).bucket();
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
@@ -16,16 +14,6 @@ interface AdminRecord {
   enabled: boolean;
   role: AdminRole;
   email: string;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function profileData(value: Record<string, unknown>): Record<string, unknown> {
-  return asRecord('data' in value ? value.data : value);
 }
 
 function text(value: unknown): string {
@@ -44,40 +32,6 @@ async function requireAdmin(request: CallableRequest<unknown>) {
   return record;
 }
 
-async function removeInkboundDataForUid(uid: string) {
-  await Promise.all([
-    db.recursiveDelete(db.doc(`users/${uid}`)),
-    db.doc(`userDirectory/${uid}`).delete(),
-    db.doc(`entitlements/${uid}`).delete(),
-    db.doc(`admins/${uid}`).delete(),
-  ]);
-
-  await bucket.deleteFiles({ prefix: `users/${uid}/` }).catch((error: unknown) => {
-    console.warn(`Could not remove every Storage object for stale Firebase user ${uid}.`, error);
-  });
-}
-
-async function canonicalDirectoryRecord(user: UserRecord) {
-  const [profileSnapshot, directorySnapshot] = await Promise.all([
-    db.doc(`users/${user.uid}/profile/current`).get(),
-    db.doc(`userDirectory/${user.uid}`).get(),
-  ]);
-
-  const profile = profileData(profileSnapshot.data() ?? {});
-  const existing = directorySnapshot.data() ?? {};
-
-  return {
-    uid: user.uid,
-    email: text(user.email).toLowerCase(),
-    displayName: text(profile.displayName) || text(user.displayName) || text(existing.displayName),
-    photoUrl: text(profile.avatarImage) || text(user.photoURL) || text(existing.photoUrl),
-    emailVerified: user.emailVerified,
-    authProviderIds: user.providerData.map((provider) => provider.providerId),
-    updatedAt: FieldValue.serverTimestamp(),
-    ...(directorySnapshot.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
-  };
-}
-
 async function listAllAuthUsers(): Promise<UserRecord[]> {
   const users: UserRecord[] = [];
   let pageToken: string | undefined;
@@ -89,46 +43,17 @@ async function listAllAuthUsers(): Promise<UserRecord[]> {
   return users;
 }
 
-async function reconcileDirectory() {
-  const [authUsers, directorySnapshot, entitlementsSnapshot] = await Promise.all([
-    listAllAuthUsers(),
-    db.collection('userDirectory').get(),
-    db.collection('entitlements').get(),
-  ]);
-
-  const authUidSet = new Set(authUsers.map((user) => user.uid));
-  const staleUids = new Set<string>();
-  directorySnapshot.docs.forEach((document) => {
-    if (!authUidSet.has(document.id)) staleUids.add(document.id);
-  });
-  entitlementsSnapshot.docs.forEach((document) => {
-    if (!authUidSet.has(document.id)) staleUids.add(document.id);
-  });
-
-  await Promise.all([...staleUids].map((uid) => removeInkboundDataForUid(uid)));
-
-  const canonicalRecords = await Promise.all(authUsers.map(async (user) => ({
-    user,
-    record: await canonicalDirectoryRecord(user),
-  })));
-
-  await Promise.all(canonicalRecords.map(({ user, record }) =>
-    db.doc(`userDirectory/${user.uid}`).set(record, { merge: true })));
-
-  return authUsers;
-}
-
 /**
- * Firebase Auth is the canonical account list. Each dashboard refresh reconciles
- * Firestore against Auth, removes stale Inkbound records for deleted Auth users,
- * and derives names/photos from the reader's canonical Inkbound profile.
+ * Firebase Auth is the canonical account list for dashboard display.
+ * Dashboard reads are intentionally non-destructive: account erasure belongs
+ * only to explicit, confirmed deletion flows.
  */
 export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const input = request.data as { query?: unknown } | undefined;
   const query = typeof input?.query === 'string' ? input.query.trim().toLowerCase() : '';
 
-  const authUsers = await reconcileDirectory();
+  const authUsers = await listAllAuthUsers();
   const [directorySnapshot, entitlementsSnapshot, auditSnapshot, adminsSnapshot] = await Promise.all([
     db.collection('userDirectory').get(),
     db.collection('entitlements').get(),

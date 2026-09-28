@@ -87,7 +87,7 @@ export function buildCatalogContributionFields(book: UserBookRecord): CatalogCon
     ...(publicationDate ? { publicationDate } : {}),
     ...(typeof edition.pageCount === 'number' && edition.pageCount > 0 ? { pageCount: edition.pageCount } : {}),
     ...(edition.language?.trim() ? { language: edition.language.trim() } : {}),
-    ...(edition.format ? { format: edition.format } : {}),
+    ...(edition.format && edition.format !== 'unknown' ? { format: edition.format } : {}),
     ...(externalEditionId ? { externalEditionId } : {}),
   };
 }

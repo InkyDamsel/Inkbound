@@ -6,6 +6,7 @@ import { getSessionDurationMinutes, getSessionPagesRead } from '../features/read
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
+import { DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface MonthlyWrappedScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; }
 type WrappedTheme = 'quiet-library' | 'cozy-autumn' | 'celestial';
@@ -13,7 +14,7 @@ type WrappedFormat = 'story' | 'portrait' | 'square';
 interface WrappedPreferences { monthKey: string; theme: WrappedTheme; format: WrappedFormat; currentCard: number; }
 interface WrappedCard { eyebrow: string; title: string; body: string; footer: string; }
 
-const STORAGE_KEY = 'inkbound_monthly_wrapped_preferences';
+const STORAGE_KEY = DEVICE_UI_STORAGE_KEYS.monthlyWrappedPreferences;
 const MONTHLY_BACKGROUND_URL = '/assets/monthly/cozy-monthly-background.png';
 const themeOptions: Record<WrappedTheme, { label: string; background: string; accent: string; text: string }> = {
   'quiet-library': { label: 'Quiet Library', background: '#171217', accent: '#a77a91', text: '#f2e9df' },

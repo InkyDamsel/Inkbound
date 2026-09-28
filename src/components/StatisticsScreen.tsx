@@ -231,6 +231,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
                 <option value="paperback">Paperback</option>
                 <option value="ebook">Ebook</option>
                 <option value="audiobook">Audiobook</option>
+                <option value="unknown">Unknown / Not specified</option>
               </select>
             </div>
           ) : (

@@ -3,6 +3,7 @@ import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Eye, Sparkles } from
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
+import { DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface BookshelfThroughTimeScreenProps {
   books: UserBookRecord[];
@@ -19,7 +20,7 @@ interface ShelfPreferences {
   highlightNew?: boolean;
 }
 
-const PREFERENCES_KEY = 'inkbound_bookshelf_through_time_preferences';
+const PREFERENCES_KEY = DEVICE_UI_STORAGE_KEYS.bookshelfThroughTimePreferences;
 const BOOKS_PER_SHELF = 12;
 const MINIMUM_SHELF_ROWS = 3;
 const SHELVES_PER_PAGE = 4;

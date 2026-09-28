@@ -17,6 +17,8 @@ const runtimeNativeAppCheckPath = path.join(cwd, 'src/platform/runtimeNativeAppC
 const runtimeNativeReadinessPath = path.join(cwd, 'src/platform/runtimeNativeReadiness.ts');
 const runtimeNativeSecurityBootstrapPath = path.join(cwd, 'src/platform/runtimeNativeSecurityBootstrap.ts');
 const initializeAndroidRuntimePath = path.join(cwd, 'src/platform/initializeAndroidRuntime.ts');
+const runtimeBackNavigationPath = path.join(cwd, 'src/platform/runtimeBackNavigation.ts');
+const appPath = path.join(cwd, 'src/App.tsx');
 
 const fail = (message) => {
   console.error(`Inkbound Android verification failed: ${message}`);
@@ -39,6 +41,8 @@ for (const requiredPath of [
   runtimeNativeReadinessPath,
   runtimeNativeSecurityBootstrapPath,
   initializeAndroidRuntimePath,
+  runtimeBackNavigationPath,
+  appPath,
 ]) {
   if (!fs.existsSync(requiredPath)) fail(`required Android boundary is missing: ${path.relative(cwd, requiredPath)}`);
 }
@@ -144,6 +148,8 @@ for (const requiredSnippet of [
   'signInWithCredential',
   'reauthenticateWithCredential',
   "CapacitorApp.addListener('appStateChange'",
+  "CapacitorApp.addListener('backButton'",
+  'configureRuntimeBackNavigation',
   'initializeNativeSecurityRuntime',
 ]) {
   if (!androidRuntimeSource.includes(requiredSnippet)) {
@@ -157,6 +163,18 @@ const securityReadyIndex = androidRuntimeSource.lastIndexOf('initializeNativeSec
 if ([authConfigIndex, reauthConfigIndex, lifecycleConfigIndex, securityReadyIndex].some((index) => index < 0)
   || !(authConfigIndex < securityReadyIndex && reauthConfigIndex < securityReadyIndex && lifecycleConfigIndex < securityReadyIndex)) {
   fail('Android runtime must configure auth, reauthentication, and lifecycle before releasing native readiness.');
+}
+
+const runtimeBackNavigationSource = fs.readFileSync(runtimeBackNavigationPath, 'utf8');
+if (!runtimeBackNavigationSource.includes('subscribeToRuntimeBackNavigation')) {
+  fail('native system-back behavior must stay behind the runtime back-navigation boundary.');
+}
+const appSource = fs.readFileSync(appPath, 'utf8');
+if (!appSource.includes('subscribeToRuntimeBackNavigation')) {
+  fail('Book Details must consume the runtime back-navigation boundary.');
+}
+if (!appSource.includes('setSelectedBookForDetails(null)')) {
+  fail('Book Details system-back handling must close the current detail view.');
 }
 
 const subscriptionSource = fs.readFileSync(runtimeSubscriptionPath, 'utf8');

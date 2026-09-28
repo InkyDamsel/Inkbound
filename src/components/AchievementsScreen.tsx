@@ -6,7 +6,7 @@ import { ResponsiveGrid } from '../layout/responsive';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getSessionDurationMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { isInkboundActiveBook, isInkboundFinishedBook } from '../features/reading/inkboundActivity';
-import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 
 type AchievementFilter = 'all' | 'completed' | 'revealed' | 'in-progress';
@@ -16,7 +16,7 @@ interface AchievementDefinition { id:string; title:string; description:string; c
 const UNLOCKED_STORAGE_KEY=ACCOUNT_DATA_STORAGE_KEYS.achievementUnlocks;
 const REVEALED_STORAGE_KEY=ACCOUNT_DATA_STORAGE_KEYS.achievementReveals;
 const SEEN_STORAGE_KEY=ACCOUNT_DATA_STORAGE_KEYS.achievementSeen;
-const FILTER_STORAGE_KEY='inkbound_achievement_filter';
+const FILTER_STORAGE_KEY=DEVICE_UI_STORAGE_KEYS.achievementFilter;
 const readRecord=(key:string):Record<string,string>=>{const parsed=readRuntimeJson<unknown>(key,{});return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed as Record<string,string>:{};};
 const readStringArray=(key:string):string[]=>{const parsed=readRuntimeJson<unknown>(key,[]);return Array.isArray(parsed)?parsed.filter((item):item is string=>typeof item==='string'):[];};
 const readFilter=():AchievementFilter=>{const parsed=readRuntimeJson<unknown>(FILTER_STORAGE_KEY,'all');return parsed==='completed'||parsed==='revealed'||parsed==='in-progress'?parsed:'all';};

@@ -1,8 +1,12 @@
 import type { UserBookRecord } from '../../types';
+import { getRuntimeStorage, removeRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { replaceCanonicalLibrary } from '../library/libraryMutations';
+import { IMPORT_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
-const LEGACY_BOOKS_STORAGE_KEY = 'bookhaven_books';
-const PURGE_VERSION_KEY = 'inkbound_legacy_import_metadata_purge_v1';
+const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
+const LEGACY_BOOKS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.books;
+const PURGE_VERSION_KEY = IMPORT_STORAGE_KEYS.legacyMetadataPurge;
+const runtimeStorage = () => getRuntimeStorage();
 const EXTERNAL_METADATA_SOURCES = new Set(['google-books', 'open-library', 'hardcover']);
 
 function isImportedBook(book: UserBookRecord): boolean {
@@ -55,14 +59,14 @@ function purgeBook(book: UserBookRecord): UserBookRecord {
 
 export function purgeUnverifiedLegacyImportMetadata(): number {
   try {
-    if (localStorage.getItem(PURGE_VERSION_KEY) === 'done') return 0;
+    if (runtimeStorage().getItem(PURGE_VERSION_KEY) === 'done') return 0;
 
-    const storageKey = localStorage.getItem(BOOKS_STORAGE_KEY) !== null
+    const storageKey = runtimeStorage().getItem(BOOKS_STORAGE_KEY) !== null
       ? BOOKS_STORAGE_KEY
       : LEGACY_BOOKS_STORAGE_KEY;
-    const raw = localStorage.getItem(storageKey);
+    const raw = runtimeStorage().getItem(storageKey);
     if (!raw) {
-      localStorage.setItem(PURGE_VERSION_KEY, 'done');
+      writeRuntimeValue(PURGE_VERSION_KEY, 'done');
       return 0;
     }
 
@@ -75,10 +79,10 @@ export function purgeUnverifiedLegacyImportMetadata(): number {
     });
 
     if (purgedCount > 0) {
-      localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(cleaned));
-      localStorage.removeItem(LEGACY_BOOKS_STORAGE_KEY);
+      replaceCanonicalLibrary(cleaned);
+      removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
     }
-    localStorage.setItem(PURGE_VERSION_KEY, 'done');
+    writeRuntimeValue(PURGE_VERSION_KEY, 'done');
     return purgedCount;
   } catch (error) {
     console.warn('Inkbound could not purge legacy imported metadata safely.', error);

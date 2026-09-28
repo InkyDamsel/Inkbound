@@ -1,4 +1,6 @@
 import React, { ChangeEvent, DragEvent, useEffect, useMemo, useState } from 'react';
+import { readRuntimeValue, writeRuntimeValue } from '../platform/runtimeStorage';
+import { IMPORT_STORAGE_KEYS } from '../features/sync/storageKeys';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -37,6 +39,7 @@ import { ImportAnalysisSummaryGrid } from './import/ImportAnalysisSummaryGrid';
 import { ImportColumnMappingPanel } from './import/ImportColumnMappingPanel';
 import { ImportSourceGrid } from './import/ImportSourceGrid';
 import { ImportHistoryScreen } from './ImportHistoryScreen';
+import { normalizeBookRating, normalizeSpiceLevel } from '../features/reading/bookRating';
 
 interface ImportCenterScreenProps {
   books: UserBookRecord[];
@@ -53,7 +56,7 @@ export const IMPORT_SOURCES: ImportSourceInfo[] = [
 ];
 
 const steps = ['Select Source', 'Upload File', 'Analyze', 'Select Books', 'Complete'];
-const IMPORT_CENTER_VIEW_KEY = 'inkbound_import_center_view';
+const IMPORT_CENTER_VIEW_KEY = IMPORT_STORAGE_KEYS.centerView;
 const LARGE_LIBRARY_IMPORT_THRESHOLD = 5_000;
 type ImportCenterView = 'import' | 'history';
 
@@ -81,7 +84,7 @@ const sourceInstructions: Record<string, string[]> = {
 };
 
 function readImportCenterView(): ImportCenterView {
-  try { return localStorage.getItem(IMPORT_CENTER_VIEW_KEY) === 'history' ? 'history' : 'import'; } catch { return 'import'; }
+  return readRuntimeValue(IMPORT_CENTER_VIEW_KEY) === 'history' ? 'history' : 'import';
 }
 
 function parseCsv(text: string): Record<string, string>[] {
@@ -118,7 +121,7 @@ function normalizeFormat(value: string): Format {
   if (normalized.includes('audio')) return 'audiobook';
   if (normalized.includes('ebook') || normalized.includes('e-book') || normalized.includes('kindle') || normalized.includes('digital')) return 'ebook';
   if (normalized.includes('paper') || normalized.includes('softcover')) return 'paperback';
-  return 'hardcover';
+  return 'unknown';
 }
 
 function normalizeStatus(value: string): ReadingStatus {
@@ -139,7 +142,9 @@ function positiveInteger(value: string): number | undefined {
 }
 
 function optionalNumber(value: string): number | undefined {
-  const parsed = Number(value.trim());
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -160,7 +165,8 @@ function mapRecord(record: Record<string, unknown>, index: number, mapping: Impo
   if (!title) return null;
   const author = mappedValue(record, mapping, 'author') || 'Unknown Author';
   const isbn = mappedValue(record, mapping, 'isbn');
-  const ratingValue = Number(mappedValue(record, mapping, 'rating'));
+  const rawRating = optionalNumber(mappedValue(record, mapping, 'rating'));
+  const rawSpiceLevel = optionalNumber(mappedValue(record, mapping, 'spiceLevel'));
   return {
     id: `import-${index}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`,
     title,
@@ -168,7 +174,8 @@ function mapRecord(record: Record<string, unknown>, index: number, mapping: Impo
     isbn: isbn || undefined,
     format: normalizeFormat(mappedValue(record, mapping, 'format')),
     status: normalizeStatus(mappedValue(record, mapping, 'status')),
-    rating: Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue : undefined,
+    rating: rawRating !== undefined && rawRating > 0 ? normalizeBookRating(rawRating) : undefined,
+    spiceLevel: rawSpiceLevel !== undefined && rawSpiceLevel >= 0 ? normalizeSpiceLevel(rawSpiceLevel) : undefined,
     dateStarted: mappedValue(record, mapping, 'dateStarted') || undefined,
     dateRead: mappedValue(record, mapping, 'dateRead') || undefined,
     dateAdded: mappedValue(record, mapping, 'dateAdded') || new Date().toISOString().split('T')[0],
@@ -224,7 +231,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({ books, o
 
   const switchCenterView = (view: ImportCenterView) => {
     setCenterView(view);
-    try { localStorage.setItem(IMPORT_CENTER_VIEW_KEY, view); } catch { /* no-op */ }
+    writeRuntimeValue(IMPORT_CENTER_VIEW_KEY, view);
   };
   const resumeHistoryEnrichment = () => window.dispatchEvent(new Event('online'));
 

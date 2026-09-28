@@ -7,11 +7,12 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import {
+  applyRuntimeJsonFromExternalSource,
   getRuntimeStorage,
-  notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
 import {
   notifyCloudDataUpdated,
@@ -19,8 +20,12 @@ import {
 } from './cloudSyncEvents';
 import {
   shouldApplyRemoteTombstone,
+  shouldPromoteLocalRecordMissingFromCloud,
   shouldRemoteChangeReplacePending,
 } from './syncConflictPolicy';
+import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
+import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
+import { compactCloudProfileForRuntime } from './profileSyncMerge';
 import {
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
@@ -77,16 +82,8 @@ interface ReconciliationResult<T> {
 }
 
 const storage = () => getRuntimeStorage();
-const stable = (value: unknown) => JSON.stringify(value);
-const hashText = (value: string) => {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-};
-const fingerprint = (value: unknown) => hashText(stable(value));
+const stable = stableSyncValue;
+const fingerprint = fingerprintSyncValue;
 const diagnosticKey = (uid: string) => `inkbound_full_reconciliation_diagnostic_${uid}_v2`;
 
 function readJson<T>(key: string, fallback: T): T {
@@ -102,11 +99,18 @@ function writeJson(key: string, value: unknown) {
   storage().setItem(key, stable(value));
 }
 
-function remoteWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpdatedAt: string }): boolean {
+function remoteWinsPending<T>(
+  record: CloudRecord<T>,
+  pending: { clientUpdatedAt: string } | undefined,
+  baselineMatchesRemote: boolean,
+): boolean {
+  if (!pending) return true;
+  if (baselineMatchesRemote) return false;
+
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
-    pendingClientUpdatedAt: pending?.clientUpdatedAt,
+    pendingClientUpdatedAt: pending.clientUpdatedAt,
   });
 }
 
@@ -124,6 +128,8 @@ function reconcileCollection<T extends { id: string }>(
   tombstones: TombstoneRecord[],
   pending: Record<string, RecordMutation<T>>,
   baseline: Record<string, string>,
+  mergeIncoming?: (current: T | undefined, incoming: T) => T,
+  mergeProtectedPending?: (pendingLocal: T, incoming: T) => T,
 ): ReconciliationResult<T> {
   const next = new Map(localItems.map((item) => [item.id, item]));
   const latestCloudMillis = new Map<string, number>();
@@ -147,15 +153,22 @@ function reconcileCollection<T extends { id: string }>(
     latestCloudMillis.set(item.id, updatedMillis);
 
     const localPending = pending[item.id];
-    if (localPending && !remoteWinsPending(record, localPending)) {
+    if (localPending && !remoteWinsPending(record, localPending, baseline[item.id] === fingerprint(record.data))) {
+      if (localPending.operation === 'upsert' && localPending.data && mergeProtectedPending) {
+        const mergedPending = mergeProtectedPending(localPending.data, item);
+        localPending.data = mergedPending;
+        next.set(item.id, mergedPending);
+        baseline[item.id] = fingerprint(item);
+      }
       stats.pendingLocalProtected += 1;
       return;
     }
 
     const previous = next.get(item.id);
-    if (!previous || fingerprint(previous) !== fingerprint(item)) stats.cloudRecordsApplied += 1;
+    const applied = mergeIncoming ? mergeIncoming(previous, item) : item;
+    if (!previous || fingerprint(previous) !== fingerprint(applied)) stats.cloudRecordsApplied += 1;
     delete pending[item.id];
-    next.set(item.id, item);
+    next.set(item.id, applied);
     baseline[item.id] = fingerprint(item);
   });
 
@@ -169,7 +182,17 @@ function reconcileCollection<T extends { id: string }>(
       stats.pendingLocalProtected += 1;
       return;
     }
-    if (baseline[item.id] === undefined) {
+    if (shouldPromoteLocalRecordMissingFromCloud({ hasCloudRecord: false, baselineFingerprint: baseline[item.id], hasPendingMutation: false })) {
+      // A record that has never existed in the cloud baseline is legitimate
+      // local-only data (for example, a pre-account library being attached to a
+      // newly registered account). Preserving it in memory is not enough: create
+      // durable upload intent now so the canonical local->cloud writer carries it
+      // to every device instead of leaving a permanent local-only island.
+      pending[item.id] = {
+        operation: 'upsert',
+        data: item,
+        clientUpdatedAt: new Date().toISOString(),
+      };
       stats.localOnlyPreserved += 1;
       return;
     }
@@ -266,20 +289,26 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         const bookTombstones = tombstones.filter((item) => item.kind === 'books');
         const sessionTombstones = tombstones.filter((item) => item.kind === 'sessions');
 
-        const bookResult = reconcileCollection(localBooks, cloudBooks, bookTombstones, pending.books, baseline.books);
+        const bookResult = reconcileCollection(
+          localBooks,
+          cloudBooks,
+          bookTombstones,
+          pending.books,
+          baseline.books,
+          mergeIncomingBookLoanState,
+          mergePendingLocalBookWithRemoteMetadata,
+        );
         const sessionResult = reconcileCollection(localSessions, cloudSessions, sessionTombstones, pending.sessions, baseline.sessions);
         const nextBooks = bookResult.items;
         const nextSessions = sessionResult.items;
         const changedKeys: CloudSyncedStorageKey[] = [];
 
         if (stable(localBooks) !== stable(nextBooks)) {
-          writeJson(BOOKS_KEY, nextBooks);
-          notifyRuntimeStorageChanged(BOOKS_KEY);
+          applyRuntimeJsonFromExternalSource(BOOKS_KEY, nextBooks);
           changedKeys.push(BOOKS_KEY);
         }
         if (stable(localSessions) !== stable(nextSessions)) {
-          writeJson(SESSIONS_KEY, nextSessions);
-          notifyRuntimeStorageChanged(SESSIONS_KEY);
+          applyRuntimeJsonFromExternalSource(SESSIONS_KEY, nextSessions);
           changedKeys.push(SESSIONS_KEY);
         }
 
@@ -293,13 +322,13 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         if (profileSnapshot.exists()) {
           const profileRecord = profileSnapshot.data() as CloudRecord<Record<string, unknown>>;
           newestMillis = Math.max(newestMillis, profileRecord.updatedAt?.toMillis() ?? 0);
-          if (profileRecord.data && remoteWinsPending(profileRecord, pending.profile)) {
+          if (profileRecord.data && remoteWinsPending(profileRecord, pending.profile, baseline.profile === stable(profileRecord.data))) {
             delete pending.profile;
-            const profileValue = stable(profileRecord.data);
-            baseline.profile = profileValue;
-            if (storage().getItem(PROFILE_KEY) !== profileValue) {
-              storage().setItem(PROFILE_KEY, profileValue);
-              notifyRuntimeStorageChanged(PROFILE_KEY);
+            const cloudProfileValue = stable(profileRecord.data);
+            const runtimeProfileValue = stable(compactCloudProfileForRuntime(profileRecord.data));
+            baseline.profile = cloudProfileValue;
+            if (storage().getItem(PROFILE_KEY) !== runtimeProfileValue) {
+              applyRuntimeJsonFromExternalSource(PROFILE_KEY, compactCloudProfileForRuntime(profileRecord.data));
               changedKeys.push(PROFILE_KEY);
               profileApplied = true;
             }

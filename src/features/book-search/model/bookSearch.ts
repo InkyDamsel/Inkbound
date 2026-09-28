@@ -1,6 +1,6 @@
 import { Format } from '../../../types';
 
-export type BookSearchSource = 'inkbound-catalog' | 'google-books' | 'open-library' | 'hardcover';
+export type BookSearchSource = 'inkbound-catalog' | 'google-books' | 'open-library' | 'hardcover' | 'crossref' | 'library-of-congress' | 'internet-archive';
 
 export interface BookSearchEdition {
   source: BookSearchSource;
@@ -12,7 +12,7 @@ export interface BookSearchEdition {
   genres: string[];
   publisher?: string;
   publicationDate?: string;
-  publicationYear: number;
+  publicationYear?: number;
   language?: string;
   seriesName?: string;
   seriesOrder?: number;

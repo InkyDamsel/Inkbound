@@ -4,6 +4,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
+import { DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface InkboundStudioScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; }
 type ShareFormat = 'story' | 'portrait' | 'square' | 'pinterest';
@@ -11,7 +12,7 @@ type ShareTheme = 'quiet-library' | 'cozy-autumn' | 'dark-academia' | 'celestial
 type CardTemplate = 'reading-card' | 'quote-card' | 'review-card' | 'reading-update';
 type CardLayout = 'editorial' | 'cover-focus' | 'minimal';
 interface SharePreferences { format: ShareFormat; theme: ShareTheme; template: CardTemplate; layout: CardLayout; showRating: boolean; showPages: boolean; showReadingTime: boolean; selectedBookId: string; }
-const STORAGE_KEY = 'inkbound_share_preferences';
+const STORAGE_KEY = DEVICE_UI_STORAGE_KEYS.sharePreferences;
 const STUDIO_BACKGROUND = '/assets/studio/cozy-monthly-background.png';
 const formats: Record<ShareFormat, { label: string; width: number; height: number }> = { story:{label:'Story 9:16',width:1080,height:1920},portrait:{label:'Feed 4:5',width:1080,height:1350},square:{label:'Square 1:1',width:1080,height:1080},pinterest:{label:'Pinterest 2:3',width:1000,height:1500} };
 const themes: Record<ShareTheme,{label:string;background:string;accent:string;text:string}> = {'quiet-library':{label:'Quiet Library',background:'#171217',accent:'#9b7287',text:'#f2e9df'},'cozy-autumn':{label:'Cozy Autumn',background:'#3a241d',accent:'#c58b61',text:'#fff1df'},'dark-academia':{label:'Dark Academia',background:'#201b19',accent:'#9c8067',text:'#efe3d4'},celestial:{label:'Celestial',background:'#17192f',accent:'#a8a3d4',text:'#f3f1ff'}};
