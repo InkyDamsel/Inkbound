@@ -25,9 +25,11 @@ import { getProfileMediaSyncQueueKey, synchronizeProfileMedia } from '../feature
 import { AUXILIARY_ACCOUNT_KEYS, getAuxiliaryBaselineKey, getAuxiliaryPendingKey } from '../features/sync/auxiliaryAccountSyncConfig';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import {
+  DEVICE_FEATURE_STORAGE_KEYS,
   LEGACY_SYNC_STORAGE_KEYS,
   SYNC_STORAGE_KEYS,
   crossDeviceCursorKey,
+  legacySyncBaselineV1Key,
   localClearIntentKey,
   syncBaselineStateKey,
   syncPendingStateKey,
@@ -45,9 +47,9 @@ const SIGNED_IN_DATA_KEYS = [
   SYNC_STORAGE_KEYS.books,
   SYNC_STORAGE_KEYS.sessions,
   SYNC_STORAGE_KEYS.profile,
-  'inkbound_photo_memories',
-  'inkbound_photo_memories_v2',
-  'inkbound_photo_memory_cloud_revisions_v1',
+  DEVICE_FEATURE_STORAGE_KEYS.legacyPhotoMemories,
+  DEVICE_FEATURE_STORAGE_KEYS.photoMemories,
+  DEVICE_FEATURE_STORAGE_KEYS.photoMemoryCloudRevisions,
   PHOTO_MEMORY_SYNC_QUEUE_KEY,
   IMPORT_HISTORY_STORAGE_KEY,
   IMPORT_ENRICHMENT_QUEUE_KEY,
@@ -70,7 +72,7 @@ function clearSignedInDataFromDevice(uid: string) {
   removeRuntimeValue(getProfileMediaSyncQueueKey(uid));
   removeRuntimeValue(getAuxiliaryPendingKey(uid));
   removeRuntimeValue(getAuxiliaryBaselineKey(uid));
-  removeRuntimeValue('inkbound_profile_media_sync_queue_v1');
+  removeRuntimeValue(DEVICE_FEATURE_STORAGE_KEYS.legacyProfileMediaSyncQueue);
   removeRuntimeValue(SYNC_STORAGE_KEYS.localOwnerUid);
   removeRuntimeValue(SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid);
   removeRuntimeValue(LAST_SYNC_STORAGE_KEY);
@@ -79,7 +81,7 @@ function clearSignedInDataFromDevice(uid: string) {
   removeRuntimeValue(crossDeviceCursorKey(uid));
   // Older beta metadata is cleared too so returning accounts cannot inherit a
   // stale baseline from a pre-v2 build.
-  removeRuntimeValue(`inkbound_sync_baseline_${uid}_v1`);
+  removeRuntimeValue(legacySyncBaselineV1Key(uid));
 }
 
 function friendlyAuthMessage(error: unknown, fallback: string): string {
