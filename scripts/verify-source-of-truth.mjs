@@ -629,6 +629,16 @@ if (/<input[^>]*type=["']number["'][^>]*(?!readOnly)[^>]*onChange=/.test(reading
 }
 const typesSource = read('src/types.ts');
 const bookSearchModelSource = read('src/features/book-search/model/bookSearch.ts');
+const bookSearchMapperSource = read('src/features/book-search/mapping/bookSearchMapper.ts');
+const bookDetailsSummarySource = read('src/components/BookDetailsModalCore.tsx');
+if (bookSearchMapperSource.includes("No publisher summary was available for this edition.")) {
+  violations.push('bookSearchMapper.ts: missing summaries must remain canonical-empty');
+}
+if (bookDetailsSummarySource.includes("|| 'Summary unavailable.'")) {
+  violations.push('BookDetailsModalCore.tsx: missing summaries must remain canonical-empty');
+}
+
+
 const addBookModalSource = read('src/components/AddBookModal.tsx');
 const googleBooksSource = read('src/features/book-search/data/googleBooksApi.ts');
 const openLibraryAdapterSource = read('src/features/book-search/data/openLibraryApi.ts');
