@@ -20,12 +20,13 @@ import {
 } from './cloudSyncEvents';
 import {
   shouldApplyRemoteTombstone,
+  shouldPromoteLocalRecordMissingFromCloud,
   shouldRemoteChangeReplacePending,
 } from './syncConflictPolicy';
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
-import {
 import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
 import { compactCloudProfileForRuntime } from './profileSyncMerge';
+import {
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
