@@ -11,12 +11,6 @@ import {
   seriesPositionLabel,
 } from '../../features/series/seriesLibrary';
 import {
-  makeSeriesOverrideId,
-  SERIES_OVERRIDES_STORAGE_KEY,
-  type SeriesOverride,
-  type SeriesOverrides,
-} from '../../features/series/seriesOverrides';
-import {
   ownershipLabel,
   readingStatusLabel,
   subscriptionServiceLabel,
@@ -29,6 +23,7 @@ interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
   onSelectBook: (book: UserBookRecord) => void;
   onAddBook: (book: UserBookRecord) => void;
+  onUpdateBook: (book: UserBookRecord) => void;
 }
 
 type DraftBook = { bookId: string; position: string; label: string };
@@ -49,9 +44,8 @@ const pageWindow = (current: number, total: number): number[] => {
   return Array.from({ length: 5 }, (_, index) => start + index);
 };
 
-export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook }) => {
+export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook, onUpdateBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
-  const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
   const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>('inkbound_series_sort', 'az');
   const [pendingFocusTarget, setPendingFocusTarget] = useState<LibrarySeriesFocusTarget | null>(() => consumeLibrarySeriesFocusTarget());
@@ -64,7 +58,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const [detectiveLoading, setDetectiveLoading] = useState(false);
   const [detectiveError, setDetectiveError] = useState('');
 
-  const series = useMemo(() => buildSeriesLibrary(books, overrides), [books, overrides]);
+  const series = useMemo(() => buildSeriesLibrary(books), [books]);
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     const source = query
@@ -193,7 +187,6 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const saveDraft = () => {
     if (!draft) return;
     const name = draft.name.trim();
-    const author = draft.author.trim();
     if (!name) {
       setError('Give the series a name.');
       return;
@@ -209,32 +202,59 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
       return;
     }
 
-    const id = draft.id ?? makeSeriesOverrideId(name, author || 'Unknown author');
-    const now = new Date().toISOString();
-    const existing = overrides[id];
-    const next: SeriesOverride = {
-      id,
-      name,
-      author: author || 'Unknown author',
-      books: draft.books.map((entry) => ({
-        bookId: entry.bookId,
-        position: entry.position.trim() === '' ? null : Number(entry.position),
-        label: entry.label.trim() || undefined,
-      })),
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
+    const selectedById = new Map(draft.books.map((entry) => [entry.bookId, entry]));
+    const previousSeries = draft.id ? series.find((item) => item.id === draft.id) : undefined;
 
-    setOverrides((current) => ({ ...current, [id]: next }));
-    setExpandedSeriesId(id);
+    // Removing a book from an existing *manual* series clears only manual series
+    // intent. Metadata-owned series assignments are never erased by editing some
+    // other group.
+    previousSeries?.books.forEach(({ book }) => {
+      if (selectedById.has(book.id) || book.work.seriesSource !== 'manual') return;
+      onUpdateBook({
+        ...book,
+        work: {
+          ...book.work,
+          seriesName: undefined,
+          seriesOrder: undefined,
+          seriesLabel: undefined,
+          seriesSource: undefined,
+        },
+      });
+    });
+
+    draft.books.forEach((entry) => {
+      const book = books.find((candidate) => candidate.id === entry.bookId);
+      if (!book) return;
+      onUpdateBook({
+        ...book,
+        work: {
+          ...book.work,
+          seriesName: name,
+          seriesOrder: entry.position.trim() === '' ? undefined : Number(entry.position),
+          seriesLabel: entry.label.trim() || undefined,
+          seriesSource: 'manual',
+        },
+      });
+    });
+
+    setExpandedSeriesId(null);
     setDraft(null);
   };
 
   const deleteManualSeries = (id: string) => {
-    setOverrides((current) => {
-      const next = { ...current };
-      delete next[id];
-      return next;
+    const target = series.find((item) => item.id === id);
+    target?.books.forEach(({ book }) => {
+      if (book.work.seriesSource !== 'manual') return;
+      onUpdateBook({
+        ...book,
+        work: {
+          ...book.work,
+          seriesName: undefined,
+          seriesOrder: undefined,
+          seriesLabel: undefined,
+          seriesSource: undefined,
+        },
+      });
     });
     if (expandedSeriesId === id) setExpandedSeriesId(null);
   };
@@ -271,6 +291,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
         ...created.work,
         seriesName: candidate.seriesName,
         seriesOrder: candidate.position ?? created.work.seriesOrder,
+        seriesSource: 'metadata',
       },
     };
     onAddBook(book);
