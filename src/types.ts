@@ -92,6 +92,7 @@ export interface UserBookRecord {
   activeEditionId: string;
   editions: Edition[];
   status: ReadingStatus;
+  customReadingStatusId?: string;
   ownership: OwnershipStatus;
   // Canonical pointer for reader-defined ownership. It is meaningful only when
   // ownership === 'custom'. Library Collections remain owned by `collections`.
