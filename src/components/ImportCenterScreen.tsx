@@ -120,7 +120,7 @@ function normalizeFormat(value: string): Format {
   if (normalized.includes('audio')) return 'audiobook';
   if (normalized.includes('ebook') || normalized.includes('e-book') || normalized.includes('kindle') || normalized.includes('digital')) return 'ebook';
   if (normalized.includes('paper') || normalized.includes('softcover')) return 'paperback';
-  return 'hardcover';
+  return 'unknown';
 }
 
 function normalizeStatus(value: string): ReadingStatus {
