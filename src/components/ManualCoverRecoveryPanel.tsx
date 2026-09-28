@@ -3,8 +3,7 @@ import { CheckCircle2, Image, LibraryBig, Loader2, RefreshCw, Search } from 'luc
 import { getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
 import type { UserBookRecord } from '../types';
 import { auth, storage } from '../lib/firebase';
-import { getRuntimeStorage } from '../platform/runtimeStorage';
-import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
+import { replaceCanonicalLibrary } from '../features/library/libraryMutations';
 import { readImportEnrichmentQueue, writeImportEnrichmentQueue } from '../features/import/libraryEnrichment';
 import { PaginationControls } from './PaginationControls';
 
@@ -19,7 +18,6 @@ interface ManualCoverRecoveryPanelProps {
   books: UserBookRecord[];
 }
 
-const BOOKS_STORAGE_KEY = 'inkbound_books';
 const COVER_PAGE_SIZE = 20;
 const BOOK_PAGE_SIZE = 20;
 
@@ -154,15 +152,14 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
         };
       });
 
-      const runtimeStorage = getRuntimeStorage();
-      runtimeStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(updatedBooks));
+      if (!replaceCanonicalLibrary(updatedBooks)) {
+        throw new Error('Canonical library persistence failed.');
+      }
 
       writeImportEnrichmentQueue(
         readImportEnrichmentQueue().filter((item) => item.targetBookId !== selectedBook.id),
       );
 
-      notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
-      notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
 
       setRestoredMessage(`Using this manual cover for “${selectedBook.work.title}”.`);
       setSelectedBookId('');
