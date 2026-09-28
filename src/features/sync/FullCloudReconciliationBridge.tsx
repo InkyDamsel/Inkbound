@@ -182,6 +182,16 @@ function reconcileCollection<T extends { id: string }>(
       return;
     }
     if (baseline[item.id] === undefined) {
+      // A record that has never existed in the cloud baseline is legitimate
+      // local-only data (for example, a pre-account library being attached to a
+      // newly registered account). Preserving it in memory is not enough: create
+      // durable upload intent now so the canonical local->cloud writer carries it
+      // to every device instead of leaving a permanent local-only island.
+      pending[item.id] = {
+        operation: 'upsert',
+        data: item,
+        clientUpdatedAt: new Date().toISOString(),
+      };
       stats.localOnlyPreserved += 1;
       return;
     }
