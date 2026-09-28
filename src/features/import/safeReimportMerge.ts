@@ -1,4 +1,5 @@
 import type { ImportRecordItem, ReadingStatus, UserBookRecord } from '../../types';
+import { normalizeBookRating, normalizeSpiceLevel } from '../reading/bookRating';
 import { replaceCanonicalLibrary } from '../library/libraryMutations';
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
@@ -142,7 +143,8 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
     },
     editions,
     status,
-    rating: existing.rating ?? item.rating,
+    rating: existing.rating ?? normalizeBookRating(item.rating),
+    spiceLevel: existing.spiceLevel ?? normalizeSpiceLevel(item.spiceLevel),
     review: existing.review?.trim() ? existing.review : item.review,
     privateTags: mergeUnique(existing.privateTags, importedTags),
     collections: mergeUnique(existing.collections, [...sourceCollections, ...optionalShelfCollections]),
@@ -165,6 +167,8 @@ export function applyImportExtrasToNewBook(book: UserBookRecord, item: ImportRec
       seriesLabel: book.work.seriesLabel ?? (isUserSeriesSource(item.seriesSource) ? item.seriesLabel?.trim() || undefined : undefined),
       seriesSource: book.work.seriesSource ?? (isUserSeriesSource(item.seriesSource) && item.seriesName?.trim() ? 'manual' : item.seriesName?.trim() ? 'metadata' : undefined),
     },
+    rating: book.rating ?? normalizeBookRating(item.rating),
+    spiceLevel: book.spiceLevel ?? normalizeSpiceLevel(item.spiceLevel),
     privateTags: mergeUnique(book.privateTags, importedTags),
     collections: mergeUnique(book.collections, [...sourceCollections, ...optionalShelfCollections]),
   };
