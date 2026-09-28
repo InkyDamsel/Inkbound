@@ -301,7 +301,7 @@ export const catalogEditionQualityScore = (edition: BookSearchEdition): number =
   if (edition.pageCount) score += 10;
   if (edition.publisher) score += 6;
   if (edition.publicationDate) score += 5;
-  if (edition.publicationYear > 0) score += 4;
+  if (typeof edition.publicationYear === 'number' && edition.publicationYear > 0) score += 4;
   if (edition.language) score += 4;
   if (edition.seriesName) score += 8;
   if (typeof edition.seriesOrder === 'number') score += 6;
