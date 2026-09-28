@@ -55,6 +55,19 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
     };
   }
 
+  const normalizedAuthor = normalized.work.author.trim().toLowerCase() === 'unknown author'
+    ? ''
+    : normalized.work.author;
+  if (normalizedAuthor !== normalized.work.author) {
+    normalized = {
+      ...normalized,
+      work: {
+        ...normalized.work,
+        author: normalizedAuthor,
+      },
+    };
+  }
+
   const summaryKey = normalized.work.summary.trim().toLowerCase();
   const normalizedSummary = (
     !summaryKey
