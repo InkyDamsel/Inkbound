@@ -5,7 +5,6 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
-import {
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   type CloudDataUpdatedDetail,
