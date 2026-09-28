@@ -1425,6 +1425,13 @@ for (const providerPath of [
     violations.push(`${providerPath}: provider adapters must leave missing authors empty instead of fabricating canonical metadata.`);
   }
 }
+const catalogHardeningSource = read('src/features/book-search/catalogHardening.ts');
+if (catalogHardeningSource.includes('return 0;') && catalogHardeningSource.includes('cleanPublicationYear')) {
+  violations.push('catalogHardening.ts: invalid or missing publication years must remain undefined, never canonical zero.');
+}
+if (!catalogHardeningSource.includes('const cleanPublicationYear = (value?: number): number | undefined')) {
+  violations.push('catalogHardening.ts: publication-year hardening must preserve the optional metadata contract.');
+}
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
