@@ -12,7 +12,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { getRuntimeStorage, removeRuntimeValue, writeRuntimeJson, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { applyRuntimeJsonFromExternalSource, applyRuntimeValueFromExternalSource, getRuntimeStorage, removeRuntimeValue, removeRuntimeValueFromExternalSource, writeRuntimeJson } from '../../platform/runtimeStorage';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import {
   IMPORT_ENRICHMENT_PAUSED_KEY,
@@ -350,24 +350,24 @@ export async function restoreRecoveryPoint(uid: string, snapshotId: string): Pro
   removeRuntimeValue(getAuxiliaryPendingKey(uid));
   removeRuntimeValue(getAuxiliaryBaselineKey(uid));
 
-  writeRuntimeJson(BOOKS_KEY, payload.books);
-  writeRuntimeJson(SESSIONS_KEY, payload.sessions);
-  writeRuntimeJson(PROFILE_KEY, payload.profile ?? {});
+  applyRuntimeJsonFromExternalSource(BOOKS_KEY, payload.books);
+  applyRuntimeJsonFromExternalSource(SESSIONS_KEY, payload.sessions);
+  applyRuntimeJsonFromExternalSource(PROFILE_KEY, payload.profile ?? {});
 
   const restoredAuxiliary = new Map(payload.auxiliary.map((item) => [item.id, item.data]));
   (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, runtimeKey]) => {
-    if (restoredAuxiliary.has(name)) writeRuntimeJson(runtimeKey, restoredAuxiliary.get(name));
-    else removeRuntimeValue(runtimeKey);
+    if (restoredAuxiliary.has(name)) applyRuntimeJsonFromExternalSource(runtimeKey, restoredAuxiliary.get(name));
+    else removeRuntimeValueFromExternalSource(runtimeKey);
   });
 
   const restoredRuntime = new Map(payload.runtimeState.map((item) => [item.id, item.data]));
   RECOVERABLE_RUNTIME_KEYS.forEach((runtimeKey) => {
     const value = restoredRuntime.get(runtimeKey);
-    if (value === undefined) removeRuntimeValue(runtimeKey);
-    else writeRuntimeValue(runtimeKey, value);
+    if (value === undefined) removeRuntimeValueFromExternalSource(runtimeKey);
+    else applyRuntimeValueFromExternalSource(runtimeKey, value);
   });
 
-  removeRuntimeValue(PHOTO_REVISION_KEY);
+  removeRuntimeValueFromExternalSource(PHOTO_REVISION_KEY);
 
   notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
   notifyLocalDataChanged([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
