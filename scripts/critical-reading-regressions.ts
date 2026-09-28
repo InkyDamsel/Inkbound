@@ -238,6 +238,19 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(report.healthy, true);
 }
 
+// Unknown author sentinel normalizes to empty canonical metadata.
+{
+  const unknownAuthor = {
+    ...baseBook(),
+    work: {
+      ...baseBook().work,
+      author: 'Unknown author',
+    },
+  };
+  const normalized = normalizeLibraryRecord(unknownAuthor);
+  assert.equal(normalized.work.author, '');
+}
+
 // Summary placeholder text normalizes to empty canonical metadata.
 {
   const placeholderSummary = {
