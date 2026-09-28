@@ -141,6 +141,14 @@ for (const file of sourceFiles) {
   }
 }
 
+const customOwnershipSource = read('src/features/ownership/customOwnershipCategories.ts');
+if (!customOwnershipSource.includes('replaceCanonicalLibrary')) {
+  violations.push('customOwnershipCategories.ts: affected books must persist through replaceCanonicalLibrary');
+}
+if (/writeRuntimeJson\(SYNC_STORAGE_KEYS\.books/.test(customOwnershipSource)) {
+  violations.push('customOwnershipCategories.ts: direct canonical books writes are forbidden');
+}
+
 const safeReimportSource = read('src/features/import/safeReimportMerge.ts');
 if (safeReimportSource.includes('SERIES_OVERRIDES_STORAGE_KEY') || safeReimportSource.includes('readSeriesOverrides(')) {
   violations.push('safeReimportMerge.ts: re-import must not restore retired seriesOverrides; manual series belongs on canonical books');
