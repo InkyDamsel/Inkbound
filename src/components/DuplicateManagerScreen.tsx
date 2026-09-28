@@ -204,7 +204,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
   const [collapsedSections, setCollapsedSections] = usePersistentState<Record<MaintenanceSection, boolean>>(MAINTENANCE_SECTIONS_KEY, {
     categories: false,
     ownership: false,
-    statuses: false,
+    statuses: true,
     tags: false,
     covers: false,
     duplicates: false,
