@@ -1,5 +1,8 @@
 export const DEVICE_UI_STORAGE_KEYS = {
   activeTab: 'inkbound_active_tab',
+  librarySection: 'inkbound_library_section',
+  librarySeriesFocusTarget: 'inkbound_library_series_focus_target',
+  legacyLibrarySeriesFocusBook: 'inkbound_library_series_focus_book',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
