@@ -644,8 +644,6 @@ if (bookDetailsSummarySource.includes("|| 'Summary unavailable.'")) {
 }
 
 
-const addBookModalSource = read('src/components/AddBookModal.tsx');
-const googleBooksSource = read('src/features/book-search/data/googleBooksApi.ts');
 const openLibraryAdapterSource = read('src/features/book-search/data/openLibraryApi.ts');
 const supplementalCatalogSource = read('src/features/book-search/data/supplementalCatalogApi.ts');
 
@@ -1197,7 +1195,6 @@ if (!seriesLibrarySource.includes('canonicalSeriesIdentity(name)')) {
   violations.push('seriesLibrary.ts: provider-name aliases must collapse into one canonical series grouping');
 }
 
-const supplementalCatalogSource = read('src/features/book-search/data/supplementalCatalogApi.ts');
 for (const required of [
   'searchCrossrefSupplement',
   'searchLibraryOfCongressSupplement',
@@ -1233,7 +1230,6 @@ for (const required of [
 if (!read('src/features/book-search/catalogHardening.ts').includes("format === 'audiobook' ? undefined : cleanPageCount")) {
   violations.push('catalogHardening.ts: Audiobook catalog records must not expose page counts');
 }
-const catalogHardeningSource = read('src/features/book-search/catalogHardening.ts');
 if (!catalogHardeningSource.includes('enrichConsistentSameFormatPageCounts')) {
   violations.push('catalogHardening.ts: visible editions must consume canonical same-format page-count enrichment');
 }
@@ -1243,7 +1239,6 @@ if (!catalogHardeningSource.includes("candidate.format !== edition.format")) {
 if (!catalogHardeningSource.includes('uniqueCounts.length === 1')) {
   violations.push('catalogHardening.ts: page-count enrichment must refuse conflicting same-format page counts');
 }
-const bookSearchMapperSource = read('src/features/book-search/mapping/bookSearchMapper.ts');
 if (!bookSearchMapperSource.includes('enrichSelectedCatalogEdition(hardenedWork, edition)')) {
   violations.push('bookSearchMapper.ts: selected search edition must be canonically enriched before save');
 }
