@@ -1,3 +1,18 @@
+export const DEVICE_FEATURE_STORAGE_KEYS = {
+  photoMemoryCloudRevisions: 'inkbound_photo_memory_cloud_revisions_v1',
+  photoMemories: 'inkbound_photo_memories_v2',
+  legacyPhotoMemories: 'inkbound_photo_memories',
+  photoMemorySyncQueue: 'inkbound_photo_memory_sync_queue_v1',
+  onboardingComplete: 'inkbound_onboarding_complete_v1',
+  onboardingProfile: 'inkbound_onboarding_profile_v1',
+  legacyLibrarySanctuary: 'inkbound_library_sanctuary_v1',
+  legacyProfileMediaSyncQueue: 'inkbound_profile_media_sync_queue_v1',
+} as const;
+
+export const DEVICE_FEATURE_STORAGE_PREFIXES = {
+  profileMediaSyncQueue: 'inkbound_profile_media_sync_queue_',
+} as const;
+
 export const DEVICE_UI_STORAGE_KEYS = {
   activeTab: 'inkbound_active_tab',
   librarySection: 'inkbound_library_section',
