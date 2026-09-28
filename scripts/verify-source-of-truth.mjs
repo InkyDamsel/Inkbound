@@ -212,13 +212,16 @@ const googleBooksSource = read('src/features/book-search/data/googleBooksApi.ts'
 const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
 const googleSeriesResolverSource = read('src/features/book-search/mapping/googleSeriesMetadata.ts');
 const bookDetailsCoreSource = read('src/components/BookDetailsModalCore.tsx');
-for (const required of ['selectBestCatalogMetadataCandidate', 'mergeCatalogBookMetadata', 'createBookFromSearchEdition']) {
+for (const required of ['selectBestCatalogMetadataCandidate', 'selectExactIsbnEdition', 'mergeCatalogBookMetadata', 'createBookFromSearchEdition']) {
   if (!bookDetailsCoreSource.includes(required)) {
-    violations.push(`BookDetailsModalCore.tsx: Book Details metadata repair must consume the canonical catalog merge (${required})`);
+    violations.push(`BookDetailsModalCore.tsx: Book Details metadata repair must consume canonical catalog selection/merge (${required})`);
   }
 }
 if (bookDetailsCoreSource.includes('candidateMatchesBookIdentity') || bookDetailsCoreSource.includes('catalogEditionQualityScore')) {
   violations.push('BookDetailsModalCore.tsx: must not own a second catalog identity/scoring implementation');
+}
+if (/response\.groups\s*\.flatMap\([\s\S]{0,220}\)\[0\]/.test(bookDetailsCoreSource)) {
+  violations.push('BookDetailsModalCore.tsx: ISBN repair must not select the first provider edition; use selectExactIsbnEdition');
 }
 
 if (!googleBooksSource.includes("resolveGoogleSeriesMetadata")) {
