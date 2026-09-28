@@ -148,20 +148,22 @@ function applySourceFieldsToBooks(items: ImportRecordItem[], library: UserBookRe
 async function applySourceFieldsToNewBooks(items: ImportRecordItem[], fallbackLibrary: UserBookRecord[]): Promise<UserBookRecord[]> {
   if (items.length === 0) return fallbackLibrary;
   let latestLibrary = fallbackLibrary;
-  let bestResult = { library: fallbackLibrary, matched: 0 };
+  let latestResult = { library: fallbackLibrary, matched: 0 };
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     latestLibrary = readCurrentBooks(latestLibrary);
-    const result = applySourceFieldsToBooks(items, latestLibrary);
-    if (result.matched > bestResult.matched) bestResult = result;
-    if (result.matched === items.length) break;
+    latestResult = applySourceFieldsToBooks(items, latestLibrary);
+    if (latestResult.matched === items.length) break;
     await new Promise<void>((resolve) => window.setTimeout(resolve, 25));
   }
 
-  if (bestResult.matched > 0) {
-    restoreManualSeriesOverridesFromImport(items, bestResult.library);
-    replaceCanonicalLibrary(bestResult.library);
-    return bestResult.library;
+  if (latestResult.matched > 0) {
+    // Always commit a merge based on the newest canonical library read. Keeping
+    // an earlier higher-match whole-library snapshot can overwrite edits or
+    // resurrect a book the reader deleted while import verification was waiting.
+    restoreManualSeriesOverridesFromImport(items, latestResult.library);
+    replaceCanonicalLibrary(latestResult.library);
+    return latestResult.library;
   }
 
   return latestLibrary;
