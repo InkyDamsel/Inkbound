@@ -142,7 +142,7 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
     externalEditionId: edition.key ?? `${work.key ?? title}-${index}`,
     title,
     subtitle: edition.subtitle ?? work.subtitle,
-    authors: work.author_name?.length ? work.author_name : ['Unknown author'],
+    authors: work.author_name?.length ? work.author_name : [],
     genres: (work.subject ?? []).slice(0, 12),
     publisher: first(publishers),
     publicationDate,
@@ -363,7 +363,7 @@ const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
     key: `open-library:${work.key ?? `${normalize(work.title)}:${normalize(work.author_name?.[0])}`}`,
     title: work.title,
     subtitle: work.subtitle,
-    authors: work.author_name?.length ? work.author_name : ['Unknown author'],
+    authors: work.author_name?.length ? work.author_name : [],
     genres: (work.subject ?? []).slice(0, 12),
     editions,
   };
