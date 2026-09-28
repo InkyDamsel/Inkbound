@@ -55,6 +55,23 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
     };
   }
 
+  const summaryKey = normalized.work.summary.trim().toLowerCase();
+  const normalizedSummary = (
+    !summaryKey
+    || summaryKey === 'summary unavailable.'
+    || summaryKey.startsWith('no publisher summary')
+    || summaryKey.startsWith('no publisher description')
+  ) ? '' : normalized.work.summary;
+  if (normalizedSummary !== normalized.work.summary) {
+    normalized = {
+      ...normalized,
+      work: {
+        ...normalized.work,
+        summary: normalizedSummary,
+      },
+    };
+  }
+
   const normalizedRating = normalizeBookRating(normalized.rating);
   const normalizedSpiceLevel = normalizeSpiceLevel(normalized.spiceLevel);
   if (normalizedRating !== normalized.rating || normalizedSpiceLevel !== normalized.spiceLevel) {
