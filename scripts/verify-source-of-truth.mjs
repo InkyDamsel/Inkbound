@@ -1397,6 +1397,14 @@ if (!recoverySource.includes('notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, P
   violations.push('dataRecovery.ts: recovery restore must refresh local consumers after cloud replacement.');
 }
 
+const importVerificationSource = read('src/features/import/importVerificationJob.ts');
+if (importVerificationSource.includes('let bestResult =') || importVerificationSource.includes('bestResult.library')) {
+  violations.push('importVerificationJob.ts: import verification must never commit an older whole-library snapshot over newer canonical state.');
+}
+if (!importVerificationSource.includes('latestResult = applySourceFieldsToBooks(items, latestLibrary)')) {
+  violations.push('importVerificationJob.ts: source-field reconciliation must be based on the latest canonical library read.');
+}
+
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
