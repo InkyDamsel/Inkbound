@@ -738,6 +738,14 @@ if (!main.includes("import('./applicationEntry.tsx')")) {
   violations.push('main.tsx: the non-public runtime must lazy-load the canonical application entry');
 }
 
+const appSource = read('src/App.tsx');
+if (appSource.includes('writeRuntimeJson(BOOKS_STORAGE_KEY, books)') || appSource.includes('writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions)')) {
+  violations.push('App.tsx: React state must not persist canonical books/sessions; use commitCanonical*/libraryMutations');
+}
+if (!appSource.includes('replaceCanonicalLibrary(booksRef.current)') || !appSource.includes('replaceCanonicalSessions(sessionsRef.current)')) {
+  violations.push('App.tsx: legacy core collection migration must promote data through canonical mutations');
+}
+
 const applicationEntry = read('src/applicationEntry.tsx');
 if (applicationEntry.includes('purgeUnverifiedLegacyImportMetadata();')) {
   violations.push('applicationEntry.tsx: Legacy import cleanup must run only after runtime storage hydration');
