@@ -7,7 +7,8 @@ import { getRuntimeStorage, readRuntimeJson } from '../../platform/runtimeStorag
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
 import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
 import { INKBOUND_CLOUD_DATA_EVENT, notifyCloudDataUpdated } from './cloudSyncEvents';
-import { FULL_RECONCILIATION_VERSION, fullReconciliationVersionKey, SYNC_STORAGE_KEYS } from './storageKeys';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { hasEstablishedLocalWorkingCopy } from './syncReadiness';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_STORAGE_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -17,34 +18,6 @@ const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 
 function readStoredBooks(): UserBookRecord[] {
   return readRuntimeJson<UserBookRecord[]>(BOOKS_STORAGE_KEY, []);
-}
-
-function hasEstablishedLocalWorkingCopy(uid: string): boolean {
-  try {
-    const storage = getRuntimeStorage();
-    if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
-    const raw = storage.getItem(BOOKS_STORAGE_KEY);
-    if (!raw || !raw.trim().startsWith('[')) return false;
-    const ownerUid = storage.getItem(OWNER_UID_KEY);
-    if (ownerUid && ownerUid !== uid) return false;
-
-    // Protected development mode is deliberately local-only: readDb may exist
-    // for Auth/bootstrap support while db is disabled to block production
-    // Firestore reads/writes. Requiring a cloud reconciliation marker here would
-    // deadlock the app on "Opening Inkbound..." even though the local working
-    // copy is the only permitted source in this mode.
-    const protectedLocalOnlyMode = Boolean(readDb && !db);
-    if (!protectedLocalOnlyMode
-      && storage.getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
-
-    if (ownerUid) return true;
-    // Upgrade path for pre-owner-marker builds. A legacy non-empty library is a
-    // real working copy; a bare [] can be App's fresh initialization and must
-    // still wait for first-device hydration.
-    return raw.trim() !== '[]';
-  } catch {
-    return false;
-  }
 }
 
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
@@ -63,7 +36,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       return undefined;
     }
 
-    if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
+    if (hasEstablishedLocalWorkingCopy(uid, { requireFullReconciliation: !Boolean(readDb && !db) })) setReadyUid(uid);
     else setReadyUid(null);
 
     // This boundary only gates a genuinely new/unhydrated account. Existing
@@ -75,7 +48,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
     const refresh = () => {
       reconcileRepeatedImportHistory(readStoredBooks());
 
-      if (hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
+      if (hasEstablishedLocalWorkingCopy(uid, { requireFullReconciliation: !Boolean(readDb && !db) })) setReadyUid(uid);
 
       void synchronizeProfileMedia(uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
