@@ -50,6 +50,7 @@ export const DEVICE_UI_STORAGE_KEYS = {
   timelineCollapsedMonths: 'inkbound_timeline_collapsed_months',
   yearInBooksPreferences: 'inkbound_year_in_books_preferences',
   seriesSort: 'inkbound_series_sort',
+  loansSort: 'inkbound_loans_sort',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
