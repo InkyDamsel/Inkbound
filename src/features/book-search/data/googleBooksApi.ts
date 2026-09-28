@@ -4,7 +4,7 @@ import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
-import { searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage } from './openLibraryApi';
+import { fetchOpenLibrarySummary, searchOpenLibrary, searchOpenLibraryExactTitleAuthor, searchOpenLibraryPage } from './openLibraryApi';
 import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
@@ -737,6 +737,16 @@ function cacheSearchResponse(cacheKey: string, response: BookSearchResponse, sea
     searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response: hardened });
   }
   return hardened;
+}
+
+export async function fetchCatalogPublisherSummary(
+  title: string,
+  author: string,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  // Provider-specific summary fallback belongs in the catalog orchestration
+  // layer. Feature/UI code must never call an individual metadata provider.
+  return fetchOpenLibrarySummary(title, author, signal);
 }
 
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
