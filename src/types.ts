@@ -49,7 +49,7 @@ export interface BookWork {
   genres: string[];
   tropes?: string[];
   contentWarnings?: string[];
-  publicationYear: number;
+  publicationYear?: number;
   originalLanguage?: string;
   externalWorkId?: string;
 }
