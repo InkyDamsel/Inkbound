@@ -18,6 +18,7 @@ import {
 import { BookCover } from '../BookCover';
 import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
 import { createBookFromSearchEdition } from '../../features/book-search/mapping/bookSearchMapper';
+import { DEVICE_UI_STORAGE_KEYS } from '../../features/sync/storageKeys';
 
 interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
@@ -47,7 +48,7 @@ const pageWindow = (current: number, total: number): number[] => {
 export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, onSelectBook, onAddBook, onUpdateBook }) => {
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [search, setSearch] = useState('');
-  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>('inkbound_series_sort', 'az');
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_UI_STORAGE_KEYS.seriesSort, 'az');
   const [pendingFocusTarget, setPendingFocusTarget] = useState<LibrarySeriesFocusTarget | null>(() => consumeLibrarySeriesFocusTarget());
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
