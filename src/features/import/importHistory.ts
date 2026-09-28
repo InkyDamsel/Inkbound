@@ -12,7 +12,7 @@ export const IMPORT_HISTORY_STORAGE_KEY = IMPORT_STORAGE_KEYS.history;
 export const IMPORT_ENRICHMENT_PAUSED_KEY = SYNC_STORAGE_KEYS.importEnrichmentPaused;
 // Kept only so older recovery snapshots containing this retired key can still
 // be restored/cleared safely. Foreground retries no longer use this handoff.
-export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = 'inkbound_import_enrichment_retry_request_v1';
+export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = IMPORT_STORAGE_KEYS.legacyEnrichmentRetryRequest;
 export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = SYNC_STORAGE_KEYS.importEnrichmentRetryProgress;
 export const IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY = SYNC_STORAGE_KEYS.importEnrichmentActiveRetry;
 
