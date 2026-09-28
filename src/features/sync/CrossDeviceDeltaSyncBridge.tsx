@@ -328,9 +328,8 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (stable(books) !== stable(nextBooks)) {
-          writeJson(BOOKS_KEY, nextBooks);
+          applyRuntimeJsonFromExternalSource(BOOKS_KEY, nextBooks);
           knownBookIds.current = new Set(nextBooks.map((book) => book.id));
-          notifyRuntimeStorageChanged(BOOKS_KEY);
           changedKeys.push(BOOKS_KEY);
         }
 
