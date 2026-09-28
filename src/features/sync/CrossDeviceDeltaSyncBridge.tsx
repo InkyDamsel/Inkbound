@@ -33,6 +33,7 @@ import {
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import {
 import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
+import { compactCloudProfileForRuntime } from './profileSyncMerge';
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -314,7 +315,7 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const updatedMillis = profileRecord.updatedAt?.toMillis() ?? 0;
           newestMillis = Math.max(newestMillis, updatedMillis);
           if (updatedMillis > lowerBound.toMillis() && cloudRecordWinsPending(profileRecord, pending.profile, baseline.profile === stable(profileRecord.data))) {
-            acceptedProfile = profileRecord.data;
+            acceptedProfile = compactCloudProfileForRuntime(profileRecord.data);
             delete pending.profile;
             baseline.profile = stable(profileRecord.data);
           }
