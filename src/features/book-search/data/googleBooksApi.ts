@@ -128,7 +128,7 @@ const publicationYear = (value?: string): number => {
   return match ? Number(match[0]) : 0;
 };
 
-const inferFormat = (volume: GoogleVolume): Format => volume.saleInfo?.isEbook ? 'ebook' : 'hardcover';
+const inferFormat = (volume: GoogleVolume): Format => volume.saleInfo?.isEbook === true ? 'ebook' : 'unknown';
 
 const getIdentifier = (volume: GoogleVolume, type: 'ISBN_10' | 'ISBN_13'): string | undefined =>
   volume.volumeInfo?.industryIdentifiers?.find((item) => item.type === type)?.identifier;
