@@ -67,7 +67,16 @@ function timedPremiumIsActive(value: unknown): boolean {
 }
 
 async function eraseInkboundUser(uid: string) {
-  await Promise.all([db.recursiveDelete(db.doc(`users/${uid}`)), db.doc(`userDirectory/${uid}`).delete(), db.doc(`entitlements/${uid}`).delete(), db.doc(`admins/${uid}`).delete()]);
+  // Remove the canonical account-existence sentinel first. Billing writers gate
+  // entitlement publication on this document, so no external subscription event
+  // can recreate account-owned billing state after this boundary disappears.
+  await db.doc(`userDirectory/${uid}`).delete();
+
+  await Promise.all([
+    db.recursiveDelete(db.doc(`users/${uid}`)),
+    db.doc(`entitlements/${uid}`).delete(),
+    db.doc(`admins/${uid}`).delete(),
+  ]);
   const billingSnapshots = await db.collection('billingSubscriptions').where('uid', '==', uid).get();
   await Promise.all(billingSnapshots.docs.map((item) => item.ref.delete()));
   const auditSnapshots = await Promise.all([db.collection('adminAudit').where('targetUserId', '==', uid).get(), db.collection('adminAudit').where('performedBy', '==', uid).get()]);
