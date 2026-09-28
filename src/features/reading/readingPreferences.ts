@@ -26,3 +26,10 @@ export const setAnnualReadingGoal = (value: unknown): number => {
 };
 
 export const getDailyReadingGoalMinutes = (): number => readPositiveInteger(DAILY_READING_GOAL_MINUTES_KEY, 30, 1440);
+
+
+export const setDailyReadingGoalMinutes = (value: unknown): number => {
+  const normalized = normalizePositiveInteger(value, getDailyReadingGoalMinutes(), 1440);
+  writeRuntimeJson(DAILY_READING_GOAL_MINUTES_KEY, normalized);
+  return normalized;
+};
