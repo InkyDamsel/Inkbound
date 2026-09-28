@@ -603,6 +603,16 @@ for (const [relative, source] of [
 if (/<input[^>]*type=["']number["'][^>]*(?!readOnly)[^>]*onChange=/.test(readingSessionModal)) {
   violations.push('ReadingSessionModal.tsx: editable numeric progress must not use a raw number input');
 }
+const settingsSource = read('src/components/SettingsScreen.tsx');
+for (const required of ['getAnnualReadingGoal', 'setAnnualReadingGoal', 'getDailyReadingGoalMinutes', 'setDailyReadingGoalMinutes']) {
+  if (!settingsSource.includes(required)) {
+    violations.push(`SettingsScreen.tsx: reading goals must use readingPreferences (${required})`);
+  }
+}
+if (settingsSource.includes('ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal') || settingsSource.includes('ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes')) {
+  violations.push('SettingsScreen.tsx: reading goal storage keys must not be owned by Settings');
+}
+
 const appSource = read('src/App.tsx');
 for (const required of ['commitCanonicalBooks', 'replaceCanonicalLibrary', 'commitCanonicalSessions', 'replaceCanonicalSessions']) {
   if (!appSource.includes(required)) {
