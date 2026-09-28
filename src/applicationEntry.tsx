@@ -6,7 +6,6 @@ import { UpgradeModal } from './components/UpgradeModal.tsx';
 import { AccountSyncProvider, useAccountSync } from './context/AccountSyncContext.tsx';
 import { UserPlanProvider } from './context/UserPlanContext.tsx';
 import { readImportEnrichmentRetryProgress } from './features/import/importHistory.ts';
-import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLegacyImportMetadata.ts';
 import { CanonicalLibraryNormalizationBridge } from './features/library/CanonicalLibraryNormalizationBridge.tsx';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
 import { ReadingMemoryCloudSyncBridge } from './features/memories/ReadingMemoryCloudSyncBridge.tsx';
@@ -17,6 +16,7 @@ import { CloudDataRefreshBoundary } from './features/sync/CloudDataRefreshBounda
 import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBridge.tsx';
 import { CrossDeviceDeltaSyncBridge } from './features/sync/CrossDeviceDeltaSyncBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
+import { LegacyImportMetadataPurgeBridge } from './features/sync/LegacyImportMetadataPurgeBridge.tsx';
 import { LibrarySyncCheckpointBridge } from './features/sync/LibrarySyncCheckpointBridge.tsx';
 import { ManualCoverLedgerBridge } from './features/sync/ManualCoverLedgerBridge.tsx';
 import { ProtectedBookDetailsLedgerBridge } from './features/sync/ProtectedBookDetailsLedgerBridge.tsx';
@@ -198,6 +198,7 @@ const InkboundApplication = () => (
               <ReadOnlyCloudHydrationBridge />
               <PhotoMemoryAutoSyncBridge />
               <LegacyBookCoverMigrationBridge />
+              <LegacyImportMetadataPurgeBridge />
               <CanonicalLibraryNormalizationBridge />
             </BrowserStorageHydrationGate>
             <ThemePersistenceBridge />
@@ -217,8 +218,6 @@ export async function mountApplication(rootElement: HTMLElement) {
   if (!isNativeRuntime()) prepareLargeBrowserStorageForStartup();
 
   isolateDevelopmentBrowserStorage();
-  purgeUnverifiedLegacyImportMetadata();
-
   if (!isNativeRuntime()) {
     window.addEventListener('beforeunload', (event) => {
       const retry = readImportEnrichmentRetryProgress();
