@@ -1,5 +1,5 @@
-import {
 import { DEVICE_UI_STORAGE_KEYS } from '../sync/storageKeys';
+import {
   notifyRuntimeStorageChanged,
   readRuntimeJson,
   removeRuntimeValue,
