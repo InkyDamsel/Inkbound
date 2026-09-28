@@ -4,6 +4,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes, getSessionListeningMinutes, getSessionPagesRead } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface ReadingMemoryEntry {
   feeling: string;
