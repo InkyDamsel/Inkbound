@@ -1,6 +1,6 @@
-import { ACCOUNT_DATA_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
-import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
-import { notifyRuntimeStorageChanged, readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../sync/storageKeys';
+import { readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
+import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import type { UserBookRecord } from '../../types';
 
 export interface CustomOwnershipCategory {
@@ -21,7 +21,6 @@ export const readCustomOwnershipCategories = (): CustomOwnershipCategory[] =>
     .sort((a, b) => a.name.localeCompare(b.name));
 
 const notifyCategoriesChanged = () => {
-  notifyRuntimeStorageChanged(CUSTOM_OWNERSHIP_CATEGORIES_KEY);
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT));
 };
 
@@ -70,10 +69,6 @@ export const deleteCustomOwnershipCategory = (id: string, books: UserBookRecord[
     : book);
 
   if (!writeCategories(current.filter((category) => category.id !== id))) return { deleted: false, affectedBooks: 0 };
-  if (affectedBooks > 0 && writeRuntimeJson(SYNC_STORAGE_KEYS.books, nextBooks)) {
-    // Refresh mounted canonical state only after the runtime write has emitted
-    // its local mutation signal and entered the durable cloud queue.
-    notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
-  }
+  if (affectedBooks > 0) replaceCanonicalLibrary(nextBooks);
   return { deleted: true, affectedBooks };
 };
