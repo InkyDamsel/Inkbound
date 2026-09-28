@@ -72,12 +72,14 @@ import {
 } from './features/reading/sessionBookReconciliation';
 import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, localDateKey } from './features/reading/sessionAnalytics';
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
+import { migrateSeriesOverridesToCanonicalBooks, readSeriesOverrides, SERIES_OVERRIDES_STORAGE_KEY } from './features/series/seriesOverrides';
 import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
 import { subscribeToRuntimeResume } from './platform/runtimeLifecycle';
 import { subscribeToRuntimeBackNavigation } from './platform/runtimeBackNavigation';
 import { notifyNativeBookFinished, notifyNativeReadingSessionFinished } from './features/notifications/nativeInkboundNotifications';
 import {
   getRuntimeStorage,
+  INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT,
   readRuntimeValue,
   removeRuntimeValue,
   writeRuntimeJson,
@@ -266,6 +268,33 @@ export default function App() {
     setSessions(next);
     return next;
   };
+
+
+  const migrateLegacySeriesOverrides = () => {
+    const overrides = readSeriesOverrides();
+    if (Object.keys(overrides).length === 0) return;
+
+    const result = migrateSeriesOverridesToCanonicalBooks(booksRef.current, overrides);
+    if (result.migratedBookIds.length > 0) {
+      commitCanonicalBooks(result.books);
+    }
+
+    // Empty, rather than delete, the retired auxiliary value so the auxiliary
+    // sync engine propagates the retirement to other devices/cloud instead of
+    // resurrecting this second series database on a later login.
+    writeRuntimeJson(SERIES_OVERRIDES_STORAGE_KEY, {});
+  };
+
+  useEffect(() => {
+    migrateLegacySeriesOverrides();
+
+    const onRuntimeStorageRefresh = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key === SERIES_OVERRIDES_STORAGE_KEY) migrateLegacySeriesOverrides();
+    };
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, onRuntimeStorageRefresh);
+    return () => window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, onRuntimeStorageRefresh);
+  }, []);
 
   const showToast = (message: string) => {
     setToastMessage(message);
