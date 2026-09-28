@@ -1374,6 +1374,21 @@ if (!cloudDataRefreshBoundary.includes('fullReconciliationVersionKey(uid)') || !
   violations.push('CloudDataRefreshBoundary.tsx: signed-in UI must wait for the current full reconciliation version before rendering account data.');
 }
 
+const onboardingGateSource = read('src/features/onboarding/OnboardingGate.tsx');
+const onboardingPreferencesSource = read('src/features/onboarding/onboardingPreferences.ts');
+
+if (!onboardingGateSource.includes('restoreOnboardingPreferences()')) {
+  violations.push('OnboardingGate.tsx: persisted accessibility preferences must be restored when onboarding mounts.');
+}
+for (const transientField of ['readerStyle,', 'genres:', 'libraryStart,', 'completedAt:']) {
+  if (onboardingGateSource.includes(transientField)) {
+    violations.push(`OnboardingGate.tsx: transient onboarding choice must not be persisted in the onboarding profile: ${transientField}`);
+  }
+}
+if (!onboardingPreferencesSource.includes("writeRuntimeJson(ONBOARDING_PROFILE_KEY, { accessibility })")) {
+  violations.push('onboardingPreferences.ts: legacy onboarding snapshots must self-heal to accessibility-only persisted state.');
+}
+
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
