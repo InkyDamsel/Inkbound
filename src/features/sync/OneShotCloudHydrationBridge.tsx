@@ -12,8 +12,8 @@ import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { applyRuntimeJsonFromExternalSource, removeRuntimeValueFromExternalSource, getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
-import {
 import { compactCloudProfileForRuntime } from './profileSyncMerge';
+import {
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
