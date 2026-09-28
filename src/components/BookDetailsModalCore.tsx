@@ -3,7 +3,7 @@ import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Sear
 import { FORMAT_OPTIONS, OWNERSHIP_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPTIONS } from '../domain/libraryTaxonomy';
 import { fetchCatalogPublisherSummary, searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import type { BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
-import { catalogWorkMatchesIdentity, isValidCatalogIsbn10, isValidCatalogIsbn13, selectBestCatalogMetadataCandidate } from '../features/book-search/catalogHardening';
+import { catalogWorkMatchesIdentity, isValidCatalogIsbn10, isValidCatalogIsbn13, selectBestCatalogMetadataCandidate, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import { createBookFromSearchEdition, mergeCatalogBookMetadata } from '../features/book-search/mapping/bookSearchMapper';
 import { getActiveEdition, withReadingStatus } from '../features/reading/bookReadingState';
 import {
@@ -259,9 +259,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
       const exactIsbn = activeIdentifiers[0];
 
       let response = await searchGoogleBooks(exactIsbn || `${book.work.title} ${book.work.author}`);
-      let match = exactIsbn && response.groups.length > 0
-        ? response.groups
-          .flatMap((work) => work.editions.map((edition) => ({ work, edition })))[0] ?? null
+      let match = exactIsbn
+        ? selectExactIsbnEdition(response.groups, exactIsbn)
         : selectBestCatalogMetadataCandidate(response.groups, {
           title: book.work.title,
           author: book.work.author,
