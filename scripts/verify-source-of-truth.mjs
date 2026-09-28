@@ -388,6 +388,16 @@ if (!bookDetailsCoreSource.includes('matchedEdition.pageCount ?? activeEdition.p
   violations.push('BookDetailsModalCore.tsx: exact-ISBN metadata sync must be able to repair stale provider page counts');
 }
 
+const readerDirectoryMaintenanceSource = read('functions/src/readerDirectoryMaintenance.ts');
+for (const forbidden of ['recursiveDelete(', 'deleteFiles({ prefix:', 'reconcileDirectory()']) {
+  if (readerDirectoryMaintenanceSource.includes(forbidden)) {
+    violations.push(`readerDirectoryMaintenance.ts: admin dashboard reads must remain non-destructive (${forbidden})`);
+  }
+}
+if (!readerDirectoryMaintenanceSource.includes('const authUsers = await listAllAuthUsers();')) {
+  violations.push('readerDirectoryMaintenance.ts: dashboard user listing must read Auth without destructive reconciliation');
+}
+
 const bookSearchFunctionSource = read('functions/src/bookSearch.ts');
 for (const required of [
   'normalizeGoogleCatalogMatchText',
