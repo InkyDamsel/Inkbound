@@ -18,7 +18,7 @@ const formatFromText = (value?: string): Format => {
   if (/paper|softcover|soft cover/.test(text)) return 'paperback';
   if (/ebook|electronic|digital|epub|pdf/.test(text)) return 'ebook';
   if (/audio|sound|mp3|cd/.test(text)) return 'audiobook';
-  return 'hardcover';
+  return 'unknown';
 };
 
 const cachedRequest = async (
@@ -153,7 +153,7 @@ export async function searchLibraryOfCongressSupplement(query: string): Promise<
         genres: (item.subject ?? []).slice(0, 12),
         publicationYear: yearFrom(item.date),
         language: Array.isArray(item.language) ? item.language[0] : item.language,
-        format: item.digitized ? 'ebook' : 'hardcover',
+        format: 'unknown',
         isbn10: isbn?.length === 10 ? isbn : undefined,
         isbn13: isbn?.length === 13 ? isbn : undefined,
         coverUrl: item.image_url?.find((value) => /^https?:\/\//i.test(value)),
@@ -226,7 +226,7 @@ export async function searchInternetArchiveSupplement(query: string): Promise<Bo
         publisher: publisher || undefined,
         publicationYear: yearFrom(item.year ?? item.date),
         language: Array.isArray(item.language) ? item.language[0] : item.language,
-        format: 'ebook',
+        format: 'unknown',
         isbn10,
         isbn13,
         coverUrl: `https://archive.org/services/img/${encodeURIComponent(identifier)}`,
