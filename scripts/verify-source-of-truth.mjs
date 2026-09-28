@@ -192,8 +192,6 @@ for (const required of ['createBookFromSearchEdition', 'mergeCatalogBookMetadata
   }
 }
 const importHistorySource = read('src/features/import/importHistory.ts');
-const importVerificationSource = read('src/features/import/importVerificationJob.ts');
-const legacyImportPurgeSource = read('src/features/import/purgeLegacyImportMetadata.ts');
 for (const [relative, source] of [
   ['src/features/import/importHistory.ts', importHistorySource],
   ['src/features/import/importVerificationJob.ts', importVerificationSource],
@@ -876,7 +874,6 @@ if (!main.includes("import('./applicationEntry.tsx')")) {
   violations.push('main.tsx: the non-public runtime must lazy-load the canonical application entry');
 }
 
-const appSource = read('src/App.tsx');
 if (appSource.includes('writeRuntimeJson(BOOKS_STORAGE_KEY, books)') || appSource.includes('writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions)')) {
   violations.push('App.tsx: React state must not persist canonical books/sessions; use commitCanonical*/libraryMutations');
 }
@@ -929,7 +926,6 @@ for (const relative of sourceFiles.map((file) => path.relative(root, file).repla
   }
 }
 
-const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 if (!oneShotHydration.includes('hadPreexistingLocalData')) {
   violations.push('OneShotCloudHydrationBridge.tsx: pre-existing local data must be distinguished from a cloud-only bootstrap');
 }
@@ -1140,7 +1136,6 @@ if (!seriesDetective.includes('existingTitleAuthors = new Set(libraryBooks') || 
 if (!seriesDetective.includes('providerSourcesByWork') || !seriesDetective.includes('hasKnownSeriesContextEvidence')) {
   violations.push('seriesDetective.ts: known-series discovery must preserve multi-provider agreement through catalog hardening.');
 }
-const seriesLibrarySource = read('src/features/series/seriesLibrary.ts');
 for (const required of [
   'canonicalSeriesIdentity',
   'seriesNamesAreCompatible',
@@ -1167,7 +1162,6 @@ for (const required of [
     violations.push(`supplementalCatalogApi.ts: missing bounded supplemental catalog contract ${required}`);
   }
 }
-const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
 if (!openLibrarySource.includes('hydrateOpenLibraryGroupFromWork')) {
   violations.push('openLibraryApi.ts: author catalog page 1 must hydrate canonical edition records');
 }
