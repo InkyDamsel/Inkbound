@@ -557,7 +557,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         publisherSummary: summary.trim() || undefined,
         materialType,
         genres: genres.split(',').map((genre) => genre.trim()).filter(Boolean),
-        publicationYear: new Date().getFullYear(),
       },
       activeEditionId: editionId,
       editions: [{
