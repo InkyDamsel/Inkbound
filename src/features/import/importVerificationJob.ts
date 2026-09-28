@@ -1,7 +1,7 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
 import { getRuntimeStorage, writeRuntimeJson } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
-import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
+import { IMPORT_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import { findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
@@ -21,9 +21,11 @@ export interface ImportVerificationJobSnapshot {
 type ImportExecutor = (items: ImportRecordItem[]) => Promise<ImportRecordItem[] | void> | ImportRecordItem[] | void;
 type Listener = (snapshot: ImportVerificationJobSnapshot) => void;
 
-const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v2';
-const LEGACY_SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v1';
-const METADATA_PENDING_STORAGE_KEY = 'inkbound_import_metadata_pending_v1';
+const SNAPSHOT_STORAGE_KEY = IMPORT_STORAGE_KEYS.verificationSnapshot;
+const LEGACY_SNAPSHOT_STORAGE_KEY = IMPORT_STORAGE_KEYS.legacyVerificationSnapshot;
+const METADATA_PENDING_STORAGE_KEY = IMPORT_STORAGE_KEYS.metadataPending;
+
+const runtimeStorage = () => getRuntimeStorage();
 
 const emptySnapshot = (): ImportVerificationJobSnapshot => ({ status: 'idle', completed: 0, total: 0, importedCount: 0, matchedCount: 0, metadataPendingCount: 0, duplicates: [], unmatched: [] });
 
@@ -41,13 +43,13 @@ function normalizeImportRecord(record: ImportRecordItem): ImportRecordItem {
 }
 
 function clearCompletedUiState() {
-  try { localStorage.removeItem(SNAPSHOT_STORAGE_KEY); } catch { /* best effort */ }
+  try { runtimeStorage().removeItem(SNAPSHOT_STORAGE_KEY); } catch { /* best effort */ }
 }
 
 function readStoredSnapshot(): ImportVerificationJobSnapshot {
   try {
-    localStorage.removeItem(LEGACY_SNAPSHOT_STORAGE_KEY);
-    const stored = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+    runtimeStorage().removeItem(LEGACY_SNAPSHOT_STORAGE_KEY);
+    const stored = runtimeStorage().getItem(SNAPSHOT_STORAGE_KEY);
     if (!stored) return emptySnapshot();
     const parsed = JSON.parse(stored) as Partial<ImportVerificationJobSnapshot>;
     if (parsed.status === 'complete') { clearCompletedUiState(); return emptySnapshot(); }
@@ -61,19 +63,19 @@ let activePromise: Promise<void> | null = null;
 const listeners = new Set<Listener>();
 
 function persistSnapshot(next: ImportVerificationJobSnapshot) {
-  try { localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(next)); } catch { /* best effort */ }
+  try { runtimeStorage().setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(next)); } catch { /* best effort */ }
 }
 
 function persistMetadataPending(items: ImportRecordItem[]) {
   try {
-    if (items.length === 0) { localStorage.removeItem(METADATA_PENDING_STORAGE_KEY); return; }
-    localStorage.setItem(METADATA_PENDING_STORAGE_KEY, JSON.stringify(items));
+    if (items.length === 0) { runtimeStorage().removeItem(METADATA_PENDING_STORAGE_KEY); return; }
+    runtimeStorage().setItem(METADATA_PENDING_STORAGE_KEY, JSON.stringify(items));
   } catch { /* normal enrichment queue remains authoritative */ }
 }
 
 export function readImportMetadataPending(): ImportRecordItem[] {
   try {
-    const stored = localStorage.getItem(METADATA_PENDING_STORAGE_KEY);
+    const stored = runtimeStorage().getItem(METADATA_PENDING_STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored) as unknown;
     return Array.isArray(parsed) ? (parsed as ImportRecordItem[]).map(normalizeImportRecord) : [];
@@ -102,7 +104,7 @@ export function subscribeToImportVerification(listener: Listener): () => void {
 export function resetImportVerificationJob() {
   if (snapshot.status === 'running') return;
   snapshot = emptySnapshot();
-  try { localStorage.removeItem(SNAPSHOT_STORAGE_KEY); localStorage.removeItem(METADATA_PENDING_STORAGE_KEY); } catch { /* best effort */ }
+  try { runtimeStorage().removeItem(SNAPSHOT_STORAGE_KEY); runtimeStorage().removeItem(METADATA_PENDING_STORAGE_KEY); } catch { /* best effort */ }
   listeners.forEach((listener) => listener(snapshot));
 }
 
