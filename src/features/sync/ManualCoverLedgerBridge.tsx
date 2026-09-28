@@ -5,13 +5,14 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
+import { SYNC_STORAGE_KEYS } from './storageKeys';
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
 
-const BOOKS_KEY = 'inkbound_books';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const LEDGER_BASELINE_PREFIX = 'inkbound_manual_cover_ledger_baseline_v1_';
 
 interface ManualCoverLedgerEntry {
