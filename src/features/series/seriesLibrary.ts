@@ -101,19 +101,7 @@ export function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
 }
 
 /** Canonical resolver for any screen/export that needs the series the reader sees. */
-export function resolveEffectiveSeriesMetadata(book: UserBookRecord, overrides: SeriesOverrides = {}): EffectiveSeriesMetadata | null {
-  // Legacy overrides are migration-only compatibility. New manual corrections
-  // live on the canonical book record itself.
-  for (const override of orderedSeriesOverrides(overrides)) {
-    const entry = override.books.find((candidate) => candidate.bookId === book.id);
-    if (!entry) continue;
-    return {
-      name: override.name,
-      position: recoverSeriesPosition(book, override.name, entry.position),
-      label: entry.label?.trim() ?? '',
-      source: 'manual',
-    };
-  }
+export function resolveEffectiveSeriesMetadata(book: UserBookRecord): EffectiveSeriesMetadata | null {
   const explicitName = book.work.seriesName?.trim();
   if (explicitName) {
     return {
@@ -175,25 +163,10 @@ const summarize = (id: string, name: string, author: string, entries: SeriesBook
   };
 };
 
-export function buildSeriesLibrary(books: UserBookRecord[], overrides: SeriesOverrides = {}): SeriesSummary[] {
-  const booksById = new Map(books.map((book) => [book.id, book]));
-  const manuallyAssignedBookIds = new Set<string>();
+export function buildSeriesLibrary(books: UserBookRecord[]): SeriesSummary[] {
   const summaries: SeriesSummary[] = [];
-
-  orderedSeriesOverrides(overrides).forEach((override) => {
-    const entries = override.books.flatMap((entry) => {
-      const book = booksById.get(entry.bookId);
-      if (!book || manuallyAssignedBookIds.has(book.id)) return [];
-      manuallyAssignedBookIds.add(book.id);
-      const position = recoverSeriesPosition(book, override.name, entry.position);
-      return [{ book, position, displayPosition: seriesPositionLabel(book, position, entry.label) }];
-    });
-    if (entries.length > 0) summaries.push(summarize(override.id, override.name, override.author, entries, true));
-  });
-
   const metadataGroups = new Map<string, { name: string; author: string; entries: SeriesBookEntry[]; isManual: boolean }>();
   books.forEach((book) => {
-    if (manuallyAssignedBookIds.has(book.id)) return;
     const resolved = resolveEffectiveSeriesMetadata(book);
     if (!resolved) return;
     const name = resolved.name;
