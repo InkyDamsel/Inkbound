@@ -1,5 +1,6 @@
 import type { UserBookRecord } from '../../types';
-import { getRuntimeStorage, writeRuntimeJson, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { getRuntimeStorage, removeRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import { IMPORT_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
@@ -78,8 +79,8 @@ export function purgeUnverifiedLegacyImportMetadata(): number {
     });
 
     if (purgedCount > 0) {
-      writeRuntimeJson(BOOKS_STORAGE_KEY, cleaned);
-      runtimeStorage().removeItem(LEGACY_BOOKS_STORAGE_KEY);
+      replaceCanonicalLibrary(cleaned);
+      removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
     }
     writeRuntimeValue(PURGE_VERSION_KEY, 'done');
     return purgedCount;
