@@ -45,11 +45,26 @@ for (const file of sourceFiles) {
   }
 }
 
+const auxiliarySyncConfigSource = read('src/features/sync/auxiliaryAccountSyncConfig.ts');
+if (/seriesOverrides\s*:/.test(auxiliarySyncConfigSource)) {
+  violations.push('auxiliaryAccountSyncConfig.ts: seriesOverrides must not participate in normal auxiliary sync');
+}
+const legacySeriesMigrationSource = read('src/features/sync/LegacySeriesOverrideMigrationBridge.tsx');
+for (const required of ['migrateSeriesOverridesToCanonicalBooks', 'replaceCanonicalLibrary', "'seriesOverrides'", 'ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides']) {
+  if (!legacySeriesMigrationSource.includes(required)) {
+    violations.push(`LegacySeriesOverrideMigrationBridge.tsx: migration-only series retirement is missing ${required}`);
+  }
+}
+const applicationEntrySource = read('src/applicationEntry.tsx');
+if (!applicationEntrySource.includes('<LegacySeriesOverrideMigrationBridge />')) {
+  violations.push('applicationEntry.tsx: legacy series migration must remain mounted behind core hydration');
+}
+
 const legacySeriesOverrideAllowed = new Set([
   'src/App.tsx',
   'src/features/series/seriesOverrides.ts',
   'src/features/series/seriesLibrary.ts',
-  'src/features/sync/auxiliaryAccountSyncConfig.ts',
+  'src/features/sync/LegacySeriesOverrideMigrationBridge.tsx',
   'src/features/sync/storageKeys.ts',
 ]);
 for (const file of sourceFiles) {
