@@ -89,7 +89,6 @@ import { Check, Flame, RotateCcw, Target } from 'lucide-react';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_STORAGE_KEY = SYNC_STORAGE_KEYS.sessions;
-const THEME_STORAGE_KEY = SYNC_STORAGE_KEYS.theme;
 const LEGACY_BOOKS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.books;
 const LEGACY_SESSIONS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.sessions;
 const TIMER_OPEN_STORAGE_KEY = DEVICE_UI_STORAGE_KEYS.timerOpen;
@@ -179,9 +178,7 @@ export default function App() {
   const [sessionMilestone, setSessionMilestone] = useState<SessionMilestoneNotice | null>(null);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDarkMode);
-    document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light';
-    writeRuntimeValue(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
+    persistInkboundTheme(isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
   // React state mirrors canonical storage; it is not a second persistence owner.
