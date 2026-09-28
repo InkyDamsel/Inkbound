@@ -55,6 +55,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
     audiobook: Headphones,
     hardcover: BookOpen,
     paperback: BookOpen,
+    unknown: BookOpen,
     other_physical: Bookmark,
   }[format];
 
