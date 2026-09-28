@@ -12,9 +12,10 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { readRuntimeJson, removeRuntimeValue, writeRuntimeJson } from '../../platform/runtimeStorage';
+import { DEVICE_FEATURE_STORAGE_KEYS } from '../sync/storageKeys';
 
-const ONBOARDING_KEY = 'inkbound_onboarding_complete_v1';
-const ONBOARDING_PROFILE_KEY = 'inkbound_onboarding_profile_v1';
+const ONBOARDING_KEY = DEVICE_FEATURE_STORAGE_KEYS.onboardingComplete;
+const ONBOARDING_PROFILE_KEY = DEVICE_FEATURE_STORAGE_KEYS.onboardingProfile;
 
 const readerStyles = [
   'I always have a book going',
@@ -90,7 +91,7 @@ export const OnboardingGate: React.FC<React.PropsWithChildren> = ({ children }) 
 
     writeRuntimeJson(ONBOARDING_PROFILE_KEY, profile);
     writeRuntimeJson(ONBOARDING_KEY, true);
-    removeRuntimeValue('inkbound_library_sanctuary_v1');
+    removeRuntimeValue(DEVICE_FEATURE_STORAGE_KEYS.legacyLibrarySanctuary);
     document.documentElement.dataset.textSize = textSize;
     document.documentElement.classList.toggle('reduce-motion', reduceMotion);
     document.documentElement.classList.toggle('high-contrast', highContrast);
