@@ -23,7 +23,7 @@ import { useUserPlan } from '../context/UserPlanContext';
 import { formatTrialDaysRemaining } from '../features/billing/trialAccess';
 import { buildInkboundBackup, buildLibraryCsv } from '../features/export/libraryExport';
 import { localDateKey } from '../features/reading/sessionAnalytics';
-import { ACCOUNT_DATA_STORAGE_KEYS, localClearIntentKey } from '../features/sync/storageKeys';
+import { ACCOUNT_DATA_STORAGE_KEYS, INKBOUND_STORAGE_NAMESPACE_PREFIX, localClearIntentKey } from '../features/sync/storageKeys';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
@@ -106,7 +106,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
       await reauthenticateRuntimeUser(user, { password: deletePassword });
       const deleteAccount = httpsCallable(functions, 'deleteMyAccount');
       await deleteAccount({ confirmation: DELETE_ACCOUNT_PHRASE });
-      onResetData(); removeRuntimeValuesByPrefix('inkbound_'); await restartRuntimeApp();
+      onResetData(); removeRuntimeValuesByPrefix(INKBOUND_STORAGE_NAMESPACE_PREFIX); await restartRuntimeApp();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Inkbound could not delete this account.';
       setDeleteAccountError(message.replace(/^Firebase:\s*/i, '')); setIsDeletingAccount(false);
