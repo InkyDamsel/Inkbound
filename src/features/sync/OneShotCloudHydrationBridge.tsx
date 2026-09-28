@@ -110,7 +110,7 @@ function newestSnapshotUpdateMillis(
  * Android keeps the normal Build 27.6 startup/auth path. Only after a signed-in
  * account actually needs first-device hydration do we restore/install the same
  * canonical large-library storage bridge used by web. This avoids WebView
- * localStorage quota failures for very large libraries without adding a second
+ * browser-storage quota failures for very large libraries without adding a second
  * Android persistence owner or gating authentication on IndexedDB startup.
  */
 export const OneShotCloudHydrationBridge: React.FC = () => {
@@ -133,7 +133,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
       hydrationRunning = true;
       try {
-        // A large Android library may have been moved out of raw localStorage on
+        // A large Android library may have been moved out of raw browser storage on
         // a previous run. Restore that canonical IndexedDB-backed value before
         // deciding that this device needs another full cloud download.
         if (isNativeRuntime()) {
