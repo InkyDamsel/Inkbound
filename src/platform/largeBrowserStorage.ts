@@ -8,7 +8,7 @@ const LOCAL_STORAGE_SOFT_LIMIT = 1_500_000;
 
 export const LARGE_BROWSER_STORAGE_HYDRATED_EVENT = 'inkbound:large-browser-storage-hydrated';
 
-const exactManagedKeys = new Set([
+const exactManagedKeys = new Set<string>([
   SYNC_STORAGE_KEYS.books,
   SYNC_STORAGE_KEYS.importEnrichmentQueue,
   IMPORT_STORAGE_KEYS.history,
@@ -21,7 +21,7 @@ const managedPrefixes = [
   SYNC_STORAGE_PREFIXES.baseline,
 ];
 
-const STARTUP_EXACT_KEYS = new Set([SYNC_STORAGE_KEYS.books]);
+const STARTUP_EXACT_KEYS = new Set<string>([SYNC_STORAGE_KEYS.books]);
 const STARTUP_PREFIXES = [
   SYNC_STORAGE_PREFIXES.pending,
   SYNC_STORAGE_PREFIXES.baseline,
