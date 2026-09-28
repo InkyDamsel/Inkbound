@@ -8,7 +8,7 @@ import { purgeUnverifiedLegacyImportMetadata } from '../import/purgeLegacyImport
  * Large web libraries may live in IndexedDB and must be restored before any
  * migration reads or writes the canonical library. Running this from the app
  * bootstrap can incorrectly mark the migration complete against an empty
- * pre-hydration localStorage view.
+ * pre-hydration browser-storage view.
  */
 export const LegacyImportMetadataPurgeBridge: React.FC = () => {
   const ran = useRef(false);
