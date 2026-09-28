@@ -32,6 +32,7 @@ import {
 } from './syncConflictPolicy';
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import {
+import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -249,7 +250,16 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
           const id = record.data?.id;
           if (!id) return;
           bookUpdateMillis.set(id, updatedMillis);
-          if (!cloudRecordWinsPending(record, pending.books[id], baseline.books[id] === fingerprint(record.data))) return;
+          const pendingMutation = pending.books[id];
+          if (!cloudRecordWinsPending(record, pendingMutation, baseline.books[id] === fingerprint(record.data))) {
+            if (pendingMutation?.operation === 'upsert' && pendingMutation.data) {
+              const mergedPending = mergePendingLocalBookWithRemoteMetadata(pendingMutation.data, record.data);
+              pendingMutation.data = mergedPending;
+              acceptedBooks.push(mergedPending);
+              baseline.books[id] = fingerprint(record.data);
+            }
+            return;
+          }
           delete pending.books[id];
           acceptedBooks.push(record.data);
           baseline.books[id] = fingerprint(record.data);
