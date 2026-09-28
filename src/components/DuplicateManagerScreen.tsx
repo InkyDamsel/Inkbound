@@ -11,6 +11,11 @@ import { PaginationControls } from './PaginationControls';
 import { TagManager } from './library/TagManager';
 import { CustomOwnershipCategoryManager } from './ownership/CustomOwnershipCategoryManager';
 import { OwnershipManager } from './ownership/OwnershipManager';
+import { CustomReadingStatusManager } from './reading/CustomReadingStatusManager';
+import {
+  CUSTOM_READING_STATUSES_CHANGED_EVENT,
+  readCustomReadingStatuses,
+} from '../features/reading/customReadingStatuses';
 
 export interface DuplicateMergeRequest {
   keepBookId: string;
@@ -22,6 +27,7 @@ interface DuplicateManagerScreenProps {
   books: UserBookRecord[];
   onMergeGroup: (request: DuplicateMergeRequest) => void;
   onSelectBook: (book: UserBookRecord) => void;
+  onUpdateBook: (book: UserBookRecord) => void;
 }
 
 interface DuplicateGroup {
@@ -31,7 +37,7 @@ interface DuplicateGroup {
 }
 
 type DuplicateCandidate = { reason: 'isbn' | 'title-author'; key: string; ids: string[] };
-type MaintenanceSection = 'categories' | 'ownership' | 'tags' | 'covers' | 'duplicates';
+type MaintenanceSection = 'categories' | 'ownership' | 'statuses' | 'tags' | 'covers' | 'duplicates';
 
 const IGNORED_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups;
 const LEGACY_IGNORED_STORAGE_KEY = 'inkbound_duplicate_groups_ignored';
@@ -193,15 +199,23 @@ const findDuplicateGroups = (books: UserBookRecord[], ignored: Set<string>) => {
   return groups.sort((a, b) => b.books.length - a.books.length || a.books[0].work.title.localeCompare(b.books[0].work.title));
 };
 
-export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ books, onMergeGroup, onSelectBook }) => {
+export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ books, onMergeGroup, onSelectBook, onUpdateBook }) => {
   const [ignoredGroupIds, setIgnoredGroupIds] = usePersistentState<string[]>(IGNORED_STORAGE_KEY, []);
   const [collapsedSections, setCollapsedSections] = usePersistentState<Record<MaintenanceSection, boolean>>(MAINTENANCE_SECTIONS_KEY, {
     categories: false,
     ownership: false,
+    statuses: false,
     tags: false,
     covers: false,
     duplicates: false,
   });
+  const [customStatusCount, setCustomStatusCount] = useState(() => readCustomReadingStatuses().length);
+  useEffect(() => {
+    const refreshStatusCount = () => setCustomStatusCount(readCustomReadingStatuses().length);
+    window.addEventListener(CUSTOM_READING_STATUSES_CHANGED_EVENT, refreshStatusCount);
+    return () => window.removeEventListener(CUSTOM_READING_STATUSES_CHANGED_EVENT, refreshStatusCount);
+  }, []);
+
   const [query, setQuery] = useState('');
   const [keeperByGroup, setKeeperByGroup] = useState<Record<string, string>>({});
   const [duplicatePage, setDuplicatePage] = useState(1);
@@ -268,7 +282,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
 
   return <div className="space-y-6 pb-24">
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0"><p className="inkbound-kicker">Library Maintenance</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Keep your library tidy</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Manage categories, ownership, tags, saved covers, and possible duplicate books from one place.</p></div>
+      <div className="min-w-0"><p className="inkbound-kicker">Library Maintenance</p><h1 className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">Keep your library tidy</h1><p className="mt-2 max-w-3xl text-sm text-[var(--ink-muted)]">Manage categories, ownership, reading statuses, tags, saved covers, and possible duplicate books from one place.</p></div>
       <div className="shrink-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-4 py-3 text-sm"><strong className="text-[var(--ink-ivory)]">{groups.length} duplicate groups</strong><span className="ml-2 text-[var(--ink-muted)]">· {booksInGroups} books involved</span></div>
     </header>
 
@@ -280,6 +294,11 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
     <section className="space-y-3">
       {sectionToggle('ownership', 'Ownership management', 'Ownership Manager', 'Review ownership usage and clean up books that still use custom ownership assignments.', `${ownershipCustomCount} custom`)}
       {!collapsedSections.ownership && <OwnershipManager books={books} />}
+    </section>
+
+    <section className="space-y-3">
+      {sectionToggle('statuses', 'Status management', 'Status Manager', 'Create, rename, and remove your custom reading statuses.', `${customStatusCount} custom`)}
+      {!collapsedSections.statuses && <CustomReadingStatusManager books={books} onUpdateBook={onUpdateBook} />}
     </section>
 
     <section className="space-y-3">
