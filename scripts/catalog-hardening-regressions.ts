@@ -691,30 +691,30 @@ assert.equal(languageConflict.edition.coverUrl, undefined);
 // explicit author intent.
 {
   const authorResults = [
-    work(edition('google-books', {
-      title: 'The Shining',
+    {
+      ...work('The Shining', { ...goodEdition, externalEditionId: 'fallback-shining', title: 'The Shining', authors: ['Stephen King'] }),
       authors: ['Stephen King'],
-    }), { title: 'The Shining', authors: ['Stephen King'] }),
-    work(edition('open-library', {
-      title: 'Misery',
+    },
+    {
+      ...work('Misery', { ...goodEdition, source: 'open-library', externalEditionId: 'fallback-misery', title: 'Misery', authors: ['Stephen King'] }),
       authors: ['Stephen King'],
-    }), { title: 'Misery', authors: ['Stephen King'] }),
+    },
   ];
   assert.equal(shouldRunStructuredTitleFallback(authorResults, 'Stephen King'), false);
 
   const broadResults = [
-    work(edition('google-books', {
-      title: 'Zoo Stories',
+    {
+      ...work('Zoo Stories', { ...goodEdition, externalEditionId: 'fallback-zoo', title: 'Zoo Stories', authors: ['Example Author'] }),
       authors: ['Example Author'],
-    }), { title: 'Zoo Stories', authors: ['Example Author'] }),
+    },
   ];
   assert.equal(shouldRunStructuredTitleFallback(broadResults, "The Zookeeper's Wife"), true);
 
   const exactTitleResults = [
-    work(edition('google-books', {
-      title: "The Zookeeper's Wife",
+    {
+      ...work("The Zookeeper's Wife", { ...goodEdition, externalEditionId: 'fallback-zookeeper', title: "The Zookeeper's Wife", authors: ['Diane Ackerman'] }),
       authors: ['Diane Ackerman'],
-    }), { title: "The Zookeeper's Wife", authors: ['Diane Ackerman'] }),
+    },
   ];
   assert.equal(shouldRunStructuredTitleFallback(exactTitleResults, "The Zookeeper’s Wife"), false);
 }
