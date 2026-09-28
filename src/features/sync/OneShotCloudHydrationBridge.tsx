@@ -10,9 +10,10 @@ import {
 } from '../../platform/largeBrowserStorage';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { isNativeRuntime } from '../../platform/runtimePlatform';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { applyRuntimeJsonFromExternalSource, removeRuntimeValueFromExternalSource, getRuntimeStorage } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
+import { compactCloudProfileForRuntime } from './profileSyncMerge';
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -165,15 +166,15 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         const localBooks = sameAccountLocalData ? readJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
         const localSessions = sameAccountLocalData ? readJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
         const hadPreexistingLocalData = sameAccountLocalData && (localBooks.length > 0 || localSessions.length > 0);
-        writeJson(BOOKS_KEY, mergeBooksById(localBooks, cloudBooks));
-        writeJson(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
+        applyRuntimeJsonFromExternalSource(BOOKS_KEY, mergeBooksById(localBooks, cloudBooks));
+        applyRuntimeJsonFromExternalSource(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
 
         if (profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<ReaderProfile>).data;
-          if (cloudProfile) writeJson(PROFILE_KEY, cloudProfile);
-          else if (!sameAccountLocalData) storage.removeItem(PROFILE_KEY);
+          if (cloudProfile) applyRuntimeJsonFromExternalSource(PROFILE_KEY, compactCloudProfileForRuntime(cloudProfile));
+          else if (!sameAccountLocalData) removeRuntimeValueFromExternalSource(PROFILE_KEY);
         } else if (!sameAccountLocalData) {
-          storage.removeItem(PROFILE_KEY);
+          removeRuntimeValueFromExternalSource(PROFILE_KEY);
         }
 
         // If the books payload crossed the large-storage threshold, wait until
