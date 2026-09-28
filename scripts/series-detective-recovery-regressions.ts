@@ -137,6 +137,26 @@ assert.deepEqual(
   { name: 'Dream Harbor', position: 3 },
 );
 
+// A single provider's exact-ISBN record is not enough when its series label
+// lacks bibliographic context. This blocks edition/translation labels from
+// becoming canonical series identity merely because the ISBN is exact.
+const weakEditionScopedSeries = scoreDetectiveEvidence({
+  seriesName: 'Translated Collection -- tome 2',
+  position: 2,
+  title: 'Example Punishment',
+  authors: ['Example Author'],
+  isbn13: '9780000000002',
+  sourceId: 'open-library',
+  recordId: 'open-library:translated',
+  providerId: 'open-library',
+  providerCount: 1,
+  structured: false,
+  exactIdentifier: true,
+  exactTitle: true,
+  exactAuthor: true,
+});
+assert.equal(selectVerifiedDetectiveEvidence([weakEditionScopedSeries]), null);
+
 // Provider metadata is complementary. Google may know the exact edition
 // while Open Library supplies the missing series relationship.
 const mergedProviders = mergeDetectiveCandidates([
