@@ -238,6 +238,18 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(report.healthy, true);
 }
 
+// Rating and spice values normalize to canonical half-steps.
+{
+  const rated = {
+    ...baseBook(),
+    rating: 4.74,
+    spiceLevel: 3.24,
+  };
+  const normalized = normalizeLibraryRecord(rated);
+  assert.equal(normalized.rating, 4.5);
+  assert.equal(normalized.spiceLevel, 3);
+}
+
 // Zero/malformed edition totals normalize to unknown rather than becoming
 // authoritative 0-page/0-minute metadata.
 {
