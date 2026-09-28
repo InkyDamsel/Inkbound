@@ -1,5 +1,5 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
-import { getRuntimeStorage, writeRuntimeJson } from '../../platform/runtimeStorage';
+import { getRuntimeStorage, removeRuntimeValue, writeRuntimeJson } from '../../platform/runtimeStorage';
 import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import { IMPORT_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import { findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
@@ -43,12 +43,12 @@ function normalizeImportRecord(record: ImportRecordItem): ImportRecordItem {
 }
 
 function clearCompletedUiState() {
-  try { runtimeStorage().removeItem(SNAPSHOT_STORAGE_KEY); } catch { /* best effort */ }
+  try { removeRuntimeValue(SNAPSHOT_STORAGE_KEY); } catch { /* best effort */ }
 }
 
 function readStoredSnapshot(): ImportVerificationJobSnapshot {
   try {
-    runtimeStorage().removeItem(LEGACY_SNAPSHOT_STORAGE_KEY);
+    removeRuntimeValue(LEGACY_SNAPSHOT_STORAGE_KEY);
     const stored = runtimeStorage().getItem(SNAPSHOT_STORAGE_KEY);
     if (!stored) return emptySnapshot();
     const parsed = JSON.parse(stored) as Partial<ImportVerificationJobSnapshot>;
@@ -63,13 +63,13 @@ let activePromise: Promise<void> | null = null;
 const listeners = new Set<Listener>();
 
 function persistSnapshot(next: ImportVerificationJobSnapshot) {
-  try { runtimeStorage().setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(next)); } catch { /* best effort */ }
+  try { writeRuntimeJson(SNAPSHOT_STORAGE_KEY, next); } catch { /* best effort */ }
 }
 
 function persistMetadataPending(items: ImportRecordItem[]) {
   try {
-    if (items.length === 0) { runtimeStorage().removeItem(METADATA_PENDING_STORAGE_KEY); return; }
-    runtimeStorage().setItem(METADATA_PENDING_STORAGE_KEY, JSON.stringify(items));
+    if (items.length === 0) { removeRuntimeValue(METADATA_PENDING_STORAGE_KEY); return; }
+    writeRuntimeJson(METADATA_PENDING_STORAGE_KEY, items);
   } catch { /* normal enrichment queue remains authoritative */ }
 }
 
@@ -104,7 +104,7 @@ export function subscribeToImportVerification(listener: Listener): () => void {
 export function resetImportVerificationJob() {
   if (snapshot.status === 'running') return;
   snapshot = emptySnapshot();
-  try { runtimeStorage().removeItem(SNAPSHOT_STORAGE_KEY); runtimeStorage().removeItem(METADATA_PENDING_STORAGE_KEY); } catch { /* best effort */ }
+  try { removeRuntimeValue(SNAPSHOT_STORAGE_KEY); removeRuntimeValue(METADATA_PENDING_STORAGE_KEY); } catch { /* best effort */ }
   listeners.forEach((listener) => listener(snapshot));
 }
 
