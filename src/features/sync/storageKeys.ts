@@ -1,3 +1,7 @@
+export const DEVICE_UI_STORAGE_KEYS = {
+  activeTab: 'inkbound_active_tab',
+} as const;
+
 export const SYNC_STORAGE_KEYS = {
   books: 'inkbound_books',
   sessions: 'inkbound_sessions',
@@ -40,6 +44,7 @@ export const IMPORT_STORAGE_KEYS = {
   legacyMetadataPurge: 'inkbound_legacy_import_metadata_purge_v1',
   centerView: 'inkbound_import_center_view',
   historyLibraryCollapsed: 'inkbound_import_history_library_collapsed_v1',
+  legacyEnrichmentRetryRequest: 'inkbound_import_enrichment_retry_request_v1',
 } as const;
 
 export const LEGACY_SYNC_STORAGE_KEYS = {
