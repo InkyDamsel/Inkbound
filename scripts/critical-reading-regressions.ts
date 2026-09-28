@@ -221,6 +221,24 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(report.healthy, true);
 }
 
+// Zero/malformed edition totals normalize to unknown rather than becoming
+// authoritative 0-page/0-minute metadata.
+{
+  const invalidTotals = {
+    ...baseBook(),
+    editions: [
+      { id: 'zero-pages', format: 'hardcover' as const, pageCount: 0, coverGradient: '' },
+      { id: 'zero-audio', format: 'audiobook' as const, audiobookDurationMins: 0, coverGradient: '' },
+      { id: 'valid-pages', format: 'paperback' as const, pageCount: 487, coverGradient: '' },
+    ],
+    activeEditionId: 'zero-pages',
+  };
+  const normalized = normalizeLibraryRecord(invalidTotals);
+  assert.equal(normalized.editions[0].pageCount, undefined);
+  assert.equal(normalized.editions[1].audiobookDurationMins, undefined);
+  assert.equal(normalized.editions[2].pageCount, 487);
+}
+
 // Passive normalization must never erase library-loan metadata. A stale device
 // can temporarily carry older ownership while sync reconciles; that mismatch
 // must not become permanent cross-device data loss.
