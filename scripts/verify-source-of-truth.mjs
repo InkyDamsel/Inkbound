@@ -1389,7 +1389,6 @@ if (!onboardingPreferencesSource.includes("writeRuntimeJson(ONBOARDING_PROFILE_K
   violations.push('onboardingPreferences.ts: legacy onboarding snapshots must self-heal to accessibility-only persisted state.');
 }
 
-const recoverySource = read('src/features/recovery/dataRecovery.ts');
 if (recoverySource.includes('notifyLocalDataChanged([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY])')) {
   violations.push('dataRecovery.ts: restored cloud hydration must not emit fresh local mutation intent.');
 }
@@ -1397,7 +1396,6 @@ if (!recoverySource.includes('notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, P
   violations.push('dataRecovery.ts: recovery restore must refresh local consumers after cloud replacement.');
 }
 
-const importVerificationSource = read('src/features/import/importVerificationJob.ts');
 if (importVerificationSource.includes('let bestResult =') || importVerificationSource.includes('bestResult.library')) {
   violations.push('importVerificationJob.ts: import verification must never commit an older whole-library snapshot over newer canonical state.');
 }
@@ -1425,14 +1423,12 @@ for (const providerPath of [
     violations.push(`${providerPath}: provider adapters must leave missing authors empty instead of fabricating canonical metadata.`);
   }
 }
-const catalogHardeningSource = read('src/features/book-search/catalogHardening.ts');
-if (catalogHardeningSource.includes('return 0;') && catalogHardeningSource.includes('cleanPublicationYear')) {
+if (/const cleanPublicationYear[\s\S]{0,320}return 0;/.test(catalogHardeningSource)) {
   violations.push('catalogHardening.ts: invalid or missing publication years must remain undefined, never canonical zero.');
 }
 if (!catalogHardeningSource.includes('const cleanPublicationYear = (value?: number): number | undefined')) {
   violations.push('catalogHardening.ts: publication-year hardening must preserve the optional metadata contract.');
 }
-const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
 if (openLibrarySource.includes('edition.publisher ?? work.publisher')) {
   violations.push('openLibraryApi.ts: exact edition publisher must not fall back to aggregate work-level publisher metadata.');
 }
