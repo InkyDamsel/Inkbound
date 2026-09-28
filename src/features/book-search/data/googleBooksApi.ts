@@ -9,7 +9,7 @@ import { fetchOpenLibrarySummary, searchOpenLibrary, searchOpenLibraryExactTitle
 import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
-import { hardenCatalogGroups, hardenCatalogResponse, inferCatalogAuthorIntent, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
+import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition, shouldRunStructuredTitleFallback } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -802,10 +802,7 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   // lookup, make one structured title pass and feed it back through the same
   // canonical hardening/merge pipeline. This is a general retrieval fallback,
   // never a title-specific exception.
-  const wantedTitleKey = normalizeText(trimmed);
-  const hasExactTitle = combined.some((group) => normalizeText(group.title) === wantedTitleKey);
-  const authorIntent = inferCatalogAuthorIntent(combined, trimmed);
-  if (!hasExactTitle && !authorIntent) {
+  if (shouldRunStructuredTitleFallback(combined, trimmed)) {
     const safeTitle = trimmed.replace(/"/g, '');
     const [googleTitleFallback, openLibraryTitleFallback] = await Promise.all([
       searchGoogleBaseline(`intitle:"${safeTitle}"`, signal),
