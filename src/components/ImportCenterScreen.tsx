@@ -39,6 +39,7 @@ import { ImportAnalysisSummaryGrid } from './import/ImportAnalysisSummaryGrid';
 import { ImportColumnMappingPanel } from './import/ImportColumnMappingPanel';
 import { ImportSourceGrid } from './import/ImportSourceGrid';
 import { ImportHistoryScreen } from './ImportHistoryScreen';
+import { normalizeBookRating, normalizeSpiceLevel } from '../features/reading/bookRating';
 
 interface ImportCenterScreenProps {
   books: UserBookRecord[];
@@ -141,7 +142,9 @@ function positiveInteger(value: string): number | undefined {
 }
 
 function optionalNumber(value: string): number | undefined {
-  const parsed = Number(value.trim());
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -162,7 +165,8 @@ function mapRecord(record: Record<string, unknown>, index: number, mapping: Impo
   if (!title) return null;
   const author = mappedValue(record, mapping, 'author') || 'Unknown Author';
   const isbn = mappedValue(record, mapping, 'isbn');
-  const ratingValue = Number(mappedValue(record, mapping, 'rating'));
+  const rawRating = optionalNumber(mappedValue(record, mapping, 'rating'));
+  const rawSpiceLevel = optionalNumber(mappedValue(record, mapping, 'spiceLevel'));
   return {
     id: `import-${index}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`,
     title,
@@ -170,7 +174,8 @@ function mapRecord(record: Record<string, unknown>, index: number, mapping: Impo
     isbn: isbn || undefined,
     format: normalizeFormat(mappedValue(record, mapping, 'format')),
     status: normalizeStatus(mappedValue(record, mapping, 'status')),
-    rating: Number.isFinite(ratingValue) && ratingValue > 0 ? ratingValue : undefined,
+    rating: rawRating !== undefined && rawRating > 0 ? normalizeBookRating(rawRating) : undefined,
+    spiceLevel: rawSpiceLevel !== undefined && rawSpiceLevel >= 0 ? normalizeSpiceLevel(rawSpiceLevel) : undefined,
     dateStarted: mappedValue(record, mapping, 'dateStarted') || undefined,
     dateRead: mappedValue(record, mapping, 'dateRead') || undefined,
     dateAdded: mappedValue(record, mapping, 'dateAdded') || new Date().toISOString().split('T')[0],
