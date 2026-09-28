@@ -603,6 +603,31 @@ for (const [relative, source] of [
 if (/<input[^>]*type=["']number["'][^>]*(?!readOnly)[^>]*onChange=/.test(readingSessionModal)) {
   violations.push('ReadingSessionModal.tsx: editable numeric progress must not use a raw number input');
 }
+const typesSource = read('src/types.ts');
+const bookDetailsRatingSource = read('src/components/BookDetailsModalCore.tsx');
+const ratingHelperSource = read('src/features/reading/bookRating.ts');
+const importColumnsSource = read('src/features/import/columnMapping.ts');
+const exportSource = read('src/features/export/libraryExport.ts');
+if (!typesSource.includes('spiceLevel?: number')) {
+  violations.push('types.ts: half-star/spice feature must remain on canonical book data');
+}
+for (const required of ['IconStepRating', 'spiceLevelLabel', 'normalizeSpiceLevel']) {
+  if (!bookDetailsRatingSource.includes(required)) {
+    violations.push(`BookDetailsModalCore.tsx: half-star/spice UI must use canonical rating helpers (${required})`);
+  }
+}
+for (const required of ['normalizeBookRating', 'normalizeSpiceLevel']) {
+  if (!ratingHelperSource.includes(required)) {
+    violations.push(`bookRating.ts: canonical rating/spice normalization missing ${required}`);
+  }
+}
+if (!importColumnsSource.includes("spiceLevel: ['spice level'")) {
+  violations.push('columnMapping.ts: Spice Level must remain importable');
+}
+if (!exportSource.includes("'Spice Level'")) {
+  violations.push('libraryExport.ts: Spice Level must remain exportable');
+}
+
 const settingsSource = read('src/components/SettingsScreen.tsx');
 for (const required of ['getAnnualReadingGoal', 'setAnnualReadingGoal', 'getDailyReadingGoalMinutes', 'setDailyReadingGoalMinutes']) {
   if (!settingsSource.includes(required)) {
