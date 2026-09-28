@@ -238,6 +238,19 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(report.healthy, true);
 }
 
+// Summary placeholder text normalizes to empty canonical metadata.
+{
+  const placeholderSummary = {
+    ...baseBook(),
+    work: {
+      ...baseBook().work,
+      summary: 'Summary unavailable.',
+    },
+  };
+  const normalized = normalizeLibraryRecord(placeholderSummary);
+  assert.equal(normalized.work.summary, '');
+}
+
 // Invalid publication years normalize to unknown instead of persisting sentinel 0.
 {
   const invalidYear = {
