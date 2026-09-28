@@ -298,6 +298,13 @@ for (const required of ['selectBestCatalogMetadataCandidate', 'selectExactIsbnEd
     violations.push(`BookDetailsModalCore.tsx: Book Details metadata repair must consume canonical catalog selection/merge (${required})`);
   }
 }
+if (!bookDetailsCoreSource.includes("seriesChanged ? 'manual' : book.work.seriesSource")) {
+  violations.push('BookDetailsModalCore.tsx: untouched metadata series must not become manual');
+}
+if (!bookDetailsCoreSource.includes('parsedSeriesOrder >= 0')) {
+  violations.push('BookDetailsModalCore.tsx: series position 0 must remain a valid persisted position');
+}
+
 if (bookDetailsCoreSource.includes('candidateMatchesBookIdentity') || bookDetailsCoreSource.includes('catalogEditionQualityScore')) {
   violations.push('BookDetailsModalCore.tsx: must not own a second catalog identity/scoring implementation');
 }
