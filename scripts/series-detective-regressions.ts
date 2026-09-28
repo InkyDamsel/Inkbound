@@ -354,6 +354,39 @@ assert.ok(selectVerifiedSeriesEvidence([aliasEvidenceA!, aliasEvidenceB!]));
 console.log('Inkbound Series Detective regressions passed.');
 
 
+// Legacy series migration cannot overwrite newer canonical manual intent.
+{
+  const canonicalManual = {
+    ...suffixOnlyBook,
+    id: 'canonical-manual',
+    work: {
+      ...suffixOnlyBook.work,
+      seriesName: 'Current Reader Series',
+      seriesOrder: 4,
+      seriesLabel: 'Current Label',
+      seriesSource: 'manual' as const,
+    },
+  } as UserBookRecord;
+  const preserved = migrateSeriesOverridesToCanonicalBooks(
+    [canonicalManual],
+    {
+      'old-series': {
+        id: 'old-series',
+        name: 'Old Synced Series',
+        author: 'Example Author',
+        books: [{ bookId: 'canonical-manual', position: 1, label: 'Old Label' }],
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-02T00:00:00.000Z',
+      },
+    },
+  );
+  assert.equal(preserved.books[0].work.seriesName, 'Current Reader Series');
+  assert.equal(preserved.books[0].work.seriesOrder, 4);
+  assert.equal(preserved.books[0].work.seriesLabel, 'Current Label');
+  assert.equal(preserved.books[0].work.seriesSource, 'manual');
+  assert.deepEqual(preserved.migratedBookIds, ['canonical-manual']);
+}
+
 // Legacy manual series organization is migration-only. Once folded into the
 // canonical book, every consumer must see the same name/order/label/source.
 const legacySeriesBook = {
