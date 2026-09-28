@@ -112,6 +112,25 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(corrected.progressPages, 190);
 }
 
+// Custom reading status identity survives while the book remains custom, but
+// switching to any built-in status clears the custom pointer.
+{
+  const custom = {
+    ...baseBook(),
+    status: 'custom' as const,
+    customReadingStatusId: 'reading-status-buddy-read',
+  };
+  const stillCustom = withReadingStatus(custom, 'custom');
+  assert.equal(stillCustom.customReadingStatusId, 'reading-status-buddy-read');
+
+  const paused = withReadingStatus(custom, 'paused');
+  assert.equal(paused.status, 'paused');
+  assert.equal(paused.customReadingStatusId, undefined);
+
+  const finished = withReadingStatus(custom, 'finished', '2026-08-15');
+  assert.equal(finished.customReadingStatusId, undefined);
+}
+
 // Explicitly marking Finished records the date and canonical 100% without inventing
 // an exact final page endpoint.
 {
