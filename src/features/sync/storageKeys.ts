@@ -32,6 +32,16 @@ export const ACCOUNT_DATA_STORAGE_KEYS = {
   readingMemories: 'inkbound_book_memories',
 } as const;
 
+export const IMPORT_STORAGE_KEYS = {
+  history: 'inkbound_import_history_v1',
+  verificationSnapshot: 'inkbound_import_verification_result_v2',
+  legacyVerificationSnapshot: 'inkbound_import_verification_result_v1',
+  metadataPending: 'inkbound_import_metadata_pending_v1',
+  legacyMetadataPurge: 'inkbound_legacy_import_metadata_purge_v1',
+  centerView: 'inkbound_import_center_view',
+  historyLibraryCollapsed: 'inkbound_import_history_library_collapsed_v1',
+} as const;
+
 export const LEGACY_SYNC_STORAGE_KEYS = {
   books: 'bookhaven_books',
   sessions: 'bookhaven_sessions',
