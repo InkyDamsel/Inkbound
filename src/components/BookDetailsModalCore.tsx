@@ -5,7 +5,7 @@ import { fetchCatalogPublisherSummary, searchGoogleBooks } from '../features/boo
 import type { BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import { catalogWorkMatchesIdentity, isValidCatalogIsbn10, isValidCatalogIsbn13, selectBestCatalogMetadataCandidate, selectExactIsbnEdition } from '../features/book-search/catalogHardening';
 import { createBookFromSearchEdition, mergeCatalogBookMetadata } from '../features/book-search/mapping/bookSearchMapper';
-import { getActiveEdition, withReadingStatus } from '../features/reading/bookReadingState';
+import { getActiveEdition, withReadingStatus, type ReadingProgressCorrection } from '../features/reading/bookReadingState';
 import {
   getSessionDurationMinutes,
   getSessionListeningMinutes,
@@ -29,19 +29,12 @@ import { withBookOwnership } from '../features/ownership/bookOwnership';
 import { CanonicalInput, CanonicalNumberInput, CanonicalTextarea } from './form/CanonicalInput';
 import { ChiliPepperIcon, IconStepRating } from './reading/IconStepRating';
 
-interface BookProgressCorrection {
-  progressPages?: number;
-  progressMinutes?: number;
-  pageCount?: number;
-  audiobookDurationMins?: number;
-}
-
 interface BookDetailsModalProps {
   book: UserBookRecord | null;
   sessions: ReadingSession[];
   onClose: () => void;
   onUpdateBook: (updatedBook: UserBookRecord) => void;
-  onCorrectProgress: (bookId: string, correction: BookProgressCorrection) => void;
+  onCorrectProgress: (bookId: string, correction: ReadingProgressCorrection) => void;
   onDeleteBook: (book: UserBookRecord) => void;
   onStartSession: (book: UserBookRecord) => void;
   onSaveManualSession: (session: ReadingSession) => void;
