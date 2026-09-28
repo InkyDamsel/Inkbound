@@ -63,7 +63,7 @@ import { getImportVerificationSnapshot } from './features/import/importVerificat
 import { normalizeLibraryRecord } from './features/library/libraryNormalization';
 import { withBookOwnership } from './features/ownership/bookOwnership';
 import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
-import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
+import { getActiveEdition, withCorrectedReadingProgress, withReadingStatus, type ReadingProgressCorrection } from './features/reading/bookReadingState';
 import {
   applySessionProgressToBook,
   getSessionProgressEndpoint,
@@ -109,13 +109,6 @@ interface SessionMilestoneNotice {
   streak: number;
   dailyMinutes: number;
   dailyGoal: number;
-}
-
-interface BookProgressCorrection {
-  progressPages?: number;
-  progressMinutes?: number;
-  pageCount?: number;
-  audiobookDurationMins?: number;
 }
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
@@ -458,7 +451,7 @@ export default function App() {
     showToast(`Updated reading status to ${status}.`);
   };
 
-  const handleCorrectBookProgress = (bookId: string, correction: BookProgressCorrection) => {
+  const handleCorrectBookProgress = (bookId: string, correction: ReadingProgressCorrection) => {
     const sourceBook = booksRef.current.find((book) => book.id === bookId);
     if (!sourceBook) return;
     const sourceEdition = getActiveEdition(sourceBook);
@@ -479,26 +472,9 @@ export default function App() {
     }
     commitCanonicalBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
-      const activeEdition = getActiveEdition(book);
-      if (!activeEdition) return book;
-      const nextEdition = {
-        ...activeEdition,
-        ...(correction.pageCount !== undefined
-          ? {
-              pageCount: correction.pageCount > 0 ? correction.pageCount : undefined,
-              externalSource: 'manual' as const,
-            }
-          : {}),
-        ...(correction.audiobookDurationMins !== undefined
-          ? {
-              audiobookDurationMins: correction.audiobookDurationMins > 0 ? correction.audiobookDurationMins : undefined,
-              externalSource: 'manual' as const,
-            }
-          : {}),
-      };
-      const nextPages = Math.max(0, correction.progressPages ?? book.progressPages); const nextMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes); const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount; const nextCompleted = isAudiobook ? nextMinutes : nextPages; const progressPercentage = nextTotal && nextTotal > 0 ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100)) : book.progressPercentage; const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal!); const status = reachedEnd ? 'finished' : book.status;
-      const updatedBook: UserBookRecord = { ...book, editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition), progressPages: nextPages, progressMinutes: nextMinutes, progressPercentage, status, dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished };
-      setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected); return updatedBook;
+      const updatedBook = withCorrectedReadingProgress(book, correction);
+      setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected);
+      return updatedBook;
     }));
     showToast('Corrected book progress and reconciled the latest reading session.');
   };
