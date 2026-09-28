@@ -32,6 +32,7 @@ import {
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
 import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
+import { compactCloudProfileForRuntime } from '../src/features/sync/profileSyncMerge';
 import { mergeIncomingBookLoanState, withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
   shouldApplyRemoteTombstone,
