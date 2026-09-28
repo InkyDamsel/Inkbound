@@ -246,27 +246,10 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         if (disposed) return failedWrites;
         const batch = entries.slice(index, index + UPLOAD_BATCH_SIZE);
         const results = await Promise.allSettled(batch.map(async ([id, mutation]) => {
-          const target = doc(db!, 'users', uid, kind, id);
           if (mutation.operation === 'delete') {
-            await Promise.all([
-              deleteDoc(target),
-              setDoc(
-                doc(db!, 'users', uid, 'syncTombstones', `${kind}_${id}`),
-                {
-                  kind,
-                  recordId: id,
-                  clientUpdatedAt: mutation.clientUpdatedAt,
-                  deletedAt: serverTimestamp(),
-                },
-                { merge: true },
-              ),
-            ]);
-          } else if (mutation.data) {
-            await setDoc(target, {
-              data: mutation.data,
-              updatedAt: serverTimestamp(),
-              clientUpdatedAt: mutation.clientUpdatedAt,
-            }, { merge: true });
+            await deleteCoreCloudRecord(uid, kind, id, mutation.clientUpdatedAt);
+          } else if (mutation.data && 'id' in mutation.data) {
+            await upsertCoreCloudRecord(uid, kind, mutation.data as T & { id: string }, mutation.clientUpdatedAt);
           }
         }));
 
