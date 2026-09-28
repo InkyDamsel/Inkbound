@@ -110,10 +110,7 @@ const coverUrl = (edition: OpenLibraryEdition, work: OpenLibraryWork): string | 
   if (edition.cover_edition_key) return `https://covers.openlibrary.org/b/olid/${edition.cover_edition_key}-L.jpg`;
   const editionIsbn = edition.isbn_13?.[0] ?? edition.isbn_10?.[0] ?? edition.isbn?.[0];
   if (editionIsbn) return `https://covers.openlibrary.org/b/isbn/${compactIsbn(editionIsbn)}-L.jpg`;
-  if (work.cover_i) return `https://covers.openlibrary.org/b/id/${work.cover_i}-L.jpg`;
-  if (work.cover_edition_key) return `https://covers.openlibrary.org/b/olid/${work.cover_edition_key}-L.jpg`;
-  const workIsbn = work.isbn?.[0];
-  return workIsbn ? `https://covers.openlibrary.org/b/isbn/${compactIsbn(workIsbn)}-L.jpg` : undefined;
+  return undefined;
 };
 
 const parseSeries = (values?: string[]): { name?: string; order?: number } => {
@@ -135,7 +132,7 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
   const isbn13 = edition.isbn_13?.[0] ?? edition.isbn?.find((value) => compactIsbn(value).length === 13);
   const isbn10 = edition.isbn_10?.[0] ?? edition.isbn?.find((value) => compactIsbn(value).length === 10);
   const publicationDate = stringValue(edition.publish_date);
-  const publishers = edition.publisher ?? work.publisher;
+  const publishers = edition.publisher;
   const series = parseSeries(edition.series ?? work.series);
   return {
     source: 'open-library',
@@ -146,7 +143,7 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
     genres: (work.subject ?? []).slice(0, 12),
     publisher: first(publishers),
     publicationDate,
-    publicationYear: publicationYear(publicationDate, edition.publish_year ?? work.first_publish_year),
+    publicationYear: publicationYear(publicationDate, edition.publish_year),
     language: edition.language?.[0] ?? work.language?.[0],
     seriesName: series.name,
     seriesOrder: series.order,
