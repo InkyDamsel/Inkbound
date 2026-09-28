@@ -231,7 +231,7 @@ export function mergeCatalogBookMetadata(
         : (catalogMayReplaceSeries && catalogSeriesName
           ? 'metadata'
           : current.work.seriesSource ?? (catalogSeriesName ? 'metadata' : undefined)),
-      publicationYear: current.work.publicationYear || catalogBook.work.publicationYear,
+      publicationYear: current.work.publicationYear ?? catalogBook.work.publicationYear,
       originalLanguage: current.work.originalLanguage || catalogBook.work.originalLanguage,
       externalWorkId: options.catalogIdentityWins
         ? catalogBook.work.externalWorkId || current.work.externalWorkId
