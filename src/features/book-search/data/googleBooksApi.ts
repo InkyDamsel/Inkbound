@@ -358,24 +358,27 @@ async function requestProtectedGoogleBooks(
   const requestKey = `${query.trim().toLocaleLowerCase()}::${startIndex}::${maxResults}`;
   let pending = inFlightGoogleRequests.get(requestKey);
   if (!pending) {
-    const native = isNativeRuntime();
-    const callable = native
-      ? httpsCallable<
-          { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
-          GoogleVolumesResponse
-        >(functions, 'searchHardcoverBooks')
-      : httpsCallable<
-          { query: string; startIndex?: number; maxResults?: number },
-          GoogleVolumesResponse
-        >(functions, 'searchGoogleBooksCatalog');
-
-    pending = (native
-      ? callable({ query, provider: 'google-books', startIndex, maxResults })
-      : callable({ query, startIndex, maxResults }))
-      .then((response) => response.data)
-      .finally(() => {
-        inFlightGoogleRequests.delete(requestKey);
-      });
+    if (isNativeRuntime()) {
+      const callable = httpsCallable<
+        { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
+        GoogleVolumesResponse
+      >(functions, 'searchHardcoverBooks');
+      pending = callable({ query, provider: 'google-books', startIndex, maxResults })
+        .then((response) => response.data)
+        .finally(() => {
+          inFlightGoogleRequests.delete(requestKey);
+        });
+    } else {
+      const callable = httpsCallable<
+        { query: string; startIndex?: number; maxResults?: number },
+        GoogleVolumesResponse
+      >(functions, 'searchGoogleBooksCatalog');
+      pending = callable({ query, startIndex, maxResults })
+        .then((response) => response.data)
+        .finally(() => {
+          inFlightGoogleRequests.delete(requestKey);
+        });
+    }
     inFlightGoogleRequests.set(requestKey, pending);
   }
 
