@@ -7,7 +7,6 @@ import {
   readPhotoMemoriesFromDevice,
   replacePhotoMemoriesOnDevice,
 } from './photoMemoryStore';
-import {
 import { DEVICE_FEATURE_STORAGE_KEYS } from '../sync/storageKeys';
 import {
   completePhotoMemorySyncOperation,
