@@ -5,6 +5,7 @@ import { prepareBookCoverImage } from '../../platform/prepareBookCoverImage';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
 import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { replaceCanonicalLibrary } from '../library/libraryMutations';
   getCloudDataRevision,
   INKBOUND_CLOUD_DATA_EVENT,
   notifyCloudDataUpdated,
@@ -12,7 +13,7 @@ import { SYNC_STORAGE_KEYS } from './storageKeys';
 } from './cloudSyncEvents';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
-const LOCAL_DATA_OWNER_UID_KEY = 'inkbound_local_data_owner_uid';
+const LOCAL_DATA_OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const LEGACY_COVER_PREFIX = 'data:image/';
 
 const readBooks = (): UserBookRecord[] => {
@@ -106,7 +107,7 @@ export const LegacyBookCoverMigrationBridge: React.FC = () => {
         }));
 
         if (!changed) return;
-        getRuntimeStorage().setItem(BOOKS_STORAGE_KEY, JSON.stringify(nextBooks));
+        replaceCanonicalLibrary(nextBooks);
         notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
         notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
       } finally {
