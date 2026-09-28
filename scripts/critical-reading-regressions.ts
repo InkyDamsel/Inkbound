@@ -377,6 +377,13 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(merged.editions[0].publisher, 'Remote Publisher');
 }
 
+// Never-baselined local records are promoted to cloud; baseline-confirmed
+// records missing from cloud are treated as remote deletions.
+{
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({ baselineFingerprint: undefined }), true);
+  assert.equal(shouldPromoteLocalRecordMissingFromCloud({ baselineFingerprint: 'previous-cloud-fingerprint' }), false);
+}
+
 // Sync conflict rules protect newer/pending local work from stale cloud data.
 {
   assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T11:59:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), false);
