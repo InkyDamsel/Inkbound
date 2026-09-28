@@ -1405,6 +1405,16 @@ if (!importVerificationSource.includes('latestResult = applySourceFieldsToBooks(
   violations.push('importVerificationJob.ts: source-field reconciliation must be based on the latest canonical library read.');
 }
 
+const billingSource = read('functions/src/billing.ts');
+if (!billingSource.includes('userDirectory/${uid}')) {
+  violations.push('billing.ts: Stripe entitlement writes must be gated by canonical reader-directory existence.');
+}
+if (!billingSource.includes('await db.runTransaction(async (transaction) =>') || !billingSource.includes('const directory = await transaction.get(directoryRef)')) {
+  violations.push('billing.ts: Stripe account-existence gating must be transactionally coupled to entitlement publication.');
+}
+if (!billingSource.includes('if (!directory.exists) return;')) {
+  violations.push('billing.ts: Stripe lifecycle events must not recreate entitlements for deleted Inkbound accounts.');
+}
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
