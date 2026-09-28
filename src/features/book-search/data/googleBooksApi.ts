@@ -150,7 +150,7 @@ const mapGoogleVolume = (
     externalEditionId: volume.id,
     title: info.title,
     subtitle: info.subtitle,
-    authors: info.authors?.length ? info.authors : ['Unknown author'],
+    authors: info.authors?.length ? info.authors : [],
     publisherSummary: info.description,
     genres: info.categories ?? [],
     publisher: info.publisher,
