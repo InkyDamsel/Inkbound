@@ -108,8 +108,6 @@ export const LegacyBookCoverMigrationBridge: React.FC = () => {
 
         if (!changed) return;
         replaceCanonicalLibrary(nextBooks);
-        notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
-        notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
       } finally {
         running.current = false;
       }
