@@ -27,7 +27,7 @@ import {
   getAuxiliaryPendingKey,
   type AuxiliaryAccountKeyName,
 } from '../sync/auxiliaryAccountSyncConfig';
-import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../sync/cloudSyncEvents';
+import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { DEVICE_FEATURE_STORAGE_KEYS, SYNC_STORAGE_KEYS, legacySyncBaselineV1Key, syncBaselineStateKey, syncPendingStateKey } from '../sync/storageKeys';
 
 const RECOVERY_COLLECTION = 'recoverySnapshots';
@@ -369,6 +369,10 @@ export async function restoreRecoveryPoint(uid: string, snapshotId: string): Pro
 
   removeRuntimeValueFromExternalSource(PHOTO_REVISION_KEY);
 
+  // The recovery flow already replaced the cloud records above. The local
+  // runtime writes are hydration from that restored cloud state, not a new local
+  // edit. Emitting local mutation intent here would rebuild a pending queue for
+  // every restored book/session immediately after we deliberately invalidated
+  // the old sync baseline.
   notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
-  notifyLocalDataChanged([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
 }
