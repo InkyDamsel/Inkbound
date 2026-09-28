@@ -123,9 +123,9 @@ export const buildGoogleBooksQuery = (value: string): string => {
   return trimmed;
 };
 
-const publicationYear = (value?: string): number => {
+const publicationYear = (value?: string): number | undefined => {
   const match = value?.match(/\d{4}/);
-  return match ? Number(match[0]) : 0;
+  return match ? Number(match[0]) : undefined;
 };
 
 const inferFormat = (volume: GoogleVolume): Format => volume.saleInfo?.isEbook === true ? 'ebook' : 'unknown';
