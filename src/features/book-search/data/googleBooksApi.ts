@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
+import { isNativeRuntime } from '../../../platform/runtimePlatform';
 import { DEVICE_UI_STORAGE_KEYS } from '../../sync/storageKeys';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
@@ -76,7 +77,7 @@ let googleBackoffUntil = 0;
 let hardcoverBackoffUntil = 0;
 
 const shouldUseProtectedGoogleBooks = (): boolean =>
-  Boolean(functions && auth?.currentUser);
+  isNativeRuntime() || Boolean(functions && auth?.currentUser);
 
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -357,12 +358,21 @@ async function requestProtectedGoogleBooks(
   const requestKey = `${query.trim().toLocaleLowerCase()}::${startIndex}::${maxResults}`;
   let pending = inFlightGoogleRequests.get(requestKey);
   if (!pending) {
-    const callable = httpsCallable<
-      { query: string; startIndex?: number; maxResults?: number },
-      GoogleVolumesResponse
-    >(functions, 'searchGoogleBooksCatalog');
-    pending = callable({ query, startIndex, maxResults })
-      .then((response) => enrichGoogleSeriesMetadata(response.data))
+    const native = isNativeRuntime();
+    const callable = native
+      ? httpsCallable<
+          { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
+          GoogleVolumesResponse
+        >(functions, 'searchHardcoverBooks')
+      : httpsCallable<
+          { query: string; startIndex?: number; maxResults?: number },
+          GoogleVolumesResponse
+        >(functions, 'searchGoogleBooksCatalog');
+
+    pending = (native
+      ? callable({ query, provider: 'google-books', startIndex, maxResults })
+      : callable({ query, startIndex, maxResults }))
+      .then((response) => response.data)
       .finally(() => {
         inFlightGoogleRequests.delete(requestKey);
       });
@@ -409,19 +419,16 @@ async function requestCanonicalGoogleBooksPayload(
   maxResults = GOOGLE_BOOKS_PAGE_SIZE,
 ): Promise<GoogleVolumesResponse> {
   const protectedRequest = shouldUseProtectedGoogleBooks();
-  const payload = protectedRequest
-    ? await requestProtectedGoogleBooks(query, signal, startIndex, maxResults)
-    : await requestDirectGoogleBooks(query, signal, startIndex, maxResults);
+  if (protectedRequest) {
+    // Protected Firebase catalog responses are already hydrated server-side,
+    // including volume details and Google series metadata. Never follow a native
+    // callable with direct www.googleapis.com requests from the Android WebView.
+    return requestProtectedGoogleBooks(query, signal, startIndex, maxResults);
+  }
 
-  // Direct browser search already hydrates details. Protected Firebase search
-  // returns the catalog list payload, so hydrate those same volume ids here
-  // before any mapper sees them. Dev/release/auth state must never change the
-  // metadata quality of the same Google Books result.
-  const hydrated = protectedRequest
-    ? await hydrateGoogleVolumeDetails(payload, signal)
-    : payload;
-
-  return enrichGoogleSeriesMetadata(hydrated, signal);
+  // Browser-only unsigned fallback. Native Android must fail closed to alternate
+  // providers when Firebase/auth is unavailable rather than bypassing App Check.
+  return requestDirectGoogleBooks(query, signal, startIndex, maxResults);
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
