@@ -1,4 +1,5 @@
 import {
+import { DEVICE_FEATURE_STORAGE_KEYS } from '../sync/storageKeys';
   readRuntimeJson,
   writeRuntimeJson,
 } from '../../platform/runtimeStorage';
@@ -11,7 +12,7 @@ export interface PhotoMemorySyncOperation {
   queuedAt: string;
 }
 
-const PHOTO_MEMORY_SYNC_QUEUE_KEY = 'inkbound_photo_memory_sync_queue_v1';
+const PHOTO_MEMORY_SYNC_QUEUE_KEY = DEVICE_FEATURE_STORAGE_KEYS.photoMemorySyncQueue;
 const listeners = new Set<() => void>();
 
 function notifyListeners() {
