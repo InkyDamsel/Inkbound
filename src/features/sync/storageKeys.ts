@@ -12,6 +12,7 @@ export const DEVICE_FEATURE_STORAGE_KEYS = {
   pendingRecoveryRestore: 'inkbound_pending_recovery_restore_v1',
   scannerReviewDraft: 'inkbound_scanner_review_draft_v1',
   lastDaytimeLibraryMaintenance: 'inkbound_last_daytime_library_maintenance',
+  legacyImportEnrichmentAutopauseCleanup: 'inkbound_import_enrichment_autopause_cleanup_v1',
   runtimeStorageMode: 'inkbound_runtime_storage_mode_v1',
 } as const;
 
