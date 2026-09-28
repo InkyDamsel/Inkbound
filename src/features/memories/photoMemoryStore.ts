@@ -5,6 +5,7 @@ import {
   writeRuntimeMediaBlob,
 } from '../../platform/runtimeMediaStorage';
 import {
+import { DEVICE_FEATURE_STORAGE_KEYS } from '../sync/storageKeys';
   readRuntimeJson,
   removeRuntimeValue,
   writeRuntimeJson,
@@ -22,8 +23,8 @@ export interface PhotoMemoryRecord {
 
 type PhotoMemoryMetadata = Omit<PhotoMemoryRecord, 'imageData'>;
 
-const PHOTO_METADATA_KEY = 'inkbound_photo_memories_v2';
-const LEGACY_PHOTO_KEY = 'inkbound_photo_memories';
+const PHOTO_METADATA_KEY = DEVICE_FEATURE_STORAGE_KEYS.photoMemories;
+const LEGACY_PHOTO_KEY = DEVICE_FEATURE_STORAGE_KEYS.legacyPhotoMemories;
 const MEDIA_PREFIX = 'photo-memory:';
 const listeners = new Set<() => void>();
 
