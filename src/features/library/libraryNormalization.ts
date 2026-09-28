@@ -1,6 +1,7 @@
 import type { UserBookRecord } from '../../types';
 import { reconcileFinishedBookProgress } from '../reading/bookReadingState';
 import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
+import { normalizeBookRating, normalizeSpiceLevel } from '../reading/bookRating';
 
 /**
  * Imported catalog exports sometimes mark every row as owned, including
@@ -37,6 +38,16 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
   });
   if (normalizedEditions.some((edition, index) => edition !== normalized.editions[index])) {
     normalized = { ...normalized, editions: normalizedEditions };
+  }
+
+  const normalizedRating = normalizeBookRating(normalized.rating);
+  const normalizedSpiceLevel = normalizeSpiceLevel(normalized.spiceLevel);
+  if (normalizedRating !== normalized.rating || normalizedSpiceLevel !== normalized.spiceLevel) {
+    normalized = {
+      ...normalized,
+      rating: normalizedRating,
+      spiceLevel: normalizedSpiceLevel,
+    };
   }
 
   // Ownership and reading status are independent facts. A reader can move a
