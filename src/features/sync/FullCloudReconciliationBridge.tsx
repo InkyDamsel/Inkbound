@@ -11,8 +11,8 @@ import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import {
+  applyRuntimeJsonFromExternalSource,
   getRuntimeStorage,
-  notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
 import {
   notifyCloudDataUpdated,
@@ -293,13 +293,11 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         const changedKeys: CloudSyncedStorageKey[] = [];
 
         if (stable(localBooks) !== stable(nextBooks)) {
-          writeJson(BOOKS_KEY, nextBooks);
-          notifyRuntimeStorageChanged(BOOKS_KEY);
+          applyRuntimeJsonFromExternalSource(BOOKS_KEY, nextBooks);
           changedKeys.push(BOOKS_KEY);
         }
         if (stable(localSessions) !== stable(nextSessions)) {
-          writeJson(SESSIONS_KEY, nextSessions);
-          notifyRuntimeStorageChanged(SESSIONS_KEY);
+          applyRuntimeJsonFromExternalSource(SESSIONS_KEY, nextSessions);
           changedKeys.push(SESSIONS_KEY);
         }
 
