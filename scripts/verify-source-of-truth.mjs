@@ -940,6 +940,14 @@ if (!oneShotHydration.includes('storage.removeItem(fullReconciliationVersionKey(
   violations.push('OneShotCloudHydrationBridge.tsx: merged local/cloud bootstrap must force canonical full reconciliation');
 }
 
+const fullReconciliationSource = read('src/features/sync/FullCloudReconciliationBridge.tsx');
+if (!fullReconciliationSource.includes('shouldPromoteLocalRecordMissingFromCloud')) {
+  violations.push('FullCloudReconciliationBridge.tsx: local-only promotion must use syncConflictPolicy');
+}
+if (!/pending\[item\.id\]\s*=\s*\{[\s\S]{0,220}operation:\s*['"]upsert['"]/.test(fullReconciliationSource)) {
+  violations.push('FullCloudReconciliationBridge.tsx: preserved local-only records must create durable upload intent');
+}
+
 const syncReadinessSource = read('src/features/sync/syncReadiness.ts');
 for (const required of ['hasEstablishedLocalWorkingCopy', 'hasCompletedFullReconciliation']) {
   if (!syncReadinessSource.includes(required)) {
