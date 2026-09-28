@@ -1,5 +1,5 @@
 import type { ReadingSession, UserBookRecord } from '../../types';
-import { getActiveEdition } from './bookReadingState';
+import { getRemainingReadingUnits } from './bookReadingState';
 
 export interface ReadingPaceSummary {
   pagesPerHour?: number;
@@ -32,14 +32,10 @@ const addLocalDays = (value: Date, days: number) => {
 const finiteNonnegative = (value?: number) =>
   typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
 
-const positiveFiniteTotal = (value?: number) =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
-
 const remainingPagesForBook = (book?: UserBookRecord) => {
   if (!book) return undefined;
-  const totalPages = positiveFiniteTotal(getActiveEdition(book)?.pageCount);
-  if (totalPages === undefined) return undefined;
-  return Math.max(0, totalPages - finiteNonnegative(book.progressPages));
+  const remaining = getRemainingReadingUnits(book);
+  return remaining.isAudiobook ? undefined : remaining.remainingUnits;
 };
 
 // Session endpoints are the canonical page-progress record when both exist.
