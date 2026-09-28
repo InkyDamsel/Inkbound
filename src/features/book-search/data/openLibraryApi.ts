@@ -27,7 +27,6 @@ interface OpenLibraryWork {
   title?: string;
   subtitle?: string;
   author_name?: string[];
-  first_publish_year?: unknown;
   publisher?: string[] | string;
   subject?: string[];
   language?: string[];
@@ -58,7 +57,7 @@ export interface OpenLibraryCatalogPage extends BookSearchResponse {
 const OPEN_LIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
 const DEFAULT_PAGE_SIZE = 40;
 const FIELDS = [
-  'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language', 'series',
+  'key', 'title', 'subtitle', 'author_name', 'publisher', 'subject', 'language', 'series',
   'isbn', 'cover_i', 'cover_edition_key', 'number_of_pages_median', 'editions', 'editions.key',
   'editions.title', 'editions.subtitle', 'editions.publisher', 'editions.publish_date', 'editions.publish_year',
   'editions.isbn', 'editions.isbn_10', 'editions.isbn_13', 'editions.number_of_pages',
@@ -102,7 +101,7 @@ const inferFormat = (edition: OpenLibraryEdition): Format => {
   return 'unknown';
 };
 
-const coverUrl = (edition: OpenLibraryEdition, work: OpenLibraryWork): string | undefined => {
+const coverUrl = (edition: OpenLibraryEdition): string | undefined => {
   // Edition identity wins. Never borrow a work-level cover before trying the
   // exact edition/ISBN, otherwise an English ISBN can inherit an international
   // cover from another edition of the same work.
@@ -153,7 +152,7 @@ const toEdition = (work: OpenLibraryWork, edition: OpenLibraryEdition, index: nu
     // Work medians belong to the work, not this ISBN. Attaching them to an
     // edition is exactly how correct ISBN matches acquired the wrong page count.
     pageCount: edition.number_of_pages ?? edition.number_of_pages_median,
-    coverUrl: coverUrl(edition, work),
+    coverUrl: coverUrl(edition),
     binding: edition.physical_format,
     specialFeatures: [],
   };
