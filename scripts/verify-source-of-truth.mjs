@@ -940,6 +940,25 @@ if (!oneShotHydration.includes('storage.removeItem(fullReconciliationVersionKey(
   violations.push('OneShotCloudHydrationBridge.tsx: merged local/cloud bootstrap must force canonical full reconciliation');
 }
 
+const syncReadinessSource = read('src/features/sync/syncReadiness.ts');
+for (const required of ['hasEstablishedLocalWorkingCopy', 'hasCompletedFullReconciliation']) {
+  if (!syncReadinessSource.includes(required)) {
+    violations.push(`syncReadiness.ts: canonical readiness helper missing ${required}`);
+  }
+}
+for (const relative of [
+  'src/features/sync/AdaptiveCloudPersistenceBridge.tsx',
+  'src/features/sync/CloudDataRefreshBoundary.tsx',
+]) {
+  const source = read(relative);
+  if (!source.includes("from './syncReadiness'")) {
+    violations.push(`${relative}: sync readiness must be owned by syncReadiness.ts`);
+  }
+  if (/function\s+hasEstablishedLocalWorkingCopy/.test(source)) {
+    violations.push(`${relative}: duplicate local working-copy readiness logic is forbidden`);
+  }
+}
+
 const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');
 for (const required of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'OneShotCloudHydrationBridge', 'CostSafeCloudPersistenceBridge']) {
   if (!adaptiveSync.includes(required)) violations.push(`AdaptiveCloudPersistenceBridge.tsx: missing safe hydration boundary ${required}`);
