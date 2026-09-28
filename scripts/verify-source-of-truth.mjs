@@ -628,6 +628,32 @@ if (/<input[^>]*type=["']number["'][^>]*(?!readOnly)[^>]*onChange=/.test(reading
   violations.push('ReadingSessionModal.tsx: editable numeric progress must not use a raw number input');
 }
 const typesSource = read('src/types.ts');
+const bookSearchModelSource = read('src/features/book-search/model/bookSearch.ts');
+const addBookModalSource = read('src/components/AddBookModal.tsx');
+const googleBooksSource = read('src/features/book-search/data/googleBooksApi.ts');
+const openLibraryAdapterSource = read('src/features/book-search/data/openLibraryApi.ts');
+const supplementalCatalogSource = read('src/features/book-search/data/supplementalCatalogApi.ts');
+
+if (!typesSource.includes('publicationYear?: number')) {
+  violations.push('types.ts: publication year must represent unknown as absence');
+}
+if (!bookSearchModelSource.includes('publicationYear?: number')) {
+  violations.push('bookSearch.ts: catalog publication year must represent unknown as absence');
+}
+if (addBookModalSource.includes('publicationYear: new Date().getFullYear()')) {
+  violations.push('AddBookModal.tsx: manual books must not invent the current publication year');
+}
+if (/return match \? Number\(match\[0\]\) : 0/.test(googleBooksSource)) {
+  violations.push('googleBooksApi.ts: missing publication year must not become 0');
+}
+if (/numericYear\(value\) \?\? numericYear\(fallback\) \?\? 0/.test(openLibraryAdapterSource)) {
+  violations.push('openLibraryApi.ts: missing publication year must not become 0');
+}
+if (/return match \? Number\(match\[1\]\) : 0/.test(supplementalCatalogSource)) {
+  violations.push('supplementalCatalogApi.ts: missing publication year must not become 0');
+}
+
+
 const bookDetailsRatingSource = read('src/components/BookDetailsModalCore.tsx');
 const ratingHelperSource = read('src/features/reading/bookRating.ts');
 const importColumnsSource = read('src/features/import/columnMapping.ts');
