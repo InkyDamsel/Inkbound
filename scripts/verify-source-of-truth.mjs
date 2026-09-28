@@ -775,6 +775,17 @@ for (const relative of sourceFiles.map((file) => path.relative(root, file).repla
   }
 }
 
+const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
+if (!oneShotHydration.includes('hadPreexistingLocalData')) {
+  violations.push('OneShotCloudHydrationBridge.tsx: pre-existing local data must be distinguished from a cloud-only bootstrap');
+}
+if (!oneShotHydration.includes('if (!hadPreexistingLocalData)')) {
+  violations.push('OneShotCloudHydrationBridge.tsx: only cloud-only bootstrap may mark full reconciliation complete');
+}
+if (!oneShotHydration.includes('storage.removeItem(fullReconciliationVersionKey(uid))')) {
+  violations.push('OneShotCloudHydrationBridge.tsx: merged local/cloud bootstrap must force canonical full reconciliation');
+}
+
 const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');
 for (const required of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'OneShotCloudHydrationBridge', 'CostSafeCloudPersistenceBridge']) {
   if (!adaptiveSync.includes(required)) violations.push(`AdaptiveCloudPersistenceBridge.tsx: missing safe hydration boundary ${required}`);
