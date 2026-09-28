@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, readDb } from '../../lib/firebase';
-import { readRuntimeValue, writeRuntimeValue } from '../../platform/runtimeStorage';
+import { applyRuntimeValueFromExternalSource, readRuntimeValue } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from './storageKeys';
 
@@ -35,7 +35,7 @@ export const ReadOnlyCloudHydrationBridge: React.FC = () => {
     const previousOwnerUid = readRuntimeValue(OWNER_UID_KEY);
 
     if (!previousOwnerUid || previousOwnerUid === uid) {
-      writeRuntimeValue(OWNER_UID_KEY, uid);
+      applyRuntimeValueFromExternalSource(OWNER_UID_KEY, uid);
     }
 
     notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
