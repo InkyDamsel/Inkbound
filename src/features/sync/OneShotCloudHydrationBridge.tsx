@@ -164,6 +164,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
         const localBooks = sameAccountLocalData ? readJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
         const localSessions = sameAccountLocalData ? readJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
+        const hadPreexistingLocalData = sameAccountLocalData && (localBooks.length > 0 || localSessions.length > 0);
         writeJson(BOOKS_KEY, mergeBooksById(localBooks, cloudBooks));
         writeJson(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
 
@@ -202,7 +203,17 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         }
 
         storage.setItem(OWNER_UID_KEY, uid);
-        storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
+        // A true new-device bootstrap came entirely from the current cloud
+        // snapshot and can skip the separate full reconciliation. If local data
+        // already existed, however, this bridge only establishes a working copy;
+        // it must not independently decide local-vs-cloud conflicts. Leave the
+        // reconciliation marker unset so FullCloudReconciliationBridge applies
+        // the canonical pending/baseline/tombstone policy immediately afterward.
+        if (!hadPreexistingLocalData) {
+          storage.setItem(fullReconciliationVersionKey(uid), FULL_RECONCILIATION_VERSION);
+        } else {
+          storage.removeItem(fullReconciliationVersionKey(uid));
+        }
         if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) {
           storage.removeItem(HYDRATION_REQUIRED_UID_KEY);
         }
