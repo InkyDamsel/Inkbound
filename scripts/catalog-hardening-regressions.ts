@@ -42,6 +42,10 @@ assert.deepEqual(hardenedEdition.authors, ['Stephen King']);
 assert.equal(hardenedEdition.isbn10, undefined);
 assert.equal(hardenedEdition.isbn13, undefined);
 assert.equal(hardenedEdition.pageCount, undefined);
+assert.equal(hardenCatalogEdition({ ...baseEdition, publicationYear: 0 }).publicationYear, undefined);
+assert.equal(hardenCatalogEdition({ ...baseEdition, publicationYear: 1400 }).publicationYear, undefined);
+assert.equal(hardenCatalogEdition({ ...baseEdition, publicationYear: new Date().getFullYear() + 3 }).publicationYear, undefined);
+
 assert.equal(hardenedEdition.coverUrl, 'https://example.com/cover.jpg');
 assert.equal(hardenCatalogEdition({ ...baseEdition, format: 'ebook', binding: 'Paperback' }).format, 'paperback');
 assert.equal(hardenCatalogEdition({ ...baseEdition, format: 'ebook', binding: 'Hardcover' }).format, 'hardcover');
