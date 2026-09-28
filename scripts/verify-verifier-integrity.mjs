@@ -90,10 +90,13 @@ for (const stale of [
   if (sourceTruth.includes(stale)) failures.push(`verify-source-of-truth.mjs: obsolete assertion remains (${stale})`);
 }
 
-for (const identifier of ['packageJson', 'sessionEditor', 'crossDeviceSync', 'oneShotHydration']) {
-  const count = (sourceTruth.match(new RegExp(`^const\\s+${identifier}\\s*=`, 'gm')) ?? []).length;
-  if (count > 1) failures.push(`verify-source-of-truth.mjs: duplicate top-level declaration ${identifier}`);
-}
+const topLevelConstNames = [...sourceTruth.matchAll(/^const\s+([A-Za-z_$][\w$]*)\s*=/gm)].map((match) => match[1]);
+const duplicateTopLevelConsts = [...new Set(
+  topLevelConstNames.filter((name, index) => topLevelConstNames.indexOf(name) !== index),
+)];
+duplicateTopLevelConsts.forEach((identifier) => {
+  failures.push(`verify-source-of-truth.mjs: duplicate top-level declaration ${identifier}`);
+});
 
 if (failures.length) {
   console.error('Inkbound verifier integrity check FAILED.\n');
