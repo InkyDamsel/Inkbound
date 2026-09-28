@@ -4,13 +4,14 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { prepareBookCoverImage } from '../../platform/prepareBookCoverImage';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
-import { SYNC_STORAGE_KEYS } from './storageKeys';
 import { replaceCanonicalLibrary } from '../library/libraryMutations';
+import {
   getCloudDataRevision,
   INKBOUND_CLOUD_DATA_EVENT,
   notifyCloudDataUpdated,
   notifyLocalDataChanged,
 } from './cloudSyncEvents';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const LOCAL_DATA_OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
