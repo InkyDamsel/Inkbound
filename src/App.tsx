@@ -191,17 +191,33 @@ export default function App() {
     writeRuntimeValue(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
+  // React state mirrors canonical storage; it is not a second persistence owner.
+  // Keeping these effects ref-only ensures an accidental setBooks/setSessions
+  // bypass cannot silently become durable without going through libraryMutations.
   useEffect(() => {
     booksRef.current = books;
-    writeRuntimeJson(BOOKS_STORAGE_KEY, books);
-    removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
   }, [books]);
 
   useEffect(() => {
     sessionsRef.current = sessions;
-    writeRuntimeJson(SESSIONS_STORAGE_KEY, sessions);
-    removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY);
   }, [sessions]);
+
+  // Explicit one-time migration for pre-Inkbound/BookHaven core collection keys.
+  // Legacy migration is the only reason App may promote a legacy collection into
+  // the canonical store; normal state changes must use commitCanonical*.
+  useEffect(() => {
+    const storage = getRuntimeStorage();
+
+    if (storage.getItem(BOOKS_STORAGE_KEY) === null && storage.getItem(LEGACY_BOOKS_STORAGE_KEY) !== null) {
+      replaceCanonicalLibrary(booksRef.current);
+    }
+    removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY);
+
+    if (storage.getItem(SESSIONS_STORAGE_KEY) === null && storage.getItem(LEGACY_SESSIONS_STORAGE_KEY) !== null) {
+      replaceCanonicalSessions(sessionsRef.current);
+    }
+    removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY);
+  }, []);
 
   useEffect(() => {
     const refreshCanonicalRuntimeStorage = (event: Event) => {
