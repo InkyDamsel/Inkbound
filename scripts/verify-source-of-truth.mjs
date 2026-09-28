@@ -144,6 +144,16 @@ for (const file of sourceFiles) {
   }
 }
 
+const recoverySource = read('src/features/recovery/dataRecovery.ts');
+for (const required of ['applyRuntimeJsonFromExternalSource', 'applyRuntimeValueFromExternalSource', 'removeRuntimeValueFromExternalSource']) {
+  if (!recoverySource.includes(required)) {
+    violations.push(`dataRecovery.ts: restored cloud snapshots must use external runtime apply helpers (${required})`);
+  }
+}
+if (/writeRuntimeJson\((?:BOOKS_KEY|SESSIONS_KEY|PROFILE_KEY)/.test(recoverySource)) {
+  violations.push('dataRecovery.ts: restored cloud core data must not emit local reader intent');
+}
+
 const customOwnershipSource = read('src/features/ownership/customOwnershipCategories.ts');
 if (!customOwnershipSource.includes('replaceCanonicalLibrary')) {
   violations.push('customOwnershipCategories.ts: affected books must persist through replaceCanonicalLibrary');
