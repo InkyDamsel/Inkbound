@@ -32,6 +32,11 @@ export const DEVICE_UI_STORAGE_KEYS = {
   libraryLoanRemindersRead: 'inkbound_library_loan_reminders_read',
   navigationCollapsedGroups: 'inkbound_navigation_collapsed_groups',
   sidebarCollapsed: 'inkbound_sidebar_collapsed',
+  readerPersonalityView: 'inkbound_reader_personality_view',
+  readerPersonalityHiddenTraits: 'inkbound_reader_personality_hidden_traits',
+  readingInsightsRange: 'inkbound_reading_insights_range',
+  readingInsightsCategory: 'inkbound_reading_insights_category',
+  readingInsightsDismissed: 'inkbound_reading_insights_dismissed',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
