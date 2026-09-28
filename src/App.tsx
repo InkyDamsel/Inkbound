@@ -285,10 +285,10 @@ export default function App() {
       commitCanonicalBooks(result.books);
     }
 
-    // Empty, rather than delete, the retired auxiliary value so the auxiliary
-    // sync engine propagates the retirement to other devices/cloud instead of
-    // resurrecting this second series database on a later login.
-    writeRuntimeJson(SERIES_OVERRIDES_STORAGE_KEY, {});
+    // The retired store is migration-only. Once its values are folded into the
+    // canonical book records, remove it rather than maintaining an empty second
+    // series database.
+    removeRuntimeValue(SERIES_OVERRIDES_STORAGE_KEY);
   };
 
   useEffect(() => {
