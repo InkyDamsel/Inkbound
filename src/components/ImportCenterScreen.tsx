@@ -1,4 +1,6 @@
 import React, { ChangeEvent, DragEvent, useEffect, useMemo, useState } from 'react';
+import { readRuntimeValue, writeRuntimeValue } from '../platform/runtimeStorage';
+import { IMPORT_STORAGE_KEYS } from '../features/sync/storageKeys';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -53,7 +55,7 @@ export const IMPORT_SOURCES: ImportSourceInfo[] = [
 ];
 
 const steps = ['Select Source', 'Upload File', 'Analyze', 'Select Books', 'Complete'];
-const IMPORT_CENTER_VIEW_KEY = 'inkbound_import_center_view';
+const IMPORT_CENTER_VIEW_KEY = IMPORT_STORAGE_KEYS.centerView;
 const LARGE_LIBRARY_IMPORT_THRESHOLD = 5_000;
 type ImportCenterView = 'import' | 'history';
 
@@ -81,7 +83,7 @@ const sourceInstructions: Record<string, string[]> = {
 };
 
 function readImportCenterView(): ImportCenterView {
-  try { return localStorage.getItem(IMPORT_CENTER_VIEW_KEY) === 'history' ? 'history' : 'import'; } catch { return 'import'; }
+  return readRuntimeValue(IMPORT_CENTER_VIEW_KEY) === 'history' ? 'history' : 'import';
 }
 
 function parseCsv(text: string): Record<string, string>[] {
@@ -224,7 +226,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({ books, o
 
   const switchCenterView = (view: ImportCenterView) => {
     setCenterView(view);
-    try { localStorage.setItem(IMPORT_CENTER_VIEW_KEY, view); } catch { /* no-op */ }
+    writeRuntimeValue(IMPORT_CENTER_VIEW_KEY, view);
   };
   const resumeHistoryEnrichment = () => window.dispatchEvent(new Event('online'));
 
