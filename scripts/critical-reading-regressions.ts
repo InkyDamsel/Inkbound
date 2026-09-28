@@ -288,6 +288,63 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(mergeIncomingBookLoanState(activeLoan, explicitOwnershipChange).libraryLoan, undefined);
 }
 
+// Pending local reader intent keeps ownership while absorbing missing remote metadata.
+{
+  const local = {
+    ...baseBook(),
+    progressPages: 250,
+    progressPercentage: 50,
+    rating: 4.5,
+    work: {
+      ...baseBook().work,
+      seriesName: 'Reader Corrected Series',
+      seriesOrder: 2,
+      seriesLabel: 'Novella',
+      seriesSource: 'manual' as const,
+      publisherSummary: undefined,
+    },
+    editions: [{
+      id: 'paper-500',
+      format: 'hardcover' as const,
+      pageCount: 500,
+      coverGradient: '',
+      coverUrl: undefined,
+      publisher: undefined,
+    }],
+    activeEditionId: 'paper-500',
+  };
+  const remote = {
+    ...local,
+    progressPages: 100,
+    progressPercentage: 20,
+    rating: 2,
+    work: {
+      ...local.work,
+      seriesName: 'Remote Metadata Series',
+      seriesOrder: 9,
+      seriesLabel: undefined,
+      seriesSource: 'metadata' as const,
+      publisherSummary: 'Remote publisher summary',
+    },
+    editions: [{
+      ...local.editions[0],
+      coverUrl: 'https://example.com/cover.jpg',
+      publisher: 'Remote Publisher',
+    }],
+  };
+
+  const merged = mergePendingLocalBookWithRemoteMetadata(local, remote);
+  assert.equal(merged.progressPages, 250);
+  assert.equal(merged.rating, 4.5);
+  assert.equal(merged.work.seriesName, 'Reader Corrected Series');
+  assert.equal(merged.work.seriesOrder, 2);
+  assert.equal(merged.work.seriesLabel, 'Novella');
+  assert.equal(merged.work.seriesSource, 'manual');
+  assert.equal(merged.work.publisherSummary, 'Remote publisher summary');
+  assert.equal(merged.editions[0].coverUrl, 'https://example.com/cover.jpg');
+  assert.equal(merged.editions[0].publisher, 'Remote Publisher');
+}
+
 // Sync conflict rules protect newer/pending local work from stale cloud data.
 {
   assert.equal(shouldRemoteChangeReplacePending({ remoteClientUpdatedAt: '2026-09-09T11:59:00.000Z', pendingClientUpdatedAt: '2026-09-09T12:00:00.000Z' }), false);
