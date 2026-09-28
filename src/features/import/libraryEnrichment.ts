@@ -7,6 +7,7 @@ import { searchGoogleBooks } from '../book-search/data/googleBooksApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../book-search/model/bookSearch';
 import { createBookFromSearchEdition, mergeCatalogBookMetadata } from '../book-search/mapping/bookSearchMapper';
 import { LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
+import { normalizeBookRating, normalizeSpiceLevel } from '../reading/bookRating';
 
 export const IMPORT_ENRICHMENT_QUEUE_KEY = SYNC_STORAGE_KEYS.importEnrichmentQueue;
 export const IMPORT_ENRICHMENT_CONCURRENCY = 2;
@@ -504,7 +505,8 @@ export function createFallbackImportedBook(item: ImportRecordItem): UserBookReco
     progressPages: 0,
     progressMinutes: 0,
     progressPercentage: 0,
-    rating: item.rating,
+    rating: normalizeBookRating(item.rating),
+    spiceLevel: normalizeSpiceLevel(item.spiceLevel),
     review: item.review,
     favoriteQuotes: [],
     privateTags: ['imported'],
@@ -581,7 +583,8 @@ async function enrichImportedBook(item: ImportEnrichmentQueueItem): Promise<Impo
       progressPages: 0,
       progressMinutes: 0,
       progressPercentage: 0,
-      rating: item.rating,
+      rating: normalizeBookRating(item.rating),
+      spiceLevel: normalizeSpiceLevel(item.spiceLevel),
       review: item.review,
       privateTags: ['imported'],
       sourceOfImport: 'Library import + verified metadata',
@@ -703,7 +706,8 @@ export function buildRepairQueueItems(
       isbn: activeEdition?.isbn13 || activeEdition?.isbn10 || activeEdition?.isbn,
       format: activeEdition?.format || 'unknown',
       status: book.status,
-      rating: book.rating,
+      rating: normalizeBookRating(book.rating),
+      spiceLevel: normalizeSpiceLevel(book.spiceLevel),
       dateStarted: book.dateStarted,
       dateRead: book.dateFinished,
       dateAdded: book.dateAdded,
