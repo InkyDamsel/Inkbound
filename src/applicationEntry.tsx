@@ -17,6 +17,7 @@ import { CloudServerRefreshBridge } from './features/sync/CloudServerRefreshBrid
 import { CrossDeviceDeltaSyncBridge } from './features/sync/CrossDeviceDeltaSyncBridge.tsx';
 import { LegacyBookCoverMigrationBridge } from './features/sync/LegacyBookCoverMigrationBridge.tsx';
 import { LegacyImportMetadataPurgeBridge } from './features/sync/LegacyImportMetadataPurgeBridge.tsx';
+import { LegacySeriesOverrideMigrationBridge } from './features/sync/LegacySeriesOverrideMigrationBridge.tsx';
 import { LibrarySyncCheckpointBridge } from './features/sync/LibrarySyncCheckpointBridge.tsx';
 import { ManualCoverLedgerBridge } from './features/sync/ManualCoverLedgerBridge.tsx';
 import { ProtectedBookDetailsLedgerBridge } from './features/sync/ProtectedBookDetailsLedgerBridge.tsx';
@@ -203,6 +204,7 @@ const InkboundApplication = () => (
             </BrowserStorageHydrationGate>
             <ThemePersistenceBridge />
             <CloudDataRefreshBoundary>
+              <LegacySeriesOverrideMigrationBridge />
               <RecoverySafetyBridge />
               <App />
             </CloudDataRefreshBoundary>
