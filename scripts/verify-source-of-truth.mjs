@@ -1432,6 +1432,16 @@ if (catalogHardeningSource.includes('return 0;') && catalogHardeningSource.inclu
 if (!catalogHardeningSource.includes('const cleanPublicationYear = (value?: number): number | undefined')) {
   violations.push('catalogHardening.ts: publication-year hardening must preserve the optional metadata contract.');
 }
+const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
+if (openLibrarySource.includes('edition.publisher ?? work.publisher')) {
+  violations.push('openLibraryApi.ts: exact edition publisher must not fall back to aggregate work-level publisher metadata.');
+}
+if (openLibrarySource.includes('work.first_publish_year')) {
+  violations.push('openLibraryApi.ts: exact edition publication year must not inherit the work first-publication year.');
+}
+if (openLibrarySource.includes('work.cover_i) return') || openLibrarySource.includes('work.cover_edition_key) return') || openLibrarySource.includes('const workIsbn = work.isbn')) {
+  violations.push('openLibraryApi.ts: exact edition cover must not fall back to work-level cover identity.');
+}
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
