@@ -36,6 +36,8 @@ interface ProtectedBookDetails {
     externalWorkId?: string;
   };
   reader: {
+    rating?: number;
+    spiceLevel?: number;
     review?: string;
     personalNotes?: string;
     favoriteQuotes?: UserBookRecord['favoriteQuotes'];
@@ -87,6 +89,8 @@ function detailsFor(book: UserBookRecord): ProtectedBookDetails {
       externalWorkId: book.work.externalWorkId,
     },
     reader: {
+      rating: book.rating,
+      spiceLevel: book.spiceLevel,
       review: book.review,
       personalNotes: book.personalNotes,
       favoriteQuotes: book.favoriteQuotes,
