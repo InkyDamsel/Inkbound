@@ -495,6 +495,15 @@ if (cloudServerRefreshSource.includes('function mergeServerMetadataIntoBook')) {
 }
 
 const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
+for (const required of ['applyRuntimeJsonFromExternalSource', 'compactCloudProfileForRuntime']) {
+  if (!oneShotHydration.includes(required)) {
+    violations.push(`OneShotCloudHydrationBridge.tsx: cloud core data must use external runtime apply/projection (${required})`);
+  }
+}
+if (/writeJson\((?:BOOKS_KEY|SESSIONS_KEY|PROFILE_KEY)/.test(oneShotHydration)) {
+  violations.push('OneShotCloudHydrationBridge.tsx: raw core hydration writes are forbidden');
+}
+
 const auxiliarySyncBridge = read('src/features/sync/AuxiliaryAccountSyncBridge.tsx');
 const persistentStateHook = read('src/hooks/usePersistentState.ts');
 const libraryNormalization = read('src/features/library/libraryNormalization.ts');
