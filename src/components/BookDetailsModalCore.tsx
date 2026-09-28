@@ -148,6 +148,19 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
 
   const saveDetails = () => {
     if (!title.trim() || !author.trim()) return;
+    const nextSeriesName = seriesName.trim() || undefined;
+    const parsedSeriesOrder = seriesOrder.trim() ? Number(seriesOrder) : undefined;
+    const nextSeriesOrder = typeof parsedSeriesOrder === 'number'
+      && Number.isFinite(parsedSeriesOrder)
+      && parsedSeriesOrder >= 0
+      ? parsedSeriesOrder
+      : undefined;
+    const currentSeriesName = book.work.seriesName?.trim() || undefined;
+    const currentSeriesOrder = typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder)
+      ? book.work.seriesOrder
+      : undefined;
+    const seriesChanged = nextSeriesName !== currentSeriesName || nextSeriesOrder !== currentSeriesOrder;
+
     stopAutomaticEnrichmentForBook(book.id);
     onUpdateBook({
       ...book,
@@ -155,10 +168,14 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         ...book.work,
         title: title.trim(),
         author: author.trim(),
-        seriesName: seriesName.trim() || undefined,
-        seriesOrder: seriesOrder.trim() ? Math.max(0, Number(seriesOrder)) || undefined : undefined,
-        seriesLabel: seriesName.trim() ? book.work.seriesLabel : undefined,
-        seriesSource: seriesName.trim() ? 'manual' : undefined,
+        seriesName: nextSeriesName,
+        seriesOrder: nextSeriesOrder,
+        seriesLabel: nextSeriesName
+          ? (seriesChanged && nextSeriesName !== currentSeriesName ? undefined : book.work.seriesLabel)
+          : undefined,
+        seriesSource: nextSeriesName
+          ? (seriesChanged ? 'manual' : book.work.seriesSource)
+          : undefined,
       },
       privateTags: csvList(tags),
     });
