@@ -11,10 +11,13 @@ export const DEVICE_FEATURE_STORAGE_KEYS = {
   legacyProfileMediaSyncQueue: 'inkbound_profile_media_sync_queue_v1',
   pendingRecoveryRestore: 'inkbound_pending_recovery_restore_v1',
   scannerReviewDraft: 'inkbound_scanner_review_draft_v1',
+  runtimeStorageMode: 'inkbound_runtime_storage_mode_v1',
 } as const;
 
 export const DEVICE_FEATURE_STORAGE_PREFIXES = {
   profileMediaSyncQueue: 'inkbound_profile_media_sync_queue_',
+  runtimeModeArchive: 'inkbound_runtime_mode_archive_v2_',
+  manualCoverLedgerBaseline: 'inkbound_manual_cover_ledger_baseline_v1_',
 } as const;
 
 export const DEVICE_UI_STORAGE_KEYS = {
