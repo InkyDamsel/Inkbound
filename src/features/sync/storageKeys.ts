@@ -46,6 +46,7 @@ export const DEVICE_UI_STORAGE_KEYS = {
   timelineSearch: 'inkbound_timeline_search',
   timelineCollapsedMonths: 'inkbound_timeline_collapsed_months',
   yearInBooksPreferences: 'inkbound_year_in_books_preferences',
+  seriesSort: 'inkbound_series_sort',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
