@@ -14,6 +14,7 @@ import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeSt
 import {
   buildSeriesLibrary,
   seriesBookDisplayTitle,
+  seriesNamesAreCompatible,
   seriesPositionLabel,
 } from '../../features/series/seriesLibrary';
 import {
