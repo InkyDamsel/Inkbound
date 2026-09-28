@@ -20,6 +20,7 @@ export const DEVICE_FEATURE_STORAGE_PREFIXES = {
   profileMediaSyncQueue: 'inkbound_profile_media_sync_queue_',
   runtimeModeArchive: 'inkbound_runtime_mode_archive_v2_',
   manualCoverLedgerBaseline: 'inkbound_manual_cover_ledger_baseline_v1_',
+  librarySyncCheckpoint: 'inkbound_library_sync_checkpoint_v1_',
 } as const;
 
 export const DEVICE_UI_STORAGE_KEYS = {
