@@ -244,7 +244,7 @@ const formattedAuthorExactIsbn = scoreSeriesEvidence(
 assert.ok(formattedAuthorExactIsbn);
 assert.equal(formattedAuthorExactIsbn?.structured, true);
 assert.equal(formattedAuthorExactIsbn?.exactIdentifier, true);
-assert.equal(formattedAuthorExactIsbn?.exactAuthor, false);
+assert.equal(formattedAuthorExactIsbn?.exactAuthor, true);
 assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.name, 'Dream Harbor');
 assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.position, 2);
 
