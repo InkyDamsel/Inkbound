@@ -226,14 +226,14 @@ async function enforceRateLimit(uid: string) {
   });
 }
 
-function normalizeTrustedFormat(value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | undefined {
+function normalizeTrustedFormat(value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' | 'unknown' {
   const normalized = value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ') ?? '';
-  if (!normalized) return undefined;
+  if (!normalized) return 'unknown';
   if (/\b(?:audio|audiobook|cd|mp3)\b/.test(normalized)) return 'audiobook';
   if (/\b(?:ebook|e book|kindle|digital|epub)\b/.test(normalized)) return 'ebook';
   if (/\b(?:paperback|softcover|soft cover|mass market|trade paper)\b/.test(normalized)) return 'paperback';
   if (/\b(?:hardcover|hardback|hard cover|library binding)\b/.test(normalized)) return 'hardcover';
-  return undefined;
+  return 'unknown';
 }
 
 function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
@@ -244,10 +244,8 @@ function trustedRecordToGroup(id: string, record: Record<string, unknown>) {
   ) as Partial<CatalogFields>;
   if (!fields.title || !fields.author) return null;
   const format = normalizeTrustedFormat(fields.format);
-  // Trusted edition data must never invent a physical/digital format. Older
-  // records without a verified format are not authoritative edition evidence.
-  if (!format) return null;
-
+  // Unknown is a real absence of evidence, not a reason to invent ebook or
+  // hardcover and not a reason to hide an otherwise useful trusted record.
   return {
     key: `inkbound-catalog:${id}`,
     title: fields.title,
