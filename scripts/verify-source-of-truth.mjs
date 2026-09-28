@@ -421,6 +421,26 @@ for (const relative of [
   'src/features/sync/CrossDeviceDeltaSyncBridge.tsx',
 ]) {
   const source = read(relative);
+  if (!source.includes('compactCloudProfileForRuntime')) {
+    violations.push(`${relative}: core sync paths must share profileSyncMerge.ts for cloud profile projection`);
+  }
+}
+for (const relative of [
+  'src/components/ProfileScreen.tsx',
+  'src/features/profile/profileMediaCloudSync.ts',
+]) {
+  const source = read(relative);
+  if (source.includes('notifyLocalDataChanged([PROFILE_STORAGE_KEY])')) {
+    violations.push(`${relative}: writeRuntimeJson already emits local intent; duplicate profile sync signals are forbidden`);
+  }
+}
+
+for (const relative of [
+  'src/features/sync/CloudServerRefreshBridge.tsx',
+  'src/features/sync/FullCloudReconciliationBridge.tsx',
+  'src/features/sync/CrossDeviceDeltaSyncBridge.tsx',
+]) {
+  const source = read(relative);
   if (!source.includes('mergePendingLocalBookWithRemoteMetadata')) {
     violations.push(`${relative}: core sync paths must share bookSyncMerge.ts for pending-local book conflicts`);
   }
