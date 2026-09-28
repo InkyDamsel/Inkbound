@@ -246,6 +246,35 @@ assert.ok(thinAfterConflict?.seriesName);
 assert.equal(seriesNamesAreCompatible(thinAfterConflict?.seriesName, 'Example Saga'), true);
 assert.equal(thinAfterConflict?.seriesOrder, undefined);
 
+// A lone Open Library edition/translation series label must not become the
+// canonical work series merely because the provider exposes it as structured
+// metadata. Edition-scoped labels may still remain available to Detective.
+const translatedEditionSeries = edition(
+  'open-library',
+  'translated-series-edition',
+  'Example Punishment',
+  'Example Author',
+  {
+    isbn13: '9780000000002',
+    seriesName: 'Les aventures de la Belle -- tome 2',
+    seriesOrder: 2,
+  },
+);
+const translatedSeriesGroup = hardenCatalogGroups([
+  group(
+    'translated-series-work',
+    'Example Punishment',
+    'Example Author',
+    [translatedEditionSeries],
+  ),
+]);
+const savedTranslatedSeries = createBookFromSearchEdition({
+  work: translatedSeriesGroup[0],
+  edition: translatedEditionSeries,
+});
+assert.equal(savedTranslatedSeries.work.seriesName, undefined);
+assert.equal(savedTranslatedSeries.work.seriesOrder, undefined);
+
 // Book 0 is legitimate metadata and must survive mapper + library normalization.
 const prequelEdition = edition(
   'google-books',
