@@ -75,7 +75,7 @@ export function createBookFromSearchEdition({
       summary: publisherSummary ?? 'No publisher summary was available for this edition.',
       publisherSummary,
       genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : hardenedWork.genres,
-      ...(hardenedEdition.seriesName ? { seriesName: hardenedEdition.seriesName } : {}),
+      ...(hardenedEdition.seriesName ? { seriesName: hardenedEdition.seriesName, seriesSource: 'metadata' as const } : {}),
       ...(typeof hardenedEdition.seriesOrder === 'number' ? { seriesOrder: hardenedEdition.seriesOrder } : {}),
       publicationYear: hardenedEdition.publicationYear,
       originalLanguage: hardenedEdition.language,
@@ -202,6 +202,8 @@ export function mergeCatalogBookMetadata(
 
   const catalogSeriesName = catalogBook.work.seriesName;
   const catalogSeriesOrder = catalogBook.work.seriesOrder;
+  const preserveManualSeries = current.work.seriesSource === 'manual';
+  const catalogMayReplaceSeries = Boolean(options.catalogSeriesWins && !preserveManualSeries);
   const publisherSummary = current.work.publisherSummary || catalogBook.work.publisherSummary;
   const visibleSummary = current.work.personalSummary
     || (!isPlaceholderPublisherSummary(current.work.summary) ? current.work.summary : undefined)
@@ -217,12 +219,18 @@ export function mergeCatalogBookMetadata(
       summary: visibleSummary,
       publisherSummary,
       genres: current.work.genres?.length ? current.work.genres : catalogBook.work.genres,
-      seriesName: options.catalogSeriesWins
+      seriesName: catalogMayReplaceSeries
         ? catalogSeriesName ?? current.work.seriesName
         : current.work.seriesName ?? catalogSeriesName,
-      seriesOrder: options.catalogSeriesWins
+      seriesOrder: catalogMayReplaceSeries
         ? (typeof catalogSeriesOrder === 'number' ? catalogSeriesOrder : current.work.seriesOrder)
         : (typeof current.work.seriesOrder === 'number' ? current.work.seriesOrder : catalogSeriesOrder),
+      seriesLabel: current.work.seriesLabel,
+      seriesSource: preserveManualSeries
+        ? 'manual'
+        : (catalogMayReplaceSeries && catalogSeriesName
+          ? 'metadata'
+          : current.work.seriesSource ?? (catalogSeriesName ? 'metadata' : undefined)),
       publicationYear: current.work.publicationYear || catalogBook.work.publicationYear,
       originalLanguage: current.work.originalLanguage || catalogBook.work.originalLanguage,
       externalWorkId: options.catalogIdentityWins
