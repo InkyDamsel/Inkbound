@@ -126,6 +126,7 @@ const mergeDuplicateBooks = (keeper: UserBookRecord, group: UserBookRecord[]): U
     progressPercentage: keeper.progressPercentage,
     status: keeper.status,
     rating: keeper.rating ?? group.find((book) => book.rating != null)?.rating,
+    spiceLevel: keeper.spiceLevel ?? group.find((book) => book.spiceLevel != null)?.spiceLevel,
     review: combinedReviews.length ? combinedReviews.join('\n\n---\n\n') : undefined,
     personalNotes: combinedNotes.length ? combinedNotes.join('\n\n---\n\n') : undefined,
     favoriteQuotes: Array.from(new Map(group.flatMap((book) => book.favoriteQuotes ?? []).map((quote) => [quote.id || quote.quote, quote])).values()),
