@@ -26,6 +26,29 @@ const walk = (directory) => {
 };
 walk(path.join(root, 'src'));
 
+
+// PERSISTENCE IS LAW: feature/UI/domain code must never bypass the runtime
+// storage boundary. These files are the low-level browser adapters/signallers
+// that intentionally own native localStorage access.
+const directLocalStorageAllowed = new Set([
+  'src/platform/runtimeStorage.ts',
+  'src/platform/largeBrowserStorage.ts',
+  'src/platform/runtimeMediaStorage.ts',
+  'src/features/sync/cloudSyncEvents.ts',
+  'src/lib/firebase.ts',
+]);
+for (const file of sourceFiles) {
+  const relative = path.relative(root, file).replaceAll('\\', '/');
+  const source = fs.readFileSync(file, 'utf8');
+  if (!directLocalStorageAllowed.has(relative) && /\blocalStorage\b/.test(source)) {
+    violations.push(`${relative}: direct localStorage access is forbidden; use the canonical runtimeStorage boundary`);
+  }
+}
+
+if (fs.existsSync(path.join(root, 'src/features/sync/CloudPersistenceBridge.tsx'))) {
+  violations.push('CloudPersistenceBridge.tsx: retired duplicate persistence implementation must not exist; AdaptiveCloudPersistenceBridge owns the canonical path');
+}
+
 // ONE SOURCE OF TRUTH LAW: feature/UI code may consume canonical catalog
 // services, but it must never assemble provider pipelines of its own.
 for (const file of sourceFiles) {
@@ -76,6 +99,25 @@ for (const file of sourceFiles) {
     if (source.includes(`'${literal}'`) || source.includes(`"${literal}"`)) {
       violations.push(`${relative}: redefines registered storage key ${literal}; use ${owner}`);
     }
+  }
+}
+
+const importEnrichmentSource = read('src/features/import/libraryEnrichment.ts');
+for (const required of ['createBookFromSearchEdition', 'mergeCatalogBookMetadata']) {
+  if (!importEnrichmentSource.includes(required)) {
+    violations.push(`libraryEnrichment.ts: Import enrichment must use the canonical provider-to-book mapper/merge (${required})`);
+  }
+}
+const importHistorySource = read('src/features/import/importHistory.ts');
+const importVerificationSource = read('src/features/import/importVerificationJob.ts');
+const legacyImportPurgeSource = read('src/features/import/purgeLegacyImportMetadata.ts');
+for (const [relative, source] of [
+  ['src/features/import/importHistory.ts', importHistorySource],
+  ['src/features/import/importVerificationJob.ts', importVerificationSource],
+  ['src/features/import/purgeLegacyImportMetadata.ts', legacyImportPurgeSource],
+]) {
+  if (/\blocalStorage\b/.test(source)) {
+    violations.push(`${relative}: import persistence must use runtimeStorage so web/native/large-library storage cannot diverge`);
   }
 }
 
@@ -170,6 +212,15 @@ const googleBooksSource = read('src/features/book-search/data/googleBooksApi.ts'
 const openLibrarySource = read('src/features/book-search/data/openLibraryApi.ts');
 const googleSeriesResolverSource = read('src/features/book-search/mapping/googleSeriesMetadata.ts');
 const bookDetailsCoreSource = read('src/components/BookDetailsModalCore.tsx');
+for (const required of ['selectBestCatalogMetadataCandidate', 'mergeCatalogBookMetadata', 'createBookFromSearchEdition']) {
+  if (!bookDetailsCoreSource.includes(required)) {
+    violations.push(`BookDetailsModalCore.tsx: Book Details metadata repair must consume the canonical catalog merge (${required})`);
+  }
+}
+if (bookDetailsCoreSource.includes('candidateMatchesBookIdentity') || bookDetailsCoreSource.includes('catalogEditionQualityScore')) {
+  violations.push('BookDetailsModalCore.tsx: must not own a second catalog identity/scoring implementation');
+}
+
 if (!googleBooksSource.includes("resolveGoogleSeriesMetadata")) {
   violations.push('googleBooksApi.ts: Google Books series metadata must use the canonical resolver');
 }
