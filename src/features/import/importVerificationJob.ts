@@ -1,6 +1,6 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
 import { getRuntimeStorage, writeRuntimeJson } from '../../platform/runtimeStorage';
-import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
+import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import { IMPORT_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import { findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
 
@@ -159,8 +159,8 @@ async function applySourceFieldsToNewBooks(items: ImportRecordItem[], fallbackLi
   }
 
   if (bestResult.matched > 0) {
-    writeRuntimeJson(SYNC_STORAGE_KEYS.books, bestResult.library);
-    notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
+    restoreManualSeriesOverridesFromImport(items, bestResult.library);
+    replaceCanonicalLibrary(bestResult.library);
     return bestResult.library;
   }
 
@@ -192,9 +192,8 @@ export function startImportVerificationJob(
       const mergeResult = mergeExistingRecords(normalizedItems, startingLibrary);
       let workingLibrary = mergeResult.library;
       if (mergeResult.merged.length > 0) {
-        writeRuntimeJson(SYNC_STORAGE_KEYS.books, workingLibrary);
         restoreManualSeriesOverridesFromImport(mergeResult.merged, workingLibrary);
-        notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
+        replaceCanonicalLibrary(workingLibrary);
       }
 
       const executionResult = mergeResult.remaining.length > 0 ? await executeImport(mergeResult.remaining) : [];
@@ -203,7 +202,6 @@ export function startImportVerificationJob(
       const writeRejected = mergeResult.remaining.filter((record) => !importedIds.has(record.id)).map((record) => ({ ...record, duplicateAction: 'skip' as const }));
 
       workingLibrary = await applySourceFieldsToNewBooks(importedRecords, workingLibrary);
-      if (importedRecords.length > 0) restoreManualSeriesOverridesFromImport(importedRecords, workingLibrary);
       persistMetadataPending(importedRecords);
       const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
       writeRejected.forEach((record) => duplicateMap.set(record.id, record));
