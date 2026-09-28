@@ -45,6 +45,22 @@ for (const file of sourceFiles) {
   }
 }
 
+const legacySeriesOverrideAllowed = new Set([
+  'src/App.tsx',
+  'src/features/series/seriesOverrides.ts',
+  'src/features/series/seriesLibrary.ts',
+  'src/features/sync/auxiliaryAccountSyncConfig.ts',
+  'src/features/sync/storageKeys.ts',
+]);
+for (const file of sourceFiles) {
+  const relative = path.relative(root, file).replaceAll('\\', '/');
+  if (legacySeriesOverrideAllowed.has(relative)) continue;
+  const source = fs.readFileSync(file, 'utf8');
+  if (source.includes('SERIES_OVERRIDES_STORAGE_KEY') || source.includes('readSeriesOverrides(')) {
+    violations.push(`${relative}: retired seriesOverrides store is migration-only; series state must live on canonical UserBookRecord.work`);
+  }
+}
+
 if (fs.existsSync(path.join(root, 'src/features/sync/CloudPersistenceBridge.tsx'))) {
   violations.push('CloudPersistenceBridge.tsx: retired duplicate persistence implementation must not exist; AdaptiveCloudPersistenceBridge owns the canonical path');
 }
