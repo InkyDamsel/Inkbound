@@ -12,7 +12,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { getRuntimeStorage, notifyRuntimeStorageChanged } from '../../platform/runtimeStorage';
+import { getRuntimeStorage, removeRuntimeValue, writeRuntimeJson, writeRuntimeValue } from '../../platform/runtimeStorage';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import {
   IMPORT_ENRICHMENT_PAUSED_KEY,
@@ -28,7 +28,7 @@ import {
   type AuxiliaryAccountKeyName,
 } from '../sync/auxiliaryAccountSyncConfig';
 import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../sync/cloudSyncEvents';
-import { SYNC_STORAGE_KEYS, syncBaselineStateKey, syncPendingStateKey } from '../sync/storageKeys';
+import { DEVICE_FEATURE_STORAGE_KEYS, SYNC_STORAGE_KEYS, legacySyncBaselineV1Key, syncBaselineStateKey, syncPendingStateKey } from '../sync/storageKeys';
 
 const RECOVERY_COLLECTION = 'recoverySnapshots';
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
@@ -302,7 +302,7 @@ async function replaceCollection(
 }
 
 export function scheduleRecoveryRestore(uid: string, snapshotId: string): void {
-  getRuntimeStorage().setItem(RESTORE_REQUEST_KEY, stable({ uid, snapshotId, requestedAt: new Date().toISOString() } satisfies ScheduledRecoveryRestore));
+  writeRuntimeJson(RESTORE_REQUEST_KEY, { uid, snapshotId, requestedAt: new Date().toISOString() } satisfies ScheduledRecoveryRestore);
 }
 
 export function readScheduledRecoveryRestore(uid: string): ScheduledRecoveryRestore | null {
@@ -317,7 +317,7 @@ export function readScheduledRecoveryRestore(uid: string): ScheduledRecoveryRest
 }
 
 export function clearScheduledRecoveryRestore(): void {
-  getRuntimeStorage().removeItem(RESTORE_REQUEST_KEY);
+  removeRuntimeValue(RESTORE_REQUEST_KEY);
 }
 
 export async function restoreRecoveryPoint(uid: string, snapshotId: string): Promise<void> {
@@ -343,33 +343,31 @@ export async function restoreRecoveryPoint(uid: string, snapshotId: string): Pro
   // Recovery must invalidate the CURRENT sync metadata. Keeping an old v2
   // baseline after a restore can make the restored state look like a local edit
   // or make a deleted pre-restore record appear authoritative again.
-  storage.removeItem(syncPendingStateKey(uid));
-  storage.removeItem(syncBaselineStateKey(uid));
+  removeRuntimeValue(syncPendingStateKey(uid));
+  removeRuntimeValue(syncBaselineStateKey(uid));
   // Older beta keys are cleared too so an upgraded device cannot resurrect them.
-  storage.removeItem(`inkbound_sync_baseline_${uid}_v1`);
-  storage.removeItem(getAuxiliaryPendingKey(uid));
-  storage.removeItem(getAuxiliaryBaselineKey(uid));
+  removeRuntimeValue(legacySyncBaselineV1Key(uid));
+  removeRuntimeValue(getAuxiliaryPendingKey(uid));
+  removeRuntimeValue(getAuxiliaryBaselineKey(uid));
 
-  storage.setItem(BOOKS_KEY, stable(payload.books));
-  storage.setItem(SESSIONS_KEY, stable(payload.sessions));
-  storage.setItem(PROFILE_KEY, stable(payload.profile ?? {}));
+  writeRuntimeJson(BOOKS_KEY, payload.books);
+  writeRuntimeJson(SESSIONS_KEY, payload.sessions);
+  writeRuntimeJson(PROFILE_KEY, payload.profile ?? {});
 
   const restoredAuxiliary = new Map(payload.auxiliary.map((item) => [item.id, item.data]));
   (Object.entries(AUXILIARY_ACCOUNT_KEYS) as Array<[AuxiliaryAccountKeyName, string]>).forEach(([name, runtimeKey]) => {
-    if (restoredAuxiliary.has(name)) storage.setItem(runtimeKey, stable(restoredAuxiliary.get(name)));
-    else storage.removeItem(runtimeKey);
-    notifyRuntimeStorageChanged(runtimeKey);
+    if (restoredAuxiliary.has(name)) writeRuntimeJson(runtimeKey, restoredAuxiliary.get(name));
+    else removeRuntimeValue(runtimeKey);
   });
 
   const restoredRuntime = new Map(payload.runtimeState.map((item) => [item.id, item.data]));
   RECOVERABLE_RUNTIME_KEYS.forEach((runtimeKey) => {
     const value = restoredRuntime.get(runtimeKey);
-    if (value === undefined) storage.removeItem(runtimeKey);
-    else storage.setItem(runtimeKey, value);
-    notifyRuntimeStorageChanged(runtimeKey);
+    if (value === undefined) removeRuntimeValue(runtimeKey);
+    else writeRuntimeValue(runtimeKey, value);
   });
 
-  storage.removeItem(PHOTO_REVISION_KEY);
+  removeRuntimeValue(PHOTO_REVISION_KEY);
 
   notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
   notifyLocalDataChanged([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
