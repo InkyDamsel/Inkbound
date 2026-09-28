@@ -182,7 +182,7 @@ function reconcileCollection<T extends { id: string }>(
       stats.pendingLocalProtected += 1;
       return;
     }
-    if (shouldPromoteLocalRecordMissingFromCloud({ baselineFingerprint: baseline[item.id] })) {
+    if (shouldPromoteLocalRecordMissingFromCloud({ hasCloudRecord: false, baselineFingerprint: baseline[item.id], hasPendingMutation: false })) {
       // A record that has never existed in the cloud baseline is legitimate
       // local-only data (for example, a pre-account library being attached to a
       // newly registered account). Preserving it in memory is not enough: create
@@ -328,8 +328,7 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
             const runtimeProfileValue = stable(compactCloudProfileForRuntime(profileRecord.data));
             baseline.profile = cloudProfileValue;
             if (storage().getItem(PROFILE_KEY) !== runtimeProfileValue) {
-              storage().setItem(PROFILE_KEY, runtimeProfileValue);
-              notifyRuntimeStorageChanged(PROFILE_KEY);
+              applyRuntimeJsonFromExternalSource(PROFILE_KEY, compactCloudProfileForRuntime(profileRecord.data));
               changedKeys.push(PROFILE_KEY);
               profileApplied = true;
             }
