@@ -11,6 +11,12 @@ import {
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
 import { getCanonicalProgressPercentage } from '../features/reading/bookReadingState';
+import {
+  CUSTOM_READING_STATUSES_CHANGED_EVENT,
+  CUSTOM_READING_STATUSES_KEY,
+  readCustomReadingStatuses,
+  type CustomReadingStatus,
+} from '../features/reading/customReadingStatuses';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../platform/runtimeStorage';
 import type { ReadingStatus, UserBookRecord } from '../types';
@@ -59,6 +65,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [activeCategory, setActiveCategory] = useState('all');
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
+  const [customReadingStatuses, setCustomReadingStatuses] = useState<CustomReadingStatus[]>(() => readCustomReadingStatuses());
   const [searchFilter, setSearchFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('all');
   const [materialFilter, setMaterialFilter] = useState('all');
@@ -84,6 +91,20 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   }, []);
 
   useEffect(() => {
+    const refresh = () => setCustomReadingStatuses(readCustomReadingStatuses());
+    const handleRuntimeRefresh = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key === CUSTOM_READING_STATUSES_KEY) refresh();
+    };
+    window.addEventListener(CUSTOM_READING_STATUSES_CHANGED_EVENT, refresh);
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
+    return () => {
+      window.removeEventListener(CUSTOM_READING_STATUSES_CHANGED_EVENT, refresh);
+      window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeRefresh);
+    };
+  }, []);
+
+  useEffect(() => {
     setPage(1);
   }, [activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
@@ -104,7 +125,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   }, [allTags, tagFilter]);
 
   const filteredBooks = useMemo(() => books.filter((book) => {
-    if (activeCategory !== 'all' && book.status !== activeCategory as ReadingStatus) return false;
+    if (activeCategory.startsWith('custom:')) {
+      const statusId = activeCategory.slice('custom:'.length);
+      if (book.status !== 'custom' || book.customReadingStatusId !== statusId) return false;
+    } else if (activeCategory !== 'all' && book.status !== activeCategory as ReadingStatus) return false;
 
     if (searchFilter.trim()) {
       const query = searchFilter.toLowerCase();
@@ -187,6 +211,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)} className="inkbound-select" aria-label="Reading status filter">
               <option value="all">All reading statuses</option>
               {READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              {customReadingStatuses.length > 0 && <optgroup label="Custom statuses">{customReadingStatuses.map((status) => <option key={status.id} value={`custom:${status.id}`}>{status.name}</option>)}</optgroup>}
             </select>
             <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} className="inkbound-select" aria-label="Tag filter"><option value="all">All tags</option>{allTags.map(([normalized, label]) => <option key={normalized} value={normalized}>{label}</option>)}</select>
             <select value={materialFilter} onChange={(event) => setMaterialFilter(event.target.value)} className="inkbound-select"><option value="all">All reading types</option>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.pluralLabel ?? option.label}</option>)}</select>
