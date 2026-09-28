@@ -1,5 +1,4 @@
 import { UserBookRecord } from '../../types';
-import { orderedSeriesOverrides, SeriesOverrides } from './seriesOverrides';
 
 export interface SeriesBookEntry {
   book: UserBookRecord;
