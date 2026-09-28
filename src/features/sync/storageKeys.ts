@@ -11,6 +11,7 @@ export const DEVICE_FEATURE_STORAGE_KEYS = {
   legacyProfileMediaSyncQueue: 'inkbound_profile_media_sync_queue_v1',
   pendingRecoveryRestore: 'inkbound_pending_recovery_restore_v1',
   scannerReviewDraft: 'inkbound_scanner_review_draft_v1',
+  lastDaytimeLibraryMaintenance: 'inkbound_last_daytime_library_maintenance',
   runtimeStorageMode: 'inkbound_runtime_storage_mode_v1',
 } as const;
 
@@ -51,6 +52,8 @@ export const DEVICE_UI_STORAGE_KEYS = {
   yearInBooksPreferences: 'inkbound_year_in_books_preferences',
   seriesSort: 'inkbound_series_sort',
   loansSort: 'inkbound_loans_sort',
+  timerOpen: 'inkbound_timer_open',
+  timerBookId: 'inkbound_timer_book_id',
 } as const;
 
 export const SYNC_STORAGE_KEYS = {
