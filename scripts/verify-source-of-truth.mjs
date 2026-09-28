@@ -1438,6 +1438,12 @@ if (openLibrarySource.includes('work.first_publish_year')) {
 if (openLibrarySource.includes('work.cover_i) return') || openLibrarySource.includes('work.cover_edition_key) return') || openLibrarySource.includes('const workIsbn = work.isbn')) {
   violations.push('openLibraryApi.ts: exact edition cover must not fall back to work-level cover identity.');
 }
+const functionsIndexSource = read('functions/src/index.ts');
+const eraseDirectoryIndex = functionsIndexSource.indexOf("await db.doc(`userDirectory/${uid}`).delete()");
+const eraseEntitlementIndex = functionsIndexSource.indexOf("db.doc(`entitlements/${uid}`).delete()");
+if (eraseDirectoryIndex < 0 || eraseEntitlementIndex < 0 || eraseDirectoryIndex > eraseEntitlementIndex) {
+  violations.push('functions/src/index.ts: account deletion must remove the reader-directory existence sentinel before entitlement cleanup.');
+}
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
