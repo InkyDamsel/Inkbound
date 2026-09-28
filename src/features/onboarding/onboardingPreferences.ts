@@ -1,6 +1,7 @@
 import { readRuntimeJson } from '../../platform/runtimeStorage';
+import { DEVICE_FEATURE_STORAGE_KEYS } from '../sync/storageKeys';
 
-const ONBOARDING_PROFILE_KEY = 'inkbound_onboarding_profile_v1';
+const ONBOARDING_PROFILE_KEY = DEVICE_FEATURE_STORAGE_KEYS.onboardingProfile;
 
 interface StoredOnboardingProfile {
   accessibility?: {
