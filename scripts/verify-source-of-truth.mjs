@@ -86,7 +86,7 @@ if (/return\s+inferred\s*\?\s*\{[\s\S]{0,120}source:\s*['"]inferred['"]/.test(se
 const legacySeriesOverrideAllowed = new Set([
   'src/App.tsx',
   'src/features/series/seriesOverrides.ts',
-  'src/features/sync/LegacySeriesOverridesMigrationBridge.tsx',
+  'src/features/sync/LegacySeriesOverrideMigrationBridge.tsx',
   'src/features/sync/storageKeys.ts',
 ]);
 for (const file of sourceFiles) {
