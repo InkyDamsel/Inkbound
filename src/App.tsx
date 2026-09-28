@@ -489,7 +489,12 @@ export default function App() {
       if (!selectedBookIds.includes(book.id)) return book;
       let updatedBook: UserBookRecord = { ...book };
       if (changes.format) updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
-      if (changes.status) updatedBook = withReadingStatus(updatedBook, changes.status, today);
+      if (changes.status) {
+        updatedBook = withReadingStatus(updatedBook, changes.status, today);
+        updatedBook.customReadingStatusId = changes.status === 'custom'
+          ? changes.customReadingStatusId ?? undefined
+          : undefined;
+      }
       if (changes.ownership) {
         updatedBook = withBookOwnership(
           updatedBook,
