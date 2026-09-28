@@ -25,6 +25,17 @@ const walk = (directory) => {
   }
 };
 walk(path.join(root, 'src'));
+const functionSourceFiles = [];
+const walkFunctions = (directory) => {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) walkFunctions(absolute);
+    else if (/\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) functionSourceFiles.push(absolute);
+  }
+};
+walkFunctions(path.join(root, 'functions', 'src'));
+const productionSourceFiles = [...sourceFiles, ...functionSourceFiles];
 
 
 // PERSISTENCE IS LAW: feature/UI/domain code must never bypass the runtime
@@ -92,13 +103,14 @@ if (fs.existsSync(path.join(root, 'src/features/sync/CloudPersistenceBridge.tsx'
 }
 
 const demoSeedExports = ['INITIAL_COLLECTIONS', 'SAMPLE_BOOKS', 'INITIAL_READING_SESSIONS', 'MOCK_IMPORT_RECORDS'];
-for (const file of sourceFiles) {
+for (const file of productionSourceFiles) {
   const relative = path.relative(root, file).replaceAll('\\', '/');
-  if (relative === 'src/data/sampleBooks.ts') continue;
   const source = fs.readFileSync(file, 'utf8');
-  for (const symbol of demoSeedExports) {
-    if (source.includes(symbol)) {
-      violations.push(`${relative}: production runtime must not consume demo seed data (${symbol})`);
+  if (relative !== 'src/data/sampleBooks.ts') {
+    for (const symbol of demoSeedExports) {
+      if (source.includes(symbol)) {
+        violations.push(`${relative}: production runtime must not consume demo seed data (${symbol})`);
+      }
     }
   }
   if (/\b(?:Junei|Andrea)\b/.test(source)) {
