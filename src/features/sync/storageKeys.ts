@@ -7,6 +7,7 @@ export const DEVICE_FEATURE_STORAGE_KEYS = {
   onboardingProfile: 'inkbound_onboarding_profile_v1',
   legacyLibrarySanctuary: 'inkbound_library_sanctuary_v1',
   legacyProfileMediaSyncQueue: 'inkbound_profile_media_sync_queue_v1',
+  pendingRecoveryRestore: 'inkbound_pending_recovery_restore_v1',
 } as const;
 
 export const DEVICE_FEATURE_STORAGE_PREFIXES = {
