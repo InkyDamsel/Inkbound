@@ -28,7 +28,7 @@ import {
   subscriptionServiceLabel,
 } from '../../domain/libraryTaxonomy';
 import { BookCover } from '../BookCover';
-import { findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
+import { detectSeriesForBook, findMissingSeriesBooks, type SeriesDetectiveResult } from '../../features/series/seriesDetective';
 import { createBookFromSeriesDetectiveCandidate } from '../../features/series/seriesDetectiveToLibrary';
 
 interface SeriesLibraryPanelProps {
@@ -254,9 +254,17 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
     setDetectiveError('');
     setDetectiveLoading(true);
     try {
-      const discoveryAuthor = item.books[0]?.book.work.author?.trim() || item.author;
+      const anchorBook = item.books[0]?.book;
+      const detectedAnchor = anchorBook
+        ? await detectSeriesForBook(anchorBook)
+        : null;
+      const discoverySeriesName = detectedAnchor?.name?.trim() || item.name;
+      const discoveryAuthor = detectedAnchor?.discoveryAuthor?.trim()
+        || anchorBook?.work.author?.trim()
+        || item.author;
+
       setDetectiveResult(await findMissingSeriesBooks(
-        item.name,
+        discoverySeriesName,
         discoveryAuthor,
         books,
         undefined,
