@@ -12,6 +12,8 @@ const WORK_KEYS = new Set([
   'personalSummary',
   'seriesName',
   'seriesOrder',
+  'seriesLabel',
+  'seriesSource',
   'genres',
   'tropes',
   'contentWarnings',
