@@ -17,8 +17,8 @@ import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
 import {
+  applyRuntimeJsonFromExternalSource,
   getRuntimeStorage,
-  notifyRuntimeStorageChanged,
 } from '../../platform/runtimeStorage';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
@@ -335,14 +335,12 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
         }
 
         if (stable(sessions) !== stable(nextSessions)) {
-          writeJson(SESSIONS_KEY, nextSessions);
-          notifyRuntimeStorageChanged(SESSIONS_KEY);
+          applyRuntimeJsonFromExternalSource(SESSIONS_KEY, nextSessions);
           changedKeys.push(SESSIONS_KEY);
         }
 
         if (acceptedProfile && runtimeStorage().getItem(PROFILE_KEY) !== stable(acceptedProfile)) {
-          writeJson(PROFILE_KEY, acceptedProfile);
-          notifyRuntimeStorageChanged(PROFILE_KEY);
+          applyRuntimeJsonFromExternalSource(PROFILE_KEY, acceptedProfile);
           changedKeys.push(PROFILE_KEY);
         }
 
