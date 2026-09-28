@@ -175,7 +175,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       </nav>
 
       {section === 'series' ? (
-        <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} onAddBook={onAddBook} />
+        <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} onAddBook={onAddBook} onUpdateBook={onUpdateBook} />
       ) : section === 'collections' ? (
         <CollectionsScreen books={books} onUpdateBook={updateLibraryBook} onSelectBook={onSelectBook} />
       ) : section === 'loans' ? (
