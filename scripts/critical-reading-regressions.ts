@@ -288,6 +288,26 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(mergeIncomingBookLoanState(activeLoan, explicitOwnershipChange).libraryLoan, undefined);
 }
 
+// Cloud profile projection strips device-only media state consistently.
+{
+  const projected = compactCloudProfileForRuntime({
+    displayName: 'Reader',
+    bio: 'Bio',
+    avatarImage: 'https://example.com/avatar.webp',
+    avatarImageData: 'data:image/webp;base64,abc',
+    bannerImageData: 'data:image/webp;base64,def',
+    avatarMediaKey: 'local-avatar',
+    bannerMediaKey: 'local-banner',
+  });
+  assert.equal(projected.displayName, 'Reader');
+  assert.equal(projected.bio, 'Bio');
+  assert.equal(projected.avatarImage, 'https://example.com/avatar.webp');
+  assert.equal('avatarImageData' in projected, false);
+  assert.equal('bannerImageData' in projected, false);
+  assert.equal('avatarMediaKey' in projected, false);
+  assert.equal('bannerMediaKey' in projected, false);
+}
+
 // Pending local reader intent keeps ownership while absorbing missing remote metadata.
 {
   const local = {
