@@ -24,6 +24,7 @@ import {
 } from './syncConflictPolicy';
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import {
+import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -126,6 +127,7 @@ function reconcileCollection<T extends { id: string }>(
   pending: Record<string, RecordMutation<T>>,
   baseline: Record<string, string>,
   mergeIncoming?: (current: T | undefined, incoming: T) => T,
+  mergeProtectedPending?: (pendingLocal: T, incoming: T) => T,
 ): ReconciliationResult<T> {
   const next = new Map(localItems.map((item) => [item.id, item]));
   const latestCloudMillis = new Map<string, number>();
@@ -150,6 +152,12 @@ function reconcileCollection<T extends { id: string }>(
 
     const localPending = pending[item.id];
     if (localPending && !remoteWinsPending(record, localPending, baseline[item.id] === fingerprint(record.data))) {
+      if (localPending.operation === 'upsert' && localPending.data && mergeProtectedPending) {
+        const mergedPending = mergeProtectedPending(localPending.data, item);
+        localPending.data = mergedPending;
+        next.set(item.id, mergedPending);
+        baseline[item.id] = fingerprint(item);
+      }
       stats.pendingLocalProtected += 1;
       return;
     }
@@ -276,6 +284,7 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
           pending.books,
           baseline.books,
           mergeIncomingBookLoanState,
+          mergePendingLocalBookWithRemoteMetadata,
         );
         const sessionResult = reconcileCollection(localSessions, cloudSessions, sessionTombstones, pending.sessions, baseline.sessions);
         const nextBooks = bookResult.items;
