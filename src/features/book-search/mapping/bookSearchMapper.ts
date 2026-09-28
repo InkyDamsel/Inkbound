@@ -7,7 +7,7 @@ import {
 } from '../../../types';
 import { withReadingStatus } from '../../reading/bookReadingState';
 import { BookSearchEdition, BookSearchWorkGroup } from '../model/bookSearch';
-import { enrichSelectedCatalogEdition, hardenCatalogGroups } from '../catalogHardening';
+import { catalogSeriesMetadataForPersistence, enrichSelectedCatalogEdition, hardenCatalogGroups } from '../catalogHardening';
 
 interface CreateBookFromEditionOptions {
   work: BookSearchWorkGroup;
@@ -59,6 +59,7 @@ export function createBookFromSearchEdition({
   const workId = uniqueId('work');
   const editionId = uniqueId('edition');
   const publisherSummary = hardenedEdition.publisherSummary ?? hardenedWork.publisherSummary;
+  const seriesMetadata = catalogSeriesMetadataForPersistence(hardenedWork, hardenedEdition);
   const addedOn = localDateKey();
   const hasKnownPrintTotal = resolvedFormat !== 'audiobook'
     && typeof hardenedEdition.pageCount === 'number'
@@ -75,8 +76,8 @@ export function createBookFromSearchEdition({
       summary: publisherSummary ?? 'No publisher summary was available for this edition.',
       publisherSummary,
       genres: hardenedEdition.genres.length > 0 ? hardenedEdition.genres : hardenedWork.genres,
-      ...(hardenedEdition.seriesName ? { seriesName: hardenedEdition.seriesName } : {}),
-      ...(typeof hardenedEdition.seriesOrder === 'number' ? { seriesOrder: hardenedEdition.seriesOrder } : {}),
+      ...(seriesMetadata.seriesName ? { seriesName: seriesMetadata.seriesName } : {}),
+      ...(typeof seriesMetadata.seriesOrder === 'number' ? { seriesOrder: seriesMetadata.seriesOrder } : {}),
       publicationYear: hardenedEdition.publicationYear,
       originalLanguage: hardenedEdition.language,
       externalWorkId: hardenedWork.key,
