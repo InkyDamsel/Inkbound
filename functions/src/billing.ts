@@ -118,19 +118,32 @@ async function applyStripeSubscription(uid: string, subscription: JsonRecord) {
   const source = effectiveSource(status, expiryMillis);
   const customer = typeof subscription.customer === 'string' ? subscription.customer : stringValue(asRecord(subscription.customer).id);
   const subscriptionId = stringValue(subscription.id);
+  const directoryRef = db.doc(`userDirectory/${uid}`);
+  const entitlementRef = db.doc(`entitlements/${uid}`);
 
-  await db.doc(`entitlements/${uid}`).set({
-    basePlan: source === 'subscription' ? 'premium' : 'free',
-    subscriptionStatus: status,
-    subscriptionProvider: 'stripe',
-    stripeCustomerId: customer || FieldValue.delete(),
-    stripeSubscriptionId: subscriptionId || FieldValue.delete(),
-    paidPremiumUntil: expiryMillis > 0 ? Timestamp.fromMillis(expiryMillis) : FieldValue.delete(),
-    effectiveSource: source,
-    billingVerifiedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: 'stripe',
-  }, { merge: true });
+  await db.runTransaction(async (transaction) => {
+    // Stripe can continue sending lifecycle events after a reader deletes their
+    // Inkbound account because the external subscription retains firebaseUid in
+    // its metadata. The directory document is deleted by the canonical account
+    // erasure flow. Reading it inside the same transaction makes deletion and
+    // entitlement publication race-safe: if deletion wins, Firestore retries
+    // this transaction and the missing account prevents resurrection.
+    const directory = await transaction.get(directoryRef);
+    if (!directory.exists) return;
+
+    transaction.set(entitlementRef, {
+      basePlan: source === 'subscription' ? 'premium' : 'free',
+      subscriptionStatus: status,
+      subscriptionProvider: 'stripe',
+      stripeCustomerId: customer || FieldValue.delete(),
+      stripeSubscriptionId: subscriptionId || FieldValue.delete(),
+      paidPremiumUntil: expiryMillis > 0 ? Timestamp.fromMillis(expiryMillis) : FieldValue.delete(),
+      effectiveSource: source,
+      billingVerifiedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: 'stripe',
+    }, { merge: true });
+  });
 }
 
 async function retrieveStripeSubscription(config: StripeConfig, subscriptionId: string): Promise<JsonRecord> {
