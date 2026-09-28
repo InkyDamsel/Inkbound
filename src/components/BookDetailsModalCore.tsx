@@ -12,8 +12,10 @@ import {
   getSessionPagesRead,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
-import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
-import { getRuntimeStorage } from '../platform/runtimeStorage';
+import {
+  readImportEnrichmentQueue,
+  writeImportEnrichmentQueue,
+} from '../features/import/libraryEnrichment';
 import { prepareBookCoverImage } from '../platform/prepareBookCoverImage';
 import type { Edition, Format, OwnershipStatus, Priority, ReadingSession, ReadingStatus, UserBookRecord } from '../types';
 import { BookCover } from './BookCover';
@@ -51,18 +53,13 @@ type CoverMode = 'choices' | 'search';
 
 const MAX_COVER_FILE_BYTES = 12 * 1024 * 1024;
 const ACCEPTED_COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const ENRICHMENT_QUEUE_KEY = SYNC_STORAGE_KEYS.importEnrichmentQueue;
 const csvList = (value: string) => [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
 
 const stopAutomaticEnrichmentForBook = (bookId: string) => {
   try {
-    const storage = getRuntimeStorage();
-    const raw = storage.getItem(ENRICHMENT_QUEUE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Array<{ targetBookId?: string }>;
-    const next = Array.isArray(parsed) ? parsed.filter((item) => item.targetBookId !== bookId) : [];
-    if (next.length) storage.setItem(ENRICHMENT_QUEUE_KEY, JSON.stringify(next));
-    else storage.removeItem(ENRICHMENT_QUEUE_KEY);
+    writeImportEnrichmentQueue(
+      readImportEnrichmentQueue().filter((item) => item.targetBookId !== bookId),
+    );
   } catch {
     // User edits still save even if queue cleanup is unavailable.
   }
