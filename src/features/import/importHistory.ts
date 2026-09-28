@@ -1,4 +1,6 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
+import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { IMPORT_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import {
   readImportEnrichmentQueue,
   writeImportEnrichmentQueue,
@@ -6,13 +8,13 @@ import {
 } from './libraryEnrichment';
 import { readImportMetadataPending } from './importVerificationJob';
 
-export const IMPORT_HISTORY_STORAGE_KEY = 'inkbound_import_history_v1';
-export const IMPORT_ENRICHMENT_PAUSED_KEY = 'inkbound_import_enrichment_paused_v1';
+export const IMPORT_HISTORY_STORAGE_KEY = IMPORT_STORAGE_KEYS.history;
+export const IMPORT_ENRICHMENT_PAUSED_KEY = SYNC_STORAGE_KEYS.importEnrichmentPaused;
 // Kept only so older recovery snapshots containing this retired key can still
 // be restored/cleared safely. Foreground retries no longer use this handoff.
 export const IMPORT_ENRICHMENT_RETRY_REQUEST_KEY = 'inkbound_import_enrichment_retry_request_v1';
-export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = 'inkbound_import_enrichment_retry_progress_v1';
-export const IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY = 'inkbound_import_enrichment_active_retry_v1';
+export const IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY = SYNC_STORAGE_KEYS.importEnrichmentRetryProgress;
+export const IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY = SYNC_STORAGE_KEYS.importEnrichmentActiveRetry;
 
 export interface ImportHistoryItem {
   recordId: string;
@@ -56,6 +58,8 @@ export interface ImportEnrichmentActiveRetry {
   startedAt: string;
 }
 
+const runtimeStorage = () => getRuntimeStorage();
+
 function makeTargetBookId(recordId: string) {
   return `book-import-${recordId}`;
 }
@@ -83,7 +87,7 @@ function isValidHistoryEntry(value: unknown): value is ImportHistoryEntry {
 
 function readCurrentLibrary(): UserBookRecord[] {
   try {
-    const stored = localStorage.getItem('inkbound_books') ?? localStorage.getItem('bookhaven_books');
+    const stored = runtimeStorage().getItem(SYNC_STORAGE_KEYS.books) ?? runtimeStorage().getItem(LEGACY_SYNC_STORAGE_KEYS.books);
     if (!stored) return [];
     const parsed = JSON.parse(stored) as unknown;
     return Array.isArray(parsed) ? parsed as UserBookRecord[] : [];
@@ -101,7 +105,7 @@ function hasManualActiveEdition(book?: UserBookRecord): boolean {
 
 export function readImportHistory(): ImportHistoryEntry[] {
   try {
-    const stored = localStorage.getItem(IMPORT_HISTORY_STORAGE_KEY);
+    const stored = runtimeStorage().getItem(IMPORT_HISTORY_STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -114,10 +118,10 @@ export function readImportHistory(): ImportHistoryEntry[] {
 export function writeImportHistory(entries: ImportHistoryEntry[]) {
   try {
     if (entries.length === 0) {
-      localStorage.removeItem(IMPORT_HISTORY_STORAGE_KEY);
+      runtimeStorage().removeItem(IMPORT_HISTORY_STORAGE_KEY);
       return;
     }
-    localStorage.setItem(IMPORT_HISTORY_STORAGE_KEY, JSON.stringify(entries));
+    runtimeStorage().setItem(IMPORT_HISTORY_STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
     console.warn('Inkbound could not save import history on this device.', error);
   }
@@ -233,7 +237,7 @@ export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): 
 
 export function isImportEnrichmentPaused(): boolean {
   try {
-    return localStorage.getItem(IMPORT_ENRICHMENT_PAUSED_KEY) === 'true';
+    return runtimeStorage().getItem(IMPORT_ENRICHMENT_PAUSED_KEY) === 'true';
   } catch {
     return false;
   }
@@ -241,8 +245,8 @@ export function isImportEnrichmentPaused(): boolean {
 
 export function setImportEnrichmentPaused(paused: boolean) {
   try {
-    if (paused) localStorage.setItem(IMPORT_ENRICHMENT_PAUSED_KEY, 'true');
-    else localStorage.removeItem(IMPORT_ENRICHMENT_PAUSED_KEY);
+    if (paused) runtimeStorage().setItem(IMPORT_ENRICHMENT_PAUSED_KEY, 'true');
+    else runtimeStorage().removeItem(IMPORT_ENRICHMENT_PAUSED_KEY);
   } catch {
     // Best-effort preference only.
   }
@@ -312,7 +316,7 @@ function normalizeRetryProgress(progress: ImportEnrichmentRetryProgress): Import
 
 export function readImportEnrichmentRetryProgress(): ImportEnrichmentRetryProgress | null {
   try {
-    const stored = localStorage.getItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
+    const stored = runtimeStorage().getItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
     if (!stored) return null;
     const parsed = JSON.parse(stored) as Partial<ImportEnrichmentRetryProgress>;
     if (!parsed || typeof parsed.status !== 'string' || typeof parsed.completed !== 'number' || typeof parsed.total !== 'number') return null;
@@ -331,7 +335,7 @@ export function readImportEnrichmentRetryProgress(): ImportEnrichmentRetryProgre
     // terminal write. This prevents a completed pass from appearing to run forever
     // after navigation, refresh, or a worker hand-off race.
     if (progress.status === 'complete' && (parsed.status === 'queued' || parsed.status === 'running')) {
-      localStorage.setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(progress));
+      runtimeStorage().setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(progress));
       writeImportEnrichmentActiveRetry(null);
     }
 
@@ -343,7 +347,7 @@ export function readImportEnrichmentRetryProgress(): ImportEnrichmentRetryProgre
 
 export function readImportEnrichmentActiveRetry(): ImportEnrichmentActiveRetry | null {
   try {
-    const stored = localStorage.getItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
+    const stored = runtimeStorage().getItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
     if (!stored) return null;
     const parsed = JSON.parse(stored) as Partial<ImportEnrichmentActiveRetry>;
     if (!parsed || typeof parsed.entryId !== 'string' || !Array.isArray(parsed.targetBookIds)) return null;
@@ -362,10 +366,10 @@ export function readImportEnrichmentActiveRetry(): ImportEnrichmentActiveRetry |
 export function writeImportEnrichmentActiveRetry(retry: ImportEnrichmentActiveRetry | null) {
   try {
     if (!retry) {
-      localStorage.removeItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
+      runtimeStorage().removeItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
       return;
     }
-    localStorage.setItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY, JSON.stringify(retry));
+    runtimeStorage().setItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY, JSON.stringify(retry));
   } catch {
     // Recovery metadata is best-effort; the enrichment queue itself remains durable.
   }
@@ -374,13 +378,13 @@ export function writeImportEnrichmentActiveRetry(retry: ImportEnrichmentActiveRe
 export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRetryProgress | null) {
   try {
     if (!progress) {
-      localStorage.removeItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
+      runtimeStorage().removeItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
       writeImportEnrichmentActiveRetry(null);
       return;
     }
 
     const normalized = normalizeRetryProgress(progress);
-    localStorage.setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(normalized));
+    runtimeStorage().setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(normalized));
     if (normalized.status === 'complete' || normalized.status === 'error') {
       writeImportEnrichmentActiveRetry(null);
     }
