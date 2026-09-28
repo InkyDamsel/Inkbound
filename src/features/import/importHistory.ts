@@ -1,5 +1,5 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { getRuntimeStorage, removeRuntimeValue, writeRuntimeJson, writeRuntimeValue } from '../../platform/runtimeStorage';
 import { IMPORT_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import {
   readImportEnrichmentQueue,
@@ -118,10 +118,10 @@ export function readImportHistory(): ImportHistoryEntry[] {
 export function writeImportHistory(entries: ImportHistoryEntry[]) {
   try {
     if (entries.length === 0) {
-      runtimeStorage().removeItem(IMPORT_HISTORY_STORAGE_KEY);
+      removeRuntimeValue(IMPORT_HISTORY_STORAGE_KEY);
       return;
     }
-    runtimeStorage().setItem(IMPORT_HISTORY_STORAGE_KEY, JSON.stringify(entries));
+    writeRuntimeJson(IMPORT_HISTORY_STORAGE_KEY, entries);
   } catch (error) {
     console.warn('Inkbound could not save import history on this device.', error);
   }
@@ -245,8 +245,8 @@ export function isImportEnrichmentPaused(): boolean {
 
 export function setImportEnrichmentPaused(paused: boolean) {
   try {
-    if (paused) runtimeStorage().setItem(IMPORT_ENRICHMENT_PAUSED_KEY, 'true');
-    else runtimeStorage().removeItem(IMPORT_ENRICHMENT_PAUSED_KEY);
+    if (paused) writeRuntimeValue(IMPORT_ENRICHMENT_PAUSED_KEY, 'true');
+    else removeRuntimeValue(IMPORT_ENRICHMENT_PAUSED_KEY);
   } catch {
     // Best-effort preference only.
   }
@@ -366,10 +366,10 @@ export function readImportEnrichmentActiveRetry(): ImportEnrichmentActiveRetry |
 export function writeImportEnrichmentActiveRetry(retry: ImportEnrichmentActiveRetry | null) {
   try {
     if (!retry) {
-      runtimeStorage().removeItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
+      removeRuntimeValue(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY);
       return;
     }
-    runtimeStorage().setItem(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY, JSON.stringify(retry));
+    writeRuntimeJson(IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY, retry);
   } catch {
     // Recovery metadata is best-effort; the enrichment queue itself remains durable.
   }
@@ -378,13 +378,13 @@ export function writeImportEnrichmentActiveRetry(retry: ImportEnrichmentActiveRe
 export function writeImportEnrichmentRetryProgress(progress: ImportEnrichmentRetryProgress | null) {
   try {
     if (!progress) {
-      runtimeStorage().removeItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
+      removeRuntimeValue(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY);
       writeImportEnrichmentActiveRetry(null);
       return;
     }
 
     const normalized = normalizeRetryProgress(progress);
-    runtimeStorage().setItem(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, JSON.stringify(normalized));
+    writeRuntimeJson(IMPORT_ENRICHMENT_RETRY_PROGRESS_KEY, normalized);
     if (normalized.status === 'complete' || normalized.status === 'error') {
       writeImportEnrichmentActiveRetry(null);
     }
