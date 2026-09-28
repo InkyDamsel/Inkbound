@@ -42,6 +42,10 @@ export interface BookWork {
   materialType?: ReadingMaterialType;
   seriesName?: string;
   seriesOrder?: number;
+  /** Optional reader-facing label such as Prequel or Novella. */
+  seriesLabel?: string;
+  /** Manual means reader intent; metadata means catalog-derived. */
+  seriesSource?: 'manual' | 'metadata';
   genres: string[];
   tropes?: string[];
   contentWarnings?: string[];
