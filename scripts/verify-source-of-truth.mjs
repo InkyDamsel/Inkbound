@@ -1389,6 +1389,14 @@ if (!onboardingPreferencesSource.includes("writeRuntimeJson(ONBOARDING_PROFILE_K
   violations.push('onboardingPreferences.ts: legacy onboarding snapshots must self-heal to accessibility-only persisted state.');
 }
 
+const recoverySource = read('src/features/recovery/dataRecovery.ts');
+if (recoverySource.includes('notifyLocalDataChanged([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY])')) {
+  violations.push('dataRecovery.ts: restored cloud hydration must not emit fresh local mutation intent.');
+}
+if (!recoverySource.includes('notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY])')) {
+  violations.push('dataRecovery.ts: recovery restore must refresh local consumers after cloud replacement.');
+}
+
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
