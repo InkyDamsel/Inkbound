@@ -1,3 +1,5 @@
+export const INKBOUND_STORAGE_NAMESPACE_PREFIX = 'inkbound_';
+
 export const DEVICE_FEATURE_STORAGE_KEYS = {
   photoMemoryCloudRevisions: 'inkbound_photo_memory_cloud_revisions_v1',
   photoMemories: 'inkbound_photo_memories_v2',
