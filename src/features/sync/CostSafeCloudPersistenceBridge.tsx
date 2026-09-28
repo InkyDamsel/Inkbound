@@ -10,7 +10,7 @@ import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db, storage } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { applyRuntimeJsonFromExternalSource, applyRuntimeValueFromExternalSource, getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_BEFORE_SIGN_OUT_EVENT,
   INKBOUND_CLOUD_DATA_EVENT,
@@ -215,7 +215,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     };
 
     resetWorkingFingerprints();
-    runtimeStorage().setItem(OWNER_UID_KEY, uid);
+    applyRuntimeValueFromExternalSource(OWNER_UID_KEY, uid);
 
     const checkpointRecordBatch = <T,>(
       kind: RecordKind,
@@ -305,7 +305,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
             delete latestPending.profile;
             writeBaseline(uid, latestBaseline);
             writePending(uid, latestPending);
-            runtimeStorage().setItem(PROFILE_KEY, preparedValue);
+            applyRuntimeJsonFromExternalSource(PROFILE_KEY, preparedProfile);
             profileFingerprint.current = preparedValue;
           }
         } catch (error) {
