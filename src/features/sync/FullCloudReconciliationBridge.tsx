@@ -25,6 +25,7 @@ import {
 import { fingerprintSyncValue, stableSyncValue } from './syncFingerprint';
 import {
 import { mergePendingLocalBookWithRemoteMetadata } from './bookSyncMerge';
+import { compactCloudProfileForRuntime } from './profileSyncMerge';
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
@@ -314,10 +315,11 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
           newestMillis = Math.max(newestMillis, profileRecord.updatedAt?.toMillis() ?? 0);
           if (profileRecord.data && remoteWinsPending(profileRecord, pending.profile, baseline.profile === stable(profileRecord.data))) {
             delete pending.profile;
-            const profileValue = stable(profileRecord.data);
-            baseline.profile = profileValue;
-            if (storage().getItem(PROFILE_KEY) !== profileValue) {
-              storage().setItem(PROFILE_KEY, profileValue);
+            const cloudProfileValue = stable(profileRecord.data);
+            const runtimeProfileValue = stable(compactCloudProfileForRuntime(profileRecord.data));
+            baseline.profile = cloudProfileValue;
+            if (storage().getItem(PROFILE_KEY) !== runtimeProfileValue) {
+              storage().setItem(PROFILE_KEY, runtimeProfileValue);
               notifyRuntimeStorageChanged(PROFILE_KEY);
               changedKeys.push(PROFILE_KEY);
               profileApplied = true;
