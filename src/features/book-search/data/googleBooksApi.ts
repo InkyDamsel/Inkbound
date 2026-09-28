@@ -9,7 +9,7 @@ import { fetchOpenLibrarySummary, searchOpenLibrary, searchOpenLibraryExactTitle
 import { searchSupplementalCatalogs } from './supplementalCatalogApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { resolveGoogleSeriesMetadata } from '../mapping/googleSeriesMetadata';
-import { hardenCatalogGroups, hardenCatalogResponse, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
+import { hardenCatalogGroups, hardenCatalogResponse, inferCatalogAuthorIntent, mergeCatalogEditionData, selectExactIsbnEdition } from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -795,6 +795,31 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     [...trusted.groups, ...google.groups, ...openLibrary.groups, ...hardcover.groups],
     { searchQuery: trimmed },
   );
+
+  // Broad provider ranking can bury a legitimate exact-title work outside the
+  // first result window even though an ISBN lookup finds the same work. When the
+  // merged first window has no exact title and the query is not clearly an author
+  // lookup, make one structured title pass and feed it back through the same
+  // canonical hardening/merge pipeline. This is a general retrieval fallback,
+  // never a title-specific exception.
+  const wantedTitleKey = normalizeText(trimmed);
+  const hasExactTitle = combined.some((group) => normalizeText(group.title) === wantedTitleKey);
+  const authorIntent = inferCatalogAuthorIntent(combined, trimmed);
+  if (!hasExactTitle && !authorIntent) {
+    const safeTitle = trimmed.replace(/"/g, '');
+    const [googleTitleFallback, openLibraryTitleFallback] = await Promise.all([
+      searchGoogleBaseline(`intitle:"${safeTitle}"`, signal),
+      searchOpenLibrary(`intitle:"${safeTitle}"`, signal)
+        .catch((error) => {
+          console.warn('Open Library structured-title fallback failed.', error);
+          return { groups: [], totalItems: 0 };
+        }),
+    ]);
+    combined = hardenCatalogGroups(
+      mergeGroups(combined, [googleTitleFallback.groups, openLibraryTitleFallback.groups]),
+      { searchQuery: trimmed },
+    );
+  }
 
   const refinedExact = await refineExactTitleWithAuthor(combined, trimmed, signal);
   if (refinedExact.length > 0) {
