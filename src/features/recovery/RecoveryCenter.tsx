@@ -10,10 +10,11 @@ import {
   type RecoveryPointSummary,
 } from './dataRecovery';
 import { analyzeLibraryIntegrity } from './libraryIntegrity';
+import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
 const RESTORE_PHRASE = 'RESTORE';
-const BOOKS_KEY = 'inkbound_books';
-const SESSIONS_KEY = 'inkbound_sessions';
+const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
+const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const OWNER_EMAILS = new Set(['blackdame494@gmail.com', 'inkbound@inkydameinteractive.com']);
 
 function formatRecoveryDate(value: string) {
