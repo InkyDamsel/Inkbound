@@ -5,9 +5,9 @@
  * be resurrected by cloud hydration or cross-device reconciliation.
  */
 export function compactCloudProfileForRuntime(
-  profile: Record<string, unknown>,
+  profile: object,
 ): Record<string, unknown> {
-  const compact = { ...profile };
+  const compact: Record<string, unknown> = { ...profile };
   delete compact.avatarImageData;
   delete compact.bannerImageData;
   delete compact.avatarMediaKey;
