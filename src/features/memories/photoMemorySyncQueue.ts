@@ -1,5 +1,5 @@
-import {
 import { DEVICE_FEATURE_STORAGE_KEYS } from '../sync/storageKeys';
+import {
   readRuntimeJson,
   writeRuntimeJson,
 } from '../../platform/runtimeStorage';
