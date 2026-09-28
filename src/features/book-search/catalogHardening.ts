@@ -9,6 +9,45 @@ const compact = (value?: string) => value?.replace(/\s+/g, ' ').trim() ?? '';
 const normalizeKey = (value?: string) => compact(value).toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 
+const seriesTextSupportsName = (edition: BookSearchEdition, seriesName: string): boolean => {
+  const seriesKey = canonicalSeriesIdentity(seriesName);
+  if (!seriesKey) return false;
+  return [edition.title, edition.subtitle, edition.editionName]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .some((value) => canonicalSeriesIdentity(value).includes(seriesKey));
+};
+
+export const catalogSeriesMetadataForPersistence = (
+  work: BookSearchWorkGroup,
+  edition: BookSearchEdition,
+): { seriesName?: string; seriesOrder?: number } => {
+  const seriesName = edition.seriesName?.trim();
+  if (!seriesName) return {};
+
+  if (edition.source !== 'open-library') {
+    return {
+      seriesName,
+      ...(typeof edition.seriesOrder === 'number' ? { seriesOrder: edition.seriesOrder } : {}),
+    };
+  }
+
+  const seriesKey = canonicalSeriesIdentity(seriesName);
+  const corroboratedByAnotherProvider = work.editions.some((candidate) =>
+    candidate !== edition
+    && candidate.source !== 'open-library'
+    && canonicalSeriesIdentity(candidate.seriesName) === seriesKey,
+  );
+  const bibliographicContext = seriesTextSupportsName(edition, seriesName);
+
+  if (!corroboratedByAnotherProvider && !bibliographicContext) return {};
+
+  return {
+    seriesName,
+    ...(typeof edition.seriesOrder === 'number' ? { seriesOrder: edition.seriesOrder } : {}),
+  };
+};
+
+
 const titleWords = (value?: string): string[] => normalizeKey(value).split(' ').filter(Boolean);
 
 const SEARCH_STOP_WORDS = new Set(['a', 'an', 'the', 'of', 'and', 'or', 'to', 'for', 'in', 'on', 'at', 'by']);
@@ -453,17 +492,19 @@ export const enrichSelectedCatalogEdition = (
   }
 
   if (!enriched.seriesName) {
-    const named = compatibleFormatCandidates
-      .map((candidate) => candidate.seriesName?.trim())
-      .filter((value): value is string => Boolean(value));
+    const safeSeriesCandidates = compatibleFormatCandidates
+      .map((candidate) => ({ candidate, metadata: catalogSeriesMetadataForPersistence(hardenedWork, candidate) }))
+      .filter(({ metadata }) => Boolean(metadata.seriesName));
     const byKey = new Map<string, string>();
-    named.forEach((name) => byKey.set(canonicalSeriesIdentity(name), name));
+    safeSeriesCandidates.forEach(({ metadata }) => {
+      if (metadata.seriesName) byKey.set(canonicalSeriesIdentity(metadata.seriesName), metadata.seriesName);
+    });
     if (byKey.size === 1) {
       const [seriesKey, seriesName] = [...byKey.entries()][0];
       const orders = [...new Set(
-        compatibleFormatCandidates
-          .filter((candidate) => canonicalSeriesIdentity(candidate.seriesName) === seriesKey)
-          .map((candidate) => candidate.seriesOrder)
+        safeSeriesCandidates
+          .filter(({ metadata }) => canonicalSeriesIdentity(metadata.seriesName) === seriesKey)
+          .map(({ metadata }) => metadata.seriesOrder)
           .filter((value): value is number => typeof value === 'number' && Number.isFinite(value)),
       )];
       enriched = {
@@ -616,8 +657,17 @@ export const hardenCatalogGroups = (
       }
 
       const [seriesKey, canonicalSeriesName] = [...seriesByKey.entries()][0];
-      const matchingOrders = [...new Set(group.editions
-        .filter((edition) => canonicalSeriesIdentity(edition.seriesName) === seriesKey)
+      const seriesEvidence = group.editions.filter(
+        (edition) => canonicalSeriesIdentity(edition.seriesName) === seriesKey,
+      );
+      const safeToPromote = seriesEvidence.some(
+        (edition) => Boolean(catalogSeriesMetadataForPersistence(group, edition).seriesName),
+      );
+      if (!safeToPromote) {
+        return { ...group, editions: enrichConsistentSameFormatPageCounts(group.editions) };
+      }
+
+      const matchingOrders = [...new Set(seriesEvidence
         .map((edition) => edition.seriesOrder)
         .filter((value): value is number => typeof value === 'number' && Number.isFinite(value)))];
       const canonicalOrder = matchingOrders.length === 1 ? matchingOrders[0] : undefined;
