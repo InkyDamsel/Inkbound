@@ -90,14 +90,14 @@ function recoverSeriesPosition(book: UserBookRecord, seriesName: string, positio
 
 export function resolveSeriesMetadata(book: UserBookRecord): SeriesHint | null {
   const explicitName = book.work.seriesName?.trim();
-  if (explicitName) {
-    const explicitPosition = typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder) ? book.work.seriesOrder : null;
-    return {
-      name: normalizeSeriesName(explicitName),
-      position: recoverSeriesPosition(book, explicitName, explicitPosition),
-    };
-  }
-  return inferSeriesHintFromTitle(book.work.title);
+  if (!explicitName) return null;
+  const explicitPosition = typeof book.work.seriesOrder === 'number' && Number.isFinite(book.work.seriesOrder)
+    ? book.work.seriesOrder
+    : null;
+  return {
+    name: normalizeSeriesName(explicitName),
+    position: recoverSeriesPosition(book, explicitName, explicitPosition),
+  };
 }
 
 /** Canonical resolver for any screen/export that needs the series the reader sees. */
@@ -122,8 +122,7 @@ export function resolveEffectiveSeriesMetadata(book: UserBookRecord, overrides: 
       source: book.work.seriesSource === 'manual' ? 'manual' : 'metadata',
     };
   }
-  const inferred = inferSeriesHintFromTitle(book.work.title);
-  return inferred ? { ...inferred, label: '', source: 'inferred' } : null;
+  return null;
 }
 
 /** Presentation-only cleanup; the canonical imported title stays untouched. */
