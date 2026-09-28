@@ -238,6 +238,19 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(report.healthy, true);
 }
 
+// Invalid publication years normalize to unknown instead of persisting sentinel 0.
+{
+  const invalidYear = {
+    ...baseBook(),
+    work: {
+      ...baseBook().work,
+      publicationYear: 0,
+    },
+  };
+  const normalized = normalizeLibraryRecord(invalidYear);
+  assert.equal(normalized.work.publicationYear, undefined);
+}
+
 // Rating and spice values normalize to canonical half-steps.
 {
   const rated = {
