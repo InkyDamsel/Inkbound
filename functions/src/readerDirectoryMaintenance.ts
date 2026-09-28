@@ -16,16 +16,6 @@ interface AdminRecord {
   email: string;
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function profileData(value: Record<string, unknown>): Record<string, unknown> {
-  return asRecord('data' in value ? value.data : value);
-}
-
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
