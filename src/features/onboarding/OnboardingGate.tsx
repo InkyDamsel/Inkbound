@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Accessibility,
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { readRuntimeJson, removeRuntimeValue, writeRuntimeJson } from '../../platform/runtimeStorage';
 import { DEVICE_FEATURE_STORAGE_KEYS } from '../sync/storageKeys';
+import { restoreOnboardingPreferences } from './onboardingPreferences';
 
 const ONBOARDING_KEY = DEVICE_FEATURE_STORAGE_KEYS.onboardingComplete;
 const ONBOARDING_PROFILE_KEY = DEVICE_FEATURE_STORAGE_KEYS.onboardingProfile;
@@ -41,17 +42,15 @@ const genres = [
 const steps = ['Welcome', 'Reader', 'Genres', 'Lumis', 'Library', 'Accessibility', 'Home'] as const;
 type Step = (typeof steps)[number];
 
+type LibraryStart = 'import' | 'search' | 'empty' | null;
+
 interface OnboardingProfile {
-  readerStyle: string | null;
-  genres: string[];
-  libraryStart: 'import' | 'search' | 'empty' | null;
   accessibility: {
     textSize: 'standard' | 'large';
     reduceMotion: boolean;
     highContrast: boolean;
     dyslexiaFriendly: boolean;
   };
-  completedAt: string;
 }
 
 export const OnboardingGate: React.FC<React.PropsWithChildren> = ({ children }) => {
@@ -59,11 +58,15 @@ export const OnboardingGate: React.FC<React.PropsWithChildren> = ({ children }) 
   const [stepIndex, setStepIndex] = useState(0);
   const [readerStyle, setReaderStyle] = useState<string | null>(null);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-  const [libraryStart, setLibraryStart] = useState<OnboardingProfile['libraryStart']>(null);
+  const [libraryStart, setLibraryStart] = useState<LibraryStart>(null);
   const [textSize, setTextSize] = useState<'standard' | 'large'>('standard');
   const [reduceMotion, setReduceMotion] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
   const [dyslexiaFriendly, setDyslexiaFriendly] = useState(false);
+
+  useEffect(() => {
+    restoreOnboardingPreferences();
+  }, []);
 
   const currentStep: Step = steps[stepIndex];
   const canContinue = useMemo(() => {
@@ -82,11 +85,7 @@ export const OnboardingGate: React.FC<React.PropsWithChildren> = ({ children }) 
 
   const complete = () => {
     const profile: OnboardingProfile = {
-      readerStyle,
-      genres: selectedGenres,
-      libraryStart,
       accessibility: { textSize, reduceMotion, highContrast, dyslexiaFriendly },
-      completedAt: new Date().toISOString(),
     };
 
     writeRuntimeJson(ONBOARDING_PROFILE_KEY, profile);
