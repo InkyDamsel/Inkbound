@@ -19,7 +19,7 @@ import {
 } from '../features/ownership/customOwnershipCategories';
 import { withReadingStatus } from '../features/reading/bookReadingState';
 import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
-import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { DEVICE_FEATURE_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { getRuntimeStorage, readRuntimeJson, writeRuntimeJson } from '../platform/runtimeStorage';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 import { CanonicalInput, CanonicalTextarea } from './form/CanonicalInput';
@@ -54,7 +54,7 @@ type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => Barc
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS;
 const SCANNER_REVIEW_PAGE_SIZE = 6;
-const SCANNER_DRAFT_STORAGE_KEY = 'inkbound_scanner_review_draft_v1';
+const SCANNER_DRAFT_STORAGE_KEY = DEVICE_FEATURE_STORAGE_KEYS.scannerReviewDraft;
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 
 const today = () => {
