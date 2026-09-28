@@ -424,6 +424,7 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(auxiliaryOnly.includes(READING_MEMORIES_ACCOUNT_KEY), true);
 
   assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange(previousUid, previousUid), []);
+  assert.deepEqual(getAccountOwnedKeysToClearForOwnerChange(null, nextUid), []);
   assert.deepEqual(getAuxiliaryKeysToClearForOwnerChange(null, nextUid), []);
 }
 
