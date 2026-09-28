@@ -3,7 +3,7 @@ import { CheckCircle2, ChevronDown, Copy, Merge, Search, ShieldCheck } from 'luc
 import type { Edition, UserBookRecord } from '../types';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { ACCOUNT_DATA_STORAGE_KEYS, DEVICE_UI_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { BookCover } from './BookCover';
 import { ManualCoverRecoveryPanel } from './ManualCoverRecoveryPanel';
 import { PaginationControls } from './PaginationControls';
@@ -33,8 +33,8 @@ type DuplicateCandidate = { reason: 'isbn' | 'title-author'; key: string; ids: s
 type MaintenanceSection = 'categories' | 'ownership' | 'tags' | 'covers' | 'duplicates';
 
 const IGNORED_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups;
-const LEGACY_IGNORED_STORAGE_KEY = 'inkbound_duplicate_groups_ignored';
-const MAINTENANCE_SECTIONS_KEY = 'inkbound_library_maintenance_collapsed_sections';
+const LEGACY_IGNORED_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.ignoredDuplicateGroups;
+const MAINTENANCE_SECTIONS_KEY = DEVICE_UI_STORAGE_KEYS.libraryMaintenanceCollapsedSections;
 const DUPLICATE_PAGE_SIZE = 10;
 
 const normalizeText = (value?: string) =>
