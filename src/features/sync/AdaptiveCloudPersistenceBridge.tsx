@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
@@ -10,45 +9,12 @@ import {
 import { CostSafeCloudPersistenceBridge } from './CostSafeCloudPersistenceBridge';
 import { FullCloudReconciliationBridge } from './FullCloudReconciliationBridge';
 import { OneShotCloudHydrationBridge } from './OneShotCloudHydrationBridge';
-import {
-  FULL_RECONCILIATION_VERSION,
-  fullReconciliationVersionKey,
-  SYNC_STORAGE_KEYS,
-} from './storageKeys';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { hasCompletedFullReconciliation, hasEstablishedLocalWorkingCopy } from './syncReadiness';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
-
-function hasEstablishedLocalWorkingCopy(uid: string): boolean {
-  try {
-    const storage = getRuntimeStorage();
-    if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
-
-    const raw = storage.getItem(BOOKS_KEY);
-    if (!raw) return false;
-    const trimmed = raw.trim();
-    if (!trimmed.startsWith('[')) return false;
-
-    const ownerUid = storage.getItem(OWNER_UID_KEY);
-    if (ownerUid) return ownerUid === uid;
-
-    // Legacy local libraries predate the explicit owner marker. A non-empty
-    // library is strong evidence of a real local working copy; an empty array is
-    // not, because App initializes that value before first-device hydration.
-    return trimmed !== '[]';
-  } catch {
-    return false;
-  }
-}
-
-function hasCompletedFullReconciliation(uid: string): boolean {
-  try {
-    return getRuntimeStorage().getItem(fullReconciliationVersionKey(uid)) === FULL_RECONCILIATION_VERSION;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Existing devices keep a local-first working copy, but they must first perform
