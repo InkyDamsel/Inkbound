@@ -23,6 +23,20 @@ const exactAuthorMatch = (group: BookSearchWorkGroup, author: string) => {
 const activeEditionLanguage = (book: UserBookRecord): string | undefined =>
   (book.editions.find((edition) => edition.id === book.activeEditionId) ?? book.editions[0])?.language?.trim().toLocaleLowerCase();
 
+export const buildSeriesDetectionQueries = (book: UserBookRecord): { workQuery: string; identifiers: string[] } => {
+  const identifiers = [...new Set(
+    book.editions
+      .flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn])
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value)),
+  )];
+
+  return {
+    workQuery: `${book.work.title} ${book.work.author}`.trim(),
+    identifiers,
+  };
+};
+
 export const hasKnownSeriesContextEvidence = (
   work: BookSearchWorkGroup,
   edition: BookSearchEdition,
