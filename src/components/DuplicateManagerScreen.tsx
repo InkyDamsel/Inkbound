@@ -93,6 +93,11 @@ const mergeDuplicateBooks = (keeper: UserBookRecord, group: UserBookRecord[]): U
 
   const combinedReviews = uniqueText([keeper.review, ...others.map((book) => book.review)]);
   const combinedNotes = uniqueText([keeper.personalNotes, ...others.map((book) => book.personalNotes)]);
+  const manualSeriesBook = keeper.work.seriesSource === 'manual'
+    ? keeper
+    : group.find((book) => book.work.seriesSource === 'manual');
+  const seriesBook = manualSeriesBook
+    ?? (keeper.work.seriesName?.trim() ? keeper : group.find((book) => book.work.seriesName?.trim()));
   const earliest = (values: Array<string | undefined>) => values.filter((value): value is string => Boolean(value)).sort()[0];
   const latest = (values: Array<string | undefined>) => values.filter((value): value is string => Boolean(value)).sort().at(-1);
 
@@ -104,8 +109,10 @@ const mergeDuplicateBooks = (keeper: UserBookRecord, group: UserBookRecord[]): U
       publisherSummary: keeper.work.publisherSummary || group.find((book) => book.work.publisherSummary)?.work.publisherSummary,
       personalSummary: keeper.work.personalSummary || group.find((book) => book.work.personalSummary)?.work.personalSummary,
       summary: keeper.work.personalSummary || keeper.work.summary || group.find((book) => book.work.summary)?.work.summary || 'Summary unavailable.',
-      seriesName: keeper.work.seriesName || group.find((book) => book.work.seriesName)?.work.seriesName,
-      seriesOrder: keeper.work.seriesOrder ?? group.find((book) => book.work.seriesOrder != null)?.work.seriesOrder,
+      seriesName: seriesBook?.work.seriesName,
+      seriesOrder: seriesBook?.work.seriesOrder,
+      seriesLabel: seriesBook?.work.seriesLabel,
+      seriesSource: seriesBook?.work.seriesSource,
       genres: [...new Set(group.flatMap((book) => book.work.genres))],
       tropes: [...new Set(group.flatMap((book) => book.work.tropes ?? []))],
       contentWarnings: [...new Set(group.flatMap((book) => book.work.contentWarnings ?? []))],
