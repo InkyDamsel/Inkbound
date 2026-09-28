@@ -248,6 +248,21 @@ assert.equal(formattedAuthorExactIsbn?.exactAuthor, false);
 assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.name, 'Dream Harbor');
 assert.equal(selectVerifiedSeriesEvidence([formattedAuthorExactIsbn!])?.position, 2);
 
+// Title suffixes may inform repair but must never create unpersisted series membership.
+const suffixOnlyBook = {
+  id: 'suffix-only',
+  work: {
+    title: 'Example Story (Imaginary Saga #2)',
+    author: 'Example Author',
+    publicationYear: 2024,
+  },
+  ownership: 'owned',
+  status: 'tbr',
+  editions: [{ id: 'suffix-edition', format: 'paperback' }],
+  activeEditionId: 'suffix-edition',
+} as unknown as UserBookRecord;
+assert.equal(buildSeriesLibrary([suffixOnlyBook]).length, 0);
+
 // Provider naming differences must not split one real series.
 assert.equal(canonicalSeriesIdentity('Hades x Persephone Saga'), 'hades persephone');
 assert.equal(canonicalSeriesIdentity('Hades & Persephone'), 'hades persephone');
