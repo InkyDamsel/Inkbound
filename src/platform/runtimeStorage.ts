@@ -144,3 +144,49 @@ export function removeRuntimeValuesByPrefix(prefix: string): number {
   }
   return removed;
 }
+
+
+/**
+ * Apply data that is already authoritative from an external/cloud source.
+ *
+ * Unlike writeRuntimeJson/writeRuntimeValue, this refreshes mounted runtime
+ * consumers without emitting local reader intent into the durable sync queue.
+ * Cloud hydration, reconciliation and recovery restore may use this; normal UI
+ * mutations must not.
+ */
+export function applyRuntimeJsonFromExternalSource(key: string, value: unknown): boolean {
+  try {
+    const storage = getRuntimeStorage();
+    const next = JSON.stringify(value);
+    if (storage.getItem(key) === next) return true;
+    storage.setItem(key, next);
+    notifyRuntimeStorageChanged(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function applyRuntimeValueFromExternalSource(key: string, value: string): boolean {
+  try {
+    const storage = getRuntimeStorage();
+    if (storage.getItem(key) === value) return true;
+    storage.setItem(key, value);
+    notifyRuntimeStorageChanged(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function removeRuntimeValueFromExternalSource(key: string): boolean {
+  try {
+    const storage = getRuntimeStorage();
+    if (storage.getItem(key) === null) return true;
+    storage.removeItem(key);
+    notifyRuntimeStorageChanged(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
