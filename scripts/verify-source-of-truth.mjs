@@ -1415,6 +1415,16 @@ if (!billingSource.includes('await db.runTransaction(async (transaction) =>') ||
 if (!billingSource.includes('if (!directory.exists) return;')) {
   violations.push('billing.ts: Stripe lifecycle events must not recreate entitlements for deleted Inkbound accounts.');
 }
+for (const providerPath of [
+  'src/features/book-search/data/googleBooksApi.ts',
+  'src/features/book-search/data/openLibraryApi.ts',
+  'src/features/book-search/data/supplementalCatalogApi.ts',
+]) {
+  const providerSource = read(providerPath);
+  if (providerSource.includes("['Unknown author']")) {
+    violations.push(`${providerPath}: provider adapters must leave missing authors empty instead of fabricating canonical metadata.`);
+  }
+}
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
 if (!largeBrowserStorage.includes('localStorage is the synchronous write-ahead copy')) {
   violations.push('largeBrowserStorage.ts: managed web data must keep a synchronous write-ahead copy until IndexedDB commits.');
