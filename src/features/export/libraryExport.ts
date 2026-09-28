@@ -1,6 +1,5 @@
 import { getActiveEdition } from '../reading/bookReadingState';
 import { resolveEffectiveSeriesMetadata } from '../series/seriesLibrary';
-import type { SeriesOverrides } from '../series/seriesOverrides';
 import { readCustomOwnershipCategories } from '../ownership/customOwnershipCategories';
 import type { ReadingSession, UserBookRecord } from '../../types';
 
@@ -15,7 +14,6 @@ export interface InkboundExportPreferences {
 export function buildInkboundBackup(
   books: UserBookRecord[],
   sessions: ReadingSession[],
-  seriesOverrides: SeriesOverrides,
   preferences: InkboundExportPreferences,
 ) {
   const customOwnershipCategories = readCustomOwnershipCategories();
@@ -30,9 +28,8 @@ export function buildInkboundBackup(
       customCategories: customOwnershipCategories,
     },
     seriesOrganization: {
-      overrides: seriesOverrides,
       effectiveByBook: Object.fromEntries(books.map((book) => {
-        const series = resolveEffectiveSeriesMetadata(book, seriesOverrides);
+        const series = resolveEffectiveSeriesMetadata(book);
         return [book.id, series
           ? { name: series.name, number: series.position, label: series.label, source: series.source }
           : { name: '', number: null, label: '', source: 'none' as const }];
@@ -41,7 +38,7 @@ export function buildInkboundBackup(
   };
 }
 
-export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: SeriesOverrides): string {
+export function buildLibraryCsv(books: UserBookRecord[]): string {
   const customOwnershipCategories = readCustomOwnershipCategories();
   const ownershipNameById = new Map(customOwnershipCategories.map((category) => [category.id, category.name]));
   const headers = [
@@ -52,7 +49,7 @@ export function buildLibraryCsv(books: UserBookRecord[], seriesOverrides: Series
 
   const rows = books.map((book) => {
     const activeEdition = getActiveEdition(book);
-    const series = resolveEffectiveSeriesMetadata(book, seriesOverrides);
+    const series = resolveEffectiveSeriesMetadata(book);
     return [
       book.work.title,
       book.work.subtitle,
