@@ -172,6 +172,26 @@ const hasMergedKnownSeriesContext = (
     });
 };
 
+const openLibrarySeriesHasBibliographicContext = (
+  candidate: DetectiveOpenLibraryCandidate,
+): boolean => {
+  const seriesName = candidate.seriesName?.trim();
+  if (!seriesName) return false;
+
+  return [
+    candidate.work.title,
+    candidate.work.subtitle,
+    candidate.edition.title,
+    candidate.edition.subtitle,
+  ]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .some((value) => {
+      const inferred = inferKnownDetectiveSeriesFromText(value, seriesName)
+        ?? inferDetectiveSeriesFromTitle(value);
+      return Boolean(inferred && detectiveSeriesNamesCompatible(inferred.name, seriesName));
+    });
+};
+
 const selectCorroboratedSubtitleSeries = (
   candidates: DetectiveMergeCandidate[],
   book: UserBookRecord,
@@ -473,7 +493,7 @@ export async function detectSeriesForBook(
     sourceId: 'open-library',
     recordId: `open-library:${candidate.recordId}`,
     providerId: 'open-library',
-    structured: true,
+    structured: openLibrarySeriesHasBibliographicContext(candidate),
     exactIdentifier: [candidate.edition.isbn13, candidate.edition.isbn10]
       .map(compactDetectiveIsbn)
       .filter(Boolean)
@@ -509,7 +529,7 @@ export async function detectSeriesForBook(
       position: candidate.position,
       provider: 'open-library',
       seriesProvider: 'open-library',
-      seriesStructured: true,
+      seriesStructured: openLibrarySeriesHasBibliographicContext(candidate),
     });
   });
 
@@ -521,7 +541,7 @@ export async function detectSeriesForBook(
       position: candidate.position,
       provider: 'open-library',
       seriesProvider: candidate.seriesName ? 'open-library' : undefined,
-      seriesStructured: Boolean(candidate.seriesName),
+      seriesStructured: openLibrarySeriesHasBibliographicContext(candidate),
     });
   });
 
