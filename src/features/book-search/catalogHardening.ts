@@ -212,12 +212,9 @@ const cleanPageCount = (value?: number): number | undefined => {
   return rounded > 0 && rounded <= MAX_REASONABLE_PAGE_COUNT ? rounded : undefined;
 };
 
-const cleanPublicationYear = (value: number): number => {
-  if (Number.isInteger(value) && value >= 1450 && value <= CURRENT_YEAR + 2) return value;
-  // BookSearchEdition currently requires a year. Keep the provider's numeric
-  // contract stable while preventing impossible future/ancient values from
-  // winning edition-quality ranking.
-  return 0;
+const cleanPublicationYear = (value?: number): number | undefined => {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1450 && value <= CURRENT_YEAR + 2) return value;
+  return undefined;
 };
 
 const cleanUrl = (value?: string): string | undefined => {
