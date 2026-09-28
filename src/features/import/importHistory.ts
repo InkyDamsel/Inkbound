@@ -212,7 +212,7 @@ export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): 
       title: book.work?.title || 'Untitled',
       author: book.work?.author || 'Unknown Author',
       isbn: edition?.isbn13 || edition?.isbn10 || edition?.isbn,
-      format: edition?.format ?? 'hardcover',
+      format: edition?.format ?? 'unknown',
       status: book.status ?? 'tbr',
       rating: book.rating,
       dateRead: book.dateFinished,
