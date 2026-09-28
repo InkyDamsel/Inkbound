@@ -98,7 +98,8 @@ const inferFormat = (edition: OpenLibraryEdition): Format => {
   if (/paperback|softcover|soft cover|mass market|trade paper/.test(physical)) return 'paperback';
   if (/hardcover|hardback|hard cover|library binding/.test(physical)) return 'hardcover';
   const access = edition.ebook_access?.toLowerCase();
-  return access && access !== 'no_ebook' ? 'ebook' : 'hardcover';
+  if (access && access !== 'no_ebook') return 'ebook';
+  return 'unknown';
 };
 
 const coverUrl = (edition: OpenLibraryEdition, work: OpenLibraryWork): string | undefined => {
