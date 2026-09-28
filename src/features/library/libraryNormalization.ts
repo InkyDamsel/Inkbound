@@ -15,6 +15,30 @@ import { inferSeriesHintFromTitle } from '../series/seriesLibrary';
 export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
   let normalized = reconcileFinishedBookProgress(book);
 
+  // Canonical edition totals are either a positive known value or absent.
+  // Historical builds could persist 0 when a reader cleared a field; keeping 0
+  // makes every downstream consumer interpret "unknown" differently.
+  const normalizedEditions = normalized.editions.map((edition) => {
+    const pageCount = typeof edition.pageCount === 'number'
+      && Number.isFinite(edition.pageCount)
+      && edition.pageCount > 0
+      ? edition.pageCount
+      : undefined;
+    const audiobookDurationMins = typeof edition.audiobookDurationMins === 'number'
+      && Number.isFinite(edition.audiobookDurationMins)
+      && edition.audiobookDurationMins > 0
+      ? edition.audiobookDurationMins
+      : undefined;
+
+    if (pageCount === edition.pageCount && audiobookDurationMins === edition.audiobookDurationMins) {
+      return edition;
+    }
+    return { ...edition, pageCount, audiobookDurationMins };
+  });
+  if (normalizedEditions.some((edition, index) => edition !== normalized.editions[index])) {
+    normalized = { ...normalized, editions: normalizedEditions };
+  }
+
   // Ownership and reading status are independent facts. A reader can move a
   // previously finished book to the Wishlist ownership bucket without erasing
   // its finish date/history. Do not normalize one field by rewriting the other.
