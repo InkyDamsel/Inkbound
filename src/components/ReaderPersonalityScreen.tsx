@@ -4,6 +4,7 @@ import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
+import { DEVICE_UI_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 type PersonalityView = 'overview' | 'traits' | 'evidence';
 type ConfidenceLevel = 'Still learning' | 'Emerging' | 'Good confidence' | 'High confidence';
@@ -26,8 +27,8 @@ interface TraitResult {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const VIEW_KEY = 'inkbound_reader_personality_view';
-const HIDDEN_KEY = 'inkbound_reader_personality_hidden_traits';
+const VIEW_KEY = DEVICE_UI_STORAGE_KEYS.readerPersonalityView;
+const HIDDEN_KEY = DEVICE_UI_STORAGE_KEYS.readerPersonalityHiddenTraits;
 
 const countBy = (values: string[]) =>
   values.reduce<Record<string, number>>((counts, value) => {
