@@ -98,20 +98,164 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   const previewBackground = `linear-gradient(${theme.background}88, ${theme.background}9a), url(${MONTHLY_BACKGROUND_URL}) ${backgroundPosition} / cover no-repeat`;
 
   const changeCard = (next: number) => setPreferences((current) => ({ ...current, currentCard: (next + cards.length) % cards.length }));
-  const buildSvg = () => {
-    const titleSize = isSquare ? titleLength > 70 ? 30 : titleLength > 45 ? 36 : 44 : isStory ? titleLength > 70 ? 56 : titleLength > 45 ? 64 : 76 : titleLength > 70 ? 36 : titleLength > 45 ? 44 : 54;
-    const bodySize = isSquare ? 21 : isStory ? 32 : 24;
-    const footerSize = isSquare ? 18 : isStory ? 27 : 21;
-    const innerPadding = isSquare ? 56 : isStory ? 72 : 68;
-    const headerGap = isSquare ? 12 : isStory ? 20 : 18;
-    const bodyGap = isSquare ? 14 : isStory ? 34 : 20;
-    const footerGap = isSquare ? 22 : isStory ? 48 : 28;
-    const backgroundAssetUrl = `${window.location.origin}${MONTHLY_BACKGROUND_URL}`;
-    const imageAlignment = isStory ? 'xMidYMid' : 'xMidYMax';
-    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${format.width}" height="${format.height}" viewBox="0 0 ${format.width} ${format.height}"><defs><linearGradient id="themeTint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${theme.background}" stop-opacity=".48"/><stop offset="1" stop-color="${theme.background}" stop-opacity=".64"/></linearGradient></defs><image href="${backgroundAssetUrl}" x="0" y="0" width="${format.width}" height="${format.height}" preserveAspectRatio="${imageAlignment} slice"/><rect width="100%" height="100%" fill="url(#themeTint)"/><rect x="8%" y="7%" width="84%" height="86%" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".52" stroke-width="3"/><foreignObject x="8%" y="7%" width="84%" height="86%"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${innerPadding}px;display:flex;flex-direction:column;justify-content:space-between;text-align:center;color:${theme.text};font-family:Arial,sans-serif;overflow:hidden;text-shadow:0 2px 12px rgba(0,0,0,.42);"><div><div style="color:${theme.accent};font-family:Georgia,serif;font-size:${isSquare ? 19 : isStory ? 29 : 23}px;font-weight:700;letter-spacing:${isSquare ? 5 : 7}px;line-height:1.15;">INKBOUND</div><div style="margin-top:${headerGap}px;font-size:${isSquare ? 16 : isStory ? 26 : 20}px;font-weight:700;letter-spacing:${isSquare ? 3 : 5}px;line-height:1.2;text-transform:uppercase;opacity:.84;">${escapeXml(currentCard.eyebrow)}</div></div><div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:${isSquare ? 16 : isStory ? 28 : 22}px 0;"><div style="color:${theme.accent};font-size:${isSquare ? 34 : isStory ? 52 : 42}px;line-height:1;">✦</div><div style="margin-top:${isSquare ? 14 : isStory ? 28 : 20}px;font-family:Georgia,serif;font-size:${titleSize}px;font-weight:700;line-height:1.08;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeXml(currentCard.title)}</div><div style="margin-top:${bodyGap}px;max-width:92%;font-size:${bodySize}px;line-height:1.4;opacity:.9;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(currentCard.body)}</div><div style="margin-top:${footerGap}px;max-width:92%;padding:${isSquare ? 14 : isStory ? 24 : 18}px ${isSquare ? 18 : 26}px;border:1px solid rgba(255,255,255,.11);border-radius:${isSquare ? 18 : 22}px;background:rgba(15,14,20,.17);font-size:${footerSize}px;line-height:1.35;opacity:.88;backdrop-filter:blur(3px);overflow-wrap:anywhere;word-break:break-word;">${escapeXml(currentCard.footer)}</div></div><div style="color:${theme.accent};font-size:${isSquare ? 16 : isStory ? 23 : 19}px;font-weight:700;line-height:1.2;">${cardIndex + 1} / ${cards.length} · Created with Inkbound</div></div></foreignObject></svg>`;
+  const wrapSvgText = (value: string, fontSize: number, maxWidth: number, maxLines: number) => {
+    const words = value.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return [''];
+    const approximateCharacterWidth = fontSize * 0.54;
+    const maxCharacters = Math.max(8, Math.floor(maxWidth / approximateCharacterWidth));
+    const lines: string[] = [];
+    let line = '';
+
+    words.forEach((word) => {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length <= maxCharacters || !line) {
+        line = candidate;
+        return;
+      }
+      lines.push(line);
+      line = word;
+    });
+    if (line) lines.push(line);
+
+    if (lines.length <= maxLines) return lines;
+    const visible = lines.slice(0, maxLines);
+    visible[maxLines - 1] = `${visible[maxLines - 1].replace(/[.…]+$/, '')}…`;
+    return visible;
   };
 
-  const createPngFile = async () => { const blob = new Blob([buildSvg()], { type: 'image/svg+xml;charset=utf-8' }); const url = URL.createObjectURL(blob); try { const image = new window.Image(); image.src = url; await image.decode(); const canvas = document.createElement('canvas'); canvas.width = format.width; canvas.height = format.height; const context = canvas.getContext('2d'); if (!context) throw new Error('Could not prepare the Wrapped image.'); context.drawImage(image, 0, 0); const pngBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create image.')), 'image/png', 1)); return new File([pngBlob], `inkbound-${preferences.monthKey}-wrapped-${cardIndex + 1}.png`, { type: 'image/png' }); } finally { URL.revokeObjectURL(url); } };
+  const svgTextLines = (
+    lines: string[],
+    x: number,
+    y: number,
+    fontSize: number,
+    lineHeight: number,
+    attributes: string,
+  ) => lines.map((line, index) =>
+    `<text x="${x}" y="${y + (index * lineHeight)}" ${attributes} font-size="${fontSize}">${escapeXml(line)}</text>`,
+  ).join('');
+
+  const buildSvg = (backgroundDataUrl: string) => {
+    const width = format.width;
+    const height = format.height;
+    const centerX = width / 2;
+    const frameX = width * 0.08;
+    const frameY = height * 0.07;
+    const frameWidth = width * 0.84;
+    const frameHeight = height * 0.86;
+    const contentWidth = frameWidth * 0.82;
+    const imageAlignment = isStory ? 'xMidYMid' : 'xMidYMax';
+
+    const brandSize = isSquare ? 19 : isStory ? 29 : 23;
+    const eyebrowSize = isSquare ? 16 : isStory ? 26 : 20;
+    const titleSize = isSquare
+      ? titleLength > 70 ? 30 : titleLength > 45 ? 36 : 44
+      : isStory
+        ? titleLength > 70 ? 56 : titleLength > 45 ? 64 : 76
+        : titleLength > 70 ? 36 : titleLength > 45 ? 44 : 54;
+    const bodySize = isSquare ? 21 : isStory ? 32 : 24;
+    const footerSize = isSquare ? 18 : isStory ? 27 : 21;
+
+    const titleLines = wrapSvgText(currentCard.title, titleSize, contentWidth, isStory ? 4 : 3);
+    const bodyLines = wrapSvgText(currentCard.body, bodySize, contentWidth * 0.92, isStory ? 4 : 3);
+    const footerLines = wrapSvgText(currentCard.footer, footerSize, contentWidth * 0.84, 3);
+
+    const titleLineHeight = titleSize * 1.12;
+    const bodyLineHeight = bodySize * 1.4;
+    const footerLineHeight = footerSize * 1.35;
+    const titleBlockHeight = Math.max(titleLineHeight, titleLines.length * titleLineHeight);
+    const bodyBlockHeight = Math.max(bodyLineHeight, bodyLines.length * bodyLineHeight);
+    const footerBlockHeight = Math.max(footerLineHeight, footerLines.length * footerLineHeight);
+
+    const contentCenterY = frameY + frameHeight * 0.53;
+    const starY = contentCenterY - (titleBlockHeight + bodyBlockHeight + footerBlockHeight) / 2 - (isStory ? 75 : 48);
+    const titleY = starY + (isStory ? 92 : 66);
+    const bodyY = titleY + titleBlockHeight + (isStory ? 42 : 28);
+    const footerBoxY = bodyY + bodyBlockHeight + (isStory ? 50 : 34);
+    const footerPaddingY = isStory ? 24 : 18;
+    const footerBoxHeight = footerBlockHeight + footerPaddingY * 2;
+    const footerTextY = footerBoxY + footerPaddingY + footerSize;
+
+    const headerY = frameY + (isStory ? 95 : 62);
+    const eyebrowY = headerY + (isStory ? 52 : 38);
+    const bottomY = frameY + frameHeight - (isStory ? 62 : 40);
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <defs>
+        <linearGradient id="themeTint" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${theme.background}" stop-opacity=".48"/>
+          <stop offset="1" stop-color="${theme.background}" stop-opacity=".64"/>
+        </linearGradient>
+      </defs>
+      <image href="${backgroundDataUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="${imageAlignment} slice"/>
+      <rect width="100%" height="100%" fill="url(#themeTint)"/>
+      <rect x="${frameX}" y="${frameY}" width="${frameWidth}" height="${frameHeight}" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".52" stroke-width="3"/>
+
+      <text x="${centerX}" y="${headerY}" text-anchor="middle" fill="${theme.accent}" font-family="Georgia, serif" font-size="${brandSize}" font-weight="700" letter-spacing="${isSquare ? 5 : 7}">INKBOUND</text>
+      <text x="${centerX}" y="${eyebrowY}" text-anchor="middle" fill="${theme.text}" fill-opacity=".84" font-family="Arial, sans-serif" font-size="${eyebrowSize}" font-weight="700" letter-spacing="${isSquare ? 3 : 5}">${escapeXml(currentCard.eyebrow.toUpperCase())}</text>
+
+      <text x="${centerX}" y="${starY}" text-anchor="middle" fill="${theme.accent}" font-family="Georgia, serif" font-size="${isSquare ? 34 : isStory ? 52 : 42}">✦</text>
+      ${svgTextLines(titleLines, centerX, titleY, titleSize, titleLineHeight, `text-anchor="middle" fill="${theme.text}" font-family="Georgia, serif" font-weight="700"`)}
+      ${svgTextLines(bodyLines, centerX, bodyY, bodySize, bodyLineHeight, `text-anchor="middle" fill="${theme.text}" fill-opacity=".9" font-family="Arial, sans-serif"`)}
+
+      <rect x="${centerX - contentWidth * 0.46}" y="${footerBoxY}" width="${contentWidth * 0.92}" height="${footerBoxHeight}" rx="${isSquare ? 18 : 22}" fill="#0f0e14" fill-opacity=".22" stroke="#ffffff" stroke-opacity=".11"/>
+      ${svgTextLines(footerLines, centerX, footerTextY, footerSize, footerLineHeight, `text-anchor="middle" fill="${theme.text}" fill-opacity=".88" font-family="Arial, sans-serif"`)}
+
+      <text x="${centerX}" y="${bottomY}" text-anchor="middle" fill="${theme.accent}" font-family="Arial, sans-serif" font-size="${isSquare ? 16 : isStory ? 23 : 19}" font-weight="700">${cardIndex + 1} / ${cards.length} · Created with Inkbound</text>
+    </svg>`;
+  };
+
+  const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not prepare the Wrapped background.'));
+    reader.onload = () => typeof reader.result === 'string'
+      ? resolve(reader.result)
+      : reject(new Error('Could not prepare the Wrapped background.'));
+    reader.readAsDataURL(blob);
+  });
+
+  const loadWrappedBackground = async () => {
+    const response = await fetch(MONTHLY_BACKGROUND_URL, { cache: 'force-cache' });
+    if (!response.ok) throw new Error('Could not load the Wrapped background.');
+    return blobToDataUrl(await response.blob());
+  };
+
+  const createPngFile = async () => {
+    const backgroundDataUrl = await loadWrappedBackground();
+    const svgBlob = new Blob([buildSvg(backgroundDataUrl)], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    try {
+      const image = new window.Image();
+      image.src = svgUrl;
+      await image.decode();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = format.width;
+      canvas.height = format.height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not prepare the Wrapped image.');
+
+      context.drawImage(image, 0, 0);
+      const pngBlob = await new Promise<Blob>((resolve, reject) => {
+        try {
+          canvas.toBlob(
+            (result) => result ? resolve(result) : reject(new Error('Could not create the Wrapped PNG.')),
+            'image/png',
+            1,
+          );
+        } catch {
+          reject(new Error('Could not create the Wrapped PNG.'));
+        }
+      });
+
+      return new File(
+        [pngBlob],
+        `inkbound-${preferences.monthKey}-wrapped-${cardIndex + 1}.png`,
+        { type: 'image/png' },
+      );
+    } finally {
+      URL.revokeObjectURL(svgUrl);
+    }
+  };
   const downloadCurrent = async () => { try { const file = await createPngFile(); await exportRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file }); setMessage('Wrapped card saved.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Save failed.'); } };
   const shareCurrent = async () => { try { const file = await createPngFile(); const result = await shareRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file, title: `${selectedMonth.label} Reading Wrapped`, text: 'Made with Inkbound' }); setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the card was saved instead.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); } };
   const dayChange = stats.changes.days;

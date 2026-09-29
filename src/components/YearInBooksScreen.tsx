@@ -87,17 +87,96 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
   const previewStatMinHeight = isStory ? (isDenseStoryPage ? 'min-h-[70px] sm:min-h-[108px]' : 'min-h-[74px] sm:min-h-[144px]') : '';
   const backgroundPosition = isStory ? 'center center' : 'center bottom';
   const previewBackground = `linear-gradient(${theme.background}88, ${theme.background}9a), url(${YEARBOOK_BACKGROUND_URL}) ${backgroundPosition} / cover no-repeat`;
-  const buildSvg = () => {
-    const titleSize = isSquare ? titleLength > 70 ? 30 : titleLength > 45 ? 36 : 44 : isStory ? titleLength > 70 ? 56 : titleLength > 45 ? 64 : 76 : titleLength > 70 ? 36 : titleLength > 45 ? 44 : 54;
-    const bodySize = isSquare ? 21 : isStory ? 32 : 24; const statLabelSize = isSquare ? 16 : isStory ? 22 : 18; const statValueSize = isSquare ? 20 : isStory ? 34 : 23;
-    const innerPadding = isSquare ? 56 : isStory ? 72 : 68; const headerGap = isSquare ? 12 : isStory ? 20 : 18; const bodyGap = isSquare ? 14 : isStory ? 34 : 20; const statsGap = isSquare ? 14 : isStory ? 24 : 16; const statPadding = isSquare ? 13 : isStory ? (isDenseStoryPage ? 26 : 32) : 16; const centerGap = isSquare ? 16 : isStory ? 20 : 24;
-    const storyStatHeight = isDenseStoryPage ? 148 : 194;
-    const statCards = page.stats.map(([label, value]) => `<div style="box-sizing:border-box;min-width:0;${isStory ? `min-height:${storyStatHeight}px;` : ''}border:1px solid rgba(255,255,255,.11);border-radius:${isSquare ? 18 : 22}px;background:rgba(15,14,20,.17);padding:${statPadding}px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:${isSquare ? 7 : isStory ? 12 : 9}px;backdrop-filter:blur(3px);"><div style="font-family:Arial,sans-serif;font-size:${statLabelSize}px;letter-spacing:2px;text-transform:uppercase;opacity:.72;line-height:1.2;">${escapeXml(label)}</div><div style="font-family:Georgia,serif;font-size:${statValueSize}px;font-weight:700;line-height:1.18;overflow-wrap:anywhere;word-break:break-word;text-shadow:0 2px 10px rgba(0,0,0,.42);">${escapeXml(value)}</div></div>`).join('');
-    const backgroundAssetUrl = `${window.location.origin}${YEARBOOK_BACKGROUND_URL}`;
-    const imageAlignment = isStory ? 'xMidYMid' : 'xMidYMax';
-    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${exportFormat.width}" height="${exportFormat.height}" viewBox="0 0 ${exportFormat.width} ${exportFormat.height}"><defs><linearGradient id="themeTint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${theme.background}" stop-opacity=".48"/><stop offset="1" stop-color="${theme.background}" stop-opacity=".64"/></linearGradient></defs><image href="${backgroundAssetUrl}" x="0" y="0" width="${exportFormat.width}" height="${exportFormat.height}" preserveAspectRatio="${imageAlignment} slice"/><rect width="100%" height="100%" fill="url(#themeTint)"/><rect x="8%" y="7%" width="84%" height="86%" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".52" stroke-width="3"/><foreignObject x="8%" y="7%" width="84%" height="86%"><div xmlns="http://www.w3.org/1999/xhtml" style="box-sizing:border-box;width:100%;height:100%;padding:${innerPadding}px;display:flex;flex-direction:column;justify-content:space-between;text-align:center;color:${theme.text};font-family:Arial,sans-serif;overflow:hidden;text-shadow:0 2px 12px rgba(0,0,0,.38);"><div style="flex:0 0 auto;"><div style="color:${theme.accent};font-family:Georgia,serif;font-size:${isSquare ? 19 : isStory ? 29 : 23}px;font-weight:700;letter-spacing:${isSquare ? 5 : 7}px;line-height:1.15;">INKBOUND</div><div style="margin-top:${headerGap}px;font-size:${isSquare ? 16 : isStory ? 26 : 20}px;font-weight:700;letter-spacing:${isSquare ? 3 : 5}px;line-height:1.2;text-transform:uppercase;opacity:.84;">${escapeXml(page.kicker)}</div></div><div style="flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:${centerGap}px 0;"><div style="font-family:Georgia,serif;font-size:${titleSize}px;font-weight:700;line-height:1.08;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeXml(page.title)}</div><div style="margin-top:${bodyGap}px;max-width:92%;font-size:${bodySize}px;line-height:1.4;opacity:.9;overflow-wrap:anywhere;word-break:break-word;">${escapeXml(page.body)}</div><div style="margin-top:${isSquare ? 22 : isStory ? (isDenseStoryPage ? 46 : 56) : 26}px;width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:${statsGap}px;">${statCards}</div></div><div style="flex:0 0 auto;color:${theme.accent};font-size:${isSquare ? 16 : isStory ? 23 : 19}px;font-weight:700;line-height:1.2;">${safePage + 1} / ${pages.length} · Created with Inkbound</div></div></foreignObject></svg>`;
+  const wrapSvgLines = (value: string, fontSize: number, maxWidth: number, maxLines = 4) => {
+    const words = value.trim().split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let line = '';
+    const approximateWidth = (text: string) => text.length * fontSize * 0.56;
+    words.forEach((word) => {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && approximateWidth(candidate) > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    });
+    if (line) lines.push(line);
+    if (lines.length <= maxLines) return lines;
+    const clipped = lines.slice(0, maxLines);
+    clipped[maxLines - 1] = `${clipped[maxLines - 1].replace(/[.…]+$/, '')}…`;
+    return clipped;
   };
-  const createPng = async () => { const svgBlob = new Blob([buildSvg()], { type: 'image/svg+xml;charset=utf-8' }); const url = URL.createObjectURL(svgBlob); try { const image = new window.Image(); image.src = url; await image.decode(); const canvas = document.createElement('canvas'); canvas.width = exportFormat.width; canvas.height = exportFormat.height; const context = canvas.getContext('2d'); if (!context) throw new Error('Image export is unavailable.'); context.drawImage(image, 0, 0); const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create image.')), 'image/png', 1)); return new File([blob], `inkbound-${preferences.year}-year-in-books-${safePage + 1}.png`, { type: 'image/png' }); } finally { URL.revokeObjectURL(url); } };
+  const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not prepare the Year in Books background.'));
+    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Could not prepare the Year in Books background.'));
+    reader.readAsDataURL(blob);
+  });
+  const loadYearbookBackground = async () => {
+    const response = await fetch(YEARBOOK_BACKGROUND_URL, { cache: 'force-cache' });
+    if (!response.ok) throw new Error('Could not load the Year in Books background.');
+    return blobToDataUrl(await response.blob());
+  };
+  const buildSvg = (backgroundDataUrl: string) => {
+    const w = exportFormat.width;
+    const h = exportFormat.height;
+    const titleSize = isSquare ? titleLength > 70 ? 30 : titleLength > 45 ? 36 : 44 : isStory ? titleLength > 70 ? 56 : titleLength > 45 ? 64 : 76 : titleLength > 70 ? 36 : titleLength > 45 ? 44 : 54;
+    const bodySize = isSquare ? 21 : isStory ? 32 : 24;
+    const statLabelSize = isSquare ? 16 : isStory ? 22 : 18;
+    const statValueSize = isSquare ? 20 : isStory ? 34 : 23;
+    const titleLines = wrapSvgLines(page.title, titleSize, w * .70, isStory ? 4 : 3);
+    const bodyLines = wrapSvgLines(page.body, bodySize, w * .72, isStory ? 5 : 4);
+    const titleLineHeight = titleSize * 1.12;
+    const bodyLineHeight = bodySize * 1.42;
+    const centerY = isStory ? h * .35 : h * .31;
+    const titleY = centerY;
+    const bodyY = titleY + titleLines.length * titleLineHeight + (isStory ? 38 : 24);
+    const statsTop = isStory ? h * .57 : isSquare ? h * .59 : h * .56;
+    const statsLeft = w * .13;
+    const statsWidth = w * .74;
+    const statsGap = isStory ? 24 : 16;
+    const cardWidth = (statsWidth - statsGap) / 2;
+    const cardHeight = isStory ? (isDenseStoryPage ? 148 : 194) : isSquare ? 112 : 132;
+    const imageAlignment = isStory ? 'xMidYMid' : 'xMidYMax';
+    const textLines = (lines: string[], x: number, y: number, lineHeight: number) => lines.map((line, index) => `<text x="${x}" y="${y + index * lineHeight}" text-anchor="middle">${escapeXml(line)}</text>`).join('');
+    const statCards = page.stats.map(([label, value], index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = statsLeft + col * (cardWidth + statsGap);
+      const y = statsTop + row * (cardHeight + statsGap);
+      const valueLines = wrapSvgLines(value, statValueSize, cardWidth - 36, 2);
+      const valueStart = y + cardHeight * .57 - ((valueLines.length - 1) * statValueSize * .58);
+      return `<rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="20" fill="#0f0e14" fill-opacity=".28" stroke="#ffffff" stroke-opacity=".12"/><text x="${x + cardWidth / 2}" y="${y + cardHeight * .30}" text-anchor="middle" fill="${theme.text}" fill-opacity=".74" font-family="Arial,sans-serif" font-size="${statLabelSize}" font-weight="600" letter-spacing="2">${escapeXml(label.toUpperCase())}</text><g fill="${theme.text}" font-family="Georgia,serif" font-size="${statValueSize}" font-weight="700">${textLines(valueLines, x + cardWidth / 2, valueStart, statValueSize * 1.16)}</g>`;
+    }).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="themeTint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${theme.background}" stop-opacity=".48"/><stop offset="1" stop-color="${theme.background}" stop-opacity=".64"/></linearGradient></defs><image href="${backgroundDataUrl}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="${imageAlignment} slice"/><rect width="100%" height="100%" fill="url(#themeTint)"/><rect x="8%" y="7%" width="84%" height="86%" rx="44" fill="none" stroke="${theme.accent}" stroke-opacity=".52" stroke-width="3"/><text x="50%" y="${isStory ? h * .12 : h * .13}" text-anchor="middle" fill="${theme.accent}" font-family="Georgia,serif" font-size="${isSquare ? 19 : isStory ? 29 : 23}" font-weight="700" letter-spacing="${isSquare ? 5 : 7}">INKBOUND</text><text x="50%" y="${isStory ? h * .15 : h * .17}" text-anchor="middle" fill="${theme.text}" fill-opacity=".84" font-family="Arial,sans-serif" font-size="${isSquare ? 16 : isStory ? 26 : 20}" font-weight="700" letter-spacing="${isSquare ? 3 : 5}">${escapeXml(page.kicker.toUpperCase())}</text><g fill="${theme.text}" font-family="Georgia,serif" font-size="${titleSize}" font-weight="700">${textLines(titleLines, w / 2, titleY, titleLineHeight)}</g><g fill="${theme.text}" fill-opacity=".90" font-family="Arial,sans-serif" font-size="${bodySize}">${textLines(bodyLines, w / 2, bodyY, bodyLineHeight)}</g>${statCards}<text x="50%" y="92%" text-anchor="middle" fill="${theme.accent}" font-family="Arial,sans-serif" font-size="${isSquare ? 16 : isStory ? 23 : 19}" font-weight="700">${safePage + 1} / ${pages.length} · Created with Inkbound</text></svg>`;
+  };
+  const createPng = async () => {
+    const backgroundDataUrl = await loadYearbookBackground();
+    const svgBlob = new Blob([buildSvg(backgroundDataUrl)], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    try {
+      const image = new window.Image();
+      image.src = url;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = exportFormat.width;
+      canvas.height = exportFormat.height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Image export is unavailable.');
+      context.drawImage(image, 0, 0);
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        try {
+          canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create the Year in Books PNG.')), 'image/png', 1);
+        } catch {
+          reject(new Error('Could not create the Year in Books PNG.'));
+        }
+      });
+      return new File([blob], `inkbound-${preferences.year}-year-in-books-${safePage + 1}.png`, { type: 'image/png' });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
   const download = async () => { try { const file = await createPng(); await exportRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file }); setMessage('Yearbook page saved.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Export failed.'); } };
   const share = async () => { try { const file = await createPng(); const result = await shareRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file, title: `${preferences.year} Year in Books`, text: 'My reading year, made with Inkbound' }); setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the image was saved instead.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); } };
   return <div className="min-w-0 space-y-7 pb-24">
