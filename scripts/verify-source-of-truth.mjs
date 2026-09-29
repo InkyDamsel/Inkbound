@@ -428,8 +428,9 @@ if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"
 }
 
 const cloudDataRefreshBoundary = read('src/features/sync/CloudDataRefreshBoundary.tsx');
-if (!cloudDataRefreshBoundary.includes('fullReconciliationVersionKey(uid)') || !cloudDataRefreshBoundary.includes('FULL_RECONCILIATION_VERSION')) {
-  violations.push('CloudDataRefreshBoundary.tsx: signed-in UI must wait for the current full reconciliation version before rendering account data.');
+if (!cloudDataRefreshBoundary.includes('hasEstablishedLocalWorkingCopy')
+  || !cloudDataRefreshBoundary.includes('requireFullReconciliation')) {
+  violations.push('CloudDataRefreshBoundary.tsx: signed-in UI must use canonical full-reconciliation readiness before rendering account data.');
 }
 
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
@@ -528,14 +529,6 @@ if (!aggregateReleaseVerifier.includes("script: 'verify:parity'")) {
 if (!aggregateReleaseVerifier.includes("script: 'verify:source-boundary'")
   || !aggregateReleaseVerifier.includes("script: 'verify:domain-taxonomy'")) {
   violations.push('scripts/release-verify.mjs: aggregate release verification must include both source-of-truth gates');
-}
-
-const cloudDataRefreshBoundarySource = read('src/features/sync/CloudDataRefreshBoundary.tsx');
-if (
-  cloudDataRefreshBoundarySource.includes('fullReconciliationVersionKey(uid)')
-  || cloudDataRefreshBoundarySource.includes('FULL_RECONCILIATION_VERSION')
-) {
-  violations.push('CloudDataRefreshBoundary.tsx: reconciliation-version bump must never hide an established local library');
 }
 
 if (violations.length) {
