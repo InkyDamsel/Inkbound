@@ -7,6 +7,10 @@ interface NativeBarcodeScannerPlugin {
 
 const NativeBarcodeScanner = registerPlugin<NativeBarcodeScannerPlugin>('InkboundBarcodeScanner');
 
+export function shouldUseNativeBarcodeScanner(): boolean {
+  return isAndroidRuntime();
+}
+
 export async function scanBarcodeWithNativeAndroid(): Promise<string | null> {
   if (!isAndroidRuntime()) return null;
   const result = await NativeBarcodeScanner.scan();
