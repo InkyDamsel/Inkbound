@@ -66,6 +66,12 @@ const normalizeAuthorName = (value: string) =>
 const normalizeCatalogText = (value: string) =>
   value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+const looksLikeAuthorNameQuery = (value: string) => {
+  const normalized = normalizeAuthorName(value);
+  const words = normalized.split(' ').filter(Boolean);
+  return words.length >= 2 && words.length <= 6 && !/\d/.test(normalized);
+};
+
 const filterExactAuthorResults = (groups: BookSearchWorkGroup[], authorName: string) => {
   const normalizedAuthor = normalizeAuthorName(authorName);
   return groups.filter((work) =>
@@ -379,7 +385,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setPendingSearchEdition(null);
     try {
       const response = await searchGoogleBooks(trimmedQuery);
-      setResults(response.groups);
+      if (looksLikeAuthorNameQuery(trimmedQuery)) {
+        try {
+          const authorResponse = await searchGoogleBooksAuthorPage(trimmedQuery, 0);
+          const exactAuthorResults = filterExactAuthorResults(authorResponse.groups, trimmedQuery);
+          setResults(mergeCatalogResultGroups(exactAuthorResults, response.groups));
+        } catch {
+          // Generic search remains fully usable if the author-qualified
+          // supplement is unavailable or rate-limited.
+          setResults(response.groups);
+        }
+      } else {
+        setResults(response.groups);
+      }
     } catch (error) {
       setResults([]);
       setSearchError(error instanceof Error ? error.message : 'Reading-material search failed. Please try again.');
