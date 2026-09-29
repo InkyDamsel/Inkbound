@@ -43,5 +43,7 @@
     <!-- Network access is required for Firebase and catalog services. Production
          cleartext traffic remains disabled at the application level above. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required by the in-app ISBN/stack scanner (navigator.mediaDevices.getUserMedia). -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
