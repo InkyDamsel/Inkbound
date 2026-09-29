@@ -264,11 +264,15 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
               ),
             ]);
           } else if (mutation.data) {
+            // Book/session mutations contain the complete canonical record.
+            // Replace the document so deliberately removed optional fields
+            // (rating, spice level, notes, dates, etc.) cannot survive from an
+            // older cloud payload and reappear on the next reconciliation.
             await setDoc(target, {
               data: mutation.data,
               updatedAt: serverTimestamp(),
               clientUpdatedAt: mutation.clientUpdatedAt,
-            }, { merge: true });
+            });
           }
         }));
 
