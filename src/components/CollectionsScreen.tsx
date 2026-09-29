@@ -718,8 +718,8 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
       )}
 
       {isEditorOpen && (
-        <div className="fixed inset-0 z-[180] grid place-items-center overflow-y-auto bg-black/70 p-4">
-          <div className="inkbound-panel h-[min(900px,calc(100dvh-2rem))] w-[min(680px,calc(100vw-2rem))] overflow-y-auto rounded-3xl p-5 sm:p-6">
+        <div className="fixed inset-0 z-[180] grid place-items-center bg-black/70 p-4">
+          <div className="inkbound-panel max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-3xl p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4"><div><p className="inkbound-kicker">Collection Builder</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">{editingId ? 'Edit collection' : 'New collection'}</h2></div><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-icon-button" aria-label="Close"><X className="h-5 w-5" /></button></div>
             <div className="mt-5 grid gap-4">
               <label className="text-xs font-semibold text-[var(--ink-muted)]">Name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]" /></label>
