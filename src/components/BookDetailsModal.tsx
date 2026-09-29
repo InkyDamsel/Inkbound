@@ -45,7 +45,9 @@ function normalizeBookIdentifiers(book: UserBookRecord): UserBookRecord {
   };
 }
 
-type BookDetailsModalProps = React.ComponentProps<typeof BookDetailsModalCore>;
+type BookDetailsModalProps = React.ComponentProps<typeof BookDetailsModalCore> & {
+  onViewSeries?: (book: UserBookRecord) => void;
+};
 
 export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   const [seriesHeaderTarget, setSeriesHeaderTarget] = useState<HTMLElement | null>(null);
@@ -150,6 +152,10 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
 
   const viewSeries = () => {
     if (!normalizedBook || !effectiveSeries) return;
+    if (props.onViewSeries) {
+      props.onViewSeries(normalizedBook);
+      return;
+    }
     openLibrarySeriesForBook(normalizedBook.id);
     props.onClose();
   };
