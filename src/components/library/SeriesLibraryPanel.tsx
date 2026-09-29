@@ -3,7 +3,11 @@ import { BookOpen, ChevronLeft, ChevronRight, Lock, Pencil, Plus, Search, Sparkl
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
-import { consumeLibrarySeriesFocusBookId, SERIES_FOCUS_BOOK_STORAGE_KEY } from '../../features/library/libraryNavigation';
+import {
+  clearLibrarySeriesFocusBookId,
+  readLibrarySeriesFocusBookId,
+  SERIES_FOCUS_BOOK_STORAGE_KEY,
+} from '../../features/library/libraryNavigation';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
@@ -57,6 +61,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState('');
+  const [pendingFocusBookId, setPendingFocusBookId] = useState<string | null>(() => readLibrarySeriesFocusBookId());
 
   const series = useMemo(() => buildSeriesLibrary(books, overrides), [books, overrides]);
   const filtered = useMemo(() => {
@@ -106,34 +111,38 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   }, [sortMode]);
 
   useEffect(() => {
-    const focusRequestedSeries = () => {
-      const targetBookId = consumeLibrarySeriesFocusBookId();
-      if (!targetBookId) return;
-      const targetIndex = series.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
-      if (targetIndex < 0) return;
-
-      const targetSeries = series[targetIndex];
-      setSearch('');
-      const sortedIndex = filtered.findIndex((item) => item.id === targetSeries.id);
-      const targetPage = sortedIndex >= 0 ? Math.floor(sortedIndex / SERIES_PER_PAGE) + 1 : 1;
-      setCurrentPage(targetPage);
-      setExpandedSeriesId(targetSeries.id);
-
-      window.setTimeout(() => {
-        document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 0);
-    };
-
-    focusRequestedSeries();
-
-    const handleRuntimeFocus = (event: Event) => {
+    const refreshPendingFocus = (event: Event) => {
       const key = (event as CustomEvent<{ key?: string }>).detail?.key;
-      if (key === SERIES_FOCUS_BOOK_STORAGE_KEY) focusRequestedSeries();
+      if (key !== SERIES_FOCUS_BOOK_STORAGE_KEY) return;
+      setPendingFocusBookId(readLibrarySeriesFocusBookId());
     };
 
-    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeFocus);
-    return () => window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeFocus);
-  }, [filtered, series]);
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, refreshPendingFocus);
+    return () => window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, refreshPendingFocus);
+  }, []);
+
+  useEffect(() => {
+    const targetBookId = pendingFocusBookId ?? readLibrarySeriesFocusBookId();
+    if (!targetBookId) return;
+
+    if (search) {
+      setSearch('');
+      return;
+    }
+
+    const targetIndex = filtered.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
+    if (targetIndex < 0) return;
+
+    const targetSeries = filtered[targetIndex];
+    setCurrentPage(Math.floor(targetIndex / SERIES_PER_PAGE) + 1);
+    setExpandedSeriesId(targetSeries.id);
+    clearLibrarySeriesFocusBookId(targetBookId);
+    setPendingFocusBookId(null);
+
+    window.setTimeout(() => {
+      document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  }, [filtered, pendingFocusBookId, search]);
 
   const goToPage = (page: number) => {
     const next = Math.max(1, Math.min(page, totalPages));
