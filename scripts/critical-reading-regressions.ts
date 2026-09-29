@@ -157,6 +157,28 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(finished.customReadingStatusId, undefined);
 }
 
+// Canonical normalization must preserve a modern custom reading status. Legacy
+// status='custom' records without a customReadingStatusId still migrate away.
+{
+  const custom = {
+    ...baseBook(),
+    status: 'custom' as const,
+    customReadingStatusId: 'reading-status-patiently-waiting',
+  };
+  const normalizedCustom = normalizeLibraryRecord(custom);
+  assert.equal(normalizedCustom.status, 'custom');
+  assert.equal(normalizedCustom.customReadingStatusId, 'reading-status-patiently-waiting');
+
+  const legacyCustom = {
+    ...baseBook(),
+    status: 'custom' as const,
+    customReadingStatusId: undefined,
+  };
+  const normalizedLegacyCustom = normalizeLibraryRecord(legacyCustom);
+  assert.equal(normalizedLegacyCustom.status, 'tbr');
+  assert.equal(normalizedLegacyCustom.customReadingStatusId, undefined);
+}
+
 // Explicitly marking Finished records the date and canonical 100% without inventing
 // an exact final page endpoint.
 {
