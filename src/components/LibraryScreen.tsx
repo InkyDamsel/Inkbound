@@ -3,6 +3,7 @@ import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, 
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, READING_STATUS_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
+import { bookMatchesLibrarySearch } from '../features/library/librarySearch';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -128,13 +129,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       if (book.status !== 'custom' || book.customReadingStatusId !== statusId) return false;
     } else if (activeCategory !== 'all' && book.status !== activeCategory as ReadingStatus) return false;
 
-    if (searchFilter.trim()) {
-      const query = searchFilter.toLowerCase();
-      if (!(book.work.title.toLowerCase().includes(query)
-        || book.work.author.toLowerCase().includes(query)
-        || book.work.seriesName?.toLowerCase().includes(query)
-        || book.privateTags.some((tag) => tag.toLowerCase().includes(query)))) return false;
-    }
+    if (searchFilter.trim() && !bookMatchesLibrarySearch(book, searchFilter)) return false;
 
     if (tagFilter !== 'all' && !(book.privateTags ?? []).some((tag) => normalizeTag(tag) === tagFilter)) return false;
     if (materialFilter !== 'all' && (book.work.materialType ?? 'book') !== materialFilter) return false;
