@@ -26,8 +26,7 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { scanBarcodeWithNativeAndroid } from '../platform/runtimeBarcodeScanner';
-import { isAndroidRuntime } from '../platform/runtimePlatform';
+import { scanBarcodeWithNativeAndroid, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -317,7 +316,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerError(null);
     setScannerMessage(null);
 
-    if (isAndroidRuntime()) {
+    if (shouldUseNativeBarcodeScanner()) {
       try {
         const raw = await scanBarcodeWithNativeAndroid();
         if (raw) await lookupScannedIsbn(raw);
