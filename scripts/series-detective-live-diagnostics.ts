@@ -89,12 +89,17 @@ const fixtures: CaseFixture[] = [
 
 const readSecret = (name: string): string => {
   try {
-    const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    const value = execFileSync(
-      npxCommand,
-      ['firebase-tools', 'functions:secrets:access', name, '--project', PROJECT_ID],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-    ).trim();
+    const value = process.platform === 'win32'
+      ? execFileSync(
+          process.env.ComSpec || 'cmd.exe',
+          ['/d', '/s', '/c', `npx firebase-tools functions:secrets:access ${name} --project ${PROJECT_ID}`],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+        ).trim()
+      : execFileSync(
+          'npx',
+          ['firebase-tools', 'functions:secrets:access', name, '--project', PROJECT_ID],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+        ).trim();
     if (!value) throw new Error('empty secret');
     return value;
   } catch {
