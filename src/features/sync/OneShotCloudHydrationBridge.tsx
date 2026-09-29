@@ -85,7 +85,11 @@ function mergeById<T extends { id: string }>(localItems: T[], cloudItems: T[]): 
 
 function mergeBooksById(localItems: UserBookRecord[], cloudItems: UserBookRecord[]): UserBookRecord[] {
   const merged = new Map(localItems.map((item) => [item.id, item]));
-  cloudItems.forEach((item) => merged.set(item.id, mergeIncomingBookLoanState(merged.get(item.id), item)));
+  cloudItems.forEach((item) => {
+    const local = merged.get(item.id);
+    const withQuotes = mergeIncomingBookQuoteState(local, item);
+    merged.set(item.id, mergeIncomingBookLoanState(local, withQuotes));
+  });
   return [...merged.values()];
 }
 
