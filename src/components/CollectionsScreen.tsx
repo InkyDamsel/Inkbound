@@ -718,10 +718,11 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
       )}
 
       {isEditorOpen && (
-        <div className="fixed inset-0 z-[180] grid place-items-center bg-black/70 p-4">
-          <div className="inkbound-panel max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-3xl p-5 sm:p-6">
-            <div className="flex items-start justify-between gap-4"><div><p className="inkbound-kicker">Collection Builder</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">{editingId ? 'Edit collection' : 'New collection'}</h2></div><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-icon-button" aria-label="Close"><X className="h-5 w-5" /></button></div>
-            <div className="mt-5 grid gap-4">
+        <div className="fixed inset-0 z-[180] flex items-start justify-center overflow-y-auto bg-black/70 p-2 sm:p-4">
+          <div className="inkbound-panel my-2 flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-3xl sm:my-4 sm:max-h-[calc(100dvh-2rem)]">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--ink-border)] px-5 py-4 sm:px-6"><div><p className="inkbound-kicker">Collection Builder</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">{editingId ? 'Edit collection' : 'New collection'}</h2></div><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-icon-button" aria-label="Close"><X className="h-5 w-5" /></button></div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+              <div className="grid gap-4">
               <label className="text-xs font-semibold text-[var(--ink-muted)]">Name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]" /></label>
               <label className="text-xs font-semibold text-[var(--ink-muted)]">Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={240} rows={3} className="mt-2 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)]" /></label>
               <CollectionBannerAdjuster collectionId={draftCollectionId || editingId || 'collection-draft'} bannerUrl={bannerUrl} onChange={setBannerUrl} onBusyChange={setBannerBusy} />
@@ -768,8 +769,9 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
                 </div>
               )}
               <label className="text-xs font-semibold text-[var(--ink-muted)]">Cover book<select value={coverBookId} onChange={(event) => setCoverBookId(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="">Automatic</option>{books.map((book) => <option key={book.id} value={book.id}>{book.work.title}</option>)}</select></label>
+              </div>
             </div>
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={saveCollection} disabled={!name.trim() || bannerBusy || (kind === 'smart' && !smartRules.some((rule) => rule.value.trim()))} className="quiet-shelf-primary-action justify-center disabled:opacity-40"><FolderHeart className="h-4 w-4" /> Save collection</button></div>
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[var(--ink-border)] bg-[var(--ink-surface-raised)] px-5 py-4 sm:flex-row sm:justify-end sm:px-6"><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={saveCollection} disabled={!name.trim() || bannerBusy || (kind === 'smart' && !smartRules.some((rule) => rule.value.trim()))} className="quiet-shelf-primary-action justify-center disabled:opacity-40"><FolderHeart className="h-4 w-4" /> Save collection</button></div>
           </div>
         </div>
       )}
