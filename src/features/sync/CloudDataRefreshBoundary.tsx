@@ -3,45 +3,22 @@ import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
-import { getRuntimeStorage, readRuntimeJson } from '../../platform/runtimeStorage';
+import { readRuntimeJson } from '../../platform/runtimeStorage';
 import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
 import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
 import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
 import { INKBOUND_CLOUD_DATA_EVENT, notifyCloudDataUpdated } from './cloudSyncEvents';
-import { FULL_RECONCILIATION_VERSION, fullReconciliationVersionKey, SYNC_STORAGE_KEYS } from './storageKeys';
+import { SYNC_STORAGE_KEYS } from './storageKeys';
+import { hasEstablishedLocalWorkingCopy } from './syncReadiness';
 
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_STORAGE_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_STORAGE_KEY = SYNC_STORAGE_KEYS.profile;
-const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
-const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
 
 function readStoredBooks(): UserBookRecord[] {
   return readRuntimeJson<UserBookRecord[]>(BOOKS_STORAGE_KEY, []);
 }
 
-function hasEstablishedLocalWorkingCopy(uid: string): boolean {
-  try {
-    const storage = getRuntimeStorage();
-    if (storage.getItem(HYDRATION_REQUIRED_UID_KEY) === uid) return false;
-    const raw = storage.getItem(BOOKS_STORAGE_KEY);
-    if (!raw || !raw.trim().startsWith('[')) return false;
-    const ownerUid = storage.getItem(OWNER_UID_KEY);
-    if (ownerUid && ownerUid !== uid) return false;
-    if (storage.getItem(fullReconciliationVersionKey(uid)) !== FULL_RECONCILIATION_VERSION) return false;
-    // An existing local working copy must never be hidden behind a
-    // reconciliation-version bump. Reconciliation/migration runs in the
-    // background; the reader's established local library remains immediately
-    // available and protected while that work completes.
-    if (ownerUid) return true;
-    // Upgrade path for pre-owner-marker builds. A legacy non-empty library is a
-    // real working copy; a bare [] can be App's fresh initialization and must
-    // still wait for first-device hydration.
-    return raw.trim() !== '[]';
-  } catch {
-    return false;
-  }
-}
 
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
   const { user } = useAccountSync();
@@ -60,7 +37,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       return undefined;
     }
 
-    if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
+    if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid, { requireFullReconciliation: true })) setReadyUid(uid);
     else setReadyUid(null);
 
     // This boundary only gates a genuinely new/unhydrated account. Existing
@@ -73,7 +50,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       recoverIncompleteLatestImport();
       reconcileRepeatedImportHistory(readStoredBooks());
 
-      if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
+      if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid, { requireFullReconciliation: true })) setReadyUid(uid);
 
       void synchronizeProfileMedia(uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
