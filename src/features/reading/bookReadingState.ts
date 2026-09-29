@@ -98,6 +98,7 @@ export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, d
     return {
       ...book,
       status,
+      customReadingStatusId: undefined,
       progressPercentage: 100,
       dateStarted: book.dateStarted,
       dateFinished: book.dateFinished ?? date,
@@ -108,6 +109,7 @@ export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, d
     return {
       ...book,
       status,
+      customReadingStatusId: undefined,
       progressPercentage: 0,
       dateStarted: undefined,
       dateFinished: undefined,
@@ -117,6 +119,7 @@ export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, d
   return {
     ...book,
     status,
+    customReadingStatusId: status === 'custom' ? book.customReadingStatusId : undefined,
     dateStarted: status === 'currently-reading' ? book.dateStarted ?? date : book.dateStarted,
     dateFinished: undefined,
   };
