@@ -16,6 +16,7 @@ import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
+import { mergeIncomingBookQuoteState } from '../reading/bookQuotePersistence';
 import {
   getRuntimeStorage,
   notifyRuntimeStorageChanged,
@@ -140,7 +141,11 @@ function upsertById<T extends { id: string }>(current: T[], incoming: T[]): T[] 
 function upsertBooksById(current: UserBookRecord[], incoming: UserBookRecord[]): UserBookRecord[] {
   if (!incoming.length) return current;
   const next = new Map(current.map((item) => [item.id, item]));
-  incoming.forEach((item) => next.set(item.id, mergeIncomingBookLoanState(next.get(item.id), item)));
+  incoming.forEach((item) => {
+    const local = next.get(item.id);
+    const withQuotes = mergeIncomingBookQuoteState(local, item);
+    next.set(item.id, mergeIncomingBookLoanState(local, withQuotes));
+  });
   return [...next.values()];
 }
 
