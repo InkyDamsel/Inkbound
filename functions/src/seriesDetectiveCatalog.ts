@@ -906,6 +906,305 @@ async function detectiveGoogleCatalog(
   };
 }
 
+
+interface PrhSearchRecord {
+  workId?: number | string;
+  isbn?: number | string;
+  title?: string;
+  subtitle?: string;
+  author?: string;
+  coverUrl?: string;
+  seriesCode?: string;
+  seriesName?: string;
+  seriesNumber?: number | string;
+}
+
+interface PrhTitleRecord extends PrhSearchRecord {
+  isbnHyphenated?: string;
+  onsale?: string;
+  format?: { code?: string; description?: string };
+  pages?: number;
+  pageCount?: number;
+  publisher?: string;
+  imprint?: string | { name?: string };
+  language?: string;
+}
+
+interface PrhSeriesRecord {
+  seriesCode?: string;
+  seriesName?: string;
+}
+
+const prhNormalize = (value?: string): string =>
+  value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+
+const prhRecordArrays = (value: unknown): Record<string, unknown>[] => {
+  if (!value || typeof value !== 'object') return [];
+  const found: Record<string, unknown>[] = [];
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (item && typeof item === 'object') found.push(item as Record<string, unknown>);
+      }
+      return;
+    }
+    if (node && typeof node === 'object') {
+      for (const child of Object.values(node as Record<string, unknown>)) visit(child);
+    }
+  };
+  visit(value);
+  return found;
+};
+
+const prhFetchJson = async (path: string, params: Record<string, string | number | boolean | undefined> = {}) => {
+  const apiKey = PENGUIN_RANDOM_HOUSE_API_KEY.value();
+  if (!apiKey) throw new HttpsError('failed-precondition', 'Series Detective Penguin Random House is not configured.');
+  const url = new URL(`${PRH_ENDPOINT}${path}`);
+  url.searchParams.set('api_key', apiKey);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) url.searchParams.set(key, String(value));
+  }
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Penguin Random House returned ${response.status}.`);
+  return response.json() as Promise<unknown>;
+};
+
+const prhFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audiobook' => {
+  const normalized = value?.toLocaleLowerCase() ?? '';
+  if (normalized.includes('audio')) return 'audiobook';
+  if (normalized.includes('ebook') || normalized.includes('digital')) return 'ebook';
+  if (normalized.includes('paper')) return 'paperback';
+  return 'hardcover';
+};
+
+const prhAuthorList = (record: PrhSearchRecord): string[] =>
+  record.author?.split(/s*(?:;|\band\b)\s*/i).map((value) => value.trim()).filter(Boolean)
+  ?? ['Unknown author'];
+
+const prhExtractSearchRecords = (payload: unknown): PrhSearchRecord[] =>
+  prhRecordArrays(payload).flatMap((record) => {
+    const title = typeof record.title === 'string' ? record.title : undefined;
+    const workId = typeof record.workId === 'string' || typeof record.workId === 'number' ? record.workId : undefined;
+    const seriesCode = typeof record.seriesCode === 'string' ? record.seriesCode : undefined;
+    const seriesName = typeof record.seriesName === 'string' ? record.seriesName : undefined;
+    if (!title && !workId && !seriesCode && !seriesName) return [];
+    return [{
+      workId,
+      isbn: typeof record.isbn === 'string' || typeof record.isbn === 'number' ? record.isbn : undefined,
+      title,
+      subtitle: typeof record.subtitle === 'string' ? record.subtitle : undefined,
+      author: typeof record.author === 'string' ? record.author : undefined,
+      coverUrl: typeof record.coverUrl === 'string' ? record.coverUrl : undefined,
+      seriesCode,
+      seriesName,
+      seriesNumber: typeof record.seriesNumber === 'string' || typeof record.seriesNumber === 'number'
+        ? record.seriesNumber
+        : undefined,
+    }];
+  });
+
+const prhExtractTitles = (payload: unknown): PrhTitleRecord[] =>
+  prhRecordArrays(payload).flatMap((record) => {
+    const isbn = typeof record.isbn === 'string' || typeof record.isbn === 'number' ? record.isbn : undefined;
+    const title = typeof record.title === 'string' ? record.title : undefined;
+    if (!isbn || !title) return [];
+    const formatObject = record.format && typeof record.format === 'object'
+      ? record.format as Record<string, unknown>
+      : undefined;
+    const imprintObject = record.imprint && typeof record.imprint === 'object'
+      ? record.imprint as Record<string, unknown>
+      : undefined;
+    return [{
+      workId: typeof record.workId === 'string' || typeof record.workId === 'number' ? record.workId : undefined,
+      isbn,
+      title,
+      subtitle: typeof record.subtitle === 'string' ? record.subtitle : undefined,
+      author: typeof record.author === 'string' ? record.author : undefined,
+      coverUrl: typeof record.coverUrl === 'string' ? record.coverUrl : undefined,
+      onsale: typeof record.onsale === 'string' ? record.onsale : undefined,
+      format: formatObject ? {
+        code: typeof formatObject.code === 'string' ? formatObject.code : undefined,
+        description: typeof formatObject.description === 'string' ? formatObject.description : undefined,
+      } : undefined,
+      pages: typeof record.pages === 'number' ? record.pages : undefined,
+      pageCount: typeof record.pageCount === 'number' ? record.pageCount : undefined,
+      publisher: typeof record.publisher === 'string' ? record.publisher : undefined,
+      imprint: typeof record.imprint === 'string'
+        ? record.imprint
+        : imprintObject && typeof imprintObject.name === 'string' ? { name: imprintObject.name } : undefined,
+      language: typeof record.language === 'string' ? record.language : undefined,
+      seriesCode: typeof record.seriesCode === 'string' ? record.seriesCode : undefined,
+      seriesName: typeof record.seriesName === 'string' ? record.seriesName : undefined,
+      seriesNumber: typeof record.seriesNumber === 'string' || typeof record.seriesNumber === 'number'
+        ? record.seriesNumber
+        : undefined,
+    }];
+  });
+
+const prhExtractSeries = (payload: unknown): PrhSeriesRecord[] =>
+  prhRecordArrays(payload).flatMap((record) => {
+    const seriesCode = typeof record.seriesCode === 'string' ? record.seriesCode : undefined;
+    const seriesName = typeof record.seriesName === 'string' ? record.seriesName : undefined;
+    return seriesCode || seriesName ? [{ seriesCode, seriesName }] : [];
+  });
+
+const prhSeriesPosition = (value: unknown): number | undefined => {
+  const parsed = typeof value === 'number' ? value : Number(String(value ?? '').match(/\d+(?:\.\d+)?/)?.[0]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+async function detectivePrhCatalog(
+  query: string,
+  expandSeries = false,
+  options: {
+    exactTitle?: string;
+    seriesName?: string;
+    anchorTitles?: string[];
+  } = {},
+) {
+  const searchPayload = await prhFetchJson('/search/views/search-display', {
+    q: query,
+    docType: 'work',
+    rows: 40,
+  });
+  const searchRecords = prhExtractSearchRecords(searchPayload);
+  const workRecords = new Map<string, PrhSearchRecord>();
+  for (const record of searchRecords) {
+    const key = String(record.workId ?? record.isbn ?? record.title ?? '');
+    if (key) workRecords.set(key, record);
+  }
+
+  if (expandSeries && options.seriesName?.trim()) {
+    try {
+      const seriesPayload = await prhFetchJson('/search/views/search-display', {
+        q: options.seriesName.trim(),
+        docType: 'series',
+        rows: 20,
+      });
+      const wanted = prhNormalize(options.seriesName);
+      const seriesMatches = prhExtractSeries(seriesPayload)
+        .filter((series) => series.seriesCode && prhNormalize(series.seriesName) === wanted)
+        .slice(0, 3);
+
+      for (const series of seriesMatches) {
+        const worksPayload = await prhFetchJson(
+          `/series/${encodeURIComponent(series.seriesCode!)}/works`,
+          { sort: 'seriesNumber', rows: 100 },
+        );
+        for (const record of prhExtractSearchRecords(worksPayload)) {
+          if (!record.seriesName) record.seriesName = series.seriesName;
+          if (!record.seriesCode) record.seriesCode = series.seriesCode;
+          const key = String(record.workId ?? record.isbn ?? record.title ?? '');
+          if (key) workRecords.set(key, record);
+        }
+      }
+    } catch (error) {
+      console.warn('Series Detective PRH series expansion unavailable.', error);
+    }
+  }
+
+  const records = [...workRecords.values()].slice(0, 80);
+  const groups = await Promise.all(records.map(async (record, index) => {
+    const workId = String(record.workId ?? '');
+    let titles: PrhTitleRecord[] = [];
+    let linkedSeries: PrhSeriesRecord[] = [];
+    if (workId) {
+      const [titlesResult, seriesResult] = await Promise.allSettled([
+        prhFetchJson(`/works/${encodeURIComponent(workId)}/titles`, { rows: 30 }),
+        prhFetchJson(`/works/${encodeURIComponent(workId)}/series`, { rows: 20 }),
+      ]);
+      if (titlesResult.status === 'fulfilled') titles = prhExtractTitles(titlesResult.value);
+      if (seriesResult.status === 'fulfilled') linkedSeries = prhExtractSeries(seriesResult.value);
+    }
+
+    const authors = prhAuthorList(record);
+    const primarySeries = linkedSeries.find((series) => series.seriesName?.trim())
+      ?? (record.seriesName ? { seriesName: record.seriesName, seriesCode: record.seriesCode } : undefined);
+    const normalizedEditions: NormalizedHardcoverEdition[] = (titles.length ? titles : [{
+      isbn: record.isbn,
+      title: record.title ?? 'Untitled',
+      subtitle: record.subtitle,
+      author: record.author,
+      coverUrl: record.coverUrl,
+      seriesCode: record.seriesCode,
+      seriesName: record.seriesName,
+      seriesNumber: record.seriesNumber,
+    }]).map((title, titleIndex) => {
+      const isbn = String(title.isbn ?? '').replace(/[^0-9X]/gi, '');
+      const position = prhSeriesPosition(title.seriesNumber ?? record.seriesNumber);
+      const seriesName = title.seriesName?.trim() ?? primarySeries?.seriesName?.trim();
+      const publicationYear = Number(title.onsale?.slice(0, 4));
+      const imprint = typeof title.imprint === 'string' ? title.imprint : title.imprint?.name;
+      return {
+        source: 'penguin-random-house' as const,
+        externalEditionId: String(title.isbn ?? `prh-${workId || index}-${titleIndex}`),
+        title: title.title ?? record.title ?? 'Untitled',
+        subtitle: title.subtitle ?? record.subtitle,
+        authors: title.author ? prhAuthorList(title) : authors,
+        genres: [] as string[],
+        publisher: title.publisher ?? imprint,
+        publicationDate: title.onsale,
+        publicationYear: Number.isFinite(publicationYear) && publicationYear > 0
+          ? publicationYear
+          : new Date().getFullYear(),
+        language: title.language,
+        format: prhFormat(title.format?.description ?? title.format?.code),
+        isbn10: isbn.length === 10 ? isbn : undefined,
+        isbn13: isbn.length === 13 ? isbn : undefined,
+        pageCount: title.pageCount ?? title.pages,
+        coverUrl: title.coverUrl ?? record.coverUrl ?? (isbn ? `https://images.randomhouse.com/cover/${isbn}` : undefined),
+        editionName: title.format?.description,
+        binding: title.format?.description,
+        specialFeatures: [] as string[],
+        seriesName,
+        seriesOrder: position,
+      };
+    });
+
+    return {
+      key: `penguin-random-house:${workId || record.isbn || index}`,
+      title: record.title ?? normalizedEditions[0]?.title ?? 'Untitled',
+      subtitle: record.subtitle ?? normalizedEditions[0]?.subtitle,
+      authors: normalizedEditions[0]?.authors ?? authors,
+      genres: [] as string[],
+      editions: normalizedEditions,
+    };
+  }));
+
+  return { groups, totalItems: groups.length };
+}
+
+export const searchSeriesDetectivePenguinRandomHouse = onCall(
+  { secrets: [PENGUIN_RANDOM_HOUSE_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Series Detective.');
+    const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
+    const expandSeries = request.data?.expandSeries === true;
+    const exactTitle = typeof request.data?.exactTitle === 'string' ? request.data.exactTitle.trim() : '';
+    const seriesName = typeof request.data?.seriesName === 'string' ? request.data.seriesName.trim() : '';
+    const anchorTitles = Array.isArray(request.data?.anchorTitles)
+      ? request.data.anchorTitles
+        .filter((value: unknown): value is string => typeof value === 'string')
+        .map((value: string) => value.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+      : [];
+    if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid Series Detective query is required.');
+
+    try {
+      return await detectivePrhCatalog(query, expandSeries, {
+        exactTitle: exactTitle || undefined,
+        seriesName: seriesName || undefined,
+        anchorTitles,
+      });
+    } catch (error) {
+      console.warn('Series Detective Penguin Random House catalog unavailable.', error);
+      return { groups: [], totalItems: 0 };
+    }
+  },
+);
+
+
 export const searchSeriesDetectiveGoogleBooks = onCall(
   { secrets: [GOOGLE_BOOKS_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
