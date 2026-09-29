@@ -19,9 +19,9 @@ import {
 } from '../../features/series/seriesOverrides';
 import {
   ownershipLabel,
-  readingStatusLabel,
   subscriptionServiceLabel,
 } from '../../domain/libraryTaxonomy';
+import { readingStatusLabelForBook } from '../../features/reading/customReadingStatuses';
 import { BookCover } from '../BookCover';
 
 interface SeriesLibraryPanelProps {
@@ -336,7 +336,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-gold)]">{displayPosition}</p>
                               <p className="truncate font-serif text-lg text-[var(--ink-ivory)]">{seriesBookDisplayTitle(book, item.name)}</p>
-                              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--ink-muted)]"><span>{readingStatusLabel(book.status)}</span><span>·</span><span>{displayOwnership(book)}</span>{book.rating ? <><span>·</span><span>{book.rating}/5</span></> : null}</div>
+                              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--ink-muted)]"><span>{readingStatusLabelForBook(book)}</span><span>·</span><span>{displayOwnership(book)}</span>{book.rating ? <><span>·</span><span>{book.rating}/5</span></> : null}</div>
                             </div>
                             <ChevronRight className="h-4 w-4 shrink-0 text-[var(--ink-faint)]" />
                           </button>
