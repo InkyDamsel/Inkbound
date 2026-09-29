@@ -7,7 +7,8 @@ import {
   PRIORITY_OPTIONS,
   READING_STATUS_OPTIONS,
 } from '../domain/libraryTaxonomy';
-import { searchGoogleBooks, searchGoogleBooksAuthorPage } from '../features/book-search/data/googleBooksApi';
+import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
+import { searchGoogleBooksAuthorPage } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
