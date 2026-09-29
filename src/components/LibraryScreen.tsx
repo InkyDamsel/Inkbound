@@ -123,8 +123,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   }, [allTags, tagFilter]);
 
   const filteredBooks = useMemo(() => books.filter((book) => {
-    if (activeCategory.startsWith('custom:')) {
-      const statusId = activeCategory.slice('custom:'.length);
+    if (activeCategory.startsWith('status:')) {
+      const statusId = activeCategory.slice('status:'.length);
       if (book.status !== 'custom' || book.customReadingStatusId !== statusId) return false;
     } else if (activeCategory !== 'all' && book.status !== activeCategory as ReadingStatus) return false;
 
@@ -209,7 +209,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)} className="inkbound-select" aria-label="Reading status filter">
               <option value="all">All reading statuses</option>
               {READING_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              {customReadingStatuses.length > 0 && <optgroup label="Custom statuses">{customReadingStatuses.map((status) => <option key={status.id} value={`custom:${status.id}`}>{status.name}</option>)}</optgroup>}
+              {customReadingStatuses.length > 0 && <optgroup label="Custom statuses">{customReadingStatuses.map((status) => <option key={status.id} value={`status:${status.id}`}>{status.name}</option>)}</optgroup>}
             </select>
             <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} className="inkbound-select" aria-label="Tag filter"><option value="all">All tags</option>{allTags.map(([normalized, label]) => <option key={normalized} value={normalized}>{label}</option>)}</select>
             <select value={materialFilter} onChange={(event) => setMaterialFilter(event.target.value)} className="inkbound-select"><option value="all">All reading types</option>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.pluralLabel ?? option.label}</option>)}</select>
