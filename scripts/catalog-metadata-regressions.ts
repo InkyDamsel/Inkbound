@@ -293,4 +293,49 @@ const prequelBook = createBookFromSearchEdition({
 assert.equal(prequelBook.work.seriesOrder, 0);
 assert.equal(normalizeLibraryRecord(prequelBook).work.seriesOrder, 0);
 
+// PRH is a publisher-owned source. When it identifies the exact same ISBN,
+ // its edition metadata may fill/override publisher-controlled fields such as
+ // page count without creating a second persisted work.
+const prhGoogleEdition = edition(
+  'google-books',
+  'google-prh-authority',
+  'Publisher Metadata Example',
+  'Example Author',
+  {
+    isbn13: '9780062059932',
+    pageCount: 320,
+  },
+);
+const prhPublisherEdition = edition(
+  'penguin-random-house',
+  'prh-publisher-authority',
+  'Publisher Metadata Example',
+  'Example Author',
+  {
+    isbn13: '9780062059932',
+    pageCount: 336,
+    publisher: 'Penguin Random House',
+    binding: 'Paperback',
+    seriesName: 'Example Series',
+    seriesOrder: 2,
+  },
+);
+const prhAuthorityGroups = hardenCatalogGroups([
+  group('google-prh-authority', 'Publisher Metadata Example', 'Example Author', [prhGoogleEdition]),
+  group('prh-publisher-authority', 'Publisher Metadata Example', 'Example Author', [prhPublisherEdition]),
+]);
+assert.equal(prhAuthorityGroups.length, 1);
+assert.equal(prhAuthorityGroups[0].editions.length, 1);
+const prhEnriched = enrichSelectedCatalogEdition(prhAuthorityGroups[0], prhPublisherEdition);
+assert.equal(prhEnriched.pageCount, 336);
+assert.equal(prhEnriched.publisher, 'Penguin Random House');
+assert.equal(prhEnriched.seriesName, 'Example Series');
+assert.equal(prhEnriched.seriesOrder, 2);
+const savedPrhBook = createBookFromSearchEdition({
+  work: prhAuthorityGroups[0],
+  edition: prhPublisherEdition,
+});
+assert.equal(savedPrhBook.editions[0].externalSource, 'penguin-random-house');
+assert.equal(savedPrhBook.sourceOfImport, 'Penguin Random House');
+
 console.log('Inkbound canonical catalog metadata regressions passed.');
