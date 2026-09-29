@@ -219,9 +219,10 @@ for (const feature of [
   'android.hardware.camera.autofocus',
   'android.hardware.camera.flash',
 ]) {
-  const escapedFeature = feature.replaceAll('.', '\\.');
+  const escapedFeature = feature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const optionalFeaturePattern = new RegExp(
-    `<uses-feature\\\\s+[^>]*android:name=["']${escapedFeature}["'][^>]*android:required=["']false["'][^>]*/?>|<uses-feature\\\\s+[^>]*android:required=["']false["'][^>]*android:name=["']${escapedFeature}["'][^>]*/?>`,
+    `<uses-feature\\s+[^>]*android:name=["']${escapedFeature}["'][^>]*android:required=["']false["'][^>]*/?>|<uses-feature\\s+[^>]*android:required=["']false["'][^>]*android:name=["']${escapedFeature}["'][^>]*/?>`,
+    'i',
   );
   if (!optionalFeaturePattern.test(manifestSource)) {
     fail(`AndroidManifest.xml must mark ${feature} as android:required="false" so the optional scanner does not reduce Play device compatibility.`);
