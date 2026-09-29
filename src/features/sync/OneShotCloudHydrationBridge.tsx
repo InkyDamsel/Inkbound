@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
+import { mergeIncomingBookQuoteState } from '../reading/bookQuotePersistence';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import {
