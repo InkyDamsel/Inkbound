@@ -37,7 +37,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       return undefined;
     }
 
-    if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid, { requireFullReconciliation: true })) setReadyUid(uid);
+    if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
     else setReadyUid(null);
 
     // This boundary only gates a genuinely new/unhydrated account. Existing
@@ -50,7 +50,7 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
       recoverIncompleteLatestImport();
       reconcileRepeatedImportHistory(readStoredBooks());
 
-      if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid, { requireFullReconciliation: true })) setReadyUid(uid);
+      if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
 
       void synchronizeProfileMedia(uid).catch(() => {
         // Offline/background failures are expected. The durable media queue will
