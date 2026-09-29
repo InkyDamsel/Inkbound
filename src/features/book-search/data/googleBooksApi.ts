@@ -5,6 +5,7 @@ import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
+import { searchPenguinRandomHouse } from './penguinRandomHouseApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { catalogTitlesAreCompatible, hardenCatalogGroups } from '../catalogHardening';
 
@@ -71,6 +72,7 @@ const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
 let googleBackoffUntil = 0;
 let hardcoverBackoffUntil = 0;
+let prhBackoffUntil = 0;
 
 const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
@@ -406,6 +408,19 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
   }
 }
 
+async function searchPrhWithBackoff(query: string): Promise<BookSearchResponse> {
+  if (Date.now() < prhBackoffUntil) return { groups: [], totalItems: 0 };
+  try {
+    return await searchPenguinRandomHouse(buildGoogleBooksQuery(query));
+  } catch (error) {
+    if (shouldBackOffCatalog(error)) {
+      prhBackoffUntil = Math.max(prhBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+    }
+    console.warn('Penguin Random House supplement failed.', error);
+    return { groups: [], totalItems: 0 };
+  }
+}
+
 function cacheSearchResponse(cacheKey: string, response: BookSearchResponse): BookSearchResponse {
   if (response.groups.length > 0) {
     searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
@@ -436,34 +451,36 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   if (isIsbnLookup) {
     const trusted = await searchTrustedCatalogBaseline(trimmed);
     if (trusted.groups.length > 0) {
-      const [google, openLibrary, hardcover] = await Promise.all([
+      const [google, openLibrary, hardcover, prh] = await Promise.all([
         searchGoogleBaseline(trimmed, signal),
         searchOpenLibraryWithAuthorFallback(trimmed, signal),
         searchHardcoverWithBackoff(trimmed),
+        searchPrhWithBackoff(trimmed),
       ]);
       return cacheSearchResponse(cacheKey, {
-        groups: mergeGroups(trusted.groups, [google.groups, openLibrary.groups, hardcover.groups]),
+        groups: mergeGroups(trusted.groups, [google.groups, openLibrary.groups, hardcover.groups, prh.groups]),
         totalItems: trusted.totalItems,
       });
     }
   }
 
-  const [google, openLibrary, hardcover] = await Promise.all([
+  const [google, openLibrary, hardcover, prh] = await Promise.all([
     searchGoogleBaseline(trimmed, signal),
     searchOpenLibraryWithAuthorFallback(trimmed, signal),
     searchHardcoverWithBackoff(trimmed),
+    searchPrhWithBackoff(trimmed),
   ]);
 
   if (google.groups.length > 0) {
     return cacheSearchResponse(cacheKey, {
-      groups: mergeGroups(google.groups, [openLibrary.groups, hardcover.groups]),
+      groups: mergeGroups(google.groups, [openLibrary.groups, hardcover.groups, prh.groups]),
       totalItems: google.totalItems,
     });
   }
 
   if (openLibrary.groups.length > 0) {
     return cacheSearchResponse(cacheKey, {
-      groups: mergeGroups(openLibrary.groups, [hardcover.groups]),
+      groups: mergeGroups(openLibrary.groups, [hardcover.groups, prh.groups]),
       totalItems: openLibrary.totalItems,
     });
   }
@@ -472,13 +489,14 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     const trusted = await searchTrustedCatalogBaseline(trimmed);
     if (trusted.groups.length > 0) {
       return cacheSearchResponse(cacheKey, {
-        groups: mergeGroups(trusted.groups, [hardcover.groups]),
+        groups: mergeGroups(trusted.groups, [hardcover.groups, prh.groups]),
         totalItems: trusted.totalItems,
       });
     }
   }
 
   if (hardcover.groups.length > 0) return cacheSearchResponse(cacheKey, hardcover);
+  if (prh.groups.length > 0) return cacheSearchResponse(cacheKey, prh);
 
   return { groups: [], totalItems: 0 };
 }
