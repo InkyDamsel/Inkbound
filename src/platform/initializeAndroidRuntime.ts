@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { CapacitorHttp, registerPlugin } from '@capacitor/core';
 import { FirebaseAppCheck } from '@capacitor-firebase/app-check';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -15,6 +15,7 @@ import { auth, functions } from '../lib/firebase';
 import { configureRuntimeAuthentication } from './runtimeAuthentication';
 import { configureRuntimeExport } from './runtimeExport';
 import { configureRuntimeLifecycle } from './runtimeLifecycle';
+import { configureRuntimeMedia } from './runtimeMedia';
 import { initializeNativeSecurityRuntime } from './runtimeNativeSecurityBootstrap';
 import {
   PremiumBillingPlan,
@@ -220,6 +221,38 @@ export async function initializeAndroidRuntime() {
       }
       const url = await getStripeSubscriptionPortalUrl();
       await PlayBilling.openExternal({ url });
+    },
+  });
+
+  configureRuntimeMedia({
+    fetchDataUrl: async (url) => {
+      if (!url) return '';
+      if (url.startsWith('data:')) return url;
+
+      // Local bundled assets still use the WebView's normal fetch path.
+      if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) return '';
+          const blob = await response.blob();
+          return `data:${blob.type || 'application/octet-stream'};base64,${await blobToBase64(blob)}`;
+        } catch {
+          return '';
+        }
+      }
+
+      try {
+        const response = await CapacitorHttp.get({ url, responseType: 'arraybuffer' });
+        if (response.status < 200 || response.status >= 300 || typeof response.data !== 'string') return '';
+        if (response.data.startsWith('data:')) return response.data;
+        const headers = response.headers ?? {};
+        const mime = String(headers['content-type'] ?? headers['Content-Type'] ?? 'image/jpeg')
+          .split(';')[0]
+          .trim() || 'image/jpeg';
+        return `data:${mime};base64,${response.data}`;
+      } catch {
+        return '';
+      }
     },
   });
 
