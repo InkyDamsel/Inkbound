@@ -1,6 +1,6 @@
 import type { Format } from '../../types';
 
-export type SeriesDetectiveSource = 'google-books' | 'open-library' | 'hardcover';
+export type SeriesDetectiveSource = 'google-books' | 'open-library' | 'hardcover' | 'penguin-random-house';
 
 export interface SeriesDetectiveEdition {
   source: SeriesDetectiveSource;
