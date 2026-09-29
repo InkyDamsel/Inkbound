@@ -35,6 +35,7 @@ const providerLabel = (source: BookSearchEdition['source']): string => {
   if (source === 'inkbound-catalog') return 'Inkbound Trusted Catalog';
   if (source === 'open-library') return 'Open Library';
   if (source === 'hardcover') return 'Hardcover';
+  if (source === 'penguin-random-house') return 'Penguin Random House';
   return 'Google Books';
 };
 
