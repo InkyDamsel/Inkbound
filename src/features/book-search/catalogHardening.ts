@@ -261,6 +261,7 @@ export const catalogEditionQualityScore = (edition: BookSearchEdition): number =
   // they must not displace stronger canonical edition evidence just because
   // they happen to return more optional fields.
   if (edition.source === 'inkbound-catalog') score += 30;
+  else if (edition.source === 'penguin-random-house') score += 22;
   else if (edition.source === 'google-books') score += 18;
   else if (edition.source === 'hardcover') score += 14;
   else if (edition.source === 'open-library') score += 10;
@@ -286,6 +287,7 @@ const exactIsbnAnchorScore = (edition: BookSearchEdition): number => {
   // reliably; Open Library can now contribute physical_format when present.
   if (edition.binding?.trim()) score += 80;
   if (edition.source === 'inkbound-catalog') score += 60;
+  else if (edition.source === 'penguin-random-house') score += 45;
   else if (edition.source === 'hardcover') score += 35;
   else if (edition.source === 'open-library') score += 15;
   else if (edition.source === 'google-books') score += 5;
@@ -295,6 +297,7 @@ const exactIsbnAnchorScore = (edition: BookSearchEdition): number => {
 const exactIsbnPageCountAuthority = (edition: BookSearchEdition): number => {
   if (!edition.pageCount) return 0;
   if (edition.source === 'inkbound-catalog') return 40;
+  if (edition.source === 'penguin-random-house') return 35;
   // Google Books defines pageCount as publisher metadata. Prefer it when
   // multiple providers disagree about the same ISBN.
   if (edition.source === 'google-books') return 30;
