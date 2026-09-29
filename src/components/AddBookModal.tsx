@@ -55,6 +55,7 @@ type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => Barc
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS.filter((option) => option.value !== 'custom') as Array<{ value: Exclude<ReadingStatus, 'custom' | 'wishlist'>; label: string; description?: string }>;
 const SCANNER_REVIEW_PAGE_SIZE = 6;
+const AUTHOR_CATALOG_PAGE_SIZE = 12;
 const builtInStatusLabel = (value: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value;
 const isCustomReadingStatusSelection = (selection: ReadingStatusSelection): selection is CustomReadingStatusSelection =>
   selection.startsWith('custom:');
@@ -145,6 +146,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [authorProviderTotal, setAuthorProviderTotal] = useState<number | null>(null);
   const [authorHasMore, setAuthorHasMore] = useState(false);
   const [isLoadingAuthorMore, setIsLoadingAuthorMore] = useState(false);
+  const [authorCatalogPage, setAuthorCatalogPage] = useState(1);
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [customReadingStatuses, setCustomReadingStatuses] = useState<CustomReadingStatus[]>(() => readCustomReadingStatuses());
   const [creatingCustomReadingStatus, setCreatingCustomReadingStatus] = useState(false);
@@ -369,6 +371,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setAuthorProviderTotal(null);
     setAuthorHasMore(false);
     setIsLoadingAuthorMore(false);
+    setAuthorCatalogPage(1);
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
@@ -451,6 +454,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setAuthorProviderTotal(null);
     setAuthorHasMore(false);
     setIsLoadingAuthorMore(false);
+    setAuthorCatalogPage(1);
   };
 
   const chooseSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
@@ -498,6 +502,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
     setPendingSearchEdition(null);
   };
+
+  const authorCatalogTotalPages = authorPage
+    ? Math.max(1, Math.ceil(results.length / AUTHOR_CATALOG_PAGE_SIZE))
+    : 1;
+  const safeAuthorCatalogPage = Math.min(authorCatalogPage, authorCatalogTotalPages);
+  const visibleSearchResults = authorPage
+    ? results.slice(
+        (safeAuthorCatalogPage - 1) * AUTHOR_CATALOG_PAGE_SIZE,
+        safeAuthorCatalogPage * AUTHOR_CATALOG_PAGE_SIZE,
+      )
+    : results;
 
   const handleManualAdd = () => {
     if (!title.trim() || !author.trim()) return;
@@ -604,7 +619,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
             {results.length > 0 && (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {results.map((work) => {
+                {visibleSearchResults.map((work) => {
                   const edition = work.editions[0];
                   if (!edition) return null;
                   const key = searchEditionKey(work, edition);
@@ -669,16 +684,38 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 })}
               </div>
             )}
-            {authorPage && authorHasMore && !isSearching && (
-              <div className="flex justify-center">
+            {authorPage && !isSearching && results.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => void loadMoreAuthorBooks()}
-                  disabled={isLoadingAuthorMore}
-                  className="quiet-shelf-secondary-action min-h-11 px-5 disabled:opacity-50"
+                  onClick={() => setAuthorCatalogPage((current) => Math.max(1, current - 1))}
+                  disabled={safeAuthorCatalogPage <= 1 || isLoadingAuthorMore}
+                  className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40"
                 >
-                  {isLoadingAuthorMore ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
-                  {isLoadingAuthorMore ? 'Loading…' : 'Load more books'}
+                  <ArrowLeft className="h-4 w-4" /> Previous
+                </button>
+                <span className="min-w-[110px] text-center text-sm font-semibold text-[#ad9fac]">
+                  Page {safeAuthorCatalogPage} of {authorCatalogTotalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (safeAuthorCatalogPage < authorCatalogTotalPages) {
+                      setAuthorCatalogPage((current) => current + 1);
+                      return;
+                    }
+                    if (!authorHasMore) return;
+                    const previousLength = results.length;
+                    await loadMoreAuthorBooks();
+                    window.setTimeout(() => {
+                      setAuthorCatalogPage(Math.floor(previousLength / AUTHOR_CATALOG_PAGE_SIZE) + 1);
+                    }, 0);
+                  }}
+                  disabled={isLoadingAuthorMore || (safeAuthorCatalogPage >= authorCatalogTotalPages && !authorHasMore)}
+                  className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40"
+                >
+                  {isLoadingAuthorMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {isLoadingAuthorMore ? 'Loading…' : 'Next'}
                 </button>
               </div>
             )}
