@@ -9,6 +9,7 @@ const gradlePath = path.join(androidDir, 'app', 'build.gradle');
 const manifestPath = path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
 const mainActivityPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
 const billingPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
+const barcodePluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'InkboundBarcodeScannerPlugin.java');
 const keystorePropertiesPath = path.join(androidDir, 'keystore.properties');
 const expectedPackage = 'com.inkydameinteractive.inkbound';
 
@@ -205,6 +206,20 @@ for (const required of ['queryProductDetailsAsync', 'launchBillingFlow', 'queryP
 if (!fs.existsSync(mainActivityPath) || !fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(PlayBillingPlugin.class)')) {
   fail('MainActivity does not register PlayBillingPlugin.');
 }
+if (!fs.existsSync(barcodePluginPath)) {
+  fail('InkboundBarcodeScannerPlugin.java is missing. Android ISBN scanning cannot use the native fallback.');
+}
+const barcodePlugin = fs.readFileSync(barcodePluginPath, 'utf8');
+for (const required of ['GmsBarcodeScanning.getClient', 'FORMAT_EAN_13', 'FORMAT_UPC_A', 'enableAutoZoom']) {
+  if (!barcodePlugin.includes(required)) fail(`InkboundBarcodeScannerPlugin.java is missing ${required}.`);
+}
+if (!fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(InkboundBarcodeScannerPlugin.class)')) {
+  fail('MainActivity does not register InkboundBarcodeScannerPlugin.');
+}
+const gradleSource = fs.readFileSync(gradlePath, 'utf8');
+if (!gradleSource.includes('com.google.android.gms:play-services-code-scanner:16.1.0')) {
+  fail('Google Play code scanner 16.1.0 is not wired into the Android app.');
+}
 
 if (!fs.existsSync(manifestPath)) {
   fail('AndroidManifest.xml is missing.');
@@ -232,5 +247,5 @@ for (const feature of [
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
 console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
-console.log('Inkbound Android camera permission and optional hardware compatibility verified for the book scanner.');
+console.log('Inkbound Android native barcode scanner, camera permission, and optional hardware compatibility verified.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
