@@ -213,9 +213,23 @@ const manifestSource = fs.readFileSync(manifestPath, 'utf8');
 if (!manifestSource.includes('android.permission.CAMERA')) {
   fail('AndroidManifest.xml must declare android.permission.CAMERA for the ISBN/stack scanner.');
 }
+for (const feature of [
+  'android.hardware.camera.any',
+  'android.hardware.camera',
+  'android.hardware.camera.autofocus',
+  'android.hardware.camera.flash',
+]) {
+  const escapedFeature = feature.replaceAll('.', '\\.');
+  const optionalFeaturePattern = new RegExp(
+    `<uses-feature\\\\s+[^>]*android:name=["']${escapedFeature}["'][^>]*android:required=["']false["'][^>]*/?>|<uses-feature\\\\s+[^>]*android:required=["']false["'][^>]*android:name=["']${escapedFeature}["'][^>]*/?>`,
+  );
+  if (!optionalFeaturePattern.test(manifestSource)) {
+    fail(`AndroidManifest.xml must mark ${feature} as android:required="false" so the optional scanner does not reduce Play device compatibility.`);
+  }
+}
 
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
 console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
-console.log('Inkbound Android camera permission verified for the book scanner.');
+console.log('Inkbound Android camera permission and optional hardware compatibility verified for the book scanner.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
