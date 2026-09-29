@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowDown, ArrowUp, CheckSquare, FolderHeart, Pencil, Plus, Search, Trash2, Undo2, X } from 'lucide-react';
 import type { ReadingStatus, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
@@ -717,16 +718,18 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
         </section>
       )}
 
-      {isEditorOpen && (
-        <div
-          className="fixed inset-0 z-[1000] flex overflow-y-auto bg-black/70 px-2 sm:px-4"
+      {isEditorOpen && typeof document !== 'undefined' && createPortal(
+<div
+          className="fixed inset-0 z-[2147483647] grid overflow-y-auto bg-black/70 px-2 sm:px-4"
           style={{
+            alignItems: 'safe center',
+            justifyItems: 'center',
             paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
             paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
           }}
         >
           <div
-            className="inkbound-panel mx-auto my-auto w-full max-w-xl overflow-y-auto rounded-3xl p-5 sm:p-6"
+            className="inkbound-panel w-full max-w-xl overflow-y-auto rounded-3xl p-5 sm:p-6"
             style={{
               maxHeight: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - max(1.5rem, env(safe-area-inset-bottom)))',
               WebkitOverflowScrolling: 'touch',
@@ -788,6 +791,8 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-secondary-action justify-center">Cancel</button><button type="button" onClick={saveCollection} disabled={!name.trim() || bannerBusy || (kind === 'smart' && !smartRules.some((rule) => rule.value.trim()))} className="quiet-shelf-primary-action justify-center disabled:opacity-40"><FolderHeart className="h-4 w-4" /> Save collection</button></div>
           </div>
         </div>
+      
+        , document.body
       )}
 
       {pendingDelete && (
