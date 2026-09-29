@@ -30,6 +30,7 @@ import {
   getAuxiliaryKeysToClearForOwnerChange,
 } from '../src/features/sync/auxiliaryAccountSyncConfig';
 import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
+import { bookMatchesLibrarySearch, normalizeLibrarySearchText } from '../src/features/library/librarySearch';
 import { normalizeBookRating, normalizeSpiceLevel } from '../src/features/reading/bookRating';
 import { mergeIncomingBookLoanState, withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
@@ -62,6 +63,16 @@ const baseBook = (): UserBookRecord => ({
 const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   id: crypto.randomUUID(), bookId: 'book-1', date: '2026-08-15', startTime: '20:00', endTime: '20:30', durationMinutes: 30, ...overrides,
 });
+
+// Library search must treat visually identical imported author metadata as the
+// same searchable text (NBSP/repeated whitespace/typographic punctuation).
+{
+  const book = baseBook();
+  book.work.author = 'Elle\u00a0Mitchell';
+  assert.equal(normalizeLibrarySearchText('  ELLE   MITCHELL '), 'elle mitchell');
+  assert.equal(bookMatchesLibrarySearch(book, 'elle mitchell'), true);
+  assert.equal(bookMatchesLibrarySearch(book, 'Regression Book'), true);
+}
 
 // Active-edition progress uses the selected edition total.
 {
