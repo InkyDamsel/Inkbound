@@ -3,8 +3,10 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
 const HARDCOVER_API_TOKEN = defineSecret('HARDCOVER_API_TOKEN');
 const GOOGLE_BOOKS_API_KEY = defineSecret('GOOGLE_BOOKS_API_KEY');
+const PENGUIN_RANDOM_HOUSE_API_KEY = defineSecret('PENGUIN_RANDOM_HOUSE_API_KEY');
 const HARDCOVER_ENDPOINT = 'https://api.hardcover.app/v1/graphql';
 const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
+const PRH_ENDPOINT = 'https://api.penguinrandomhouse.com/resources/v2/title/domains/PRH.US';
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 
 interface GoogleBibliographicSeriesInfo {
