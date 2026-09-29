@@ -30,7 +30,10 @@ export function normalizeLibraryRecord(book: UserBookRecord): UserBookRecord {
       ownership: 'wishlist',
       customOwnershipCategoryId: undefined,
     };
-  } else if (normalized.status === 'custom') {
+  } else if (normalized.status === 'custom' && !normalized.customReadingStatusId) {
+    // Legacy builds briefly used status='custom' for custom ownership before
+    // custom reading statuses had their own canonical id. Preserve modern
+    // custom reading statuses; only migrate records that lack that identity.
     normalized = normalized.customOwnershipCategoryId
       ? {
           ...normalized,
