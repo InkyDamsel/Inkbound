@@ -6,6 +6,7 @@ const root = process.cwd();
 const androidDir = path.join(root, 'android');
 const googleServicesPath = path.join(androidDir, 'app', 'google-services.json');
 const gradlePath = path.join(androidDir, 'app', 'build.gradle');
+const manifestPath = path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
 const mainActivityPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
 const billingPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
 const keystorePropertiesPath = path.join(androidDir, 'keystore.properties');
@@ -205,7 +206,16 @@ if (!fs.existsSync(mainActivityPath) || !fs.readFileSync(mainActivityPath, 'utf8
   fail('MainActivity does not register PlayBillingPlugin.');
 }
 
+if (!fs.existsSync(manifestPath)) {
+  fail('AndroidManifest.xml is missing.');
+}
+const manifestSource = fs.readFileSync(manifestPath, 'utf8');
+if (!manifestSource.includes('android.permission.CAMERA')) {
+  fail('AndroidManifest.xml must declare android.permission.CAMERA for the ISBN/stack scanner.');
+}
+
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
 console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
+console.log('Inkbound Android camera permission verified for the book scanner.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
