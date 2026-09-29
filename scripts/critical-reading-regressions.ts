@@ -32,6 +32,7 @@ import {
 import { normalizeLibraryRecord } from '../src/features/library/libraryNormalization';
 import { bookMatchesLibrarySearch, normalizeLibrarySearchText } from '../src/features/library/librarySearch';
 import { normalizeBookRating, normalizeSpiceLevel } from '../src/features/reading/bookRating';
+import { addSavedQuote, createSavedQuote, deleteSavedQuote, getPreferredSavedQuote, setFavoriteSavedQuote, updateSavedQuote } from '../src/features/reading/bookQuotes';
 import { mergeIncomingBookLoanState, withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
   shouldApplyRemoteTombstone,
@@ -72,6 +73,20 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(normalizeLibrarySearchText('  ELLE   MITCHELL '), 'elle mitchell');
   assert.equal(bookMatchesLibrarySearch(book, 'elle mitchell'), true);
   assert.equal(bookMatchesLibrarySearch(book, 'Regression Book'), true);
+}
+
+// Saved quotes live on the canonical book record and support add/edit/favorite/delete.
+{
+  let book = baseBook();
+  book = addSavedQuote(book, createSavedQuote('First quote', 'p. 12', 'Keep this', 'quote-1'));
+  book = addSavedQuote(book, createSavedQuote('Second quote', 'Chapter 4', '', 'quote-2'));
+  assert.equal(book.favoriteQuotes?.length, 2);
+  book = updateSavedQuote(book, 'quote-1', { quote: 'First quote edited' });
+  assert.equal(book.favoriteQuotes?.[0]?.quote, 'First quote edited');
+  book = setFavoriteSavedQuote(book, 'quote-2');
+  assert.equal(getPreferredSavedQuote(book)?.id, 'quote-2');
+  book = deleteSavedQuote(book, 'quote-1');
+  assert.deepEqual(book.favoriteQuotes?.map((quote) => quote.id), ['quote-2']);
 }
 
 // Active-edition progress uses the selected edition total.
