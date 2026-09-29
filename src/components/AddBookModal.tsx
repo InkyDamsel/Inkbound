@@ -26,6 +26,8 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
+import { scanBarcodeWithNativeAndroid } from '../platform/runtimeBarcodeScanner';
+import { isAndroidRuntime } from '../platform/runtimePlatform';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -314,6 +316,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const startCamera = async () => {
     setScannerError(null);
     setScannerMessage(null);
+
+    if (isAndroidRuntime()) {
+      try {
+        const raw = await scanBarcodeWithNativeAndroid();
+        if (raw) await lookupScannedIsbn(raw);
+      } catch (error) {
+        setScannerError(error instanceof Error ? error.message : 'Inkbound could not open the Android barcode scanner.');
+      }
+      return;
+    }
+
     const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
     if (!Detector) {
       setScannerError('Barcode scanning is not supported in this browser. You can still enter the ISBN manually.');
