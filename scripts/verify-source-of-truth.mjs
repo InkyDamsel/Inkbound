@@ -326,8 +326,12 @@ if (/Math\.max\(\s*0\s*,\s*\.\.\./.test(oneShotHydration)) {
 }
 
 const refreshBoundary = read('src/features/sync/CloudDataRefreshBoundary.tsx');
-for (const required of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid', 'hasEstablishedLocalWorkingCopy', 'notifyCloudDataUpdated']) {
+const syncReadiness = read('src/features/sync/syncReadiness.ts');
+for (const required of ['hasEstablishedLocalWorkingCopy', 'notifyCloudDataUpdated']) {
   if (!refreshBoundary.includes(required)) violations.push(`CloudDataRefreshBoundary.tsx: missing local-first startup safety ${required}`);
+}
+for (const required of ['SYNC_STORAGE_KEYS.localOwnerUid', 'SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid']) {
+  if (!syncReadiness.includes(required)) violations.push(`syncReadiness.ts: missing local-first startup safety ${required}`);
 }
 if (refreshBoundary.includes('getCloudDataRevision')) {
   violations.push('CloudDataRefreshBoundary.tsx: startup readiness must not depend on a global cloud revision from unrelated sync bridges');
@@ -428,9 +432,14 @@ if (/ownership\s*===\s*['"]wishlist['"][\s\S]{0,180}status\s*:\s*['"]wishlist['"
 }
 
 const cloudDataRefreshBoundary = read('src/features/sync/CloudDataRefreshBoundary.tsx');
-if (!cloudDataRefreshBoundary.includes('hasEstablishedLocalWorkingCopy')
-  || !cloudDataRefreshBoundary.includes('requireFullReconciliation')) {
-  violations.push('CloudDataRefreshBoundary.tsx: signed-in UI must use canonical full-reconciliation readiness before rendering account data.');
+const syncReadinessSource = read('src/features/sync/syncReadiness.ts');
+if (!cloudDataRefreshBoundary.includes('hasEstablishedLocalWorkingCopy')) {
+  violations.push('CloudDataRefreshBoundary.tsx: signed-in UI must use canonical local-working-copy readiness before rendering account data.');
+}
+if (!syncReadinessSource.includes('fullReconciliationVersionKey(uid)')
+  || !syncReadinessSource.includes('FULL_RECONCILIATION_VERSION')
+  || !syncReadinessSource.includes('hasCompletedFullReconciliation')) {
+  violations.push('syncReadiness.ts: canonical reconciliation readiness must own the current full-reconciliation version check.');
 }
 
 const largeBrowserStorage = read('src/platform/largeBrowserStorage.ts');
