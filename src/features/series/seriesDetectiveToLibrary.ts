@@ -15,6 +15,7 @@ const localDateKey = (value = new Date()): string => {
 const providerLabel = (source: SeriesDetectiveCandidate['edition']['source']): string => {
   if (source === 'open-library') return 'Open Library';
   if (source === 'hardcover') return 'Hardcover';
+  if (source === 'penguin-random-house') return 'Penguin Random House';
   return 'Google Books';
 };
 
