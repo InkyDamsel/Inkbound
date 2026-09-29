@@ -99,6 +99,11 @@ export const buildGoogleBooksQuery = (value: string): string => {
   return trimmed;
 };
 
+const buildGoogleBooksAuthorQuery = (authorName: string): string => {
+  const normalized = authorName.trim().replace(/"/g, '');
+  return `inauthor:"${normalized}"`;
+};
+
 const publicationYear = (value?: string): number => {
   const match = value?.match(/\d{4}/);
   return match ? Number(match[0]) : new Date().getFullYear();
@@ -299,11 +304,12 @@ export async function searchGoogleBooksAuthorPage(
 
   await waitUntilAdministrationInactive(signal);
 
+  const authorQuery = buildGoogleBooksAuthorQuery(trimmedAuthor);
   let payload: GoogleVolumesResponse;
   try {
     payload = functions && auth?.currentUser
-      ? await requestProtectedGoogleBooks(trimmedAuthor, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-      : await requestDirectGoogleBooks(trimmedAuthor, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+      ? await requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+      : await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
   } catch (protectedError) {
     if (signal?.aborted) throw protectedError;
 
@@ -312,7 +318,7 @@ export async function searchGoogleBooksAuthorPage(
       // is stale or unavailable. This uses the same canonical Google mapper and
       // query shape as normal Search; only the transport falls back to public.
       payload = await requestDirectGoogleBooks(
-        trimmedAuthor,
+        authorQuery,
         signal,
         startIndex,
         GOOGLE_BOOKS_PAGE_SIZE,
@@ -324,7 +330,7 @@ export async function searchGoogleBooksAuthorPage(
         directError,
       );
 
-      const fallback = await searchGoogleBooks(trimmedAuthor, signal);
+      const fallback = await searchGoogleBooks(authorQuery, signal);
       return {
         groups: fallback.groups,
         totalItems: fallback.totalItems,
