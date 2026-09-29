@@ -718,8 +718,24 @@ export const CollectionsScreen: React.FC<CollectionsScreenProps> = ({ books, onS
       )}
 
       {isEditorOpen && (
-        <div className="fixed inset-0 z-[180] grid place-items-center bg-black/70 p-4">
-          <div className="inkbound-panel max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-3xl p-5 sm:p-6">
+        <div
+          className="fixed inset-0 z-[1000] flex overflow-y-auto bg-black/70 px-2 sm:px-4"
+          style={{
+            paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+            paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+          }}
+        >
+          <div
+            className="inkbound-panel mx-auto my-auto w-full max-w-xl overflow-y-auto rounded-3xl p-5 sm:p-6"
+            style={{
+              maxHeight: 'calc(100dvh - max(1.5rem, env(safe-area-inset-top)) - max(1.5rem, env(safe-area-inset-bottom)))',
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehavior: 'contain',
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={editingId ? 'Edit collection' : 'New collection'}
+          >
             <div className="flex items-start justify-between gap-4"><div><p className="inkbound-kicker">Collection Builder</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">{editingId ? 'Edit collection' : 'New collection'}</h2></div><button type="button" onClick={() => setIsEditorOpen(false)} className="quiet-shelf-icon-button" aria-label="Close"><X className="h-5 w-5" /></button></div>
             <div className="mt-5 grid gap-4">
               <label className="text-xs font-semibold text-[var(--ink-muted)]">Name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]" /></label>
