@@ -5,6 +5,7 @@ import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import { getActiveEdition, getBookReadingState, withReadingStatus } from '../features/reading/bookReadingState';
+import { addSavedQuote, createSavedQuote, deleteSavedQuote, setFavoriteSavedQuote, updateSavedQuote } from '../features/reading/bookQuotes';
 import {
   getSessionDurationMinutes,
   getSessionListeningMinutes,
@@ -44,7 +45,7 @@ interface BookDetailsModalProps {
   onDeleteSession: (sessionId: string) => void;
 }
 
-type DetailsTab = 'details' | 'summary' | 'reading' | 'sessions' | 'editions';
+type DetailsTab = 'details' | 'summary' | 'quotes' | 'reading' | 'sessions' | 'editions';
 type CoverMode = 'choices' | 'search';
 
 const MAX_COVER_FILE_BYTES = 12 * 1024 * 1024;
@@ -107,6 +108,10 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
   const [publisherSummary, setPublisherSummary] = useState('');
   const [notes, setNotes] = useState('');
   const [review, setReview] = useState('');
+  const [quoteText, setQuoteText] = useState('');
+  const [quotePageOrChapter, setQuotePageOrChapter] = useState('');
+  const [quoteNote, setQuoteNote] = useState('');
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [tags, setTags] = useState('');
   const [collections, setCollections] = useState('');
 
@@ -121,6 +126,10 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
     setPublisherSummary(book?.work.publisherSummary ?? '');
     setNotes(book?.personalNotes ?? '');
     setReview(book?.review ?? '');
+    setQuoteText('');
+    setQuotePageOrChapter('');
+    setQuoteNote('');
+    setEditingQuoteId(null);
     setTags((book?.privateTags ?? []).join(', '));
     setCollections((book?.collections ?? []).join(', '));
     setCoverQuery(book ? `${book.work.title} ${book.work.author}` : '');
@@ -152,6 +161,34 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
   };
 
   const updateBook = (changes: Partial<UserBookRecord>) => onUpdateBook({ ...book, ...changes });
+  const resetQuoteEditor = () => {
+    setQuoteText('');
+    setQuotePageOrChapter('');
+    setQuoteNote('');
+    setEditingQuoteId(null);
+  };
+  const saveQuote = () => {
+    const trimmed = quoteText.trim();
+    if (!trimmed) return;
+    if (editingQuoteId) {
+      onUpdateBook(updateSavedQuote(book, editingQuoteId, {
+        quote: trimmed,
+        pageOrChapter: quotePageOrChapter.trim() || undefined,
+        note: quoteNote.trim() || undefined,
+      }));
+    } else {
+      onUpdateBook(addSavedQuote(book, createSavedQuote(trimmed, quotePageOrChapter, quoteNote)));
+    }
+    resetQuoteEditor();
+  };
+  const editQuote = (quoteId: string) => {
+    const quote = (book.favoriteQuotes ?? []).find((item) => item.id === quoteId);
+    if (!quote) return;
+    setQuoteText(quote.quote);
+    setQuotePageOrChapter(quote.pageOrChapter ?? '');
+    setQuoteNote(quote.note ?? '');
+    setEditingQuoteId(quote.id);
+  };
   const updateOptionalRating = (field: 'rating' | 'spiceLevel', value?: number) => {
     if (value !== undefined) {
       updateBook({ [field]: value });
@@ -356,7 +393,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
 
   const metadataLabel = activeEdition.externalSource === 'manual' ? 'Manual / user-edited' : activeEdition.externalSource ? `Verified via ${activeEdition.externalSource.replaceAll('-', ' ')}` : book.sourceOfImport?.toLowerCase().includes('import') ? 'Imported record' : 'Inkbound record';
   const tabs: Array<{ id: DetailsTab; label: string }> = [
-    { id: 'details', label: 'Book Details' }, { id: 'summary', label: 'Summary & Notes' }, { id: 'reading', label: 'Reading' }, { id: 'sessions', label: `Sessions (${bookSessions.length})` }, { id: 'editions', label: `Editions (${book.editions.length})` },
+    { id: 'details', label: 'Book Details' }, { id: 'summary', label: 'Summary & Notes' }, { id: 'quotes', label: `Quotes (${book.favoriteQuotes?.length ?? 0})` }, { id: 'reading', label: 'Reading' }, { id: 'sessions', label: `Sessions (${bookSessions.length})` }, { id: 'editions', label: `Editions (${book.editions.length})` },
   ];
 
   return (
@@ -370,6 +407,15 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
         <div className="flex-1 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-6">
           {activeTab === 'details' && <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><label className="text-xs font-bold text-[#f4efe6]">Title<input value={title} onChange={(e) => setTitle(e.target.value)} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Author<input value={author} onChange={(e) => setAuthor(e.target.value)} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Series<input value={seriesName} onChange={(e) => setSeriesName(e.target.value)} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Series #<input inputMode="decimal" type="number" min={0} step="0.5" value={seriesOrder} onChange={(e) => setSeriesOrder(e.target.value)} className="inkbound-select mt-2 w-full" /></label>{READING_STATUS_OPTIONS.length > 0 && <CustomReadingStatusBookControl book={book} onUpdateBook={onUpdateBook} />}<CustomOwnershipBookControl book={book} onUpdateBook={onUpdateBook} /><label className="text-xs font-bold text-[#f4efe6]">Priority<select value={book.priority} onChange={(e) => updateBook({ priority: e.target.value as Priority })} className="inkbound-select mt-2 w-full">{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-xs font-bold text-[#f4efe6]">Date Added<input type="date" value={book.dateAdded} onChange={(e) => updateBook({ dateAdded: e.target.value })} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Date Started<input type="date" value={book.dateStarted ?? ''} onChange={(e) => updateBook({ dateStarted: e.target.value || undefined })} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Date Finished<input type="date" value={book.dateFinished ?? ''} onChange={(e) => updateFinishedDate(e.target.value || undefined)} className="inkbound-select mt-2 w-full" /></label></div><label className="block text-xs font-bold text-[#f4efe6]">Tags<input value={tags} onChange={(e) => setTags(e.target.value)} className="inkbound-select mt-2 w-full" /></label><label className="block text-xs font-bold text-[#f4efe6]">Collections<input value={collections} onChange={(e) => setCollections(e.target.value)} className="inkbound-select mt-2 w-full" /></label><button type="button" onClick={saveDetails} className="quiet-shelf-primary-action"><Save className="h-4 w-4" /> Save Book Details</button></div>}
           {activeTab === 'summary' && <div className="space-y-5"><label className="block text-xs font-bold text-[#f4efe6]">My Summary<textarea rows={6} value={summary} onChange={(e) => setSummary(e.target.value)} className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label><label className="block text-xs font-bold text-[#f4efe6]">Publisher Summary<textarea rows={6} value={publisherSummary} onChange={(e) => setPublisherSummary(e.target.value)} className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label><label className="block text-xs font-bold text-[#f4efe6]">Review<textarea rows={5} value={review} onChange={(e) => setReview(e.target.value)} className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label><label className="block text-xs font-bold text-[#f4efe6]">Private Notes<textarea rows={5} value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label><button type="button" onClick={saveSummary} className="quiet-shelf-primary-action"><Save className="h-4 w-4" /> Save Summary & Notes</button></div>}
+          {activeTab === 'quotes' && <div className="space-y-5">
+            <section className="rounded-2xl border border-[#3d2448] bg-[#25132f] p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-[#e5c158]">{editingQuoteId ? 'Edit saved quote' : 'Save a quote'}</p><p className="mt-1 text-xs leading-5 text-stone-400">Quotes are saved with this book and can be used in Inkbound Studio share cards.</p></div>{editingQuoteId && <button type="button" onClick={resetQuoteEditor} className="quiet-shelf-secondary-action">Cancel</button>}</div>
+              <label className="mt-4 block text-xs font-bold text-[#f4efe6]">Quote<textarea rows={5} value={quoteText} onChange={(e) => setQuoteText(e.target.value)} placeholder="Paste or type the quote..." className="mt-2 w-full rounded-xl border border-[#3d2448] bg-[#120817] p-4 text-sm text-[#f4efe6]" /></label>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-xs font-bold text-[#f4efe6]">Page / Chapter / Location<input value={quotePageOrChapter} onChange={(e) => setQuotePageOrChapter(e.target.value)} placeholder="Optional" className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Note<input value={quoteNote} onChange={(e) => setQuoteNote(e.target.value)} placeholder="Why you saved it (optional)" className="inkbound-select mt-2 w-full" /></label></div>
+              <button type="button" onClick={saveQuote} disabled={!quoteText.trim()} className="quiet-shelf-primary-action mt-4 disabled:opacity-45"><Save className="h-4 w-4" /> {editingQuoteId ? 'Save Changes' : 'Save Quote'}</button>
+            </section>
+            {(book.favoriteQuotes?.length ?? 0) === 0 ? <div className="rounded-2xl border border-dashed border-[#3d2448] p-8 text-center text-sm text-stone-400">No saved quotes yet.</div> : <div className="space-y-3">{(book.favoriteQuotes ?? []).map((quote) => <article key={quote.id} className="rounded-2xl border border-[#3d2448] bg-[#120817] p-4"><div className="flex items-start justify-between gap-4"><div className="min-w-0"><p className="whitespace-pre-wrap font-serif text-lg leading-7 text-[#f4efe6]">“{quote.quote}”</p>{quote.pageOrChapter && <p className="mt-2 text-xs font-semibold text-[#e5c158]">{quote.pageOrChapter}</p>}{quote.note && <p className="mt-2 text-sm leading-6 text-stone-400">{quote.note}</p>}</div><button type="button" onClick={() => onUpdateBook(setFavoriteSavedQuote(book, quote.id))} className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${quote.isFavorite ? 'border-[#c5a059]/60 bg-[#c5a059]/15 text-[#e5c158]' : 'border-[#3d2448] text-stone-500'}`} aria-label={quote.isFavorite ? 'Favorite quote' : 'Make favorite quote'} title="Use as default Favorite Quote"><Star className={`h-4 w-4 ${quote.isFavorite ? 'fill-current' : ''}`} /></button></div><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => editQuote(quote.id)} className="quiet-shelf-secondary-action"><Pencil className="h-4 w-4" /> Edit</button><button type="button" onClick={() => { onUpdateBook(deleteSavedQuote(book, quote.id)); if (editingQuoteId === quote.id) resetQuoteEditor(); }} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" /> Delete</button></div></article>)}</div>}
+          </div>}
           {activeTab === 'reading' && <div className="space-y-5"><section className="rounded-2xl border border-[#3d2448] bg-[#25132f] p-5"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Reading Progress</p><p className="mt-1 font-serif text-4xl font-bold text-[#f4efe6]">{readingState.progressPercentage}%</p></div><BookOpen className="h-9 w-9 text-[#c5a059]" /></div></section><div className="grid gap-4 sm:grid-cols-3"><label className="text-xs font-bold text-[#f4efe6]">Pages Read<input inputMode="numeric" min={0} type="number" value={book.progressPages} onChange={(e) => onCorrectProgress(book.id, { progressPages: Math.max(0, Number(e.target.value) || 0) })} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Minutes Listened<input inputMode="numeric" min={0} type="number" value={book.progressMinutes} onChange={(e) => onCorrectProgress(book.id, { progressMinutes: Math.max(0, Number(e.target.value) || 0) })} className="inkbound-select mt-2 w-full" /></label><label className="text-xs font-bold text-[#f4efe6]">Progress %<input inputMode="numeric" min={0} max={100} type="number" value={readingState.progressPercentage} onChange={(e) => correctProgressPercentage(Number(e.target.value) || 0)} className="inkbound-select mt-2 w-full" /></label></div>{book.status === 'finished' && <p className="rounded-xl border border-[#c5a059]/25 bg-[#25132f] p-3 text-xs leading-5 text-stone-300">Finished status is independent from page totals. If this book was marked Finished by mistake, change its status above. Progress can still be corrected without erasing your finished date.</p>}<div className="grid gap-4 sm:grid-cols-2"><div><div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs font-bold text-[#f4efe6]">Rating</p><span className="flex items-center gap-1 text-xs text-[#e5c158]"><Star className="h-4 w-4 fill-current" />{bookRatingLabel(book.rating)}</span></div><IconStepRating value={book.rating} onChange={(rating) => updateOptionalRating('rating', rating)} kind="star" ariaLabel="Book rating" /></div><div><div className="mb-2 flex items-center justify-between gap-3"><p className="text-xs font-bold text-[#f4efe6]">Spice Level</p><span className="flex items-center gap-1 text-xs text-orange-300"><ChiliPepperIcon className="h-4 w-4" />{spiceLevelLabel(book.spiceLevel)}</span></div><IconStepRating value={book.spiceLevel} onChange={(spiceLevel) => updateOptionalRating('spiceLevel', spiceLevel)} kind="spice" ariaLabel="Spice level" allowZero /></div></div><button type="button" onClick={() => onStartSession(book)} className="quiet-shelf-primary-action"><Play className="h-4 w-4 fill-current" /> Start Reading Session</button></div>}
           {activeTab === 'sessions' && <div className="space-y-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
