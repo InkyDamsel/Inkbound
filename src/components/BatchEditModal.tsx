@@ -11,11 +11,13 @@ import {
   readingStatusLabel,
 } from '../domain/libraryTaxonomy';
 import { readCustomOwnershipCategories } from '../features/ownership/customOwnershipCategories';
+import { readCustomReadingStatuses } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingStatus, UserBookRecord } from '../types';
 import { IconStepRating } from './reading/IconStepRating';
 
 export interface BatchEditChanges {
   status?: ReadingStatus;
+  customReadingStatusId?: string | null;
   ownership?: OwnershipStatus;
   customOwnershipCategoryId?: string | null;
   format?: Format;
@@ -49,6 +51,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const first = selectedBooks[0];
   const uniform = <T,>(read: (book: UserBookRecord) => T) => first && selectedBooks.every((book) => read(book) === read(first));
   const customOwnershipCategories = useMemo(() => readCustomOwnershipCategories(), []);
+  const customReadingStatuses = useMemo(() => readCustomReadingStatuses(), []);
   const allTags = useMemo(
     () => [...new Set(books.flatMap((book) => book.privateTags ?? []).map((tag) => tag.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [books],
@@ -65,13 +68,19 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     () => [...new Set(selectedBooks.flatMap((book) => book.collections ?? []).map((collection) => collection.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [selectedBooks],
   );
+  const initialStatus = uniform((book) => book.status)
+    ? first.status === 'custom' && uniform((book) => book.customReadingStatusId)
+      ? `custom:${first.customReadingStatusId ?? ''}`
+      : first.status
+    : 'multiple';
+
   const initialOwnership = uniform((book) => book.ownership)
     ? first.ownership === 'custom' && uniform((book) => book.customOwnershipCategoryId)
       ? `custom:${first.customOwnershipCategoryId ?? ''}`
       : first.ownership
     : 'multiple';
 
-  const [status, setStatus] = useState<string>(uniform((book) => book.status) ? first.status : 'multiple');
+  const [status, setStatus] = useState<string>(initialStatus);
   const [ownership, setOwnership] = useState<string>(initialOwnership);
   const [priority, setPriority] = useState<string>(uniform((book) => book.priority) ? first.priority : 'multiple');
   const [format, setFormat] = useState('keep');
@@ -89,13 +98,21 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
   const changes = useMemo<BatchEditChanges>(() => {
     const finishDateChange = finishedMode === 'clear' ? null : finishedMode === 'set' && dateFinished ? dateFinished : undefined;
-    const explicitStatus = status !== 'multiple' && status !== 'keep' ? status as ReadingStatus : undefined;
+    const selectedCustomReadingStatusId = status.startsWith('custom:') ? status.slice('custom:'.length) : undefined;
+    const explicitStatus = status !== 'multiple' && status !== 'keep'
+      ? selectedCustomReadingStatusId !== undefined ? 'custom' : status as ReadingStatus
+      : undefined;
     const selectedCustomCategoryId = ownership.startsWith('custom:') ? ownership.slice('custom:'.length) : undefined;
     const selectedOwnership = ownership !== 'multiple' && ownership !== 'keep'
       ? selectedCustomCategoryId !== undefined ? 'custom' : ownership as OwnershipStatus
       : undefined;
     return {
       status: typeof finishDateChange === 'string' ? 'finished' : explicitStatus,
+      customReadingStatusId: typeof finishDateChange === 'string'
+        ? null
+        : explicitStatus
+          ? explicitStatus === 'custom' ? selectedCustomReadingStatusId || null : null
+          : undefined,
       ownership: selectedOwnership,
       customOwnershipCategoryId: selectedOwnership
         ? selectedOwnership === 'custom' ? selectedCustomCategoryId || null : null
@@ -115,7 +132,12 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
   const preview = useMemo(() => {
     const items: string[] = [];
-    if (changes.status) items.push(`Status → ${readingStatusLabel(changes.status)}`);
+    if (changes.status) {
+      const customLabel = changes.status === 'custom'
+        ? customReadingStatuses.find((status) => status.id === changes.customReadingStatusId)?.name
+        : undefined;
+      items.push(`Status → ${customLabel ?? readingStatusLabel(changes.status)}`);
+    }
     if (changes.ownership) {
       const customLabel = changes.ownership === 'custom'
         ? customOwnershipCategories.find((category) => category.id === changes.customOwnershipCategoryId)?.name
@@ -133,7 +155,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     if (changes.addCollection) items.push(`Add collection “${changes.addCollection}”`);
     if (changes.removeCollection) items.push(`Remove collection “${changes.removeCollection}”`);
     return items;
-  }, [changes, customOwnershipCategories]);
+  }, [changes, customOwnershipCategories, customReadingStatuses]);
 
   const field = (label: string, child: React.ReactNode) => <div><label className="mb-1 block font-bold text-[#f4efe6]">{label}</label>{child}</div>;
   const optionSet = <T extends string>(options: readonly { value: T; label: string }[]) => options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>);
@@ -154,7 +176,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
         <div className="flex-1 space-y-6 overflow-y-auto p-5 text-xs sm:p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {field('Reading Status', <select value={status} onChange={(event) => setStatus(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{status === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(READING_STATUS_OPTIONS)}</select>)}
+            {field('Reading Status', <select value={status} onChange={(event) => setStatus(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{status === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(READING_STATUS_OPTIONS)}{customReadingStatuses.length > 0 && <optgroup label="Custom statuses">{customReadingStatuses.map((customStatus) => <option key={customStatus.id} value={`custom:${customStatus.id}`}>{customStatus.name}</option>)}</optgroup>}</select>)}
             {field('Ownership', <select value={ownership} onChange={(event) => setOwnership(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{ownership === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom'))}{customOwnershipCategories.length > 0 && <optgroup label="Custom categories">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>)}
             {field('Primary Format', <select value={format} onChange={(event) => setFormat(event.target.value)} className={selectClass}><option value="keep">Keep Current Formats</option>{optionSet(FORMAT_OPTIONS)}</select>)}
             {field('Priority', <select value={priority} onChange={(event) => setPriority(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{priority === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(PRIORITY_OPTIONS)}</select>)}
