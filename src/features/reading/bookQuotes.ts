@@ -23,9 +23,19 @@ export const updateSavedQuote = (
   changes: Partial<Omit<FavoriteQuote, 'id'>>,
 ): UserBookRecord => ({
   ...book,
-  favoriteQuotes: (book.favoriteQuotes ?? []).map((quote) =>
-    quote.id === quoteId ? { ...quote, ...changes, quote: changes.quote?.trim() ?? quote.quote } : quote,
-  ),
+  favoriteQuotes: (book.favoriteQuotes ?? []).map((quote) => {
+    if (quote.id !== quoteId) return quote;
+    const next: FavoriteQuote = {
+      ...quote,
+      ...changes,
+      quote: changes.quote?.trim() ?? quote.quote,
+    };
+    if (!changes.pageOrChapter?.trim()) delete next.pageOrChapter;
+    else next.pageOrChapter = changes.pageOrChapter.trim();
+    if (!changes.note?.trim()) delete next.note;
+    else next.note = changes.note.trim();
+    return next;
+  }),
 });
 
 export const deleteSavedQuote = (book: UserBookRecord, quoteId: string): UserBookRecord => ({
