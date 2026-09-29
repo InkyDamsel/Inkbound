@@ -43,7 +43,13 @@
     <!-- Network access is required for Firebase and catalog services. Production
          cleartext traffic remains disabled at the application level above. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Required by the in-app ISBN/stack scanner (navigator.mediaDevices.getUserMedia). -->
+    <!-- Required by the optional in-app ISBN/stack scanner. Camera hardware
+         remains optional so Play does not exclude devices that can use Inkbound
+         without scanning (tablets, Chromebooks, cars, TVs, etc.). -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
