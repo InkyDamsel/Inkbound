@@ -347,7 +347,11 @@ export async function searchGoogleBooksAuthorPage(
   const editions = rawItems
     .map(mapGoogleVolume)
     .filter((item): item is BookSearchEdition => Boolean(item));
-  const groups = groupGoogleEditions(editions);
+  const googleGroups = groupGoogleEditions(editions);
+  const prh = startIndex === 0
+    ? await searchPrhWithBackoff(trimmedAuthor)
+    : { groups: [], totalItems: 0 };
+  const groups = hardenCatalogGroups([...googleGroups, ...prh.groups]);
   const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
   const nextStartIndex = startIndex + rawItems.length;
   const hasMore = rawItems.length > 0 && (
