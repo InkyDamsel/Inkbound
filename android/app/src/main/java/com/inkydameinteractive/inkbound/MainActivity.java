@@ -26,6 +26,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(LoanReminderPlugin.class);
         registerPlugin(PlayBillingPlugin.class);
+        registerPlugin(InkboundBarcodeScannerPlugin.class);
         super.onCreate(savedInstanceState);
         applyInkboundSystemBars();
     }
