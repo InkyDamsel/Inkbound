@@ -220,7 +220,7 @@ export { getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
 export { listAdminRecoveryPoints, restoreAdminRecoveryPoint } from './adminRecovery.js';
 export { previewAdminRecoveryPoint, restoreAdminRecoverySelection } from './adminSelectiveRecovery.js';
 export { searchHardcoverBooks } from './bookSearch.js';
-export { searchSeriesDetectiveHardcover, searchSeriesDetectiveGoogleBooks } from './seriesDetectiveCatalog.js';
+export { searchSeriesDetectiveHardcover, searchSeriesDetectiveGoogleBooks, searchSeriesDetectivePenguinRandomHouse } from './seriesDetectiveCatalog.js';
 export { submitMetadataContribution, getMetadataContributions, reviewMetadataContribution } from './metadataContributions.js';
 export { sendVerificationEmail } from './sendVerificationEmail.js';
 export { sendPasswordResetEmail } from './sendPasswordResetEmail.js';
