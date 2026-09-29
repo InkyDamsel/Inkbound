@@ -1,6 +1,7 @@
 import type { Format, UserBookRecord } from '../../types';
 import type { SeriesDetectiveEdition, SeriesDetectiveWorkGroup } from './seriesDetectiveCatalogTypes';
 import { searchSeriesDetectiveHardcover } from './seriesDetectiveHardcoverApi';
+import { searchSeriesDetectivePenguinRandomHouse } from './seriesDetectivePenguinRandomHouseApi';
 import { resolveEffectiveSeriesMetadata } from './seriesLibrary';
 import {
   buildSeriesDetectionQueries,
@@ -125,6 +126,35 @@ const hardcoverContextCandidates = (
     });
   });
 };
+
+const prhContextCandidates = (
+  groups: SeriesDetectiveWorkGroup[],
+  wantedSeriesName: string,
+  wantedAuthor: string,
+): DetectiveMergeCandidate[] => groups.flatMap((work) =>
+  work.editions.flatMap((edition) => {
+    const exactAuthor = !canonicalDetectiveAuthor(wantedAuthor)
+      || work.authors.some((author) => detectiveAuthorsCompatible(wantedAuthor, author));
+    const seriesName = edition.seriesName?.trim();
+    const structuredSeriesMatch = Boolean(
+      wantedSeriesName
+      && seriesName
+      && detectiveSeriesNamesCompatible(seriesName, wantedSeriesName),
+    );
+    if (!exactAuthor && !structuredSeriesMatch) return [];
+    return [{
+      work,
+      edition,
+      seriesName,
+      position: typeof edition.seriesOrder === 'number' && Number.isFinite(edition.seriesOrder)
+        ? edition.seriesOrder
+        : null,
+      provider: 'penguin-random-house' as const,
+      seriesProvider: seriesName ? 'penguin-random-house' as const : undefined,
+      seriesStructured: Boolean(seriesName),
+    }];
+  }),
+);
 
 const DERIVATIVE_SERIES_PRODUCT_PATTERN =
   /\b(?:box(?:ed)?\s+set|collection\s+set|series\s+sampler|sampler|coloring\s+book|colouring\s+book|omnibus|anthology|complete\s+.*\s+set|\d+[- ]book\s+(?:box\s+)?set|\d+[- ]book\s+collection)\b/i;
@@ -443,6 +473,8 @@ export async function detectSeriesForBook(
     openLibraryContext,
     hardcoverExact,
     hardcoverAuthor,
+    prhExact,
+    prhAuthor,
   ] = await Promise.all([
     Promise.all([workQuery, ...identifiers].map(async (query, index) => ({
       sourceId: `google-query-${index}`,
@@ -460,6 +492,12 @@ export async function detectSeriesForBook(
       { exactTitle: book.work.title },
     ),
     searchSeriesDetectiveHardcover(book.work.author),
+    searchSeriesDetectivePenguinRandomHouse(
+      `${book.work.title} ${book.work.author}`,
+      false,
+      { exactTitle: book.work.title },
+    ),
+    searchSeriesDetectivePenguinRandomHouse(book.work.author),
   ]);
 
   const catalogs = [
@@ -547,6 +585,11 @@ export async function detectSeriesForBook(
 
   providerCandidates.push(...hardcoverContextCandidates(
     [...hardcoverExact.groups, ...hardcoverAuthor.groups],
+    '',
+    book.work.author,
+  ));
+  providerCandidates.push(...prhContextCandidates(
+    [...prhExact.groups, ...prhAuthor.groups],
     '',
     book.work.author,
   ));
@@ -761,6 +804,9 @@ export async function findMissingSeriesBooks(
     hardcoverSeriesAndAuthor,
     hardcoverSeriesOnly,
     hardcoverAuthor,
+    prhSeriesAndAuthor,
+    prhSeriesOnly,
+    prhAuthor,
   ] = await Promise.all([
     Promise.all(queries.map((query) => safeDetectiveSearch(query, signal))),
     collectGoogleAuthorCatalogs(author, signal),
@@ -779,6 +825,16 @@ export async function findMissingSeriesBooks(
     ),
     searchSeriesDetectiveHardcover(seriesName),
     searchSeriesDetectiveHardcover(author),
+    searchSeriesDetectivePenguinRandomHouse(
+      `${seriesName} ${author}`,
+      true,
+      {
+        seriesName,
+        anchorTitles: seriesBooks.map((book) => book.work.title),
+      },
+    ),
+    searchSeriesDetectivePenguinRandomHouse(seriesName),
+    searchSeriesDetectivePenguinRandomHouse(author),
   ]);
   const catalogs = [...queryCatalogs, ...googleAuthorCatalogs];
   const openLibraryCandidates = [...openLibrarySeriesCandidates, ...openLibraryAuthorCandidates];
@@ -856,6 +912,15 @@ export async function findMissingSeriesBooks(
       ...hardcoverSeriesAndAuthor.groups,
       ...hardcoverSeriesOnly.groups,
       ...hardcoverAuthor.groups,
+    ],
+    seriesName,
+    author,
+  ));
+  providerCandidates.push(...prhContextCandidates(
+    [
+      ...prhSeriesAndAuthor.groups,
+      ...prhSeriesOnly.groups,
+      ...prhAuthor.groups,
     ],
     seriesName,
     author,
