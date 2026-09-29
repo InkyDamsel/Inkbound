@@ -208,7 +208,7 @@ interface HardcoverEdition {
 }
 
 interface NormalizedHardcoverEdition {
-  source: 'hardcover';
+  source: 'hardcover' | 'penguin-random-house';
   externalEditionId: string;
   title: string;
   subtitle?: string;
