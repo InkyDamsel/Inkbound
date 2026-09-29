@@ -3,9 +3,10 @@ import { BookOpen, ChevronLeft, ChevronRight, Lock, Pencil, Plus, Search, Sparkl
 import { UserBookRecord } from '../../types';
 import { useUserPlan } from '../../context/UserPlanContext';
 import { usePersistentState } from '../../hooks/usePersistentState';
-import { consumeLibrarySeriesFocusBookId } from '../../features/library/libraryNavigation';
+import { consumeLibrarySeriesFocusBookId, SERIES_FOCUS_BOOK_STORAGE_KEY } from '../../features/library/libraryNavigation';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
+import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
 import {
   buildSeriesLibrary,
   seriesBookDisplayTitle,
@@ -105,20 +106,34 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   }, [sortMode]);
 
   useEffect(() => {
-    const targetBookId = consumeLibrarySeriesFocusBookId();
-    if (!targetBookId) return;
-    const targetIndex = filtered.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
-    if (targetIndex < 0) return;
+    const focusRequestedSeries = () => {
+      const targetBookId = consumeLibrarySeriesFocusBookId();
+      if (!targetBookId) return;
+      const targetIndex = series.findIndex((item) => item.books.some(({ book }) => book.id === targetBookId));
+      if (targetIndex < 0) return;
 
-    const targetSeries = filtered[targetIndex];
-    setSearch('');
-    setCurrentPage(Math.floor(targetIndex / SERIES_PER_PAGE) + 1);
-    setExpandedSeriesId(targetSeries.id);
+      const targetSeries = series[targetIndex];
+      setSearch('');
+      const sortedIndex = filtered.findIndex((item) => item.id === targetSeries.id);
+      const targetPage = sortedIndex >= 0 ? Math.floor(sortedIndex / SERIES_PER_PAGE) + 1 : 1;
+      setCurrentPage(targetPage);
+      setExpandedSeriesId(targetSeries.id);
 
-    window.setTimeout(() => {
-      document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
-  }, [filtered]);
+      window.setTimeout(() => {
+        document.querySelector(`[data-series-id="${CSS.escape(targetSeries.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+    };
+
+    focusRequestedSeries();
+
+    const handleRuntimeFocus = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key === SERIES_FOCUS_BOOK_STORAGE_KEY) focusRequestedSeries();
+    };
+
+    window.addEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeFocus);
+    return () => window.removeEventListener(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, handleRuntimeFocus);
+  }, [filtered, series]);
 
   const goToPage = (page: number) => {
     const next = Math.max(1, Math.min(page, totalPages));
