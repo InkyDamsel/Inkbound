@@ -19,6 +19,14 @@ if (/getDefaultProguardFile\(['"]proguard-android\.txt['"]\)/.test(gradle)) {
   failures.push('deprecated proguard-android.txt must not be reintroduced.');
 }
 
+if (!/release\s*\{[\s\S]*?minifyEnabled\s+true/.test(gradle)) {
+  failures.push('release build must enable R8 minification/obfuscation.');
+}
+
+if (!/release\s*\{[\s\S]*?shrinkResources\s+true/.test(gradle)) {
+  failures.push('release build must enable resource shrinking.');
+}
+
 if (failures.length > 0) {
   console.error('Inkbound Android Gradle verification failed:');
   failures.forEach((failure) => console.error(`- ${failure}`));
