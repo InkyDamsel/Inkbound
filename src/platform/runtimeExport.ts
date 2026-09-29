@@ -1,3 +1,5 @@
+import { Directory, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { isNativeRuntime } from './runtimePlatform';
 
 export interface RuntimeTextExport {
@@ -56,15 +58,52 @@ const browserExportAdapter: RuntimeExportAdapter = {
   },
 };
 
+const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error('Could not prepare the file for export.'));
+  reader.onload = () => {
+    const result = typeof reader.result === 'string' ? reader.result : '';
+    const comma = result.indexOf(',');
+    if (comma < 0) {
+      reject(new Error('Could not prepare the file for export.'));
+      return;
+    }
+    resolve(result.slice(comma + 1));
+  };
+  reader.readAsDataURL(blob);
+});
+
+const writeNativeBinaryFile = async (
+  filename: string,
+  contents: Blob,
+  directory: Directory,
+): Promise<string> => {
+  const result = await Filesystem.writeFile({
+    path: `Inkbound/${filename}`,
+    data: await blobToBase64(contents),
+    directory,
+    recursive: true,
+  });
+  return result.uri;
+};
+
 const nativeSafeExportAdapter: RuntimeExportAdapter = {
-  exportTextFile: async () => {
-    throw new Error('Android file export is not connected to the native Filesystem/Share adapter yet.');
+  exportTextFile: async ({ filename, contents }) => {
+    const blob = new Blob([contents], { type: 'text/plain;charset=utf-8' });
+    await writeNativeBinaryFile(filename, blob, Directory.Documents);
   },
-  exportBinaryFile: async () => {
-    throw new Error('Android file export is not connected to the native Filesystem/Share adapter yet.');
+  exportBinaryFile: async ({ filename, contents }) => {
+    await writeNativeBinaryFile(filename, contents, Directory.Documents);
   },
-  shareBinaryFile: async () => {
-    throw new Error('Android sharing is not connected to the native Filesystem/Share adapter yet.');
+  shareBinaryFile: async ({ filename, contents, title, text }) => {
+    const uri = await writeNativeBinaryFile(filename, contents, Directory.Cache);
+    await Share.share({
+      title,
+      text,
+      files: [uri],
+      dialogTitle: title ?? 'Share from Inkbound',
+    });
+    return 'shared';
   },
 };
 
