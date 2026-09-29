@@ -64,6 +64,7 @@ import { withBookOwnership } from './features/ownership/bookOwnership';
 import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
 import { openLibrarySeriesForBook } from './features/library/libraryNavigation';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
+import { withCustomReadingStatus } from './features/reading/customReadingStatuses';
 import {
   applySessionProgressToBook,
   getSessionProgressEndpoint,
@@ -439,10 +440,9 @@ export default function App() {
       let updatedBook: UserBookRecord = { ...book };
       if (changes.format) updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
       if (changes.status) {
-        updatedBook = withReadingStatus(updatedBook, changes.status, today);
-        updatedBook.customReadingStatusId = changes.status === 'custom'
-          ? changes.customReadingStatusId ?? undefined
-          : undefined;
+        updatedBook = changes.status === 'custom' && changes.customReadingStatusId
+          ? withCustomReadingStatus(updatedBook, changes.customReadingStatusId)
+          : withReadingStatus(updatedBook, changes.status, today);
       }
       if (changes.ownership) {
         updatedBook = withBookOwnership(
