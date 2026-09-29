@@ -34,7 +34,7 @@ Readers must be signed in for Hardcover enrichment. If the token is missing, exp
 
 ## Penguin Random House
 
-Penguin Random House is used as a server-side Series Detective metadata provider. The API key must never be shipped in the browser bundle.
+Penguin Random House is used as a server-side catalog provider for canonical book search, ISBN enrichment, metadata merging, and Series Detective. The API key must never be shipped in the browser bundle.
 
 Store the key as a Firebase Functions secret:
 
@@ -48,7 +48,7 @@ Deploy the Detective function after setting or rotating the key:
 firebase deploy --only functions:searchSeriesDetectivePenguinRandomHouse
 ```
 
-Inkbound queries the PRH.US catalog, normalizes PRH Works/Titles into the shared Detective work/edition model, and treats PRH series name/number metadata as structured provider evidence. PRH results are merged with Google Books, Open Library, and Hardcover rather than persisted as a separate source of truth.
+Inkbound queries the PRH.US catalog, normalizes PRH Works/Titles into the shared work/edition model, and treats PRH series name/number metadata as structured provider evidence. PRH results participate in the same canonical merge used by Add Book search and ISBN lookup, and Series Detective consumes that same normalized provider evidence. PRH data is never persisted as a separate source of truth.
 
 ## Provider priority
 
