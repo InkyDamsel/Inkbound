@@ -104,7 +104,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
           <div className="relative z-10 flex h-full w-full flex-col justify-between p-2.5">
             <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-wide text-[#c5a059]">
               {showFormatBadge && (
-                <span className="flex items-center gap-1 rounded border border-white/10 bg-black/40 px-1.5 py-0.5 text-amber-200/90 backdrop-blur-xs">
+                <span className="flex items-center gap-1 whitespace-nowrap rounded border border-white/10 bg-black/40 px-1.5 py-0.5 text-amber-200/90 backdrop-blur-xs">
                   <FormatIcon className="h-3 w-3" />
                   <span className="hidden sm:inline">{format}</span>
                 </span>
@@ -139,7 +139,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
         )}
 
         {showRealCover && showFormatBadge && (
-          <div className="absolute left-2 top-2 z-20 flex items-center gap-1 rounded border border-white/15 bg-black/65 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-200 backdrop-blur-sm">
+          <div className="absolute left-2 top-2 z-20 flex items-center gap-1 whitespace-nowrap rounded border border-white/15 bg-black/65 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-200 backdrop-blur-sm">
             <FormatIcon className="h-3 w-3" />
             <span className="hidden sm:inline">{format}</span>
           </div>
