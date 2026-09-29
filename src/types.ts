@@ -79,6 +79,8 @@ export interface FavoriteQuote {
   quote: string;
   pageOrChapter?: string;
   note?: string;
+  /** Preferred quote for Studio/default display. Older records omit this. */
+  isFavorite?: boolean;
 }
 
 export interface LibraryLoan {
