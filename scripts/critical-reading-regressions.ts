@@ -33,6 +33,7 @@ import { normalizeLibraryRecord } from '../src/features/library/libraryNormaliza
 import { bookMatchesLibrarySearch, normalizeLibrarySearchText } from '../src/features/library/librarySearch';
 import { normalizeBookRating, normalizeSpiceLevel } from '../src/features/reading/bookRating';
 import { addSavedQuote, createSavedQuote, deleteSavedQuote, getPreferredSavedQuote, setFavoriteSavedQuote, updateSavedQuote } from '../src/features/reading/bookQuotes';
+import { mergeIncomingBookQuoteState } from '../src/features/reading/bookQuotePersistence';
 import { mergeIncomingBookLoanState, withBookOwnership } from '../src/features/ownership/bookOwnership';
 import {
   shouldApplyRemoteTombstone,
@@ -87,6 +88,24 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(getPreferredSavedQuote(book)?.id, 'quote-2');
   book = deleteSavedQuote(book, 'quote-1');
   assert.deepEqual(book.favoriteQuotes?.map((quote) => quote.id), ['quote-2']);
+}
+
+// Legacy cloud records that predate favoriteQuotes must not erase locally
+// persisted quote data. An explicit [] remains an intentional remote clear.
+{
+  const localWithQuote = addSavedQuote(
+    baseBook(),
+    createSavedQuote('Persistence is law.', 'Chapter 1', 'Regression guard', 'quote-persist'),
+  );
+  const legacyRemote = { ...baseBook() };
+  delete legacyRemote.favoriteQuotes;
+  const preserved = mergeIncomingBookQuoteState(localWithQuote, legacyRemote);
+  assert.equal(preserved.favoriteQuotes?.length, 1);
+  assert.equal(preserved.favoriteQuotes?.[0]?.quote, 'Persistence is law.');
+
+  const explicitRemoteClear = { ...baseBook(), favoriteQuotes: [] };
+  const cleared = mergeIncomingBookQuoteState(localWithQuote, explicitRemoteClear);
+  assert.deepEqual(cleared.favoriteQuotes, []);
 }
 
 // Active-edition progress uses the selected edition total.
