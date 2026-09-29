@@ -18,9 +18,9 @@ export type ReadingMaterialType =
   | 'short-story'
   | 'anthology';
 
-// `custom` is retained for compatibility with older reader-defined category
-// records. New built-in status assignments come from libraryTaxonomy.ts; legacy
-// values remain valid so synced/imported libraries are never rewritten silently.
+// Built-in status assignments come from libraryTaxonomy.ts. `custom` points to
+// a reader-defined account-synced status through UserBookRecord.customReadingStatusId.
+// `wishlist` remains compatibility-only because Wishlist is now ownership metadata.
 export type ReadingStatus = 'currently-reading' | 'tbr' | 'finished' | 'custom' | 'paused' | 'dnf' | 'wishlist';
 
 export type OwnershipStatus = 'owned' | 'borrowed-library' | 'borrowed-person' | 'subscription' | 'wishlist' | 'custom' | 'none';
@@ -92,6 +92,7 @@ export interface UserBookRecord {
   activeEditionId: string;
   editions: Edition[];
   status: ReadingStatus;
+  customReadingStatusId?: string;
   ownership: OwnershipStatus;
   // Canonical pointer for reader-defined ownership. It is meaningful only when
   // ownership === 'custom'. Library Collections remain owned by `collections`.
