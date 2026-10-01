@@ -386,6 +386,19 @@ if (bookshelfThroughTime.includes('navigator.share') || bookshelfThroughTime.inc
   violations.push('BookshelfThroughTimeScreen.tsx: sharing/export must stay behind runtimeExport instead of direct browser APIs');
 }
 
+const runtimeMediaSource = read('src/platform/runtimeMedia.ts');
+const shareMediaFunctionSource = read('functions/src/shareMedia.ts');
+for (const required of ['fetchShareImage', 'httpsCallable', 'fetch(url, { mode: \'cors\'']) {
+  if (!runtimeMediaSource.includes(required)) {
+    violations.push(`runtimeMedia.ts: share export media fallback must retain ${required}`);
+  }
+}
+for (const required of ['enforceAppCheck: ENFORCE_APP_CHECK', 'request.auth', 'MAX_IMAGE_BYTES', 'ALLOWED_HOST_SUFFIXES']) {
+  if (!shareMediaFunctionSource.includes(required)) {
+    violations.push(`shareMedia.ts: protected share-image proxy must retain ${required}`);
+  }
+}
+
 const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
 for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
