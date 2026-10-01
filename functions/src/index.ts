@@ -224,3 +224,5 @@ export { submitMetadataContribution, getMetadataContributions, reviewMetadataCon
 export { sendVerificationEmail } from './sendVerificationEmail.js';
 export { sendPasswordResetEmail } from './sendPasswordResetEmail.js';
 export { searchSeriesDetectivePenguinRandomHouse } from './seriesDetectiveCatalog.js';
+
+export { fetchShareImage } from './shareMedia.js';
