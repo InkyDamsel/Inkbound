@@ -185,6 +185,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const scanLoopRef = useRef<number | null>(null);
+  const scannerAudioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -226,6 +227,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   useEffect(() => () => {
     if (scanLoopRef.current !== null) cancelAnimationFrame(scanLoopRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
+    void scannerAudioContextRef.current?.close();
+    scannerAudioContextRef.current = null;
   }, []);
 
   const readingStatusSelectionLabel = (selection: ReadingStatusSelection) => {
@@ -274,6 +277,47 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setCameraActive(false);
   };
 
+  const playScannerSuccessFeedback = async () => {
+    try {
+      const AudioContextClass = window.AudioContext
+        ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioContextClass) {
+        const context = scannerAudioContextRef.current ?? new AudioContextClass();
+        scannerAudioContextRef.current = context;
+        if (context.state === 'suspended') await context.resume();
+
+        const now = context.currentTime;
+        const gain = context.createGain();
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+        gain.connect(context.destination);
+
+        const first = context.createOscillator();
+        first.type = 'sine';
+        first.frequency.setValueAtTime(660, now);
+        first.connect(gain);
+        first.start(now);
+        first.stop(now + 0.09);
+
+        const second = context.createOscillator();
+        second.type = 'sine';
+        second.frequency.setValueAtTime(880, now + 0.07);
+        second.connect(gain);
+        second.start(now + 0.07);
+        second.stop(now + 0.18);
+      }
+    } catch {
+      // Audio confirmation is best-effort and must never block a successful scan.
+    }
+
+    try {
+      navigator.vibrate?.(35);
+    } catch {
+      // Haptics are optional and unsupported on some browsers/devices.
+    }
+  };
+
   const lookupScannedIsbn = async (rawIsbn: string) => {
     const isbn = normalizeIsbn(rawIsbn);
     if (!(isbn.length === 10 || isbn.length === 13) || scannerBusy) {
@@ -305,6 +349,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       });
       setManualIsbn('');
       setScannerMessage(`Added “${work.title}” to this scan batch.`);
+      void playScannerSuccessFeedback();
     } catch (error) {
       setScannerError(error instanceof Error ? error.message : 'ISBN lookup failed. Please try again.');
     } finally {
