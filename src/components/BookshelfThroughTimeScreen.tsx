@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Eye, Sparkles } from 'lucide-react';
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Share2, Sparkles } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import {
@@ -8,6 +8,8 @@ import {
   readingMonthKey,
 } from '../features/reading/inkboundActivity';
 import { localDateKey } from '../features/reading/sessionAnalytics';
+import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
+import { fetchRuntimeMediaDataUrl } from '../platform/runtimeMedia';
 
 interface BookshelfThroughTimeScreenProps {
   books: UserBookRecord[];
@@ -101,6 +103,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     highlightNew: true,
   });
   const [shelfPage, setShelfPage] = useState(0);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
 
   const selectedMonth = availableMonths.includes(preferences.month)
     ? preferences.month
@@ -137,6 +140,190 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     updatePreference('month', availableMonths[nextIndex]);
   };
 
+  const createShelfPng = async () => {
+    const width = 1600;
+    const rowHeight = 225;
+    const headerHeight = 235;
+    const statsHeight = preferences.showStats ? 145 : 55;
+    const rows = Math.max(MINIMUM_SHELF_ROWS, Math.ceil(shelfBooks.length / BOOKS_PER_SHELF));
+    const height = headerHeight + rows * rowHeight + statsHeight;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Could not prepare the shelf image.');
+
+    const palettes: Record<ShelfTheme, { top: string; bottom: string; wood: string; accent: string }> = {
+      'quiet-library': { top: '#302923', bottom: '#171411', wood: '#68432f', accent: '#c5a059' },
+      'cozy-evening': { top: '#5a3929', bottom: '#211713', wood: '#7d4c31', accent: '#d29a6d' },
+      'midnight-study': { top: '#26283a', bottom: '#101119', wood: '#42352f', accent: '#d2ae68' },
+    };
+    const palette = palettes[preferences.theme];
+    const gradient = context.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, palette.top);
+    gradient.addColorStop(1, palette.bottom);
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, width, height);
+
+    const backgroundData = await fetchRuntimeMediaDataUrl(themeBackgroundImage);
+    if (backgroundData) {
+      try {
+        const background = new Image();
+        background.src = backgroundData;
+        await background.decode();
+        context.save();
+        context.globalAlpha = 0.32;
+        const scale = Math.max(width / background.width, height / background.height);
+        const drawWidth = background.width * scale;
+        const drawHeight = background.height * scale;
+        context.drawImage(background, (width - drawWidth) / 2, 0, drawWidth, drawHeight);
+        context.restore();
+      } catch {
+        // The themed gradient remains the canonical fallback if bundled art cannot be decoded.
+      }
+    }
+
+    context.fillStyle = 'rgba(0,0,0,.18)';
+    context.fillRect(0, 0, width, height);
+    context.fillStyle = 'rgba(255,255,255,.62)';
+    context.font = '600 24px Arial, sans-serif';
+    context.fillText(monthLabel(selectedMonth).toUpperCase(), 72, 76);
+    context.fillStyle = '#ffffff';
+    context.font = '54px Georgia, serif';
+    context.fillText('Your Reading Shelf', 72, 142);
+    context.fillStyle = 'rgba(255,255,255,.58)';
+    context.font = '22px Arial, sans-serif';
+    context.fillText('Every book here was finished in this month.', 72, 184);
+    context.fillStyle = palette.accent;
+    context.font = '700 22px Arial, sans-serif';
+    context.textAlign = 'right';
+    context.fillText(`${shelfBooks.length.toLocaleString()} books`, width - 72, 88);
+    context.textAlign = 'left';
+
+    const coverData = await Promise.all(shelfBooks.map(async (book) => {
+      const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
+      const dataUrl = edition?.coverUrl ? await fetchRuntimeMediaDataUrl(edition.coverUrl) : '';
+      return { book, dataUrl };
+    }));
+
+    for (let row = 0; row < rows; row += 1) {
+      const rowBooks = coverData.slice(row * BOOKS_PER_SHELF, row * BOOKS_PER_SHELF + BOOKS_PER_SHELF);
+      const shelfY = headerHeight + row * rowHeight + 165;
+      const gap = 22;
+      const availableWidth = width - 144;
+      const slotWidth = availableWidth / BOOKS_PER_SHELF;
+      for (let index = 0; index < rowBooks.length; index += 1) {
+        const { book, dataUrl } = rowBooks[index];
+        const { height: uiHeight, width: uiWidth } = getShelfBookDimensions(book, row * BOOKS_PER_SHELF + index);
+        const bookHeight = Math.round(118 + (uiHeight - 82) * 1.15);
+        const bookWidth = Math.max(64, Math.min(92, Math.round(bookHeight * (uiWidth / Math.max(uiHeight, 1)))));
+        const x = 72 + index * slotWidth + Math.max(0, (slotWidth - bookWidth - gap / 2) / 2);
+        const y = shelfY - bookHeight;
+        context.save();
+        context.shadowColor = 'rgba(0,0,0,.55)';
+        context.shadowBlur = 16;
+        context.shadowOffsetX = 6;
+        context.shadowOffsetY = 8;
+        if (dataUrl) {
+          try {
+            const image = new Image();
+            image.src = dataUrl;
+            await image.decode();
+            context.drawImage(image, x, y, bookWidth, bookHeight);
+          } catch {
+            context.fillStyle = '#60495a';
+            context.fillRect(x, y, bookWidth, bookHeight);
+          }
+        } else {
+          context.fillStyle = '#60495a';
+          context.fillRect(x, y, bookWidth, bookHeight);
+          context.fillStyle = '#fff';
+          context.font = '600 11px Arial, sans-serif';
+          context.textAlign = 'center';
+          context.fillText(book.work.title.slice(0, 12), x + bookWidth / 2, y + bookHeight / 2);
+          context.textAlign = 'left';
+        }
+        context.restore();
+
+        if (preferences.showRatings && book.rating) {
+          context.fillStyle = 'rgba(0,0,0,.82)';
+          context.fillRect(x + bookWidth - 48, shelfY - 25, 48, 25);
+          context.fillStyle = '#f8d889';
+          context.font = '700 14px Arial, sans-serif';
+          context.fillText(`★ ${book.rating}`, x + bookWidth - 43, shelfY - 8);
+        }
+      }
+
+      context.fillStyle = palette.wood;
+      context.fillRect(72, shelfY, width - 144, 16);
+      context.fillStyle = 'rgba(0,0,0,.38)';
+      context.fillRect(82, shelfY + 16, width - 164, 8);
+    }
+
+    if (preferences.showStats) {
+      const statsY = headerHeight + rows * rowHeight + 32;
+      context.fillStyle = 'rgba(0,0,0,.28)';
+      context.fillRect(72, statsY, width - 144, 82);
+      const stats = [
+        [String(shelfBooks.length), 'Books this month'],
+        [String(booksFinishedThisMonth.length), 'Finished this month'],
+        [totalPages.toLocaleString(), 'Pages represented'],
+        [averageRating ? averageRating.toFixed(1) : '—', 'Average rating'],
+      ];
+      stats.forEach(([value, label], index) => {
+        const x = 72 + ((width - 144) / 4) * (index + 0.5);
+        context.textAlign = 'center';
+        context.fillStyle = '#fff';
+        context.font = '34px Georgia, serif';
+        context.fillText(value, x, statsY + 38);
+        context.fillStyle = 'rgba(255,255,255,.58)';
+        context.font = '15px Arial, sans-serif';
+        context.fillText(label, x, statsY + 64);
+      });
+      context.textAlign = 'left';
+    }
+
+    context.fillStyle = 'rgba(255,255,255,.48)';
+    context.font = '600 17px Arial, sans-serif';
+    context.textAlign = 'right';
+    context.fillText('Created with Inkbound', width - 72, height - 22);
+    context.textAlign = 'left';
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not create the shelf PNG.')), 'image/png', 1);
+    });
+    const slug = selectedMonth.replace(/[^0-9-]+/g, '');
+    return { filename: `inkbound-reading-shelf-${slug}.png`, blob };
+  };
+
+  const shareShelf = async () => {
+    setShareMessage(null);
+    try {
+      const { filename, blob } = await createShelfPng();
+      const result = await shareRuntimeBinaryFile({
+        filename,
+        mimeType: 'image/png',
+        contents: blob,
+        title: `My ${monthLabel(selectedMonth)} Inkbound shelf`,
+        text: `I finished ${shelfBooks.length} ${shelfBooks.length === 1 ? 'book' : 'books'} in ${monthLabel(selectedMonth)}. Made with Inkbound.`,
+      });
+      setShareMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the shelf was saved instead.');
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : 'Sharing was cancelled.');
+    }
+  };
+
+  const saveShelf = async () => {
+    setShareMessage(null);
+    try {
+      const { filename, blob } = await createShelfPng();
+      await exportRuntimeBinaryFile({ filename, mimeType: 'image/png', contents: blob });
+      setShareMessage('Shelf image saved.');
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : 'Could not save the shelf image.');
+    }
+  };
+
   return (
     <section className="space-y-6 pb-12">
       <header className="inkbound-panel overflow-hidden rounded-3xl p-5 sm:p-8">
@@ -148,7 +335,9 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
               Move through the months and see the books you finished in each part of your reading year.
             </p>
           </div>
-          <div className="flex min-w-0 w-full items-center gap-2 xl:w-auto">
+          <div className="flex min-w-0 w-full flex-wrap items-center gap-2 xl:w-auto">
+            <button type="button" onClick={() => void shareShelf()} disabled={shelfBooks.length === 0} className="quiet-shelf-primary-action min-h-11 shrink-0 justify-center disabled:opacity-40"><Share2 className="h-4 w-4" /> Share Shelf</button>
+            <button type="button" onClick={() => void saveShelf()} disabled={shelfBooks.length === 0} className="quiet-shelf-secondary-action min-h-11 shrink-0 justify-center disabled:opacity-40" aria-label="Save shelf PNG"><Download className="h-4 w-4" /> Save PNG</button>
             <button type="button" onClick={() => moveMonth(-1)} disabled={selectedIndex <= 0} className="quiet-shelf-icon-button shrink-0 disabled:opacity-30" aria-label="Previous month"><ChevronLeft /></button>
             <div className="min-w-0 flex-1 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 py-2 text-center xl:min-w-48 xl:flex-none xl:px-4">
               <span className="block text-[10px] uppercase tracking-wider text-[var(--ink-muted)] sm:text-xs">Shelf snapshot</span>
@@ -158,6 +347,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
           </div>
         </div>
       </header>
+      {shareMessage && <p role="status" className="px-1 text-sm text-[var(--ink-muted)]">{shareMessage}</p>}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className={`inkbound-themed-preview relative min-h-[560px] min-w-0 overflow-hidden rounded-3xl bg-gradient-to-br ${themeClasses[preferences.theme]} p-4 shadow-2xl sm:p-8`}>
