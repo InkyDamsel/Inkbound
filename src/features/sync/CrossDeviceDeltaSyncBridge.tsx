@@ -45,7 +45,7 @@ const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_KEY = SYNC_STORAGE_KEYS.profile;
 const OWNER_UID_KEY = SYNC_STORAGE_KEYS.localOwnerUid;
 const HYDRATION_REQUIRED_UID_KEY = SYNC_STORAGE_KEYS.hydrationRequiredOwnerUid;
-const FOREGROUND_FALLBACK_MS = 120000;
+const FOREGROUND_FALLBACK_MS = 600000;
 const QUERY_OVERLAP_MS = 5000;
 const LIVE_SIGNAL_DEBOUNCE_MS = 175;
 
@@ -175,9 +175,10 @@ function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<
  *
  * The working library stays local-first, but four tiny live Firestore signals
  * (latest book, latest session, latest tombstone, and profile) wake this bridge
- * immediately when another device changes cloud state. The actual reconciliation
- * still uses timestamp-bounded delta queries and the existing pending/conflict
- * rules, so live sync does not reintroduce stale-device overwrites.
+ * immediately when another device changes cloud state. A ten-minute foreground
+ * poll remains only as a safety net if a listener misses a wakeup. The actual
+ * reconciliation still uses timestamp-bounded delta queries and the existing
+ * pending/conflict rules, so live sync does not reintroduce stale-device overwrites.
  */
 export const CrossDeviceDeltaSyncBridge: React.FC = () => {
   const { user } = useAccountSync();
