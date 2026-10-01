@@ -349,6 +349,27 @@ if (/setDoc\([^\n]*syncTombstones|writeTombstones/.test(crossDeviceSync)) {
   violations.push('CrossDeviceDeltaSyncBridge.tsx: local deletion publication belongs only to the durable persistence bridge');
 }
 
+if (!crossDeviceSync.includes('const FOREGROUND_FALLBACK_MS = 600000;')) {
+  violations.push('CrossDeviceDeltaSyncBridge.tsx: foreground safety polling must remain cost-safe at 10 minutes while live listeners provide immediate wakeups');
+}
+
+const readerDirectoryMaintenance = read('functions/src/readerDirectoryMaintenance.ts');
+const adminDashboardStart = readerDirectoryMaintenance.indexOf('export const getAdminDashboard');
+const adminDashboardEnd = readerDirectoryMaintenance.indexOf('export const ', adminDashboardStart + 10);
+const adminDashboardSource = readerDirectoryMaintenance.slice(
+  adminDashboardStart,
+  adminDashboardEnd > adminDashboardStart ? adminDashboardEnd : readerDirectoryMaintenance.length,
+);
+if (adminDashboardSource.includes('reconcileDirectory()')) {
+  violations.push('readerDirectoryMaintenance.ts: opening Admin Dashboard must not trigger full directory reconciliation');
+}
+if (!adminDashboardSource.includes('const authUsers = await listAllAuthUsers();')) {
+  violations.push('readerDirectoryMaintenance.ts: Admin Dashboard must read Auth directly without write-producing reconciliation');
+}
+if (!readerDirectoryMaintenance.includes('directoryRecordChanged(existing, record)')) {
+  violations.push('readerDirectoryMaintenance.ts: explicit directory reconciliation must skip unchanged userDirectory writes');
+}
+
 const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
 for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
