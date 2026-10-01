@@ -370,6 +370,22 @@ if (!readerDirectoryMaintenance.includes('directoryRecordChanged(existing, recor
   violations.push('readerDirectoryMaintenance.ts: explicit directory reconciliation must skip unchanged userDirectory writes');
 }
 
+const bookshelfThroughTime = read('src/components/BookshelfThroughTimeScreen.tsx');
+for (const required of [
+  'shareRuntimeBinaryFile',
+  'exportRuntimeBinaryFile',
+  'fetchRuntimeMediaDataUrl',
+  'createShelfPng',
+  'Share Shelf',
+]) {
+  if (!bookshelfThroughTime.includes(required)) {
+    violations.push(`BookshelfThroughTimeScreen.tsx: shareable shelf export must retain ${required}`);
+  }
+}
+if (bookshelfThroughTime.includes('navigator.share') || bookshelfThroughTime.includes('document.createElement(\'a\')')) {
+  violations.push('BookshelfThroughTimeScreen.tsx: sharing/export must stay behind runtimeExport instead of direct browser APIs');
+}
+
 const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
 for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
