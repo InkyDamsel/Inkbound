@@ -140,6 +140,26 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     updatePreference('month', availableMonths[nextIndex]);
   };
 
+  const loadShelfCoverForExport = async (coverUrl?: string) => {
+    if (!coverUrl) return '';
+    const runtimeData = await fetchRuntimeMediaDataUrl(coverUrl);
+    if (runtimeData) return runtimeData;
+    if (typeof window === 'undefined') return '';
+    try {
+      const response = await fetch(coverUrl, { mode: 'cors', referrerPolicy: 'no-referrer' });
+      if (!response.ok) return '';
+      const blob = await response.blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(reader.error ?? new Error('Could not read cover image.'));
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return '';
+    }
+  };
+
   const createShelfPng = async () => {
     const width = 1600;
     const rowHeight = 225;
@@ -202,7 +222,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
 
     const coverData = await Promise.all(shelfBooks.map(async (book) => {
       const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-      const dataUrl = edition?.coverUrl ? await fetchRuntimeMediaDataUrl(edition.coverUrl) : '';
+      const dataUrl = await loadShelfCoverForExport(edition?.coverUrl);
       return { book, dataUrl };
     }));
 
@@ -235,12 +255,22 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
             context.fillRect(x, y, bookWidth, bookHeight);
           }
         } else {
-          context.fillStyle = '#60495a';
+          const fallback = context.createLinearGradient(x, y, x + bookWidth, y + bookHeight);
+          fallback.addColorStop(0, '#76586d');
+          fallback.addColorStop(1, '#30242d');
+          context.fillStyle = fallback;
           context.fillRect(x, y, bookWidth, bookHeight);
+          context.fillStyle = 'rgba(255,255,255,.16)';
+          context.fillRect(x, y, 4, bookHeight);
           context.fillStyle = '#fff';
           context.font = '600 11px Arial, sans-serif';
           context.textAlign = 'center';
-          context.fillText(book.work.title.slice(0, 12), x + bookWidth / 2, y + bookHeight / 2);
+          const title = book.work.title.length > 18 ? `${book.work.title.slice(0, 17)}…` : book.work.title;
+          context.fillText(title, x + bookWidth / 2, y + bookHeight / 2 - 5);
+          context.fillStyle = 'rgba(255,255,255,.68)';
+          context.font = '9px Arial, sans-serif';
+          const author = book.work.author.length > 18 ? `${book.work.author.slice(0, 17)}…` : book.work.author;
+          context.fillText(author, x + bookWidth / 2, y + bookHeight / 2 + 13);
           context.textAlign = 'left';
         }
         context.restore();
