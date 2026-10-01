@@ -68,14 +68,12 @@ async function removeInkboundDataForUid(uid: string) {
   });
 }
 
-async function canonicalDirectoryRecord(user: UserRecord) {
-  const [profileSnapshot, directorySnapshot] = await Promise.all([
-    db.doc(`users/${user.uid}/profile/current`).get(),
-    db.doc(`userDirectory/${user.uid}`).get(),
-  ]);
-
+async function canonicalDirectoryRecord(
+  user: UserRecord,
+  existing: Record<string, unknown>,
+) {
+  const profileSnapshot = await db.doc(`users/${user.uid}/profile/current`).get();
   const profile = profileData(profileSnapshot.data() ?? {});
-  const existing = directorySnapshot.data() ?? {};
 
   return {
     uid: user.uid,
@@ -84,9 +82,19 @@ async function canonicalDirectoryRecord(user: UserRecord) {
     photoUrl: text(profile.avatarImage) || text(user.photoURL) || text(existing.photoUrl),
     emailVerified: user.emailVerified,
     authProviderIds: user.providerData.map((provider) => provider.providerId),
-    updatedAt: FieldValue.serverTimestamp(),
-    ...(directorySnapshot.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
   };
+}
+
+function directoryRecordChanged(
+  existing: Record<string, unknown>,
+  next: Record<string, unknown>,
+): boolean {
+  return next.uid !== existing.uid
+    || next.email !== existing.email
+    || next.displayName !== existing.displayName
+    || next.photoUrl !== existing.photoUrl
+    || next.emailVerified !== existing.emailVerified
+    || JSON.stringify(next.authProviderIds ?? []) !== JSON.stringify(existing.authProviderIds ?? []);
 }
 
 async function listAllAuthUsers(): Promise<UserRecord[]> {
@@ -118,28 +126,45 @@ async function reconcileDirectory() {
 
   await Promise.all([...staleUids].map((uid) => removeInkboundDataForUid(uid)));
 
-  const canonicalRecords = await Promise.all(authUsers.map(async (user) => ({
-    user,
-    record: await canonicalDirectoryRecord(user),
-  })));
+  const directoryByUid = new Map(
+    directorySnapshot.docs.map((document) => [document.id, document.data() as Record<string, unknown>]),
+  );
+  const canonicalRecords = await Promise.all(authUsers.map(async (user) => {
+    const existing = directoryByUid.get(user.uid) ?? {};
+    return {
+      user,
+      existing,
+      record: await canonicalDirectoryRecord(user, existing),
+      exists: directoryByUid.has(user.uid),
+    };
+  }));
 
-  await Promise.all(canonicalRecords.map(({ user, record }) =>
-    db.doc(`userDirectory/${user.uid}`).set(record, { merge: true })));
+  const changedRecords = canonicalRecords.filter(({ existing, record, exists }) =>
+    !exists || directoryRecordChanged(existing, record));
+
+  await Promise.all(changedRecords.map(({ user, record, exists }) =>
+    db.doc(`userDirectory/${user.uid}`).set({
+      ...record,
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+    }, { merge: true })));
 
   return authUsers;
 }
 
 /**
- * Firebase Auth is the canonical account list. Each dashboard refresh reconciles
- * Firestore against Auth, removes stale Inkbound records for deleted Auth users,
- * and derives names/photos from the reader's canonical Inkbound profile.
+ * Firebase Auth is the canonical account list. Dashboard reads are intentionally
+ * read-only: opening or refreshing support tooling must never rewrite every
+ * reader directory record. Explicit maintenance paths can still call
+ * reconcileDirectory(), which now writes only records whose canonical fields
+ * actually changed.
  */
 export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const admin = await requireAdmin(request);
   const input = request.data as { query?: unknown } | undefined;
   const query = typeof input?.query === 'string' ? input.query.trim().toLowerCase() : '';
 
-  const authUsers = await reconcileDirectory();
+  const authUsers = await listAllAuthUsers();
   const [directorySnapshot, entitlementsSnapshot, auditSnapshot, adminsSnapshot] = await Promise.all([
     db.collection('userDirectory').get(),
     db.collection('entitlements').get(),
