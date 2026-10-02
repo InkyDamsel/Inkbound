@@ -13,7 +13,7 @@ type YearbookTheme = 'quiet-library' | 'winter-study' | 'celestial';
 type ExportFormat = 'story' | 'portrait' | 'square';
 interface YearbookPreferences { year: number; page: number; theme: YearbookTheme; exportFormat: ExportFormat; }
 const STORAGE_KEY = 'inkbound_year_in_books_preferences';
-const YEARBOOK_BACKGROUND_URL = '/assets/yearbook/cozy-yearbook-background.svg';
+const YEARBOOK_BACKGROUND_URL = '/assets/yearbook/cozy-yearbook-background.png';
 const themes: Record<YearbookTheme, { label: string; background: string; accent: string; text: string }> = {
   'quiet-library': { label: 'Quiet Library', background: '#171217', accent: '#a87d92', text: '#f4ece3' },
   'winter-study': { label: 'Winter Study', background: '#263036', accent: '#b8ced5', text: '#f5f1e9' },
