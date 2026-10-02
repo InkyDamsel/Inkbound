@@ -5,6 +5,7 @@ import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
+import { getPreferredSavedQuote } from '../features/reading/bookQuotes';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 
@@ -63,14 +64,24 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     activeBooks.forEach((book) => book.work.genres.forEach((genre) => genreCounts.set(genre, (genreCounts.get(genre) ?? 0) + 1)));
     const favoriteGenre = [...genreCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Still discovering';
     const highestRated = [...finishedBooks].filter((book) => typeof book.rating === 'number' && Number.isFinite(book.rating)).sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))[0];
-    const favoriteQuote = finishedBooks.flatMap((book) => book.favoriteQuotes ?? [])[0]?.quote;
+    const monthlyQuoteBooks = [...finishedBooks, ...activeBooks.filter((book) => !finishedBooks.some((finished) => finished.id === book.id))];
+    const quotedBook = monthlyQuoteBooks.find((book) => Boolean(getPreferredSavedQuote(book)));
+    const preferredQuote = quotedBook ? getPreferredSavedQuote(quotedBook) : undefined;
+    const favoriteQuote = preferredQuote?.quote;
+    const favoriteQuoteSource = quotedBook
+      ? {
+          title: quotedBook.work.title,
+          author: quotedBook.work.author,
+          pageOrChapter: preferredQuote?.pageOrChapter,
+        }
+      : undefined;
     const fiveStarReads = finishedBooks.filter((book) => book.rating === 5).length;
     const formatCounts = activeBooks.reduce<Record<string, number>>((counts, book) => { const format = getActiveEdition(book)?.format ?? 'unknown'; counts[format] = (counts[format] ?? 0) + 1; return counts; }, {});
     const topFormat = Object.entries(formatCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'No dominant format';
     const priorMinutes = priorSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
     const priorPages = getEffectivePagesReadForPeriod(books, sessions, priorRange.start, priorRange.end);
     const priorDays = new Set(priorSessions.map((session) => session.date)).size;
-    return { totalMinutes, pagesRead, readingDays, averageSession, longestSession, favoriteGenre, highestRated, favoriteQuote, fiveStarReads, topFormat, changes: { pages: percentageChange(pagesRead, priorPages), minutes: percentageChange(totalMinutes, priorMinutes), days: percentageChange(readingDays, priorDays), finishes: percentageChange(finishedBooks.length, priorFinishedBooks.length) } };
+    return { totalMinutes, pagesRead, readingDays, averageSession, longestSession, favoriteGenre, highestRated, favoriteQuote, favoriteQuoteSource, fiveStarReads, topFormat, changes: { pages: percentageChange(pagesRead, priorPages), minutes: percentageChange(totalMinutes, priorMinutes), days: percentageChange(readingDays, priorDays), finishes: percentageChange(finishedBooks.length, priorFinishedBooks.length) } };
   }, [activeBooks, books, finishedBooks, monthSessions, priorFinishedBooks.length, priorRange.end, priorRange.start, priorSessions, selectedRange.end, selectedRange.start, sessions]);
 
   const cards: WrappedCard[] = [
@@ -80,7 +91,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     { eyebrow: 'Your Month in Stories', title: stats.favoriteGenre, body: stats.highestRated ? `${stats.highestRated.work.title} was your highest-rated finish${stats.highestRated.rating ? ` at ${stats.highestRated.rating} stars` : ''}.` : 'Keep rating your finished books to reveal a monthly favorite.', footer: `${activeBooks.length} books appeared in recorded sessions · ${stats.topFormat} led your format mix` },
     { eyebrow: 'Your Standout Read', title: stats.highestRated?.work.title ?? 'Your favorite is still waiting', body: stats.highestRated ? `${stats.highestRated.work.author}${stats.highestRated.rating ? ` · ${stats.highestRated.rating} / 5` : ''}` : 'Finish and rate a book this month and Inkbound will remember the standout.', footer: stats.highestRated ? 'Highest-rated finish this month' : 'Built from your real ratings' },
     { eyebrow: 'How You Read', title: stats.topFormat === 'unknown' ? 'Your format mix is still forming' : `${stats.topFormat.replace('-', ' ')} led the month`, body: `${activeBooks.length} books appeared across your recorded sessions this month.`, footer: `${stats.pagesRead.toLocaleString()} pages · ${formatMinutes(stats.totalMinutes)} recorded reading time` },
-    { eyebrow: 'A Memory to Keep', title: stats.favoriteQuote ? `“${stats.favoriteQuote.slice(0, 110)}${stats.favoriteQuote.length > 110 ? '…' : ''}”` : 'A quiet month of reading, remembered.', body: stats.favoriteQuote ? 'A saved quote from a trustworthy finished book this month' : 'Save quotes while reading and Inkbound will feature one here.', footer: 'Created with Inkbound' },
+    { eyebrow: 'A Memory to Keep', title: stats.favoriteQuote ? `“${stats.favoriteQuote.slice(0, 110)}${stats.favoriteQuote.length > 110 ? '…' : ''}”` : 'A quiet month of reading, remembered.', body: stats.favoriteQuote ? `A saved quote from ${stats.favoriteQuoteSource?.title ?? 'your reading month'}` : 'Save quotes on books you read this month and Inkbound will feature one here.', footer: stats.favoriteQuoteSource ? `${stats.favoriteQuoteSource.author}${stats.favoriteQuoteSource.pageOrChapter ? ` · ${stats.favoriteQuoteSource.pageOrChapter}` : ''}` : 'Your saved reading moments will appear here' },
   ];
 
   const cardIndex = Math.min(preferences.currentCard, cards.length - 1);
