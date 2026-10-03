@@ -4,4 +4,5 @@
     <string name="title_activity_main">Inkbound</string>
     <string name="package_name">com.inkydameinteractive.inkbound</string>
     <string name="custom_url_scheme">com.inkydameinteractive.inkbound</string>
+    <string name="reading_widget_description">See your current read, active session, and next library due date.</string>
 </resources>
