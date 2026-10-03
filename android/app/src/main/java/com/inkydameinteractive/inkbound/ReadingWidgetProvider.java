@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 import android.view.View;
 import android.widget.RemoteViews;
 
@@ -38,13 +39,15 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             boolean running = prefs.getBoolean("timerRunning", false);
             long anchor = prefs.getLong("timerAnchorMillis", 0L);
             long elapsed = timerSeconds + (running && anchor > 0L ? Math.max(0L, (System.currentTimeMillis() - anchor) / 1000L) : 0L);
-            views.setTextViewText(R.id.widget_timer, formatDuration(elapsed));
+            long chronometerBase = SystemClock.elapsedRealtime() - (elapsed * 1000L);
+            views.setChronometer(R.id.widget_timer, chronometerBase, null, running);
 
             boolean hasBook = !title.isEmpty();
             boolean active = "active".equals(sessionMode);
             boolean paused = "paused".equals(sessionMode);
+            boolean finished = "finished".equals(sessionMode);
 
-            views.setViewVisibility(R.id.widget_timer, (active || paused) ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_timer, (active || paused || finished) ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_progress, hasBook && !progress.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_due, !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_start, hasBook && !active && !paused ? View.VISIBLE : View.GONE);
@@ -75,11 +78,4 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
         );
     }
 
-    private static String formatDuration(long totalSeconds) {
-        long hours = totalSeconds / 3600L;
-        long minutes = (totalSeconds % 3600L) / 60L;
-        long seconds = totalSeconds % 60L;
-        if (hours > 0L) return String.format("%d:%02d:%02d", hours, minutes, seconds);
-        return String.format("%02d:%02d", minutes, seconds);
-    }
 }
