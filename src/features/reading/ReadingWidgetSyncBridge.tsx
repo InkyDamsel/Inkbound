@@ -4,6 +4,7 @@ import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { INKBOUND_LOCAL_DATA_CHANGED_EVENT } from '../../platform/runtimeStorage';
 import {
   applyReadingWidgetAction,
+  buildReadingWidgetSnapshot,
   consumeAndroidReadingWidgetAction,
   syncAndroidReadingWidget,
 } from './readingWidget';
@@ -16,6 +17,7 @@ interface ReadingWidgetSyncBridgeProps {
 export function ReadingWidgetSyncBridge({ books, onOpenTimer }: ReadingWidgetSyncBridgeProps) {
   const booksRef = useRef(books);
   const openTimerRef = useRef(onOpenTimer);
+  const widgetSignatureRef = useRef('');
 
   useEffect(() => {
     booksRef.current = books;
@@ -29,7 +31,22 @@ export function ReadingWidgetSyncBridge({ books, onOpenTimer }: ReadingWidgetSyn
   useEffect(() => {
     let stopped = false;
 
-    const refresh = () => void syncAndroidReadingWidget(booksRef.current);
+    const refresh = () => {
+      const snapshot = buildReadingWidgetSnapshot(booksRef.current);
+      const signature = JSON.stringify({
+        sessionMode: snapshot.sessionMode,
+        bookId: snapshot.bookId,
+        title: snapshot.title,
+        author: snapshot.author,
+        progressLabel: snapshot.progressLabel,
+        dueTitle: snapshot.dueTitle,
+        dueDate: snapshot.dueDate,
+        dueLabel: snapshot.dueLabel,
+      });
+      if (signature === widgetSignatureRef.current) return;
+      widgetSignatureRef.current = signature;
+      void syncAndroidReadingWidget(booksRef.current);
+    };
     const consume = async () => {
       const action = await consumeAndroidReadingWidgetAction();
       if (!action || stopped) return;
