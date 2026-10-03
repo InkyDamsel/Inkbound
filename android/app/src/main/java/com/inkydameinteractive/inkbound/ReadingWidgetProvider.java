@@ -50,7 +50,7 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             views.setViewVisibility(R.id.widget_timer, (active || paused || finished) ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_progress, hasBook && !progress.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_due, !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_start, hasBook && !active && !paused ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_start, hasBook && "none".equals(sessionMode) ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_resume, paused ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_pause, active ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_stop, (active || paused) ? View.VISIBLE : View.GONE);
