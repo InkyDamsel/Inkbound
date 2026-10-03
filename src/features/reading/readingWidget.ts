@@ -28,7 +28,7 @@ export interface ActiveReadingDraft {
 type ReadingWidgetAction = 'start' | 'resume' | 'pause' | 'stop';
 
 interface ReadingWidgetSnapshot {
-  sessionMode: 'none' | 'active' | 'paused';
+  sessionMode: 'none' | 'active' | 'paused' | 'finished';
   bookId?: string;
   title?: string;
   author?: string;
@@ -150,7 +150,7 @@ export function buildReadingWidgetSnapshot(books: UserBookRecord[]): ReadingWidg
   const running = Boolean(draft?.isActive && draft.lastActiveAt);
   return {
     sessionMode: draft?.selectedBookId && (timerSeconds > 0 || draft.isActive || draft.isFinished)
-      ? (draft.isActive ? 'active' : 'paused')
+      ? (draft.isFinished ? 'finished' : draft.isActive ? 'active' : 'paused')
       : 'none',
     bookId: currentBook?.id,
     title: currentBook?.work.title,
