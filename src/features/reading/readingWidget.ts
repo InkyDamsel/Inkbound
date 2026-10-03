@@ -1,7 +1,7 @@
 import { registerPlugin } from '@capacitor/core';
 import type { UserBookRecord } from '../../types';
 import { isAndroidRuntime } from '../../platform/runtimePlatform';
-import { readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
+import { notifyRuntimeStorageChanged, readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
 
 export const ACTIVE_READING_DRAFT_KEY = 'inkbound_active_session_draft';
 
@@ -120,7 +120,9 @@ export function applyReadingWidgetAction(action: ReadingWidgetAction): {
     };
   }
 
-  writeRuntimeJson(ACTIVE_READING_DRAFT_KEY, next);
+  if (writeRuntimeJson(ACTIVE_READING_DRAFT_KEY, next)) {
+    notifyRuntimeStorageChanged(ACTIVE_READING_DRAFT_KEY);
+  }
   return { bookId: next.selectedBookId, shouldOpenTimer: true };
 }
 
