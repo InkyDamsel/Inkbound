@@ -10,6 +10,10 @@ const manifestPath = path.join(androidDir, 'app', 'src', 'main', 'AndroidManifes
 const mainActivityPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'MainActivity.java');
 const billingPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
 const barcodePluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'InkboundBarcodeScannerPlugin.java');
+const readingWidgetPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'ReadingWidgetPlugin.java');
+const readingWidgetProviderPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'ReadingWidgetProvider.java');
+const readingWidgetLayoutPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'layout', 'reading_widget.xml');
+const readingWidgetInfoPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'xml', 'reading_widget_info.xml');
 const keystorePropertiesPath = path.join(androidDir, 'keystore.properties');
 const expectedPackage = 'com.inkydameinteractive.inkbound';
 
@@ -221,12 +225,36 @@ if (!gradleSource.includes('com.google.android.gms:play-services-code-scanner:16
   fail('Google Play code scanner 16.1.0 is not wired into the Android app.');
 }
 
+for (const [filePath, label] of [
+  [readingWidgetPluginPath, 'ReadingWidgetPlugin.java'],
+  [readingWidgetProviderPath, 'ReadingWidgetProvider.java'],
+  [readingWidgetLayoutPath, 'reading_widget.xml'],
+  [readingWidgetInfoPath, 'reading_widget_info.xml'],
+]) {
+  if (!fs.existsSync(filePath)) fail(`${label} is missing. Android home-screen reading widget support is incomplete.`);
+}
+const readingWidgetPlugin = fs.readFileSync(readingWidgetPluginPath, 'utf8');
+for (const required of ['syncState', 'consumeAction', 'PENDING_ACTION', 'refreshWidgets']) {
+  if (!readingWidgetPlugin.includes(required)) fail(`ReadingWidgetPlugin.java is missing ${required}.`);
+}
+const readingWidgetProvider = fs.readFileSync(readingWidgetProviderPath, 'utf8');
+for (const required of ['setChronometer', '"start"', '"resume"', '"pause"', '"stop"', 'MainActivity.class']) {
+  if (!readingWidgetProvider.includes(required)) fail(`ReadingWidgetProvider.java is missing ${required}.`);
+}
+const mainActivitySource = fs.readFileSync(mainActivityPath, 'utf8');
+if (!mainActivitySource.includes('registerPlugin(ReadingWidgetPlugin.class)') || !mainActivitySource.includes('handleReadingWidgetIntent')) {
+  fail('MainActivity must register ReadingWidgetPlugin and route widget actions through the canonical app runtime.');
+}
+
 if (!fs.existsSync(manifestPath)) {
   fail('AndroidManifest.xml is missing.');
 }
 const manifestSource = fs.readFileSync(manifestPath, 'utf8');
 if (!manifestSource.includes('android.permission.CAMERA')) {
   fail('AndroidManifest.xml must declare android.permission.CAMERA for the ISBN/stack scanner.');
+}
+if (!manifestSource.includes('.ReadingWidgetProvider') || !manifestSource.includes('@xml/reading_widget_info')) {
+  fail('AndroidManifest.xml must register ReadingWidgetProvider with reading_widget_info metadata.');
 }
 for (const feature of [
   'android.hardware.camera.any',
@@ -248,4 +276,5 @@ console.log(`Inkbound Android Firebase configuration verified for ${expectedPack
 console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
 console.log('Inkbound Android native barcode scanner, camera permission, and optional hardware compatibility verified.');
+console.log('Inkbound Android reading home-screen widget wiring verified.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
