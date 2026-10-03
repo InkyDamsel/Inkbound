@@ -53,18 +53,33 @@ const localDateKey = (timestamp: number) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
+const addElapsedToDateBuckets = (
+  existing: Record<string, number> | undefined,
+  startTimestamp: number,
+  endTimestamp: number,
+) => {
+  const next = { ...(existing ?? {}) };
+  let cursor = startTimestamp;
+  while (cursor < endTimestamp) {
+    const date = new Date(cursor);
+    const nextMidnight = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0).getTime();
+    const segmentEnd = Math.min(endTimestamp, nextMidnight);
+    const seconds = Math.max(0, Math.floor((segmentEnd - cursor) / 1000));
+    const key = localDateKey(cursor);
+    next[key] = (next[key] ?? 0) + seconds;
+    cursor = segmentEnd;
+  }
+  return next;
+};
+
 const addElapsed = (draft: ActiveReadingDraft, now: number): ActiveReadingDraft => {
   if (!draft.isActive || !draft.lastActiveAt || now <= draft.lastActiveAt) return draft;
   const elapsed = Math.max(0, Math.floor((now - draft.lastActiveAt) / 1000));
   if (!elapsed) return { ...draft, lastActiveAt: now };
-  const bucket = localDateKey(draft.lastActiveAt);
   return {
     ...draft,
     timerSeconds: draft.timerSeconds + elapsed,
-    secondsByDate: {
-      ...(draft.secondsByDate ?? {}),
-      [bucket]: (draft.secondsByDate?.[bucket] ?? 0) + elapsed,
-    },
+    secondsByDate: addElapsedToDateBuckets(draft.secondsByDate, draft.lastActiveAt, now),
     lastActiveAt: now,
   };
 };
