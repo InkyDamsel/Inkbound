@@ -1,6 +1,7 @@
 package com.inkydameinteractive.inkbound;
 
 import android.os.Bundle;
+import android.content.Intent;
 
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -27,8 +28,24 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(LoanReminderPlugin.class);
         registerPlugin(PlayBillingPlugin.class);
         registerPlugin(InkboundBarcodeScannerPlugin.class);
+        registerPlugin(ReadingWidgetPlugin.class);
         super.onCreate(savedInstanceState);
+        handleReadingWidgetIntent(getIntent());
         applyInkboundSystemBars();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleReadingWidgetIntent(intent);
+    }
+
+    private void handleReadingWidgetIntent(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getStringExtra(ReadingWidgetProvider.EXTRA_WIDGET_ACTION);
+        if (action == null || action.isEmpty() || "open".equals(action)) return;
+        ReadingWidgetPlugin.storePendingAction(this, action);
     }
 
     @Override
