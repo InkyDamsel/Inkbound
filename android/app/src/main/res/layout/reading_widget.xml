@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="@drawable/reading_widget_background">
+
+    <TextView
+        android:id="@+id/widget_brand"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="INKBOUND"
+        android:textColor="#C79AB2"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.18" />
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:text="Inkbound"
+        android:textColor="#F6EDF0"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_author"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textColor="#C7B7C0"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="#B7A8B1"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/widget_timer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="00:00"
+        android:textColor="#F4E6D9"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:fontFamily="monospace"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_due"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textColor="#D8B56D"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Start a book in Inkbound to see it here."
+        android:textColor="#A997A3"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/widget_start"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_weight="1"
+            android:text="▶ Start"
+            android:textAllCaps="false"
+            android:textColor="#F7EDF2"
+            android:textSize="12sp"
+            android:backgroundTint="#7A5368"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/widget_resume"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_weight="1"
+            android:text="▶ Resume"
+            android:textAllCaps="false"
+            android:textColor="#F7EDF2"
+            android:textSize="12sp"
+            android:backgroundTint="#7A5368"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/widget_pause"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_weight="1"
+            android:text="Ⅱ Pause"
+            android:textAllCaps="false"
+            android:textColor="#F7EDF2"
+            android:textSize="12sp"
+            android:backgroundTint="#7A5368"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/widget_stop"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:text="■ Stop"
+            android:textAllCaps="false"
+            android:textColor="#F7EDF2"
+            android:textSize="12sp"
+            android:backgroundTint="#4D3945"
+            android:visibility="gone" />
+    </LinearLayout>
+</LinearLayout>
