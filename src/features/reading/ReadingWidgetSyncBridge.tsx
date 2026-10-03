@@ -35,7 +35,12 @@ export function ReadingWidgetSyncBridge({ books, onOpenTimer }: ReadingWidgetSyn
       if (!action || stopped) return;
       const result = applyReadingWidgetAction(action);
       await syncAndroidReadingWidget(booksRef.current);
-      if (result.shouldOpenTimer) openTimerRef.current(result.bookId);
+      if (result.shouldOpenTimer) {
+        const fallbackBookId = action === 'start'
+          ? booksRef.current.find((book) => book.status === 'currently-reading')?.id
+          : undefined;
+        openTimerRef.current(result.bookId ?? fallbackBookId);
+      }
     };
 
     const onLocalDataChanged = () => refresh();
