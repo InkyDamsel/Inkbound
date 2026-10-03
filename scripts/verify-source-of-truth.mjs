@@ -399,6 +399,31 @@ for (const required of ['enforceAppCheck: ENFORCE_APP_CHECK', 'request.auth', 'M
   }
 }
 
+const readingWidgetSource = read('src/features/reading/readingWidget.ts');
+const readingWidgetBridgeSource = read('src/features/reading/ReadingWidgetSyncBridge.tsx');
+for (const required of [
+  "ACTIVE_READING_DRAFT_KEY = 'inkbound_active_session_draft'",
+  'readRuntimeJson<ActiveReadingDraft',
+  'writeRuntimeJson(ACTIVE_READING_DRAFT_KEY, next)',
+  'buildReadingWidgetSnapshot',
+]) {
+  if (!readingWidgetSource.includes(required)) {
+    violations.push(`readingWidget.ts: Android widget must mirror/control the canonical reading draft through runtimeStorage (${required})`);
+  }
+}
+if (readingWidgetSource.includes('localStorage.')) {
+  violations.push('readingWidget.ts: Android widget must not create a direct localStorage side channel.');
+}
+for (const required of [
+  'applyReadingWidgetAction',
+  'syncAndroidReadingWidget',
+  'INKBOUND_LOCAL_DATA_CHANGED_EVENT',
+]) {
+  if (!readingWidgetBridgeSource.includes(required)) {
+    violations.push(`ReadingWidgetSyncBridge.tsx: missing canonical widget bridge behavior ${required}`);
+  }
+}
+
 const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
 for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
