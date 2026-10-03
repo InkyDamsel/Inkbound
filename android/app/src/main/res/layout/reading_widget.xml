@@ -46,7 +46,7 @@
         android:textColor="#B7A8B1"
         android:textSize="11sp" />
 
-    <TextView
+    <Chronometer
         android:id="@+id/widget_timer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
