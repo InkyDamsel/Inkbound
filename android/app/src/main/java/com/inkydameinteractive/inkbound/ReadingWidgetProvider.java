@@ -1,0 +1,85 @@
+package com.inkydameinteractive.inkbound;
+
+import android.app.PendingIntent;
+import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProvider;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.view.View;
+import android.widget.RemoteViews;
+
+public class ReadingWidgetProvider extends AppWidgetProvider {
+    static final String EXTRA_WIDGET_ACTION = "inkboundWidgetAction";
+
+    @Override
+    public void onUpdate(Context context, AppWidgetManager manager, int[] appWidgetIds) {
+        updateAll(context, manager, appWidgetIds);
+    }
+
+    static void updateAll(Context context, AppWidgetManager manager, int[] appWidgetIds) {
+        SharedPreferences prefs = context.getSharedPreferences(ReadingWidgetPlugin.PREFS, Context.MODE_PRIVATE);
+        for (int appWidgetId : appWidgetIds) {
+            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.reading_widget);
+
+            String sessionMode = prefs.getString("sessionMode", "none");
+            String title = prefs.getString("title", "");
+            String author = prefs.getString("author", "");
+            String progress = prefs.getString("progressLabel", "");
+            String dueTitle = prefs.getString("dueTitle", "");
+            String dueLabel = prefs.getString("dueLabel", "");
+
+            views.setTextViewText(R.id.widget_title, title.isEmpty() ? "Inkbound" : title);
+            views.setTextViewText(R.id.widget_author, author);
+            views.setTextViewText(R.id.widget_progress, progress);
+            views.setTextViewText(R.id.widget_due, dueTitle.isEmpty() ? "" : "Library: " + dueTitle + (dueLabel.isEmpty() ? "" : " · " + dueLabel));
+
+            long timerSeconds = prefs.getLong("timerSeconds", 0L);
+            boolean running = prefs.getBoolean("timerRunning", false);
+            long anchor = prefs.getLong("timerAnchorMillis", 0L);
+            long elapsed = timerSeconds + (running && anchor > 0L ? Math.max(0L, (System.currentTimeMillis() - anchor) / 1000L) : 0L);
+            views.setTextViewText(R.id.widget_timer, formatDuration(elapsed));
+
+            boolean hasBook = !title.isEmpty();
+            boolean active = "active".equals(sessionMode);
+            boolean paused = "paused".equals(sessionMode);
+
+            views.setViewVisibility(R.id.widget_timer, (active || paused) ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_progress, hasBook && !progress.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_due, !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_start, hasBook && !active && !paused ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_resume, paused ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pause, active ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_stop, (active || paused) ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_empty, hasBook ? View.GONE : View.VISIBLE);
+
+            views.setOnClickPendingIntent(R.id.widget_root, launchIntent(context, "open", 4000 + appWidgetId));
+            views.setOnClickPendingIntent(R.id.widget_start, launchIntent(context, "start", 5000 + appWidgetId));
+            views.setOnClickPendingIntent(R.id.widget_resume, launchIntent(context, "resume", 6000 + appWidgetId));
+            views.setOnClickPendingIntent(R.id.widget_pause, launchIntent(context, "pause", 7000 + appWidgetId));
+            views.setOnClickPendingIntent(R.id.widget_stop, launchIntent(context, "stop", 8000 + appWidgetId));
+
+            manager.updateAppWidget(appWidgetId, views);
+        }
+    }
+
+    private static PendingIntent launchIntent(Context context, String action, int requestCode) {
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.putExtra(EXTRA_WIDGET_ACTION, action);
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+    }
+
+    private static String formatDuration(long totalSeconds) {
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0L) return String.format("%d:%02d:%02d", hours, minutes, seconds);
+        return String.format("%02d:%02d", minutes, seconds);
+    }
+}
