@@ -9,7 +9,7 @@ export interface RuntimeStorageAdapter {
 }
 
 export const INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT = 'inkbound:runtime-storage-refresh';
-const INKBOUND_LOCAL_DATA_CHANGED_EVENT = 'inkbound:local-data-changed';
+export const INKBOUND_LOCAL_DATA_CHANGED_EVENT = 'inkbound:local-data-changed';
 
 const browserStorageAdapter: RuntimeStorageAdapter = {
   getItem: (key) => {
