@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Download, Share2, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
+import { getSessionDurationMinutes, isRecordedReadingActivity } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { getPreferredSavedQuote } from '../features/reading/bookQuotes';
@@ -47,8 +47,8 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   const priorMonthKey = previousMonthKey(preferences.monthKey);
   const selectedRange = monthRange(preferences.monthKey);
   const priorRange = monthRange(priorMonthKey);
-  const monthSessions = sessions.filter((session) => session.date.startsWith(preferences.monthKey) && isValidSessionDate(session.date) && getSessionDurationMinutes(session) > 0);
-  const priorSessions = sessions.filter((session) => session.date.startsWith(priorMonthKey) && isValidSessionDate(session.date) && getSessionDurationMinutes(session) > 0);
+  const monthSessions = sessions.filter((session) => session.date.startsWith(preferences.monthKey) && isValidSessionDate(session.date) && isRecordedReadingActivity(session));
+  const priorSessions = sessions.filter((session) => session.date.startsWith(priorMonthKey) && isValidSessionDate(session.date) && isRecordedReadingActivity(session));
   const finishedBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && book.dateFinished?.startsWith(preferences.monthKey));
   const priorFinishedBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && book.dateFinished?.startsWith(priorMonthKey));
   const activeBookIds = new Set(monthSessions.map((session) => session.bookId));
@@ -58,7 +58,8 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     const totalMinutes = monthSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
     const pagesRead = getEffectivePagesReadForPeriod(books, sessions, selectedRange.start, selectedRange.end);
     const readingDays = new Set(monthSessions.map((session) => session.date)).size;
-    const averageSession = monthSessions.length ? Math.round(totalMinutes / monthSessions.length) : 0;
+    const timedSessions = monthSessions.filter((session) => getSessionDurationMinutes(session) > 0);
+    const averageSession = timedSessions.length ? Math.round(totalMinutes / timedSessions.length) : 0;
     const longestSession = monthSessions.reduce((longest, session) => Math.max(longest, getSessionDurationMinutes(session)), 0);
     const genreCounts = new Map<string, number>();
     activeBooks.forEach((book) => book.work.genres.forEach((genre) => genreCounts.set(genre, (genreCounts.get(genre) ?? 0) + 1)));
@@ -85,7 +86,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   }, [activeBooks, books, finishedBooks, monthSessions, priorFinishedBooks.length, priorRange.end, priorRange.start, priorSessions, selectedRange.end, selectedRange.start, sessions]);
 
   const cards: WrappedCard[] = [
-    { eyebrow: `${selectedMonth.label} Reading Wrapped`, title: `${finishedBooks.length} ${finishedBooks.length === 1 ? 'book' : 'books'} finished`, body: `${stats.pagesRead.toLocaleString()} pages · ${formatMinutes(stats.totalMinutes)} · ${stats.readingDays} reading days`, footer: `${monthSessions.length} completed sessions · ${stats.fiveStarReads} five-star ${stats.fiveStarReads === 1 ? 'read' : 'reads'}` },
+    { eyebrow: `${selectedMonth.label} Reading Wrapped`, title: `${finishedBooks.length} ${finishedBooks.length === 1 ? 'book' : 'books'} finished`, body: `${stats.pagesRead.toLocaleString()} pages · ${formatMinutes(stats.totalMinutes)} · ${stats.readingDays} reading days`, footer: `${monthSessions.length} recorded activit${monthSessions.length === 1 ? 'y' : 'ies'} · ${stats.fiveStarReads} five-star ${stats.fiveStarReads === 1 ? 'read' : 'reads'}` },
     { eyebrow: 'Your Monthly Momentum', title: stats.changes.days > 0 ? `You read on ${Math.abs(stats.changes.days)}% more days` : stats.changes.days < 0 ? `Your reading days dipped ${Math.abs(stats.changes.days)}%` : 'Your reading rhythm held steady', body: `${stats.readingDays} reading days this month compared with ${new Set(priorSessions.map((session) => session.date)).size} last month.`, footer: `${stats.changes.pages >= 0 ? '+' : ''}${stats.changes.pages}% pages · ${stats.changes.minutes >= 0 ? '+' : ''}${stats.changes.minutes}% reading time` },
     { eyebrow: 'Your Reading Rhythm', title: monthSessions.length ? `${stats.averageSession} minute average session` : 'Your next reading rhythm is waiting', body: monthSessions.length ? `Your longest reading session lasted ${stats.longestSession} minutes.` : 'Complete a reading session and Inkbound will build this recap from your real activity.', footer: `${monthSessions.length} completed sessions across ${stats.readingDays} days` },
     { eyebrow: 'Your Month in Stories', title: stats.favoriteGenre, body: stats.highestRated ? `${stats.highestRated.work.title} was your highest-rated finish${stats.highestRated.rating ? ` at ${stats.highestRated.rating} stars` : ''}.` : 'Keep rating your finished books to reveal a monthly favorite.', footer: `${activeBooks.length} books appeared in recorded sessions · ${stats.topFormat} led your format mix` },
