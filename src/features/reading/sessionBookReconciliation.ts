@@ -82,16 +82,21 @@ export function reconcileBookAfterSessionMutation(
 ): UserBookRecord {
   const activeEdition = getActiveEdition(book);
   const isAudiobook = activeEdition?.format === 'audiobook';
-  const related = nextSessions
+  const activityRelated = nextSessions
     .filter((item) => item.bookId === book.id)
     .sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
+  // A confirmed manual progress delta is canonical activity evidence, not the
+  // owner of the book's current progress. Book progress was already saved by the
+  // explicit progress edit, so later editing/deleting that activity must not roll
+  // the current page backward.
+  const related = activityRelated.filter((item) => item.activitySource !== 'progress-confirmation');
   const latest = related.at(-1);
   const currentProgress = isAudiobook ? book.progressMinutes : book.progressPages;
 
   const previousRelated = changedSession
     ? [
-        ...nextSessions.filter((item) => item.bookId === book.id && item.id !== changedSession.id),
-        ...(changedSession.bookId === book.id ? [changedSession] : []),
+        ...nextSessions.filter((item) => item.bookId === book.id && item.id !== changedSession.id && item.activitySource !== 'progress-confirmation'),
+        ...(changedSession.bookId === book.id && changedSession.activitySource !== 'progress-confirmation' ? [changedSession] : []),
       ].sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)))
     : [];
   const previousLatest = previousRelated.at(-1);
@@ -129,6 +134,6 @@ export function reconcileBookAfterSessionMutation(
     dateFinished: reachedEnd
       ? book.dateFinished ?? latest?.date ?? localDateKey()
       : book.dateFinished,
-    lastSessionDate: latest?.date,
+    lastSessionDate: activityRelated.at(-1)?.date ?? book.lastSessionDate,
   };
 }
