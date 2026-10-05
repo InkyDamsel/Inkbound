@@ -20,7 +20,14 @@ const parseLocalDateKey = (value?: string): Date | null => {
   const parsed = new Date(year, month - 1, day, 12);
   return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day ? parsed : null;
 };
-const getSessionHour = (session: ReadingSession) => { const hour = Number(session.startTime?.split(':')[0]); return Number.isFinite(hour) && hour >= 0 && hour <= 23 ? hour : null; };
+const getSessionHour = (session: ReadingSession) => {
+  // A progress confirmation records when the reader confirmed the activity, not
+  // necessarily when the pages were read. Do not turn that timestamp into a
+  // false time-of-day habit signal.
+  if (session.activitySource === 'progress-confirmation') return null;
+  const hour = Number(session.startTime?.split(':')[0]);
+  return Number.isFinite(hour) && hour >= 0 && hour <= 23 ? hour : null;
+};
 const mostCommon = (values: string[]) => { const counts = new Map<string, number>(); values.map((value) => value.trim()).filter(Boolean).forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1)); return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]; };
 const percentChange = (current: number, previous: number) => previous === 0 ? (current > 0 ? null : 0) : Math.round(((current - previous) / previous) * 100);
 const shortDelta = (current: number, previous: number) => { const change = percentChange(current, previous); if (change === null) return 'New activity'; if (change === 0) return 'No change'; return `${change > 0 ? '↑' : '↓'} ${Math.abs(change)}%`; };
