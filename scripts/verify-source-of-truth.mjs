@@ -246,6 +246,22 @@ for (const [relative, source] of [
   }
 }
 
+const sessionAnalyticsSource = read('src/features/reading/sessionAnalytics.ts');
+const progressActivitySource = read('src/features/reading/progressActivity.ts');
+const appSource = read('src/App.tsx');
+if (!sessionAnalyticsSource.includes('getDailyPagesRead') || !sessionAnalyticsSource.includes('isRecordedReadingActivity')) {
+  violations.push('sessionAnalytics.ts: daily page goals and reading-day credit must derive from canonical ReadingSession activity.');
+}
+if (!progressActivitySource.includes("activitySource: 'progress-confirmation'") || !progressActivitySource.includes('addConfirmedProgressActivity')) {
+  violations.push('progressActivity.ts: confirmed manual progress must persist as canonical ReadingSession activity with idempotent confirmation.');
+}
+if (!appSource.includes('buildProgressActivityPrompt') || !appSource.includes('confirmProgressActivity') || !appSource.includes('declineProgressActivity')) {
+  violations.push('App.tsx: current progress edits must remain separate from optional daily-activity confirmation.');
+}
+if (appSource.includes('getSessionProgressEndpoint(latest') || appSource.includes('sessionSortKey(a).localeCompare(sessionSortKey(b))')) {
+  violations.push('App.tsx: direct book-progress edits must not rewrite historical session endpoints.');
+}
+
 const readingSessionsScreenSource = read('src/components/ReadingSessionsScreen.tsx');
 const bulkHistoricalSessionsSource = read('src/components/BulkHistoricalSessionsModal.tsx');
 if (!readingSessionsScreenSource.includes('onSaveManualSessions') || !readingSessionsScreenSource.includes('BulkHistoricalSessionsModal')) {
