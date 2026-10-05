@@ -42,6 +42,7 @@ export const AUXILIARY_ACCOUNT_KEYS = {
   achievementUnlocks: ACCOUNT_DATA_STORAGE_KEYS.achievementUnlocks,
   achievementReveals: ACCOUNT_DATA_STORAGE_KEYS.achievementReveals,
   achievementSeen: ACCOUNT_DATA_STORAGE_KEYS.achievementSeen,
+  readingRotationSelections: ACCOUNT_DATA_STORAGE_KEYS.readingRotationSelections,
 } as const;
 
 /** Retired stores are named here only for migration/cleanup tooling. They are never synced. */
