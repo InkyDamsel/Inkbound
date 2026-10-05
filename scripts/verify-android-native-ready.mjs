@@ -217,10 +217,10 @@ if (!fs.existsSync(loanReminderPluginPath) || !fs.existsSync(loanReminderReceive
 }
 const loanReminderPlugin = fs.readFileSync(loanReminderPluginPath, 'utf8');
 const loanReminderReceiver = fs.readFileSync(loanReminderReceiverPath, 'utf8');
-for (const required of ['wasDelivered', 'EXTRA_BOOK_ID', 'EXTRA_DUE_DATE', 'EXTRA_KIND']) {
+for (const required of ['wasDelivered', 'wasNotificationDelivered', 'EXTRA_BOOK_ID', 'EXTRA_DUE_DATE', 'EXTRA_KIND']) {
   if (!loanReminderPlugin.includes(required)) fail(`LoanReminderPlugin.java is missing idempotent reminder guard ${required}.`);
 }
-for (const required of ['markDelivered', 'deliveryKey', 'getSharedPreferences']) {
+for (const required of ['markDelivered', 'markNotificationDelivered', 'notificationDeliveryKey', 'deliveryKey', 'getSharedPreferences']) {
   if (!loanReminderReceiver.includes(required)) fail(`LoanReminderReceiver.java is missing persistent delivery guard ${required}.`);
 }
 if (!fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(LoanReminderPlugin.class)')) {
