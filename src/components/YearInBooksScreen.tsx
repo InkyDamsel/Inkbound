@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, Download, Share2, Trophy } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
+import { getSessionDurationMinutes, isRecordedReadingActivity } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
@@ -35,13 +35,13 @@ const deltaLabel = (current: number, previous: number) => { const delta = percen
 
 export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, sessions, onSelectBook }) => {
   const currentYear = new Date().getFullYear();
-  const availableYears = useMemo(() => { const years = new Set<number>([currentYear]); books.forEach((book) => { const finishedYear = dateYear(book.dateFinished); const startedYear = dateYear(book.dateStarted); if (finishedYear !== null) years.add(finishedYear); if (startedYear !== null) years.add(startedYear); }); sessions.forEach((session) => { const year = dateYear(session.date); if (year !== null && getSessionDurationMinutes(session) > 0) years.add(year); }); return [...years].sort((a, b) => b - a); }, [books, sessions, currentYear]);
+  const availableYears = useMemo(() => { const years = new Set<number>([currentYear]); books.forEach((book) => { const finishedYear = dateYear(book.dateFinished); const startedYear = dateYear(book.dateStarted); if (finishedYear !== null) years.add(finishedYear); if (startedYear !== null) years.add(startedYear); }); sessions.forEach((session) => { const year = dateYear(session.date); if (year !== null && isRecordedReadingActivity(session)) years.add(year); }); return [...years].sort((a, b) => b - a); }, [books, sessions, currentYear]);
   const [preferences, setPreferences] = usePersistentState<YearbookPreferences>(STORAGE_KEY, { year: availableYears[0] ?? currentYear, page: 0, theme: 'quiet-library', exportFormat: 'portrait' });
   const [message, setMessage] = useState('');
   const yearBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && dateYear(book.dateFinished) === preferences.year);
-  const yearSessions = sessions.filter((session) => dateYear(session.date) === preferences.year && getSessionDurationMinutes(session) > 0);
+  const yearSessions = sessions.filter((session) => dateYear(session.date) === preferences.year && isRecordedReadingActivity(session));
   const previousBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && dateYear(book.dateFinished) === preferences.year - 1);
-  const previousSessions = sessions.filter((session) => dateYear(session.date) === preferences.year - 1 && getSessionDurationMinutes(session) > 0);
+  const previousSessions = sessions.filter((session) => dateYear(session.date) === preferences.year - 1 && isRecordedReadingActivity(session));
   const yearStart = `${preferences.year}-01-01`;
   const yearEnd = `${preferences.year}-12-31`;
   const previousYearStart = `${preferences.year - 1}-01-01`;
@@ -49,7 +49,8 @@ export const YearInBooksScreen: React.FC<YearInBooksScreenProps> = ({ books, ses
   const totalMinutes = yearSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
   const totalPages = getEffectivePagesReadForPeriod(books, yearSessions, yearStart, yearEnd);
   const readingDays = new Set(yearSessions.map((session) => session.date)).size;
-  const averageSession = yearSessions.length ? Math.round(totalMinutes / yearSessions.length) : 0;
+  const timedYearSessions = yearSessions.filter((session) => getSessionDurationMinutes(session) > 0);
+  const averageSession = timedYearSessions.length ? Math.round(totalMinutes / timedYearSessions.length) : 0;
   const previousMinutes = previousSessions.reduce((sum, session) => sum + getSessionDurationMinutes(session), 0);
   const previousPages = getEffectivePagesReadForPeriod(books, previousSessions, previousYearStart, previousYearEnd);
   const previousDays = new Set(previousSessions.map((session) => session.date)).size;
