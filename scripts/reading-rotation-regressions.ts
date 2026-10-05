@@ -136,4 +136,16 @@ const sessions: ReadingSession[] = [
   assert.deepEqual(rows.map((row) => row.format), ['ebook'], 'Unused reading formats should not render empty rows.');
 }
 
+
+{
+  const books = [
+    book({ id: 'series-finished', title: 'Finished Series Book', format: 'ebook', status: 'finished', dateFinished: '2026-10-02', seriesName: 'Continued Saga', seriesOrder: 1 }),
+    book({ id: 'series-tbr', title: 'Series Book Two', format: 'ebook', status: 'tbr', priority: 'low', seriesName: 'Continued Saga', seriesOrder: 2 }),
+    book({ id: 'standalone-high-after-finish', title: 'Standalone High After Finish', format: 'ebook', status: 'tbr', priority: 'high' }),
+  ];
+  const rows = buildReadingRotationRows(books, []);
+  const ebook = rows.find((row) => row.format === 'ebook')!;
+  assert.equal(ebook.next.book?.id, 'series-tbr', 'A recently finished series should still supply the next unread installment when no book is currently active.');
+}
+
 console.log('Inkbound Reading Rotation regressions passed.');
