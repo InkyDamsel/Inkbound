@@ -13,6 +13,7 @@ import { isNativeRuntime } from './runtimePlatform';
 export interface RuntimeAuthenticationAdapter {
   preparePersistence(auth: Auth): Promise<void>;
   signInWithGoogle(auth: Auth): Promise<void>;
+  signInWithApple?(auth: Auth): Promise<void>;
 }
 
 function firebaseAuthCode(error: unknown): string {
@@ -90,4 +91,11 @@ export function prepareRuntimeAuthPersistence(auth: Auth) {
 
 export function signInRuntimeWithGoogle(auth: Auth) {
   return activeAuthenticationAdapter.signInWithGoogle(auth);
+}
+
+export function signInRuntimeWithApple(auth: Auth) {
+  if (!activeAuthenticationAdapter.signInWithApple) {
+    throw new Error('Apple sign-in is only available in the iOS app right now.');
+  }
+  return activeAuthenticationAdapter.signInWithApple(auth);
 }
