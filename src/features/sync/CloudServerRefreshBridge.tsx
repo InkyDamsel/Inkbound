@@ -11,6 +11,9 @@ import {
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { IMPORT_ENRICHMENT_PAUSED_KEY } from '../import/importHistory';
+import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
+import { mergeIncomingBookQuoteState } from '../reading/bookQuotePersistence';
+import { mergeIncomingManualCoverState } from './bookUserOwnedPersistence';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { canReportCloudLibraryHealthy } from './accountLibraryMigration';
@@ -69,14 +72,23 @@ function writeJson(key: string, value: unknown) {
   getRuntimeStorage().setItem(key, JSON.stringify(value));
 }
 
-function mergeMissingById<T extends { id: string }>(
+export function mergeServerCollectionById<T extends { id: string }>(
   current: T[],
   server: T[],
   pending: Record<string, PendingMutation<T>>,
 ): T[] {
   const merged = new Map(current.map((item) => [item.id, item]));
   server.forEach((item) => {
-    if (!pending[item.id] && !merged.has(item.id)) merged.set(item.id, item);
+    const localMutation = pending[item.id];
+    if (localMutation?.operation === 'delete') return;
+    if (localMutation?.operation === 'upsert' && localMutation.data) {
+      merged.set(item.id, localMutation.data);
+      return;
+    }
+    // An explicit server refresh is a reconciliation pass, not a metadata-only
+    // lookup. With no pending local intent, the saved account record is the
+    // canonical current record for this ID and must replace stale device state.
+    merged.set(item.id, item);
   });
   return [...merged.values()];
 }
@@ -143,7 +155,7 @@ function mergeServerMetadataIntoBook(localBook: UserBookRecord, serverBook: User
   };
 }
 
-function mergeBooksFromServer(
+export function mergeBooksFromServer(
   current: UserBookRecord[],
   server: UserBookRecord[],
   pending: Record<string, PendingMutation<UserBookRecord>>,
@@ -157,10 +169,19 @@ function mergeBooksFromServer(
     const pendingMutation = pending[localBook.id];
     if (pendingMutation?.operation === 'delete') return localBook;
 
-    const sourceBook = pendingMutation?.operation === 'upsert' && pendingMutation.data
-      ? pendingMutation.data
-      : localBook;
-    return mergeServerMetadataIntoBook(sourceBook, serverBook);
+    if (pendingMutation?.operation === 'upsert' && pendingMutation.data) {
+      // Unsynced local intent wins. Server metadata may fill genuine gaps, but
+      // never replace the pending reader-owned state.
+      return mergeServerMetadataIntoBook(pendingMutation.data, serverBook);
+    }
+
+    // No local mutation is pending: the account copy is the canonical latest
+    // record. Preserve only the explicitly protected reader-owned fields whose
+    // dedicated merge policies are intentionally stronger than provider/cloud
+    // replacement (quotes, loan state, and manual cover choices).
+    const withQuotes = mergeIncomingBookQuoteState(localBook, serverBook);
+    const withLoan = mergeIncomingBookLoanState(localBook, withQuotes);
+    return mergeIncomingManualCoverState(localBook, withLoan);
   });
 
   serverById.forEach((serverBook, id) => {
@@ -385,7 +406,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
           return;
         }
         const nextBooks = mergeBooksFromServer(currentBooks, serverBooks, pending.books ?? {});
-        const nextSessions = mergeMissingById(currentSessions, serverSessions, pending.sessions ?? {});
+        const nextSessions = mergeServerCollectionById(currentSessions, serverSessions, pending.sessions ?? {});
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (JSON.stringify(currentBooks) !== JSON.stringify(nextBooks)) {
