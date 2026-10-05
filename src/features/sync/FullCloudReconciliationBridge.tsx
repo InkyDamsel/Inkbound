@@ -10,6 +10,8 @@ import {
 } from 'firebase/firestore';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { mergeIncomingBookLoanState } from '../ownership/bookOwnership';
+import { mergeIncomingBookQuoteState } from '../reading/bookQuotePersistence';
+import { mergeIncomingManualCoverState } from './bookUserOwnedPersistence';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { flushLargeBrowserStorage } from '../../platform/largeBrowserStorage';
@@ -96,6 +98,15 @@ const hashText = (value: string) => {
 const fingerprint = (value: unknown) => hashText(stable(value));
 const diagnosticKey = (uid: string) => `inkbound_full_reconciliation_diagnostic_${uid}_v2`;
 const MIGRATION_UPLOAD_BATCH_SIZE = 100;
+
+function mergeIncomingUserOwnedBookState(
+  current: UserBookRecord | undefined,
+  incoming: UserBookRecord,
+): UserBookRecord {
+  const withQuotes = mergeIncomingBookQuoteState(current, incoming);
+  const withLoan = mergeIncomingBookLoanState(current, withQuotes);
+  return mergeIncomingManualCoverState(current, withLoan);
+}
 
 async function uploadMissingMigrationRecords<T extends { id: string }>(
   uid: string,
@@ -350,7 +361,7 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
           bookTombstones,
           pending.books,
           baseline.books,
-          mergeIncomingBookLoanState,
+          mergeIncomingUserOwnedBookState,
         );
         const sessionResult = reconcileCollection(localSessions, cloudSessions, sessionTombstones, pending.sessions, baseline.sessions);
         const nextBooks = bookResult.items;
