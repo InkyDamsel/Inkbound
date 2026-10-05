@@ -80,6 +80,48 @@ export const getSessionListeningMinutes = (
   return finiteNonnegative(session.minutesListened);
 };
 
+
+/**
+ * Canonical reading-activity predicate. A reader can record legitimate page or
+ * audiobook progress without a timer duration (for example, a confirmed manual
+ * progress delta). Those records are still reading activity and must participate
+ * in streak/day/page reporting without fabricating elapsed time.
+ */
+export const isRecordedReadingActivity = (
+  session: Pick<ReadingSession, 'date' | 'durationMinutes' | 'startPage' | 'endPage' | 'pagesRead' | 'startTimestampSec' | 'endTimestampSec' | 'minutesListened'>,
+) => parseLocalDate(session.date) !== null && (
+  getSessionDurationMinutes(session) > 0
+  || getSessionPagesRead(session) > 0
+  || getSessionListeningMinutes(session) > 0
+);
+
+export const getDailyPagesRead = (sessions: ReadingSession[], date = localDateKey()) => {
+  if (parseLocalDate(date) === null) return 0;
+  return sessions
+    .filter((session) => session.date === date && isRecordedReadingActivity(session))
+    .reduce((sum, session) => sum + getSessionPagesRead(session), 0);
+};
+
+/**
+ * Daily time-goal credit stays based on real elapsed session time when available.
+ * A confirmed audiobook progress delta has no trustworthy timer duration, so its
+ * listened minutes become the goal evidence instead of inventing elapsed time.
+ */
+export const getDailyGoalMinutes = (sessions: ReadingSession[], date = localDateKey()) => {
+  if (parseLocalDate(date) === null) return 0;
+  return sessions
+    .filter((session) => session.date === date && isRecordedReadingActivity(session))
+    .reduce((sum, session) => {
+      const duration = getSessionDurationMinutes(session);
+      return sum + (duration > 0 ? duration : getSessionListeningMinutes(session));
+    }, 0);
+};
+
+export const getDailyActivityCount = (sessions: ReadingSession[], date = localDateKey()) => {
+  if (parseLocalDate(date) === null) return 0;
+  return sessions.filter((session) => session.date === date && isRecordedReadingActivity(session)).length;
+};
+
 export const localDateKey = (value = new Date()) => {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, '0');
@@ -104,7 +146,7 @@ export const formatDurationEstimate = (totalSeconds?: number) => {
 // completed reading time. Zero-duration placeholders never create streak days.
 export const getReadingDates = (sessions: ReadingSession[]) => [...new Set(
   sessions
-    .filter((session) => getSessionDurationMinutes(session) > 0 && parseLocalDate(session.date) !== null)
+    .filter(isRecordedReadingActivity)
     .map((session) => session.date),
 )].sort();
 
