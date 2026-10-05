@@ -65,9 +65,11 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             views.setViewVisibility(R.id.widget_pace_detail, hasBook && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_due, !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_start, hasBook && "none".equals(sessionMode) ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_resume, paused ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_pause, active ? View.VISIBLE : View.GONE);
-            views.setViewVisibility(R.id.widget_stop, (active || paused) ? View.VISIBLE : View.GONE);
+            // Active-session controls stay inside Inkbound. The widget remains a
+            // glanceable mirror; tapping it opens the canonical timer UI.
+            views.setViewVisibility(R.id.widget_resume, View.GONE);
+            views.setViewVisibility(R.id.widget_pause, View.GONE);
+            views.setViewVisibility(R.id.widget_stop, View.GONE);
             views.setViewVisibility(R.id.widget_empty, hasBook ? View.GONE : View.VISIBLE);
 
             views.setOnClickPendingIntent(R.id.widget_root, launchIntent(context, "open", 4000 + appWidgetId));
