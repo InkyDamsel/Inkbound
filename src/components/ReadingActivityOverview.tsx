@@ -17,6 +17,7 @@ import {
   getReadingStreak,
   getSessionDurationMinutes,
   getSessionPagesRead,
+  isRecordedReadingActivity,
 } from '../features/reading/sessionAnalytics';
 import type { ReadingSession, UserBookRecord } from '../types';
 
@@ -85,7 +86,7 @@ const formatMinutes = (minutes: number) => {
 
 export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = ({ books, sessions, onSelectBook }) => {
   const trackerSessions = useMemo(
-    () => sessions.filter((session) => Boolean(normalizeDateKey(session.date)) && getSessionDurationMinutes(session) > 0),
+    () => sessions.filter((session) => Boolean(normalizeDateKey(session.date)) && isRecordedReadingActivity(session)),
     [sessions],
   );
 
@@ -227,7 +228,7 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
             <div className="grid grid-cols-2 gap-3"><MiniMetric icon={Clock3} label="Reading time" value={formatMinutes(selectedActivity.minutes)} /><MiniMetric icon={BookOpen} label="Pages read" value={selectedActivity.pages.toLocaleString()} /></div>
             <p className="text-xs text-[var(--ink-muted)]">{selectedActivity.sessions.length} {selectedActivity.sessions.length === 1 ? 'session' : 'sessions'} across {selectedSessionBooks.length} {selectedSessionBooks.length === 1 ? 'book' : 'books'}.</p>
             {selectedSessionBooks.length > 0 && <div><h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books read</h4><div className="mt-2 grid gap-2">{selectedSessionBooks.map((book) => { const coverUrl = getCoverUrl(book); return <button key={book.id} type="button" onClick={() => onSelectBook(book)} className="flex min-h-14 min-w-0 items-center gap-3 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-2.5 text-left hover:border-[var(--ink-mauve)]"><span className="h-12 w-9 shrink-0 overflow-hidden rounded-md bg-[var(--ink-surface)]">{coverUrl ? <img src={coverUrl} alt="" className="h-full w-full object-cover" /> : null}</span><span className="min-w-0"><strong className="block truncate text-sm text-[var(--ink-ivory)]">{book.work.title}</strong><span className="block truncate text-xs text-[var(--ink-muted)]">{book.work.author}</span></span></button>; })}</div></div>}
-            <div><h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Sessions</h4><div className="mt-2 space-y-2">{selectedActivity.sessions.map((session) => <div key={session.id} className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]"><div className="flex items-center justify-between gap-3"><span>{session.startTime || 'Session'}</span><strong className="text-[var(--ink-ivory)]">{formatMinutes(getSessionDurationMinutes(session))}</strong></div>{getSessionPagesRead(session) > 0 && <p className="mt-1">{getSessionPagesRead(session).toLocaleString()} pages</p>}{session.notes && <p className="mt-2 line-clamp-2">{session.notes}</p>}</div>)}</div></div>
+            <div><h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Sessions</h4><div className="mt-2 space-y-2">{selectedActivity.sessions.map((session) => <div key={session.id} className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]"><div className="flex items-center justify-between gap-3"><span>{session.startTime || 'Activity'}</span><strong className="text-[var(--ink-ivory)]">{getSessionDurationMinutes(session) > 0 ? formatMinutes(getSessionDurationMinutes(session)) : session.activitySource === 'progress-confirmation' ? 'Progress update' : 'Recorded activity'}</strong></div>{getSessionPagesRead(session) > 0 && <p className="mt-1">{getSessionPagesRead(session).toLocaleString()} pages</p>}{session.notes && <p className="mt-2 line-clamp-2">{session.notes}</p>}</div>)}</div></div>
           </div>}
         </aside>
       </div>
