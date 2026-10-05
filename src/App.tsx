@@ -427,34 +427,100 @@ export default function App() {
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => { const today = localDateKey(); commitCanonicalBooks((current) => current.map((book) => book.id !== bookId ? book : withReadingStatus(book, status, today))); showToast(`Updated reading status to ${status}.`); };
 
   const handleCorrectBookProgress = (bookId: string, correction: BookProgressCorrection) => {
-    const sourceBook = books.find((book) => book.id === bookId);
+    const sourceBook = booksRef.current.find((book) => book.id === bookId);
     if (!sourceBook) return;
     const sourceEdition = getActiveEdition(sourceBook);
     if (!sourceEdition) return;
     const isAudiobook = sourceEdition.format === 'audiobook';
-    const oldProgress = isAudiobook ? sourceBook.progressMinutes : sourceBook.progressPages;
-    const correctedProgress = isAudiobook ? Math.max(0, correction.progressMinutes ?? sourceBook.progressMinutes) : Math.max(0, correction.progressPages ?? sourceBook.progressPages);
-    if ((isAudiobook && correction.progressMinutes !== undefined) || (!isAudiobook && correction.progressPages !== undefined)) {
-      const related = sessions.filter((session) => session.bookId === bookId).sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
-      const latest = related.at(-1);
-      if (latest && getSessionProgressEndpoint(latest, isAudiobook, 'end') === oldProgress) {
-        commitCanonicalSessions((current) => current.map((session) => {
-          if (session.id !== latest.id) return session;
-          if (isAudiobook) { const endTimestampSec = correctedProgress * 60; const startTimestampSec = Math.min(session.startTimestampSec ?? endTimestampSec, endTimestampSec); return { ...session, startTimestampSec, endTimestampSec, minutesListened: Math.max(0, Math.round((endTimestampSec - startTimestampSec) / 60)) }; }
-          const endPage = correctedProgress; const startPage = Math.min(session.startPage ?? endPage, endPage); return { ...session, startPage, endPage, pagesRead: Math.max(0, endPage - startPage) };
-        }));
-      }
-    }
+
+    // Current progress and reading activity are intentionally separate. A
+    // correction/update never rewrites an existing session. A positive delta can
+    // become canonical activity only after the reader explicitly confirms it.
+    const activityPrompt = buildProgressActivityPrompt(
+      sourceBook,
+      correction.progressPages,
+      correction.progressMinutes,
+    );
+
     commitCanonicalBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
       const activeEdition = getActiveEdition(book);
       if (!activeEdition) return book;
-      const nextEdition = { ...activeEdition, ...(correction.pageCount !== undefined ? { pageCount: Math.max(0, correction.pageCount), externalSource: 'manual' as const } : {}), ...(correction.audiobookDurationMins !== undefined ? { audiobookDurationMins: Math.max(0, correction.audiobookDurationMins), externalSource: 'manual' as const } : {}) };
-      const nextPages = Math.max(0, correction.progressPages ?? book.progressPages); const nextMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes); const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount; const nextCompleted = isAudiobook ? nextMinutes : nextPages; const progressPercentage = nextTotal && nextTotal > 0 ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100)) : book.progressPercentage; const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal!); const status = reachedEnd ? 'finished' : book.status;
-      const updatedBook: UserBookRecord = { ...book, editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition), progressPages: nextPages, progressMinutes: nextMinutes, progressPercentage, status, dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished };
-      setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected); return updatedBook;
+
+      const nextEdition = {
+        ...activeEdition,
+        ...(correction.pageCount !== undefined
+          ? { pageCount: Math.max(0, correction.pageCount), externalSource: 'manual' as const }
+          : {}),
+        ...(correction.audiobookDurationMins !== undefined
+          ? { audiobookDurationMins: Math.max(0, correction.audiobookDurationMins), externalSource: 'manual' as const }
+          : {}),
+      };
+      const nextPages = Math.max(0, correction.progressPages ?? book.progressPages);
+      const nextMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes);
+      const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount;
+      const nextCompleted = isAudiobook ? nextMinutes : nextPages;
+      const progressPercentage = nextTotal && nextTotal > 0
+        ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100))
+        : book.progressPercentage;
+      const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal);
+      const status = reachedEnd ? 'finished' : book.status;
+      const updatedBook: UserBookRecord = {
+        ...book,
+        editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition),
+        progressPages: nextPages,
+        progressMinutes: nextMinutes,
+        progressPercentage,
+        status,
+        dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished,
+      };
+      setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected);
+      return updatedBook;
     }));
-    showToast('Corrected book progress and reconciled the latest reading session.');
+
+    if (activityPrompt) {
+      setProgressActivityPrompt(activityPrompt);
+      showToast(
+        activityPrompt.kind === 'pages'
+          ? `Updated progress by ${activityPrompt.delta} page${activityPrompt.delta === 1 ? '' : 's'}.`
+          : `Updated audiobook progress by ${activityPrompt.delta} minute${activityPrompt.delta === 1 ? '' : 's'}.`,
+      );
+    } else {
+      setProgressActivityPrompt(null);
+      showToast('Updated book progress. No reading activity was assumed.');
+    }
+  };
+
+  const confirmProgressActivity = () => {
+    const prompt = progressActivityPrompt;
+    if (!prompt) return;
+    const result = addConfirmedProgressActivity(sessionsRef.current, prompt);
+    if (result.added) {
+      commitCanonicalSessions(result.sessions);
+      const dailyValue = prompt.kind === 'pages'
+        ? getDailyPagesRead(result.sessions, prompt.date)
+        : getDailyGoalMinutes(result.sessions, prompt.date);
+      const dailyGoal = prompt.kind === 'pages' ? readDailyGoalPages() : readDailyGoalMinutes();
+      showSessionMilestone({
+        date: prompt.date,
+        streak: getReadingStreak(result.sessions, prompt.date),
+        dailyValue,
+        dailyGoal,
+        unit: prompt.kind === 'pages' ? 'pages' : 'minutes',
+        activityCount: getDailyActivityCount(result.sessions, prompt.date),
+      });
+      showToast(
+        prompt.kind === 'pages'
+          ? `Counted ${prompt.delta} page${prompt.delta === 1 ? '' : 's'} toward today's reading.`
+          : `Counted ${prompt.delta} audiobook minute${prompt.delta === 1 ? '' : 's'} toward today's reading.`,
+      );
+    }
+    setProgressActivityPrompt(null);
+  };
+
+  const declineProgressActivity = () => {
+    setProgressActivityPrompt(null);
+    showToast('Progress saved without adding reading activity.');
   };
 
   const handleUpdatePriority = (bookId: string, priority: Priority) => commitCanonicalBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
