@@ -62,6 +62,7 @@ import {
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
 import { withBookOwnership } from './features/ownership/bookOwnership';
+import { syncNativeLibraryLoanReminders } from './features/loans/nativeLibraryLoanReminders';
 import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
 import { openLibrarySeriesForBook } from './features/library/libraryNavigation';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
@@ -206,6 +207,10 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sessionMilestone, setSessionMilestone] = useState<SessionMilestoneNotice | null>(null);
   const [progressActivityPrompt, setProgressActivityPrompt] = useState<ProgressActivityPrompt | null>(null);
+
+  useEffect(() => {
+    void syncNativeLibraryLoanReminders(books);
+  }, [books]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
