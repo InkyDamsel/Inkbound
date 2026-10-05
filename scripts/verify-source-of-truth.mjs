@@ -278,9 +278,12 @@ if (!readingRecencySource.includes('lastProgressUpdatedAt') || !readingRecencySo
   violations.push('readingRecency.ts: Currently Reading order must consider both exact progress updates and canonical session recency.');
 }
 
-const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
-if (!cloudServerRefreshSource.includes('mergeServerCollectionById') || !cloudServerRefreshSource.includes('mergeIncomingManualCoverState')) {
-  violations.push('CloudServerRefreshBridge.tsx: explicit cloud refresh must reconcile existing canonical records while preserving protected reader-owned fields.');
+const cloudServerMergePolicySource = read('src/features/sync/cloudServerMergePolicy.ts');
+if (!cloudServerRefreshSource.includes('mergeServerCollectionById') || !cloudServerRefreshSource.includes('mergeBooksFromServer')) {
+  violations.push('CloudServerRefreshBridge.tsx: explicit cloud refresh must use the canonical cross-device merge policy.');
+}
+if (!cloudServerMergePolicySource.includes('mergeIncomingManualCoverState') || !cloudServerMergePolicySource.includes('mergeIncomingBookQuoteState') || !cloudServerMergePolicySource.includes('mergeIncomingBookLoanState')) {
+  violations.push('cloudServerMergePolicy.ts: cross-device reconciliation must preserve protected manual covers, quotes, and loan state.');
 }
 if (cloudServerRefreshSource.includes('mergeMissingById(currentSessions')) {
   violations.push('CloudServerRefreshBridge.tsx: manual refresh must not ignore newer server edits to existing sessions.');
