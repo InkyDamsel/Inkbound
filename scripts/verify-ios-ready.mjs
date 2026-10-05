@@ -48,7 +48,7 @@ if (fs.existsSync(infoPlist)) {
 
   if (fs.existsSync(googleService)) {
     const googleSource = fs.readFileSync(googleService, 'utf8');
-    const reversedMatch = googleSource.match(/<key>REVERSED_CLIENT_ID<\\/key>\\s*<string>([^<]+)<\\/string>/);
+    const reversedMatch = googleSource.match(new RegExp('<key>REVERSED_CLIENT_ID</key>\\s*<string>([^<]+)</string>'));
     const reversedClientId = reversedMatch?.[1]?.trim();
     if (!reversedClientId) {
       fail('GoogleService-Info.plist is missing REVERSED_CLIENT_ID.');
