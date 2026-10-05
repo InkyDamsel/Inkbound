@@ -13,10 +13,10 @@ function normalizedReminderIdentity(book: UserBookRecord): string {
     || activeEdition?.isbn10?.trim()
     || activeEdition?.isbn?.trim()
     || '';
-  const workId = book.work.externalWorkId?.trim() || book.work.id?.trim() || '';
+  const externalWorkId = book.work.externalWorkId?.trim() || '';
   const title = book.work.title.trim().toLowerCase().replace(/\s+/g, ' ');
   const author = book.work.author.trim().toLowerCase().replace(/\s+/g, ' ');
-  const itemIdentity = isbn || workId || `${title}::${author}`;
+  const itemIdentity = isbn || externalWorkId || `${title}::${author}`;
   return `${itemIdentity}::${dueDate}`;
 }
 
