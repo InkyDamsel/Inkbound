@@ -6,7 +6,9 @@ import { CheckCircle2, Clock, Flame, Gauge, MoonStar, Pause, Play, Square, Targe
 import {
   formatDurationEstimate,
   getCurrentPace,
-  getDailyReadingMinutes,
+  getDailyActivityCount,
+  getDailyGoalMinutes,
+  getDailyPagesRead,
   getReadingStreak,
   getSessionDurationMinutes,
   getSevenDayAveragePace,
@@ -103,6 +105,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const initialBook = requestedInitialBook ?? selectableBooks[0];
   const [error, setError] = useState('');
   const [dailyGoalMins] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes, '30');
+  const [dailyGoalPages] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalPages, '20');
   const [draft, setDraft] = usePersistentState<SessionDraft>(ACTIVE_READING_DRAFT_KEY, () => ({
     selectedBookId: initialBook?.id ?? '',
     timerSeconds: 0,
@@ -288,13 +291,17 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   }, [draft.endMins, draft.endPage, draft.isFinished, draft.startMins, draft.startPage, endDate, endedAt, firstDaySeconds, isAudiobook, midnightProgress, minsCompleted, pagesCompleted, selectedBook, sessionDurationMins, sessions, shouldSplit, startDate, startedAt, totalTrackedSeconds]);
 
   const completionDate = shouldSplit ? endDate : startDate;
-  const showDailyMilestones = !sessions.some(
-    (session) => session.date === completionDate && getSessionDurationMinutes(session) > 0,
-  );
+  const showDailyMilestones = getDailyActivityCount(sessions, completionDate) === 0;
   const streak = getReadingStreak(projectedSessions, completionDate);
-  const dailyGoal = Math.max(1, Number(dailyGoalMins) || 30);
-  const dailyMinutes = getDailyReadingMinutes(projectedSessions, completionDate);
-  const goalPercent = Math.min(100, Math.round((dailyMinutes / dailyGoal) * 100));
+  const dailyGoal = isAudiobook
+    ? Math.max(1, Number(dailyGoalMins) || 30)
+    : Math.max(1, Number(dailyGoalPages) || 20);
+  const dailyValue = isAudiobook
+    ? getDailyGoalMinutes(projectedSessions, completionDate)
+    : getDailyPagesRead(projectedSessions, completionDate);
+  const activityCount = getDailyActivityCount(projectedSessions, completionDate);
+  const goalUnit = isAudiobook ? 'minutes' : 'pages';
+  const goalPercent = Math.min(100, Math.round((dailyValue / dailyGoal) * 100));
   const projectedBook = selectedBook ? { ...selectedBook, progressPages: draft.endPage, progressMinutes: draft.endMins } : undefined;
   const currentPace = projectedBook && !isAudiobook
     ? getCurrentPace({
@@ -394,7 +401,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
                 {showDailyMilestones && (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-xl border border-[#3d2448] bg-[#25132f] p-3"><p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400"><Flame className="h-3.5 w-3.5 text-[#e5c158]" /> Reading streak</p><p className="mt-1 font-serif text-2xl font-bold text-[#f4efe6]">{streak} day{streak === 1 ? '' : 's'}</p></div>
-                    <div className="rounded-xl border border-[#3d2448] bg-[#25132f] p-3"><p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400"><Target className="h-3.5 w-3.5 text-[#e5c158]" /> Daily goal</p><p className="mt-1 font-serif text-2xl font-bold text-[#f4efe6]">{dailyMinutes} / {dailyGoal}m</p><p className="mt-1 text-[11px] text-stone-400">{dailyMinutes >= dailyGoal ? 'Goal reached!' : `${dailyGoal - dailyMinutes} minutes to go.`}</p><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[#d4af37]" style={{ width: `${goalPercent}%` }} /></div></div>
+                    <div className="rounded-xl border border-[#3d2448] bg-[#25132f] p-3"><p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-stone-400"><Target className="h-3.5 w-3.5 text-[#e5c158]" /> Daily goal</p><p className="mt-1 font-serif text-2xl font-bold text-[#f4efe6]">{dailyValue} / {dailyGoal} {goalUnit}</p><p className="mt-1 text-[11px] text-stone-400">{dailyValue >= dailyGoal ? 'Goal reached!' : `${dailyGoal - dailyValue} ${goalUnit} to go.`} · {activityCount} recorded activit{activityCount === 1 ? 'y' : 'ies'}</p><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-[#d4af37]" style={{ width: `${goalPercent}%` }} /></div></div>
                   </div>
                 )}
 
