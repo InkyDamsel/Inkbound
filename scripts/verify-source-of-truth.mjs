@@ -278,6 +278,7 @@ if (!readingRecencySource.includes('lastProgressUpdatedAt') || !readingRecencySo
   violations.push('readingRecency.ts: Currently Reading order must consider both exact progress updates and canonical session recency.');
 }
 
+const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
 const cloudServerMergePolicySource = read('src/features/sync/cloudServerMergePolicy.ts');
 if (!cloudServerRefreshSource.includes('mergeServerCollectionById') || !cloudServerRefreshSource.includes('mergeBooksFromServer')) {
   violations.push('CloudServerRefreshBridge.tsx: explicit cloud refresh must use the canonical cross-device merge policy.');
@@ -299,7 +300,6 @@ if (!bulkHistoricalSessionsSource.includes('onSave(nextSessions)')) {
 }
 
 const fullCloudReconciliationSource = read('src/features/sync/FullCloudReconciliationBridge.tsx');
-const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
 const oneShotCloudHydrationSource = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 const accountLibraryMigrationSource = read('src/features/sync/accountLibraryMigration.ts');
 
