@@ -45,6 +45,17 @@ if (fs.existsSync(infoPlist)) {
   for (const key of ['NSCameraUsageDescription', 'NSPhotoLibraryUsageDescription']) {
     if (!source.includes(`<key>${key}</key>`)) fail(`Info.plist is missing ${key}.`);
   }
+
+  if (fs.existsSync(googleService)) {
+    const googleSource = fs.readFileSync(googleService, 'utf8');
+    const reversedMatch = googleSource.match(/<key>REVERSED_CLIENT_ID<\\/key>\\s*<string>([^<]+)<\\/string>/);
+    const reversedClientId = reversedMatch?.[1]?.trim();
+    if (!reversedClientId) {
+      fail('GoogleService-Info.plist is missing REVERSED_CLIENT_ID.');
+    } else if (!source.includes(`<string>${reversedClientId}</string>`)) {
+      fail('Info.plist is missing the Google sign-in callback URL scheme. Run npm run ios:google-signin:configure.');
+    }
+  }
 }
 
 const entitlementCandidates = fs.existsSync(appRoot)
