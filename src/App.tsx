@@ -68,11 +68,22 @@ import { getActiveEdition, withReadingStatus } from './features/reading/bookRead
 import { withCustomReadingStatus } from './features/reading/customReadingStatuses';
 import {
   applySessionProgressToBook,
-  getSessionProgressEndpoint,
   reconcileBookAfterSessionMutation,
-  sessionSortKey,
 } from './features/reading/sessionBookReconciliation';
-import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, localDateKey } from './features/reading/sessionAnalytics';
+import {
+  getDailyActivityCount,
+  getDailyGoalMinutes,
+  getDailyPagesRead,
+  getDailyReadingMinutes,
+  getReadingStreak,
+  getSessionDurationMinutes,
+  localDateKey,
+} from './features/reading/sessionAnalytics';
+import {
+  addConfirmedProgressActivity,
+  buildProgressActivityPrompt,
+  type ProgressActivityPrompt,
+} from './features/reading/progressActivity';
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
 import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
 import { subscribeToRuntimeResume } from './platform/runtimeLifecycle';
@@ -93,6 +104,7 @@ const LEGACY_SESSIONS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.sessions;
 const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
 const DAYTIME_MAINTENANCE_KEY = 'inkbound_last_daytime_library_maintenance';
 const DAILY_GOAL_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes;
+const DAILY_PAGE_GOAL_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalPages;
 const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
 const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
 const MAINTENANCE_CHECK_INTERVAL_MS = 60 * 1000;
@@ -105,8 +117,10 @@ let foregroundImportRetryPending = false;
 interface SessionMilestoneNotice {
   date: string;
   streak: number;
-  dailyMinutes: number;
+  dailyValue: number;
   dailyGoal: number;
+  unit: 'pages' | 'minutes';
+  activityCount: number;
 }
 
 interface BookProgressCorrection {
@@ -133,6 +147,16 @@ function readDailyGoalMinutes(): number {
     return Math.max(1, Number(parsed) || 30);
   } catch {
     return 30;
+  }
+}
+
+function readDailyGoalPages(): number {
+  try {
+    const raw = getRuntimeStorage().getItem(DAILY_PAGE_GOAL_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : 20;
+    return Math.max(1, Number(parsed) || 20);
+  } catch {
+    return 20;
   }
 }
 
@@ -182,6 +206,7 @@ export default function App() {
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sessionMilestone, setSessionMilestone] = useState<SessionMilestoneNotice | null>(null);
+  const [progressActivityPrompt, setProgressActivityPrompt] = useState<ProgressActivityPrompt | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
