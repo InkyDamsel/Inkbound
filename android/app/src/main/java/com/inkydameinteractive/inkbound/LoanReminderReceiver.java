@@ -25,6 +25,12 @@ public class LoanReminderReceiver extends BroadcastReceiver {
         String kind = intent.getStringExtra(LoanReminderPlugin.EXTRA_KIND);
         if (title == null || message == null) return;
 
+        // Always persist the notification ID as delivered. Older Inkbound builds
+        // scheduled alarms before bookId/dueDate/kind extras existed; after an
+        // upgrade those legacy PendingIntents still execute this newer receiver.
+        // Recording the stable request/notification ID prevents a legacy alarm
+        // from being re-armed again on the next app open or sync.
+        markNotificationDelivered(context, notificationId);
         if (bookId != null && dueDate != null && kind != null) {
             markDelivered(context, bookId, dueDate, kind);
         }
@@ -63,6 +69,20 @@ public class LoanReminderReceiver extends BroadcastReceiver {
             .getBoolean(deliveryKey(bookId, dueDate, kind), false);
     }
 
+    static boolean wasNotificationDelivered(Context context, int notificationId) {
+        return context
+            .getSharedPreferences(LoanReminderPlugin.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(notificationDeliveryKey(notificationId), false);
+    }
+
+    private static void markNotificationDelivered(Context context, int notificationId) {
+        context
+            .getSharedPreferences(LoanReminderPlugin.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(notificationDeliveryKey(notificationId), true)
+            .apply();
+    }
+
     private static void markDelivered(Context context, String bookId, String dueDate, String kind) {
         SharedPreferences preferences = context.getSharedPreferences(LoanReminderPlugin.PREFS_NAME, Context.MODE_PRIVATE);
         preferences.edit().putBoolean(deliveryKey(bookId, dueDate, kind), true).apply();
@@ -70,6 +90,10 @@ public class LoanReminderReceiver extends BroadcastReceiver {
 
     private static String deliveryKey(String bookId, String dueDate, String kind) {
         return "delivered:" + bookId + ":" + dueDate + ":" + kind;
+    }
+
+    private static String notificationDeliveryKey(int notificationId) {
+        return "delivered-notification:" + notificationId;
     }
 
     private void createChannel(Context context) {
