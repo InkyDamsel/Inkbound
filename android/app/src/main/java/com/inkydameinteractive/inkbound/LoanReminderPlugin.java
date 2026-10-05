@@ -30,6 +30,12 @@ public class LoanReminderPlugin extends Plugin {
     private static final String EXTRA_TITLE = "title";
     private static final String EXTRA_MESSAGE = "message";
     private static final String EXTRA_NOTIFICATION_ID = "notificationId";
+    static final String EXTRA_BOOK_ID = "bookId";
+    static final String EXTRA_DUE_DATE = "dueDate";
+    static final String EXTRA_KIND = "kind";
+    static final String PREFS_NAME = "inkbound_loan_reminders";
+    static final String KIND_THREE_DAYS = "three-days";
+    static final String KIND_DUE_TODAY = "due-today";
 
     @PluginMethod
     public void schedule(PluginCall call) {
@@ -80,16 +86,23 @@ public class LoanReminderPlugin extends Plugin {
         }
 
         cancelForBook(bookId);
-        scheduleAlarm(bookId, title, dueDate.minusDays(3), false);
-        scheduleAlarm(bookId, title, dueDate, true);
+        scheduleAlarm(bookId, title, dueDate, dueDate.minusDays(3), false);
+        scheduleAlarm(bookId, title, dueDate, dueDate, true);
         call.resolve(new JSObject());
     }
 
-    private void scheduleAlarm(String bookId, String title, LocalDate reminderDate, boolean dueToday) {
+    private void scheduleAlarm(String bookId, String title, LocalDate dueDate, LocalDate reminderDate, boolean dueToday) {
+        String kind = dueToday ? KIND_DUE_TODAY : KIND_THREE_DAYS;
+        if (LoanReminderReceiver.wasDelivered(getContext(), bookId, dueDate.toString(), kind)) return;
+
         long triggerAt = triggerTime(reminderDate);
         long now = System.currentTimeMillis();
         if (triggerAt <= now) {
             if (!dueToday || !reminderDate.equals(LocalDate.now())) return;
+            // If today's notification has not been delivered yet, allow one
+            // catch-up delivery shortly after scheduling. Once delivered, the
+            // receiver persists that fact so future app opens/syncs cannot
+            // re-arm the same notification over and over.
             triggerAt = now + 3000L;
         }
 
@@ -100,6 +113,9 @@ public class LoanReminderPlugin extends Plugin {
             ? "Return “" + title + "” to the library today."
             : "“" + title + "” is due back at the library in 3 days.");
         intent.putExtra(EXTRA_NOTIFICATION_ID, requestCode);
+        intent.putExtra(EXTRA_BOOK_ID, bookId);
+        intent.putExtra(EXTRA_DUE_DATE, dueDate.toString());
+        intent.putExtra(EXTRA_KIND, kind);
 
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             getContext(),
