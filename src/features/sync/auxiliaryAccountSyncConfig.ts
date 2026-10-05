@@ -32,6 +32,7 @@ export const AUXILIARY_ACCOUNT_KEYS = {
   ignoredDuplicateGroups: ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups,
   annualReadingGoal: ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal,
   dailyReadingGoalMinutes: ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes,
+  dailyReadingGoalPages: ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalPages,
   timelineMemories: ACCOUNT_DATA_STORAGE_KEYS.timelineMemories,
   readingTimeCapsules: ACCOUNT_DATA_STORAGE_KEYS.readingTimeCapsules,
   joinedChallenges: ACCOUNT_DATA_STORAGE_KEYS.joinedChallenges,
