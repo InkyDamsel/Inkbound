@@ -3,6 +3,7 @@ package com.inkydameinteractive.inkbound;
 import android.Manifest;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
+import androidx.core.app.NotificationManagerCompat;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
@@ -64,7 +65,7 @@ public class LoanReminderPlugin extends Plugin {
             call.reject("bookId is required");
             return;
         }
-        cancelForBook(bookId);
+        cancelForBook(bookId, true);
         call.resolve();
     }
 
@@ -85,7 +86,7 @@ public class LoanReminderPlugin extends Plugin {
             return;
         }
 
-        cancelForBook(bookId);
+        cancelForBook(bookId, false);
         scheduleAlarm(bookId, title, dueDate, dueDate.minusDays(3), false);
         scheduleAlarm(bookId, title, dueDate, dueDate, true);
         call.resolve(new JSObject());
@@ -93,7 +94,11 @@ public class LoanReminderPlugin extends Plugin {
 
     private void scheduleAlarm(String bookId, String title, LocalDate dueDate, LocalDate reminderDate, boolean dueToday) {
         String kind = dueToday ? KIND_DUE_TODAY : KIND_THREE_DAYS;
-        if (LoanReminderReceiver.wasDelivered(getContext(), bookId, dueDate.toString(), kind)) return;
+        int requestCode = requestCode(bookId, dueToday);
+        if (
+            LoanReminderReceiver.wasDelivered(getContext(), bookId, dueDate.toString(), kind)
+            || LoanReminderReceiver.wasNotificationDelivered(getContext(), requestCode)
+        ) return;
 
         long triggerAt = triggerTime(reminderDate);
         long now = System.currentTimeMillis();
@@ -106,7 +111,6 @@ public class LoanReminderPlugin extends Plugin {
             triggerAt = now + 3000L;
         }
 
-        int requestCode = requestCode(bookId, dueToday);
         Intent intent = new Intent(getContext(), LoanReminderReceiver.class);
         intent.putExtra(EXTRA_TITLE, dueToday ? "Library book due today" : "Library book due in 3 days");
         intent.putExtra(EXTRA_MESSAGE, dueToday
@@ -140,12 +144,12 @@ public class LoanReminderPlugin extends Plugin {
             .toEpochMilli();
     }
 
-    private void cancelForBook(String bookId) {
-        cancelAlarm(requestCode(bookId, false));
-        cancelAlarm(requestCode(bookId, true));
+    private void cancelForBook(String bookId, boolean cancelVisibleNotifications) {
+        cancelAlarm(requestCode(bookId, false), cancelVisibleNotifications);
+        cancelAlarm(requestCode(bookId, true), cancelVisibleNotifications);
     }
 
-    private void cancelAlarm(int requestCode) {
+    private void cancelAlarm(int requestCode, boolean cancelVisibleNotification) {
         Intent intent = new Intent(getContext(), LoanReminderReceiver.class);
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
             getContext(),
@@ -153,10 +157,14 @@ public class LoanReminderPlugin extends Plugin {
             intent,
             PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE
         );
-        if (pendingIntent == null) return;
-        AlarmManager alarmManager = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
-        if (alarmManager != null) alarmManager.cancel(pendingIntent);
-        pendingIntent.cancel();
+        if (pendingIntent != null) {
+            AlarmManager alarmManager = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager != null) alarmManager.cancel(pendingIntent);
+            pendingIntent.cancel();
+        }
+        if (cancelVisibleNotification) {
+            NotificationManagerCompat.from(getContext()).cancel(requestCode);
+        }
     }
 
     private int requestCode(String bookId, boolean dueToday) {
