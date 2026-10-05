@@ -74,7 +74,6 @@ import {
   getDailyActivityCount,
   getDailyGoalMinutes,
   getDailyPagesRead,
-  getDailyReadingMinutes,
   getReadingStreak,
   getSessionDurationMinutes,
   localDateKey,
