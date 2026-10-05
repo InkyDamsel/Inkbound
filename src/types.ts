@@ -66,6 +66,8 @@ export interface Edition {
   coverGradient: string;
   coverIcon?: string;
   coverUrl?: string;
+  /** Client timestamp for an explicit reader-selected cover. Used to keep stale sync records from winning. */
+  manualCoverUpdatedAt?: string;
   language?: string;
   editionName?: string;
   binding?: string;
