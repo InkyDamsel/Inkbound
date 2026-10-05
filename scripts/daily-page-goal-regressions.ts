@@ -17,6 +17,7 @@ import {
 } from '../src/features/reading/progressActivity';
 import { getEffectivePagesReadForPeriod } from '../src/features/reading/readingPageTotals';
 import { reconcileBookAfterSessionMutation } from '../src/features/reading/sessionBookReconciliation';
+import { sortCurrentlyReadingByRecency } from '../src/features/reading/readingRecency';
 
 const printBook = (overrides: Partial<UserBookRecord> = {}): UserBookRecord => ({
   id: 'book-print',
@@ -239,6 +240,43 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   const confirmed = addConfirmedProgressActivity([], prompt);
   assert.equal(getDailyGoalMinutes(confirmed.sessions, '2026-10-05'), 16);
   assert.equal(getDailyPagesRead(confirmed.sessions, '2026-10-05'), 0);
+}
+
+
+{
+  const first = printBook({
+    id: 'current-first',
+    work: { ...printBook().work, id: 'work-first', title: 'First Current' },
+    dateStarted: '2026-10-01',
+    lastProgressUpdatedAt: '2026-10-05T14:00:00.000Z',
+  });
+  const second = printBook({
+    id: 'current-second',
+    work: { ...printBook().work, id: 'work-second', title: 'Second Current' },
+    dateStarted: '2026-10-01',
+    lastProgressUpdatedAt: '2026-10-05T15:00:00.000Z',
+  });
+  assert.deepEqual(
+    sortCurrentlyReadingByRecency([first, second], []).map((book) => book.id),
+    ['current-second', 'current-first'],
+    'The most recently updated current-progress record should lead Currently Reading.',
+  );
+
+  const firstWithLaterSession = session({
+    id: 'later-session',
+    bookId: first.id,
+    date: '2026-10-05',
+    startTime: '16:00',
+    endTime: '16:30',
+    startPage: 81,
+    endPage: 90,
+    pagesRead: 9,
+  });
+  assert.equal(
+    sortCurrentlyReadingByRecency([first, second], [firstWithLaterSession])[0].id,
+    first.id,
+    'A later canonical reading session should also make that current title the dashboard lead.',
+  );
 }
 
 console.log('Inkbound daily page goal regressions passed.');
