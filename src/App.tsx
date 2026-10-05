@@ -568,25 +568,79 @@ export default function App() {
     commitCanonicalBooks((current) => current.map((book) => book.id === bookId ? reconcileBookAfterSessionMutation(book, nextSessions, changedSession) : book));
   };
 
-  const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessions]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
-  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => { maybeShowFirstSessionMilestone(newSession); commitCanonicalSessions((current) => [newSession, ...current]); updateBookFromSession(newSession, updatedPages, updatedMinutes); setTimerInitialBookId(undefined); setIsTimerOpen(false); showToast(`Saved a ${getSessionDurationMinutes(newSession)}-minute reading session.`); };
+  const maybeShowFirstSessionMilestone = (newSession: ReadingSession, projectedSessions: ReadingSession[]) => {
+    const hadPriorActivityThatDay = sessionsRef.current.some((session) =>
+      session.date === newSession.date
+      && (getSessionDurationMinutes(session) > 0 || getDailyPagesRead([session], session.date) > 0 || getDailyGoalMinutes([session], session.date) > 0),
+    );
+    if (hadPriorActivityThatDay) return;
+
+    const book = booksRef.current.find((candidate) => candidate.id === newSession.bookId);
+    const isAudiobook = getActiveEdition(book!)?.format === 'audiobook';
+    const dailyValue = isAudiobook
+      ? getDailyGoalMinutes(projectedSessions, newSession.date)
+      : getDailyPagesRead(projectedSessions, newSession.date);
+    const dailyGoal = isAudiobook ? readDailyGoalMinutes() : readDailyGoalPages();
+
+    showSessionMilestone({
+      date: newSession.date,
+      streak: getReadingStreak(projectedSessions, newSession.date),
+      dailyValue,
+      dailyGoal,
+      unit: isAudiobook ? 'minutes' : 'pages',
+      activityCount: getDailyActivityCount(projectedSessions, newSession.date),
+    });
+  };
+
+  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
+    const book = booksRef.current.find((candidate) => candidate.id === newSession.bookId);
+    const recordedSession: ReadingSession = {
+      ...newSession,
+      editionId: newSession.editionId ?? (book ? getActiveEdition(book)?.id : undefined),
+      activitySource: newSession.activitySource ?? 'timer',
+    };
+    const projectedSessions = [recordedSession, ...sessionsRef.current];
+    maybeShowFirstSessionMilestone(recordedSession, projectedSessions);
+    commitCanonicalSessions(projectedSessions);
+    updateBookFromSession(recordedSession, updatedPages, updatedMinutes);
+    setTimerInitialBookId(undefined);
+    setIsTimerOpen(false);
+    showToast(`Saved a ${getSessionDurationMinutes(recordedSession)}-minute reading session.`);
+  };
+
   const handleSaveManualSession = (session: ReadingSession) => {
-    const nextSessions = [session, ...sessionsRef.current];
+    const book = booksRef.current.find((candidate) => candidate.id === session.bookId);
+    const recordedSession: ReadingSession = {
+      ...session,
+      editionId: session.editionId ?? (book ? getActiveEdition(book)?.id : undefined),
+      activitySource: session.activitySource ?? 'manual-session',
+    };
+    const nextSessions = [recordedSession, ...sessionsRef.current];
+    maybeShowFirstSessionMilestone(recordedSession, nextSessions);
     commitCanonicalSessions(nextSessions);
-    commitCanonicalBooks((current) => current.map((book) =>
-      book.id === session.bookId ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
+    commitCanonicalBooks((current) => current.map((bookRecord) =>
+      bookRecord.id === recordedSession.bookId ? reconcileBookAfterSessionMutation(bookRecord, nextSessions) : bookRecord,
     ));
     showToast('Added past reading session.');
   };
+
   const handleSaveManualSessions = (newSessions: ReadingSession[]) => {
     if (newSessions.length === 0) return;
-    const nextSessions = [...newSessions, ...sessionsRef.current];
-    const affectedBookIds = new Set(newSessions.map((session) => session.bookId));
+    const recordedSessions = newSessions.map((session) => {
+      const book = booksRef.current.find((candidate) => candidate.id === session.bookId);
+      return {
+        ...session,
+        editionId: session.editionId ?? (book ? getActiveEdition(book)?.id : undefined),
+        activitySource: session.activitySource ?? 'manual-session',
+      } satisfies ReadingSession;
+    });
+    const nextSessions = [...recordedSessions, ...sessionsRef.current];
+    const affectedBookIds = new Set(recordedSessions.map((session) => session.bookId));
     commitCanonicalSessions(nextSessions);
     commitCanonicalBooks((current) => current.map((book) =>
       affectedBookIds.has(book.id) ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
     ));
-    showToast(`Added ${newSessions.length} past reading session${newSessions.length === 1 ? '' : 's'}.`);
+    showToast(`Added ${recordedSessions.length} past reading session${recordedSessions.length === 1 ? '' : 's'}.`);
   };
   const handleUpdateSession = (session: ReadingSession) => { const previous = sessions.find((item) => item.id === session.id); const nextSessions = sessions.map((item) => item.id === session.id ? session : item); commitCanonicalSessions(nextSessions); if (previous && previous.bookId !== session.bookId) { reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous); reconcileBookProgressFromSessions(session.bookId, nextSessions); } else reconcileBookProgressFromSessions(session.bookId, nextSessions, previous); showToast('Updated reading session and reconciled book progress.'); };
   const handleDeleteSession = (sessionId: string) => { const removed = sessions.find((session) => session.id === sessionId); const nextSessions = sessions.filter((session) => session.id !== sessionId); commitCanonicalSessions(nextSessions); if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed); showToast('Deleted reading session and reconciled book progress.'); };
