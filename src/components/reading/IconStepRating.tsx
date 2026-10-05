@@ -47,17 +47,16 @@ export const IconStepRating: React.FC<IconStepRatingProps> = ({
               className="relative grid h-11 w-11 shrink-0 place-items-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c29bb2]"
               aria-label={`${ariaLabel}: ${step} of 5`}
               aria-pressed={value === step || value === step - 0.5}
-              title="Click for whole. Double-click for half. On touch, tap left half for .5 or right half for whole."
+              title="Select the left half for .5 or the right half for a whole rating."
               onClick={(event) => {
-                if ((event.nativeEvent as PointerEvent).pointerType === 'touch') return;
+                // Pointer input is handled once in onPointerUp. Keyboard activation
+                // still arrives as a click with detail 0, so preserve accessibility
+                // without re-firing a whole-step value after a half-step pointer pick.
+                if (event.detail !== 0) return;
                 setValue(step);
               }}
-              onDoubleClick={(event) => {
-                event.preventDefault();
-                setValue(step - 0.5);
-              }}
               onPointerUp={(event) => {
-                if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+                if (event.pointerType !== 'mouse' && event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
                 const bounds = event.currentTarget.getBoundingClientRect();
                 const half = event.clientX - bounds.left < bounds.width / 2;
                 setValue(half ? step - 0.5 : step);
