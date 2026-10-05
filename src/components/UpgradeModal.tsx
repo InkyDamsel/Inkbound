@@ -5,6 +5,7 @@ import { PRODUCT_POLICY } from '../config/productPolicy';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
 import { functions } from '../lib/firebase';
+import { isIOSRuntime } from '../platform/runtimePlatform';
 import {
   PremiumBillingPlan,
   canPurchaseRuntimePremium,
@@ -41,7 +42,9 @@ export const UpgradeModal: React.FC = () => {
   const sandboxBillingTest = !PRODUCT_POLICY.premium.subscriptionsOpen
     && OWNER_EMAILS.has(ownerEmail)
     && sandboxBillingRequested;
-  const subscriptionsAvailable = (PRODUCT_POLICY.premium.subscriptionsOpen || sandboxBillingTest)
+  const iosRuntime = isIOSRuntime();
+  const subscriptionsAvailable = !iosRuntime
+    && (PRODUCT_POLICY.premium.subscriptionsOpen || sandboxBillingTest)
     && canPurchaseRuntimePremium();
   const restoreAvailable = PRODUCT_POLICY.premium.subscriptionsOpen && canRestoreRuntimePremium();
 
@@ -133,7 +136,13 @@ export const UpgradeModal: React.FC = () => {
 
           {!entitlementLoading && !trialAvailable && <p className="text-center text-xs text-[var(--ink-muted)]">This account has already used its one-time Premium trial.</p>}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {iosRuntime ? (
+            <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5 text-sm leading-6 text-[var(--ink-muted)]">
+              <strong className="text-[var(--ink-ivory)]">Premium purchasing is not open in the iOS app yet.</strong>{' '}
+              You can use Inkbound Free, start the one-time trial if eligible, or keep using Premium already granted to this Inkbound account.
+            </div>
+          ) : (
+            <><div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col justify-between rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5">
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Monthly</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedMonthlyPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ month</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">Flexible monthly billing. Cancel anytime.</p></div>
               {subscriptionsAvailable ? <button type="button" disabled={billingPlan !== null} onClick={() => void beginPurchase('monthly')} className="quiet-shelf-primary-action mt-4 justify-center disabled:opacity-50">{billingPlan === 'monthly' ? 'Opening checkout…' : sandboxBillingTest ? 'Test monthly checkout' : 'Choose monthly'}</button> : <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>}
@@ -143,12 +152,12 @@ export const UpgradeModal: React.FC = () => {
               <div><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-mauve)]">Annual</span><div className="mt-1 flex flex-wrap items-baseline gap-1"><span className="font-serif text-3xl font-bold text-[var(--ink-ivory)]">${PRODUCT_POLICY.premium.plannedAnnualPrice.toFixed(2)}</span><span className="text-xs text-[var(--ink-muted)]">/ year</span></div><p className="mt-2 text-xs text-[var(--ink-muted)]">About $5/month and roughly 28% less than paying monthly.</p></div>
               {subscriptionsAvailable ? <button type="button" disabled={billingPlan !== null} onClick={() => void beginPurchase('annual')} className="quiet-shelf-primary-action mt-4 justify-center disabled:opacity-50">{billingPlan === 'annual' ? 'Opening checkout…' : sandboxBillingTest ? 'Test annual checkout' : 'Choose annual'}</button> : <p className="mt-4 text-[11px] font-semibold text-[var(--ink-mauve)]">Planned launch pricing</p>}
             </div>
-          </div>
-
+          </div></>
+          )}
           {restoreAvailable && <div className="flex justify-center"><button type="button" disabled={billingPlan !== null} onClick={() => void restorePurchase()} className="quiet-shelf-secondary-action justify-center disabled:opacity-50"><RotateCcw className="h-4 w-4" /> {billingPlan === 'restore' ? 'Restoring…' : 'Restore Google Play purchase'}</button></div>}
           {billingError && <div role="alert" className="rounded-xl border border-red-400/30 bg-red-950/20 px-4 py-3 text-sm text-red-200">{billingError}</div>}
 
-          <div className="rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/5 p-5">
+          {!iosRuntime && (<div className="rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/5 p-5">
             <div className="flex items-start gap-3">
               <HeartHandshake className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
               <div className="min-w-0 flex-1">
@@ -161,8 +170,7 @@ export const UpgradeModal: React.FC = () => {
                 )}
               </div>
             </div>
-          </div>
-
+          </div>)}
           <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm leading-6 text-[var(--ink-muted)]"><strong className="text-[var(--ink-ivory)]">Free is a complete reading library.</strong>{' '}Premium is for readers who want a richer record of how, when, and what they read.</div>
 
           <div className="overflow-hidden rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)]">

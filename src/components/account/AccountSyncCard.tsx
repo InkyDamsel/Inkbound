@@ -1,6 +1,7 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Apple, Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAccountSync } from '../../context/AccountSyncContext';
+import { isIOSRuntime } from '../../platform/runtimePlatform';
 import {
   getCloudSyncHealth,
   INKBOUND_CLOUD_SYNC_HEALTH_EVENT,
@@ -81,6 +82,17 @@ export const AccountSyncCard: React.FC = () => {
   const renderSignedOutAccount = () => (
     <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 sm:p-5">
+        {isIOSRuntime() && (
+          <button
+            type="button"
+            onClick={() => void sync.signInWithApple()}
+            disabled={!sync.isConfigured || isWorking}
+            className="mb-3 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-white bg-white px-4 text-sm font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Apple className="h-5 w-5" aria-hidden="true" />
+            Continue with Apple
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void sync.signInWithGoogle()}
@@ -145,7 +157,7 @@ export const AccountSyncCard: React.FC = () => {
           <p className="inkbound-kicker">Your Inkbound account</p>
           <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Take Inkbound with you</h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">
-            Sign in with Google or email to keep your books, reading sessions, profile, and Photo Memories up to date
+            Sign in with Apple, Google, or email to keep your books, reading sessions, profile, and Photo Memories up to date
             across your devices. Your library belongs to your Inkbound account, not one particular device.
           </p>
         </div>

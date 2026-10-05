@@ -37,3 +37,7 @@ export function getRuntimePlatform(): 'android' | 'ios' | 'web' | 'native' {
 export function isAndroidRuntime(): boolean {
   return getRuntimePlatform() === 'android';
 }
+
+export function isIOSRuntime(): boolean {
+  return getRuntimePlatform() === 'ios';
+}

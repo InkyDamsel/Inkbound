@@ -7,7 +7,7 @@ import {
 } from 'firebase/auth';
 import { isNativeRuntime } from './runtimePlatform';
 
-export type ReauthenticationRequirement = 'google' | 'password' | 'unsupported';
+export type ReauthenticationRequirement = 'apple' | 'google' | 'password' | 'unsupported';
 
 export interface RuntimeReauthenticationOptions {
   password?: string;
