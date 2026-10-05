@@ -291,7 +291,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   }, [draft.endMins, draft.endPage, draft.isFinished, draft.startMins, draft.startPage, endDate, endedAt, firstDaySeconds, isAudiobook, midnightProgress, minsCompleted, pagesCompleted, selectedBook, sessionDurationMins, sessions, shouldSplit, startDate, startedAt, totalTrackedSeconds]);
 
   const completionDate = shouldSplit ? endDate : startDate;
-  const showDailyMilestones = getDailyActivityCount(sessions, completionDate) === 0;
+  const showDailyMilestones = true;
   const streak = getReadingStreak(projectedSessions, completionDate);
   const dailyGoal = isAudiobook
     ? Math.max(1, Number(dailyGoalMins) || 30)
