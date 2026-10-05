@@ -54,7 +54,7 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
       });
       if (signature === widgetSignatureRef.current) return;
       widgetSignatureRef.current = signature;
-      void syncAndroidReadingWidget(booksRef.current);
+      void syncAndroidReadingWidget(booksRef.current, sessionsRef.current);
     };
     const consume = async () => {
       const action = await consumeAndroidReadingWidgetAction();
