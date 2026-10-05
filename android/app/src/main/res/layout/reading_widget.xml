@@ -46,6 +46,29 @@
         android:textColor="#B7A8B1"
         android:textSize="11sp" />
 
+    <TextView
+        android:id="@+id/widget_pace"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textColor="#F4E6D9"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_pace_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="1dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textColor="#A997A3"
+        android:textSize="10sp"
+        android:visibility="gone" />
+
     <Chronometer
         android:id="@+id/widget_timer"
         android:layout_width="match_parent"
