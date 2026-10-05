@@ -95,10 +95,7 @@ public class LoanReminderPlugin extends Plugin {
     private void scheduleAlarm(String bookId, String title, LocalDate dueDate, LocalDate reminderDate, boolean dueToday) {
         String kind = dueToday ? KIND_DUE_TODAY : KIND_THREE_DAYS;
         int requestCode = requestCode(bookId, dueToday);
-        if (
-            LoanReminderReceiver.wasDelivered(getContext(), bookId, dueDate.toString(), kind)
-            || LoanReminderReceiver.wasNotificationDelivered(getContext(), requestCode)
-        ) return;
+        if (LoanReminderReceiver.wasDelivered(getContext(), bookId, dueDate.toString(), kind)) return;
 
         long triggerAt = triggerTime(reminderDate);
         long now = System.currentTimeMillis();
