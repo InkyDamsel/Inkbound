@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { UserBookRecord } from '../../types';
+import type { ReadingSession, UserBookRecord } from '../../types';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { INKBOUND_LOCAL_DATA_CHANGED_EVENT } from '../../platform/runtimeStorage';
 import {
@@ -11,18 +11,25 @@ import {
 
 interface ReadingWidgetSyncBridgeProps {
   books: UserBookRecord[];
+  sessions: ReadingSession[];
   onOpenTimer: (bookId?: string) => void;
 }
 
-export function ReadingWidgetSyncBridge({ books, onOpenTimer }: ReadingWidgetSyncBridgeProps) {
+export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: ReadingWidgetSyncBridgeProps) {
   const booksRef = useRef(books);
+  const sessionsRef = useRef(sessions);
   const openTimerRef = useRef(onOpenTimer);
   const widgetSignatureRef = useRef('');
 
   useEffect(() => {
     booksRef.current = books;
-    void syncAndroidReadingWidget(books);
+    void syncAndroidReadingWidget(books, sessionsRef.current);
   }, [books]);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+    void syncAndroidReadingWidget(booksRef.current, sessions);
+  }, [sessions]);
 
   useEffect(() => {
     openTimerRef.current = onOpenTimer;
@@ -32,13 +39,15 @@ export function ReadingWidgetSyncBridge({ books, onOpenTimer }: ReadingWidgetSyn
     let stopped = false;
 
     const refresh = () => {
-      const snapshot = buildReadingWidgetSnapshot(booksRef.current);
+      const snapshot = buildReadingWidgetSnapshot(booksRef.current, sessionsRef.current);
       const signature = JSON.stringify({
         sessionMode: snapshot.sessionMode,
         bookId: snapshot.bookId,
         title: snapshot.title,
         author: snapshot.author,
         progressLabel: snapshot.progressLabel,
+        paceLabel: snapshot.paceLabel,
+        paceDetail: snapshot.paceDetail,
         dueTitle: snapshot.dueTitle,
         dueDate: snapshot.dueDate,
         dueLabel: snapshot.dueLabel,
@@ -51,7 +60,7 @@ export function ReadingWidgetSyncBridge({ books, onOpenTimer }: ReadingWidgetSyn
       const action = await consumeAndroidReadingWidgetAction();
       if (!action || stopped) return;
       const result = applyReadingWidgetAction(action);
-      await syncAndroidReadingWidget(booksRef.current);
+      await syncAndroidReadingWidget(booksRef.current, sessionsRef.current);
       if (result.shouldOpenTimer) {
         const fallbackBookId = action === 'start'
           ? booksRef.current.find((book) => book.status === 'currently-reading')?.id
