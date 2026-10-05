@@ -27,12 +27,16 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             String title = prefs.getString("title", "");
             String author = prefs.getString("author", "");
             String progress = prefs.getString("progressLabel", "");
+            String paceLabel = prefs.getString("paceLabel", "");
+            String paceDetail = prefs.getString("paceDetail", "");
             String dueTitle = prefs.getString("dueTitle", "");
             String dueLabel = prefs.getString("dueLabel", "");
 
             views.setTextViewText(R.id.widget_title, title.isEmpty() ? "Inkbound" : title);
             views.setTextViewText(R.id.widget_author, author);
             views.setTextViewText(R.id.widget_progress, progress);
+            views.setTextViewText(R.id.widget_pace, paceLabel);
+            views.setTextViewText(R.id.widget_pace_detail, paceDetail);
             views.setTextViewText(R.id.widget_due, dueTitle.isEmpty() ? "" : "Library: " + dueTitle + (dueLabel.isEmpty() ? "" : " · " + dueLabel));
 
             long timerSeconds = prefs.getLong("timerSeconds", 0L);
@@ -49,6 +53,8 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
 
             views.setViewVisibility(R.id.widget_timer, (active || paused || finished) ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_progress, hasBook && !progress.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace, hasBook && !paceLabel.isEmpty() ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.widget_pace_detail, hasBook && !paceDetail.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_due, !dueTitle.isEmpty() ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_start, hasBook && "none".equals(sessionMode) ? View.VISIBLE : View.GONE);
             views.setViewVisibility(R.id.widget_resume, paused ? View.VISIBLE : View.GONE);
