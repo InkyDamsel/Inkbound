@@ -220,6 +220,12 @@ const loanReminderReceiver = fs.readFileSync(loanReminderReceiverPath, 'utf8');
 for (const required of ['wasDelivered', 'EXTRA_BOOK_ID', 'EXTRA_DUE_DATE', 'EXTRA_KIND', 'cancelVisibleNotifications']) {
   if (!loanReminderPlugin.includes(required)) fail(`LoanReminderPlugin.java is missing idempotent reminder guard ${required}.`);
 }
+if (loanReminderPlugin.includes('now + 3000L')) {
+  fail('LoanReminderPlugin.java must not replay missed due-today reminders after app open, sync, or upgrade.');
+}
+if (!loanReminderPlugin.includes('if (triggerAt <= now) return;')) {
+  fail('LoanReminderPlugin.java must drop reminders whose intended delivery time has already passed.');
+}
 for (const required of ['markDelivered', 'deliveryKey', 'getSharedPreferences', 'bookId == null || dueDate == null || kind == null']) {
   if (!loanReminderReceiver.includes(required)) fail(`LoanReminderReceiver.java is missing persistent delivery guard ${required}.`);
 }
