@@ -200,7 +200,14 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
   };
   const updateActiveEdition = (changes: Partial<Edition>, markManual = true) => {
     if (markManual) stopAutomaticEnrichmentForBook(book.id);
-    const nextEdition: Edition = { ...activeEdition, ...changes, ...(markManual ? { externalSource: 'manual' as const } : {}) };
+    const nextEdition: Edition = {
+      ...activeEdition,
+      ...changes,
+      ...(markManual ? { externalSource: 'manual' as const } : {}),
+      ...(markManual && Object.prototype.hasOwnProperty.call(changes, 'coverUrl')
+        ? { manualCoverUpdatedAt: new Date().toISOString() }
+        : {}),
+    };
     const nextEditions = book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition);
     onUpdateBook(deriveBookForActiveEdition(nextEdition, nextEditions, activeEdition.id));
   };
