@@ -5,6 +5,7 @@ import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
 import { fetchOpenLibrarySummary } from '../features/book-search/data/openLibraryApi';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import { getActiveEdition, getBookReadingState, withReadingStatus } from '../features/reading/bookReadingState';
+import { deriveProgressFromPercentage } from '../features/reading/progressActivity';
 import { addSavedQuote, createSavedQuote, deleteSavedQuote, setFavoriteSavedQuote, updateSavedQuote } from '../features/reading/bookQuotes';
 import {
   getSessionDurationMinutes,
@@ -262,14 +263,13 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
 
   const correctProgressPercentage = (percentage: number) => {
     const safePercentage = Math.max(0, Math.min(100, percentage));
-    if (activeEdition.format === 'audiobook' && activeEdition.audiobookDurationMins) {
-      onCorrectProgress(book.id, { progressMinutes: Math.round((safePercentage / 100) * activeEdition.audiobookDurationMins) });
+    const derived = deriveProgressFromPercentage(activeEdition, safePercentage);
+    if (derived.progressMinutes !== undefined || derived.progressPages !== undefined) {
+      onCorrectProgress(book.id, derived);
       return;
     }
-    if (activeEdition.pageCount) {
-      onCorrectProgress(book.id, { progressPages: Math.round((safePercentage / 100) * activeEdition.pageCount) });
-      return;
-    }
+    // Without a known page count/audio duration, percentage remains current
+    // progress only. Inkbound cannot safely invent pages/minutes for daily goals.
     updateBook({ progressPercentage: safePercentage });
   };
 
