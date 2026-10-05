@@ -64,7 +64,7 @@ export const manualCoverLedgerBaselineKey = (uid: string) => `inkbound_manual_co
 // this value deliberately forces existing browser/device working copies through
 // one fresh full comparison before returning to low-cost delta sync.
 export const ACCOUNT_LIBRARY_MIGRATION_VERSION = '1';
-export const FULL_RECONCILIATION_VERSION = '4';
+export const FULL_RECONCILIATION_VERSION = '5';
 
 /**
  * Runtime keys whose local mutations should emit the debounced Inkbound change
