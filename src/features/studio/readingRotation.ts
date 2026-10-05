@@ -207,7 +207,7 @@ export function buildReadingRotationRows(
         .sort((a, b) => a.work.title.localeCompare(b.work.title, undefined, { sensitivity: 'base', numeric: true })),
     };
 
-    return row.last.book || row.current.book || row.next.book ? [row] : [];
+    return formatBooks.length > 0 ? [row] : [];
   });
 }
 
