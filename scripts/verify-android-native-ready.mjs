@@ -217,10 +217,10 @@ if (!fs.existsSync(loanReminderPluginPath) || !fs.existsSync(loanReminderReceive
 }
 const loanReminderPlugin = fs.readFileSync(loanReminderPluginPath, 'utf8');
 const loanReminderReceiver = fs.readFileSync(loanReminderReceiverPath, 'utf8');
-for (const required of ['wasDelivered', 'wasNotificationDelivered', 'EXTRA_BOOK_ID', 'EXTRA_DUE_DATE', 'EXTRA_KIND']) {
+for (const required of ['wasDelivered', 'EXTRA_BOOK_ID', 'EXTRA_DUE_DATE', 'EXTRA_KIND', 'cancelVisibleNotifications']) {
   if (!loanReminderPlugin.includes(required)) fail(`LoanReminderPlugin.java is missing idempotent reminder guard ${required}.`);
 }
-for (const required of ['markDelivered', 'markNotificationDelivered', 'notificationDeliveryKey', 'deliveryKey', 'getSharedPreferences']) {
+for (const required of ['markDelivered', 'deliveryKey', 'getSharedPreferences', 'bookId == null || dueDate == null || kind == null']) {
   if (!loanReminderReceiver.includes(required)) fail(`LoanReminderReceiver.java is missing persistent delivery guard ${required}.`);
 }
 if (!fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(LoanReminderPlugin.class)')) {
@@ -293,6 +293,6 @@ console.log(`Inkbound Android Firebase configuration verified for ${expectedPack
 console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
 console.log('Inkbound Android native barcode scanner, camera permission, and optional hardware compatibility verified.');
-console.log('Inkbound Android library-loan notification idempotency verified.');
+console.log('Inkbound Android library-loan notification idempotency and legacy-alarm suppression verified.');
 console.log('Inkbound Android reading home-screen widget wiring verified.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
