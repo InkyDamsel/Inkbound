@@ -30,6 +30,7 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             String paceLabel = prefs.getString("paceLabel", "");
             String paceDetail = prefs.getString("paceDetail", "");
             String dueTitle = prefs.getString("dueTitle", "");
+            String dueDate = prefs.getString("dueDate", "");
             String dueLabel = prefs.getString("dueLabel", "");
 
             views.setTextViewText(R.id.widget_title, title.isEmpty() ? "Inkbound" : title);
@@ -37,7 +38,14 @@ public class ReadingWidgetProvider extends AppWidgetProvider {
             views.setTextViewText(R.id.widget_progress, progress);
             views.setTextViewText(R.id.widget_pace, paceLabel);
             views.setTextViewText(R.id.widget_pace_detail, paceDetail);
-            views.setTextViewText(R.id.widget_due, dueTitle.isEmpty() ? "" : "Library: " + dueTitle + (dueLabel.isEmpty() ? "" : " · " + dueLabel));
+            String dueText = "";
+            if (!dueTitle.isEmpty()) {
+                String loanBook = dueTitle.equals(title) ? "" : dueTitle + " · ";
+                String dateText = dueDate.isEmpty() ? "" : "Due back " + dueDate;
+                String relativeText = dueLabel.isEmpty() ? "" : (dateText.isEmpty() ? dueLabel : " · " + dueLabel);
+                dueText = "Library: " + loanBook + dateText + relativeText;
+            }
+            views.setTextViewText(R.id.widget_due, dueText);
 
             long timerSeconds = prefs.getLong("timerSeconds", 0L);
             boolean running = prefs.getBoolean("timerRunning", false);
