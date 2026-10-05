@@ -109,7 +109,7 @@ function nextSeriesCandidate(
     .slice(anchorIndex + 1)
     .map((entry) => entry.book)
     .find((book) =>
-      book.status !== 'finished'
+      book.status === 'tbr'
       && readingRotationFormatForBook(book) === format,
     );
 }
@@ -125,16 +125,15 @@ function uniqueBooks(books: UserBookRecord[]) {
 
 function nextCandidates(
   books: UserBookRecord[],
-  sessions: ReadingSession[],
   format: ReadingRotationFormat,
+  anchor: UserBookRecord | undefined,
   overrides: SeriesOverrides,
 ) {
-  const current = currentCandidates(books, sessions)[0];
   const topPriority = books
     .filter((book) => book.status === 'tbr' && book.priority === 'top')
     .sort((a, b) => dateMillis(a.dateAdded) - dateMillis(b.dateAdded));
 
-  const seriesNext = nextSeriesCandidate(books, current, format, overrides);
+  const seriesNext = nextSeriesCandidate(books, anchor, format, overrides);
 
   const tbrPriority = books
     .filter((book) => book.status === 'tbr')
@@ -193,14 +192,15 @@ export function buildReadingRotationRows(
     const formatBooks = books.filter((book) => readingRotationFormatForBook(book) === format);
     const lastCandidates = mostRecentFinished(formatBooks, sessions);
     const current = currentCandidates(formatBooks, sessions);
-    const next = nextCandidates(formatBooks, sessions, format, seriesOverrides);
     const rowSelections = selections[format];
+    const currentSlot = resolveSlot(current, formatBooks, rowSelections?.current);
+    const next = nextCandidates(formatBooks, format, currentSlot.book, seriesOverrides);
 
     const row: ReadingRotationRow = {
       format,
       label: FORMAT_LABELS[format],
       last: resolveSlot(lastCandidates, formatBooks, rowSelections?.last),
-      current: resolveSlot(current, formatBooks, rowSelections?.current),
+      current: currentSlot,
       next: resolveSlot(next, formatBooks, rowSelections?.next),
       selectableBooks: formatBooks
         .slice()
