@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Apple, Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { isIOSRuntime } from '../../platform/runtimePlatform';
 import {
@@ -89,7 +89,7 @@ export const AccountSyncCard: React.FC = () => {
             disabled={!sync.isConfigured || isWorking}
             className="mb-3 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-white bg-white px-4 text-sm font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span className="text-lg leading-none" aria-hidden="true">●</span>
+            <Apple className="h-5 w-5" aria-hidden="true" />
             Continue with Apple
           </button>
         )}
