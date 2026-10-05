@@ -5,7 +5,7 @@ import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
-import { getSessionDurationMinutes, getSessionPagesRead, localDateKey } from '../features/reading/sessionAnalytics';
+import { getSessionDurationMinutes, getSessionPagesRead, isRecordedReadingActivity, localDateKey } from '../features/reading/sessionAnalytics';
 
 type InsightRange = '30-days' | '90-days' | 'all-time';
 type InsightCategory = 'all' | 'habits' | 'taste' | 'progress';
@@ -45,7 +45,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
 
   const dateIsInCurrentRange = (value?: string) => { const date = parseLocalDateKey(value); if (!date || date > rangeWindow.through) return false; return rangeWindow.cutoff ? date >= rangeWindow.cutoff : true; };
   const dateIsInPreviousRange = (value?: string) => { const date = parseLocalDateKey(value); if (!date || !rangeWindow.previousCutoff || !rangeWindow.previousThrough) return false; return date >= rangeWindow.previousCutoff && date <= rangeWindow.previousThrough; };
-  const validSessions = useMemo(() => sessions.filter((session) => getSessionDurationMinutes(session) > 0 && parseLocalDateKey(session.date) !== null), [sessions]);
+  const validSessions = useMemo(() => sessions.filter((session) => isRecordedReadingActivity(session) && parseLocalDateKey(session.date) !== null), [sessions]);
   const filteredSessions = useMemo(() => validSessions.filter((session) => dateIsInCurrentRange(session.date)), [validSessions, rangeWindow]);
   const previousSessions = useMemo(() => validSessions.filter((session) => dateIsInPreviousRange(session.date)), [validSessions, rangeWindow]);
   const importedBooks = useMemo(() => books.filter(isImportedBook), [books]);
@@ -77,8 +77,10 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     const rangeLabel = allTime ? 'your verified reading history' : 'this period';
     const totalMinutes = analytics.currentMinutes;
     const previousMinutes = analytics.previousMinutes;
-    const avgMinutes = filteredSessions.length ? Math.round(totalMinutes / filteredSessions.length) : 0;
-    const previousAvgMinutes = previousSessions.length ? Math.round(previousMinutes / previousSessions.length) : 0;
+    const timedFilteredSessions = filteredSessions.filter((session) => getSessionDurationMinutes(session) > 0);
+    const avgMinutes = timedFilteredSessions.length ? Math.round(totalMinutes / timedFilteredSessions.length) : 0;
+    const timedPreviousSessions = previousSessions.filter((session) => getSessionDurationMinutes(session) > 0);
+    const previousAvgMinutes = timedPreviousSessions.length ? Math.round(previousMinutes / timedPreviousSessions.length) : 0;
     const pages = analytics.currentPages;
     const previousPages = analytics.previousPages;
     const readingDays = analytics.currentDays;
