@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
-import { mergeBooksFromServer, mergeServerCollectionById } from '../src/features/sync/CloudServerRefreshBridge';
+import { mergeBooksFromServer, mergeServerCollectionById } from '../src/features/sync/cloudServerMergePolicy';
 
 const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookRecord => ({
   id,
