@@ -49,7 +49,7 @@
     "verify:domain-taxonomy": "node scripts/verify-domain-taxonomy.mjs",
     "firebase:deploy:admin-repair": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts --project inkbound-app",
     "firebase:deploy:admin-support": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:getAdminDashboard,functions:syncUserDirectory,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts,functions:resendAdminVerificationEmail,functions:sendAdminPasswordResetEmail,functions:addAdminSupportNote --project inkbound-app",
-    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts"
+    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts && tsx scripts/cross-device-sync-regressions.ts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
