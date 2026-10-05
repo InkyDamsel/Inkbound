@@ -278,6 +278,14 @@ if (!readingRecencySource.includes('lastProgressUpdatedAt') || !readingRecencySo
   violations.push('readingRecency.ts: Currently Reading order must consider both exact progress updates and canonical session recency.');
 }
 
+const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
+if (!cloudServerRefreshSource.includes('mergeServerCollectionById') || !cloudServerRefreshSource.includes('mergeIncomingManualCoverState')) {
+  violations.push('CloudServerRefreshBridge.tsx: explicit cloud refresh must reconcile existing canonical records while preserving protected reader-owned fields.');
+}
+if (cloudServerRefreshSource.includes('mergeMissingById(currentSessions')) {
+  violations.push('CloudServerRefreshBridge.tsx: manual refresh must not ignore newer server edits to existing sessions.');
+}
+
 const readingSessionsScreenSource = read('src/components/ReadingSessionsScreen.tsx');
 const bulkHistoricalSessionsSource = read('src/components/BulkHistoricalSessionsModal.tsx');
 if (!readingSessionsScreenSource.includes('onSaveManualSessions') || !readingSessionsScreenSource.includes('BulkHistoricalSessionsModal')) {
