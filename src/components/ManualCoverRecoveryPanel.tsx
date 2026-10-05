@@ -229,6 +229,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
                 ...edition,
                 coverUrl: selectedAsset.url,
                 externalSource: 'manual' as const,
+                manualCoverUpdatedAt: new Date().toISOString(),
               }
             : edition),
         };
