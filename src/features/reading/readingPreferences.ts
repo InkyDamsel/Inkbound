@@ -3,6 +3,7 @@ import { readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage
 
 export const ANNUAL_READING_GOAL_KEY = ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal;
 export const DAILY_READING_GOAL_MINUTES_KEY = ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes;
+export const DAILY_READING_GOAL_PAGES_KEY = ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalPages;
 
 const readPositiveInteger = (key: string, fallback: number, maximum: number): number => {
   const raw = readRuntimeJson<unknown>(key, fallback);
@@ -26,3 +27,4 @@ export const setAnnualReadingGoal = (value: unknown): number => {
 };
 
 export const getDailyReadingGoalMinutes = (): number => readPositiveInteger(DAILY_READING_GOAL_MINUTES_KEY, 30, 1440);
+export const getDailyReadingGoalPages = (): number => readPositiveInteger(DAILY_READING_GOAL_PAGES_KEY, 20, 5000);
