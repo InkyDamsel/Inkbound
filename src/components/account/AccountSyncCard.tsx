@@ -87,9 +87,9 @@ export const AccountSyncCard: React.FC = () => {
             type="button"
             onClick={() => void sync.signInWithApple()}
             disabled={!sync.isConfigured || isWorking}
-            className="mb-3 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-border-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="mb-2.5 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border-strong)] bg-[var(--ink-surface)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-gold)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Apple className="h-5 w-5" aria-hidden="true" />
+            <Apple className="h-[18px] w-[18px]" aria-hidden="true" />
             Continue with Apple
           </button>
         )}
