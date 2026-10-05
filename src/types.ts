@@ -129,6 +129,11 @@ export interface UserBookRecord {
   dateStarted?: string;
   dateFinished?: string;
   lastSessionDate?: string;
+  /**
+   * Exact cross-device timestamp for the reader's latest current-progress change.
+   * This is UI recency metadata only; it never counts as reading activity.
+   */
+  lastProgressUpdatedAt?: string;
   rereadCount?: number;
 }
 
