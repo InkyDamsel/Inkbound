@@ -225,8 +225,10 @@ export async function mountApplication(rootElement: HTMLElement) {
     });
   }
 
-  if (isNativeRuntime()) {
+  if (isAndroidRuntime()) {
     void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
+  } else if (isIOSRuntime()) {
+    void initializeIOSRuntime().catch(markNativeRuntimeFailed);
   }
 
   createRoot(rootElement).render(
