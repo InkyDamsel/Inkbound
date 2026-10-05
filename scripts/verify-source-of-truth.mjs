@@ -290,6 +290,18 @@ if (cloudServerRefreshSource.includes('mergeMissingById(currentSessions')) {
   violations.push('CloudServerRefreshBridge.tsx: manual refresh must not ignore newer server edits to existing sessions.');
 }
 
+const nativeLoanReminderSource = read('src/features/loans/nativeLibraryLoanReminders.ts');
+const loanReminderControlSource = read('src/components/library/LibraryLoanReminderControl.tsx');
+if (!appSource.includes('syncNativeLibraryLoanReminders(books)')) {
+  violations.push('App.tsx: native library-loan reminders must reconcile from canonical library state.');
+}
+if (!nativeLoanReminderSource.includes('buildNativeLoanReminderPlan') || !nativeLoanReminderSource.includes('NATIVE_LOAN_REMINDER_BOOK_IDS_KEY')) {
+  violations.push('nativeLibraryLoanReminders.ts: reminder scheduling must dedupe and cancel stale canonical loan alarms.');
+}
+if (loanReminderControlSource.includes('syncNativeLibraryLoanReminder(')) {
+  violations.push('LibraryLoanReminderControl.tsx: UI controls must not own native reminder scheduling.');
+}
+
 const readingSessionsScreenSource = read('src/components/ReadingSessionsScreen.tsx');
 const bulkHistoricalSessionsSource = read('src/components/BulkHistoricalSessionsModal.tsx');
 if (!readingSessionsScreenSource.includes('onSaveManualSessions') || !readingSessionsScreenSource.includes('BulkHistoricalSessionsModal')) {
