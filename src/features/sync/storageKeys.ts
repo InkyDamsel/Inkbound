@@ -37,6 +37,7 @@ export const ACCOUNT_DATA_STORAGE_KEYS = {
   achievementReveals: 'inkbound_achievement_reveals_v5',
   achievementSeen: 'inkbound_achievement_seen_v5',
   readingMemories: 'inkbound_book_memories',
+  readingRotationSelections: 'inkbound_reading_rotation_selections_v1',
 } as const;
 
 export const LEGACY_SYNC_STORAGE_KEYS = {
@@ -92,4 +93,5 @@ export const CANONICAL_SYNC_COLLECTION_KEYS = [
   ACCOUNT_DATA_STORAGE_KEYS.achievementReveals,
   ACCOUNT_DATA_STORAGE_KEYS.achievementSeen,
   ACCOUNT_DATA_STORAGE_KEYS.readingMemories,
+  ACCOUNT_DATA_STORAGE_KEYS.readingRotationSelections,
 ] as const;

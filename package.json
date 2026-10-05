@@ -43,7 +43,7 @@
     "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app",
     "verify:web-release": "npm run lint && npm run test:critical && npm run verify:source-of-truth && npm run verify:parity && npm run build && npm run verify:release-artifacts",
     "build:bundle": "vite build",
-    "test:critical:reading": "tsx scripts/critical-reading-regressions.ts",
+    "test:critical:reading": "tsx scripts/critical-reading-regressions.ts && tsx scripts/reading-rotation-regressions.ts",
     "test:critical:reporting": "tsx scripts/reporting-math-regressions.ts",
     "verify:source-boundary": "node scripts/verify-source-of-truth.mjs",
     "verify:domain-taxonomy": "node scripts/verify-domain-taxonomy.mjs",
