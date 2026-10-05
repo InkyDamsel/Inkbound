@@ -79,7 +79,6 @@ for (const required of [
   'getActiveEdition',
   'applySessionProgressToBook',
   'reconcileBookAfterSessionMutation',
-  'getSessionProgressEndpoint',
   'SYNC_STORAGE_KEYS',
   'LEGACY_SYNC_STORAGE_KEYS',
   'ACCOUNT_DATA_STORAGE_KEYS',
@@ -122,6 +121,14 @@ for (const required of ['replaceCanonicalLibrary', 'replaceCanonicalSessions', '
   if (!libraryMutations.includes(required)) {
     violations.push(`libraryMutations.ts: persist-first canonical mutation boundary is missing ${required}`);
   }
+}
+
+const sessionBookReconciliationSource = read('src/features/reading/sessionBookReconciliation.ts');
+if (!sessionBookReconciliationSource.includes('getSessionProgressEndpoint')) {
+  violations.push('sessionBookReconciliation.ts: canonical session progress endpoint logic must remain owned by the reconciliation module.');
+}
+if (app.includes('getSessionProgressEndpoint')) {
+  violations.push('App.tsx: direct progress edits must not consume session endpoints; session history stays owned by sessionBookReconciliation.ts.');
 }
 
 const bookReadingState = read('src/features/reading/bookReadingState.ts');
