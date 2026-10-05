@@ -464,6 +464,7 @@ export default function App() {
         : book.progressPercentage;
       const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal);
       const status = reachedEnd ? 'finished' : book.status;
+      const progressChanged = nextPages !== book.progressPages || nextMinutes !== book.progressMinutes;
       const updatedBook: UserBookRecord = {
         ...book,
         editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition),
@@ -472,6 +473,7 @@ export default function App() {
         progressPercentage,
         status,
         dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished,
+        lastProgressUpdatedAt: progressChanged ? new Date().toISOString() : book.lastProgressUpdatedAt,
       };
       setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected);
       return updatedBook;
@@ -560,7 +562,13 @@ export default function App() {
   const handleUndoLastBatch = () => { if (!previousBooksState) return; commitCanonicalBooks(previousBooksState); if (previousSessionsState) commitCanonicalSessions(previousSessionsState); setPreviousBooksState(null); setPreviousSessionsState(null); showToast('Undid the most recent library change.'); };
 
   const updateBookFromSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
-    commitCanonicalBooks((current) => current.map((book) => applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes)));
+    const changedAt = new Date().toISOString();
+    commitCanonicalBooks((current) => current.map((book) => {
+      if (book.id !== newSession.bookId) return book;
+      const updated = applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes);
+      const progressChanged = updated.progressPages !== book.progressPages || updated.progressMinutes !== book.progressMinutes;
+      return progressChanged ? { ...updated, lastProgressUpdatedAt: changedAt } : updated;
+    }));
   };
 
   const reconcileBookProgressFromSessions = (bookId: string, nextSessions: ReadingSession[], changedSession?: ReadingSession) => {
