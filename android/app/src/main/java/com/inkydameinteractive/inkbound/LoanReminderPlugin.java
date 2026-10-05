@@ -99,14 +99,11 @@ public class LoanReminderPlugin extends Plugin {
 
         long triggerAt = triggerTime(reminderDate);
         long now = System.currentTimeMillis();
-        if (triggerAt <= now) {
-            if (!dueToday || !reminderDate.equals(LocalDate.now())) return;
-            // If today's notification has not been delivered yet, allow one
-            // catch-up delivery shortly after scheduling. Once delivered, the
-            // receiver persists that fact so future app opens/syncs cannot
-            // re-arm the same notification over and over.
-            triggerAt = now + 3000L;
-        }
+        // Never manufacture a catch-up notification after the intended 9 AM
+        // reminder time has already passed. App opens, upgrades, cloud refreshes,
+        // or canonical-library reconciliation later in the day must not turn
+        // every due-today loan into an immediate notification burst.
+        if (triggerAt <= now) return;
 
         Intent intent = new Intent(getContext(), LoanReminderReceiver.class);
         intent.putExtra(EXTRA_TITLE, dueToday ? "Library book due today" : "Library book due in 3 days");
