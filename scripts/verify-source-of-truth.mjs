@@ -262,6 +262,15 @@ if (appSource.includes('getSessionProgressEndpoint(latest') || appSource.include
   violations.push('App.tsx: direct book-progress edits must not rewrite historical session endpoints.');
 }
 
+const homeDashboardSource = read('src/components/HomeDashboard.tsx');
+const readingRecencySource = read('src/features/reading/readingRecency.ts');
+if (!homeDashboardSource.includes('sortCurrentlyReadingByRecency')) {
+  violations.push('HomeDashboard.tsx: Currently Reading must use the canonical reading-recency helper.');
+}
+if (!readingRecencySource.includes('lastProgressUpdatedAt') || !readingRecencySource.includes('getReadingSessionTimestamp')) {
+  violations.push('readingRecency.ts: Currently Reading order must consider both exact progress updates and canonical session recency.');
+}
+
 const readingSessionsScreenSource = read('src/components/ReadingSessionsScreen.tsx');
 const bulkHistoricalSessionsSource = read('src/components/BulkHistoricalSessionsModal.tsx');
 if (!readingSessionsScreenSource.includes('onSaveManualSessions') || !readingSessionsScreenSource.includes('BulkHistoricalSessionsModal')) {
