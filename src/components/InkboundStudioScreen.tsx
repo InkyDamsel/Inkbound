@@ -6,18 +6,30 @@ import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics'
 import { getPreferredSavedQuote } from '../features/reading/bookQuotes';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 import { fetchRuntimeMediaDataUrl } from '../platform/runtimeMedia';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { SERIES_OVERRIDES_STORAGE_KEY, type SeriesOverrides } from '../features/series/seriesOverrides';
+import {
+  buildReadingRotationRows,
+  hasReadingRotationContent,
+  type ReadingRotationSelections,
+} from '../features/studio/readingRotation';
+import {
+  createReadingRotationPng,
+  ReadingRotationControls,
+  ReadingRotationPreview,
+} from './studio/ReadingRotationStudioCard';
 
 interface InkboundStudioScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; }
 type ShareFormat = 'story' | 'portrait' | 'square' | 'pinterest';
 type ShareTheme = 'quiet-library' | 'cozy-autumn' | 'dark-academia' | 'celestial';
-type CardTemplate = 'reading-card' | 'quote-card' | 'review-card' | 'reading-update';
+type CardTemplate = 'reading-card' | 'quote-card' | 'review-card' | 'reading-update' | 'reading-rotation';
 type CardLayout = 'editorial' | 'cover-focus' | 'minimal';
 interface SharePreferences { format: ShareFormat; theme: ShareTheme; template: CardTemplate; layout: CardLayout; showRating: boolean; showPages: boolean; showReadingTime: boolean; selectedBookId: string; selectedQuoteId?: string; }
 const STORAGE_KEY = 'inkbound_share_preferences';
 const STUDIO_BACKGROUND = '/assets/studio/cozy-monthly-background.png';
 const formats: Record<ShareFormat, { label: string; width: number; height: number }> = { story:{label:'Story 9:16',width:1080,height:1920},portrait:{label:'Feed 4:5',width:1080,height:1350},square:{label:'Square 1:1',width:1080,height:1080},pinterest:{label:'Pinterest 2:3',width:1000,height:1500} };
 const themes: Record<ShareTheme,{label:string;background:string;accent:string;text:string}> = {'quiet-library':{label:'Quiet Library',background:'#171217',accent:'#9b7287',text:'#f2e9df'},'cozy-autumn':{label:'Cozy Autumn',background:'#3a241d',accent:'#c58b61',text:'#fff1df'},'dark-academia':{label:'Dark Academia',background:'#201b19',accent:'#9c8067',text:'#efe3d4'},celestial:{label:'Celestial',background:'#17192f',accent:'#a8a3d4',text:'#f3f1ff'}};
-const templates: Record<CardTemplate,{label:string;description:string}> = {'reading-card':{label:'Book Card',description:'A polished finished or currently-reading card.'},'quote-card':{label:'Favorite Quote',description:'Turn a saved quote into something worth sharing.'},'review-card':{label:'Mini Review',description:'Pair your rating with a short review excerpt.'},'reading-update':{label:'Reading Update',description:'Share progress, pages and time without a screenshot.'}};
+const templates: Record<CardTemplate,{label:string;description:string}> = {'reading-card':{label:'Book Card',description:'A polished finished or currently-reading card.'},'quote-card':{label:'Favorite Quote',description:'Turn a saved quote into something worth sharing.'},'review-card':{label:'Mini Review',description:'Pair your rating with a short review excerpt.'},'reading-update':{label:'Reading Update',description:'Share progress, pages and time without a screenshot.'},'reading-rotation':{label:'Reading Rotation',description:'Show your Last, Current, and Next book by reading format.'}};
 const layouts: Record<CardLayout,{label:string;description:string}> = {editorial:{label:'Editorial',description:'Cover + typography with a magazine-like composition.'},'cover-focus':{label:'Cover Focus',description:'Let the book art lead the card.'},minimal:{label:'Minimal',description:'A quiet text-first Inkbound card.'}};
 const escapeXml=(v:string)=>v.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const truncate=(v:string,l:number)=>v.length>l?`${v.slice(0,l-1).trim()}…`:v;
