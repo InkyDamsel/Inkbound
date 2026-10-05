@@ -48,8 +48,18 @@
     max-height: 44dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-top: max(1rem, env(safe-area-inset-top)) !important;
+    padding-top: calc(env(safe-area-inset-top) + 0.75rem) !important;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+  }
+
+  .book-details-close-button {
+    top: calc(env(safe-area-inset-top) + 0.75rem) !important;
+    right: max(0.75rem, env(safe-area-inset-right)) !important;
+  }
+
+  .book-details-swipe-handle {
+    margin-top: 0.15rem;
   }
 
   /* Keep enough room for the actual book fields/tabs even on shorter phones. */
