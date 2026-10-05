@@ -27,6 +27,8 @@ public class ReadingWidgetPlugin extends Plugin {
         editor.putLong("timerSeconds", longValue(call, "timerSeconds"));
         editor.putBoolean("timerRunning", Boolean.TRUE.equals(call.getBoolean("timerRunning")));
         editor.putLong("timerAnchorMillis", longValue(call, "timerAnchorMillis"));
+        editor.putString("paceLabel", value(call.getString("paceLabel")));
+        editor.putString("paceDetail", value(call.getString("paceDetail")));
         editor.putString("dueTitle", value(call.getString("dueTitle")));
         editor.putString("dueDate", value(call.getString("dueDate")));
         editor.putString("dueLabel", value(call.getString("dueLabel")));
