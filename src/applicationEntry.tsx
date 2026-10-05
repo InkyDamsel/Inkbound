@@ -32,13 +32,14 @@ import {
   prepareLargeBrowserStorageForStartup,
 } from './platform/largeBrowserStorage.ts';
 import { initializeAndroidRuntime } from './platform/initializeAndroidRuntime.ts';
+import { initializeIOSRuntime } from './platform/initializeIOSRuntime.ts';
 import {
   getNativeRuntimeError,
   isNativeRuntimeReady,
   markNativeRuntimeFailed,
   subscribeNativeRuntimeReadiness,
 } from './platform/runtimeNativeReadiness.ts';
-import { isAndroidRuntime, isNativeRuntime } from './platform/runtimePlatform.ts';
+import { isAndroidRuntime, isIOSRuntime, isNativeRuntime } from './platform/runtimePlatform.ts';
 import { SecurityBootstrap } from './security/SecurityBootstrap.tsx';
 import './styles/app-shell.css';
 import './styles/branding.css';
@@ -90,10 +91,10 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
   );
 
   useEffect(() => {
-    if (ready || error || !isAndroidRuntime()) return undefined;
+    if (ready || error || !isNativeRuntime()) return undefined;
 
     const timer = window.setTimeout(() => {
-      markNativeRuntimeFailed(new Error('Secure Android services took too long to respond. Check your connection and try again.'));
+      markNativeRuntimeFailed(new Error('Secure app services took too long to respond. Check your connection and try again.'));
     }, NATIVE_RUNTIME_TIMEOUT_MS);
 
     return () => window.clearTimeout(timer);
@@ -102,14 +103,14 @@ const NativeRuntimeGate = ({ children }: PropsWithChildren) => {
   if (error) {
     return (
       <OpeningScreen
-        message={`Android services could not start: ${error}`}
+        message={`App services could not start: ${error}`}
         actionLabel="Try Again"
         onAction={() => window.location.reload()}
       />
     );
   }
 
-  if (!ready) return <OpeningScreen message="Preparing secure Android services..." />;
+  if (!ready) return <OpeningScreen message="Preparing secure app services..." />;
   return <>{children}</>;
 };
 
@@ -118,7 +119,7 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
   const [graceElapsed, setGraceElapsed] = useState(false);
 
   useEffect(() => {
-    if (isAndroidRuntime()) {
+    if (isNativeRuntime()) {
       setGraceElapsed(true);
       return undefined;
     }
@@ -132,7 +133,7 @@ const AuthSessionGate = ({ children }: PropsWithChildren) => {
     return () => window.clearTimeout(timer);
   }, [isAuthReady]);
 
-  if (isAndroidRuntime()) return <>{children}</>;
+  if (isNativeRuntime()) return <>{children}</>;
   if (!isAuthReady && !graceElapsed) return <OpeningScreen message="Restoring your saved account…" />;
   return <>{children}</>;
 };
@@ -224,7 +225,7 @@ export async function mountApplication(rootElement: HTMLElement) {
     });
   }
 
-  if (isAndroidRuntime()) {
+  if (isNativeRuntime()) {
     void initializeAndroidRuntime().catch(markNativeRuntimeFailed);
   }
 
