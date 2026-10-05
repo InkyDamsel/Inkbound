@@ -8,6 +8,7 @@ import {
   getReadingStreak,
   getSessionDurationMinutes,
   getSessionListeningMinutes,
+  isRecordedReadingActivity,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
 import { getActiveEdition } from '../features/reading/bookReadingState';
@@ -48,7 +49,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     filteredBookIds.has(session.bookId)
     && session.date >= reportStart
     && session.date <= reportEnd
-    && getSessionDurationMinutes(session) > 0
+    && isRecordedReadingActivity(session)
   )), [filteredBookIds, reportEnd, reportStart, sessions]);
 
   const finishedBooks = filteredBooks.filter(hasTrustworthyFinishedHistory);
@@ -76,7 +77,7 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
 
   const trackedBookIdsThisYear = useMemo(() => new Set(
     sessions
-      .filter((session) => session.date.startsWith(`${currentYear}-`) && getSessionDurationMinutes(session) > 0)
+      .filter((session) => session.date.startsWith(`${currentYear}-`) && isRecordedReadingActivity(session))
       .map((session) => session.bookId),
   ), [currentYear, sessions]);
 
