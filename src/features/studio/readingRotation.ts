@@ -193,13 +193,15 @@ export function buildReadingRotationRows(
     const lastCandidates = mostRecentFinished(formatBooks, sessions);
     const current = currentCandidates(formatBooks, sessions);
     const rowSelections = selections[format];
+    const lastSlot = resolveSlot(lastCandidates, formatBooks, rowSelections?.last);
     const currentSlot = resolveSlot(current, formatBooks, rowSelections?.current);
-    const next = nextCandidates(formatBooks, format, currentSlot.book, seriesOverrides);
+    const seriesAnchor = currentSlot.book ?? lastSlot.book;
+    const next = nextCandidates(formatBooks, format, seriesAnchor, seriesOverrides);
 
     const row: ReadingRotationRow = {
       format,
       label: FORMAT_LABELS[format],
-      last: resolveSlot(lastCandidates, formatBooks, rowSelections?.last),
+      last: lastSlot,
       current: currentSlot,
       next: resolveSlot(next, formatBooks, rowSelections?.next),
       selectableBooks: formatBooks
