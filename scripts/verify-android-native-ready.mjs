@@ -11,6 +11,8 @@ const mainActivityPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'co
 const billingPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
 const barcodePluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'InkboundBarcodeScannerPlugin.java');
 const readingWidgetPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'ReadingWidgetPlugin.java');
+const loanReminderPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'LoanReminderPlugin.java');
+const loanReminderReceiverPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'LoanReminderReceiver.java');
 const readingWidgetProviderPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'ReadingWidgetProvider.java');
 const readingWidgetLayoutPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'layout', 'reading_widget.xml');
 const readingWidgetInfoPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'xml', 'reading_widget_info.xml');
@@ -210,6 +212,21 @@ for (const required of ['queryProductDetailsAsync', 'launchBillingFlow', 'queryP
 if (!fs.existsSync(mainActivityPath) || !fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(PlayBillingPlugin.class)')) {
   fail('MainActivity does not register PlayBillingPlugin.');
 }
+if (!fs.existsSync(loanReminderPluginPath) || !fs.existsSync(loanReminderReceiverPath)) {
+  fail('Android library-loan reminder native files are missing.');
+}
+const loanReminderPlugin = fs.readFileSync(loanReminderPluginPath, 'utf8');
+const loanReminderReceiver = fs.readFileSync(loanReminderReceiverPath, 'utf8');
+for (const required of ['wasDelivered', 'EXTRA_BOOK_ID', 'EXTRA_DUE_DATE', 'EXTRA_KIND']) {
+  if (!loanReminderPlugin.includes(required)) fail(`LoanReminderPlugin.java is missing idempotent reminder guard ${required}.`);
+}
+for (const required of ['markDelivered', 'deliveryKey', 'getSharedPreferences']) {
+  if (!loanReminderReceiver.includes(required)) fail(`LoanReminderReceiver.java is missing persistent delivery guard ${required}.`);
+}
+if (!fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(LoanReminderPlugin.class)')) {
+  fail('MainActivity does not register LoanReminderPlugin.');
+}
+
 if (!fs.existsSync(barcodePluginPath)) {
   fail('InkboundBarcodeScannerPlugin.java is missing. Android ISBN scanning cannot use the native fallback.');
 }
@@ -276,5 +293,6 @@ console.log(`Inkbound Android Firebase configuration verified for ${expectedPack
 console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
 console.log('Inkbound Google Play Billing native wiring verified.');
 console.log('Inkbound Android native barcode scanner, camera permission, and optional hardware compatibility verified.');
+console.log('Inkbound Android library-loan notification idempotency verified.');
 console.log('Inkbound Android reading home-screen widget wiring verified.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');
