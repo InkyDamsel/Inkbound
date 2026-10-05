@@ -1,5 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
-import type { UserBookRecord } from '../../types';
+import type { ReadingSession, UserBookRecord } from '../../types';
+import { buildReadingDeadlinePlan } from './readingDeadline';
 import { isAndroidRuntime } from '../../platform/runtimePlatform';
 import { notifyRuntimeStorageChanged, readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
 
@@ -36,6 +37,8 @@ interface ReadingWidgetSnapshot {
   timerSeconds?: number;
   timerRunning?: boolean;
   timerAnchorMillis?: number;
+  paceLabel?: string;
+  paceDetail?: string;
   dueTitle?: string;
   dueDate?: string;
   dueLabel?: string;
@@ -145,12 +148,28 @@ function dueLabel(dueDate?: string) {
   return `Due in ${days}d`;
 }
 
-export function buildReadingWidgetSnapshot(books: UserBookRecord[]): ReadingWidgetSnapshot {
+function formatMinutes(minutes: number) {
+  if (minutes < 60) return `${minutes} min/day`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours} hr ${remainder} min/day` : `${hours} hr/day`;
+}
+
+export function buildReadingWidgetSnapshot(
+  books: UserBookRecord[],
+  sessions: ReadingSession[] = [],
+): ReadingWidgetSnapshot {
   const draft = readRuntimeJson<ActiveReadingDraft | null>(ACTIVE_READING_DRAFT_KEY, null);
   const draftBook = draft?.selectedBookId ? books.find((book) => book.id === draft.selectedBookId) : undefined;
   const currentBook = draftBook ?? books.find((book) => book.status === 'currently-reading');
   const edition = currentBook?.editions.find((item) => item.id === currentBook.activeEditionId) ?? currentBook?.editions[0];
-  const loan = nextLibraryLoan(books);
+  const currentBookLoan = currentBook?.ownership === 'borrowed-library' && currentBook.libraryLoan?.dueDate
+    ? currentBook
+    : undefined;
+  const loan = currentBookLoan ?? nextLibraryLoan(books);
+  const deadlinePlan = currentBook
+    ? buildReadingDeadlinePlan(currentBook, edition, sessions)
+    : null;
 
   let progressLabel: string | undefined;
   if (currentBook) {
@@ -160,6 +179,23 @@ export function buildReadingWidgetSnapshot(books: UserBookRecord[]): ReadingWidg
       progressLabel = `Page ${currentBook.progressPages.toLocaleString()} of ${edition.pageCount.toLocaleString()}`;
     } else if (currentBook.progressPercentage > 0) {
       progressLabel = `${Math.round(currentBook.progressPercentage)}% complete`;
+    }
+  }
+
+  let paceLabel: string | undefined;
+  let paceDetail: string | undefined;
+  if (deadlinePlan && !deadlinePlan.isComplete) {
+    if (deadlinePlan.overdueDays > 0) {
+      paceLabel = `Deadline passed ${deadlinePlan.overdueDays} day${deadlinePlan.overdueDays === 1 ? '' : 's'} ago`;
+    } else if (deadlinePlan.missingTotal) {
+      paceLabel = deadlinePlan.isAudiobook
+        ? 'Add audiobook duration to calculate pace'
+        : 'Add page count to calculate pace';
+    } else if (deadlinePlan.unitsPerDay !== null) {
+      paceLabel = deadlinePlan.isAudiobook
+        ? `${formatMinutes(deadlinePlan.unitsPerDay)} to finish on time`
+        : `${deadlinePlan.unitsPerDay} pages/day to finish on time`;
+      paceDetail = `${deadlinePlan.isDueToday ? 'Due today' : `${deadlinePlan.daysRemaining} day${deadlinePlan.daysRemaining === 1 ? '' : 's'} left`}${deadlinePlan.remainingUnits !== null ? ` · ${deadlinePlan.remainingUnits} ${deadlinePlan.isAudiobook ? 'minutes' : 'pages'} remaining` : ''}`;
     }
   }
 
@@ -176,16 +212,21 @@ export function buildReadingWidgetSnapshot(books: UserBookRecord[]): ReadingWidg
     timerSeconds,
     timerRunning: running,
     timerAnchorMillis: running ? draft!.lastActiveAt : undefined,
+    paceLabel,
+    paceDetail,
     dueTitle: loan?.work.title,
     dueDate: loan?.libraryLoan?.dueDate,
     dueLabel: dueLabel(loan?.libraryLoan?.dueDate),
   };
 }
 
-export async function syncAndroidReadingWidget(books: UserBookRecord[]) {
+export async function syncAndroidReadingWidget(
+  books: UserBookRecord[],
+  sessions: ReadingSession[] = [],
+) {
   if (!isAndroidRuntime()) return;
   try {
-    await ReadingWidget.syncState(buildReadingWidgetSnapshot(books));
+    await ReadingWidget.syncState(buildReadingWidgetSnapshot(books, sessions));
   } catch (error) {
     console.warn('Inkbound could not refresh the Android reading widget.', error);
   }
