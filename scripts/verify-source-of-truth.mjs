@@ -246,6 +246,23 @@ for (const [relative, source] of [
   }
 }
 
+const readingRotationSource = read('src/features/studio/readingRotation.ts');
+const studioSource = read('src/components/InkboundStudioScreen.tsx');
+const auxiliaryConfigSource = read('src/features/sync/auxiliaryAccountSyncConfig.ts');
+const storageKeysSource = read('src/features/sync/storageKeys.ts');
+if (!readingRotationSource.includes('getActiveEdition') || !readingRotationSource.includes('buildSeriesLibrary')) {
+  violations.push('readingRotation.ts: Reading Rotation must derive format and series-next from canonical reading/series helpers.');
+}
+if (!readingRotationSource.includes("book.status === 'currently-reading'") || !readingRotationSource.includes("book.status === 'finished'") || !readingRotationSource.includes("book.status === 'tbr'")) {
+  violations.push('readingRotation.ts: Last/Current/Next must derive from canonical reading statuses rather than a parallel rotation store.');
+}
+if (!studioSource.includes('buildReadingRotationRows') || !studioSource.includes('createReadingRotationPng')) {
+  violations.push('InkboundStudioScreen.tsx: Reading Rotation must stay inside the existing Studio resolver/export pipeline.');
+}
+if (!storageKeysSource.includes('readingRotationSelections') || !auxiliaryConfigSource.includes('readingRotationSelections')) {
+  violations.push('sync: Reading Rotation manual selections must be registered as account-owned auxiliary persistence.');
+}
+
 const readingSessionsScreenSource = read('src/components/ReadingSessionsScreen.tsx');
 const bulkHistoricalSessionsSource = read('src/components/BulkHistoricalSessionsModal.tsx');
 if (!readingSessionsScreenSource.includes('onSaveManualSessions') || !readingSessionsScreenSource.includes('BulkHistoricalSessionsModal')) {
