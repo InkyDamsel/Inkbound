@@ -34,8 +34,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        // Called when the app was launched with a url. Feel free to add additional processing here,
-        // but if you want the App API to support tracking app url opens, make sure to keep this call
+        if url.scheme == "inkbound", url.host == "reading-widget" {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let action = components?.queryItems?.first(where: { $0.name == "action" })?.value ?? ""
+            if !action.isEmpty && action != "open" {
+                UserDefaults(suiteName: "group.com.inkydameinteractive.inkbound")?.set(action, forKey: "pendingAction")
+            }
+        }
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
