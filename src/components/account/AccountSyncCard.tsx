@@ -2,7 +2,6 @@ import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import appleLogoUrl from '../../../assets/branding/auth/apple-sign-in-black-small.svg';
 import { useAccountSync } from '../../context/AccountSyncContext';
-import { isAndroidRuntime } from '../../platform/runtimePlatform';
 import {
   getCloudSyncHealth,
   INKBOUND_CLOUD_SYNC_HEALTH_EVENT,
@@ -83,7 +82,7 @@ export const AccountSyncCard: React.FC = () => {
   const renderSignedOutAccount = () => (
     <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 sm:p-5">
-        {isAndroidRuntime() && (
+        {sync.canSignInWithApple && (
           <button
             type="button"
             onClick={() => void sync.signInWithApple()}
@@ -102,7 +101,7 @@ export const AccountSyncCard: React.FC = () => {
         )}
         <button
           type="button"
-          onClick={() => void sync.signInWithGoogle()
+          onClick={() => void sync.signInWithGoogle()}
           disabled={!sync.isConfigured || isWorking}
           className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-border-strong)] disabled:cursor-not-allowed disabled:opacity-50"
         >
