@@ -32,7 +32,7 @@ public class ReadingWidgetPlugin extends Plugin {
         editor.putString("dueTitle", value(call.getString("dueTitle")));
         editor.putString("dueDate", value(call.getString("dueDate")));
         editor.putString("dueLabel", value(call.getString("dueLabel")));
-        editor.apply();
+        editor.commit();
         refreshWidgets(getContext());
         call.resolve();
     }
