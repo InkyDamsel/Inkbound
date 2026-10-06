@@ -135,10 +135,26 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
   const resendVerificationEmail = async () => { if (!auth?.currentUser) return; try { setStatus('working'); await requestBrandedVerificationEmail(); setStatus('success'); setMessage('Verification email sent.'); } catch (error) { setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not send the verification email.')); } };
   const synchronizePhotosWithFeedback = async (workingMessage: string) => { if (!user) { setStatus('error'); setMessage('Sign in before updating Photo Memories across devices.'); return; } try { setStatus('working'); setMessage(workingMessage); await synchronizePhotoMemories(user.uid); const syncedAt = new Date().toISOString(); writeRuntimeValue(LAST_SYNC_STORAGE_KEY, syncedAt); setLastSyncedAt(syncedAt); setStatus('success'); setMessage('Your Photo Memories are up to date on your Inkbound devices.'); } catch { setStatus('error'); setMessage('Inkbound could not update Photo Memories right now. It will try again automatically.'); } };
   const uploadSnapshot = async () => synchronizePhotosWithFeedback('Updating Photo Memories...'); const restoreSnapshot = async () => synchronizePhotosWithFeedback('Checking Photo Memories across your devices...');
-  const value = useMemo<AccountSyncContextValue>(() => ({ user, isConfigured: isFirebaseConfigured, isAuthReady, status, message, lastSyncedAt, signInWithGoogle, signInWithApple, signInWithEmail, createEmailAccount, sendPasswordReset, linkEmailPassword, resendVerificationEmail, signOutAccount: async () => { if (!auth) return; const signingOutUid = user?.uid ?? auth.currentUser?.uid; if (signingOutUid) { setStatus('working'); setMessage('Saving your latest changes before signing out...'); try { await flushCloudDataBeforeSignOut(signingOutUid); // Sign-out only needs to flush locally queued media. A full cloud-to-device
-      // photo reconciliation can fail for unrelated App Check/network reasons and
-      // must never trap a reader inside an account when there is nothing pending.
-      await flushPhotoMemorySyncQueue(signingOutUid); await synchronizeProfileMedia(signingOutUid); await flushCloudDataBeforeSignOut(signingOutUid); } catch { setStatus('error'); setMessage('Inkbound could not finish saving unsynced changes before signing out. Try again when you are online.'); return; } await clearPhotoMemoriesFromDevice(); await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`); clearSignedInDataFromDevice(signingOutUid); } try { await signOut(auth); } finally { if (signingOutUid) removeRuntimeValue(localClearIntentKey(signingOutUid)); } setLastSyncedAt(null); setStatus('idle'); setMessage('Signed out. Account data was removed from this device.'); }, uploadSnapshot, restoreSnapshot }), [isAuthReady, lastSyncedAt, message, status, user]);
+  const value = useMemo<AccountSyncContextValue>(() => ({ user, isConfigured: isFirebaseConfigured, isAuthReady, status, message, lastSyncedAt, signInWithGoogle, signInWithApple, signInWithEmail, createEmailAccount, sendPasswordReset, linkEmailPassword, resendVerificationEmail, signOutAccount: async () => { if (!auth) return; const signingOutUid = user?.uid ?? auth.currentUser?.uid; if (signingOutUid) { setStatus('working'); setMessage('Saving your latest changes before signing out...'); // Core books/sessions/profile persistence gets its normal final flush. The
+      // before-sign-out bridge already settles individual cloud failures and keeps
+      // durable pending state; an auxiliary media service must never trap the user
+      // inside an authenticated account.
+      await flushCloudDataBeforeSignOut(signingOutUid);
+      try { await flushPhotoMemorySyncQueue(signingOutUid); } catch (error) { console.warn('Inkbound could not finish the Photo Memories queue before sign-out.', error); }
+      try { await synchronizeProfileMedia(signingOutUid); } catch (error) { console.warn('Inkbound could not finish the profile media queue before sign-out.', error); }
+      await flushCloudDataBeforeSignOut(signingOutUid); }
+    try {
+      // End the Firebase session first. Local cleanup must not be able to prevent
+      // or masquerade as sign-out, and a failed Firebase sign-out must not erase
+      // this device's account data.
+      await signOut(auth);
+      if (signingOutUid) {
+        await clearPhotoMemoriesFromDevice();
+        await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`);
+        clearSignedInDataFromDevice(signingOutUid);
+      }
+    } finally { if (signingOutUid) removeRuntimeValue(localClearIntentKey(signingOutUid)); }
+    setLastSyncedAt(null); setStatus('idle'); setMessage('Signed out. Account data was removed from this device.'); }, uploadSnapshot, restoreSnapshot }), [isAuthReady, lastSyncedAt, message, status, user]);
   return <AccountSyncContext.Provider value={value}>{children}</AccountSyncContext.Provider>;
 };
 export const useAccountSync = () => { const context = useContext(AccountSyncContext); if (!context) throw new Error('useAccountSync must be used within AccountSyncProvider.'); return context; };
