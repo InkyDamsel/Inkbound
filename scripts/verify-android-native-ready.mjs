@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = process.cwd();
+const capacitorConfigPath = path.join(root, 'capacitor.config.json');
 const androidDir = path.join(root, 'android');
 const googleServicesPath = path.join(androidDir, 'app', 'google-services.json');
 const gradlePath = path.join(androidDir, 'app', 'build.gradle');
@@ -92,6 +93,23 @@ const readKeystoreSha1 = (properties) => {
 
   return sha1;
 };
+
+if (!fs.existsSync(capacitorConfigPath)) {
+  fail('capacitor.config.json is missing.');
+}
+
+let capacitorConfig;
+try {
+  capacitorConfig = JSON.parse(fs.readFileSync(capacitorConfigPath, 'utf8'));
+} catch {
+  fail('capacitor.config.json is not valid JSON.');
+}
+const authProviders = capacitorConfig?.plugins?.FirebaseAuthentication?.providers ?? [];
+for (const provider of ['google.com', 'apple.com']) {
+  if (!authProviders.includes(provider)) {
+    fail(`Capacitor Firebase Authentication must enable ${provider} for Android account parity.`);
+  }
+}
 
 if (!fs.existsSync(googleServicesPath)) {
   fail('android/app/google-services.json is missing. Add the Firebase Android app configuration before native Firebase testing or release builds.');
@@ -297,6 +315,7 @@ for (const feature of [
 
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
 console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
+console.log('Inkbound Android Firebase Authentication provider wiring verified for Google and Apple.');
 console.log('Inkbound Google Play Billing native wiring verified.');
 console.log('Inkbound Android native barcode scanner, camera permission, and optional hardware compatibility verified.');
 console.log('Inkbound Android library-loan notification idempotency and legacy-alarm suppression verified.');
