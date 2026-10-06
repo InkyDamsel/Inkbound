@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import type { UserBookRecord } from '../../types';
-import { isAndroidRuntime } from '../../platform/runtimePlatform';
+import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { shouldScheduleLibraryLoan } from './libraryLoanReminders';
 
 interface LoanReminderPlugin {
@@ -11,7 +11,7 @@ interface LoanReminderPlugin {
 const LoanReminder = registerPlugin<LoanReminderPlugin>('LoanReminder');
 
 export async function syncNativeLibraryLoanReminder(book: UserBookRecord): Promise<void> {
-  if (!isAndroidRuntime()) return;
+  if (!isNativeRuntime()) return;
   try {
     if (!shouldScheduleLibraryLoan(book)) {
       await LoanReminder.cancel({ bookId: book.id });
@@ -28,7 +28,7 @@ export async function syncNativeLibraryLoanReminder(book: UserBookRecord): Promi
 }
 
 export async function syncNativeLibraryLoanReminders(books: UserBookRecord[]): Promise<void> {
-  if (!isAndroidRuntime()) return;
+  if (!isNativeRuntime()) return;
   // A large Inkbound library can contain tens of thousands of records. Only
   // records that are library loans (or retain loan metadata that may need an old
   // alarm cancelled) should ever cross the native bridge.
