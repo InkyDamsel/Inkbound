@@ -224,6 +224,7 @@ export async function initializeAndroidRuntime() {
   configureRuntimePremiumPurchase({
     isAvailable: () => Boolean(auth?.currentUser && functions),
     canRestore: () => Boolean(auth?.currentUser && functions),
+    canShowPurchaseOptions: () => true,
     purchase: async (plan) => {
       const uid = auth?.currentUser?.uid;
       if (!uid) throw new Error('Sign in before starting a Premium subscription.');
