@@ -189,7 +189,6 @@ struct ReadingWidgetView: View {
                     }
                 }
             }
-        }
         .padding(14)
         .inkboundWidgetBackground()
         .widgetURL(openURL)
