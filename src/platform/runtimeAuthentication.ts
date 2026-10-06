@@ -14,6 +14,7 @@ export interface RuntimeAuthenticationAdapter {
   preparePersistence(auth: Auth): Promise<void>;
   signInWithGoogle(auth: Auth): Promise<void>;
   signInWithApple?(auth: Auth): Promise<void>;
+  supportsAppleSignIn?: boolean;
 }
 
 function firebaseAuthCode(error: unknown): string {
@@ -91,6 +92,10 @@ export function prepareRuntimeAuthPersistence(auth: Auth) {
 
 export function signInRuntimeWithGoogle(auth: Auth) {
   return activeAuthenticationAdapter.signInWithGoogle(auth);
+}
+
+export function runtimeSupportsAppleSignIn() {
+  return activeAuthenticationAdapter.supportsAppleSignIn === true;
 }
 
 export function signInRuntimeWithApple(auth: Auth) {
