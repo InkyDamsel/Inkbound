@@ -26,6 +26,7 @@ public final class ReadingWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
         defaults.set(call.getInt("timerSeconds") ?? 0, forKey: "timerSeconds")
         defaults.set(call.getBool("timerRunning") ?? false, forKey: "timerRunning")
         defaults.set(call.getDouble("timerAnchorMillis") ?? 0, forKey: "timerAnchorMillis")
+        defaults.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: "InkboundReadingWidget")
         call.resolve()
     }
