@@ -69,7 +69,10 @@ function clearSignedInDataFromDevice(uid: string) {
   // has completed the account transition.
   writeRuntimeValue(localClearIntentKey(uid), '1');
   SIGNED_IN_DATA_KEYS.forEach((key) => removeRuntimeValue(key));
-  removeRuntimeValue(getProfileMediaSyncQueueKey(uid));
+  // Keep the account-scoped profile media queue across sign-out. The profile is
+  // hidden while signed out, and media keys are UID-scoped, so another account
+  // cannot see these blobs. Preserving the queue lets an interrupted avatar/banner
+  // upload resume when the same reader signs back in instead of deleting their only copy.
   removeRuntimeValue(getAuxiliaryPendingKey(uid));
   removeRuntimeValue(getAuxiliaryBaselineKey(uid));
   removeRuntimeValue('inkbound_profile_media_sync_queue_v1');
@@ -150,7 +153,10 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
       await signOut(auth);
       if (signingOutUid) {
         await clearPhotoMemoriesFromDevice();
-        await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`);
+        // Persistence is law: do not delete UID-scoped avatar/banner blobs on
+        // sign-out. If a media upload was interrupted, these may be the only
+        // recoverable copy. ProfileScreen remains hidden while signed out and
+        // another UID never reads this account's media keys.
         clearSignedInDataFromDevice(signingOutUid);
       }
     } finally { if (signingOutUid) removeRuntimeValue(localClearIntentKey(signingOutUid)); }
