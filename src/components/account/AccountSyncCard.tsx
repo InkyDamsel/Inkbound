@@ -87,7 +87,13 @@ export const AccountSyncCard: React.FC = () => {
           disabled={!sync.isConfigured || isWorking}
           className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-border-strong)] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-sm font-bold text-[#4285f4]">G</span>
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white" aria-hidden="true">
+            <img
+              src="https://developers.google.com/static/identity/images/g-logo.png"
+              alt=""
+              className="h-[18px] w-[18px]"
+            />
+          </span>
           Continue with Google
         </button>
 
