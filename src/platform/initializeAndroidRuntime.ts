@@ -131,6 +131,7 @@ export async function initializeAndroidRuntime() {
   });
 
   configureRuntimeAuthentication({
+    supportsAppleSignIn: true,
     // Android Firebase Auth persistence is now configured when the Auth instance
     // is created in lib/firebase.ts. Re-running setPersistence here can race the
     // startup restoration inside a Capacitor WebView and falsely report that the
