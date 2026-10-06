@@ -54,6 +54,10 @@ if (fs.existsSync(project)) {
   const source = fs.readFileSync(project, 'utf8');
   if (!source.includes('com.inkydameinteractive.inkbound')) fail('Xcode project does not use the Inkbound bundle identifier.');
   if (!source.includes('CODE_SIGN_ENTITLEMENTS')) fail('Xcode target is missing an entitlements file.');
+  const buildNumbers = [...source.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((match) => Number(match[1]));
+  if (buildNumbers.length === 0 || buildNumbers.some((value) => value !== 3)) fail('All iOS app/widget configurations must use build 3 for the 1.0 App Store submission.');
+  const marketingVersions = [...source.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((match) => match[1].trim());
+  if (marketingVersions.length === 0 || marketingVersions.some((value) => value !== '1.0')) fail('All iOS app/widget configurations must remain on marketing version 1.0.');
 }
 
 if (fs.existsSync(infoPlist)) {
