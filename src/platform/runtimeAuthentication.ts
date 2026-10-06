@@ -1,6 +1,7 @@
 import {
   Auth,
   GoogleAuthProvider,
+  OAuthProvider,
   browserLocalPersistence,
   browserSessionPersistence,
   inMemoryPersistence,
@@ -47,6 +48,7 @@ async function prepareBrowserPersistence(auth: Auth): Promise<void> {
 }
 
 const browserAuthenticationAdapter: RuntimeAuthenticationAdapter = {
+  supportsAppleSignIn: true,
   preparePersistence: async (auth) => {
     await prepareBrowserPersistence(auth);
   },
@@ -70,6 +72,22 @@ const browserAuthenticationAdapter: RuntimeAuthenticationAdapter = {
       // Some browsers/extensions block Firebase popup handshakes. Redirect is a
       // safe browser fallback and onAuthStateChanged restores the signed-in user
       // when Inkbound returns from Google.
+      await signInWithRedirect(auth, provider);
+    }
+  },
+  signInWithApple: async (auth) => {
+    const provider = new OAuthProvider('apple.com');
+    provider.addScope('email');
+    provider.addScope('name');
+
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      const code = firebaseAuthCode(error);
+      const popupCouldNotOpen = code === 'auth/popup-blocked'
+        || code === 'auth/operation-not-supported-in-this-environment';
+
+      if (!popupCouldNotOpen) throw error;
       await signInWithRedirect(auth, provider);
     }
   },
