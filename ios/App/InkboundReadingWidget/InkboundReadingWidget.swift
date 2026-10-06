@@ -111,9 +111,7 @@ struct ReadingWidgetView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(red: 0.071, green: 0.031, blue: 0.09)
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("INKBOUND")
                         .font(.caption2.weight(.bold))
@@ -191,9 +189,23 @@ struct ReadingWidgetView: View {
                     }
                 }
             }
-            .padding(14)
         }
+        .padding(14)
+        .inkboundWidgetBackground()
         .widgetURL(openURL)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func inkboundWidgetBackground() -> some View {
+        if #available(iOSApplicationExtension 17.0, *) {
+            containerBackground(for: .widget) {
+                Color(red: 0.071, green: 0.031, blue: 0.09)
+            }
+        } else {
+            background(Color(red: 0.071, green: 0.031, blue: 0.09))
+        }
     }
 }
 
