@@ -471,11 +471,11 @@ if (readingWidgetSource.includes('localStorage.')) {
 }
 for (const required of [
   'applyReadingWidgetAction',
-  'syncAndroidReadingWidget',
+  'syncReadingWidget',
   'INKBOUND_LOCAL_DATA_CHANGED_EVENT',
 ]) {
   if (!readingWidgetBridgeSource.includes(required)) {
-    violations.push(`ReadingWidgetSyncBridge.tsx: missing canonical widget bridge behavior ${required}`);
+    violations.push(`ReadingWidgetSyncBridge.tsx: missing canonical shared widget bridge behavior ${required}`);
   }
 }
 
