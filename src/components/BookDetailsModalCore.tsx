@@ -1,4 +1,4 @@
-import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Search, Star, Trash2, Upload, X } from 'lucide-react';
 import { FORMAT_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPTIONS } from '../domain/libraryTaxonomy';
 import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
@@ -116,6 +116,8 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [tags, setTags] = useState('');
   const [collections, setCollections] = useState('');
+  const swipeStartY = useRef<number | null>(null);
+  const swipeStartX = useRef<number | null>(null);
 
   useEffect(() => {
     setActiveTab('details');
@@ -404,11 +406,36 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
     { id: 'details', label: 'Book Details' }, { id: 'summary', label: 'Summary & Notes' }, { id: 'quotes', label: `Quotes (${book.favoriteQuotes?.length ?? 0})` }, { id: 'reading', label: 'Reading' }, { id: 'sessions', label: `Sessions (${bookSessions.length})` }, { id: 'editions', label: `Editions (${book.editions.length})` },
   ];
 
+  const beginSwipeToClose = (event: React.TouchEvent<HTMLElement>) => {
+    const touch = event.touches[0];
+    swipeStartY.current = touch?.clientY ?? null;
+    swipeStartX.current = touch?.clientX ?? null;
+  };
+
+  const finishSwipeToClose = (event: React.TouchEvent<HTMLElement>) => {
+    const startY = swipeStartY.current;
+    const startX = swipeStartX.current;
+    swipeStartY.current = null;
+    swipeStartX.current = null;
+    if (startY === null || startX === null) return;
+
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const deltaY = touch.clientY - startY;
+    const deltaX = Math.abs(touch.clientX - startX);
+
+    // iOS-style sheet dismissal: a deliberate downward swipe from the modal
+    // header closes Book Details. Horizontal tab/series gestures and ordinary
+    // taps are ignored.
+    if (deltaY >= 80 && deltaY > deltaX * 1.25) onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-[130] flex items-end bg-black/75 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4" onClick={onClose}>
       <section className="flex max-h-[96dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[92dvh] sm:max-w-5xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-        <header className="relative border-b border-[#3d2448] bg-gradient-to-r from-[#281333] via-[#1d0e26] to-[#140a1a] p-4 sm:p-6">
-          <button type="button" onClick={onClose} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-300" aria-label="Close book details"><X className="h-5 w-5" /></button>
+        <header className="book-details-modal-header relative border-b border-[#3d2448] bg-gradient-to-r from-[#281333] via-[#1d0e26] to-[#140a1a] p-4 sm:p-6" onTouchStart={beginSwipeToClose} onTouchEnd={finishSwipeToClose}>
+          <div className="book-details-swipe-handle mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/25 sm:hidden" aria-hidden="true" />
+          <button type="button" onClick={onClose} className="book-details-close-button absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-300" aria-label="Close book details"><X className="h-5 w-5" /></button>
           <div className="flex items-start gap-4 pr-10 sm:gap-6"><button type="button" onClick={() => { setCoverManagerOpen(true); setCoverMode('choices'); }} className="shrink-0"><BookCover work={book.work} edition={activeEdition} size="lg" /></button><div className="min-w-0 flex-1"><span className="inline-flex rounded bg-[#c5a059] px-2 py-1 text-[10px] font-bold uppercase text-[#120817]">{activeEdition.format}</span><h2 className="mt-3 line-clamp-2 font-serif text-2xl font-bold text-[#f4efe6] sm:text-4xl">{book.work.title}</h2><p className="mt-1 text-sm italic text-stone-400">by {book.work.author}</p><p className="mt-2 text-xs text-[#b9aaba]">Metadata: <strong className="text-[#e5c158]">{metadataLabel}</strong></p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => setCoverManagerOpen(true)} className="quiet-shelf-secondary-action"><ImagePlus className="h-4 w-4" /> Cover</button><button type="button" onClick={() => void syncBookMetadata()} disabled={isSyncingBook} className="quiet-shelf-secondary-action"><RefreshCw className={`h-4 w-4 ${isSyncingBook ? 'animate-spin' : ''}`} /> Sync Metadata</button><button type="button" onClick={() => setDeleteConfirmOpen(true)} className="quiet-shelf-secondary-action text-rose-300"><Trash2 className="h-4 w-4" /> Delete</button></div>{syncMessage && <p className="mt-2 text-xs text-[#b9aaba]">{syncMessage}</p>}</div></div>
         </header>
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#3d2448] bg-[#120817] px-3 py-2 text-xs font-semibold">{tabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`min-h-11 whitespace-nowrap rounded-xl px-4 ${activeTab === tab.id ? 'bg-[#c5a059] font-bold text-[#120817]' : 'text-stone-400 hover:bg-[#25132f]'}`}>{tab.label}</button>)}</nav>

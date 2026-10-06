@@ -32,3 +32,10 @@ android/keystore.properties
 # stored in source control. It contains project-specific identifiers and should
 # be supplied locally/CI when the native Firebase app is configured.
 android/app/google-services.json
+
+# Firebase iOS app configuration is injected locally/CI and not committed.
+ios/App/App/GoogleService-Info.plist
+
+# Firebase iOS configuration
+ios/App/GoogleService-Info.plist
+ios/App/App/GoogleService-Info.plist

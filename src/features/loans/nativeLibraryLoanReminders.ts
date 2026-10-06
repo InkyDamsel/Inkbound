@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import type { UserBookRecord } from '../../types';
-import { isAndroidRuntime } from '../../platform/runtimePlatform';
+import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { shouldScheduleLibraryLoan } from './libraryLoanReminders';
 import { buildNativeLoanReminderPlan } from './nativeLoanReminderPlan';
 import { readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
@@ -14,7 +14,7 @@ const LoanReminder = registerPlugin<LoanReminderPlugin>('LoanReminder');
 const NATIVE_LOAN_REMINDER_BOOK_IDS_KEY = 'inkbound_native_loan_reminder_book_ids_v2';
 
 export async function syncNativeLibraryLoanReminder(book: UserBookRecord): Promise<void> {
-  if (!isAndroidRuntime()) return;
+  if (!isNativeRuntime()) return;
   try {
     if (!shouldScheduleLibraryLoan(book)) {
       await LoanReminder.cancel({ bookId: book.id });
@@ -31,7 +31,7 @@ export async function syncNativeLibraryLoanReminder(book: UserBookRecord): Promi
 }
 
 export async function syncNativeLibraryLoanReminders(books: UserBookRecord[]): Promise<void> {
-  if (!isAndroidRuntime()) return;
+  if (!isNativeRuntime()) return;
 
   const previousBookIds = new Set(readRuntimeJson<string[]>(NATIVE_LOAN_REMINDER_BOOK_IDS_KEY, []));
   const plan = buildNativeLoanReminderPlan(books);

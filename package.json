@@ -49,7 +49,14 @@
     "verify:domain-taxonomy": "node scripts/verify-domain-taxonomy.mjs",
     "firebase:deploy:admin-repair": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts --project inkbound-app",
     "firebase:deploy:admin-support": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:getAdminDashboard,functions:syncUserDirectory,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts,functions:resendAdminVerificationEmail,functions:sendAdminPasswordResetEmail,functions:addAdminSupportNote --project inkbound-app",
-    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts && tsx scripts/cross-device-sync-regressions.ts && tsx scripts/library-loan-reminder-regressions.ts"
+    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts && tsx scripts/cross-device-sync-regressions.ts && tsx scripts/library-loan-reminder-regressions.ts",
+    "build:ios": "node scripts/build-ios.mjs",
+    "ios:bootstrap": "node scripts/bootstrap-ios.mjs",
+    "ios:sync": "npm run build:ios && npx cap sync ios && npm run ios:branding:sync && npm run ios:google-signin:configure",
+    "ios:open": "npx cap open ios",
+    "verify:ios-ready": "node scripts/verify-ios-ready.mjs",
+    "ios:branding:sync": "node scripts/sync-ios-branding.mjs",
+    "ios:google-signin:configure": "node scripts/configure-ios-google-signin.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
@@ -69,7 +76,8 @@
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "@capacitor/ios": "8.4.0"
   },
   "devDependencies": {
     "@capacitor/cli": "8.4.0",

@@ -26,7 +26,7 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { scanBarcodeWithNativeAndroid, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -363,10 +363,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
     if (shouldUseNativeBarcodeScanner()) {
       try {
-        const raw = await scanBarcodeWithNativeAndroid();
+        const raw = await scanBarcodeWithNativeRuntime();
         if (raw) await lookupScannedIsbn(raw);
       } catch (error) {
-        setScannerError(error instanceof Error ? error.message : 'Inkbound could not open the Android barcode scanner.');
+        setScannerError(error instanceof Error ? error.message : 'Inkbound could not open the barcode scanner.');
       }
       return;
     }

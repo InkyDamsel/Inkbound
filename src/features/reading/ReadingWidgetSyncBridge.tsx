@@ -5,8 +5,8 @@ import { INKBOUND_LOCAL_DATA_CHANGED_EVENT } from '../../platform/runtimeStorage
 import {
   applyReadingWidgetAction,
   buildReadingWidgetSnapshot,
-  consumeAndroidReadingWidgetAction,
-  syncAndroidReadingWidget,
+  consumeReadingWidgetAction,
+  syncReadingWidget,
 } from './readingWidget';
 
 interface ReadingWidgetSyncBridgeProps {
@@ -23,12 +23,12 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
 
   useEffect(() => {
     booksRef.current = books;
-    void syncAndroidReadingWidget(books, sessionsRef.current);
+    void syncReadingWidget(books, sessionsRef.current);
   }, [books]);
 
   useEffect(() => {
     sessionsRef.current = sessions;
-    void syncAndroidReadingWidget(booksRef.current, sessions);
+    void syncReadingWidget(booksRef.current, sessions);
   }, [sessions]);
 
   useEffect(() => {
@@ -60,13 +60,13 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
       });
       if (signature === widgetSignatureRef.current) return;
       widgetSignatureRef.current = signature;
-      void syncAndroidReadingWidget(booksRef.current, sessionsRef.current);
+      void syncReadingWidget(booksRef.current, sessionsRef.current);
     };
     const consume = async () => {
-      const action = await consumeAndroidReadingWidgetAction();
+      const action = await consumeReadingWidgetAction();
       if (!action || stopped) return;
       const result = applyReadingWidgetAction(action);
-      await syncAndroidReadingWidget(booksRef.current, sessionsRef.current);
+      await syncReadingWidget(booksRef.current, sessionsRef.current);
       if (result.shouldOpenTimer) {
         const fallbackBookId = action === 'start'
           ? booksRef.current.find((book) => book.status === 'currently-reading')?.id
