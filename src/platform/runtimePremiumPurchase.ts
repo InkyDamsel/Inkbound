@@ -7,6 +7,7 @@ export type PremiumBillingPlan = 'monthly' | 'annual';
 export interface RuntimePremiumPurchaseAdapter {
   isAvailable(): boolean;
   canRestore(): boolean;
+  canShowPurchaseOptions(): boolean;
   purchase(plan: PremiumBillingPlan): Promise<void>;
   restore(): Promise<number>;
 }
@@ -18,6 +19,7 @@ const refreshEntitlement = () => {
 const browserPremiumPurchaseAdapter: RuntimePremiumPurchaseAdapter = {
   isAvailable: () => !isNativeRuntime() && Boolean(functions && auth?.currentUser),
   canRestore: () => false,
+  canShowPurchaseOptions: () => true,
   purchase: async (plan) => {
     if (isNativeRuntime()) throw new Error('Google Play Billing is not connected to this Android build yet.');
     if (!functions || !auth?.currentUser) throw new Error('Sign in before starting a Premium subscription.');
@@ -45,6 +47,10 @@ export function canPurchaseRuntimePremium(): boolean {
 
 export function canRestoreRuntimePremium(): boolean {
   return activePremiumPurchaseAdapter.canRestore();
+}
+
+export function canShowRuntimePremiumPurchaseOptions(): boolean {
+  return activePremiumPurchaseAdapter.canShowPurchaseOptions();
 }
 
 export function purchaseRuntimePremium(plan: PremiumBillingPlan): Promise<void> {
