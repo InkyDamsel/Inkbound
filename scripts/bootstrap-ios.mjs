@@ -50,6 +50,12 @@ if (fs.existsSync(infoPlist)) {
   ];
 
   let next = source;
+  if (!next.includes('<key>ITSAppUsesNonExemptEncryption</key>')) {
+    next = next.replace(
+      '</dict>',
+      '\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n</dict>',
+    );
+  }
   for (const [key, value] of additions) {
     if (next.includes(`<key>${key}</key>`)) continue;
     next = next.replace(
