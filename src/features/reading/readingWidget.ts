@@ -1,7 +1,7 @@
 import { registerPlugin } from '@capacitor/core';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { buildReadingDeadlinePlan } from './readingDeadline';
-import { isAndroidRuntime } from '../../platform/runtimePlatform';
+import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { notifyRuntimeStorageChanged, readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
 
 export const ACTIVE_READING_DRAFT_KEY = 'inkbound_active_session_draft';
@@ -220,25 +220,29 @@ export function buildReadingWidgetSnapshot(
   };
 }
 
-export async function syncAndroidReadingWidget(
+export async function syncReadingWidget(
   books: UserBookRecord[],
   sessions: ReadingSession[] = [],
 ) {
-  if (!isAndroidRuntime()) return;
+  if (!isNativeRuntime()) return;
   try {
     await ReadingWidget.syncState(buildReadingWidgetSnapshot(books, sessions));
   } catch (error) {
-    console.warn('Inkbound could not refresh the Android reading widget.', error);
+    console.warn('Inkbound could not refresh the reading widget.', error);
   }
 }
 
-export async function consumeAndroidReadingWidgetAction(): Promise<ReadingWidgetAction | undefined> {
-  if (!isAndroidRuntime()) return undefined;
+export async function consumeReadingWidgetAction(): Promise<ReadingWidgetAction | undefined> {
+  if (!isNativeRuntime()) return undefined;
   try {
     const result = await ReadingWidget.consumeAction();
     return result.action;
   } catch (error) {
-    console.warn('Inkbound could not read the Android reading widget action.', error);
+    console.warn('Inkbound could not read the reading widget action.', error);
     return undefined;
   }
 }
+
+// Compatibility aliases for existing imports while both native platforms share the same bridge.
+export const syncAndroidReadingWidget = syncReadingWidget;
+export const consumeAndroidReadingWidgetAction = consumeReadingWidgetAction;
