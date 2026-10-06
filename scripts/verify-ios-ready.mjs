@@ -24,12 +24,28 @@ const project = path.join(iosRoot, 'App.xcodeproj', 'project.pbxproj');
 const infoPlist = path.join(appRoot, 'Info.plist');
 const googleService = path.join(appRoot, 'GoogleService-Info.plist');
 const privacyManifest = path.join(appRoot, 'PrivacyInfo.xcprivacy');
+const barcodePlugin = path.join(appRoot, 'InkboundBarcodeScannerPlugin.swift');
+const reminderPlugin = path.join(appRoot, 'LoanReminderPlugin.swift');
+const widgetPlugin = path.join(appRoot, 'ReadingWidgetPlugin.swift');
+const bridgeController = path.join(appRoot, 'InkboundBridgeViewController.swift');
+const widgetRoot = path.join(iosRoot, 'InkboundReadingWidget');
+const widgetSource = path.join(widgetRoot, 'InkboundReadingWidget.swift');
+const widgetInfo = path.join(widgetRoot, 'Info.plist');
+const widgetEntitlements = path.join(widgetRoot, 'InkboundReadingWidget.entitlements');
+
 
 for (const [file, label] of [
   [project, 'Xcode project'],
   [infoPlist, 'Info.plist'],
   [privacyManifest, 'PrivacyInfo.xcprivacy'],
   [googleService, 'GoogleService-Info.plist'],
+  [barcodePlugin, 'iOS barcode scanner plugin'],
+  [reminderPlugin, 'iOS loan reminder plugin'],
+  [widgetPlugin, 'iOS reading widget bridge plugin'],
+  [bridgeController, 'iOS native plugin bridge controller'],
+  [widgetSource, 'iOS WidgetKit source'],
+  [widgetInfo, 'iOS WidgetKit Info.plist'],
+  [widgetEntitlements, 'iOS WidgetKit entitlements'],
 ]) {
   if (!fs.existsSync(file)) fail(`${label} is missing.`);
 }
@@ -68,9 +84,33 @@ if (entitlementCandidates.length === 0) {
   if (!entitlements.includes('com.apple.developer.applesignin')) fail('Sign in with Apple capability is missing.');
   if (!entitlements.includes('com.apple.developer.devicecheck.appattest-environment')) fail('App Attest capability is missing.');
   if (!entitlements.includes('<string>production</string>')) fail('App Attest must use the production environment for App Check.');
+  if (!entitlements.includes('group.com.inkydameinteractive.inkbound')) fail('App target must join the Inkbound App Group used by the reading widget.');
+}
+
+if (fs.existsSync(project)) {
+  const projectSource = fs.readFileSync(project, 'utf8');
+  for (const required of [
+    'InkboundBridgeViewController.swift',
+    'InkboundBarcodeScannerPlugin.swift',
+    'LoanReminderPlugin.swift',
+    'ReadingWidgetPlugin.swift',
+    'InkboundReadingWidget.appex',
+    'com.inkydameinteractive.inkbound.ReadingWidget',
+    'Embed App Extensions',
+  ]) {
+    if (!projectSource.includes(required)) fail(`Xcode project is missing iOS parity wiring: ${required}.`);
+  }
+}
+
+if (fs.existsSync(widgetEntitlements)) {
+  const widgetEntitlementSource = fs.readFileSync(widgetEntitlements, 'utf8');
+  if (!widgetEntitlementSource.includes('group.com.inkydameinteractive.inkbound')) {
+    fail('Reading widget extension must join the same Inkbound App Group as the app.');
+  }
 }
 
 if (process.exitCode) process.exit(process.exitCode);
 
 console.log('Inkbound iOS native project readiness checks passed.');
+console.log('Inkbound iOS scanner, loan reminders, and WidgetKit reading widget wiring verified.');
 console.log('App Store Connect metadata, privacy answers, screenshots, age rating, agreements, and TestFlight device testing still require manual verification.');
