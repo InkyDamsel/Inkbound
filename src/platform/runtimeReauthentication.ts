@@ -1,6 +1,7 @@
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
+  OAuthProvider,
   User,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
@@ -30,7 +31,12 @@ const browserReauthenticationAdapter: RuntimeReauthenticationAdapter = {
     const requirement = browserReauthenticationAdapter.getRequirement(user);
 
     if (requirement === 'apple') {
-      throw new Error('Apple account verification requires the native authentication adapter on this device.');
+      const provider = new OAuthProvider('apple.com');
+      provider.addScope('email');
+      provider.addScope('name');
+      await reauthenticateWithPopup(user, provider);
+      await user.getIdToken(true);
+      return;
     }
 
     if (requirement === 'google') {
