@@ -37,7 +37,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if url.scheme == "inkbound", url.host == "reading-widget" {
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let action = components?.queryItems?.first(where: { $0.name == "action" })?.value ?? ""
-            if !action.isEmpty && action != "open" {
+            if !action.isEmpty {
                 UserDefaults(suiteName: "group.com.inkydameinteractive.inkbound")?.set(action, forKey: "pendingAction")
             }
         }
