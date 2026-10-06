@@ -1,5 +1,6 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Apple, Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import appleLogoUrl from '../../../assets/branding/auth/Sign in with Apple - Logo Only/SVG/Logo - SIWA - Logo-only - White.svg';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { isIOSRuntime } from '../../platform/runtimePlatform';
 import {
@@ -89,7 +90,7 @@ export const AccountSyncCard: React.FC = () => {
             disabled={!sync.isConfigured || isWorking}
             className="mb-2.5 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border-strong)] bg-[var(--ink-surface)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-gold)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Apple className="h-[18px] w-[18px]" aria-hidden="true" />
+            <img src={appleLogoUrl} alt="" className="h-[18px] w-[18px] object-contain" aria-hidden="true" />
             Continue with Apple
           </button>
         )}
