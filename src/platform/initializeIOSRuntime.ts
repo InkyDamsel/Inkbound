@@ -17,6 +17,7 @@ import { configureRuntimeExport } from './runtimeExport';
 import { configureRuntimeLifecycle } from './runtimeLifecycle';
 import { configureRuntimeMedia } from './runtimeMedia';
 import { initializeNativeSecurityRuntime } from './runtimeNativeSecurityBootstrap';
+import { configureRuntimePremiumPurchase } from './runtimePremiumPurchase';
 import { configureRuntimeReauthentication } from './runtimeReauthentication';
 import { isIOSRuntime } from './runtimePlatform';
 
@@ -100,6 +101,16 @@ export async function initializeIOSRuntime() {
       if (!auth) throw new Error('Apple sign-in is unavailable right now.');
       await signIntoFirebaseWithApple();
     },
+  });
+
+  configureRuntimePremiumPurchase({
+    isAvailable: () => false,
+    canRestore: () => false,
+    canShowPurchaseOptions: () => false,
+    purchase: async () => {
+      throw new Error('Premium purchasing is not open in the iOS app yet.');
+    },
+    restore: async () => 0,
   });
 
   configureRuntimeReauthentication({
