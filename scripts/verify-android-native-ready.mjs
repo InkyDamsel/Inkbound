@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = process.cwd();
+const capacitorConfigPath = path.join(root, 'capacitor.config.json');
 const androidDir = path.join(root, 'android');
 const googleServicesPath = path.join(androidDir, 'app', 'google-services.json');
 const gradlePath = path.join(androidDir, 'app', 'build.gradle');
@@ -11,6 +12,8 @@ const mainActivityPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'co
 const billingPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'PlayBillingPlugin.java');
 const barcodePluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'InkboundBarcodeScannerPlugin.java');
 const readingWidgetPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'ReadingWidgetPlugin.java');
+const loanReminderPluginPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'LoanReminderPlugin.java');
+const loanReminderReceiverPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'LoanReminderReceiver.java');
 const readingWidgetProviderPath = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'inkydameinteractive', 'inkbound', 'ReadingWidgetProvider.java');
 const readingWidgetLayoutPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'layout', 'reading_widget.xml');
 const readingWidgetInfoPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'xml', 'reading_widget_info.xml');
@@ -90,6 +93,23 @@ const readKeystoreSha1 = (properties) => {
 
   return sha1;
 };
+
+if (!fs.existsSync(capacitorConfigPath)) {
+  fail('capacitor.config.json is missing.');
+}
+
+let capacitorConfig;
+try {
+  capacitorConfig = JSON.parse(fs.readFileSync(capacitorConfigPath, 'utf8'));
+} catch {
+  fail('capacitor.config.json is not valid JSON.');
+}
+const authProviders = capacitorConfig?.plugins?.FirebaseAuthentication?.providers ?? [];
+for (const provider of ['google.com', 'apple.com']) {
+  if (!authProviders.includes(provider)) {
+    fail(`Capacitor Firebase Authentication must enable ${provider} for Android account parity.`);
+  }
+}
 
 if (!fs.existsSync(googleServicesPath)) {
   fail('android/app/google-services.json is missing. Add the Firebase Android app configuration before native Firebase testing or release builds.');
@@ -210,6 +230,27 @@ for (const required of ['queryProductDetailsAsync', 'launchBillingFlow', 'queryP
 if (!fs.existsSync(mainActivityPath) || !fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(PlayBillingPlugin.class)')) {
   fail('MainActivity does not register PlayBillingPlugin.');
 }
+if (!fs.existsSync(loanReminderPluginPath) || !fs.existsSync(loanReminderReceiverPath)) {
+  fail('Android library-loan reminder native files are missing.');
+}
+const loanReminderPlugin = fs.readFileSync(loanReminderPluginPath, 'utf8');
+const loanReminderReceiver = fs.readFileSync(loanReminderReceiverPath, 'utf8');
+for (const required of ['wasDelivered', 'EXTRA_BOOK_ID', 'EXTRA_DUE_DATE', 'EXTRA_KIND', 'cancelVisibleNotifications']) {
+  if (!loanReminderPlugin.includes(required)) fail(`LoanReminderPlugin.java is missing idempotent reminder guard ${required}.`);
+}
+if (loanReminderPlugin.includes('now + 3000L')) {
+  fail('LoanReminderPlugin.java must not replay missed due-today reminders after app open, sync, or upgrade.');
+}
+if (!loanReminderPlugin.includes('if (triggerAt <= now) return;')) {
+  fail('LoanReminderPlugin.java must drop reminders whose intended delivery time has already passed.');
+}
+for (const required of ['markDelivered', 'deliveryKey', 'getSharedPreferences', 'bookId == null || dueDate == null || kind == null']) {
+  if (!loanReminderReceiver.includes(required)) fail(`LoanReminderReceiver.java is missing persistent delivery guard ${required}.`);
+}
+if (!fs.readFileSync(mainActivityPath, 'utf8').includes('registerPlugin(LoanReminderPlugin.class)')) {
+  fail('MainActivity does not register LoanReminderPlugin.');
+}
+
 if (!fs.existsSync(barcodePluginPath)) {
   fail('InkboundBarcodeScannerPlugin.java is missing. Android ISBN scanning cannot use the native fallback.');
 }
@@ -274,7 +315,9 @@ for (const feature of [
 
 console.log(`Inkbound Android Firebase configuration verified for ${expectedPackage} (${services.project_info.project_id}).`);
 console.log(`Inkbound Android Google OAuth configuration verified (${androidOauthClients.length} Android certificate client${androidOauthClients.length === 1 ? '' : 's'}, ${webOauthClients.length} web client${webOauthClients.length === 1 ? '' : 's'}).`);
+console.log('Inkbound Android Firebase Authentication provider wiring verified for Google and Apple.');
 console.log('Inkbound Google Play Billing native wiring verified.');
 console.log('Inkbound Android native barcode scanner, camera permission, and optional hardware compatibility verified.');
+console.log('Inkbound Android library-loan notification idempotency and legacy-alarm suppression verified.');
 console.log('Inkbound Android reading home-screen widget wiring verified.');
 console.log('Release checks still require the Play Console subscription product/base plans and server API access to be configured.');

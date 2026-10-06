@@ -9,6 +9,7 @@ const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""'
 export interface InkboundExportPreferences {
   annualGoal: string;
   dailyGoalMins: string;
+  dailyGoalPages: string;
   theme: 'dark' | 'light';
 }
 

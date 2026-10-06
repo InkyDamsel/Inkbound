@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
@@ -7,6 +7,7 @@ import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
+  notifyLocalDataChanged,
   type CloudDataUpdatedDetail,
   type LocalDataChangedDetail,
 } from './cloudSyncEvents';
@@ -20,6 +21,7 @@ interface ManualCoverLedgerEntry {
   coverUrl: string;
   title: string;
   author: string;
+  clientUpdatedAt?: string;
 }
 
 type PersistedSignatureState = Record<string, string>;
@@ -64,6 +66,65 @@ function writePersistedSignatures(uid: string, signatures: Map<string, string>) 
     state[bookId] = signature;
   });
   getRuntimeStorage().setItem(manualCoverLedgerBaselineKey(uid), JSON.stringify(state));
+}
+
+function timestampMillis(value?: string) {
+  const millis = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(millis) ? millis : 0;
+}
+
+function restoreLedgerAssignments(ledgerEntries: ManualCoverLedgerEntry[]): boolean {
+  if (!ledgerEntries.length) return false;
+  const books = readBooks();
+  const ledgerByBookId = new Map(ledgerEntries.map((entry) => [entry.bookId, entry]));
+  let changed = false;
+
+  const nextBooks = books.map((book) => {
+    const ledger = ledgerByBookId.get(book.id);
+    if (!ledger?.coverUrl?.trim()) return book;
+
+    const editionIndex = book.editions.findIndex((edition) => edition.id === ledger.editionId);
+    if (editionIndex < 0) return book;
+
+    const edition = book.editions[editionIndex];
+    const currentCover = edition.coverUrl?.trim() ?? '';
+    const currentManualUpdatedAt = timestampMillis(edition.manualCoverUpdatedAt);
+    const ledgerUpdatedAt = timestampMillis(ledger.clientUpdatedAt);
+
+    // A genuinely newer explicit manual cover chosen on this device wins. Any
+    // older/provider/blank cover state is repaired from the protected ledger.
+    if (
+      edition.externalSource === 'manual'
+      && currentCover
+      && currentCover !== ledger.coverUrl.trim()
+      && currentManualUpdatedAt > ledgerUpdatedAt
+    ) return book;
+
+    if (
+      currentCover === ledger.coverUrl.trim()
+      && edition.externalSource === 'manual'
+      && currentManualUpdatedAt >= ledgerUpdatedAt
+    ) return book;
+
+    const editions = [...book.editions];
+    editions[editionIndex] = {
+      ...edition,
+      coverUrl: ledger.coverUrl.trim(),
+      externalSource: 'manual',
+      manualCoverUpdatedAt: ledger.clientUpdatedAt ?? edition.manualCoverUpdatedAt ?? new Date().toISOString(),
+    };
+    changed = true;
+    return {
+      ...book,
+      activeEditionId: book.activeEditionId || ledger.editionId,
+      editions,
+    };
+  });
+
+  if (!changed) return false;
+  getRuntimeStorage().setItem(BOOKS_KEY, JSON.stringify(nextBooks));
+  notifyLocalDataChanged([BOOKS_KEY]);
+  return true;
 }
 
 /**
@@ -131,12 +192,24 @@ export const ManualCoverLedgerBridge: React.FC = () => {
       if (detail?.keys?.includes(BOOKS_KEY)) void persist();
     };
 
+    const unsubscribeLedger = onSnapshot(
+      collection(db, 'users', uid, 'manualCoverAssignments'),
+      (snapshot) => {
+        const entries = snapshot.docs
+          .map((item) => item.data() as ManualCoverLedgerEntry)
+          .filter((entry) => Boolean(entry.bookId && entry.editionId && entry.coverUrl));
+        if (restoreLedgerAssignments(entries)) void persist();
+      },
+      (error) => console.warn('Inkbound manual cover ledger restore listener failed.', error),
+    );
+
     void persist();
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, onCloudChange);
     return () => {
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, onCloudChange);
+      unsubscribeLedger();
     };
   }, [user?.uid]);
 

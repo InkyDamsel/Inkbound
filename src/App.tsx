@@ -62,17 +62,28 @@ import {
 } from './features/import/importHistory';
 import { getImportVerificationSnapshot } from './features/import/importVerificationJob';
 import { withBookOwnership } from './features/ownership/bookOwnership';
+import { syncNativeLibraryLoanReminders } from './features/loans/nativeLibraryLoanReminders';
 import { replaceCanonicalLibrary, replaceCanonicalSessions } from './features/library/libraryMutations';
 import { openLibrarySeriesForBook } from './features/library/libraryNavigation';
 import { getActiveEdition, withReadingStatus } from './features/reading/bookReadingState';
 import { withCustomReadingStatus } from './features/reading/customReadingStatuses';
 import {
   applySessionProgressToBook,
-  getSessionProgressEndpoint,
   reconcileBookAfterSessionMutation,
-  sessionSortKey,
 } from './features/reading/sessionBookReconciliation';
-import { getDailyReadingMinutes, getReadingStreak, getSessionDurationMinutes, localDateKey } from './features/reading/sessionAnalytics';
+import {
+  getDailyActivityCount,
+  getDailyGoalMinutes,
+  getDailyPagesRead,
+  getReadingStreak,
+  getSessionDurationMinutes,
+  localDateKey,
+} from './features/reading/sessionAnalytics';
+import {
+  addConfirmedProgressActivity,
+  buildProgressActivityPrompt,
+  type ProgressActivityPrompt,
+} from './features/reading/progressActivity';
 import { INKBOUND_CLOUD_DATA_EVENT, type CloudDataUpdatedDetail } from './features/sync/cloudSyncEvents';
 import { ACCOUNT_DATA_STORAGE_KEYS, LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from './features/sync/storageKeys';
 import { subscribeToRuntimeResume } from './platform/runtimeLifecycle';
@@ -93,6 +104,7 @@ const LEGACY_SESSIONS_STORAGE_KEY = LEGACY_SYNC_STORAGE_KEYS.sessions;
 const TIMER_OPEN_STORAGE_KEY = 'inkbound_timer_open';
 const DAYTIME_MAINTENANCE_KEY = 'inkbound_last_daytime_library_maintenance';
 const DAILY_GOAL_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes;
+const DAILY_PAGE_GOAL_STORAGE_KEY = ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalPages;
 const DAYTIME_MAINTENANCE_COOLDOWN_MS = 60 * 1000;
 const DAYTIME_MAINTENANCE_BATCH_SIZE = 2;
 const MAINTENANCE_CHECK_INTERVAL_MS = 60 * 1000;
@@ -105,8 +117,10 @@ let foregroundImportRetryPending = false;
 interface SessionMilestoneNotice {
   date: string;
   streak: number;
-  dailyMinutes: number;
+  dailyValue: number;
   dailyGoal: number;
+  unit: 'pages' | 'minutes';
+  activityCount: number;
 }
 
 interface BookProgressCorrection {
@@ -133,6 +147,16 @@ function readDailyGoalMinutes(): number {
     return Math.max(1, Number(parsed) || 30);
   } catch {
     return 30;
+  }
+}
+
+function readDailyGoalPages(): number {
+  try {
+    const raw = getRuntimeStorage().getItem(DAILY_PAGE_GOAL_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : 20;
+    return Math.max(1, Number(parsed) || 20);
+  } catch {
+    return 20;
   }
 }
 
@@ -182,6 +206,11 @@ export default function App() {
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sessionMilestone, setSessionMilestone] = useState<SessionMilestoneNotice | null>(null);
+  const [progressActivityPrompt, setProgressActivityPrompt] = useState<ProgressActivityPrompt | null>(null);
+
+  useEffect(() => {
+    void syncNativeLibraryLoanReminders(books);
+  }, [books]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
@@ -402,34 +431,102 @@ export default function App() {
   const handleUpdateStatus = (bookId: string, status: ReadingStatus) => { const today = localDateKey(); commitCanonicalBooks((current) => current.map((book) => book.id !== bookId ? book : withReadingStatus(book, status, today))); showToast(`Updated reading status to ${status}.`); };
 
   const handleCorrectBookProgress = (bookId: string, correction: BookProgressCorrection) => {
-    const sourceBook = books.find((book) => book.id === bookId);
+    const sourceBook = booksRef.current.find((book) => book.id === bookId);
     if (!sourceBook) return;
     const sourceEdition = getActiveEdition(sourceBook);
     if (!sourceEdition) return;
     const isAudiobook = sourceEdition.format === 'audiobook';
-    const oldProgress = isAudiobook ? sourceBook.progressMinutes : sourceBook.progressPages;
-    const correctedProgress = isAudiobook ? Math.max(0, correction.progressMinutes ?? sourceBook.progressMinutes) : Math.max(0, correction.progressPages ?? sourceBook.progressPages);
-    if ((isAudiobook && correction.progressMinutes !== undefined) || (!isAudiobook && correction.progressPages !== undefined)) {
-      const related = sessions.filter((session) => session.bookId === bookId).sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
-      const latest = related.at(-1);
-      if (latest && getSessionProgressEndpoint(latest, isAudiobook, 'end') === oldProgress) {
-        commitCanonicalSessions((current) => current.map((session) => {
-          if (session.id !== latest.id) return session;
-          if (isAudiobook) { const endTimestampSec = correctedProgress * 60; const startTimestampSec = Math.min(session.startTimestampSec ?? endTimestampSec, endTimestampSec); return { ...session, startTimestampSec, endTimestampSec, minutesListened: Math.max(0, Math.round((endTimestampSec - startTimestampSec) / 60)) }; }
-          const endPage = correctedProgress; const startPage = Math.min(session.startPage ?? endPage, endPage); return { ...session, startPage, endPage, pagesRead: Math.max(0, endPage - startPage) };
-        }));
-      }
-    }
+
+    // Current progress and reading activity are intentionally separate. A
+    // correction/update never rewrites an existing session. A positive delta can
+    // become canonical activity only after the reader explicitly confirms it.
+    const activityPrompt = buildProgressActivityPrompt(
+      sourceBook,
+      correction.progressPages,
+      correction.progressMinutes,
+    );
+
     commitCanonicalBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
       const activeEdition = getActiveEdition(book);
       if (!activeEdition) return book;
-      const nextEdition = { ...activeEdition, ...(correction.pageCount !== undefined ? { pageCount: Math.max(0, correction.pageCount), externalSource: 'manual' as const } : {}), ...(correction.audiobookDurationMins !== undefined ? { audiobookDurationMins: Math.max(0, correction.audiobookDurationMins), externalSource: 'manual' as const } : {}) };
-      const nextPages = Math.max(0, correction.progressPages ?? book.progressPages); const nextMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes); const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount; const nextCompleted = isAudiobook ? nextMinutes : nextPages; const progressPercentage = nextTotal && nextTotal > 0 ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100)) : book.progressPercentage; const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal!); const status = reachedEnd ? 'finished' : book.status;
-      const updatedBook: UserBookRecord = { ...book, editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition), progressPages: nextPages, progressMinutes: nextMinutes, progressPercentage, status, dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished };
-      setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected); return updatedBook;
+
+      const nextEdition = {
+        ...activeEdition,
+        ...(correction.pageCount !== undefined
+          ? { pageCount: Math.max(0, correction.pageCount), externalSource: 'manual' as const }
+          : {}),
+        ...(correction.audiobookDurationMins !== undefined
+          ? { audiobookDurationMins: Math.max(0, correction.audiobookDurationMins), externalSource: 'manual' as const }
+          : {}),
+      };
+      const nextPages = Math.max(0, correction.progressPages ?? book.progressPages);
+      const nextMinutes = Math.max(0, correction.progressMinutes ?? book.progressMinutes);
+      const nextTotal = isAudiobook ? nextEdition.audiobookDurationMins : nextEdition.pageCount;
+      const nextCompleted = isAudiobook ? nextMinutes : nextPages;
+      const progressPercentage = nextTotal && nextTotal > 0
+        ? Math.min(100, Math.round((nextCompleted / nextTotal) * 100))
+        : book.progressPercentage;
+      const reachedEnd = Boolean(nextTotal && nextTotal > 0 && nextCompleted >= nextTotal);
+      const status = reachedEnd ? 'finished' : book.status;
+      const progressChanged = nextPages !== book.progressPages || nextMinutes !== book.progressMinutes;
+      const updatedBook: UserBookRecord = {
+        ...book,
+        editions: book.editions.map((edition) => edition.id === activeEdition.id ? nextEdition : edition),
+        progressPages: nextPages,
+        progressMinutes: nextMinutes,
+        progressPercentage,
+        status,
+        dateFinished: reachedEnd ? (book.dateFinished ?? book.lastSessionDate ?? localDateKey()) : book.dateFinished,
+        lastProgressUpdatedAt: progressChanged ? new Date().toISOString() : book.lastProgressUpdatedAt,
+      };
+      setSelectedBookForDetails((selected) => selected?.id === bookId ? updatedBook : selected);
+      return updatedBook;
     }));
-    showToast('Corrected book progress and reconciled the latest reading session.');
+
+    if (activityPrompt) {
+      setProgressActivityPrompt(activityPrompt);
+      showToast(
+        activityPrompt.kind === 'pages'
+          ? `Updated progress by ${activityPrompt.delta} page${activityPrompt.delta === 1 ? '' : 's'}.`
+          : `Updated audiobook progress by ${activityPrompt.delta} minute${activityPrompt.delta === 1 ? '' : 's'}.`,
+      );
+    } else {
+      setProgressActivityPrompt(null);
+      showToast('Updated book progress. No reading activity was assumed.');
+    }
+  };
+
+  const confirmProgressActivity = () => {
+    const prompt = progressActivityPrompt;
+    if (!prompt) return;
+    const result = addConfirmedProgressActivity(sessionsRef.current, prompt);
+    if (result.added) {
+      commitCanonicalSessions(result.sessions);
+      const dailyValue = prompt.kind === 'pages'
+        ? getDailyPagesRead(result.sessions, prompt.date)
+        : getDailyGoalMinutes(result.sessions, prompt.date);
+      const dailyGoal = prompt.kind === 'pages' ? readDailyGoalPages() : readDailyGoalMinutes();
+      showSessionMilestone({
+        date: prompt.date,
+        streak: getReadingStreak(result.sessions, prompt.date),
+        dailyValue,
+        dailyGoal,
+        unit: prompt.kind === 'pages' ? 'pages' : 'minutes',
+        activityCount: getDailyActivityCount(result.sessions, prompt.date),
+      });
+      showToast(
+        prompt.kind === 'pages'
+          ? `Counted ${prompt.delta} page${prompt.delta === 1 ? '' : 's'} toward today's reading.`
+          : `Counted ${prompt.delta} audiobook minute${prompt.delta === 1 ? '' : 's'} toward today's reading.`,
+      );
+    }
+    setProgressActivityPrompt(null);
+  };
+
+  const declineProgressActivity = () => {
+    setProgressActivityPrompt(null);
+    showToast('Progress saved without adding reading activity.');
   };
 
   const handleUpdatePriority = (bookId: string, priority: Priority) => commitCanonicalBooks((current) => current.map((book) => (book.id === bookId ? { ...book, priority } : book)));
@@ -470,32 +567,92 @@ export default function App() {
   const handleUndoLastBatch = () => { if (!previousBooksState) return; commitCanonicalBooks(previousBooksState); if (previousSessionsState) commitCanonicalSessions(previousSessionsState); setPreviousBooksState(null); setPreviousSessionsState(null); showToast('Undid the most recent library change.'); };
 
   const updateBookFromSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
-    commitCanonicalBooks((current) => current.map((book) => applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes)));
+    const changedAt = new Date().toISOString();
+    commitCanonicalBooks((current) => current.map((book) => {
+      if (book.id !== newSession.bookId) return book;
+      const updated = applySessionProgressToBook(book, newSession, updatedPages, updatedMinutes);
+      const progressChanged = updated.progressPages !== book.progressPages || updated.progressMinutes !== book.progressMinutes;
+      return progressChanged ? { ...updated, lastProgressUpdatedAt: changedAt } : updated;
+    }));
   };
 
   const reconcileBookProgressFromSessions = (bookId: string, nextSessions: ReadingSession[], changedSession?: ReadingSession) => {
     commitCanonicalBooks((current) => current.map((book) => book.id === bookId ? reconcileBookAfterSessionMutation(book, nextSessions, changedSession) : book));
   };
 
-  const maybeShowFirstSessionMilestone = (newSession: ReadingSession) => { const hadPriorSessionThatDay = sessions.some((session) => session.date === newSession.date && getSessionDurationMinutes(session) > 0); const isFirstCompletedSessionThatDay = !hadPriorSessionThatDay && getSessionDurationMinutes(newSession) > 0; if (!isFirstCompletedSessionThatDay) return; const projectedSessions = [newSession, ...sessions]; showSessionMilestone({ date: newSession.date, streak: getReadingStreak(projectedSessions, newSession.date), dailyMinutes: getDailyReadingMinutes(projectedSessions, newSession.date), dailyGoal: readDailyGoalMinutes() }); };
-  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => { maybeShowFirstSessionMilestone(newSession); commitCanonicalSessions((current) => [newSession, ...current]); updateBookFromSession(newSession, updatedPages, updatedMinutes); setTimerInitialBookId(undefined); setIsTimerOpen(false); showToast(`Saved a ${getSessionDurationMinutes(newSession)}-minute reading session.`); };
+  const maybeShowFirstSessionMilestone = (newSession: ReadingSession, projectedSessions: ReadingSession[]) => {
+    const hadPriorActivityThatDay = sessionsRef.current.some((session) =>
+      session.date === newSession.date
+      && (getSessionDurationMinutes(session) > 0 || getDailyPagesRead([session], session.date) > 0 || getDailyGoalMinutes([session], session.date) > 0),
+    );
+    if (hadPriorActivityThatDay) return;
+
+    const book = booksRef.current.find((candidate) => candidate.id === newSession.bookId);
+    const isAudiobook = book ? getActiveEdition(book)?.format === 'audiobook' : false;
+    const dailyValue = isAudiobook
+      ? getDailyGoalMinutes(projectedSessions, newSession.date)
+      : getDailyPagesRead(projectedSessions, newSession.date);
+    const dailyGoal = isAudiobook ? readDailyGoalMinutes() : readDailyGoalPages();
+
+    showSessionMilestone({
+      date: newSession.date,
+      streak: getReadingStreak(projectedSessions, newSession.date),
+      dailyValue,
+      dailyGoal,
+      unit: isAudiobook ? 'minutes' : 'pages',
+      activityCount: getDailyActivityCount(projectedSessions, newSession.date),
+    });
+  };
+
+  const handleSaveSession = (newSession: ReadingSession, updatedPages: number, updatedMinutes: number) => {
+    const book = booksRef.current.find((candidate) => candidate.id === newSession.bookId);
+    const recordedSession: ReadingSession = {
+      ...newSession,
+      editionId: newSession.editionId ?? (book ? getActiveEdition(book)?.id : undefined),
+      activitySource: newSession.activitySource ?? 'timer',
+    };
+    const projectedSessions = [recordedSession, ...sessionsRef.current];
+    maybeShowFirstSessionMilestone(recordedSession, projectedSessions);
+    commitCanonicalSessions(projectedSessions);
+    updateBookFromSession(recordedSession, updatedPages, updatedMinutes);
+    setTimerInitialBookId(undefined);
+    setIsTimerOpen(false);
+    showToast(`Saved a ${getSessionDurationMinutes(recordedSession)}-minute reading session.`);
+  };
+
   const handleSaveManualSession = (session: ReadingSession) => {
-    const nextSessions = [session, ...sessionsRef.current];
+    const book = booksRef.current.find((candidate) => candidate.id === session.bookId);
+    const recordedSession: ReadingSession = {
+      ...session,
+      editionId: session.editionId ?? (book ? getActiveEdition(book)?.id : undefined),
+      activitySource: session.activitySource ?? 'manual-session',
+    };
+    const nextSessions = [recordedSession, ...sessionsRef.current];
+    maybeShowFirstSessionMilestone(recordedSession, nextSessions);
     commitCanonicalSessions(nextSessions);
-    commitCanonicalBooks((current) => current.map((book) =>
-      book.id === session.bookId ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
+    commitCanonicalBooks((current) => current.map((bookRecord) =>
+      bookRecord.id === recordedSession.bookId ? reconcileBookAfterSessionMutation(bookRecord, nextSessions) : bookRecord,
     ));
     showToast('Added past reading session.');
   };
+
   const handleSaveManualSessions = (newSessions: ReadingSession[]) => {
     if (newSessions.length === 0) return;
-    const nextSessions = [...newSessions, ...sessionsRef.current];
-    const affectedBookIds = new Set(newSessions.map((session) => session.bookId));
+    const recordedSessions = newSessions.map((session) => {
+      const book = booksRef.current.find((candidate) => candidate.id === session.bookId);
+      return {
+        ...session,
+        editionId: session.editionId ?? (book ? getActiveEdition(book)?.id : undefined),
+        activitySource: session.activitySource ?? 'manual-session',
+      } satisfies ReadingSession;
+    });
+    const nextSessions = [...recordedSessions, ...sessionsRef.current];
+    const affectedBookIds = new Set(recordedSessions.map((session) => session.bookId));
     commitCanonicalSessions(nextSessions);
     commitCanonicalBooks((current) => current.map((book) =>
       affectedBookIds.has(book.id) ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
     ));
-    showToast(`Added ${newSessions.length} past reading session${newSessions.length === 1 ? '' : 's'}.`);
+    showToast(`Added ${recordedSessions.length} past reading session${recordedSessions.length === 1 ? '' : 's'}.`);
   };
   const handleUpdateSession = (session: ReadingSession) => { const previous = sessions.find((item) => item.id === session.id); const nextSessions = sessions.map((item) => item.id === session.id ? session : item); commitCanonicalSessions(nextSessions); if (previous && previous.bookId !== session.bookId) { reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous); reconcileBookProgressFromSessions(session.bookId, nextSessions); } else reconcileBookProgressFromSessions(session.bookId, nextSessions, previous); showToast('Updated reading session and reconciled book progress.'); };
   const handleDeleteSession = (sessionId: string) => { const removed = sessions.find((session) => session.id === sessionId); const nextSessions = sessions.filter((session) => session.id !== sessionId); commitCanonicalSessions(nextSessions); if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed); showToast('Deleted reading session and reconciled book progress.'); };
@@ -526,7 +683,8 @@ export default function App() {
       {isBatchEditOpen && <BatchEditModal selectedBookIds={selectedBookIds} books={books} onClose={() => setIsBatchEditOpen(false)} onApplyBatchChanges={handleApplyBatchChanges} onDeleteSelected={handleDeleteSelected} onUndoLastBatch={handleUndoLastBatch} />}
       {isTimerOpen && <ReadingSessionModal books={books} sessions={sessions} initialBookId={timerInitialBookId} onClose={closeTimer} onSaveSession={handleSaveSession} />}
       {isAddBookOpen && <AddBookModal currentBookCount={books.length} onClose={() => setIsAddBookOpen(false)} onAddBook={(newBook) => { commitCanonicalBooks((current) => [newBook, ...current]); showToast(`Added “${newBook.work.title}” to Inkbound.`); }} onAddMultipleBooks={(newBooks) => { commitCanonicalBooks((current) => [...newBooks, ...current]); showToast(`Added ${newBooks.length} books to Inkbound.`); }} onRemoveBook={(book) => { commitCanonicalBooks((current) => current.filter((candidate) => candidate.id !== book.id)); showToast(`Removed “${book.work.title}” from Inkbound.`); }} />}
-      {sessionMilestone && <div className="fixed bottom-24 left-1/2 z-[150] w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl border border-[#c5a059]/45 bg-[#1c0f24]/95 p-4 text-[#f4efe6] shadow-2xl backdrop-blur"><div className="flex items-center justify-between gap-4"><div className="flex items-center gap-2"><Flame className="h-5 w-5 text-[#e5c158]" /><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Reading streak</p><p className="font-serif text-xl font-bold">{sessionMilestone.streak} day{sessionMilestone.streak === 1 ? '' : 's'}</p></div></div><div className="flex items-center gap-2 text-right"><Target className="h-5 w-5 text-[#e5c158]" /><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Daily goal</p><p className="font-serif text-xl font-bold">{sessionMilestone.dailyMinutes} / {sessionMilestone.dailyGoal}m</p><p className="text-xs text-stone-400">{sessionMilestone.dailyMinutes >= sessionMilestone.dailyGoal ? 'Goal reached!' : `${sessionMilestone.dailyGoal - sessionMilestone.dailyMinutes} minutes to go.`}</p></div></div></div></div>}
+      {progressActivityPrompt && <div className="fixed inset-0 z-[230] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"><section className="w-full max-w-md rounded-3xl border border-[#c5a059]/35 bg-[#17101b] p-5 text-[#f4efe6] shadow-2xl sm:p-6" role="dialog" aria-modal="true" aria-labelledby="progress-activity-title"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#c5a059]">Reading activity</p><h2 id="progress-activity-title" className="mt-2 font-serif text-2xl font-bold">{progressActivityPrompt.kind === 'pages' ? `Count these ${progressActivityPrompt.delta} page${progressActivityPrompt.delta === 1 ? '' : 's'} toward today’s reading?` : `Count these ${progressActivityPrompt.delta} audiobook minute${progressActivityPrompt.delta === 1 ? '' : 's'} toward today’s reading?`}</h2><p className="mt-3 text-sm leading-6 text-stone-400">Your book progress is already saved. Confirming will also add one canonical reading activity for today so goals, streaks, stats, and reports can use the same recorded evidence.</p><div className="mt-6 grid gap-3 sm:grid-cols-2"><button type="button" onClick={declineProgressActivity} className="quiet-shelf-secondary-action justify-center">Progress only</button><button type="button" onClick={confirmProgressActivity} className="quiet-shelf-primary-action justify-center">Count toward today</button></div></section></div>}
+      {sessionMilestone && <div className="fixed bottom-24 left-1/2 z-[150] w-[min(92vw,560px)] -translate-x-1/2 rounded-2xl border border-[#c5a059]/45 bg-[#1c0f24]/95 p-4 text-[#f4efe6] shadow-2xl backdrop-blur"><div className="flex items-center justify-between gap-4"><div className="flex items-center gap-2"><Flame className="h-5 w-5 text-[#e5c158]" /><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Reading streak</p><p className="font-serif text-xl font-bold">{sessionMilestone.streak} day{sessionMilestone.streak === 1 ? '' : 's'}</p></div></div><div className="flex items-center gap-2 text-right"><Target className="h-5 w-5 text-[#e5c158]" /><div><p className="text-xs font-bold uppercase tracking-wider text-stone-400">Today</p><p className="font-serif text-xl font-bold">{sessionMilestone.dailyValue} / {sessionMilestone.dailyGoal} {sessionMilestone.unit}</p><p className="text-xs text-stone-400">{sessionMilestone.dailyValue >= sessionMilestone.dailyGoal ? 'Goal reached!' : `${sessionMilestone.dailyGoal - sessionMilestone.dailyValue} ${sessionMilestone.unit} to go.`} · {sessionMilestone.activityCount} recorded activit{sessionMilestone.activityCount === 1 ? 'y' : 'ies'}</p></div></div></div></div>}
       {toastMessage && <div className="inkbound-toast" role="status"><Check className="h-4 w-4 text-[var(--ink-gold)]" /><span>{toastMessage}</span>{previousBooksState && <button type="button" onClick={handleUndoLastBatch}><RotateCcw className="h-3 w-3" /> Undo</button>}</div>}
     </ResponsiveShell>
   );

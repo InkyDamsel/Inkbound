@@ -43,13 +43,13 @@
     "firebase:deploy:all": "npm run release:verify && npx firebase-tools deploy --only hosting,firestore:rules,storage,functions --project inkbound-app",
     "verify:web-release": "npm run lint && npm run test:critical && npm run verify:source-of-truth && npm run verify:parity && npm run build && npm run verify:release-artifacts",
     "build:bundle": "vite build",
-    "test:critical:reading": "tsx scripts/critical-reading-regressions.ts",
+    "test:critical:reading": "tsx scripts/critical-reading-regressions.ts && tsx scripts/daily-page-goal-regressions.ts",
     "test:critical:reporting": "tsx scripts/reporting-math-regressions.ts",
     "verify:source-boundary": "node scripts/verify-source-of-truth.mjs",
     "verify:domain-taxonomy": "node scripts/verify-domain-taxonomy.mjs",
     "firebase:deploy:admin-repair": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts --project inkbound-app",
     "firebase:deploy:admin-support": "npm run verify:web-release && npm run functions:build && npx firebase-tools deploy --only hosting,functions:getAdminDashboard,functions:syncUserDirectory,functions:correctAdminUserEmail,functions:mergeAdminUserAccounts,functions:resendAdminVerificationEmail,functions:sendAdminPasswordResetEmail,functions:addAdminSupportNote --project inkbound-app",
-    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts"
+    "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts && tsx scripts/cross-device-sync-regressions.ts && tsx scripts/library-loan-reminder-regressions.ts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",

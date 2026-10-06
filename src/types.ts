@@ -129,12 +129,23 @@ export interface UserBookRecord {
   dateStarted?: string;
   dateFinished?: string;
   lastSessionDate?: string;
+  /**
+   * Exact cross-device timestamp for the reader's latest current-progress change.
+   * This is UI recency metadata only; it never counts as reading activity.
+   */
+  lastProgressUpdatedAt?: string;
   rereadCount?: number;
 }
+
+export type ReadingActivitySource = 'timer' | 'manual-session' | 'progress-confirmation';
 
 export interface ReadingSession {
   id: string;
   bookId: string;
+  editionId?: string;
+  activitySource?: ReadingActivitySource;
+  /** Stable per-confirmation key used to make one confirmation idempotent. */
+  activityKey?: string;
   date: string;
   startTime: string;
   endTime: string;

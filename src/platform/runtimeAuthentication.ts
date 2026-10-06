@@ -1,6 +1,7 @@
 import {
   Auth,
   GoogleAuthProvider,
+  OAuthProvider,
   browserLocalPersistence,
   browserSessionPersistence,
   inMemoryPersistence,
@@ -13,6 +14,8 @@ import { isNativeRuntime } from './runtimePlatform';
 export interface RuntimeAuthenticationAdapter {
   preparePersistence(auth: Auth): Promise<void>;
   signInWithGoogle(auth: Auth): Promise<void>;
+  signInWithApple?(auth: Auth): Promise<void>;
+  supportsAppleSignIn?: boolean;
 }
 
 function firebaseAuthCode(error: unknown): string {
@@ -45,6 +48,7 @@ async function prepareBrowserPersistence(auth: Auth): Promise<void> {
 }
 
 const browserAuthenticationAdapter: RuntimeAuthenticationAdapter = {
+  supportsAppleSignIn: true,
   preparePersistence: async (auth) => {
     await prepareBrowserPersistence(auth);
   },
@@ -71,6 +75,22 @@ const browserAuthenticationAdapter: RuntimeAuthenticationAdapter = {
       await signInWithRedirect(auth, provider);
     }
   },
+  signInWithApple: async (auth) => {
+    const provider = new OAuthProvider('apple.com');
+    provider.addScope('email');
+    provider.addScope('name');
+
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      const code = firebaseAuthCode(error);
+      const popupCouldNotOpen = code === 'auth/popup-blocked'
+        || code === 'auth/operation-not-supported-in-this-environment';
+
+      if (!popupCouldNotOpen) throw error;
+      await signInWithRedirect(auth, provider);
+    }
+  },
 };
 
 let activeAuthenticationAdapter: RuntimeAuthenticationAdapter = browserAuthenticationAdapter;
@@ -90,4 +110,15 @@ export function prepareRuntimeAuthPersistence(auth: Auth) {
 
 export function signInRuntimeWithGoogle(auth: Auth) {
   return activeAuthenticationAdapter.signInWithGoogle(auth);
+}
+
+export function runtimeSupportsAppleSignIn() {
+  return activeAuthenticationAdapter.supportsAppleSignIn === true;
+}
+
+export function signInRuntimeWithApple(auth: Auth) {
+  if (!activeAuthenticationAdapter.signInWithApple) {
+    throw new Error('Apple sign-in is not available in this Inkbound build.');
+  }
+  return activeAuthenticationAdapter.signInWithApple(auth);
 }

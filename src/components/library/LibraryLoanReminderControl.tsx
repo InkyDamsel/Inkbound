@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CalendarClock, Save, X } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
-import { syncNativeLibraryLoanReminder } from '../../features/loans/nativeLibraryLoanReminders';
 
 interface LibraryLoanReminderControlProps {
   book: UserBookRecord;
@@ -39,7 +38,6 @@ export const LibraryLoanReminderControl: React.FC<LibraryLoanReminderControlProp
       },
     };
     onUpdateBook(updated);
-    void syncNativeLibraryLoanReminder(updated);
     setOpen(false);
   };
 

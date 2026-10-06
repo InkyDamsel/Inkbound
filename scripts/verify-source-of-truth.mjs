@@ -79,7 +79,6 @@ for (const required of [
   'getActiveEdition',
   'applySessionProgressToBook',
   'reconcileBookAfterSessionMutation',
-  'getSessionProgressEndpoint',
   'SYNC_STORAGE_KEYS',
   'LEGACY_SYNC_STORAGE_KEYS',
   'ACCOUNT_DATA_STORAGE_KEYS',
@@ -122,6 +121,14 @@ for (const required of ['replaceCanonicalLibrary', 'replaceCanonicalSessions', '
   if (!libraryMutations.includes(required)) {
     violations.push(`libraryMutations.ts: persist-first canonical mutation boundary is missing ${required}`);
   }
+}
+
+const sessionBookReconciliationSource = read('src/features/reading/sessionBookReconciliation.ts');
+if (!sessionBookReconciliationSource.includes('getSessionProgressEndpoint')) {
+  violations.push('sessionBookReconciliation.ts: canonical session progress endpoint logic must remain owned by the reconciliation module.');
+}
+if (app.includes('getSessionProgressEndpoint')) {
+  violations.push('App.tsx: direct progress edits must not consume session endpoints; session history stays owned by sessionBookReconciliation.ts.');
 }
 
 const bookReadingState = read('src/features/reading/bookReadingState.ts');
@@ -246,6 +253,55 @@ for (const [relative, source] of [
   }
 }
 
+const sessionAnalyticsSource = read('src/features/reading/sessionAnalytics.ts');
+const progressActivitySource = read('src/features/reading/progressActivity.ts');
+const appSource = read('src/App.tsx');
+if (!sessionAnalyticsSource.includes('getDailyPagesRead') || !sessionAnalyticsSource.includes('isRecordedReadingActivity')) {
+  violations.push('sessionAnalytics.ts: daily page goals and reading-day credit must derive from canonical ReadingSession activity.');
+}
+if (!progressActivitySource.includes("activitySource: 'progress-confirmation'") || !progressActivitySource.includes('addConfirmedProgressActivity')) {
+  violations.push('progressActivity.ts: confirmed manual progress must persist as canonical ReadingSession activity with idempotent confirmation.');
+}
+if (!appSource.includes('buildProgressActivityPrompt') || !appSource.includes('confirmProgressActivity') || !appSource.includes('declineProgressActivity')) {
+  violations.push('App.tsx: current progress edits must remain separate from optional daily-activity confirmation.');
+}
+if (appSource.includes('getSessionProgressEndpoint(latest') || appSource.includes('sessionSortKey(a).localeCompare(sessionSortKey(b))')) {
+  violations.push('App.tsx: direct book-progress edits must not rewrite historical session endpoints.');
+}
+
+const homeDashboardSource = read('src/components/HomeDashboard.tsx');
+const readingRecencySource = read('src/features/reading/readingRecency.ts');
+if (!homeDashboardSource.includes('sortCurrentlyReadingByRecency')) {
+  violations.push('HomeDashboard.tsx: Currently Reading must use the canonical reading-recency helper.');
+}
+if (!readingRecencySource.includes('lastProgressUpdatedAt') || !readingRecencySource.includes('getReadingSessionTimestamp')) {
+  violations.push('readingRecency.ts: Currently Reading order must consider both exact progress updates and canonical session recency.');
+}
+
+const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
+const cloudServerMergePolicySource = read('src/features/sync/cloudServerMergePolicy.ts');
+if (!cloudServerRefreshSource.includes('mergeServerCollectionById') || !cloudServerRefreshSource.includes('mergeBooksFromServer')) {
+  violations.push('CloudServerRefreshBridge.tsx: explicit cloud refresh must use the canonical cross-device merge policy.');
+}
+if (!cloudServerMergePolicySource.includes('mergeIncomingManualCoverState') || !cloudServerMergePolicySource.includes('mergeIncomingBookQuoteState') || !cloudServerMergePolicySource.includes('mergeIncomingBookLoanState')) {
+  violations.push('cloudServerMergePolicy.ts: cross-device reconciliation must preserve protected manual covers, quotes, and loan state.');
+}
+if (cloudServerRefreshSource.includes('mergeMissingById(currentSessions')) {
+  violations.push('CloudServerRefreshBridge.tsx: manual refresh must not ignore newer server edits to existing sessions.');
+}
+
+const nativeLoanReminderSource = read('src/features/loans/nativeLibraryLoanReminders.ts');
+const loanReminderControlSource = read('src/components/library/LibraryLoanReminderControl.tsx');
+if (!appSource.includes('syncNativeLibraryLoanReminders(books)')) {
+  violations.push('App.tsx: native library-loan reminders must reconcile from canonical library state.');
+}
+if (!nativeLoanReminderSource.includes('buildNativeLoanReminderPlan') || !nativeLoanReminderSource.includes('NATIVE_LOAN_REMINDER_BOOK_IDS_KEY')) {
+  violations.push('nativeLibraryLoanReminders.ts: reminder scheduling must dedupe and cancel stale canonical loan alarms.');
+}
+if (loanReminderControlSource.includes('syncNativeLibraryLoanReminder(')) {
+  violations.push('LibraryLoanReminderControl.tsx: UI controls must not own native reminder scheduling.');
+}
+
 const readingSessionsScreenSource = read('src/components/ReadingSessionsScreen.tsx');
 const bulkHistoricalSessionsSource = read('src/components/BulkHistoricalSessionsModal.tsx');
 if (!readingSessionsScreenSource.includes('onSaveManualSessions') || !readingSessionsScreenSource.includes('BulkHistoricalSessionsModal')) {
@@ -256,7 +312,6 @@ if (!bulkHistoricalSessionsSource.includes('onSave(nextSessions)')) {
 }
 
 const fullCloudReconciliationSource = read('src/features/sync/FullCloudReconciliationBridge.tsx');
-const cloudServerRefreshSource = read('src/features/sync/CloudServerRefreshBridge.tsx');
 const oneShotCloudHydrationSource = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 const accountLibraryMigrationSource = read('src/features/sync/accountLibraryMigration.ts');
 

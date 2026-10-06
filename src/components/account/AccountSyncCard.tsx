@@ -1,5 +1,6 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import appleLogoUrl from '../../../assets/branding/auth/apple-sign-in-black-small.svg';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import {
   getCloudSyncHealth,
@@ -81,13 +82,36 @@ export const AccountSyncCard: React.FC = () => {
   const renderSignedOutAccount = () => (
     <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="min-w-0 rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4 sm:p-5">
+        {sync.canSignInWithApple && (
+          <button
+            type="button"
+            onClick={() => void sync.signInWithApple()}
+            disabled={!sync.isConfigured || isWorking}
+            className="mb-2.5 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border-strong)] bg-[var(--ink-surface)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-gold)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full bg-white" aria-hidden="true">
+              <img
+                src={appleLogoUrl}
+                alt=""
+                className="absolute left-1/2 top-1/2 h-[53px] w-auto max-w-none -translate-x-1/2 -translate-y-1/2"
+              />
+            </span>
+            Continue with Apple
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void sync.signInWithGoogle()}
           disabled={!sync.isConfigured || isWorking}
           className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-page)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-border-strong)] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-sm font-bold text-[#4285f4]">G</span>
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white" aria-hidden="true">
+            <img
+              src="https://developers.google.com/static/identity/images/g-logo.png"
+              alt=""
+              className="h-[18px] w-[18px]"
+            />
+          </span>
           Continue with Google
         </button>
 
@@ -145,7 +169,7 @@ export const AccountSyncCard: React.FC = () => {
           <p className="inkbound-kicker">Your Inkbound account</p>
           <h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">Take Inkbound with you</h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">
-            Sign in with Google or email to keep your books, reading sessions, profile, and Photo Memories up to date
+            Sign in with Apple, Google, or email to keep your books, reading sessions, profile, and Photo Memories up to date
             across your devices. Your library belongs to your Inkbound account, not one particular device.
           </p>
         </div>

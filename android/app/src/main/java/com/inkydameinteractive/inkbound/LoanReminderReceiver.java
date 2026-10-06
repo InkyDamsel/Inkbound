@@ -6,6 +6,7 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 
 import androidx.core.app.NotificationCompat;
@@ -19,8 +20,19 @@ public class LoanReminderReceiver extends BroadcastReceiver {
         String title = intent.getStringExtra("title");
         String message = intent.getStringExtra("message");
         int notificationId = intent.getIntExtra("notificationId", 9100);
+        String bookId = intent.getStringExtra(LoanReminderPlugin.EXTRA_BOOK_ID);
+        String dueDate = intent.getStringExtra(LoanReminderPlugin.EXTRA_DUE_DATE);
+        String kind = intent.getStringExtra(LoanReminderPlugin.EXTRA_KIND);
         if (title == null || message == null) return;
 
+        // Pre-fix Inkbound builds scheduled alarms without these identity
+        // extras. Those alarms cannot be proven to represent the reader's
+        // current loan state after an upgrade, so discard them silently instead
+        // of showing a stale/duplicate notification. Every alarm scheduled by
+        // this build carries the full canonical identity below.
+        if (bookId == null || dueDate == null || kind == null) return;
+
+        markDelivered(context, bookId, dueDate, kind);
         createChannel(context);
 
         Intent launchIntent = new Intent(context, MainActivity.class);
@@ -47,6 +59,21 @@ public class LoanReminderReceiver extends BroadcastReceiver {
             // Android 13+ can deny notification permission. Scheduling remains safe;
             // Inkbound will ask again when a future library loan is saved.
         }
+    }
+
+    static boolean wasDelivered(Context context, String bookId, String dueDate, String kind) {
+        return context
+            .getSharedPreferences(LoanReminderPlugin.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(deliveryKey(bookId, dueDate, kind), false);
+    }
+
+    private static void markDelivered(Context context, String bookId, String dueDate, String kind) {
+        SharedPreferences preferences = context.getSharedPreferences(LoanReminderPlugin.PREFS_NAME, Context.MODE_PRIVATE);
+        preferences.edit().putBoolean(deliveryKey(bookId, dueDate, kind), true).apply();
+    }
+
+    private static String deliveryKey(String bookId, String dueDate, String kind) {
+        return "delivered:" + bookId + ":" + dueDate + ":" + kind;
     }
 
     private void createChannel(Context context) {

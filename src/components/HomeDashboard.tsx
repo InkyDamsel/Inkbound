@@ -16,6 +16,7 @@ import { getBookReadingState } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { getAnnualReadingGoal, setAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
+import { getReadingSessionTimestamp, sortCurrentlyReadingByRecency } from '../features/reading/readingRecency';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { BookCover } from './BookCover';
 
@@ -33,36 +34,6 @@ const AWAKE_LUMIS_ASSET = '/assets/lumis/lumis-awake.svg';
 const SLEEPING_LUMIS_ASSET = '/assets/lumis/lumis-sleeping.svg';
 const RECENT_READING_WINDOW_MS = 6 * 60 * 60 * 1000;
 
-const parseClock = (value?: string) => {
-  const match = value?.match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  return Number.isFinite(hour) && Number.isFinite(minute) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
-    ? { hour, minute }
-    : null;
-};
-
-const getSessionTimestamp = (session: ReadingSession): number => {
-  const dateMatch = session.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!dateMatch) return Number.NEGATIVE_INFINITY;
-  const [, yearText, monthText, dayText] = dateMatch;
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const start = parseClock(session.startTime);
-  const end = parseClock(session.endTime);
-  const chosen = end ?? start ?? { hour: 12, minute: 0 };
-  const timestamp = new Date(year, month - 1, day, chosen.hour, chosen.minute, 0, 0);
-
-  if (start && end && (end.hour < start.hour || (end.hour === start.hour && end.minute < start.minute))) {
-    timestamp.setDate(timestamp.getDate() + 1);
-  }
-
-  const value = timestamp.getTime();
-  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
-};
-
 const formatLocalBookDate = (value?: string) => {
   if (!value) return null;
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -74,8 +45,6 @@ const formatLocalBookDate = (value?: string) => {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString();
 };
-
-const readingRecencyKey = (book: UserBookRecord) => book.lastSessionDate ?? book.dateStarted ?? book.dateAdded;
 
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   books,
@@ -97,8 +66,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const [isEditingAnnualGoal, setIsEditingAnnualGoal] = useState(false);
   const [annualGoalDraft, setAnnualGoalDraft] = useState(() => String(getAnnualReadingGoal()));
 
-  const currentlyReading = books.filter((book) => book.status === 'currently-reading');
-  const currentBook = [...currentlyReading].sort((a, b) => readingRecencyKey(b).localeCompare(readingRecencyKey(a)))[0] ?? null;
+  const currentlyReading = useMemo(
+    () => sortCurrentlyReadingByRecency(books, sessions),
+    [books, sessions],
+  );
+  const currentBook = currentlyReading[0] ?? null;
   const finishedBooks = books.filter(hasTrustworthyFinishedHistory);
   const finishedThisYear = finishedBooks.filter((book) => book.dateFinished?.startsWith(yearPrefix));
   const recentlyFinished = [...finishedBooks]
@@ -140,10 +112,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   }, [books]);
 
   const recentSession = useMemo(
-    () => [...sessions].filter((session) => getSessionDurationMinutes(session) > 0).sort((a, b) => getSessionTimestamp(b) - getSessionTimestamp(a))[0],
+    () => [...sessions].filter((session) => getSessionDurationMinutes(session) > 0).sort((a, b) => getReadingSessionTimestamp(b) - getReadingSessionTimestamp(a))[0],
     [sessions],
   );
-  const recentSessionTimestamp = recentSession ? getSessionTimestamp(recentSession) : Number.NEGATIVE_INFINITY;
+  const recentSessionTimestamp = recentSession ? getReadingSessionTimestamp(recentSession) : Number.NEGATIVE_INFINITY;
   const isAwakePose = Number.isFinite(recentSessionTimestamp)
     && recentSessionTimestamp <= Date.now()
     && Date.now() - recentSessionTimestamp <= RECENT_READING_WINDOW_MS;

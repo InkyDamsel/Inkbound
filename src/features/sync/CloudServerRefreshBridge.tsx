@@ -25,6 +25,11 @@ import {
   SYNC_STORAGE_KEYS,
   syncPendingStateKey,
 } from './storageKeys';
+import {
+  mergeBooksFromServer,
+  mergeServerCollectionById,
+  type PendingMutation,
+} from './cloudServerMergePolicy';
 
 const BOOKS_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY = SYNC_STORAGE_KEYS.sessions;
@@ -35,12 +40,6 @@ const REPAIR_UPLOAD_BATCH_SIZE = 100;
 
 interface CloudRecord<T> {
   data: T;
-}
-
-interface PendingMutation<T> {
-  operation: 'upsert' | 'delete';
-  data?: T;
-  clientUpdatedAt: string;
 }
 
 interface PendingSyncState {
@@ -67,107 +66,6 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson(key: string, value: unknown) {
   getRuntimeStorage().setItem(key, JSON.stringify(value));
-}
-
-function mergeMissingById<T extends { id: string }>(
-  current: T[],
-  server: T[],
-  pending: Record<string, PendingMutation<T>>,
-): T[] {
-  const merged = new Map(current.map((item) => [item.id, item]));
-  server.forEach((item) => {
-    if (!pending[item.id] && !merged.has(item.id)) merged.set(item.id, item);
-  });
-  return [...merged.values()];
-}
-
-function preferredText(localValue?: string, serverValue?: string) {
-  return localValue?.trim() ? localValue : serverValue;
-}
-
-function mergeServerMetadataIntoBook(localBook: UserBookRecord, serverBook: UserBookRecord): UserBookRecord {
-  const serverEditions = new Map(serverBook.editions.map((edition) => [edition.id, edition]));
-  const mergedEditions = localBook.editions.map((localEdition) => {
-    const serverEdition = serverEditions.get(localEdition.id);
-    if (!serverEdition) return localEdition;
-    serverEditions.delete(localEdition.id);
-
-    return {
-      ...serverEdition,
-      ...localEdition,
-      coverUrl: preferredText(localEdition.coverUrl, serverEdition.coverUrl),
-      isbn: preferredText(localEdition.isbn, serverEdition.isbn),
-      isbn10: preferredText(localEdition.isbn10, serverEdition.isbn10),
-      isbn13: preferredText(localEdition.isbn13, serverEdition.isbn13),
-      publisher: preferredText(localEdition.publisher, serverEdition.publisher),
-      publicationDate: preferredText(localEdition.publicationDate, serverEdition.publicationDate),
-      language: preferredText(localEdition.language, serverEdition.language),
-      editionName: preferredText(localEdition.editionName, serverEdition.editionName),
-      binding: preferredText(localEdition.binding, serverEdition.binding),
-      externalSource: localEdition.externalSource ?? serverEdition.externalSource,
-      externalEditionId: preferredText(localEdition.externalEditionId, serverEdition.externalEditionId),
-      pageCount: localEdition.pageCount || serverEdition.pageCount,
-      specialFeatures: localEdition.specialFeatures?.length ? localEdition.specialFeatures : serverEdition.specialFeatures,
-      coverGradient: localEdition.coverGradient || serverEdition.coverGradient,
-    };
-  });
-
-  serverEditions.forEach((edition) => mergedEditions.push(edition));
-
-  const localSummary = localBook.work.summary?.trim();
-  const localSummaryMissing = !localSummary || localSummary.toLowerCase() === 'summary unavailable.';
-
-  return {
-    ...serverBook,
-    ...localBook,
-    work: {
-      ...serverBook.work,
-      ...localBook.work,
-      subtitle: preferredText(localBook.work.subtitle, serverBook.work.subtitle),
-      summary: localSummaryMissing
-        ? (preferredText(serverBook.work.summary, serverBook.work.publisherSummary) ?? localBook.work.summary)
-        : localBook.work.summary,
-      publisherSummary: preferredText(localBook.work.publisherSummary, serverBook.work.publisherSummary),
-      genres: localBook.work.genres?.length ? localBook.work.genres : serverBook.work.genres,
-      publicationYear: localBook.work.publicationYear || serverBook.work.publicationYear,
-      originalLanguage: preferredText(localBook.work.originalLanguage, serverBook.work.originalLanguage),
-      externalWorkId: preferredText(localBook.work.externalWorkId, serverBook.work.externalWorkId),
-    },
-    editions: mergedEditions,
-    activeEditionId: mergedEditions.some((edition) => edition.id === localBook.activeEditionId)
-      ? localBook.activeEditionId
-      : serverBook.activeEditionId,
-    importMetadataVerified: localBook.importMetadataVerified === true || serverBook.importMetadataVerified === true,
-    importMetadataReviewNeeded: localBook.importMetadataReviewNeeded ?? serverBook.importMetadataReviewNeeded,
-    sourceOfImport: localBook.sourceOfImport || serverBook.sourceOfImport,
-  };
-}
-
-function mergeBooksFromServer(
-  current: UserBookRecord[],
-  server: UserBookRecord[],
-  pending: Record<string, PendingMutation<UserBookRecord>>,
-): UserBookRecord[] {
-  const serverById = new Map(server.map((book) => [book.id, book]));
-  const merged = current.map((localBook) => {
-    const serverBook = serverById.get(localBook.id);
-    if (!serverBook) return localBook;
-    serverById.delete(localBook.id);
-
-    const pendingMutation = pending[localBook.id];
-    if (pendingMutation?.operation === 'delete') return localBook;
-
-    const sourceBook = pendingMutation?.operation === 'upsert' && pendingMutation.data
-      ? pendingMutation.data
-      : localBook;
-    return mergeServerMetadataIntoBook(sourceBook, serverBook);
-  });
-
-  serverById.forEach((serverBook, id) => {
-    if (pending[id]?.operation !== 'delete') merged.push(serverBook);
-  });
-
-  return merged;
 }
 
 function compactProfileForRuntime(profile: Record<string, unknown>): Record<string, unknown> {
@@ -385,7 +283,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
           return;
         }
         const nextBooks = mergeBooksFromServer(currentBooks, serverBooks, pending.books ?? {});
-        const nextSessions = mergeMissingById(currentSessions, serverSessions, pending.sessions ?? {});
+        const nextSessions = mergeServerCollectionById(currentSessions, serverSessions, pending.sessions ?? {});
         const changedKeys: Array<typeof BOOKS_KEY | typeof SESSIONS_KEY | typeof PROFILE_KEY> = [];
 
         if (JSON.stringify(currentBooks) !== JSON.stringify(nextBooks)) {

@@ -26,6 +26,7 @@ export const ACCOUNT_DATA_STORAGE_KEYS = {
   ignoredDuplicateGroups: 'inkbound_duplicate_groups_ignored_v2',
   annualReadingGoal: 'inkbound_annual_goal',
   dailyReadingGoalMinutes: 'inkbound_daily_goal_minutes',
+  dailyReadingGoalPages: 'inkbound_daily_goal_pages',
   timelineMemories: 'inkbound_timeline_memories',
   readingTimeCapsules: 'inkbound_reading_time_capsules',
   joinedChallenges: 'inkbound_joined_challenges',
@@ -63,7 +64,7 @@ export const manualCoverLedgerBaselineKey = (uid: string) => `inkbound_manual_co
 // this value deliberately forces existing browser/device working copies through
 // one fresh full comparison before returning to low-cost delta sync.
 export const ACCOUNT_LIBRARY_MIGRATION_VERSION = '1';
-export const FULL_RECONCILIATION_VERSION = '4';
+export const FULL_RECONCILIATION_VERSION = '5';
 
 /**
  * Runtime keys whose local mutations should emit the debounced Inkbound change
@@ -81,6 +82,7 @@ export const CANONICAL_SYNC_COLLECTION_KEYS = [
   ACCOUNT_DATA_STORAGE_KEYS.ignoredDuplicateGroups,
   ACCOUNT_DATA_STORAGE_KEYS.annualReadingGoal,
   ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes,
+  ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalPages,
   ACCOUNT_DATA_STORAGE_KEYS.timelineMemories,
   ACCOUNT_DATA_STORAGE_KEYS.readingTimeCapsules,
   ACCOUNT_DATA_STORAGE_KEYS.joinedChallenges,
