@@ -40,12 +40,18 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
 
     const refresh = () => {
       const snapshot = buildReadingWidgetSnapshot(booksRef.current, sessionsRef.current);
+      const timerBaseMillis = snapshot.timerRunning && snapshot.timerAnchorMillis
+        ? snapshot.timerAnchorMillis - ((snapshot.timerSeconds ?? 0) * 1000)
+        : 0;
       const signature = JSON.stringify({
         sessionMode: snapshot.sessionMode,
         bookId: snapshot.bookId,
         title: snapshot.title,
         author: snapshot.author,
         progressLabel: snapshot.progressLabel,
+        timerRunning: snapshot.timerRunning,
+        timerSeconds: snapshot.timerRunning ? undefined : snapshot.timerSeconds,
+        timerBaseMillis,
         paceLabel: snapshot.paceLabel,
         paceDetail: snapshot.paceDetail,
         dueTitle: snapshot.dueTitle,
@@ -73,6 +79,7 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalDataChanged);
     const unsubscribeResume = subscribeToRuntimeResume(() => {
       void consume();
+      widgetSignatureRef.current = '';
       refresh();
     });
 
