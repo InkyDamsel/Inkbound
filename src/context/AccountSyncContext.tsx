@@ -17,11 +17,10 @@ import {
   IMPORT_HISTORY_STORAGE_KEY,
 } from '../features/import/importHistory';
 import { IMPORT_ENRICHMENT_QUEUE_KEY } from '../features/import/libraryEnrichment';
-import { synchronizePhotoMemories } from '../features/memories/photoMemoryCloudSync';
+import { flushPhotoMemorySyncQueue, synchronizePhotoMemories } from '../features/memories/photoMemoryCloudSync';
 import { clearPhotoMemoriesFromDevice } from '../features/memories/photoMemoryStore';
 import { PHOTO_MEMORY_SYNC_QUEUE_KEY } from '../features/memories/photoMemorySyncQueue';
-import { PROFILE_MEDIA_KEY_PREFIX } from '../features/profile/profileMedia';
-import { getProfileMediaSyncQueueKey, synchronizeProfileMedia } from '../features/profile/profileMediaCloudSync';
+import { synchronizeProfileMedia } from '../features/profile/profileMediaCloudSync';
 import { AUXILIARY_ACCOUNT_KEYS, getAuxiliaryBaselineKey, getAuxiliaryPendingKey } from '../features/sync/auxiliaryAccountSyncConfig';
 import { flushCloudDataBeforeSignOut } from '../features/sync/cloudSyncEvents';
 import {
@@ -36,7 +35,6 @@ import {
 } from '../features/sync/storageKeys';
 import { auth, functions, isFirebaseConfigured } from '../lib/firebase';
 import { prepareRuntimeAuthPersistence, runtimeSupportsAppleSignIn, signInRuntimeWithApple, signInRuntimeWithGoogle } from '../platform/runtimeAuthentication';
-import { removeRuntimeMediaByPrefix } from '../platform/runtimeMediaStorage';
 import { readRuntimeValue, removeRuntimeValue, writeRuntimeValue } from '../platform/runtimeStorage';
 
 type SyncStatus = 'idle' | 'working' | 'success' | 'error';
@@ -69,7 +67,8 @@ function clearSignedInDataFromDevice(uid: string) {
   // has completed the account transition.
   writeRuntimeValue(localClearIntentKey(uid), '1');
   SIGNED_IN_DATA_KEYS.forEach((key) => removeRuntimeValue(key));
-  removeRuntimeValue(getProfileMediaSyncQueueKey(uid));
+  // Persistence is law: keep the UID-scoped profile media queue across sign-out.
+  // If an avatar/banner upload was interrupted, this may be the only recoverable copy.
   removeRuntimeValue(getAuxiliaryPendingKey(uid));
   removeRuntimeValue(getAuxiliaryBaselineKey(uid));
   removeRuntimeValue('inkbound_profile_media_sync_queue_v1');
@@ -135,7 +134,7 @@ export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ childre
   const resendVerificationEmail = async () => { if (!auth?.currentUser) return; try { setStatus('working'); await requestBrandedVerificationEmail(); setStatus('success'); setMessage('Verification email sent.'); } catch (error) { setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not send the verification email.')); } };
   const synchronizePhotosWithFeedback = async (workingMessage: string) => { if (!user) { setStatus('error'); setMessage('Sign in before updating Photo Memories across devices.'); return; } try { setStatus('working'); setMessage(workingMessage); await synchronizePhotoMemories(user.uid); const syncedAt = new Date().toISOString(); writeRuntimeValue(LAST_SYNC_STORAGE_KEY, syncedAt); setLastSyncedAt(syncedAt); setStatus('success'); setMessage('Your Photo Memories are up to date on your Inkbound devices.'); } catch { setStatus('error'); setMessage('Inkbound could not update Photo Memories right now. It will try again automatically.'); } };
   const uploadSnapshot = async () => synchronizePhotosWithFeedback('Updating Photo Memories...'); const restoreSnapshot = async () => synchronizePhotosWithFeedback('Checking Photo Memories across your devices...');
-  const value = useMemo<AccountSyncContextValue>(() => ({ user, isConfigured: isFirebaseConfigured, isAuthReady, status, message, lastSyncedAt, canSignInWithApple: runtimeSupportsAppleSignIn(), signInWithGoogle, signInWithApple, signInWithEmail, createEmailAccount, sendPasswordReset, linkEmailPassword, resendVerificationEmail, signOutAccount: async () => { if (!auth) return; const signingOutUid = user?.uid ?? auth.currentUser?.uid; if (signingOutUid) { setStatus('working'); setMessage('Saving your latest changes before signing out...'); try { await flushCloudDataBeforeSignOut(signingOutUid); await synchronizePhotoMemories(signingOutUid); await synchronizeProfileMedia(signingOutUid); await flushCloudDataBeforeSignOut(signingOutUid); } catch { setStatus('error'); setMessage('Inkbound could not finish saving your latest changes before signing out. Try again when you are online.'); return; } await clearPhotoMemoriesFromDevice(); await removeRuntimeMediaByPrefix(`${PROFILE_MEDIA_KEY_PREFIX}${signingOutUid}:`); clearSignedInDataFromDevice(signingOutUid); } try { await signOut(auth); } finally { if (signingOutUid) removeRuntimeValue(localClearIntentKey(signingOutUid)); } setLastSyncedAt(null); setStatus('idle'); setMessage('Signed out. Account data was removed from this device.'); }, uploadSnapshot, restoreSnapshot }), [isAuthReady, lastSyncedAt, message, status, user]);
+  const value = useMemo<AccountSyncContextValue>(() => ({ user, isConfigured: isFirebaseConfigured, isAuthReady, status, message, lastSyncedAt, canSignInWithApple: runtimeSupportsAppleSignIn(), signInWithGoogle, signInWithApple, signInWithEmail, createEmailAccount, sendPasswordReset, linkEmailPassword, resendVerificationEmail, signOutAccount: async () => { if (!auth) return; const signingOutUid = user?.uid ?? auth.currentUser?.uid; if (signingOutUid) { setStatus('working'); setMessage('Saving your latest changes before signing out...'); await flushCloudDataBeforeSignOut(signingOutUid); try { await flushPhotoMemorySyncQueue(signingOutUid); } catch (error) { console.warn('Inkbound could not finish the Photo Memories queue before sign-out.', error); } try { await synchronizeProfileMedia(signingOutUid); } catch (error) { console.warn('Inkbound could not finish the profile media queue before sign-out.', error); } await flushCloudDataBeforeSignOut(signingOutUid); } try { await signOut(auth); if (signingOutUid) { await clearPhotoMemoriesFromDevice(); clearSignedInDataFromDevice(signingOutUid); } } finally { if (signingOutUid) removeRuntimeValue(localClearIntentKey(signingOutUid)); } setLastSyncedAt(null); setStatus('idle'); setMessage('Signed out. Account data was removed from this device.'); }, uploadSnapshot, restoreSnapshot }), [isAuthReady, lastSyncedAt, message, status, user]);
   return <AccountSyncContext.Provider value={value}>{children}</AccountSyncContext.Provider>;
 };
 export const useAccountSync = () => { const context = useContext(AccountSyncContext); if (!context) throw new Error('useAccountSync must be used within AccountSyncProvider.'); return context; };
