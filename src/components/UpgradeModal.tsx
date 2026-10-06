@@ -5,11 +5,11 @@ import { PRODUCT_POLICY } from '../config/productPolicy';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { useUserPlan } from '../context/UserPlanContext';
 import { functions } from '../lib/firebase';
-import { isIOSRuntime } from '../platform/runtimePlatform';
 import {
   PremiumBillingPlan,
   canPurchaseRuntimePremium,
   canRestoreRuntimePremium,
+  canShowRuntimePremiumPurchaseOptions,
   purchaseRuntimePremium,
   restoreRuntimePremium,
 } from '../platform/runtimePremiumPurchase';
@@ -42,8 +42,8 @@ export const UpgradeModal: React.FC = () => {
   const sandboxBillingTest = !PRODUCT_POLICY.premium.subscriptionsOpen
     && OWNER_EMAILS.has(ownerEmail)
     && sandboxBillingRequested;
-  const iosRuntime = isIOSRuntime();
-  const subscriptionsAvailable = !iosRuntime
+  const showPurchaseOptions = canShowRuntimePremiumPurchaseOptions();
+  const subscriptionsAvailable = showPurchaseOptions
     && (PRODUCT_POLICY.premium.subscriptionsOpen || sandboxBillingTest)
     && canPurchaseRuntimePremium();
   const restoreAvailable = PRODUCT_POLICY.premium.subscriptionsOpen && canRestoreRuntimePremium();
@@ -136,7 +136,7 @@ export const UpgradeModal: React.FC = () => {
 
           {!entitlementLoading && !trialAvailable && <p className="text-center text-xs text-[var(--ink-muted)]">This account has already used its one-time Premium trial.</p>}
 
-          {iosRuntime ? (
+          {!showPurchaseOptions ? (
             <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5 text-sm leading-6 text-[var(--ink-muted)]">
               <strong className="text-[var(--ink-ivory)]">Premium purchasing is not open in the iOS app yet.</strong>{' '}
               You can use Inkbound Free, start the one-time trial if eligible, or keep using Premium already granted to this Inkbound account.
@@ -157,7 +157,7 @@ export const UpgradeModal: React.FC = () => {
           {restoreAvailable && <div className="flex justify-center"><button type="button" disabled={billingPlan !== null} onClick={() => void restorePurchase()} className="quiet-shelf-secondary-action justify-center disabled:opacity-50"><RotateCcw className="h-4 w-4" /> {billingPlan === 'restore' ? 'Restoring…' : 'Restore Google Play purchase'}</button></div>}
           {billingError && <div role="alert" className="rounded-xl border border-red-400/30 bg-red-950/20 px-4 py-3 text-sm text-red-200">{billingError}</div>}
 
-          {!iosRuntime && (<div className="rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/5 p-5">
+          {!!showPurchaseOptions && (<div className="rounded-2xl border border-[var(--ink-gold)]/30 bg-[var(--ink-gold)]/5 p-5">
             <div className="flex items-start gap-3">
               <HeartHandshake className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-gold)]" />
               <div className="min-w-0 flex-1">
