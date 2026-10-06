@@ -7,6 +7,7 @@ import { Share } from '@capacitor/share';
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
+  OAuthProvider,
   reauthenticateWithCredential,
   signInWithCredential,
 } from 'firebase/auth';
@@ -84,6 +85,10 @@ const requestNativeGoogleCredential = async () => FirebaseAuthentication.signInW
   useCredentialManager: true,
 });
 
+const requestNativeAppleCredential = async () => FirebaseAuthentication.signInWithApple({
+  skipNativeAuth: true,
+});
+
 const sha256Hex = async (value: string) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -143,17 +148,47 @@ export async function initializeAndroidRuntime() {
         GoogleAuthProvider.credential(idToken, accessToken || undefined),
       );
     },
+    signInWithApple: async (firebaseAuth) => {
+      const result = await requestNativeAppleCredential();
+      const idToken = result.credential?.idToken ?? '';
+      const nonce = result.credential?.nonce ?? '';
+      if (!idToken) {
+        throw new Error('Apple sign-in did not return an Android identity token.');
+      }
+      const provider = new OAuthProvider('apple.com');
+      await signInWithCredential(
+        firebaseAuth,
+        provider.credential({ idToken, rawNonce: nonce || undefined }),
+      );
+    },
   });
 
   configureRuntimeReauthentication({
     getRequirement: (user) => {
       const providers = new Set(user.providerData.map((provider) => provider.providerId));
+      if (providers.has('apple.com')) return 'apple';
       if (providers.has('google.com')) return 'google';
       if (providers.has('password')) return 'password';
       return 'unsupported';
     },
     reauthenticate: async (user, options = {}) => {
       const providers = new Set(user.providerData.map((provider) => provider.providerId));
+
+      if (providers.has('apple.com')) {
+        const result = await requestNativeAppleCredential();
+        const idToken = result.credential?.idToken ?? '';
+        const nonce = result.credential?.nonce ?? '';
+        if (!idToken) {
+          throw new Error('Apple verification did not return an Android identity token.');
+        }
+        const provider = new OAuthProvider('apple.com');
+        await reauthenticateWithCredential(
+          user,
+          provider.credential({ idToken, rawNonce: nonce || undefined }),
+        );
+        await user.getIdToken(true);
+        return;
+      }
 
       if (providers.has('google.com')) {
         const result = await requestNativeGoogleCredential();
