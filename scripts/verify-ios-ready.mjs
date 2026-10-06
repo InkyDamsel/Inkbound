@@ -61,6 +61,9 @@ if (fs.existsSync(infoPlist)) {
   for (const key of ['NSCameraUsageDescription', 'NSPhotoLibraryUsageDescription']) {
     if (!source.includes(`<key>${key}</key>`)) fail(`Info.plist is missing ${key}.`);
   }
+  if (!source.includes('<key>ITSAppUsesNonExemptEncryption</key>') || !/ITSAppUsesNonExemptEncryption<\/key>\s*<false\/>/.test(source)) {
+    fail('Info.plist must declare ITSAppUsesNonExemptEncryption = false so App Store Connect does not require export-compliance management for exempt encryption.');
+  }
 
   if (fs.existsSync(googleService)) {
     const googleSource = fs.readFileSync(googleService, 'utf8');
