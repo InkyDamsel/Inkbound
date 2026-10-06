@@ -26,7 +26,7 @@ export interface ActiveReadingDraft {
   location: string;
 }
 
-type ReadingWidgetAction = 'start' | 'resume' | 'pause' | 'stop';
+type ReadingWidgetAction = 'open' | 'start' | 'resume' | 'pause' | 'stop';
 
 interface ReadingWidgetSnapshot {
   sessionMode: 'none' | 'active' | 'paused' | 'finished';
@@ -96,6 +96,9 @@ export function applyReadingWidgetAction(action: ReadingWidgetAction): {
 
   if (action === 'start') {
     return { shouldOpenTimer: true };
+  }
+  if (action === 'open') {
+    return { bookId: draft?.selectedBookId, shouldOpenTimer: true };
   }
   if (!draft?.selectedBookId) {
     return { shouldOpenTimer: true };
