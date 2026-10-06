@@ -7,7 +7,7 @@ import {
 } from 'firebase/auth';
 import { isNativeRuntime } from './runtimePlatform';
 
-export type ReauthenticationRequirement = 'google' | 'password' | 'unsupported';
+export type ReauthenticationRequirement = 'apple' | 'google' | 'password' | 'unsupported';
 
 export interface RuntimeReauthenticationOptions {
   password?: string;
@@ -21,12 +21,17 @@ export interface RuntimeReauthenticationAdapter {
 const browserReauthenticationAdapter: RuntimeReauthenticationAdapter = {
   getRequirement: (user) => {
     const providers = new Set(user.providerData.map((provider) => provider.providerId));
+    if (providers.has('apple.com')) return 'apple';
     if (providers.has('google.com')) return 'google';
     if (providers.has('password')) return 'password';
     return 'unsupported';
   },
   reauthenticate: async (user, options = {}) => {
     const requirement = browserReauthenticationAdapter.getRequirement(user);
+
+    if (requirement === 'apple') {
+      throw new Error('Apple account verification requires the native authentication adapter on this device.');
+    }
 
     if (requirement === 'google') {
       const provider = new GoogleAuthProvider();
@@ -55,8 +60,8 @@ const nativeSafeReauthenticationAdapter: RuntimeReauthenticationAdapter = {
   getRequirement: (user) => {
     const providers = new Set(user.providerData.map((provider) => provider.providerId));
     // Email/password reauthentication is supported by the shared Firebase SDK and
-    // does not require a browser surface. Google requires the native Android auth
-    // adapter so we never fall back to reauthenticateWithPopup inside a WebView.
+    // does not require a browser surface. Apple/Google require the native auth
+    // adapter so we never fall back to browser reauthentication inside a WebView.
     if (providers.has('password')) return 'password';
     return 'unsupported';
   },
@@ -72,7 +77,7 @@ const nativeSafeReauthenticationAdapter: RuntimeReauthenticationAdapter = {
       return;
     }
 
-    throw new Error('Google account verification is not connected to the Android native authentication adapter yet.');
+    throw new Error('This provider requires the native authentication adapter before account verification can continue.');
   },
 };
 
