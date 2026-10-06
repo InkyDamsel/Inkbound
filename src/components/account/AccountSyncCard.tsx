@@ -90,7 +90,9 @@ export const AccountSyncCard: React.FC = () => {
             disabled={!sync.isConfigured || isWorking}
             className="mb-2.5 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border-strong)] bg-[var(--ink-surface)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-gold)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <img src={appleLogoUrl} alt="" className="h-[18px] w-[18px] object-contain" aria-hidden="true" />
+            <span className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden" aria-hidden="true">
+              <img src={appleLogoUrl} alt="" className="h-14 w-14 max-w-none object-contain" />
+            </span>
             Continue with Apple
           </button>
         )}
