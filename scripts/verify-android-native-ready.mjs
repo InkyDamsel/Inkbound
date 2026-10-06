@@ -157,7 +157,7 @@ if (webOauthClients.length === 0) {
 // the complete SHA1 line and normalize it instead of stopping at the first space.
 if (fs.existsSync(keystorePropertiesPath)) {
   const windows = process.platform === 'win32';
-  const signingReport = windows
+  let signingReport = windows
     ? spawnSync('gradlew.bat', ['signingReport'], {
         cwd: androidDir,
         encoding: 'utf8',
@@ -168,8 +168,18 @@ if (fs.existsSync(keystorePropertiesPath)) {
         encoding: 'utf8',
       });
 
+  // On macOS/Linux the wrapper can lose its executable bit after a cross-platform
+  // checkout. Retry it through sh so local file permissions do not masquerade as
+  // a native release failure.
+  if (!windows && (signingReport.error?.code === 'EACCES' || signingReport.status !== 0)) {
+    signingReport = spawnSync('sh', ['gradlew', 'signingReport'], {
+      cwd: androidDir,
+      encoding: 'utf8',
+    });
+  }
+
   if (signingReport.status !== 0) {
-    const details = (signingReport.stderr || signingReport.stdout || '').trim();
+    const details = (signingReport.stderr || signingReport.stdout || signingReport.error?.message || '').trim();
     fail(`could not read the Android signing report${details ? `: ${details}` : '.'}`);
   }
 
