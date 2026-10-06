@@ -16,6 +16,12 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		AA0000010000000000000001 /* InkboundBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000010000000000000001 /* InkboundBridgeViewController.swift */; };
+		AA0000020000000000000002 /* InkboundBarcodeScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000020000000000000002 /* InkboundBarcodeScannerPlugin.swift */; };
+		AA0000030000000000000003 /* LoanReminderPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000030000000000000003 /* LoanReminderPlugin.swift */; };
+		AA0000040000000000000004 /* ReadingWidgetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000040000000000000004 /* ReadingWidgetPlugin.swift */; };
+		BA0000010000000000000001 /* InkboundReadingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000001 /* InkboundReadingWidget.swift */; };
+		BA0000020000000000000002 /* InkboundReadingWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BB0000040000000000000004 /* InkboundReadingWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,7 +37,39 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		AB0000010000000000000001 /* InkboundBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkboundBridgeViewController.swift; sourceTree = "<group>"; };
+		AB0000020000000000000002 /* InkboundBarcodeScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkboundBarcodeScannerPlugin.swift; sourceTree = "<group>"; };
+		AB0000030000000000000003 /* LoanReminderPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoanReminderPlugin.swift; sourceTree = "<group>"; };
+		AB0000040000000000000004 /* ReadingWidgetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingWidgetPlugin.swift; sourceTree = "<group>"; };
+		BB0000010000000000000001 /* InkboundReadingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkboundReadingWidget.swift; sourceTree = "<group>"; };
+		BB0000020000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB0000030000000000000003 /* InkboundReadingWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InkboundReadingWidget.entitlements; sourceTree = "<group>"; };
+		BB0000040000000000000004 /* InkboundReadingWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = InkboundReadingWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXContainerItemProxy section */
+		C50000010000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C20000010000000000000001;
+			remoteInfo = InkboundReadingWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C10000010000000000000001 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				BA0000020000000000000002 /* InkboundReadingWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		504EC3011FED79650016851F /* Frameworks */ = {
@@ -39,6 +77,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BE0000010000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -50,6 +95,7 @@
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
+				BC0000010000000000000001 /* InkboundReadingWidget */,
 				4AF5D4E9307463D800D0DB9A /* GoogleService-Info.plist */,
 				504EC3051FED79650016851F /* Products */,
 			);
@@ -59,6 +105,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				BB0000040000000000000004 /* InkboundReadingWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -69,6 +116,10 @@
 				4AF5D4E8307461FA00D0DB9A /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				AB0000010000000000000001 /* InkboundBridgeViewController.swift */,
+				AB0000020000000000000002 /* InkboundBarcodeScannerPlugin.swift */,
+				AB0000030000000000000003 /* LoanReminderPlugin.swift */,
+				AB0000040000000000000004 /* ReadingWidgetPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -77,6 +128,16 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		BC0000010000000000000001 /* InkboundReadingWidget */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000010000000000000001 /* InkboundReadingWidget.swift */,
+				BB0000020000000000000002 /* Info.plist */,
+				BB0000030000000000000003 /* InkboundReadingWidget.entitlements */,
+			);
+			path = InkboundReadingWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -89,10 +150,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				C10000010000000000000001 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C50100010000000000000001 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -101,6 +164,25 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		C20000010000000000000001 /* InkboundReadingWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C30000010000000000000001 /* Build configuration list for PBXNativeTarget "InkboundReadingWidget" */;
+			buildPhases = (
+				BD0000010000000000000001 /* Sources */,
+				BE0000010000000000000001 /* Frameworks */,
+				BF0000010000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = InkboundReadingWidget;
+			packageProductDependencies = (
+			);
+			productName = InkboundReadingWidget;
+			productReference = BB0000040000000000000004 /* InkboundReadingWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -114,6 +196,10 @@
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
+						ProvisioningStyle = Automatic;
+					};
+					C20000010000000000000001 = {
+						CreatedOnToolsVersion = 27.0;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -135,6 +221,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				C20000010000000000000001 /* InkboundReadingWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -154,6 +241,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BF0000010000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -162,10 +256,30 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				AA0000010000000000000001 /* InkboundBridgeViewController.swift in Sources */,
+				AA0000020000000000000002 /* InkboundBarcodeScannerPlugin.swift in Sources */,
+				AA0000030000000000000003 /* LoanReminderPlugin.swift in Sources */,
+				AA0000040000000000000004 /* ReadingWidgetPlugin.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BD0000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BA0000010000000000000001 /* InkboundReadingWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C50100010000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C20000010000000000000001 /* InkboundReadingWidget */;
+			targetProxy = C50000010000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -344,6 +458,54 @@
 			};
 			name = Release;
 		};
+		C40000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = InkboundReadingWidget/InkboundReadingWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XXQ84DF9DQ;
+				INFOPLIST_FILE = InkboundReadingWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.inkydameinteractive.inkbound.ReadingWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C40000020000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = InkboundReadingWidget/InkboundReadingWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XXQ84DF9DQ;
+				INFOPLIST_FILE = InkboundReadingWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.inkydameinteractive.inkbound.ReadingWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -361,6 +523,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C30000010000000000000001 /* Build configuration list for PBXNativeTarget "InkboundReadingWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C40000010000000000000001 /* Debug */,
+				C40000020000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
