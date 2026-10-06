@@ -1,6 +1,6 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Cloud, KeyRound, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
-import appleLogoUrl from '../../../assets/branding/auth/Sign in with Apple - Logo Only/SVG/Logo - SIWA - Logo-only - Black.svg';
+import appleLogoUrl from '../../../assets/branding/auth/Sign in with Apple - Left Aligned/SVG/Logo - SIWA - Left-aligned - Black - Small.svg';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { isIOSRuntime } from '../../platform/runtimePlatform';
 import {
@@ -90,8 +90,12 @@ export const AccountSyncCard: React.FC = () => {
             disabled={!sync.isConfigured || isWorking}
             className="mb-2.5 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--ink-border-strong)] bg-[var(--ink-surface)] px-4 text-sm font-semibold text-[var(--ink-ivory)] transition hover:border-[var(--ink-gold)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full bg-white" aria-hidden="true">
-              <img src={appleLogoUrl} alt="" className="h-12 w-12 max-w-none object-contain" />
+            <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full bg-white" aria-hidden="true">
+              <img
+                src={appleLogoUrl}
+                alt=""
+                className="absolute left-1/2 top-1/2 h-[53px] w-auto max-w-none -translate-x-1/2 -translate-y-1/2"
+              />
             </span>
             Continue with Apple
           </button>
