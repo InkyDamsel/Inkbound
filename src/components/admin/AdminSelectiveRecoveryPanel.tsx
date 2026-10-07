@@ -63,6 +63,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
   const [preview, setPreview] = useState<RecoveryPreview | null>(null);
   const [scope, setScope] = useState<RecoveryScope>('collection');
   const [itemId, setItemId] = useState('');
+  const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
   const [reason, setReason] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [loading, setLoading] = useState(false);
@@ -94,6 +95,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
     setPreview(null);
     setSnapshotId('');
     setItemId('');
+    setSelectedBookIds([]);
     try {
       const list = httpsCallable<{ targetUserId: string }, { points: RecoveryPointSummary[] }>(functions, 'listAdminRecoveryPoints');
       const response = await list({ targetUserId });
@@ -110,6 +112,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
     setSnapshotId(nextSnapshotId);
     setPreview(null);
     setItemId('');
+    setSelectedBookIds([]);
     setBookSearch('');
     setReason('');
     setConfirmation('');
@@ -134,6 +137,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
   const changeScope = (nextScope: RecoveryScope) => {
     setScope(nextScope);
     setItemId('');
+    setSelectedBookIds([]);
     setBookSearch('');
     setReason('');
     setConfirmation('');
@@ -141,17 +145,21 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
   };
 
   const restoreSelection = async () => {
-    if (!functions || !targetUserId || !snapshotId || !itemId || restoring) return;
+    const hasSelection = scope === 'book' ? selectedBookIds.length > 0 : Boolean(itemId);
+    if (!functions || !targetUserId || !snapshotId || !hasSelection || restoring) return;
     if (!reason.trim() || confirmation.trim().toUpperCase() !== 'RESTORE') return;
     setRestoring(true);
-    setStatus('Creating a safety copy of the reader’s current account before selective recovery…');
+    setStatus(scope === 'book' && selectedBookIds.length > 1
+      ? `Creating one safety copy before recovering ${selectedBookIds.length} books…`
+      : 'Creating a safety copy of the reader’s current account before selective recovery…');
     try {
       const restore = httpsCallable<{
         targetUserId: string;
         targetEmail: string;
         snapshotId: string;
         scope: RecoveryScope;
-        itemId: string;
+        itemId?: string;
+        itemIds?: string[];
         reason: string;
         confirmation: string;
       }, { success: boolean; safetySnapshotId: string; restoredCount: number; description: string }>(functions, 'restoreAdminRecoverySelection');
@@ -160,12 +168,13 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
         targetEmail: targetLabel,
         snapshotId,
         scope,
-        itemId,
+        ...(scope === 'book' ? { itemIds: selectedBookIds } : { itemId }),
         reason: reason.trim(),
         confirmation: 'RESTORE',
       });
-      setStatus(`Recovered ${response.data.description}. ${response.data.restoredCount} saved record${response.data.restoredCount === 1 ? '' : 's'} updated. A pre-recovery safety copy was preserved (${response.data.safetySnapshotId}).`);
+      setStatus(`Recovered ${response.data.description}. ${response.data.restoredCount} saved record${response.data.restoredCount === 1 ? '' : 's'} updated. Only one pre-recovery safety copy was created for this recovery batch (${response.data.safetySnapshotId}).`);
       setItemId('');
+      setSelectedBookIds([]);
       setReason('');
       setConfirmation('');
     } catch (error) {
@@ -181,7 +190,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2"><DatabaseBackup className="h-5 w-5 text-[var(--ink-mauve)]" /><h4 className="font-serif text-xl text-[var(--ink-ivory)]">Selective recovery</h4></div>
-            <p className="mt-2 max-w-3xl text-xs leading-5 text-[var(--ink-muted)]">Recover one missing collection, book, reading session, profile, or account record without rolling the reader’s whole account back. Every recovery creates a fresh safety snapshot first.</p>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-[var(--ink-muted)]">Recover one missing collection, one or more books, a reading session, profile, or account record without rolling the reader’s whole account back. A book batch creates one fresh safety snapshot before the batch is restored.</p>
           </div>
           <button type="button" onClick={() => void loadRecoveryPoints()} disabled={!targetUserId || loading || restoring} className="quiet-shelf-secondary-action w-full justify-center disabled:opacity-45 sm:w-auto"><RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Load recovery tools</button>
         </div>
@@ -196,7 +205,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
           <label className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Recover
             <select value={scope} onChange={(event) => changeScope(event.target.value as RecoveryScope)} disabled={!preview || loading || restoring} className="inkbound-select mt-2 w-full">
               <option value="collection">One collection + missing memberships</option>
-              <option value="book">One book</option>
+              <option value="book">One or more books</option>
               <option value="session">One reading session</option>
               <option value="auxiliary">One account record</option>
               <option value="profile">Reader profile</option>
@@ -206,46 +215,66 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
 
         {preview && <div className="mt-4 space-y-4">
           <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]">Snapshot: <strong className="text-[var(--ink-ivory)]">{formatDateTime(preview.snapshot.createdAtClient || preview.snapshot.createdAt)}</strong> · {preview.books.length} books · {preview.sessions.length} sessions · {preview.collections.length} collections · {preview.auxiliary.length} account records</div>
-          {scope === 'book' && (
-            <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Find book in this snapshot
-              <input
-                type="search"
-                value={bookSearch}
-                onChange={(event) => { setBookSearch(event.target.value); setItemId(''); }}
-                placeholder="Search title, author, or series"
-                className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none"
-              />
-            </label>
-          )}
-          {choices.length > 0 ? <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Item to recover
+          {scope === 'book' ? (
+            <div className="space-y-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Find books in this snapshot
+                <input
+                  type="search"
+                  value={bookSearch}
+                  onChange={(event) => setBookSearch(event.target.value)}
+                  placeholder="Search title, author, or series"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none"
+                />
+              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--ink-muted)]">
+                <span><strong className="text-[var(--ink-ivory)]">{selectedBookIds.length}</strong> book{selectedBookIds.length === 1 ? '' : 's'} selected</span>
+                {selectedBookIds.length > 0 && <button type="button" onClick={() => setSelectedBookIds([])} className="text-[var(--ink-mauve)] hover:text-[var(--ink-ivory)]">Clear selection</button>}
+              </div>
+              {bookSearch.trim() ? (
+                choices.length > 0 ? (
+                  <div className="max-h-80 space-y-2 overflow-y-auto rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-2">
+                    {choices.map((choice) => {
+                      const book = preview.books.find((item) => item.id === choice.id);
+                      const checked = selectedBookIds.includes(choice.id);
+                      return (
+                        <label key={choice.id} className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition ${checked ? 'border-[var(--ink-gold)]/45 bg-[var(--ink-gold)]/8' : 'border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)]'}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setSelectedBookIds((current) => checked ? current.filter((id) => id !== choice.id) : [...current, choice.id])}
+                            disabled={restoring}
+                            className="mt-1"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-[var(--ink-ivory)]">{choice.label}</div>
+                            {book && <div className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                              {book.status || 'No status'} · Started {book.dateStarted || '—'} · Finished {book.dateFinished || '—'} · Rating {book.rating ?? '—'}
+                              {book.seriesName ? ` · ${book.seriesName}${book.seriesPosition ? ` #${book.seriesPosition}` : ''}` : ''}
+                            </div>}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">No books match that search in this recovery point.</div>
+              ) : <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]">Search for a title, author, or series, then check every book you want to recover in this batch.</div>}
+              {selectedBookIds.length > 0 && (
+                <div className="rounded-xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 p-4 text-xs leading-5 text-[var(--ink-muted)]">
+                  The selected books will be restored together from this snapshot. Inkbound will create <strong className="text-[var(--ink-ivory)]">one</strong> pre-recovery safety snapshot for the entire batch, not one per book.
+                </div>
+              )}
+            </div>
+          ) : choices.length > 0 ? <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Item to recover
             <select value={itemId} onChange={(event) => setItemId(event.target.value)} disabled={loading || restoring} className="inkbound-select mt-2 w-full">
               <option value="">Choose an item</option>
               {choices.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
           </label> : <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">No recoverable items were found for this recovery type in the selected snapshot.</div>}
-          {scope === 'book' && itemId && (() => {
-            const selectedBook = preview.books.find((book) => book.id === itemId);
-            if (!selectedBook) return null;
-            return (
-              <div className="rounded-xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 p-4 text-sm">
-                <div className="font-semibold text-[var(--ink-ivory)]">{selectedBook.title}</div>
-                <div className="mt-1 text-xs text-[var(--ink-muted)]">{selectedBook.author}</div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  <div><span className="text-[var(--ink-faint)]">Status:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.status || '—'}</span></div>
-                  <div><span className="text-[var(--ink-faint)]">Started:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.dateStarted || '—'}</span></div>
-                  <div><span className="text-[var(--ink-faint)]">Finished:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.dateFinished || '—'}</span></div>
-                  <div><span className="text-[var(--ink-faint)]">Rating:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.rating ?? '—'}</span></div>
-                  <div className="sm:col-span-2"><span className="text-[var(--ink-faint)]">Series:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.seriesName || '—'}{selectedBook.seriesPosition ? ` · #${selectedBook.seriesPosition}` : ''}</span></div>
-                </div>
-                <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">These are the values saved in this recovery point. Nothing has been restored yet.</p>
-              </div>
-            );
-          })()}
           {scope === 'collection' && choices.length > 0 && <p className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">Collection recovery is intentionally non-destructive: it restores the saved collection definition and adds any memberships that are missing now. It does not remove books added to that collection after the snapshot.</p>}
-          {choices.length > 0 && <>
+          {(scope === 'book' ? selectedBookIds.length > 0 : choices.length > 0) && <>
             <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Support reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} disabled={restoring} placeholder="Required for the admin audit log" className="mt-2 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
             <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Type RESTORE<input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" disabled={restoring} placeholder="RESTORE" className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)] outline-none" /></label>
-            <button type="button" onClick={() => void restoreSelection()} disabled={!itemId || !reason.trim() || confirmation.trim().toUpperCase() !== 'RESTORE' || restoring} className="quiet-shelf-primary-action w-full justify-center disabled:opacity-45 sm:w-auto"><RotateCcw className={restoring ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> {restoring ? 'Recovering…' : 'Recover selected data'}</button>
+            <button type="button" onClick={() => void restoreSelection()} disabled={(scope === 'book' ? selectedBookIds.length === 0 : !itemId) || !reason.trim() || confirmation.trim().toUpperCase() !== 'RESTORE' || restoring} className="quiet-shelf-primary-action w-full justify-center disabled:opacity-45 sm:w-auto"><RotateCcw className={restoring ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> {restoring ? 'Recovering…' : scope === 'book' && selectedBookIds.length > 1 ? `Recover ${selectedBookIds.length} books` : 'Recover selected data'}</button>
           </>}
         </div>}
 
