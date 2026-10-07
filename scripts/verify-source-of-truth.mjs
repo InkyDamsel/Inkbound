@@ -543,6 +543,23 @@ if (!/finally\s*\{[^}]*removeRuntimeValue\(localClearIntentKey\(signingOutUid\)\
   violations.push('AccountSyncContext.tsx: sign-out clear intent must always be removed after the auth transition');
 }
 
+const sessionEvidenceRecovery = read('src/features/sync/SessionEvidenceRecoveryBridge.tsx');
+for (const required of [
+  "where('kind', '==', 'sessions')",
+  '!cloudIds.has(session.id)',
+  '!tombstonedIds.has(session.id)',
+  'baseline.sessions[session.id] === undefined',
+  "setDoc(",
+  "users', uid, 'sessions'",
+]) {
+  if (!sessionEvidenceRecovery.includes(required)) {
+    violations.push(`SessionEvidenceRecoveryBridge.tsx: safe one-time local session recovery missing ${required}`);
+  }
+}
+if (!applicationEntry.includes('<SessionEvidenceRecoveryBridge />')) {
+  violations.push('applicationEntry.tsx: one-time session evidence recovery bridge must remain mounted until the repair generation changes.');
+}
+
 const photoSync = read('src/features/memories/PhotoMemoryAutoSyncBridge.tsx');
 if (!photoSync.includes('subscribeToRuntimeResume')) {
   violations.push('PhotoMemoryAutoSyncBridge.tsx: photo-memory sync must use the canonical runtime resume boundary');
