@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
 import type { Edition, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
@@ -40,6 +41,16 @@ interface ProtectedBookDetails {
     privateTags: string[];
     collections: string[];
     whyIAddedThis?: string;
+  };
+  reading?: {
+    status: UserBookRecord['status'];
+    customReadingStatusId?: string;
+    dateStarted?: string;
+    dateFinished?: string;
+    rating?: number;
+    spiceLevel?: number;
+    priority: UserBookRecord['priority'];
+    moods: string[];
   };
   editionId?: string;
   edition?: Omit<Edition, 'coverUrl'>;
@@ -90,6 +101,16 @@ function detailsFor(book: UserBookRecord): ProtectedBookDetails {
       collections: book.collections,
       whyIAddedThis: book.whyIAddedThis,
     },
+    reading: {
+      status: book.status,
+      customReadingStatusId: book.customReadingStatusId,
+      dateStarted: book.dateStarted,
+      dateFinished: book.dateFinished,
+      rating: book.rating,
+      spiceLevel: book.spiceLevel,
+      priority: book.priority,
+      moods: book.moods,
+    },
     editionId: activeEdition?.id,
     edition,
   });
@@ -97,6 +118,48 @@ function detailsFor(book: UserBookRecord): ProtectedBookDetails {
 
 function signaturesFor(books: UserBookRecord[]): Map<string, string> {
   return new Map(books.map((book) => [book.id, JSON.stringify(detailsFor(book))]));
+}
+
+function applyProtectedDetails(book: UserBookRecord, details: ProtectedBookDetails): UserBookRecord {
+  const nextEditions = [...book.editions];
+  if (details.editionId && details.edition) {
+    const index = nextEditions.findIndex((edition) => edition.id === details.editionId);
+    if (index >= 0) {
+      nextEditions[index] = {
+        ...nextEditions[index],
+        ...details.edition,
+        coverUrl: nextEditions[index].coverUrl,
+      };
+    }
+  }
+
+  return {
+    ...book,
+    work: {
+      ...book.work,
+      ...details.work,
+    },
+    review: details.reader.review,
+    personalNotes: details.reader.personalNotes,
+    favoriteQuotes: details.reader.favoriteQuotes,
+    privateTags: details.reader.privateTags ?? book.privateTags,
+    collections: details.reader.collections ?? book.collections,
+    whyIAddedThis: details.reader.whyIAddedThis,
+    ...(details.reading ? {
+      status: details.reading.status,
+      customReadingStatusId: details.reading.customReadingStatusId,
+      dateStarted: details.reading.dateStarted,
+      dateFinished: details.reading.dateFinished,
+      rating: details.reading.rating,
+      spiceLevel: details.reading.spiceLevel,
+      priority: details.reading.priority,
+      moods: details.reading.moods ?? book.moods,
+    } : {}),
+    activeEditionId: details.editionId && nextEditions.some((edition) => edition.id === details.editionId)
+      ? details.editionId
+      : book.activeEditionId,
+    editions: nextEditions,
+  };
 }
 
 /** Reader-entered book details are durable data, not disposable metadata. */
@@ -109,7 +172,42 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
   useEffect(() => {
     if (!user || !db) return undefined;
     const uid = user.uid;
+    let disposed = false;
     baseline.current = signaturesFor(readBooks());
+
+    const restoreProtectedDetails = async () => {
+      try {
+        const snapshot = await getDocs(collection(db!, 'users', uid, LEDGER_COLLECTION));
+        if (disposed || snapshot.empty) return;
+
+        const protectedById = new Map(
+          snapshot.docs
+            .map((item) => item.data() as ProtectedBookDetails)
+            .filter((item) => Boolean(item?.bookId))
+            .map((item) => [item.bookId, item]),
+        );
+        if (!protectedById.size) return;
+
+        const currentBooks = readBooks();
+        const restoredBooks = currentBooks.map((book) => {
+          const protectedDetails = protectedById.get(book.id);
+          return protectedDetails ? applyProtectedDetails(book, protectedDetails) : book;
+        });
+
+        if (JSON.stringify(currentBooks) === JSON.stringify(restoredBooks)) {
+          baseline.current = signaturesFor(currentBooks);
+          return;
+        }
+
+        // Mark the restored state as the protected baseline before the canonical
+        // write emits its local-change event, otherwise the ledger bridge can
+        // mistake recovery for a fresh reader edit and loop.
+        baseline.current = signaturesFor(restoredBooks);
+        replaceCanonicalLibrary(restoredBooks);
+      } catch (error) {
+        console.error('Inkbound could not restore protected book details.', error);
+      }
+    };
 
     const captureLocalChanges = async () => {
       if (running.current) {
@@ -154,12 +252,17 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
     const onCloudChange = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
       if (!detail?.keys?.includes(BOOKS_KEY)) return;
-      baseline.current = signaturesFor(readBooks());
+      // A cloud refresh may replace the canonical book record with an older
+      // provider/account copy. Re-apply the independently persisted reader-owned
+      // details instead of merely accepting the destructive replacement.
+      void restoreProtectedDetails();
     };
 
+    void restoreProtectedDetails();
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, onCloudChange);
     return () => {
+      disposed = true;
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, onCloudChange);
     };
