@@ -21,6 +21,7 @@ import { LibrarySyncCheckpointBridge } from './features/sync/LibrarySyncCheckpoi
 import { ManualCoverLedgerBridge } from './features/sync/ManualCoverLedgerBridge.tsx';
 import { ProtectedBookDetailsLedgerBridge } from './features/sync/ProtectedBookDetailsLedgerBridge.tsx';
 import { ReadOnlyCloudHydrationBridge } from './features/sync/ReadOnlyCloudHydrationBridge.tsx';
+import { SessionEvidenceRecoveryBridge } from './features/sync/SessionEvidenceRecoveryBridge.tsx';
 import { isolateDevelopmentBrowserStorage } from './features/sync/runtimeStorageIsolation.ts';
 import { ThemePersistenceBridge } from './features/sync/ThemePersistenceBridge.tsx';
 import { BreakpointProvider } from './layout/responsive/BreakpointProvider.tsx';
@@ -186,6 +187,7 @@ const InkboundApplication = () => (
               <AdaptiveCloudPersistenceBridge />
               <CloudServerRefreshBridge />
               <CrossDeviceDeltaSyncBridge />
+              <SessionEvidenceRecoveryBridge />
               <ManualCoverLedgerBridge />
               <ProtectedBookDetailsLedgerBridge />
               <AuxiliaryAccountSyncBridge />
