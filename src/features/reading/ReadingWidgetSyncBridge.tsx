@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { INKBOUND_LOCAL_DATA_CHANGED_EVENT } from '../../platform/runtimeStorage';
+import { INKBOUND_CLOUD_DATA_EVENT } from '../sync/cloudSyncEvents';
 import {
   applyReadingWidgetAction,
   buildReadingWidgetSnapshot,
@@ -75,20 +76,37 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
       }
     };
 
-    const onLocalDataChanged = () => refresh();
-    window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalDataChanged);
+    const onCanonicalDataChanged = () => {
+      widgetSignatureRef.current = '';
+      refresh();
+    };
+    window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onCanonicalDataChanged);
+    window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, onCanonicalDataChanged);
     const unsubscribeResume = subscribeToRuntimeResume(() => {
       void consume();
       widgetSignatureRef.current = '';
       refresh();
+      window.setTimeout(() => {
+        if (stopped) return;
+        widgetSignatureRef.current = '';
+        refresh();
+      }, 500);
     });
 
     void consume();
+    widgetSignatureRef.current = '';
     refresh();
+    const startupRetry = window.setTimeout(() => {
+      if (stopped) return;
+      widgetSignatureRef.current = '';
+      refresh();
+    }, 500);
 
     return () => {
       stopped = true;
-      window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalDataChanged);
+      window.clearTimeout(startupRetry);
+      window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onCanonicalDataChanged);
+      window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, onCanonicalDataChanged);
       unsubscribeResume();
     };
   }, []);
