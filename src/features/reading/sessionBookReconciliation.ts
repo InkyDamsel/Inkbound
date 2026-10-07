@@ -137,3 +137,94 @@ export function reconcileBookAfterSessionMutation(
     lastSessionDate: activityRelated.at(-1)?.date ?? book.lastSessionDate,
   };
 }
+
+
+function sessionCollectionsDiffer(left?: ReadingSession, right?: ReadingSession): boolean {
+  return JSON.stringify(left ?? null) !== JSON.stringify(right ?? null);
+}
+
+/**
+ * Reconciles canonical book progress when an entire session collection changes,
+ * including cross-device additions/edits/deletions.
+ *
+ * The previous collection is used to distinguish session-owned progress from
+ * manual progress that was already ahead. This lets a remote session edit or
+ * delete move tracked progress backward when appropriate without erasing a
+ * reader's independent manual correction.
+ */
+export function reconcileBooksAfterSessionCollectionChange(
+  books: UserBookRecord[],
+  previousSessions: ReadingSession[],
+  nextSessions: ReadingSession[],
+): UserBookRecord[] {
+  const previousById = new Map(previousSessions.map((session) => [session.id, session]));
+  const nextById = new Map(nextSessions.map((session) => [session.id, session]));
+  const affectedBookIds = new Set<string>();
+
+  new Set([...previousById.keys(), ...nextById.keys()]).forEach((id) => {
+    const previous = previousById.get(id);
+    const next = nextById.get(id);
+    if (!sessionCollectionsDiffer(previous, next)) return;
+    if (previous?.bookId) affectedBookIds.add(previous.bookId);
+    if (next?.bookId) affectedBookIds.add(next.bookId);
+  });
+
+  if (!affectedBookIds.size) return books;
+
+  return books.map((book) => {
+    if (!affectedBookIds.has(book.id)) return book;
+
+    const activeEdition = getActiveEdition(book);
+    const isAudiobook = activeEdition?.format === 'audiobook';
+    const previousRelated = previousSessions
+      .filter((session) => session.bookId === book.id && session.activitySource !== 'progress-confirmation')
+      .sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
+    const nextRelated = nextSessions
+      .filter((session) => session.bookId === book.id && session.activitySource !== 'progress-confirmation')
+      .sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
+
+    const previousLatest = previousRelated.at(-1);
+    const nextLatest = nextRelated.at(-1);
+    const currentProgress = isAudiobook ? book.progressMinutes : book.progressPages;
+    const previousTrackedProgress = previousLatest
+      ? getSessionProgressEndpoint(previousLatest, isAudiobook, 'end')
+      : 0;
+    const nextTrackedProgress = nextLatest
+      ? getSessionProgressEndpoint(nextLatest, isAudiobook, 'end')
+      : previousLatest
+        ? getSessionProgressEndpoint(previousLatest, isAudiobook, 'start')
+        : currentProgress;
+
+    const manualProgressAhead = currentProgress > previousTrackedProgress;
+    const nextProgress = manualProgressAhead
+      ? Math.max(currentProgress, nextTrackedProgress)
+      : nextTrackedProgress;
+
+    const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
+    const hasKnownTotal = typeof total === 'number' && Number.isFinite(total) && total > 0;
+    const reachedEnd = Boolean(hasKnownTotal && nextProgress >= total!);
+    const staysFinished = reachedEnd || book.status === 'finished';
+    const progressPercentage = staysFinished
+      ? 100
+      : hasKnownTotal
+        ? Math.min(100, Math.round((nextProgress / total!) * 100))
+        : book.progressPercentage;
+
+    return {
+      ...book,
+      progressPages: isAudiobook ? book.progressPages : nextProgress,
+      progressMinutes: isAudiobook ? nextProgress : book.progressMinutes,
+      progressPercentage,
+      status: staysFinished
+        ? 'finished'
+        : nextRelated.length > 0
+          ? 'currently-reading'
+          : book.status,
+      dateStarted: book.dateStarted ?? nextRelated[0]?.date,
+      dateFinished: reachedEnd
+        ? book.dateFinished ?? nextLatest?.date ?? localDateKey()
+        : book.dateFinished,
+      lastSessionDate: nextLatest?.date ?? book.lastSessionDate,
+    };
+  });
+}
