@@ -48,7 +48,12 @@ interface ReaderProfile {
 
 type MutationOperation = 'upsert' | 'delete';
 type RecordKind = 'books' | 'sessions';
-interface RecordMutation<T> { operation: MutationOperation; data?: T; clientUpdatedAt: string }
+interface RecordMutation<T> {
+  operation: MutationOperation;
+  data?: T;
+  clientUpdatedAt: string;
+  capturedAfterCloudReconcile?: boolean;
+}
 interface ProfileMutation { data: ReaderProfile; clientUpdatedAt: string }
 interface PendingSyncState {
   books: Record<string, RecordMutation<UserBookRecord>>;
@@ -116,7 +121,11 @@ function captureWorkingChanges<T extends { id: string }>(
   fingerprints.current.forEach((_value, id) => {
     if (next.has(id)) return;
     if (baseline[id] === undefined) delete mutations[id];
-    else mutations[id] = { operation: 'delete', clientUpdatedAt: now };
+    else mutations[id] = {
+      operation: 'delete',
+      clientUpdatedAt: now,
+      capturedAfterCloudReconcile: true,
+    };
   });
   fingerprints.current = next;
 }
@@ -420,6 +429,14 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
 
     const handleLocalChange = (event: Event) => {
       const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
+
+      // Cloud reconciliation is the startup/foreground authority gate.
+      // A stale device is allowed to DISPLAY its cached library while reconciling,
+      // but cached/startup rewrites must never be promoted to fresh user intent.
+      // Otherwise an old Android cache can acquire a "now" timestamp and overwrite
+      // newer iOS/web data before it has first seen the cloud copy.
+      if (!coreReconciled) return;
+
       captureCurrentChanges(detail?.keys);
       clearRetryTimer();
       scheduleFlush();
@@ -433,6 +450,11 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     const handleCoreReconciled = (event: Event) => {
       const detail = (event as CustomEvent<CoreCloudReconciledDetail>).detail;
       if (detail?.uid !== uid || disposed) return;
+
+      // Whatever is in runtime storage now is the reconciled working copy.
+      // Reset fingerprints before accepting new local edits so the reconciliation
+      // itself can never be mistaken for reader intent and queued back to cloud.
+      resetWorkingFingerprints();
       coreReconciled = true;
       clearRetryTimer();
       void flushPending();
