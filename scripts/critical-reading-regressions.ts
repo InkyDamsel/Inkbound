@@ -13,6 +13,7 @@ import {
   applySessionProgressToBook,
   reconcileBookAfterSessionMutation,
   reconcileBooksAfterSessionCollectionChange,
+  reconcileBooksFromExistingSessionEvidence,
 } from '../src/features/reading/sessionBookReconciliation';
 import { analyzeLibraryIntegrity } from '../src/features/recovery/libraryIntegrity';
 import {
@@ -272,6 +273,53 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   )[0];
   assert.equal(afterRemote.progressPages, 75);
   assert.equal(afterRemote.progressPercentage, 15);
+}
+
+// Upgrade/startup repair: an already-existing timer/manual session must still
+// repair stale Current Page / Progress % even when the session collection itself
+// did not change during this app launch.
+{
+  const staleBook = { ...baseBook(), progressPages: 0, progressPercentage: 0, dateStarted: undefined };
+  const existingTimer = session({
+    id: 'existing-timer-session',
+    activitySource: 'timer',
+    startPage: 0,
+    endPage: 16,
+    pagesRead: 16,
+    date: '2026-10-07',
+  });
+  const repaired = reconcileBooksFromExistingSessionEvidence([staleBook], [existingTimer]);
+  assert.equal(repaired[0].progressPages, 16);
+  assert.equal(repaired[0].progressPercentage, 3);
+  assert.equal(repaired[0].dateStarted, '2026-10-07');
+}
+
+{
+  const staleBook = { ...baseBook(), progressPages: 5, progressPercentage: 1 };
+  const existingManual = session({
+    id: 'existing-manual-session',
+    activitySource: 'manual-session',
+    startPage: 5,
+    endPage: 55,
+    pagesRead: 50,
+    date: '2026-10-07',
+  });
+  const repaired = reconcileBooksFromExistingSessionEvidence([staleBook], [existingManual]);
+  assert.equal(repaired[0].progressPages, 55);
+  assert.equal(repaired[0].progressPercentage, 11);
+}
+
+{
+  const manualAhead = { ...baseBook(), progressPages: 120, progressPercentage: 24 };
+  const olderSession = session({
+    id: 'existing-older-session',
+    activitySource: 'timer',
+    startPage: 0,
+    endPage: 80,
+    pagesRead: 80,
+  });
+  const repaired = reconcileBooksFromExistingSessionEvidence([manualAhead], [olderSession]);
+  assert.equal(repaired[0].progressPages, 120, 'Startup repair must never roll back independent manual progress.');
 }
 
 // Cross-device session deletion/edit reconciliation may lower session-owned
