@@ -19,7 +19,13 @@ interface DataIntegrityReport {
   structure: { bookIdMismatches: number; sessionIdMismatches: number; missingActiveEditions: number; orphanSessions: number; malformedSessions: number; };
   cloud: { profilePresent: boolean; auxiliaryRecords: number; photoMemories: number; deletedPhotoMemories: number; recoveryPoints: number; latestRecoveryPointAt: string | null; };
   warnings?: string[];
-  storage: { status: 'available' | 'unavailable'; files: number; bookCoverFiles: number; photoMemoryFiles: number; profileMediaFiles: number; };
+  storage: {
+    status: 'available' | 'unavailable';
+    inventoryMode: 'indexed';
+    manualCoverAssignments: number;
+    photoMemoryRecords: number;
+    exactFileCountEnumerated: boolean;
+  };
 }
 
 interface RecoveryPointSummary {
@@ -168,7 +174,18 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
           <AdminSelectiveRecoveryPanel targetUserId={targetUserId} targetLabel={targetLabel} />
         </section>
 
-        <div><div className="mb-3 flex items-center gap-2"><HardDrive className="h-4 w-4 text-[var(--ink-mauve)]" /><h3 className="font-semibold text-[var(--ink-ivory)]">Stored media</h3></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Storage status" value={currentReport.storage.status === 'available' ? 'Available' : 'Unavailable'} /><Metric label="Stored files" value={currentReport.storage.files} /><Metric label="Manual cover files" value={currentReport.storage.bookCoverFiles} /><Metric label="Photo files" value={currentReport.storage.photoMemoryFiles} /><Metric label="Profile media files" value={currentReport.storage.profileMediaFiles} /></div></div>
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <HardDrive className="h-4 w-4 text-[var(--ink-mauve)]" />
+            <h3 className="font-semibold text-[var(--ink-ivory)]">Stored media</h3>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric label="Storage status" value={currentReport.storage.status === 'available' ? 'Available' : 'Unavailable'} note="Health check only; Inkbound does not enumerate every file." />
+            <Metric label="Manual cover assignments" value={currentReport.storage.manualCoverAssignments.toLocaleString()} note="Indexed in Firestore, so this stays fast even for very large libraries." />
+            <Metric label="Photo-memory records" value={currentReport.storage.photoMemoryRecords.toLocaleString()} />
+            <Metric label="Exact file scan" value={currentReport.storage.exactFileCountEnumerated ? 'Completed' : 'Skipped by design'} note="Full Storage scans are intentionally avoided so 50k-book libraries cannot stall Data Safety." />
+          </div>
+        </div>
       </div>}
     </section>
   );
