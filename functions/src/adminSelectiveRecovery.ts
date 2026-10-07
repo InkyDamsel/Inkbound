@@ -264,7 +264,15 @@ export const restoreAdminRecoverySelection = onCall({ enforceAppCheck: ENFORCE_A
   const targetEmail = typeof input?.targetEmail === 'string' ? input.targetEmail.trim().toLowerCase() : '';
   const snapshotId = requireString(input?.snapshotId, 'snapshotId', 256);
   const scope = requireString(input?.scope, 'scope', 32) as RecoveryScope;
-  const itemId = scope === 'profile' ? 'current' : requireString(input?.itemId, 'itemId', 512);
+  const requestedBookIds = scope === 'book' && Array.isArray(input?.itemIds)
+    ? [...new Set(input.itemIds.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean))]
+    : [];
+  if (requestedBookIds.length > 500) throw new HttpsError('invalid-argument', 'Recover no more than 500 books at a time.');
+  const itemId = scope === 'profile'
+    ? 'current'
+    : scope === 'book'
+      ? (requestedBookIds[0] ?? requireString(input?.itemId, 'itemId', 512))
+      : requireString(input?.itemId, 'itemId', 512);
   const reason = requireString(input?.reason, 'reason', 1000);
   const confirmation = requireString(input?.confirmation, 'confirmation', 32).toUpperCase();
   if (!['book', 'session', 'collection', 'auxiliary', 'profile'].includes(scope)) throw new HttpsError('invalid-argument', 'Unsupported recovery scope.');
@@ -279,13 +287,32 @@ export const restoreAdminRecoverySelection = onCall({ enforceAppCheck: ENFORCE_A
   let description = '';
 
   if (scope === 'book') {
-    const source = await snapshotRef.collection('books').doc(itemId).get();
-    if (!source.exists) throw new HttpsError('not-found', 'That book is not present in the selected recovery point.');
-    const data = unwrapEnvelope(source.data());
-    await userRef.collection('books').doc(itemId).set({ data, updatedAt: FieldValue.serverTimestamp(), clientUpdatedAt });
-    restoredCount = 1;
-    const work = data.work && typeof data.work === 'object' ? data.work as Record<string, unknown> : {};
-    description = `Book: ${typeof work.title === 'string' ? work.title : itemId}`;
+    const bookIds = requestedBookIds.length > 0 ? requestedBookIds : [itemId];
+    const sourceRefs = bookIds.map((bookId) => snapshotRef.collection('books').doc(bookId));
+    const sources = await db.getAll(...sourceRefs);
+    const missing = sources.filter((source) => !source.exists).map((source) => source.id);
+    if (missing.length > 0) {
+      throw new HttpsError('not-found', `${missing.length} selected book${missing.length === 1 ? '' : 's'} are not present in the selected recovery point.`);
+    }
+
+    const tasks: Array<(batch: FirebaseFirestore.WriteBatch) => void> = [];
+    const restoredTitles: string[] = [];
+    sources.forEach((source) => {
+      const data = unwrapEnvelope(source.data());
+      const targetRef = userRef.collection('books').doc(source.id);
+      tasks.push((batch) => batch.set(targetRef, {
+        data,
+        updatedAt: FieldValue.serverTimestamp(),
+        clientUpdatedAt,
+      }));
+      const work = data.work && typeof data.work === 'object' ? data.work as Record<string, unknown> : {};
+      restoredTitles.push(typeof work.title === 'string' ? work.title : source.id);
+    });
+    await commitTasks(tasks);
+    restoredCount = tasks.length;
+    description = restoredCount === 1
+      ? `Book: ${restoredTitles[0]}`
+      : `${restoredCount} books from the selected recovery point`;
   }
 
   if (scope === 'session') {
@@ -374,9 +401,25 @@ export const restoreAdminRecoverySelection = onCall({ enforceAppCheck: ENFORCE_A
     performedByEmail: admin.email,
     reason,
     previousValue: { safetySnapshotId },
-    newValue: { restoredSnapshotId: snapshotId, scope, itemId, restoredCount, description },
+    newValue: {
+      restoredSnapshotId: snapshotId,
+      scope,
+      itemId,
+      itemIds: scope === 'book' ? (requestedBookIds.length > 0 ? requestedBookIds : [itemId]) : undefined,
+      restoredCount,
+      description,
+    },
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  return { success: true, safetySnapshotId, restoredSnapshotId: snapshotId, scope, itemId, restoredCount, description };
+  return {
+    success: true,
+    safetySnapshotId,
+    restoredSnapshotId: snapshotId,
+    scope,
+    itemId,
+    itemIds: scope === 'book' ? (requestedBookIds.length > 0 ? requestedBookIds : [itemId]) : undefined,
+    restoredCount,
+    description,
+  };
 });
