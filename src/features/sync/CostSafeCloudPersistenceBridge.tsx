@@ -402,12 +402,16 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       return flushInFlight;
     };
 
-    const captureCurrentChanges = (keys?: CloudSyncedStorageKey[]) => {
+    const captureCurrentChanges = (
+      keys?: CloudSyncedStorageKey[],
+      trustedReaderIntent = false,
+    ) => {
       if (
         disposed
         || !shouldCaptureReaderMutation({
           coreReconciled,
           localClearIntent: runtimeStorage().getItem(localClearIntentKey(uid)) === '1',
+          trustedReaderIntent,
         })
       ) return;
       const changedKeys = keys ? new Set(keys) : undefined;
@@ -449,15 +453,17 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
 
     const handleLocalChange = (event: Event) => {
       const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
+      const trustedReaderIntent = detail?.trustedReaderIntent === true;
 
-      // Cloud reconciliation is the startup/foreground authority gate.
-      // A stale device is allowed to DISPLAY its cached library while reconciling,
-      // but cached/startup rewrites must never be promoted to fresh user intent.
-      // Otherwise an old Android cache can acquire a "now" timestamp and overwrite
-      // newer iOS/web data before it has first seen the cloud copy.
-      if (!coreReconciled) return;
+      // Cloud reconciliation is the startup/foreground authority gate for generic
+      // cache churn. Explicit canonical reader actions are different: a reader
+      // may legitimately add/edit a book or session while the device is offline
+      // before this open cycle can contact Firestore. Those writes are marked by
+      // libraryMutations and must enter the durable pending queue immediately.
+      // Unmarked startup/cache rewrites still cannot manufacture fresh intent.
+      if (!coreReconciled && !trustedReaderIntent) return;
 
-      captureCurrentChanges(detail?.keys);
+      captureCurrentChanges(detail?.keys, trustedReaderIntent);
       clearRetryTimer();
       scheduleFlush();
     };
