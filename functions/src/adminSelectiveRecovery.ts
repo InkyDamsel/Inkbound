@@ -184,7 +184,7 @@ async function commitTasks(tasks: Array<(batch: FirebaseFirestore.WriteBatch) =>
   }
 }
 
-async function createSafetySnapshot(targetUserId: string, reason: string): Promise<string> {
+async function createFullSafetySnapshot(targetUserId: string, reason: string): Promise<string> {
   const db = getFirestore();
   const userRef = db.doc(`users/${targetUserId}`);
   const [books, sessions, profile, auxiliary, photoMemories] = await Promise.all([
@@ -208,6 +208,8 @@ async function createSafetySnapshot(targetUserId: string, reason: string): Promi
   const createdAtClient = new Date().toISOString();
   await snapshotRef.set({
     schemaVersion: 2,
+    snapshotKind: 'full',
+    fullRestoreEligible: true,
     createdAt: FieldValue.serverTimestamp(),
     createdAtClient,
     reason,
@@ -215,6 +217,68 @@ async function createSafetySnapshot(targetUserId: string, reason: string): Promi
     sessionCount: sessions.size,
     auxiliaryCount: auxiliary.size,
     photoMemoryCount: photoMemories.size,
+    runtimeStateCount: 0,
+    createdByAdmin: true,
+  });
+  return snapshotId;
+}
+
+async function createSelectiveSafetySnapshot(
+  targetUserId: string,
+  scope: RecoveryScope,
+  itemIds: string[],
+  reason: string,
+): Promise<string> {
+  const db = getFirestore();
+  const userRef = db.doc(`users/${targetUserId}`);
+  const snapshotId = `${Date.now()}-${crypto.randomUUID()}`;
+  const snapshotRef = userRef.collection(RECOVERY_COLLECTION).doc(snapshotId);
+  const tasks: Array<(batch: FirebaseFirestore.WriteBatch) => void> = [];
+  let bookCount = 0;
+  let sessionCount = 0;
+  let auxiliaryCount = 0;
+
+  if (scope === 'book') {
+    const refs = itemIds.map((id) => userRef.collection('books').doc(id));
+    const docs = refs.length ? await db.getAll(...refs) : [];
+    docs.filter((doc) => doc.exists).forEach((doc) => {
+      tasks.push((batch) => batch.set(snapshotRef.collection('books').doc(doc.id), doc.data() ?? {}));
+      bookCount += 1;
+    });
+  } else if (scope === 'session') {
+    const source = await userRef.collection('sessions').doc(itemIds[0]).get();
+    if (source.exists) {
+      tasks.push((batch) => batch.set(snapshotRef.collection('sessions').doc(source.id), source.data() ?? {}));
+      sessionCount = 1;
+    }
+  } else if (scope === 'auxiliary') {
+    const source = await userRef.collection('auxiliary').doc(itemIds[0]).get();
+    if (source.exists) {
+      tasks.push((batch) => batch.set(snapshotRef.collection('auxiliary').doc(source.id), source.data() ?? {}));
+      auxiliaryCount = 1;
+    }
+  } else if (scope === 'profile') {
+    const source = await userRef.collection('profile').doc('current').get();
+    if (source.exists) tasks.push((batch) => batch.set(snapshotRef.collection('profile').doc('current'), source.data() ?? {}));
+  } else {
+    return createFullSafetySnapshot(targetUserId, reason);
+  }
+
+  await commitTasks(tasks);
+  const createdAtClient = new Date().toISOString();
+  await snapshotRef.set({
+    schemaVersion: 2,
+    snapshotKind: 'selective',
+    fullRestoreEligible: false,
+    selectiveScope: scope,
+    affectedIds: itemIds,
+    createdAt: FieldValue.serverTimestamp(),
+    createdAtClient,
+    reason,
+    bookCount,
+    sessionCount,
+    auxiliaryCount,
+    photoMemoryCount: 0,
     runtimeStateCount: 0,
     createdByAdmin: true,
   });
@@ -364,7 +428,17 @@ export const restoreAdminRecoverySelection = onCall({ enforceAppCheck: ENFORCE_A
   const db = getFirestore();
   const userRef = db.doc(`users/${targetUserId}`);
   const { snapshotRef } = await getSnapshot(targetUserId, snapshotId);
-  const safetySnapshotId = await createSafetySnapshot(targetUserId, `Before selective admin recovery (${scope})`);
+  const recoveryItemIds = scope === 'book'
+    ? (requestedBookIds.length > 0 ? requestedBookIds : [itemId])
+    : [itemId];
+  const safetySnapshotId = scope === 'collection'
+    ? await createFullSafetySnapshot(targetUserId, `Before selective admin recovery (${scope})`)
+    : await createSelectiveSafetySnapshot(
+        targetUserId,
+        scope,
+        recoveryItemIds,
+        `Before selective admin recovery (${scope})`,
+      );
   const clientUpdatedAt = new Date().toISOString();
   let restoredCount = 0;
   let description = '';
