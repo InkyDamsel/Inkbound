@@ -71,3 +71,30 @@ export function shouldApplyRemoteTombstone({
 }): boolean {
   return latestRecordServerMillis <= tombstoneServerMillis;
 }
+
+/**
+ * Trust-aware wrapper for canonical record/tombstone reconciliation.
+ *
+ * Pending state from an older build or captured before the reconciliation gate
+ * is not proof of fresh reader intent, regardless of its client clock. Current
+ * builds mark explicit post-reconcile/offline reader intent with
+ * capturedAfterCloudReconcile=true.
+ */
+export function shouldRemoteReplacePendingMutation({
+  remoteServerMillis = 0,
+  remoteClientUpdatedAt,
+  pendingClientUpdatedAt,
+  pendingCapturedAfterCloudReconcile,
+}: {
+  remoteServerMillis?: number;
+  remoteClientUpdatedAt?: string;
+  pendingClientUpdatedAt?: string;
+  pendingCapturedAfterCloudReconcile?: boolean;
+}): boolean {
+  if (pendingClientUpdatedAt && pendingCapturedAfterCloudReconcile !== true) return true;
+  return shouldRemoteChangeReplacePending({
+    remoteServerMillis,
+    remoteClientUpdatedAt,
+    pendingClientUpdatedAt,
+  });
+}
