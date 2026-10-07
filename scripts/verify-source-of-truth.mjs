@@ -483,14 +483,20 @@ const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx'
 for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
 }
-if (!/operation:\s*'upsert'[\s\S]{0,180}capturedAfterCloudReconcile:\s*true/.test(costSafeSync)) {
-  violations.push('CostSafeCloudPersistenceBridge.tsx: fresh book/session upserts must be marked as trusted post-reconciliation reader intent.');
-}
 if (!costSafeSync.includes('shouldCaptureReaderMutation')) {
   violations.push('CostSafeCloudPersistenceBridge.tsx: local mutation capture must use the canonical syncMutationPolicy gate.');
 }
 if (!costSafeSync.includes('createTrustedUpsertMutation') || !costSafeSync.includes('createTrustedDeleteMutation')) {
   violations.push('CostSafeCloudPersistenceBridge.tsx: book/session mutations must use canonical trusted mutation constructors.');
+}
+if (!costSafeSync.includes('detail?.trustedReaderIntent === true')) {
+  violations.push('CostSafeCloudPersistenceBridge.tsx: explicit offline reader intent must bypass only the pre-reconciliation cache-churn gate.');
+}
+const syncMutationPolicy = read('src/features/sync/syncMutationPolicy.ts');
+for (const required of ['capturedAfterCloudReconcile: true', 'coreReconciled || trustedReaderIntent', '!localClearIntent']) {
+  if (!syncMutationPolicy.includes(required)) {
+    violations.push(`syncMutationPolicy.ts: trusted local intent invariant missing ${required}`);
+  }
 }
 
 const fullReconciliation = read('src/features/sync/FullCloudReconciliationBridge.tsx');
