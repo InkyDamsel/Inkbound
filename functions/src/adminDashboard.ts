@@ -390,7 +390,16 @@ export const getAdminDataIntegrity = onCall({
 
   const db = getFirestore();
   const userRef = db.doc(`users/${targetUserId}`);
-  const [booksSnapshot, sessionsSnapshot, profileSnapshot, auxiliarySnapshot, photoSnapshot, recoverySnapshot, librarySyncSnapshot] = await Promise.all([
+  const warnings: string[] = [];
+  const [
+    booksResult,
+    sessionsResult,
+    profileResult,
+    auxiliaryResult,
+    photoResult,
+    recoveryResult,
+    librarySyncResult,
+  ] = await Promise.allSettled([
     userRef.collection('books').get(),
     userRef.collection('sessions').get(),
     userRef.collection('profile').doc('current').get(),
@@ -400,8 +409,31 @@ export const getAdminDataIntegrity = onCall({
     userRef.collection('syncState').doc('library').get(),
   ]);
 
-  const books = booksSnapshot.docs.map((document) => ({ documentId: document.id, book: safeUnwrapRecord<StoredBook>(document.data()) }));
-  const sessions = sessionsSnapshot.docs.map((document) => ({ documentId: document.id, session: safeUnwrapRecord<StoredSession>(document.data()) }));
+  const describeFailure = (label: string, result: PromiseSettledResult<unknown>) => {
+    if (result.status === 'rejected') {
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      warnings.push(`${label}: ${message}`);
+      console.error(`Inkbound admin integrity read failed for ${label}.`, result.reason);
+    }
+  };
+  describeFailure('books', booksResult);
+  describeFailure('sessions', sessionsResult);
+  describeFailure('profile', profileResult);
+  describeFailure('auxiliary', auxiliaryResult);
+  describeFailure('photo memories', photoResult);
+  describeFailure('recovery snapshots', recoveryResult);
+  describeFailure('library sync state', librarySyncResult);
+
+  const bookDocs = booksResult.status === 'fulfilled' ? booksResult.value.docs : [];
+  const sessionDocs = sessionsResult.status === 'fulfilled' ? sessionsResult.value.docs : [];
+  const profileSnapshot = profileResult.status === 'fulfilled' ? profileResult.value : null;
+  const auxiliaryDocs = auxiliaryResult.status === 'fulfilled' ? auxiliaryResult.value.docs : [];
+  const photoDocs = photoResult.status === 'fulfilled' ? photoResult.value.docs : [];
+  const recoveryDocs = recoveryResult.status === 'fulfilled' ? recoveryResult.value.docs : [];
+  const librarySyncSnapshot = librarySyncResult.status === 'fulfilled' ? librarySyncResult.value : null;
+
+  const books = bookDocs.map((document) => ({ documentId: document.id, book: safeUnwrapRecord<StoredBook>(document.data()) }));
+  const sessions = sessionDocs.map((document) => ({ documentId: document.id, session: safeUnwrapRecord<StoredSession>(document.data()) }));
   const bookIds = new Set(books.map(({ documentId, book }) => typeof book.id === 'string' && book.id ? book.id : documentId));
   let activeCoverCount = 0;
   let anyCoverCount = 0;
@@ -455,9 +487,9 @@ export const getAdminDataIntegrity = onCall({
   });
 
   const possibleDuplicateIdentityGroups = [...duplicateIdentityBuckets.values()].filter((count) => count > 1).length;
-  const activePhotoMemories = photoSnapshot.docs.filter((document) => document.get('deleted') !== true).length;
-  const deletedPhotoMemories = photoSnapshot.size - activePhotoMemories;
-  const recoveryPoints = recoverySnapshot.docs.map((document) => {
+  const activePhotoMemories = photoDocs.filter((document) => document.get('deleted') !== true).length;
+  const deletedPhotoMemories = photoDocs.length - activePhotoMemories;
+  const recoveryPoints = recoveryDocs.map((document) => {
     const data = document.data();
     return { createdAtClient: typeof data.createdAtClient === 'string' ? data.createdAtClient : '', createdAt: timestampToIso(data.createdAt) };
   });
@@ -477,9 +509,9 @@ export const getAdminDataIntegrity = onCall({
   } catch { storageStatus = 'unavailable'; }
 
   const criticalIssueCount = bookIdMismatchCount + sessionIdMismatchCount + missingActiveEditionCount + orphanSessionCount + malformedSessionCount;
-  const syncState = librarySyncSnapshot.data() ?? {};
+  const syncState = librarySyncSnapshot?.data() ?? {};
   const expectedBookCount = typeof syncState.expectedBookCount === 'number' ? Math.max(0, syncState.expectedBookCount) : 0;
-  const cloudBookCount = booksSnapshot.size;
+  const cloudBookCount = bookDocs.length;
   const backupRemaining = expectedBookCount > 0 ? Math.max(0, expectedBookCount - cloudBookCount) : 0;
   const backupComplete = expectedBookCount === 0 || cloudBookCount >= expectedBookCount;
 
@@ -490,7 +522,7 @@ export const getAdminDataIntegrity = onCall({
     criticalIssueCount,
     library: {
       books: cloudBookCount,
-      sessions: sessionsSnapshot.size,
+      sessions: sessionDocs.length,
       activeCovers: activeCoverCount,
       booksWithAnyCover: anyCoverCount,
       missingActiveCovers: Math.max(0, cloudBookCount - activeCoverCount),
@@ -517,13 +549,14 @@ export const getAdminDataIntegrity = onCall({
       malformedSessions: malformedSessionCount,
     },
     cloud: {
-      profilePresent: profileSnapshot.exists,
-      auxiliaryRecords: auxiliarySnapshot.size,
+      profilePresent: profileSnapshot?.exists ?? false,
+      auxiliaryRecords: auxiliaryDocs.length,
       photoMemories: activePhotoMemories,
       deletedPhotoMemories,
-      recoveryPoints: recoverySnapshot.size,
+      recoveryPoints: recoveryDocs.length,
       latestRecoveryPointAt: recoveryPoints[0]?.createdAtClient || recoveryPoints[0]?.createdAt || null,
     },
+    warnings,
     storage: {
       status: storageStatus,
       files: storageFileCount,
