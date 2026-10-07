@@ -7,7 +7,11 @@ import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
 import { searchPenguinRandomHouse } from './penguinRandomHouseApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { catalogTitlesAreCompatible, hardenCatalogGroups } from '../catalogHardening';
+import {
+  catalogTitlesAreCompatible,
+  hardenCatalogGroups,
+  selectExactIsbnEdition,
+} from '../catalogHardening';
 
 interface GoogleIndustryIdentifier {
   type?: string;
@@ -78,6 +82,42 @@ const normalizeText = (value?: string): string =>
   value?.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 
 const compactIsbn = (value: string): string => value.replace(/[^0-9X]/gi, '').toUpperCase();
+
+const isbn10CheckDigit = (nineDigits: string): string | null => {
+  if (!/^\d{9}$/.test(nineDigits)) return null;
+  const sum = [...nineDigits].reduce((total, character, index) => total + Number(character) * (10 - index), 0);
+  const remainder = (11 - (sum % 11)) % 11;
+  return remainder === 10 ? 'X' : String(remainder);
+};
+
+const isbn13CheckDigit = (twelveDigits: string): string | null => {
+  if (!/^\d{12}$/.test(twelveDigits)) return null;
+  const weighted = [...twelveDigits].reduce(
+    (total, character, index) => total + Number(character) * (index % 2 === 0 ? 1 : 3),
+    0,
+  );
+  return String((10 - (weighted % 10)) % 10);
+};
+
+export const equivalentCatalogIsbns = (value: string): string[] => {
+  const isbn = compactIsbn(value);
+  const results = new Set<string>();
+  if (/^\d{9}[\dX]$/.test(isbn)) {
+    results.add(isbn);
+    const base13 = `978${isbn.slice(0, 9)}`;
+    const check13 = isbn13CheckDigit(base13);
+    if (check13) results.add(`${base13}${check13}`);
+  } else if (/^978\d{10}$/.test(isbn)) {
+    results.add(isbn);
+    const base10 = isbn.slice(3, 12);
+    const check10 = isbn10CheckDigit(base10);
+    if (check10) results.add(`${base10}${check10}`);
+  } else if (/^979\d{10}$/.test(isbn)) {
+    // 979 ISBN-13 values generally have no ISBN-10 equivalent.
+    results.add(isbn);
+  }
+  return [...results];
+};
 
 const isAdministrationActive = (): boolean =>
   readRuntimeJson<string>(ACTIVE_TAB_STORAGE_KEY, 'home') === 'admin';
@@ -430,6 +470,70 @@ function cacheSearchResponse(cacheKey: string, response: BookSearchResponse): Bo
     searchCache.set(cacheKey, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, response });
   }
   return response;
+}
+
+export interface IsbnLookupResult {
+  work: BookSearchWorkGroup;
+  edition: BookSearchEdition;
+  exactIsbn: boolean;
+  matchedIsbn?: string;
+}
+
+export async function resolveCatalogIsbn(
+  rawIsbn: string,
+  signal?: AbortSignal,
+): Promise<IsbnLookupResult | null> {
+  const candidates = equivalentCatalogIsbns(rawIsbn);
+  if (!candidates.length) return null;
+
+  const combinedGroups: BookSearchWorkGroup[] = [];
+  for (const candidate of candidates) {
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    const response = await searchGoogleBooks(`isbn:${candidate}`, signal);
+    combinedGroups.push(...response.groups);
+
+    const exact = selectExactIsbnEdition(response.groups, candidate);
+    if (exact) {
+      return {
+        work: exact.work,
+        edition: exact.edition,
+        exactIsbn: true,
+        matchedIsbn: candidate,
+      };
+    }
+  }
+
+  const hardened = hardenCatalogGroups(combinedGroups);
+  for (const candidate of candidates) {
+    const exact = selectExactIsbnEdition(hardened, candidate);
+    if (exact) {
+      return {
+        work: exact.work,
+        edition: exact.edition,
+        exactIsbn: true,
+        matchedIsbn: candidate,
+      };
+    }
+  }
+
+  // Some catalogs can identify a work from the raw barcode text even when the
+  // exact edition record is missing or the provider attached incomplete ISBN
+  // metadata. Treat this as a work-level fallback, never as a verified edition.
+  for (const candidate of candidates) {
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    const response = await searchGoogleBooks(candidate, signal);
+    const fallbackWork = response.groups[0];
+    const fallbackEdition = fallbackWork?.editions[0];
+    if (fallbackWork && fallbackEdition) {
+      return {
+        work: fallbackWork,
+        edition: fallbackEdition,
+        exactIsbn: false,
+      };
+    }
+  }
+
+  return null;
 }
 
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
