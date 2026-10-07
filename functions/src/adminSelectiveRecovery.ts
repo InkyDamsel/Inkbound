@@ -24,7 +24,17 @@ interface CollectionDefinition {
   iconName?: string;
 }
 
-interface RecoveryPreviewBook { id: string; title: string; author: string; }
+interface RecoveryPreviewBook {
+  id: string;
+  title: string;
+  author: string;
+  status: string;
+  dateStarted: string;
+  dateFinished: string;
+  rating: number | null;
+  seriesName: string;
+  seriesPosition: string;
+}
 interface RecoveryPreviewSession { id: string; bookId: string; label: string; }
 interface RecoveryPreviewCollection { id: string; name: string; bookCount: number; }
 interface RecoveryPreviewAuxiliary { id: string; label: string; }
@@ -175,10 +185,25 @@ export const previewAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
   const books: RecoveryPreviewBook[] = booksSnapshot.docs.map((document) => {
     const book = unwrapEnvelope(document.data());
     const work = book.work && typeof book.work === 'object' ? book.work as Record<string, unknown> : {};
+    const series = work.series && typeof work.series === 'object' ? work.series as Record<string, unknown> : {};
+    const seriesName = typeof work.seriesName === 'string'
+      ? work.seriesName
+      : typeof series.name === 'string' ? series.name : '';
+    const seriesPositionValue = work.seriesPosition ?? work.seriesNumber ?? series.position ?? series.number;
     return {
       id: document.id,
       title: typeof work.title === 'string' ? work.title : 'Untitled book',
       author: typeof work.author === 'string' ? work.author : 'Unknown author',
+      status: typeof book.status === 'string'
+        ? book.status
+        : typeof book.readingStatus === 'string' ? book.readingStatus : '',
+      dateStarted: typeof book.dateStarted === 'string' ? book.dateStarted : '',
+      dateFinished: typeof book.dateFinished === 'string' ? book.dateFinished : '',
+      rating: typeof book.rating === 'number' ? book.rating : null,
+      seriesName,
+      seriesPosition: typeof seriesPositionValue === 'number' || typeof seriesPositionValue === 'string'
+        ? String(seriesPositionValue)
+        : '',
     };
   }).sort((a, b) => a.title.localeCompare(b.title));
   const bookTitleById = new Map(books.map((book) => [book.id, book.title]));
