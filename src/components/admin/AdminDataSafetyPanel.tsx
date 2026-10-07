@@ -18,6 +18,7 @@ interface DataIntegrityReport {
   };
   structure: { bookIdMismatches: number; sessionIdMismatches: number; missingActiveEditions: number; orphanSessions: number; malformedSessions: number; };
   cloud: { profilePresent: boolean; auxiliaryRecords: number; photoMemories: number; deletedPhotoMemories: number; recoveryPoints: number; latestRecoveryPointAt: string | null; };
+  warnings?: string[];
   storage: { status: 'available' | 'unavailable'; files: number; bookCoverFiles: number; photoMemoryFiles: number; profileMediaFiles: number; };
 }
 
@@ -132,6 +133,15 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
       {currentError && <p className="mt-5 rounded-2xl border border-[#c97b7b]/35 bg-[#c97b7b]/5 p-4 text-sm text-[#e9b2b2]">Data Safety is temporarily unavailable. Administration remains usable. {currentError}</p>}
 
       {currentReport && <div className="mt-6 space-y-6">
+        {currentReport.warnings && currentReport.warnings.length > 0 && (
+          <div className="rounded-2xl border border-amber-300/30 bg-amber-300/5 p-4 text-sm text-amber-200">
+            <strong className="block text-[var(--ink-ivory)]">Integrity check completed with partial data</strong>
+            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Inkbound could not read every recovery dataset, but the available sections were still inspected. No restore or write was performed.</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+              {currentReport.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+            </ul>
+          </div>
+        )}
         <div className={`flex items-start gap-3 rounded-2xl border p-4 ${currentReport.health === 'healthy' ? 'border-emerald-400/25 bg-emerald-400/5' : 'border-amber-300/30 bg-amber-300/5'}`}>
           {currentReport.health === 'healthy' ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" /> : <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />}
           <div><strong className="text-[var(--ink-ivory)]">{currentReport.health === 'healthy' ? `Structure healthy${backup?.tracked && !backup.complete ? ' · Backup still in progress' : backup?.tracked && backup.complete ? ' · Backup complete' : ''}` : `${currentReport.criticalIssueCount} structural issue${currentReport.criticalIssueCount === 1 ? '' : 's'} need attention`}</strong><p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Generated {formatDateTime(currentReport.generatedAt)}. Missing covers and book details are reported separately and do not by themselves mean library corruption.</p></div>
