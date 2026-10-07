@@ -65,8 +65,29 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
     try {
       const getIntegrity = httpsCallable<{ targetUserId: string }, DataIntegrityReport>(functions, 'getAdminDataIntegrity');
       const listRecovery = httpsCallable<{ targetUserId: string }, { points: RecoveryPointSummary[] }>(functions, 'listAdminRecoveryPoints');
-      const [integrityResponse, recoveryResponse] = await Promise.all([getIntegrity({ targetUserId }), listRecovery({ targetUserId })]);
-      updateDataSafetyState({ report: integrityResponse.data, recoveryPoints: recoveryResponse.data.points ?? [], inspectedUserId: targetUserId, loading: false, error: '' });
+      const [integrityResult, recoveryResult] = await Promise.allSettled([
+        getIntegrity({ targetUserId }),
+        listRecovery({ targetUserId }),
+      ]);
+
+      const integrityResponse = integrityResult.status === 'fulfilled' ? integrityResult.value : null;
+      const recoveryResponse = recoveryResult.status === 'fulfilled' ? recoveryResult.value : null;
+      const failures = [
+        integrityResult.status === 'rejected'
+          ? `Integrity check failed: ${integrityResult.reason instanceof Error ? integrityResult.reason.message : String(integrityResult.reason)}`
+          : '',
+        recoveryResult.status === 'rejected'
+          ? `Recovery history failed: ${recoveryResult.reason instanceof Error ? recoveryResult.reason.message : String(recoveryResult.reason)}`
+          : '',
+      ].filter(Boolean);
+
+      updateDataSafetyState({
+        report: integrityResponse?.data ?? null,
+        recoveryPoints: recoveryResponse?.data.points ?? [],
+        inspectedUserId: targetUserId,
+        loading: false,
+        error: failures.join(' '),
+      });
     } catch (requestError) {
       updateDataSafetyState({ report: null, recoveryPoints: [], inspectedUserId: targetUserId, loading: false, error: requestError instanceof Error ? requestError.message : 'The integrity service is temporarily unavailable. Administration is still safe to use; retry this check later.' });
     } finally {
