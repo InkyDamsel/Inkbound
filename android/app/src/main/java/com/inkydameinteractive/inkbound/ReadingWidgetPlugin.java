@@ -38,6 +38,26 @@ public class ReadingWidgetPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void readState(PluginCall call) {
+        SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        JSObject result = new JSObject();
+        result.put("sessionMode", prefs.getString("sessionMode", "none"));
+        result.put("bookId", prefs.getString("bookId", ""));
+        result.put("title", prefs.getString("title", ""));
+        result.put("author", prefs.getString("author", ""));
+        result.put("progressLabel", prefs.getString("progressLabel", ""));
+        result.put("timerSeconds", prefs.getLong("timerSeconds", 0L));
+        result.put("timerRunning", prefs.getBoolean("timerRunning", false));
+        result.put("timerAnchorMillis", prefs.getLong("timerAnchorMillis", 0L));
+        result.put("paceLabel", prefs.getString("paceLabel", ""));
+        result.put("paceDetail", prefs.getString("paceDetail", ""));
+        result.put("dueTitle", prefs.getString("dueTitle", ""));
+        result.put("dueDate", prefs.getString("dueDate", ""));
+        result.put("dueLabel", prefs.getString("dueLabel", ""));
+        call.resolve(result);
+    }
+
+    @PluginMethod
     public void consumeAction(PluginCall call) {
         SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String action = prefs.getString(PENDING_ACTION, "");
