@@ -19,9 +19,8 @@ const checks = [
   { id: 'android-branding-sync', label: 'Android branding sync', script: 'android:branding:sync' },
   { id: 'android-config', label: 'Android configuration', script: 'verify:android-config' },
   { id: 'android-gradle', label: 'Android Gradle configuration', script: 'verify:android-gradle' },
+  { id: 'native-projects', label: 'Cross-platform native project wiring', script: 'verify:native-projects' },
   { id: 'android-branding', label: 'Android branding', script: 'verify:android-branding', dependsOn: ['android-branding-sync'] },
-  { id: 'android-native', label: 'Android native readiness', script: 'verify:android-native', dependsOn: ['android-config', 'android-gradle'] },
-  { id: 'ios-ready', label: 'iOS native project readiness', script: 'verify:ios-ready' },
   { id: 'functions-build', label: 'Firebase Functions build', script: 'functions:build' },
 ];
 
