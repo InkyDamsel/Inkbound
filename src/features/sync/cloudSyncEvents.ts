@@ -13,6 +13,7 @@ export interface CloudDataUpdatedDetail {
 
 export interface LocalDataChangedDetail {
   keys: CloudSyncedStorageKey[];
+  trustedReaderIntent?: boolean;
 }
 
 export interface BeforeSignOutDetail {
@@ -37,6 +38,7 @@ function isCloudSyncedStorageKey(key: string): key is CloudSyncedStorageKey {
 
 let cloudDataRevision = 0;
 let pendingLocalDataKeys = new Set<CloudSyncedStorageKey>();
+let pendingLocalDataTrustedReaderIntent = false;
 let localDataSignalTimer: number | undefined;
 
 export const getCloudDataRevision = () => cloudDataRevision;
@@ -58,18 +60,24 @@ export const notifyCoreCloudReconciled = (uid: string) => {
   );
 };
 
-export const notifyLocalDataChanged = (keys: CloudSyncedStorageKey[]) => {
+export const notifyLocalDataChanged = (
+  keys: CloudSyncedStorageKey[],
+  options?: { trustedReaderIntent?: boolean },
+) => {
   keys.forEach((key) => pendingLocalDataKeys.add(key));
+  if (options?.trustedReaderIntent === true) pendingLocalDataTrustedReaderIntent = true;
   if (localDataSignalTimer !== undefined) window.clearTimeout(localDataSignalTimer);
 
   localDataSignalTimer = window.setTimeout(() => {
     localDataSignalTimer = undefined;
     if (!pendingLocalDataKeys.size) return;
     const changedKeys = [...pendingLocalDataKeys];
+    const trustedReaderIntent = pendingLocalDataTrustedReaderIntent;
     pendingLocalDataKeys = new Set<CloudSyncedStorageKey>();
+    pendingLocalDataTrustedReaderIntent = false;
     window.dispatchEvent(
       new CustomEvent<LocalDataChangedDetail>(INKBOUND_LOCAL_DATA_CHANGED_EVENT, {
-        detail: { keys: changedKeys },
+        detail: { keys: changedKeys, trustedReaderIntent },
       }),
     );
   }, LOCAL_DATA_SIGNAL_DEBOUNCE_MS);
