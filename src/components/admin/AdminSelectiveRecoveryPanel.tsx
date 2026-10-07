@@ -20,7 +20,17 @@ interface RecoveryPointSummary {
 
 interface RecoveryPreview {
   snapshot: { id: string; createdAtClient: string; createdAt: string | null; reason: string };
-  books: Array<{ id: string; title: string; author: string }>;
+  books: Array<{
+    id: string;
+    title: string;
+    author: string;
+    status: string;
+    dateStarted: string;
+    dateFinished: string;
+    rating: number | null;
+    seriesName: string;
+    seriesPosition: string;
+  }>;
   sessions: Array<{ id: string; bookId: string; label: string }>;
   collections: Array<{ id: string; name: string; bookCount: number }>;
   auxiliary: Array<{ id: string; label: string }>;
@@ -58,15 +68,24 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [status, setStatus] = useState('');
+  const [bookSearch, setBookSearch] = useState('');
 
   const choices = useMemo(() => {
     if (!preview) return [] as Array<{ id: string; label: string }>;
     if (scope === 'collection') return preview.collections.map((item) => ({ id: item.id, label: `${item.name} · ${item.bookCount} books` }));
-    if (scope === 'book') return preview.books.map((item) => ({ id: item.id, label: `${item.title} — ${item.author}` }));
+    if (scope === 'book') {
+      const query = bookSearch.trim().toLowerCase();
+      return preview.books
+        .filter((item) => !query
+          || item.title.toLowerCase().includes(query)
+          || item.author.toLowerCase().includes(query)
+          || item.seriesName.toLowerCase().includes(query))
+        .map((item) => ({ id: item.id, label: `${item.title} — ${item.author}` }));
+    }
     if (scope === 'session') return preview.sessions.map((item) => ({ id: item.id, label: item.label }));
     if (scope === 'auxiliary') return preview.auxiliary.map((item) => ({ id: item.id, label: item.label }));
     return preview.profilePresent ? [{ id: 'current', label: 'Reader profile' }] : [];
-  }, [preview, scope]);
+  }, [preview, scope, bookSearch]);
 
   const loadRecoveryPoints = async () => {
     if (!functions || !targetUserId || loading) return;
@@ -91,6 +110,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
     setSnapshotId(nextSnapshotId);
     setPreview(null);
     setItemId('');
+    setBookSearch('');
     setReason('');
     setConfirmation('');
     if (!functions || !targetUserId || !nextSnapshotId) return;
@@ -185,12 +205,41 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
 
         {preview && <div className="mt-4 space-y-4">
           <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]">Snapshot: <strong className="text-[var(--ink-ivory)]">{formatDateTime(preview.snapshot.createdAtClient || preview.snapshot.createdAt)}</strong> · {preview.books.length} books · {preview.sessions.length} sessions · {preview.collections.length} collections · {preview.auxiliary.length} account records</div>
+          {scope === 'book' && (
+            <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Find book in this snapshot
+              <input
+                type="search"
+                value={bookSearch}
+                onChange={(event) => { setBookSearch(event.target.value); setItemId(''); }}
+                placeholder="Search title, author, or series"
+                className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none"
+              />
+            </label>
+          )}
           {choices.length > 0 ? <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Item to recover
             <select value={itemId} onChange={(event) => setItemId(event.target.value)} disabled={loading || restoring} className="inkbound-select mt-2 w-full">
               <option value="">Choose an item</option>
               {choices.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
           </label> : <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">No recoverable items were found for this recovery type in the selected snapshot.</div>}
+          {scope === 'book' && itemId && (() => {
+            const selectedBook = preview.books.find((book) => book.id === itemId);
+            if (!selectedBook) return null;
+            return (
+              <div className="rounded-xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 p-4 text-sm">
+                <div className="font-semibold text-[var(--ink-ivory)]">{selectedBook.title}</div>
+                <div className="mt-1 text-xs text-[var(--ink-muted)]">{selectedBook.author}</div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <div><span className="text-[var(--ink-faint)]">Status:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.status || '—'}</span></div>
+                  <div><span className="text-[var(--ink-faint)]">Started:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.dateStarted || '—'}</span></div>
+                  <div><span className="text-[var(--ink-faint)]">Finished:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.dateFinished || '—'}</span></div>
+                  <div><span className="text-[var(--ink-faint)]">Rating:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.rating ?? '—'}</span></div>
+                  <div className="sm:col-span-2"><span className="text-[var(--ink-faint)]">Series:</span> <span className="text-[var(--ink-ivory)]">{selectedBook.seriesName || '—'}{selectedBook.seriesPosition ? ` · #${selectedBook.seriesPosition}` : ''}</span></div>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">These are the values saved in this recovery point. Nothing has been restored yet.</p>
+              </div>
+            );
+          })()}
           {scope === 'collection' && choices.length > 0 && <p className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">Collection recovery is intentionally non-destructive: it restores the saved collection definition and adds any memberships that are missing now. It does not remove books added to that collection after the snapshot.</p>}
           {choices.length > 0 && <>
             <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Support reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} disabled={restoring} placeholder="Required for the admin audit log" className="mt-2 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
