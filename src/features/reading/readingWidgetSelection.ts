@@ -1,5 +1,5 @@
 import type { ReadingSession, UserBookRecord } from '../../types';
-import { sortCurrentlyReadingByRecency } from './readingRecency';
+import { selectPrimaryCurrentlyReadingBook } from './primaryReadingSelection';
 
 export function selectReadingWidgetBook(
   books: UserBookRecord[],
@@ -21,5 +21,5 @@ export function selectReadingWidgetBook(
     if (draftBook) return draftBook;
   }
 
-  return sortCurrentlyReadingByRecency(books, sessions)[0];
+  return selectPrimaryCurrentlyReadingBook(books, sessions);
 }
