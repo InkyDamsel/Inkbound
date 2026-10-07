@@ -25,7 +25,7 @@ import {
 } from './cloudSyncEvents';
 import {
   shouldApplyRemoteTombstone,
-  shouldRemoteChangeReplacePending,
+  shouldRemoteReplacePendingMutation,
 } from './syncConflictPolicy';
 import {
   ACCOUNT_LIBRARY_MIGRATION_VERSION,
@@ -169,19 +169,21 @@ function remoteWinsPending<T>(
   pending?: { clientUpdatedAt: string; capturedAfterCloudReconcile?: boolean },
 ): boolean {
   if (pending && pending.capturedAfterCloudReconcile !== true) return true;
-  return shouldRemoteChangeReplacePending({
+  return shouldRemoteReplacePendingMutation({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
     pendingClientUpdatedAt: pending?.clientUpdatedAt,
+    pendingCapturedAfterCloudReconcile: pending?.capturedAfterCloudReconcile,
   });
 }
 
 function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<unknown>): boolean {
   if (pending && pending.capturedAfterCloudReconcile !== true) return true;
-  return shouldRemoteChangeReplacePending({
+  return shouldRemoteReplacePendingMutation({
     remoteServerMillis: record.deletedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
     pendingClientUpdatedAt: pending?.clientUpdatedAt,
+    pendingCapturedAfterCloudReconcile: pending?.capturedAfterCloudReconcile,
   });
 }
 
