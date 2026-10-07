@@ -28,6 +28,11 @@ import {
   syncBaselineStateKey,
   syncPendingStateKey,
 } from './storageKeys';
+import {
+  createTrustedDeleteMutation,
+  createTrustedUpsertMutation,
+  shouldCaptureReaderMutation,
+} from './syncMutationPolicy';
 
 const BOOKS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.books;
 const SESSIONS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.sessions;
@@ -130,11 +135,7 @@ function captureWorkingChanges<T extends { id: string }>(
   fingerprints.current.forEach((_value, id) => {
     if (next.has(id)) return;
     if (baseline[id] === undefined) delete mutations[id];
-    else mutations[id] = {
-      operation: 'delete',
-      clientUpdatedAt: now,
-      capturedAfterCloudReconcile: true,
-    };
+    else mutations[id] = createTrustedDeleteMutation(now);
   });
   fingerprints.current = next;
 }
@@ -404,8 +405,10 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     const captureCurrentChanges = (keys?: CloudSyncedStorageKey[]) => {
       if (
         disposed
-        || !coreReconciled
-        || runtimeStorage().getItem(localClearIntentKey(uid)) === '1'
+        || !shouldCaptureReaderMutation({
+          coreReconciled,
+          localClearIntent: runtimeStorage().getItem(localClearIntentKey(uid)) === '1',
+        })
       ) return;
       const changedKeys = keys ? new Set(keys) : undefined;
       const pending = readPending(uid);
