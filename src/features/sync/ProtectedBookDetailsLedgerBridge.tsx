@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { collection, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import type { Edition, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
@@ -259,10 +259,16 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
     };
 
     void restoreProtectedDetails();
+    const unsubscribeProtectedDetails = onSnapshot(
+      collection(db, 'users', uid, LEDGER_COLLECTION),
+      () => { void restoreProtectedDetails(); },
+      (error) => console.warn('Inkbound protected book details listener failed.', error),
+    );
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
     window.addEventListener(INKBOUND_CLOUD_DATA_EVENT, onCloudChange);
     return () => {
       disposed = true;
+      unsubscribeProtectedDetails();
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
       window.removeEventListener(INKBOUND_CLOUD_DATA_EVENT, onCloudChange);
     };
