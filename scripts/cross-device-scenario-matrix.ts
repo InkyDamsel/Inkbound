@@ -167,12 +167,25 @@ function receiveSession(
 
 // MATRIX 7: offline edit -> durable trusted pending survives reconnect and later converges after upload.
 {
-  // Capture eligibility does not depend on navigator.onLine. Once a device has
-  // reconciled, an offline reader edit is still real intent and must enter the
-  // durable pending queue.
+  // Explicit canonical reader intent is captured even when this open cycle has
+  // not been able to reconcile yet (for example: the app was opened offline).
   assert.equal(
-    shouldCaptureReaderMutation({ coreReconciled: true, localClearIntent: false }),
+    shouldCaptureReaderMutation({
+      coreReconciled: false,
+      localClearIntent: false,
+      trustedReaderIntent: true,
+    }),
     true,
+    'An explicit offline reader edit must enter the durable pending queue before reconnect.',
+  );
+  assert.equal(
+    shouldCaptureReaderMutation({
+      coreReconciled: false,
+      localClearIntent: false,
+      trustedReaderIntent: false,
+    }),
+    false,
+    'Unmarked startup/cache churn must remain blocked before reconciliation.',
   );
   const offlineEdit = makeBook('offline-edit', 73);
   const pending = createTrustedUpsertMutation(offlineEdit, '2026-10-07T21:10:00.000Z');
