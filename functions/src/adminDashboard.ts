@@ -80,6 +80,13 @@ function unwrapData<T>(value: Record<string, unknown>): T {
   return ('data' in value ? value.data : value) as T;
 }
 
+function safeUnwrapRecord<T extends Record<string, unknown>>(value: Record<string, unknown>): T {
+  const candidate = 'data' in value ? value.data : value;
+  return (candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+    ? candidate
+    : {}) as T;
+}
+
 function friendlyAuxiliaryLabel(id: string): string {
   const labels: Record<string, string> = {
     collectionDefinitions: 'Collection definitions',
@@ -135,7 +142,7 @@ async function getIntegrityDetail(targetUserId: string, section: DetailSection, 
     const definitions = Array.isArray(definitionsRaw) ? definitionsRaw.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') : [];
     const memberships = new Map<string, Array<{ id: string; title: string }>>();
     booksSnapshot.docs.forEach((document) => {
-      const book = unwrapData<StoredBook>(document.data());
+      const book = safeUnwrapRecord<StoredBook>(document.data());
       const work = asRecord(book.work);
       const title = typeof work.title === 'string' && work.title.trim() ? work.title.trim() : 'Untitled book';
       asStringArray(book.collections).forEach((collectionName) => {
@@ -197,7 +204,7 @@ async function getIntegrityDetail(targetUserId: string, section: DetailSection, 
       section, page, pageSize, hasMore,
       items: docs.map((document) => {
         const stored = document.data();
-        const session = unwrapData<Record<string, unknown>>(stored);
+        const session = safeUnwrapRecord<Record<string, unknown>>(stored);
         return {
           id: document.id,
           label: typeof session.date === 'string' ? session.date : document.id,
@@ -393,8 +400,8 @@ export const getAdminDataIntegrity = onCall({
     userRef.collection('syncState').doc('library').get(),
   ]);
 
-  const books = booksSnapshot.docs.map((document) => ({ documentId: document.id, book: unwrapData<StoredBook>(document.data()) }));
-  const sessions = sessionsSnapshot.docs.map((document) => ({ documentId: document.id, session: unwrapData<StoredSession>(document.data()) }));
+  const books = booksSnapshot.docs.map((document) => ({ documentId: document.id, book: safeUnwrapRecord<StoredBook>(document.data()) }));
+  const sessions = sessionsSnapshot.docs.map((document) => ({ documentId: document.id, session: safeUnwrapRecord<StoredSession>(document.data()) }));
   const bookIds = new Set(books.map(({ documentId, book }) => typeof book.id === 'string' && book.id ? book.id : documentId));
   let activeCoverCount = 0;
   let anyCoverCount = 0;
