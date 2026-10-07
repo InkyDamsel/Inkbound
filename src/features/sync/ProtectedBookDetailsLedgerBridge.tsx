@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { collection, doc, getDocs, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, serverTimestamp, setDoc, type QuerySnapshot, type DocumentData } from 'firebase/firestore';
 import type { Edition, UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
@@ -175,9 +175,8 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
     let disposed = false;
     baseline.current = signaturesFor(readBooks());
 
-    const restoreProtectedDetails = async () => {
+    const restoreProtectedDetails = (snapshot: QuerySnapshot<DocumentData>) => {
       try {
-        const snapshot = await getDocs(collection(db!, 'users', uid, LEDGER_COLLECTION));
         if (disposed || snapshot.empty) return;
 
         const protectedById = new Map(
@@ -252,16 +251,13 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
     const onCloudChange = (event: Event) => {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
       if (!detail?.keys?.includes(BOOKS_KEY)) return;
-      // A cloud refresh may replace the canonical book record with an older
-      // provider/account copy. Re-apply the independently persisted reader-owned
-      // details instead of merely accepting the destructive replacement.
-      void restoreProtectedDetails();
+      // The live protected-details listener below will re-apply the independently
+      // persisted reader-owned state when its snapshot changes.
     };
 
-    void restoreProtectedDetails();
     const unsubscribeProtectedDetails = onSnapshot(
       collection(db, 'users', uid, LEDGER_COLLECTION),
-      () => { void restoreProtectedDetails(); },
+      (snapshot) => { restoreProtectedDetails(snapshot); },
       (error) => console.warn('Inkbound protected book details listener failed.', error),
     );
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, onLocalChange);
