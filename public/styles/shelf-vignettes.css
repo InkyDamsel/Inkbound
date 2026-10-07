@@ -3,17 +3,14 @@
    pagination and let the books themselves visually fill each shelf. */
 
 .bookshelf-row {
-  width: 100% !important;
+  width: max-content !important;
   min-width: 100% !important;
-  justify-content: space-between !important;
+  justify-content: flex-start !important;
 }
 
-/* Keep the book spacing from getting too stretched on narrower screens. */
-@media (max-width: 900px) {
-  .bookshelf-row {
-    justify-content: flex-start !important;
-  }
-}
+/* Books stay grouped from the left edge of each shelf at every viewport size.
+   The row may scroll horizontally when a shelf is full, but sparse shelves
+   should never stretch books to opposite ends of the shelf. */
 
 /* The monthly shelf already contains only books finished in the selected month,
    so per-book month markers and the matching display toggle are redundant. */
