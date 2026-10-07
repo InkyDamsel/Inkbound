@@ -13,7 +13,7 @@ import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
  * from cloud and can silently skip the upload.
  */
 export function replaceCanonicalLibrary(nextBooks: UserBookRecord[]) {
-  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.books, nextBooks)) return false;
+  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.books, nextBooks, { trustedReaderIntent: true })) return false;
   notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
   return true;
 }
@@ -33,7 +33,7 @@ export function replaceCanonicalBook(currentBooks: UserBookRecord[], updatedBook
  * Session mutations use the same persist-first contract as the library.
  */
 export function replaceCanonicalSessions(nextSessions: ReadingSession[]) {
-  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.sessions, nextSessions)) return false;
+  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.sessions, nextSessions, { trustedReaderIntent: true })) return false;
   notifyCloudDataUpdated([SYNC_STORAGE_KEYS.sessions]);
   return true;
 }
