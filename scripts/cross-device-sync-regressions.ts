@@ -48,6 +48,7 @@ const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookR
       operation: 'upsert',
       data: pendingBook,
       clientUpdatedAt: '2026-10-05T19:00:00.000Z',
+      capturedAfterCloudReconcile: true,
     },
   });
   assert.equal(merged[0].progressPages, 81, 'A durable pending local edit must not be overwritten by manual cloud refresh.');
@@ -93,9 +94,28 @@ const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookR
       operation: 'upsert',
       data: pendingSession,
       clientUpdatedAt: '2026-10-05T19:00:00.000Z',
+      capturedAfterCloudReconcile: true,
     },
   });
-  assert.equal(merged[0].durationMinutes, 45, 'A pending local session edit must remain authoritative until uploaded.');
+  assert.equal(merged[0].durationMinutes, 45, 'A pending local session edit captured after reconciliation must remain authoritative until uploaded.');
+}
+
+{
+  const staleLocal = book('legacy-stale-book', 10);
+  const stalePending = { ...staleLocal, progressPages: 12, progressPercentage: 3 };
+  const cloud = { ...book('legacy-stale-book', 210), lastProgressUpdatedAt: '2026-10-07T14:00:00.000Z' };
+  const merged = mergeBooksFromServer([staleLocal], [cloud], {
+    'legacy-stale-book': {
+      operation: 'upsert',
+      data: stalePending,
+      clientUpdatedAt: '2026-10-07T15:00:00.000Z',
+    },
+  });
+  assert.equal(
+    merged[0].progressPages,
+    210,
+    'Legacy/pre-reconcile pending state must never let a stale device overwrite the newer saved account copy.',
+  );
 }
 
 console.log('Inkbound cross-device sync regressions passed.');
