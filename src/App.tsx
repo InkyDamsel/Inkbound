@@ -71,6 +71,7 @@ import {
   applySessionProgressToBook,
   reconcileBookAfterSessionMutation,
   reconcileBooksAfterSessionCollectionChange,
+  reconcileBooksFromExistingSessionEvidence,
 } from './features/reading/sessionBookReconciliation';
 import {
   getDailyActivityCount,
@@ -241,25 +242,32 @@ export default function App() {
       const detail = (event as CustomEvent<CloudDataUpdatedDetail>).detail;
       const keys = detail?.keys ?? [];
 
+      let nextBooks = booksRef.current;
+      let nextSessions = sessionsRef.current;
+
       if (keys.includes(BOOKS_STORAGE_KEY)) {
-        const nextBooks = readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []);
+        nextBooks = readStoredCollection<UserBookRecord[]>(BOOKS_STORAGE_KEY, LEGACY_BOOKS_STORAGE_KEY, []);
         booksRef.current = nextBooks;
         setBooks(nextBooks);
       }
 
       if (keys.includes(SESSIONS_STORAGE_KEY)) {
         const previousSessions = sessionsRef.current;
-        const nextSessions = readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []);
+        nextSessions = readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []);
         sessionsRef.current = nextSessions;
         setSessions(nextSessions);
 
-        const reconciledBooks = reconcileBooksAfterSessionCollectionChange(
-          booksRef.current,
+        nextBooks = reconcileBooksAfterSessionCollectionChange(
+          nextBooks,
           previousSessions,
           nextSessions,
         );
-        if (reconciledBooks !== booksRef.current) {
-          commitCanonicalBooks(reconciledBooks);
+      }
+
+      if (keys.includes(BOOKS_STORAGE_KEY) || keys.includes(SESSIONS_STORAGE_KEY)) {
+        nextBooks = reconcileBooksFromExistingSessionEvidence(nextBooks, nextSessions);
+        if (nextBooks !== booksRef.current) {
+          commitCanonicalBooks(nextBooks);
         }
       }
     };
@@ -309,6 +317,14 @@ export default function App() {
     setSessions(next);
     return next;
   };
+
+  useEffect(() => {
+    const repairedBooks = reconcileBooksFromExistingSessionEvidence(
+      booksRef.current,
+      sessionsRef.current,
+    );
+    if (repairedBooks !== booksRef.current) commitCanonicalBooks(repairedBooks);
+  }, []);
 
   const showToast = (message: string) => {
     setToastMessage(message);
