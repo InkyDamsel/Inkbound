@@ -421,6 +421,7 @@ export const getAdminDataIntegrity = onCall({
     photoResult,
     recoveryResult,
     librarySyncResult,
+    manualCoverCountResult,
   ] = await Promise.allSettled([
     userRef.collection('books').get(),
     userRef.collection('sessions').get(),
@@ -429,6 +430,7 @@ export const getAdminDataIntegrity = onCall({
     userRef.collection('photoMemories').get(),
     userRef.collection('recoverySnapshots').get(),
     userRef.collection('syncState').doc('library').get(),
+    userRef.collection('manualCoverAssignments').count().get(),
   ]);
 
   const describeFailure = (label: string, result: PromiseSettledResult<unknown>) => {
@@ -445,6 +447,7 @@ export const getAdminDataIntegrity = onCall({
   describeFailure('photo memories', photoResult);
   describeFailure('recovery snapshots', recoveryResult);
   describeFailure('library sync state', librarySyncResult);
+  describeFailure('manual cover index', manualCoverCountResult);
 
   console.info('Inkbound admin integrity: core reads settled.', {
     targetUserId,
@@ -455,6 +458,7 @@ export const getAdminDataIntegrity = onCall({
     photoMemories: photoResult.status,
     recoverySnapshots: recoveryResult.status,
     librarySync: librarySyncResult.status,
+    manualCoverIndex: manualCoverCountResult.status,
   });
 
   const bookDocs = booksResult.status === 'fulfilled' ? booksResult.value.docs : [];
@@ -464,6 +468,9 @@ export const getAdminDataIntegrity = onCall({
   const photoDocs = photoResult.status === 'fulfilled' ? photoResult.value.docs : [];
   const recoveryDocs = recoveryResult.status === 'fulfilled' ? recoveryResult.value.docs : [];
   const librarySyncSnapshot = librarySyncResult.status === 'fulfilled' ? librarySyncResult.value : null;
+  const manualCoverAssignmentCount = manualCoverCountResult.status === 'fulfilled'
+    ? manualCoverCountResult.value.data().count
+    : 0;
 
   const books = bookDocs.map((document) => ({ documentId: document.id, book: safeUnwrapRecord<StoredBook>(document.data()) }));
   const sessions = sessionDocs.map((document) => ({ documentId: document.id, session: safeUnwrapRecord<StoredSession>(document.data()) }));
@@ -529,25 +536,17 @@ export const getAdminDataIntegrity = onCall({
   recoveryPoints.sort((a, b) => (b.createdAtClient || b.createdAt || '').localeCompare(a.createdAtClient || a.createdAt || ''));
 
   let storageStatus: 'available' | 'unavailable' = 'available';
-  let storageFileCount = 0;
-  let bookCoverFileCount = 0;
-  let photoMemoryFileCount = 0;
-  let profileMediaFileCount = 0;
   try {
-    const [files] = await withTimeout(
-      getStorage().bucket().getFiles({ prefix: `users/${targetUserId}/` }),
-      5000,
-      'Storage inventory',
-    );
-    storageFileCount = files.length;
-    bookCoverFileCount = files.filter((file) => file.name.includes('/book-covers/')).length;
-    photoMemoryFileCount = files.filter((file) => file.name.includes('/photo-memories/')).length;
-    profileMediaFileCount = files.filter((file) => file.name.includes('/profile/')).length;
+    // Do not enumerate every user file here. Storage inspection must remain
+    // constant-time even for extremely large libraries (for example 50k books).
+    // Bucket metadata is a lightweight health probe; exact media counts come
+    // from Firestore indexes/records rather than walking the Storage bucket.
+    await withTimeout(getStorage().bucket().getMetadata(), 5000, 'Storage health check');
   } catch (error) {
     storageStatus = 'unavailable';
     const message = error instanceof Error ? error.message : String(error);
-    warnings.push(`storage inventory: ${message}`);
-    console.warn('Inkbound admin integrity storage inventory unavailable.', error);
+    warnings.push(`storage health check: ${message}`);
+    console.warn('Inkbound admin integrity storage health check unavailable.', error);
   }
 
   const criticalIssueCount = bookIdMismatchCount + sessionIdMismatchCount + missingActiveEditionCount + orphanSessionCount + malformedSessionCount;
@@ -608,10 +607,10 @@ export const getAdminDataIntegrity = onCall({
     warnings,
     storage: {
       status: storageStatus,
-      files: storageFileCount,
-      bookCoverFiles: bookCoverFileCount,
-      photoMemoryFiles: photoMemoryFileCount,
-      profileMediaFiles: profileMediaFileCount,
+      inventoryMode: 'indexed',
+      manualCoverAssignments: manualCoverAssignmentCount,
+      photoMemoryRecords: photoDocs.length,
+      exactFileCountEnumerated: false,
     },
   };
 });
