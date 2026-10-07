@@ -483,6 +483,12 @@ const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx'
 for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
 }
+if (!/operation:\s*'upsert'[\s\S]{0,180}capturedAfterCloudReconcile:\s*true/.test(costSafeSync)) {
+  violations.push('CostSafeCloudPersistenceBridge.tsx: fresh book/session upserts must be marked as trusted post-reconciliation reader intent.');
+}
+if (!/captureCurrentChanges[\s\S]{0,260}!coreReconciled/.test(costSafeSync)) {
+  violations.push('CostSafeCloudPersistenceBridge.tsx: local mutation capture must remain disabled until cloud reconciliation completes.');
+}
 
 const fullReconciliation = read('src/features/sync/FullCloudReconciliationBridge.tsx');
 if (!fullReconciliation.includes('mergeIncomingBookLoanState')) {
