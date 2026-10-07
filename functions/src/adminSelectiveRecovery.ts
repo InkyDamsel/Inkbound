@@ -73,6 +73,62 @@ function timestampToIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function protectedDetailsFromBook(bookId: string, data: Record<string, unknown>) {
+  const work = data.work && typeof data.work === 'object' ? data.work as Record<string, unknown> : {};
+  const editions = Array.isArray(data.editions)
+    ? data.editions.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    : [];
+  const activeEditionId = typeof data.activeEditionId === 'string' ? data.activeEditionId : '';
+  const activeEdition = editions.find((edition) => edition.id === activeEditionId) ?? editions[0];
+  const edition = activeEdition
+    ? Object.fromEntries(Object.entries(activeEdition).filter(([key]) => key !== 'coverUrl'))
+    : undefined;
+
+  return {
+    bookId,
+    work: {
+      title: typeof work.title === 'string' ? work.title : '',
+      subtitle: typeof work.subtitle === 'string' ? work.subtitle : undefined,
+      author: typeof work.author === 'string' ? work.author : '',
+      summary: typeof work.summary === 'string' ? work.summary : '',
+      publisherSummary: typeof work.publisherSummary === 'string' ? work.publisherSummary : undefined,
+      personalSummary: typeof work.personalSummary === 'string' ? work.personalSummary : undefined,
+      seriesName: typeof work.seriesName === 'string' ? work.seriesName : undefined,
+      seriesOrder: typeof work.seriesOrder === 'number' ? work.seriesOrder : undefined,
+      genres: asStringArray(work.genres),
+      tropes: asStringArray(work.tropes),
+      contentWarnings: asStringArray(work.contentWarnings),
+      publicationYear: typeof work.publicationYear === 'number' ? work.publicationYear : 0,
+      originalLanguage: typeof work.originalLanguage === 'string' ? work.originalLanguage : undefined,
+      externalWorkId: typeof work.externalWorkId === 'string' ? work.externalWorkId : undefined,
+    },
+    reader: {
+      review: typeof data.review === 'string' ? data.review : undefined,
+      personalNotes: typeof data.personalNotes === 'string' ? data.personalNotes : undefined,
+      favoriteQuotes: Array.isArray(data.favoriteQuotes) ? data.favoriteQuotes : undefined,
+      privateTags: asStringArray(data.privateTags),
+      collections: asStringArray(data.collections),
+      whyIAddedThis: typeof data.whyIAddedThis === 'string' ? data.whyIAddedThis : undefined,
+    },
+    reading: {
+      status: typeof data.status === 'string' ? data.status : 'want-to-read',
+      customReadingStatusId: typeof data.customReadingStatusId === 'string' ? data.customReadingStatusId : undefined,
+      dateStarted: typeof data.dateStarted === 'string' ? data.dateStarted : undefined,
+      dateFinished: typeof data.dateFinished === 'string' ? data.dateFinished : undefined,
+      rating: typeof data.rating === 'number' ? data.rating : undefined,
+      spiceLevel: typeof data.spiceLevel === 'number' ? data.spiceLevel : undefined,
+      priority: typeof data.priority === 'string' ? data.priority : 'normal',
+      moods: asStringArray(data.moods),
+    },
+    editionId: activeEdition && typeof activeEdition.id === 'string' ? activeEdition.id : undefined,
+    edition,
+  };
+}
+
 function auxiliaryLabel(id: string): string {
   const labels: Record<string, string> = {
     collectionDefinitions: 'Collection definitions',
@@ -300,16 +356,22 @@ export const restoreAdminRecoverySelection = onCall({ enforceAppCheck: ENFORCE_A
     sources.forEach((source) => {
       const data = unwrapEnvelope(source.data());
       const targetRef = userRef.collection('books').doc(source.id);
+      const protectedRef = userRef.collection('protectedBookDetails').doc(source.id);
       tasks.push((batch) => batch.set(targetRef, {
         data,
         updatedAt: FieldValue.serverTimestamp(),
         clientUpdatedAt,
       }));
+      tasks.push((batch) => batch.set(protectedRef, {
+        ...protectedDetailsFromBook(source.id, data),
+        clientUpdatedAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: false }));
       const work = data.work && typeof data.work === 'object' ? data.work as Record<string, unknown> : {};
       restoredTitles.push(typeof work.title === 'string' ? work.title : source.id);
     });
     await commitTasks(tasks);
-    restoredCount = tasks.length;
+    restoredCount = sources.length;
     description = restoredCount === 1
       ? `Book: ${restoredTitles[0]}`
       : `${restoredCount} books from the selected recovery point`;
