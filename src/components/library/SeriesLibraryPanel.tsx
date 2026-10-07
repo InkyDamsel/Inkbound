@@ -448,8 +448,8 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
       )}
 
       {draft && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center overflow-hidden bg-black/75 p-3 backdrop-blur-sm sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget) setDraft(null); }}>
-          <section className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-[var(--ink-gold)]/30 bg-[#17101b] shadow-2xl" role="dialog" aria-modal="true">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-[220] flex items-start justify-center overflow-hidden bg-black/75 p-3 pt-4 backdrop-blur-sm sm:top-16 sm:p-5 sm:pt-5" onMouseDown={(event) => { if (event.target === event.currentTarget) setDraft(null); }}>
+          <section className="flex max-h-[calc(100dvh-5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-[var(--ink-gold)]/30 bg-[#17101b] shadow-2xl sm:max-h-[calc(100dvh-6rem)]" role="dialog" aria-modal="true">
             <div className="shrink-0 px-5 pt-5 sm:px-6 sm:pt-6">
             <div className="flex items-start justify-between gap-4">
               <div><p className="inkbound-kicker">Series organization</p><h2 className="mt-1 font-serif text-3xl text-[var(--ink-ivory)]">{draft.id ? 'Edit Series' : 'Create Series'}</h2></div>
