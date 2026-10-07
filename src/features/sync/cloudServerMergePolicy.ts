@@ -7,6 +7,7 @@ export interface PendingMutation<T> {
   operation: 'upsert' | 'delete';
   data?: T;
   clientUpdatedAt: string;
+  capturedAfterCloudReconcile?: boolean;
 }
 
 export function mergeServerCollectionById<T extends { id: string }>(
@@ -16,7 +17,8 @@ export function mergeServerCollectionById<T extends { id: string }>(
 ): T[] {
   const merged = new Map(current.map((item) => [item.id, item]));
   server.forEach((item) => {
-    const localMutation = pending[item.id];
+    const pendingMutation = pending[item.id];
+    const localMutation = pendingMutation?.capturedAfterCloudReconcile === true ? pendingMutation : undefined;
     if (localMutation?.operation === 'delete') return;
     if (localMutation?.operation === 'upsert' && localMutation.data) {
       merged.set(item.id, localMutation.data);
@@ -104,7 +106,8 @@ export function mergeBooksFromServer(
     if (!serverBook) return localBook;
     serverById.delete(localBook.id);
 
-    const pendingMutation = pending[localBook.id];
+    const candidatePending = pending[localBook.id];
+    const pendingMutation = candidatePending?.capturedAfterCloudReconcile === true ? candidatePending : undefined;
     if (pendingMutation?.operation === 'delete') return localBook;
 
     if (pendingMutation?.operation === 'upsert' && pendingMutation.data) {
@@ -123,7 +126,8 @@ export function mergeBooksFromServer(
   });
 
   serverById.forEach((serverBook, id) => {
-    if (pending[id]?.operation !== 'delete') merged.push(serverBook);
+    const pendingMutation = pending[id]?.capturedAfterCloudReconcile === true ? pending[id] : undefined;
+    if (pendingMutation?.operation !== 'delete') merged.push(serverBook);
   });
 
   return merged;
