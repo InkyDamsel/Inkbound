@@ -76,6 +76,20 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function unwrapData<T>(value: Record<string, unknown>): T {
   return ('data' in value ? value.data : value) as T;
 }
@@ -373,6 +387,7 @@ export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
 export const getAdminDataIntegrity = onCall({
   enforceAppCheck: ENFORCE_APP_CHECK,
   memory: '512MiB',
+  timeoutSeconds: 120,
 }, async (request) => {
   await requireAdmin(request, ['owner']);
   const input = request.data as { targetUserId?: unknown; detailSection?: unknown; page?: unknown; pageSize?: unknown } | undefined;
@@ -391,6 +406,7 @@ export const getAdminDataIntegrity = onCall({
   const db = getFirestore();
   const userRef = db.doc(`users/${targetUserId}`);
   const warnings: string[] = [];
+  console.info('Inkbound admin integrity: starting inspection.', { targetUserId });
   const [
     booksResult,
     sessionsResult,
@@ -423,6 +439,17 @@ export const getAdminDataIntegrity = onCall({
   describeFailure('photo memories', photoResult);
   describeFailure('recovery snapshots', recoveryResult);
   describeFailure('library sync state', librarySyncResult);
+
+  console.info('Inkbound admin integrity: core reads settled.', {
+    targetUserId,
+    books: booksResult.status,
+    sessions: sessionsResult.status,
+    profile: profileResult.status,
+    auxiliary: auxiliaryResult.status,
+    photoMemories: photoResult.status,
+    recoverySnapshots: recoveryResult.status,
+    librarySync: librarySyncResult.status,
+  });
 
   const bookDocs = booksResult.status === 'fulfilled' ? booksResult.value.docs : [];
   const sessionDocs = sessionsResult.status === 'fulfilled' ? sessionsResult.value.docs : [];
@@ -501,12 +528,21 @@ export const getAdminDataIntegrity = onCall({
   let photoMemoryFileCount = 0;
   let profileMediaFileCount = 0;
   try {
-    const [files] = await getStorage().bucket().getFiles({ prefix: `users/${targetUserId}/` });
+    const [files] = await withTimeout(
+      getStorage().bucket().getFiles({ prefix: `users/${targetUserId}/` }),
+      5000,
+      'Storage inventory',
+    );
     storageFileCount = files.length;
     bookCoverFileCount = files.filter((file) => file.name.includes('/book-covers/')).length;
     photoMemoryFileCount = files.filter((file) => file.name.includes('/photo-memories/')).length;
     profileMediaFileCount = files.filter((file) => file.name.includes('/profile/')).length;
-  } catch { storageStatus = 'unavailable'; }
+  } catch (error) {
+    storageStatus = 'unavailable';
+    const message = error instanceof Error ? error.message : String(error);
+    warnings.push(`storage inventory: ${message}`);
+    console.warn('Inkbound admin integrity storage inventory unavailable.', error);
+  }
 
   const criticalIssueCount = bookIdMismatchCount + sessionIdMismatchCount + missingActiveEditionCount + orphanSessionCount + malformedSessionCount;
   const syncState = librarySyncSnapshot?.data() ?? {};
@@ -514,6 +550,13 @@ export const getAdminDataIntegrity = onCall({
   const cloudBookCount = bookDocs.length;
   const backupRemaining = expectedBookCount > 0 ? Math.max(0, expectedBookCount - cloudBookCount) : 0;
   const backupComplete = expectedBookCount === 0 || cloudBookCount >= expectedBookCount;
+
+  console.info('Inkbound admin integrity: inspection completed.', {
+    targetUserId,
+    books: cloudBookCount,
+    sessions: sessionDocs.length,
+    warnings: warnings.length,
+  });
 
   return {
     generatedAt: new Date().toISOString(),
