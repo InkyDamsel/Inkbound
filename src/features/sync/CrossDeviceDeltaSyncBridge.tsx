@@ -30,7 +30,7 @@ import {
 } from './cloudSyncEvents';
 import {
   shouldApplyRemoteTombstone,
-  shouldRemoteChangeReplacePending,
+  shouldRemoteReplacePendingMutation,
 } from './syncConflictPolicy';
 import {
   crossDeviceCursorKey,
@@ -166,22 +166,22 @@ function cloudRecordWinsPending<T>(
   // gate existed) are not proof of fresh reader intent. The saved account copy
   // wins once so a stale device cannot overwrite newer iOS/web data merely by
   // opening the app after being offline.
-  if (pending && pending.capturedAfterCloudReconcile !== true) return true;
-
-  return shouldRemoteChangeReplacePending({
+  return shouldRemoteReplacePendingMutation({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
     pendingClientUpdatedAt: pending?.clientUpdatedAt,
+    pendingCapturedAfterCloudReconcile: pending?.capturedAfterCloudReconcile,
   });
 }
 
 function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<unknown>): boolean {
   if (pending && pending.capturedAfterCloudReconcile !== true) return true;
 
-  return shouldRemoteChangeReplacePending({
+  return shouldRemoteReplacePendingMutation({
     remoteServerMillis: record.deletedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
     pendingClientUpdatedAt: pending?.clientUpdatedAt,
+    pendingCapturedAfterCloudReconcile: pending?.capturedAfterCloudReconcile,
   });
 }
 
