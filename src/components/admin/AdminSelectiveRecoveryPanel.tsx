@@ -19,7 +19,15 @@ interface RecoveryPointSummary {
 }
 
 interface RecoveryPreview {
-  snapshot: { id: string; createdAtClient: string; createdAt: string | null; reason: string };
+  snapshot: {
+    id: string;
+    createdAtClient: string;
+    createdAt: string | null;
+    reason: string;
+    bookCount: number;
+    sessionCount: number;
+    auxiliaryCount: number;
+  };
   books: Array<{
     id: string;
     title: string;
@@ -70,13 +78,16 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
   const [restoring, setRestoring] = useState(false);
   const [status, setStatus] = useState('');
   const [bookSearch, setBookSearch] = useState('');
+  const [bookCandidates, setBookCandidates] = useState<RecoveryPreview['books']>([]);
+  const [finishedMonth, setFinishedMonth] = useState('2026-01');
+  const [loadingBooks, setLoadingBooks] = useState(false);
 
   const choices = useMemo(() => {
     if (!preview) return [] as Array<{ id: string; label: string }>;
-    if (scope === 'collection') return preview.collections.map((item) => ({ id: item.id, label: `${item.name} · ${item.bookCount} books` }));
+    if (scope === 'collection') return preview.collections.map((item) => ({ id: item.id, label: item.bookCount >= 0 ? `${item.name} · ${item.bookCount} books` : item.name }));
     if (scope === 'book') {
       const query = bookSearch.trim().toLowerCase();
-      return preview.books
+      return bookCandidates
         .filter((item) => !query
           || item.title.toLowerCase().includes(query)
           || item.author.toLowerCase().includes(query)
@@ -86,7 +97,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
     if (scope === 'session') return preview.sessions.map((item) => ({ id: item.id, label: item.label }));
     if (scope === 'auxiliary') return preview.auxiliary.map((item) => ({ id: item.id, label: item.label }));
     return preview.profilePresent ? [{ id: 'current', label: 'Reader profile' }] : [];
-  }, [preview, scope, bookSearch]);
+  }, [preview, scope, bookSearch, bookCandidates]);
 
   const loadRecoveryPoints = async () => {
     if (!functions || !targetUserId || loading) return;
@@ -113,6 +124,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
     setPreview(null);
     setItemId('');
     setSelectedBookIds([]);
+    setBookCandidates([]);
     setBookSearch('');
     setReason('');
     setConfirmation('');
@@ -124,9 +136,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
       const response = await inspect({ targetUserId, snapshotId: nextSnapshotId });
       const nextPreview = response.data;
       setPreview(nextPreview);
-      setStatus(nextPreview.collections.length > 0
-        ? `Recovery point loaded. ${nextPreview.collections.length} saved collection${nextPreview.collections.length === 1 ? '' : 's'} available to inspect.`
-        : 'Recovery point loaded, but it does not contain any saved collection definitions. Try an earlier recovery point.');
+      setStatus('Recovery point loaded. Large book/session collections were not scanned. Choose the recovery type you need.');
     } catch (error) {
       setStatus(readableRecoveryError(error, 'Could not inspect that recovery point.'));
     } finally {
@@ -138,10 +148,37 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
     setScope(nextScope);
     setItemId('');
     setSelectedBookIds([]);
+    setBookCandidates([]);
     setBookSearch('');
     setReason('');
     setConfirmation('');
-    if (preview) setStatus('Recovery point loaded. Choose only the data you need to recover.');
+    if (preview) setStatus(nextScope === 'book'
+      ? 'Recovery point loaded. Choose a finished month to load only the books you need.'
+      : 'Recovery point loaded. Choose only the data you need to recover.');
+  };
+
+  const loadFinishedBooksForMonth = async () => {
+    if (!functions || !targetUserId || !snapshotId || !finishedMonth || loadingBooks) return;
+    setLoadingBooks(true);
+    setStatus(`Loading books finished in ${finishedMonth} from this recovery point…`);
+    try {
+      const listBooks = httpsCallable<{
+        targetUserId: string;
+        snapshotId: string;
+        month: string;
+      }, { month: string; books: RecoveryPreview['books']; capped: boolean }>(functions, 'listAdminRecoveryBooksForMonth');
+      const response = await listBooks({ targetUserId, snapshotId, month: finishedMonth });
+      setBookCandidates(response.data.books ?? []);
+      setSelectedBookIds([]);
+      setBookSearch('');
+      setStatus(response.data.books?.length
+        ? `${response.data.books.length} book${response.data.books.length === 1 ? '' : 's'} finished in ${finishedMonth} found in this recovery point.${response.data.capped ? ' Results were capped at 500.' : ''}`
+        : `No books with a finished date in ${finishedMonth} were found in this recovery point.`);
+    } catch (error) {
+      setStatus(readableRecoveryError(error, 'Could not load books for that month.'));
+    } finally {
+      setLoadingBooks(false);
+    }
   };
 
   const restoreSelection = async () => {
@@ -214,27 +251,47 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
         </div>}
 
         {preview && <div className="mt-4 space-y-4">
-          <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]">Snapshot: <strong className="text-[var(--ink-ivory)]">{formatDateTime(preview.snapshot.createdAtClient || preview.snapshot.createdAt)}</strong> · {preview.books.length} books · {preview.sessions.length} sessions · {preview.collections.length} collections · {preview.auxiliary.length} account records</div>
+          <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]">Snapshot: <strong className="text-[var(--ink-ivory)]">{formatDateTime(preview.snapshot.createdAtClient || preview.snapshot.createdAt)}</strong> · {preview.snapshot.bookCount} books · {preview.snapshot.sessionCount} sessions · {preview.collections.length} collections · {preview.snapshot.auxiliaryCount} account records</div>
           {scope === 'book' ? (
             <div className="space-y-3">
-              <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Find books in this snapshot
+              <div className="grid gap-3 md:grid-cols-[minmax(0,14rem)_auto] md:items-end">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Finished month
+                  <input
+                    type="month"
+                    value={finishedMonth}
+                    onChange={(event) => { setFinishedMonth(event.target.value); setBookCandidates([]); setSelectedBookIds([]); setBookSearch(''); }}
+                    className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void loadFinishedBooksForMonth()}
+                  disabled={!finishedMonth || loadingBooks || restoring}
+                  className="quiet-shelf-secondary-action w-full justify-center disabled:opacity-45 md:w-auto"
+                >
+                  <RefreshCw className={loadingBooks ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                  {loadingBooks ? 'Loading books…' : 'Load finished books'}
+                </button>
+              </div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Filter loaded books
                 <input
                   type="search"
                   value={bookSearch}
                   onChange={(event) => setBookSearch(event.target.value)}
+                  disabled={bookCandidates.length === 0}
                   placeholder="Search title, author, or series"
-                  className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none disabled:opacity-45"
                 />
               </label>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--ink-muted)]">
                 <span><strong className="text-[var(--ink-ivory)]">{selectedBookIds.length}</strong> book{selectedBookIds.length === 1 ? '' : 's'} selected</span>
                 {selectedBookIds.length > 0 && <button type="button" onClick={() => setSelectedBookIds([])} className="text-[var(--ink-mauve)] hover:text-[var(--ink-ivory)]">Clear selection</button>}
               </div>
-              {bookSearch.trim() ? (
+              {bookCandidates.length > 0 ? (
                 choices.length > 0 ? (
                   <div className="max-h-80 space-y-2 overflow-y-auto rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-2">
                     {choices.map((choice) => {
-                      const book = preview.books.find((item) => item.id === choice.id);
+                      const book = bookCandidates.find((item) => item.id === choice.id);
                       const checked = selectedBookIds.includes(choice.id);
                       return (
                         <label key={choice.id} className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition ${checked ? 'border-[var(--ink-gold)]/45 bg-[var(--ink-gold)]/8' : 'border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)]'}`}>
@@ -257,7 +314,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
                     })}
                   </div>
                 ) : <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-5 text-[var(--ink-muted)]">No books match that search in this recovery point.</div>
-              ) : <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]">Search for a title, author, or series, then check every book you want to recover in this batch.</div>}
+              ) : <div className="rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-xs text-[var(--ink-muted)]">Choose a finished month and load only that bounded slice of the recovery snapshot. Inkbound no longer scans the reader’s entire library just to open recovery tools.</div>}
               {selectedBookIds.length > 0 && (
                 <div className="rounded-xl border border-[var(--ink-gold)]/25 bg-[var(--ink-gold)]/5 p-4 text-xs leading-5 text-[var(--ink-muted)]">
                   The selected books will be restored together from this snapshot. Inkbound will create <strong className="text-[var(--ink-ivory)]">one</strong> pre-recovery safety snapshot for the entire batch, not one per book.
