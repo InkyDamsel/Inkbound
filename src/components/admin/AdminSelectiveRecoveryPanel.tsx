@@ -134,6 +134,7 @@ export const AdminSelectiveRecoveryPanel: React.FC<AdminSelectiveRecoveryPanelPr
   const changeScope = (nextScope: RecoveryScope) => {
     setScope(nextScope);
     setItemId('');
+    setBookSearch('');
     setReason('');
     setConfirmation('');
     if (preview) setStatus('Recovery point loaded. Choose only the data you need to recover.');
