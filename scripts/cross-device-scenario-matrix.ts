@@ -7,6 +7,7 @@ import {
 import {
   shouldApplyRemoteTombstone,
   shouldRemoteChangeReplacePending,
+  shouldRemoteReplacePendingMutation,
 } from '../src/features/sync/syncConflictPolicy';
 import {
   createTrustedDeleteMutation,
@@ -144,6 +145,16 @@ function receiveSession(
     },
   });
   assert.equal(merged[0].progressPages, 210);
+  assert.equal(
+    shouldRemoteReplacePendingMutation({
+      remoteServerMillis: Date.parse('2026-10-07T20:00:00.000Z'),
+      remoteClientUpdatedAt: '2026-10-07T20:00:00.000Z',
+      pendingClientUpdatedAt: '2026-10-07T21:00:00.000Z',
+      pendingCapturedAfterCloudReconcile: false,
+    }),
+    true,
+    'Live/full reconciliation must reject legacy pending state even when its client clock looks newer.',
+  );
   assert.equal(
     shouldCaptureReaderMutation({ coreReconciled: false, localClearIntent: false }),
     false,
