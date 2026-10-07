@@ -17,6 +17,7 @@ import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageT
 import { getAnnualReadingGoal, setAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
 import { getReadingSessionTimestamp, sortCurrentlyReadingByRecency } from '../features/reading/readingRecency';
+import { selectPrimaryCurrentlyReadingBook } from '../features/reading/primaryReadingSelection';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { BookCover } from './BookCover';
 
@@ -70,7 +71,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     () => sortCurrentlyReadingByRecency(books, sessions),
     [books, sessions],
   );
-  const currentBook = currentlyReading[0] ?? null;
+  const currentBook = selectPrimaryCurrentlyReadingBook(books, sessions) ?? null;
   const finishedBooks = books.filter(hasTrustworthyFinishedHistory);
   const finishedThisYear = finishedBooks.filter((book) => book.dateFinished?.startsWith(yearPrefix));
   const recentlyFinished = [...finishedBooks]
