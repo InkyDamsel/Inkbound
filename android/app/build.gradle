@@ -15,8 +15,8 @@ android {
         applicationId "com.inkydameinteractive.inkbound"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2913
-        versionName "29.0.13"
+        versionCode 2914
+        versionName "29.0.14"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
