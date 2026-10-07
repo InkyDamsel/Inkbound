@@ -8,6 +8,7 @@ public final class ReadingWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "ReadingWidget"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "syncState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "readState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "consumeAction", returnType: CAPPluginReturnPromise)
     ]
 
@@ -28,7 +29,31 @@ public final class ReadingWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
         defaults.set(call.getDouble("timerAnchorMillis") ?? 0, forKey: "timerAnchorMillis")
         defaults.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: "InkboundReadingWidget")
+        WidgetCenter.shared.reloadAllTimelines()
         call.resolve()
+    }
+
+    @objc func readState(_ call: CAPPluginCall) {
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            call.resolve()
+            return
+        }
+
+        call.resolve([
+            "sessionMode": defaults.string(forKey: "sessionMode") ?? "none",
+            "bookId": defaults.string(forKey: "bookId") ?? "",
+            "title": defaults.string(forKey: "title") ?? "",
+            "author": defaults.string(forKey: "author") ?? "",
+            "progressLabel": defaults.string(forKey: "progressLabel") ?? "",
+            "timerSeconds": defaults.integer(forKey: "timerSeconds"),
+            "timerRunning": defaults.bool(forKey: "timerRunning"),
+            "timerAnchorMillis": defaults.double(forKey: "timerAnchorMillis"),
+            "paceLabel": defaults.string(forKey: "paceLabel") ?? "",
+            "paceDetail": defaults.string(forKey: "paceDetail") ?? "",
+            "dueTitle": defaults.string(forKey: "dueTitle") ?? "",
+            "dueDate": defaults.string(forKey: "dueDate") ?? "",
+            "dueLabel": defaults.string(forKey: "dueLabel") ?? ""
+        ])
     }
 
     @objc func consumeAction(_ call: CAPPluginCall) {
