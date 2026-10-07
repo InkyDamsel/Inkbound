@@ -479,6 +479,19 @@ for (const required of [
   }
 }
 
+const primaryReadingSelection = read('src/features/reading/primaryReadingSelection.ts');
+const homeDashboard = read('src/components/HomeDashboard.tsx');
+const readingWidgetSelection = read('src/features/reading/readingWidgetSelection.ts');
+if (!primaryReadingSelection.includes('selectPrimaryCurrentlyReadingBook')) {
+  violations.push('primaryReadingSelection.ts: canonical primary Currently Reading selector is missing.');
+}
+if (!homeDashboard.includes('selectPrimaryCurrentlyReadingBook(books, sessions)')) {
+  violations.push('HomeDashboard.tsx: Home must consume the canonical primary Currently Reading selector.');
+}
+if (!readingWidgetSelection.includes('selectPrimaryCurrentlyReadingBook(books, sessions)')) {
+  violations.push('readingWidgetSelection.ts: native widget must consume the canonical primary Currently Reading selector.');
+}
+
 const costSafeSync = read('src/features/sync/CostSafeCloudPersistenceBridge.tsx');
 for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'localClearIntentKey', 'subscribeToRuntimeResume', 'syncTombstones', 'deletedAt: serverTimestamp()', 'clientUpdatedAt: mutation.clientUpdatedAt']) {
   if (!costSafeSync.includes(required)) violations.push(`CostSafeCloudPersistenceBridge.tsx: persistence must consume canonical/durable ${required}`);
