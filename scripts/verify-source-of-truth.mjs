@@ -392,7 +392,7 @@ if (refreshBoundary.includes('getCloudDataRevision')) {
   violations.push('CloudDataRefreshBoundary.tsx: startup readiness must not depend on a global cloud revision from unrelated sync bridges');
 }
 
-for (const required of ['shouldRemoteChangeReplacePending', 'shouldApplyRemoteTombstone', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey', 'hydrationRequiredOwnerUid']) {
+for (const required of ['shouldRemoteReplacePendingMutation', 'shouldApplyRemoteTombstone', 'subscribeToRuntimeResume', 'SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselineStateKey', 'crossDeviceCursorKey', 'hydrationRequiredOwnerUid']) {
   if (!crossDeviceSync.includes(required)) {
     violations.push(`CrossDeviceDeltaSyncBridge.tsx: core sync must consume canonical ${required}`);
   }
@@ -500,6 +500,9 @@ for (const required of ['capturedAfterCloudReconcile: true', 'coreReconciled || 
 }
 
 const fullReconciliation = read('src/features/sync/FullCloudReconciliationBridge.tsx');
+if (!fullReconciliation.includes('shouldRemoteReplacePendingMutation')) {
+  violations.push('FullCloudReconciliationBridge.tsx: full repair must use the canonical trust-aware pending conflict policy.');
+}
 if (!fullReconciliation.includes('mergeIncomingBookLoanState')) {
   violations.push('FullCloudReconciliationBridge.tsx: full repair must preserve active loan metadata omitted by partial legacy records.');
 }
