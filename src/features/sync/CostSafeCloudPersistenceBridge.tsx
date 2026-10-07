@@ -54,7 +54,11 @@ interface RecordMutation<T> {
   clientUpdatedAt: string;
   capturedAfterCloudReconcile?: boolean;
 }
-interface ProfileMutation { data: ReaderProfile; clientUpdatedAt: string }
+interface ProfileMutation {
+  data: ReaderProfile;
+  clientUpdatedAt: string;
+  capturedAfterCloudReconcile?: boolean;
+}
 interface PendingSyncState {
   books: Record<string, RecordMutation<UserBookRecord>>;
   sessions: Record<string, RecordMutation<ReadingSession>>;
@@ -411,7 +415,11 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         const profileValue = stable(profile);
         if (Object.keys(profile).length && profileValue !== profileFingerprint.current) {
           if (baseline.profile === profileValue) delete pending.profile;
-          else pending.profile = { data: profile, clientUpdatedAt: new Date().toISOString() };
+          else pending.profile = {
+            data: profile,
+            clientUpdatedAt: new Date().toISOString(),
+            capturedAfterCloudReconcile: true,
+          };
           profileFingerprint.current = profileValue;
         }
       }
