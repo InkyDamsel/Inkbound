@@ -333,7 +333,7 @@ if (!accountLibraryMigrationSource.includes('if (!migrationVerified) return true
 }
 
 const addBookModalSource = read('src/components/AddBookModal.tsx');
-if (!addBookModalSource.includes("import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';")) {
+if (!/import\s*\{[\s\S]*?\bsearchGoogleBooks\b[\s\S]*?\}\s*from\s*['"]\.\.\/features\/book-search\/data\/googleBooksApi['"]/.test(addBookModalSource)) {
   violations.push('AddBookModal.tsx: clean Build 28 must keep the proven Build 27 general Search boundary');
 }
 if (!addBookModalSource.includes('const response = await searchGoogleBooks(trimmedQuery);')) {
