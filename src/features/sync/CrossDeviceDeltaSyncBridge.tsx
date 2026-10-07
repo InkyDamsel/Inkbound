@@ -71,6 +71,7 @@ interface RecordMutation<T> {
 interface ProfileMutation {
   data: Record<string, unknown>;
   clientUpdatedAt: string;
+  capturedAfterCloudReconcile?: boolean;
 }
 interface PendingSyncState {
   books: Record<string, RecordMutation<UserBookRecord>>;
