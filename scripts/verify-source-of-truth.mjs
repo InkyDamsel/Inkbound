@@ -479,6 +479,28 @@ for (const required of [
   }
 }
 
+const readingWidgetBridge = read('src/features/reading/ReadingWidgetSyncBridge.tsx');
+const readingWidgetRuntime = read('src/features/reading/readingWidget.ts');
+const androidReadingWidgetPlugin = read('android/app/src/main/java/com/inkydameinteractive/inkbound/ReadingWidgetPlugin.java');
+const iosReadingWidgetPlugin = read('ios/App/App/ReadingWidgetPlugin.swift');
+for (const required of ['INKBOUND_CLOUD_DATA_EVENT', 'widgetSignatureRef.current = \'\';', 'window.setTimeout']) {
+  if (!readingWidgetBridge.includes(required)) {
+    violations.push(`ReadingWidgetSyncBridge.tsx: widget canonical-refresh invariant missing ${required}`);
+  }
+}
+if (!readingWidgetRuntime.includes('await ReadingWidget.readState()')) {
+  violations.push('readingWidget.ts: native widget writes must be verified against canonical reading state.');
+}
+if (!androidReadingWidgetPlugin.includes('public void readState')) {
+  violations.push('ReadingWidgetPlugin.java: Android widget state readback is required for canonical verification.');
+}
+if (!iosReadingWidgetPlugin.includes('@objc func readState')) {
+  violations.push('ReadingWidgetPlugin.swift: iOS widget state readback is required for canonical verification.');
+}
+if (!iosReadingWidgetPlugin.includes('reloadAllTimelines()')) {
+  violations.push('ReadingWidgetPlugin.swift: iOS widget sync must force a full timeline refresh after canonical writes.');
+}
+
 const primaryReadingSelection = read('src/features/reading/primaryReadingSelection.ts');
 const homeDashboard = read('src/components/HomeDashboard.tsx');
 const readingWidgetSelection = read('src/features/reading/readingWidgetSelection.ts');
