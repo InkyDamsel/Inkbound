@@ -1,7 +1,7 @@
 import { registerPlugin } from '@capacitor/core';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { buildReadingDeadlinePlan } from './readingDeadline';
-import { sortCurrentlyReadingByRecency } from './readingRecency';
+import { selectReadingWidgetBook } from './readingWidgetSelection';
 import { isNativeRuntime } from '../../platform/runtimePlatform';
 import { notifyRuntimeStorageChanged, readRuntimeJson, writeRuntimeJson } from '../../platform/runtimeStorage';
 
@@ -164,14 +164,7 @@ export function buildReadingWidgetSnapshot(
   sessions: ReadingSession[] = [],
 ): ReadingWidgetSnapshot {
   const draft = readRuntimeJson<ActiveReadingDraft | null>(ACTIVE_READING_DRAFT_KEY, null);
-  const draftHasLiveContext = Boolean(
-    draft?.selectedBookId
-      && (draft.isActive || draft.isFinished || (draft.timerSeconds ?? 0) > 0),
-  );
-  const draftBook = draftHasLiveContext
-    ? books.find((book) => book.id === draft?.selectedBookId)
-    : undefined;
-  const currentBook = draftBook ?? sortCurrentlyReadingByRecency(books, sessions)[0];
+  const currentBook = selectReadingWidgetBook(books, sessions, draft);
   const edition = currentBook?.editions.find((item) => item.id === currentBook.activeEditionId) ?? currentBook?.editions[0];
   const currentBookLoan = currentBook?.ownership === 'borrowed-library' && currentBook.libraryLoan?.dueDate
     ? currentBook
