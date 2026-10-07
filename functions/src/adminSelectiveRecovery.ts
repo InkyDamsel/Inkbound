@@ -88,7 +88,7 @@ function protectedDetailsFromBook(bookId: string, data: Record<string, unknown>)
     ? Object.fromEntries(Object.entries(activeEdition).filter(([key]) => key !== 'coverUrl'))
     : undefined;
 
-  return {
+  const details = {
     bookId,
     work: {
       title: typeof work.title === 'string' ? work.title : '',
@@ -127,6 +127,11 @@ function protectedDetailsFromBook(bookId: string, data: Record<string, unknown>)
     editionId: activeEdition && typeof activeEdition.id === 'string' ? activeEdition.id : undefined,
     edition,
   };
+
+  // Firestore rejects undefined values. Recovery snapshots legitimately contain
+  // books without every optional reader/metadata field, so strip undefineds
+  // before writing the protection ledger.
+  return JSON.parse(JSON.stringify(details)) as Record<string, unknown>;
 }
 
 function auxiliaryLabel(id: string): string {
