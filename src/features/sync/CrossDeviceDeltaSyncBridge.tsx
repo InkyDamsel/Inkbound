@@ -66,6 +66,7 @@ interface RecordMutation<T> {
   operation: 'upsert' | 'delete';
   data?: T;
   clientUpdatedAt: string;
+  capturedAfterCloudReconcile?: boolean;
 }
 interface ProfileMutation {
   data: Record<string, unknown>;
@@ -156,7 +157,16 @@ function removeIds<T extends { id: string }>(current: T[], removed: Set<string>)
   return current.filter((item) => !removed.has(item.id));
 }
 
-function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpdatedAt: string }): boolean {
+function cloudRecordWinsPending<T>(
+  record: CloudRecord<T>,
+  pending?: { clientUpdatedAt: string; capturedAfterCloudReconcile?: boolean },
+): boolean {
+  // Pending mutations from older builds (or created before the reconciliation
+  // gate existed) are not proof of fresh reader intent. The saved account copy
+  // wins once so a stale device cannot overwrite newer iOS/web data merely by
+  // opening the app after being offline.
+  if (pending && pending.capturedAfterCloudReconcile !== true) return true;
+
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
@@ -165,6 +175,8 @@ function cloudRecordWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpd
 }
 
 function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<unknown>): boolean {
+  if (pending && pending.capturedAfterCloudReconcile !== true) return true;
+
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.deletedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
