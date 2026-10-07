@@ -70,6 +70,7 @@ import { withCustomReadingStatus } from './features/reading/customReadingStatuse
 import {
   applySessionProgressToBook,
   reconcileBookAfterSessionMutation,
+  reconcileBooksAfterSessionCollectionChange,
 } from './features/reading/sessionBookReconciliation';
 import {
   getDailyActivityCount,
@@ -247,9 +248,19 @@ export default function App() {
       }
 
       if (keys.includes(SESSIONS_STORAGE_KEY)) {
+        const previousSessions = sessionsRef.current;
         const nextSessions = readStoredCollection<ReadingSession[]>(SESSIONS_STORAGE_KEY, LEGACY_SESSIONS_STORAGE_KEY, []);
         sessionsRef.current = nextSessions;
-        commitCanonicalSessions(nextSessions);
+        setSessions(nextSessions);
+
+        const reconciledBooks = reconcileBooksAfterSessionCollectionChange(
+          booksRef.current,
+          previousSessions,
+          nextSessions,
+        );
+        if (reconciledBooks !== booksRef.current) {
+          commitCanonicalBooks(reconciledBooks);
+        }
       }
     };
 
