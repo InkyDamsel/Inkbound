@@ -57,7 +57,7 @@ export function notifyRuntimeStorageChanged(key: string) {
   window.dispatchEvent(new CustomEvent(INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT, { detail: { key } }));
 }
 
-function notifyLocalRuntimeMutation(key: string) {
+function notifyLocalRuntimeMutation(key: string, trustedReaderIntent = false) {
   if (typeof window === 'undefined') return;
   // Auxiliary account sync also listens to the canonical local-data event. Emit
   // it from the runtime-storage boundary so web localStorage and Android native
@@ -65,7 +65,9 @@ function notifyLocalRuntimeMutation(key: string) {
   // signal; duplicate canonical notifications are harmless because persistence
   // fingerprints remove no-op work, while auxiliary values now sync immediately
   // instead of waiting for the 30-second fallback poll.
-  window.dispatchEvent(new CustomEvent(INKBOUND_LOCAL_DATA_CHANGED_EVENT, { detail: { keys: [key] } }));
+  window.dispatchEvent(new CustomEvent(INKBOUND_LOCAL_DATA_CHANGED_EVENT, {
+    detail: { keys: [key], trustedReaderIntent },
+  }));
 }
 
 export function readRuntimeJson<T>(key: string, fallback: T): T {
@@ -77,13 +79,17 @@ export function readRuntimeJson<T>(key: string, fallback: T): T {
   }
 }
 
-export function writeRuntimeJson(key: string, value: unknown): boolean {
+export function writeRuntimeJson(
+  key: string,
+  value: unknown,
+  options?: { trustedReaderIntent?: boolean },
+): boolean {
   let serialized = '';
   try {
     serialized = JSON.stringify(value);
     if (activeStorageAdapter.getItem(key) === serialized) return true;
     activeStorageAdapter.setItem(key, serialized);
-    notifyLocalRuntimeMutation(key);
+    notifyLocalRuntimeMutation(key, options?.trustedReaderIntent === true);
     return true;
   } catch (error) {
     console.error('[Inkbound persistence] Runtime JSON write failed.', {
