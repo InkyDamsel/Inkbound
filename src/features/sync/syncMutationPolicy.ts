@@ -15,11 +15,13 @@ export interface TrustedSyncMutation<T> {
 export function shouldCaptureReaderMutation({
   coreReconciled,
   localClearIntent,
+  trustedReaderIntent = false,
 }: {
   coreReconciled: boolean;
   localClearIntent: boolean;
+  trustedReaderIntent?: boolean;
 }): boolean {
-  return coreReconciled && !localClearIntent;
+  return !localClearIntent && (coreReconciled || trustedReaderIntent);
 }
 
 export function createTrustedUpsertMutation<T>(
