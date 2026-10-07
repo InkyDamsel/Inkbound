@@ -74,12 +74,14 @@ async function commitTasks(tasks: Array<(batch: FirebaseFirestore.WriteBatch) =>
 
 async function listPoints(targetUserId: string): Promise<RecoveryPointSummary[]> {
   const db = getFirestore();
+  // Read a modest window so repeated selective safety copies cannot crowd the
+  // most recent full daily recovery point out of the admin picker.
   const snapshot = await db.collection(`users/${targetUserId}/${RECOVERY_COLLECTION}`)
     .orderBy('createdAtClient', 'desc')
-    .limit(MAX_RECOVERY_POINTS)
+    .limit(30)
     .get();
 
-  return snapshot.docs.map((document) => {
+  const mapped = snapshot.docs.map((document) => {
     const data = document.data();
     return {
       id: document.id,
@@ -93,6 +95,11 @@ async function listPoints(targetUserId: string): Promise<RecoveryPointSummary[]>
       runtimeStateCount: Number(data.runtimeStateCount ?? 0),
     };
   });
+
+  const full = mapped.filter((point) => !point.reason.startsWith('Before selective admin recovery'));
+  const selective = mapped.filter((point) => point.reason.startsWith('Before selective admin recovery'));
+  return [...full.slice(0, MAX_RECOVERY_POINTS), ...selective.slice(0, 6)]
+    .sort((a, b) => (b.createdAtClient || '').localeCompare(a.createdAtClient || ''));
 }
 
 async function createCloudSafetyPoint(targetUserId: string, reason: string) {
