@@ -486,8 +486,11 @@ for (const required of ['SYNC_STORAGE_KEYS', 'syncPendingStateKey', 'syncBaselin
 if (!/operation:\s*'upsert'[\s\S]{0,180}capturedAfterCloudReconcile:\s*true/.test(costSafeSync)) {
   violations.push('CostSafeCloudPersistenceBridge.tsx: fresh book/session upserts must be marked as trusted post-reconciliation reader intent.');
 }
-if (!/captureCurrentChanges[\s\S]{0,260}!coreReconciled/.test(costSafeSync)) {
-  violations.push('CostSafeCloudPersistenceBridge.tsx: local mutation capture must remain disabled until cloud reconciliation completes.');
+if (!costSafeSync.includes('shouldCaptureReaderMutation')) {
+  violations.push('CostSafeCloudPersistenceBridge.tsx: local mutation capture must use the canonical syncMutationPolicy gate.');
+}
+if (!costSafeSync.includes('createTrustedUpsertMutation') || !costSafeSync.includes('createTrustedDeleteMutation')) {
+  violations.push('CostSafeCloudPersistenceBridge.tsx: book/session mutations must use canonical trusted mutation constructors.');
 }
 
 const fullReconciliation = read('src/features/sync/FullCloudReconciliationBridge.tsx');
