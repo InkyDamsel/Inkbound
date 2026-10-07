@@ -59,11 +59,16 @@ interface RecordMutation<T> {
   operation: 'upsert' | 'delete';
   data?: T;
   clientUpdatedAt: string;
+  capturedAfterCloudReconcile?: boolean;
 }
 interface PendingSyncState {
   books: Record<string, RecordMutation<UserBookRecord>>;
   sessions: Record<string, RecordMutation<ReadingSession>>;
-  profile?: { data: Record<string, unknown>; clientUpdatedAt: string };
+  profile?: {
+    data: Record<string, unknown>;
+    clientUpdatedAt: string;
+    capturedAfterCloudReconcile?: boolean;
+  };
 }
 interface SyncBaseline {
   books: Record<string, string>;
@@ -159,7 +164,11 @@ function writeJson(key: string, value: unknown) {
   storage().setItem(key, stable(value));
 }
 
-function remoteWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpdatedAt: string }): boolean {
+function remoteWinsPending<T>(
+  record: CloudRecord<T>,
+  pending?: { clientUpdatedAt: string; capturedAfterCloudReconcile?: boolean },
+): boolean {
+  if (pending && pending.capturedAfterCloudReconcile !== true) return true;
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.updatedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
@@ -168,6 +177,7 @@ function remoteWinsPending<T>(record: CloudRecord<T>, pending?: { clientUpdatedA
 }
 
 function tombstoneWinsPending(record: TombstoneRecord, pending?: RecordMutation<unknown>): boolean {
+  if (pending && pending.capturedAfterCloudReconcile !== true) return true;
   return shouldRemoteChangeReplacePending({
     remoteServerMillis: record.deletedAt?.toMillis() ?? 0,
     remoteClientUpdatedAt: record.clientUpdatedAt,
