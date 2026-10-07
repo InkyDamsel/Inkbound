@@ -236,12 +236,78 @@ export const previewAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
   const snapshotId = requireString(input?.snapshotId, 'snapshotId', 256);
   const { snapshotRef, root } = await getSnapshot(targetUserId, snapshotId);
 
-  const [booksSnapshot, sessionsSnapshot, auxiliarySnapshot, profileSnapshot] = await Promise.all([
-    snapshotRef.collection('books').get(),
-    snapshotRef.collection('sessions').get(),
+  // IMPORTANT: Do not enumerate the snapshot's full books/sessions collections
+  // here. A 3k-50k book library must remain cheap to inspect. Large datasets are
+  // queried only when the admin asks for a bounded slice (for example a finished month).
+  const [auxiliarySnapshot, profileSnapshot] = await Promise.all([
     snapshotRef.collection('auxiliary').get(),
     snapshotRef.collection('profile').doc('current').get(),
   ]);
+
+  const collectionDoc = findCollectionDefinitionsDocument(auxiliarySnapshot);
+  const definitionsRaw = unwrapUnknown(collectionDoc?.data());
+  const definitions = Array.isArray(definitionsRaw)
+    ? definitionsRaw.filter((item): item is CollectionDefinition => Boolean(item) && typeof item === 'object')
+    : [];
+
+  const collections: RecoveryPreviewCollection[] = definitions
+    .map((definition, index) => ({
+      id: typeof definition.id === 'string' && definition.id ? definition.id : `collection-${index}`,
+      name: typeof definition.name === 'string' && definition.name ? definition.name : `Collection ${index + 1}`,
+      // Membership counts are intentionally not calculated during lightweight preview.
+      bookCount: -1,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const auxiliary: RecoveryPreviewAuxiliary[] = auxiliarySnapshot.docs
+    .map((document) => ({ id: document.id, label: auxiliaryLabel(document.id) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const rootData = root.data() ?? {};
+  return {
+    snapshot: {
+      id: snapshotId,
+      createdAtClient: typeof rootData.createdAtClient === 'string' ? rootData.createdAtClient : '',
+      createdAt: timestampToIso(rootData.createdAt),
+      reason: typeof rootData.reason === 'string' ? rootData.reason : 'Recovery point',
+      bookCount: typeof rootData.bookCount === 'number' ? rootData.bookCount : 0,
+      sessionCount: typeof rootData.sessionCount === 'number' ? rootData.sessionCount : 0,
+      auxiliaryCount: typeof rootData.auxiliaryCount === 'number' ? rootData.auxiliaryCount : auxiliarySnapshot.size,
+    },
+    books: [] as RecoveryPreviewBook[],
+    sessions: [] as RecoveryPreviewSession[],
+    collections,
+    auxiliary,
+    profilePresent: profileSnapshot.exists,
+  };
+});
+
+export const listAdminRecoveryBooksForMonth = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+  await requireOwner(request);
+  const input = request.data as Record<string, unknown> | undefined;
+  const targetUserId = requireString(input?.targetUserId, 'targetUserId', 128);
+  const snapshotId = requireString(input?.snapshotId, 'snapshotId', 256);
+  const month = requireString(input?.month, 'month', 7);
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpsError('invalid-argument', 'Month must use YYYY-MM.');
+
+  const [yearText, monthText] = month.split('-');
+  const year = Number(yearText);
+  const monthIndex = Number(monthText) - 1;
+  if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+    throw new HttpsError('invalid-argument', 'Month is invalid.');
+  }
+
+  const start = `${yearText}-${monthText}-01`;
+  const nextDate = new Date(Date.UTC(year, monthIndex + 1, 1));
+  const next = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, '0')}-01`;
+
+  const { snapshotRef } = await getSnapshot(targetUserId, snapshotId);
+  const booksSnapshot = await snapshotRef.collection('books')
+    .where('data.dateFinished', '>=', start)
+    .where('data.dateFinished', '<', next)
+    .orderBy('data.dateFinished', 'asc')
+    .limit(500)
+    .get();
 
   const books: RecoveryPreviewBook[] = booksSnapshot.docs.map((document) => {
     const book = unwrapEnvelope(document.data());
@@ -266,56 +332,12 @@ export const previewAdminRecoveryPoint = onCall({ enforceAppCheck: ENFORCE_APP_C
         ? String(seriesPositionValue)
         : '',
     };
-  }).sort((a, b) => a.title.localeCompare(b.title));
-  const bookTitleById = new Map(books.map((book) => [book.id, book.title]));
-
-  const sessions: RecoveryPreviewSession[] = sessionsSnapshot.docs.map((document) => {
-    const session = unwrapEnvelope(document.data());
-    const bookId = typeof session.bookId === 'string' ? session.bookId : '';
-    const date = typeof session.date === 'string' ? session.date : 'Unknown date';
-    const start = typeof session.startTime === 'string' ? session.startTime : '';
-    const end = typeof session.endTime === 'string' ? session.endTime : '';
-    const time = start || end ? ` · ${start}${start && end ? '–' : ''}${end}` : '';
-    return { id: document.id, bookId, label: `${bookTitleById.get(bookId) ?? 'Unknown book'} · ${date}${time}` };
-  }).sort((a, b) => a.label.localeCompare(b.label));
-
-  const collectionDoc = findCollectionDefinitionsDocument(auxiliarySnapshot);
-  const definitionsRaw = unwrapUnknown(collectionDoc?.data());
-  const definitions = Array.isArray(definitionsRaw)
-    ? definitionsRaw.filter((item): item is CollectionDefinition => Boolean(item) && typeof item === 'object')
-    : [];
-  const collectionCounts = new Map<string, number>();
-  booksSnapshot.docs.forEach((document) => {
-    const book = unwrapEnvelope(document.data());
-    const memberships = Array.isArray(book.collections) ? book.collections.filter((item): item is string => typeof item === 'string') : [];
-    memberships.forEach((name) => collectionCounts.set(name, (collectionCounts.get(name) ?? 0) + 1));
+  }).sort((a, b) => {
+    const byDate = a.dateFinished.localeCompare(b.dateFinished);
+    return byDate || a.title.localeCompare(b.title);
   });
-  const collections: RecoveryPreviewCollection[] = definitions
-    .map((definition, index) => ({
-      id: typeof definition.id === 'string' && definition.id ? definition.id : `collection-${index}`,
-      name: typeof definition.name === 'string' && definition.name ? definition.name : `Collection ${index + 1}`,
-      bookCount: collectionCounts.get(typeof definition.name === 'string' ? definition.name : '') ?? 0,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
 
-  const auxiliary: RecoveryPreviewAuxiliary[] = auxiliarySnapshot.docs
-    .map((document) => ({ id: document.id, label: auxiliaryLabel(document.id) }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-
-  const rootData = root.data() ?? {};
-  return {
-    snapshot: {
-      id: snapshotId,
-      createdAtClient: typeof rootData.createdAtClient === 'string' ? rootData.createdAtClient : '',
-      createdAt: timestampToIso(rootData.createdAt),
-      reason: typeof rootData.reason === 'string' ? rootData.reason : 'Recovery point',
-    },
-    books,
-    sessions,
-    collections,
-    auxiliary,
-    profilePresent: profileSnapshot.exists,
-  };
+  return { month, books, capped: booksSnapshot.size >= 500 };
 });
 
 export const restoreAdminRecoverySelection = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
