@@ -228,3 +228,42 @@ export function reconcileBooksAfterSessionCollectionChange(
     };
   });
 }
+
+
+/**
+ * Repairs a book/session mismatch when the session already existed before this
+ * app process started (for example, after an upgrade). This is intentionally
+ * monotonic: existing session evidence may advance current progress, but this
+ * repair path never moves a reader backward. Session edit/delete paths use
+ * reconcileBooksAfterSessionCollectionChange, which has the previous collection
+ * needed to safely lower session-owned progress.
+ */
+export function reconcileBooksFromExistingSessionEvidence(
+  books: UserBookRecord[],
+  sessions: ReadingSession[],
+): UserBookRecord[] {
+  const sessionBookIds = new Set(
+    sessions
+      .filter((session) => session.activitySource !== 'progress-confirmation')
+      .map((session) => session.bookId),
+  );
+  if (!sessionBookIds.size) return books;
+
+  let changed = false;
+  const nextBooks = books.map((book) => {
+    if (!sessionBookIds.has(book.id)) return book;
+    const reconciled = reconcileBookAfterSessionMutation(book, sessions);
+    const related = sessions
+      .filter((session) => session.bookId === book.id && session.activitySource !== 'progress-confirmation')
+      .sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)));
+    const first = related[0];
+    const next = first && !reconciled.dateStarted
+      ? { ...reconciled, dateStarted: first.date }
+      : reconciled;
+
+    if (JSON.stringify(next) !== JSON.stringify(book)) changed = true;
+    return next;
+  });
+
+  return changed ? nextBooks : books;
+}
