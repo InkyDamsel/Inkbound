@@ -80,7 +80,7 @@ function unwrapData<T>(value: Record<string, unknown>): T {
   return ('data' in value ? value.data : value) as T;
 }
 
-function safeUnwrapRecord<T extends Record<string, unknown>>(value: Record<string, unknown>): T {
+function safeUnwrapRecord<T>(value: Record<string, unknown>): T {
   const candidate = 'data' in value ? value.data : value;
   return (candidate && typeof candidate === 'object' && !Array.isArray(candidate)
     ? candidate
