@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:critical": "npm run test:critical:reading && npm run test:critical:reporting && npm run test:critical:sync",
+    "test:critical": "npm run test:critical:reading && npm run test:critical:reporting && npm run test:critical:catalog && npm run test:critical:sync",
     "verify:source-of-truth": "npm run verify:source-boundary && npm run verify:domain-taxonomy",
     "verify:parity": "node scripts/verify-cross-platform-parity.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
@@ -56,7 +56,8 @@
     "ios:open": "npx cap open ios",
     "verify:ios-ready": "node scripts/verify-ios-ready.mjs",
     "ios:branding:sync": "node scripts/sync-ios-branding.mjs",
-    "ios:google-signin:configure": "node scripts/configure-ios-google-signin.mjs"
+    "ios:google-signin:configure": "node scripts/configure-ios-google-signin.mjs",
+    "test:critical:catalog": "tsx scripts/isbn-resolution-regressions.ts && tsx scripts/catalog-metadata-regressions.ts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
