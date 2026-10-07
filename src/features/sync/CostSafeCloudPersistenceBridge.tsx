@@ -118,7 +118,12 @@ function captureWorkingChanges<T extends { id: string }>(
     next.set(item.id, itemFingerprint);
     if (fingerprints.current.get(item.id) !== itemFingerprint) {
       if (baseline[item.id] === itemFingerprint) delete mutations[item.id];
-      else mutations[item.id] = { operation: 'upsert', data: item, clientUpdatedAt: now };
+      else mutations[item.id] = {
+        operation: 'upsert',
+        data: item,
+        clientUpdatedAt: now,
+        capturedAfterCloudReconcile: true,
+      };
     }
   });
 
@@ -397,7 +402,11 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     };
 
     const captureCurrentChanges = (keys?: CloudSyncedStorageKey[]) => {
-      if (disposed || runtimeStorage().getItem(localClearIntentKey(uid)) === '1') return;
+      if (
+        disposed
+        || !coreReconciled
+        || runtimeStorage().getItem(localClearIntentKey(uid)) === '1'
+      ) return;
       const changedKeys = keys ? new Set(keys) : undefined;
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
