@@ -12,6 +12,7 @@ import { hasTrustworthyFinishedHistory } from '../src/features/reading/inkboundA
 import {
   applySessionProgressToBook,
   reconcileBookAfterSessionMutation,
+  reconcileBooksAfterSessionCollectionChange,
 } from '../src/features/reading/sessionBookReconciliation';
 import { analyzeLibraryIntegrity } from '../src/features/recovery/libraryIntegrity';
 import {
@@ -227,6 +228,64 @@ const session = (overrides: Partial<ReadingSession>): ReadingSession => ({
   assert.equal(completed.progressPages, 500);
   assert.equal(completed.progressPercentage, 100);
   assert.equal(completed.dateFinished, '2026-08-15');
+}
+
+// Any canonical session source must move the book's Current Page / Progress %:
+ // timer sessions, manual sessions, and sessions arriving from another device all
+ // reconcile through the same session evidence.
+{
+  const book = { ...baseBook(), progressPages: 0, progressPercentage: 0 };
+  const timerSession = session({
+    id: 'timer-progress',
+    activitySource: 'timer',
+    startPage: 0,
+    endPage: 16,
+    pagesRead: 16,
+  });
+  const afterTimer = applySessionProgressToBook(book, timerSession, 16, 0);
+  assert.equal(afterTimer.progressPages, 16);
+  assert.equal(afterTimer.progressPercentage, 3);
+
+  const manualSession = session({
+    id: 'manual-progress',
+    activitySource: 'manual-session',
+    startPage: 16,
+    endPage: 42,
+    pagesRead: 26,
+  });
+  const afterManual = reconcileBookAfterSessionMutation(afterTimer, [timerSession, manualSession]);
+  assert.equal(afterManual.progressPages, 42);
+  assert.equal(afterManual.progressPercentage, 8);
+
+  const remoteSession = session({
+    id: 'remote-progress',
+    activitySource: 'timer',
+    date: '2026-08-16',
+    startPage: 42,
+    endPage: 75,
+    pagesRead: 33,
+  });
+  const afterRemote = reconcileBooksAfterSessionCollectionChange(
+    [afterManual],
+    [timerSession, manualSession],
+    [timerSession, manualSession, remoteSession],
+  )[0];
+  assert.equal(afterRemote.progressPages, 75);
+  assert.equal(afterRemote.progressPercentage, 15);
+}
+
+// Cross-device session deletion/edit reconciliation may lower session-owned
+// progress, but must preserve independent manual progress that was already ahead.
+{
+  const tracked = { ...baseBook(), progressPages: 80, progressPercentage: 16 };
+  const oldSession = session({ id: 'edited-remote', startPage: 50, endPage: 80, pagesRead: 30 });
+  const editedSession = { ...oldSession, endPage: 70, pagesRead: 20 };
+  const afterEdit = reconcileBooksAfterSessionCollectionChange([tracked], [oldSession], [editedSession])[0];
+  assert.equal(afterEdit.progressPages, 70);
+
+  const manualAhead = { ...tracked, progressPages: 120, progressPercentage: 24 };
+  const preserved = reconcileBooksAfterSessionCollectionChange([manualAhead], [oldSession], [editedSession])[0];
+  assert.equal(preserved.progressPages, 120);
 }
 
 // Logging or reconciling partial session progress against an already-Finished book
