@@ -258,8 +258,22 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
 
     return source.sort((a, b) => {
       if (draftBookSort === 'selected') {
-        const selectedDifference = Number(selectedIds.has(b.id)) - Number(selectedIds.has(a.id));
+        const aSelected = selectedIds.has(a.id);
+        const bSelected = selectedIds.has(b.id);
+        const selectedDifference = Number(bSelected) - Number(aSelected);
         if (selectedDifference !== 0) return selectedDifference;
+
+        if (aSelected && bSelected) {
+          const aEntry = draft.books.find((entry) => entry.bookId === a.id);
+          const bEntry = draft.books.find((entry) => entry.bookId === b.id);
+          const aPosition = aEntry?.position.trim() === '' ? Number.POSITIVE_INFINITY : Number(aEntry?.position);
+          const bPosition = bEntry?.position.trim() === '' ? Number.POSITIVE_INFINITY : Number(bEntry?.position);
+          if (Number.isFinite(aPosition) || Number.isFinite(bPosition)) {
+            const positionDifference = aPosition - bPosition;
+            if (positionDifference !== 0) return positionDifference;
+          }
+        }
+
         return compareLibraryLabels(a.work.title, b.work.title);
       }
       if (draftBookSort === 'author') {
@@ -452,21 +466,22 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                 <p className="text-sm font-semibold text-[var(--ink-ivory)]">Reading material in this series</p>
                 <p className="mt-1 text-xs text-[var(--ink-muted)]">{draft.books.length} selected</p>
               </div>
-              <div className="flex flex-1 flex-col gap-2 sm:max-w-xl sm:flex-row sm:justify-end">
-                <label className="relative min-w-0 flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
+              <div className="grid w-full flex-1 gap-2 sm:max-w-2xl sm:grid-cols-[minmax(220px,1fr)_180px]">
+                <label className="relative min-w-0">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
                   <input
                     type="search"
                     value={draftBookSearch}
                     onChange={(event) => setDraftBookSearch(event.target.value)}
                     placeholder="Search title or author"
-                    className="h-10 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-9 pr-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55"
+                    className="h-10 w-full min-w-0 rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-9 pr-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55"
+                    aria-label="Search books in series editor"
                   />
                 </label>
                 <select
                   value={draftBookSort}
                   onChange={(event) => setDraftBookSort(event.target.value as 'selected' | 'title' | 'author' | 'recent')}
-                  className="inkbound-select h-10 min-w-[150px]"
+                  className="inkbound-select h-10 w-full min-w-0"
                   aria-label="Sort books in series editor"
                 >
                   <option value="selected">Selected first</option>
