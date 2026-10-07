@@ -7,8 +7,11 @@ import {
   PRIORITY_OPTIONS,
   READING_STATUS_OPTIONS,
 } from '../domain/libraryTaxonomy';
-import { searchGoogleBooks } from '../features/book-search/data/googleBooksApi';
-import { searchGoogleBooksAuthorPage } from '../features/book-search/data/googleBooksApi';
+import {
+  resolveCatalogIsbn,
+  searchGoogleBooks,
+  searchGoogleBooksAuthorPage,
+} from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
@@ -334,13 +337,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerError(null);
     setScannerMessage(null);
     try {
-      const response = await searchGoogleBooks(`isbn:${isbn}`);
-      const work = response.groups[0];
-      const edition = work?.editions[0];
-      if (!work || !edition) {
-        setScannerError('No matching book was found for that ISBN.');
+      const resolved = await resolveCatalogIsbn(isbn);
+      if (!resolved) {
+        setScannerError('Inkbound checked all available catalog paths but could not identify this barcode yet.');
         return;
       }
+      const { work, edition, exactIsbn } = resolved;
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
       setScannedBooks((current) => {
         const next = [...current, { isbn, book }];
@@ -348,7 +350,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return next;
       });
       setManualIsbn('');
-      setScannerMessage(`Added “${work.title}” to this scan batch.`);
+      setScannerMessage(exactIsbn
+        ? `Added “${work.title}” to this scan batch.`
+        : `Added “${work.title}” from a work-level match. Verify this edition’s page count/format before saving if needed.`);
       void playScannerSuccessFeedback();
     } catch (error) {
       setScannerError(error instanceof Error ? error.message : 'ISBN lookup failed. Please try again.');
