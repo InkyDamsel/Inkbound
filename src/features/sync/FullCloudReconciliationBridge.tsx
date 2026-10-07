@@ -395,13 +395,22 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         if (disposed) return;
 
         const [verifiedBookSnapshot, verifiedSessionSnapshot] = await Promise.all([
-          getDocs(collection(db!, 'users', uid, 'books')),
-          getDocs(collection(db!, 'users', uid, 'sessions')),
+          uploadedBooks > 0 ? getDocs(collection(db!, 'users', uid, 'books')) : Promise.resolve(null),
+          uploadedSessions > 0 ? getDocs(collection(db!, 'users', uid, 'sessions')) : Promise.resolve(null),
         ]);
         if (disposed) return;
 
-        const verifiedBookIds = new Set(verifiedBookSnapshot.docs.map((item) => item.id));
-        const verifiedSessionIds = new Set(verifiedSessionSnapshot.docs.map((item) => item.id));
+        // If reconciliation uploaded nothing, the initial full snapshots are
+        // already the verified cloud state. Do not bill a second full-library
+        // read just to rediscover the same IDs.
+        const verifiedBookIds = verifiedBookSnapshot
+          ? new Set(verifiedBookSnapshot.docs.map((item) => item.id))
+          : initialCloudBookIds;
+        const verifiedSessionIds = verifiedSessionSnapshot
+          ? new Set(verifiedSessionSnapshot.docs.map((item) => item.id))
+          : initialCloudSessionIds;
+        const verifiedBookCount = verifiedBookSnapshot?.size ?? cloudBooks.length;
+        const verifiedSessionCount = verifiedSessionSnapshot?.size ?? cloudSessions.length;
         const missingVerifiedBooks = nextBooks.filter((item) => !verifiedBookIds.has(item.id));
         const missingVerifiedSessions = nextSessions.filter((item) => !verifiedSessionIds.has(item.id));
         if (missingVerifiedBooks.length > 0 || missingVerifiedSessions.length > 0) {
@@ -420,7 +429,7 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         await setDoc(libraryManifestRef, {
           status: 'complete',
           expectedBookCount: nextBooks.length,
-          uploadedBookCount: verifiedBookSnapshot.size,
+          uploadedBookCount: verifiedBookCount,
           syncDirection: 'account-migration',
           completedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -499,8 +508,8 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
             cloudSessionsBefore: cloudSessions.length,
             booksUploaded: uploadedBooks,
             sessionsUploaded: uploadedSessions,
-            cloudBooksVerified: verifiedBookSnapshot.size,
-            cloudSessionsVerified: verifiedSessionSnapshot.size,
+            cloudBooksVerified: verifiedBookCount,
+            cloudSessionsVerified: verifiedSessionCount,
           },
           profileApplied,
           profilePendingProtected,
