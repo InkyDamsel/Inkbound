@@ -45,7 +45,11 @@ interface CloudRecord<T> {
 interface PendingSyncState {
   books: Record<string, PendingMutation<UserBookRecord>>;
   sessions: Record<string, PendingMutation<ReadingSession>>;
-  profile?: { data: Record<string, unknown>; clientUpdatedAt: string };
+  profile?: {
+    data: Record<string, unknown>;
+    clientUpdatedAt: string;
+    capturedAfterCloudReconcile?: boolean;
+  };
 }
 
 interface LibrarySyncManifest {
@@ -295,7 +299,7 @@ export const CloudServerRefreshBridge: React.FC = () => {
           changedKeys.push(SESSIONS_KEY);
         }
 
-        if (!pending.profile && profileSnapshot.exists()) {
+        if ((!pending.profile || pending.profile.capturedAfterCloudReconcile !== true) && profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<Record<string, unknown>>).data;
           if (cloudProfile) {
             const serialized = JSON.stringify(compactProfileForRuntime(cloudProfile));
