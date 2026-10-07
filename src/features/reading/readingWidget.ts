@@ -47,6 +47,7 @@ interface ReadingWidgetSnapshot {
 
 interface ReadingWidgetPlugin {
   syncState(options: ReadingWidgetSnapshot): Promise<void>;
+  readState(): Promise<ReadingWidgetSnapshot>;
   consumeAction(): Promise<{ action?: ReadingWidgetAction }>;
 }
 
@@ -228,8 +229,25 @@ export async function syncReadingWidget(
   sessions: ReadingSession[] = [],
 ) {
   if (!isNativeRuntime()) return;
+  const snapshot = buildReadingWidgetSnapshot(books, sessions);
   try {
-    await ReadingWidget.syncState(buildReadingWidgetSnapshot(books, sessions));
+    await ReadingWidget.syncState(snapshot);
+
+    const stored = await ReadingWidget.readState();
+    const matchesCanonical = (
+      (stored.bookId ?? '') === (snapshot.bookId ?? '')
+      && (stored.title ?? '') === (snapshot.title ?? '')
+      && (stored.author ?? '') === (snapshot.author ?? '')
+      && (stored.progressLabel ?? '') === (snapshot.progressLabel ?? '')
+    );
+
+    if (!matchesCanonical) {
+      console.warn('Inkbound widget state did not match canonical reading state; retrying once.', {
+        expectedBookId: snapshot.bookId,
+        storedBookId: stored.bookId,
+      });
+      await ReadingWidget.syncState(snapshot);
+    }
   } catch (error) {
     console.warn('Inkbound could not refresh the reading widget.', error);
   }
