@@ -8,6 +8,7 @@ const checks = [
   { id: 'critical-reading', label: 'Critical reading regressions', script: 'test:critical:reading' },
   { id: 'reporting-math', label: 'Reporting math regressions', script: 'test:critical:reporting' },
   { id: 'catalog', label: 'Catalog / ISBN regressions', script: 'test:critical:catalog' },
+  { id: 'critical-sync', label: 'Critical sync / persistence regressions', script: 'test:critical:sync' },
   { id: 'source-boundary', label: 'Source-of-truth boundary', script: 'verify:source-boundary' },
   { id: 'domain-taxonomy', label: 'Domain taxonomy', script: 'verify:domain-taxonomy' },
   { id: 'parity', label: 'Web / Android parity', script: 'verify:parity' },
@@ -20,6 +21,7 @@ const checks = [
   { id: 'android-gradle', label: 'Android Gradle configuration', script: 'verify:android-gradle' },
   { id: 'android-branding', label: 'Android branding', script: 'verify:android-branding', dependsOn: ['android-branding-sync'] },
   { id: 'android-native', label: 'Android native readiness', script: 'verify:android-native', dependsOn: ['android-config', 'android-gradle'] },
+  { id: 'ios-ready', label: 'iOS native project readiness', script: 'verify:ios-ready' },
   { id: 'functions-build', label: 'Firebase Functions build', script: 'functions:build' },
 ];
 
