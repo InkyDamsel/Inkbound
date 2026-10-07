@@ -276,7 +276,13 @@ async function getIntegrityDetail(targetUserId: string, section: DetailSection, 
   }
 
   if (section === 'recoveryPoints') {
-    const { docs, hasMore } = await getPagedDocuments(userRef.collection('recoverySnapshots'), page, pageSize);
+    const snapshot = await userRef.collection('recoverySnapshots')
+      .orderBy('createdAtClient', 'desc')
+      .offset(page * pageSize)
+      .limit(pageSize + 1)
+      .get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    const hasMore = snapshot.size > pageSize;
     return {
       section, page, pageSize, hasMore,
       items: docs.map((document) => {
