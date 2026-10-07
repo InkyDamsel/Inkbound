@@ -60,6 +60,8 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [draftBookSearch, setDraftBookSearch] = useState('');
+  const [draftBookSort, setDraftBookSort] = useState<'selected' | 'title' | 'author' | 'recent'>('selected');
   const [error, setError] = useState('');
   const [pendingFocusBookId, setPendingFocusBookId] = useState<string | null>(() => readLibrarySeriesFocusBookId());
 
@@ -156,11 +158,15 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
 
   const openCreate = () => {
     setError('');
+    setDraftBookSearch('');
+    setDraftBookSort('selected');
     setDraft(emptyDraft());
   };
 
   const openEdit = (item: (typeof series)[number]) => {
     setError('');
+    setDraftBookSearch('');
+    setDraftBookSort('selected');
     setDraft({
       id: item.id,
       name: item.name,
@@ -237,6 +243,36 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
     });
     if (expandedSeriesId === id) setExpandedSeriesId(null);
   };
+
+  const draftVisibleBooks = useMemo(() => {
+    if (!draft) return [];
+
+    const query = draftBookSearch.trim().toLowerCase();
+    const selectedIds = new Set(draft.books.map((entry) => entry.bookId));
+    const source = query
+      ? books.filter((book) =>
+          book.work.title.toLowerCase().includes(query)
+          || book.work.author.toLowerCase().includes(query),
+        )
+      : [...books];
+
+    return source.sort((a, b) => {
+      if (draftBookSort === 'selected') {
+        const selectedDifference = Number(selectedIds.has(b.id)) - Number(selectedIds.has(a.id));
+        if (selectedDifference !== 0) return selectedDifference;
+        return compareLibraryLabels(a.work.title, b.work.title);
+      }
+      if (draftBookSort === 'author') {
+        return compareLibraryLabels(a.work.author, b.work.author)
+          || compareLibraryLabels(a.work.title, b.work.title);
+      }
+      if (draftBookSort === 'recent') {
+        return compareLibraryDates(b.dateAdded, a.dateAdded)
+          || compareLibraryLabels(a.work.title, b.work.title);
+      }
+      return compareLibraryLabels(a.work.title, b.work.title);
+    });
+  }, [books, draft, draftBookSearch, draftBookSort]);
 
   const pagination = filtered.length > SERIES_PER_PAGE && (
     <nav className="inkbound-panel flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Series pages">
@@ -398,8 +434,9 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
       )}
 
       {draft && (
-        <div className="fixed inset-0 z-[220] overflow-y-auto bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setDraft(null); }}>
-          <section className="mx-auto my-4 w-full max-w-3xl rounded-3xl border border-[var(--ink-gold)]/30 bg-[#17101b] p-5 shadow-2xl sm:my-8 sm:p-6" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[220] flex items-center justify-center overflow-hidden bg-black/75 p-3 backdrop-blur-sm sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget) setDraft(null); }}>
+          <section className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-[var(--ink-gold)]/30 bg-[#17101b] shadow-2xl" role="dialog" aria-modal="true">
+            <div className="shrink-0 px-5 pt-5 sm:px-6 sm:pt-6">
             <div className="flex items-start justify-between gap-4">
               <div><p className="inkbound-kicker">Series organization</p><h2 className="mt-1 font-serif text-3xl text-[var(--ink-ivory)]">{draft.id ? 'Edit Series' : 'Create Series'}</h2></div>
               <button type="button" onClick={() => setDraft(null)} className="rounded-full p-2 text-[var(--ink-muted)] hover:bg-white/5" aria-label="Close series editor"><X className="h-5 w-5" /></button>
@@ -410,9 +447,40 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
               <label className="text-sm font-semibold text-[var(--ink-ivory)]">Author<input value={draft.author} onChange={(event) => { setDraft({ ...draft, author: event.target.value }); setError(''); }} className="mt-2 h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] px-3 text-sm outline-none focus:border-[var(--ink-gold)]" /></label>
             </div>
 
-            <p className="mt-5 text-sm font-semibold text-[var(--ink-ivory)]">Reading material in this series</p>
-            <div className="mt-2 max-h-[48dvh] space-y-2 overflow-y-auto pr-1">
-              {books.map((book) => {
+            <div className="mt-5 flex flex-col gap-3 border-t border-[var(--ink-border-subtle)] pt-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[var(--ink-ivory)]">Reading material in this series</p>
+                <p className="mt-1 text-xs text-[var(--ink-muted)]">{draft.books.length} selected</p>
+              </div>
+              <div className="flex flex-1 flex-col gap-2 sm:max-w-xl sm:flex-row sm:justify-end">
+                <label className="relative min-w-0 flex-1">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-faint)]" />
+                  <input
+                    type="search"
+                    value={draftBookSearch}
+                    onChange={(event) => setDraftBookSearch(event.target.value)}
+                    placeholder="Search title or author"
+                    className="h-10 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-bg)] pl-9 pr-3 text-sm text-[var(--ink-ivory)] outline-none focus:border-[var(--ink-gold)]/55"
+                  />
+                </label>
+                <select
+                  value={draftBookSort}
+                  onChange={(event) => setDraftBookSort(event.target.value as 'selected' | 'title' | 'author' | 'recent')}
+                  className="inkbound-select h-10 min-w-[150px]"
+                  aria-label="Sort books in series editor"
+                >
+                  <option value="selected">Selected first</option>
+                  <option value="title">Title A-Z</option>
+                  <option value="author">Author A-Z</option>
+                  <option value="recent">Recently added</option>
+                </select>
+              </div>
+            </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 pt-3 sm:px-6">
+              <div className="space-y-2">
+              {draftVisibleBooks.map((book) => {
                 const entry = draft.books.find((item) => item.bookId === book.id);
                 return (
                   <div key={book.id} className={`rounded-2xl border p-3 ${entry ? 'border-[var(--ink-gold)]/35 bg-[var(--ink-gold)]/5' : 'border-[var(--ink-border-subtle)]'}`}>
@@ -421,10 +489,16 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
                   </div>
                 );
               })}
+              {draftVisibleBooks.length === 0 && (
+                <p className="rounded-2xl border border-[var(--ink-border-subtle)] p-5 text-center text-sm text-[var(--ink-muted)]">No books match that search.</p>
+              )}
+              </div>
             </div>
 
-            {error && <p className="mt-4 text-sm text-rose-300">{error}</p>}
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setDraft(null)} className="quiet-shelf-secondary-action">Cancel</button><button type="button" onClick={saveDraft} className="quiet-shelf-primary-action">Save Series</button></div>
+            <div className="shrink-0 border-t border-[var(--ink-border-subtle)] bg-[#17101b] px-5 py-4 sm:px-6">
+              {error && <p className="mb-3 text-sm text-rose-300">{error}</p>}
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setDraft(null)} className="quiet-shelf-secondary-action">Cancel</button><button type="button" onClick={saveDraft} className="quiet-shelf-primary-action">Save Series</button></div>
+            </div>
           </section>
         </div>
       )}
