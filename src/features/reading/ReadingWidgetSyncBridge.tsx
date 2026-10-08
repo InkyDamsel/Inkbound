@@ -69,10 +69,15 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
       const result = applyReadingWidgetAction(action);
       await syncReadingWidget(booksRef.current, sessionsRef.current);
       if (result.shouldOpenTimer) {
-        const fallbackBookId = action === 'start'
-          ? booksRef.current.find((book) => book.status === 'currently-reading')?.id
-          : undefined;
-        openTimerRef.current(result.bookId ?? fallbackBookId);
+        // The native widget and its tap target must resolve the same book.
+        // An idle persisted timer draft is not authoritative reader intent.
+        const displayedBookId = buildReadingWidgetSnapshot(
+          booksRef.current,
+          sessionsRef.current,
+        ).bookId;
+        openTimerRef.current(
+          action === 'start' ? displayedBookId : (result.bookId ?? displayedBookId),
+        );
       }
     };
 
