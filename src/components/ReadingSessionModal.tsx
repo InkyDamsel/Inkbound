@@ -122,14 +122,19 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
     location: '',
   }));
 
-  const selectedBook = selectableBooks.find((book) => book.id === draft.selectedBookId) || initialBook;
+  const hasSavedSession = draft.isActive || draft.isFinished || draft.timerSeconds > 0;
+  // Explicit navigation from the widget/book wins over an idle persisted draft.
+  // Never replace the book of an actual running, paused, or finished session.
+  const selectedBook = (!hasSavedSession && requestedInitialBook)
+    ? requestedInitialBook
+    : (selectableBooks.find((book) => book.id === draft.selectedBookId) || initialBook);
   const activeEdition = selectedBook?.editions.find((edition) => edition.id === selectedBook.activeEditionId) || selectedBook?.editions[0];
   const isAudiobook = activeEdition?.format === 'audiobook';
   const listeningSpeed = 1.2;
 
   useEffect(() => {
     if (draft.timerSeconds > 0 || draft.isActive || draft.isFinished) return;
-    const requestedBook = selectableBooks.find((item) => item.id === initialBookId) ?? selectedBook;
+    const requestedBook = requestedInitialBook ?? selectedBook;
     if (!requestedBook) return;
     const nextStartPage = requestedBook.progressPages ?? 0;
     const nextStartMins = requestedBook.progressMinutes ?? 0;
@@ -224,7 +229,26 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const startOrResume = () => {
     const now = Date.now();
     setError('');
-    setDraft((current) => ({ ...current, isActive: true, startedAt: current.startedAt ?? now, lastActiveAt: now, splitAtMidnight: current.splitAtMidnight ?? true }));
+    setDraft((current) => {
+      // The widget's explicit book must also be the timer's persisted book.
+      // A genuine in-progress session retains its original book.
+      const hasSession = current.isActive || current.isFinished || current.timerSeconds > 0;
+      const book = !hasSession && requestedInitialBook ? requestedInitialBook : undefined;
+      return {
+        ...current,
+        ...(book ? {
+          selectedBookId: book.id,
+          startPage: book.progressPages,
+          endPage: book.progressPages,
+          startMins: book.progressMinutes,
+          endMins: book.progressMinutes,
+        } : {}),
+        isActive: true,
+        startedAt: current.startedAt ?? now,
+        lastActiveAt: now,
+        splitAtMidnight: current.splitAtMidnight ?? true,
+      };
+    });
   };
   const pause = () => setDraft((current) => ({ ...current, isActive: false, lastActiveAt: undefined }));
   const handleFinishSession = () => {
