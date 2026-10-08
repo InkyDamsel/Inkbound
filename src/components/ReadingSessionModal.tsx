@@ -394,10 +394,10 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <section className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90dvh]" role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
+    <div className={`fixed inset-0 z-[110] flex justify-center bg-black/75 backdrop-blur-sm ${draft.isFinished ? "items-end p-0 sm:items-center sm:p-4" : "items-stretch p-0 sm:items-center sm:p-4"}`}>
+      <section className={`relative flex w-full flex-col overflow-hidden border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl ${draft.isFinished ? "max-h-[calc(100dvh-1.5rem)] max-w-lg rounded-2xl sm:max-h-[90dvh]" : "h-[100dvh] max-h-[100dvh] max-w-none rounded-none sm:h-auto sm:max-h-[90dvh] sm:max-w-lg sm:rounded-2xl"}`} role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close reading session without discarding it" title="Close — your session will remain saved"><X className="h-5 w-5" /></button>
-        <div className="overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:p-6">
+        <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:p-6 ${draft.isFinished ? "" : "flex flex-col"}`}>
           <div className="space-y-5">
             <header className="space-y-1 pr-10 text-center">
               <Clock className="mx-auto h-8 w-8 animate-pulse text-[#e5c158]" />
@@ -409,7 +409,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
             {!draft.isFinished ? (
               <>
-              <div className="space-y-4 rounded-2xl border border-[#c5a059]/30 bg-[#25132f] p-5 text-center text-[#f4efe6] shadow-inner sm:p-6">
+              <div className="flex min-h-[45dvh] flex-col justify-center space-y-4 rounded-2xl border border-[#c5a059]/30 bg-[#25132f] p-5 text-center text-[#f4efe6] shadow-inner sm:min-h-0 sm:p-6">
                 <div className="font-mono font-serif text-4xl font-bold tracking-[0.12em] text-[#e5c158] sm:text-5xl">{formatTime(draft.timerSeconds)}</div>
                 <p className="text-xs text-stone-300">{draft.isActive ? 'Session in progress...' : draft.timerSeconds > 0 ? 'Paused' : 'Ready to start'}</p>
                 <div className="grid gap-3 pt-2 sm:flex sm:items-center sm:justify-center sm:gap-4">
