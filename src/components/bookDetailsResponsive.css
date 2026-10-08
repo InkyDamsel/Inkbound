@@ -101,30 +101,40 @@
   }
 }
 
-/* The three Book Details actions are a permanent part of the modal, not
-   desktop-only header controls. Keep them visible at phone widths. */
+
+/* Preserve the original compact, grouped header buttons in every orientation.
+   Do not stretch them across the entire modal width. */
 .book-details-modal-host .book-details-mobile-actions {
-  display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  flex: 0 0 auto;
-  min-height: 60px;
-  visibility: visible !important;
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
 }
 .book-details-modal-host .book-details-mobile-actions > button {
   display: inline-flex !important;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
-  min-width: 0;
-  min-height: 44px;
-  visibility: visible !important;
-  opacity: 1;
-}
-.book-details-modal-host .book-details-mobile-actions > button:disabled {
-  opacity: 0.5;
+  white-space: nowrap;
 }
 
-/* Landscape phones have little vertical space. Keep the modal header compact,
-   preserve the actions, and ensure the book fields retain a scrollable area. */
+/* Portrait phones: keep the original grouped appearance but allow the header
+   to scroll vertically if the cover, metadata and buttons exceed its height. */
+@media (orientation: portrait) and (max-width: 639px) {
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header {
+    max-height: 52dvh;
+    overflow-y: auto;
+  }
+  .book-details-modal-host .book-details-mobile-actions > button {
+    padding-inline: 0.65rem;
+    font-size: 0.7rem;
+  }
+}
+
+/* Short landscape viewports need a compact cover/header, not full-width actions. */
 @media (orientation: landscape) and (max-height: 600px) {
   .book-details-modal-host > div.fixed {
     align-items: stretch !important;
@@ -137,7 +147,8 @@
   }
   .book-details-modal-host > div.fixed > section[role='dialog'] > header {
     padding: 0.5rem 1rem !important;
-    flex: 0 0 auto;
+    max-height: 58dvh;
+    overflow-y: auto;
   }
   .book-details-modal-host .book-details-swipe-handle {
     display: none;
@@ -150,13 +161,5 @@
     margin-top: 0.25rem;
     font-size: 1.35rem;
     line-height: 1.6rem;
-  }
-  .book-details-modal-host .book-details-mobile-actions {
-    min-height: 52px;
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
-  }
-  .book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
-    min-height: 0;
   }
 }
