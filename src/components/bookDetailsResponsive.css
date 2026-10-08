@@ -100,3 +100,63 @@
     overflow: hidden;
   }
 }
+
+/* The three Book Details actions are a permanent part of the modal, not
+   desktop-only header controls. Keep them visible at phone widths. */
+.book-details-modal-host .book-details-mobile-actions {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: 0 0 auto;
+  min-height: 60px;
+  visibility: visible !important;
+}
+.book-details-modal-host .book-details-mobile-actions > button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  visibility: visible !important;
+  opacity: 1;
+}
+.book-details-modal-host .book-details-mobile-actions > button:disabled {
+  opacity: 0.5;
+}
+
+/* Landscape phones have little vertical space. Keep the modal header compact,
+   preserve the actions, and ensure the book fields retain a scrollable area. */
+@media (orientation: landscape) and (max-height: 600px) {
+  .book-details-modal-host > div.fixed {
+    align-items: stretch !important;
+    padding: 0 !important;
+  }
+  .book-details-modal-host > div.fixed > section[role='dialog'] {
+    height: 100dvh;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header {
+    padding: 0.5rem 1rem !important;
+    flex: 0 0 auto;
+  }
+  .book-details-modal-host .book-details-swipe-handle {
+    display: none;
+  }
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header > div > button.shrink-0 > div {
+    width: 3.25rem !important;
+    height: 4.5rem !important;
+  }
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header h2 {
+    margin-top: 0.25rem;
+    font-size: 1.35rem;
+    line-height: 1.6rem;
+  }
+  .book-details-modal-host .book-details-mobile-actions {
+    min-height: 52px;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+  .book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
+    min-height: 0;
+  }
+}
