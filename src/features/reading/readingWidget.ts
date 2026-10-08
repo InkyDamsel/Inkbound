@@ -48,7 +48,7 @@ interface ReadingWidgetSnapshot {
 interface ReadingWidgetPlugin {
   syncState(options: ReadingWidgetSnapshot): Promise<void>;
   readState(): Promise<ReadingWidgetSnapshot>;
-  consumeAction(): Promise<{ action?: ReadingWidgetAction }>;
+  consumeAction(): Promise<{ action?: ReadingWidgetAction; bookId?: string }>;
 }
 
 const ReadingWidget = registerPlugin<ReadingWidgetPlugin>('ReadingWidget');
@@ -264,11 +264,11 @@ export async function readDisplayedReadingWidgetBookId(): Promise<string | undef
   }
 }
 
-export async function consumeReadingWidgetAction(): Promise<ReadingWidgetAction | undefined> {
+export async function consumeReadingWidgetAction(): Promise<{ action: ReadingWidgetAction; bookId?: string } | undefined> {
   if (!isNativeRuntime()) return undefined;
   try {
     const result = await ReadingWidget.consumeAction();
-    return result.action;
+    return result.action ? { action: result.action, bookId: result.bookId || undefined } : undefined;
   } catch (error) {
     console.warn('Inkbound could not read the reading widget action.', error);
     return undefined;
