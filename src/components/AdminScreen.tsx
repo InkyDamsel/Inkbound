@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Crown, Gift, RefreshCw, Search, ShieldCheck, Star, Trash2, Users, X } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
+import { auth } from '../lib/firebase';
 import { functions } from '../lib/firebase';
 import { useAccountSync } from '../context/AccountSyncContext';
 import { AdminDataSafetyPanel } from './admin/AdminDataSafetyPanel';
@@ -175,7 +176,18 @@ export const AdminScreen: React.FC = () => {
     setStatus('Loading owner data…');
     try {
       const getAdminDashboard = httpsCallable<{ query: string }, unknown>(functions, 'getAdminDashboard');
-      const response = await getAdminDashboard({ query: search });
+      // Retry an expired native Firebase ID token once. Admin authorization
+      // remains enforced by the callable; no local book data is modified.
+      let response;
+      try {
+        response = await getAdminDashboard({ query: search });
+      } catch (error) {
+        const code = typeof error === 'object' && error && 'code' in error
+          ? String((error as { code?: unknown }).code ?? '') : '';
+        if (code !== 'functions/unauthenticated' || auth?.currentUser?.uid !== user.uid) throw error;
+        await auth.currentUser.getIdToken(true);
+        response = await getAdminDashboard({ query: search });
+      }
       const dashboard = normalizeDashboardPayload(response.data);
       const nextSelected = dashboard.users.find((item) => item.uid === (selectedUser?.uid ?? cachedSelectedUserId))
         ?? dashboard.users[0]
