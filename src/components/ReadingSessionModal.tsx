@@ -405,7 +405,6 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
               <p className="text-xs text-stone-300">Your active session saves automatically. Closing this window does not discard it.</p>
             </header>
 
-            {!draft.isFinished && <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Select Book</label><select value={draft.selectedBookId} onChange={(event) => handleBookChange(event.target.value)} disabled={draft.timerSeconds > 0 || draft.isActive} className="w-full rounded-xl border border-[#3d2448] bg-[#120817] p-3 text-sm font-medium text-[#f4efe6] focus:border-[#c5a059] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60">{selectableBooks.map((book) => <option key={book.id} value={book.id}>{book.work.title} ({book.work.author})</option>)}</select><p className="mt-2 text-xs text-stone-400">Only books marked Currently Reading are available here. This session will begin from your saved {isAudiobook ? `minute ${draft.startMins}` : `page ${draft.startPage}`}. The next session will continue from whatever ending progress you save.</p></div>}
             {error && <p className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>}
 
             {!draft.isFinished ? (
@@ -418,6 +417,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
                 </div>
                 {(draft.timerSeconds > 0 || draft.notes) && <button type="button" onClick={discardSession} className="mx-auto flex min-h-11 items-center gap-2 text-xs font-bold text-rose-300 hover:text-rose-200"><Trash2 className="h-3.5 w-3.5" /> Discard Session</button>}
               </div>
+              {!draft.isFinished && <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Select Book</label><select value={draft.selectedBookId} onChange={(event) => handleBookChange(event.target.value)} disabled={draft.timerSeconds > 0 || draft.isActive} className="w-full rounded-xl border border-[#3d2448] bg-[#120817] p-3 text-sm font-medium text-[#f4efe6] focus:border-[#c5a059] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60">{selectableBooks.map((book) => <option key={book.id} value={book.id}>{book.work.title} ({book.work.author})</option>)}</select><p className="mt-2 text-xs text-stone-400">Only books marked Currently Reading are available here. This session will begin from your saved {isAudiobook ? `minute ${draft.startMins}` : `page ${draft.startPage}`}. The next session will continue from whatever ending progress you save.</p></div>}
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-4 text-emerald-300"><CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" /><div><p className="text-sm font-bold">Session completed</p><p className="text-xs text-stone-300">{sessionDurationMins} minutes tracked.</p></div></div>
