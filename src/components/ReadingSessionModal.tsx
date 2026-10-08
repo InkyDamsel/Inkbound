@@ -104,6 +104,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const requestedInitialBook = selectableBooks.find((book) => book.id === initialBookId);
   const initialBook = requestedInitialBook ?? selectableBooks[0];
   const [error, setError] = useState('');
+  const [manualBookOverride, setManualBookOverride] = useState(false);
   const [dailyGoalMins] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalMinutes, '30');
   const [dailyGoalPages] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalPages, '20');
   const [draft, setDraft] = usePersistentState<SessionDraft>(ACTIVE_READING_DRAFT_KEY, () => ({
@@ -125,7 +126,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   const hasSavedSession = draft.isActive || draft.isFinished || draft.timerSeconds > 0;
   // Explicit navigation from the widget/book wins over an idle persisted draft.
   // Never replace the book of an actual running, paused, or finished session.
-  const selectedBook = (!hasSavedSession && requestedInitialBook)
+  const selectedBook = (!hasSavedSession && requestedInitialBook && !manualBookOverride)
     ? requestedInitialBook
     : (selectableBooks.find((book) => book.id === draft.selectedBookId) || initialBook);
   const activeEdition = selectedBook?.editions.find((edition) => edition.id === selectedBook.activeEditionId) || selectedBook?.editions[0];
@@ -134,7 +135,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
   useEffect(() => {
     if (draft.timerSeconds > 0 || draft.isActive || draft.isFinished) return;
-    const requestedBook = requestedInitialBook ?? selectedBook;
+    const requestedBook = manualBookOverride ? selectedBook : (requestedInitialBook ?? selectedBook);
     if (!requestedBook) return;
     const nextStartPage = requestedBook.progressPages ?? 0;
     const nextStartMins = requestedBook.progressMinutes ?? 0;
@@ -149,7 +150,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
       secondsByDate: {},
       midnightProgress: undefined,
     }));
-  }, [draft.endMins, draft.endPage, draft.isActive, draft.isFinished, draft.selectedBookId, draft.startMins, draft.startPage, draft.timerSeconds, initialBookId, selectableBooks, selectedBook, setDraft]);
+  }, [draft.endMins, draft.endPage, draft.isActive, draft.isFinished, draft.selectedBookId, draft.startMins, draft.startPage, draft.timerSeconds, initialBookId, selectableBooks, selectedBook, setDraft, manualBookOverride]);
 
   useEffect(() => {
     if (!draft.isActive) return undefined;
@@ -214,6 +215,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
     const book = selectableBooks.find((item) => item.id === bookId);
     if (!book) return;
     setError('');
+    setManualBookOverride(true);
     setDraft((current) => ({
       ...current,
       selectedBookId: bookId,
@@ -233,7 +235,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
       // The widget's explicit book must also be the timer's persisted book.
       // A genuine in-progress session retains its original book.
       const hasSession = current.isActive || current.isFinished || current.timerSeconds > 0;
-      const book = !hasSession && requestedInitialBook ? requestedInitialBook : undefined;
+      const book = !hasSession && !manualBookOverride && requestedInitialBook ? requestedInitialBook : undefined;
       return {
         ...current,
         ...(book ? {
