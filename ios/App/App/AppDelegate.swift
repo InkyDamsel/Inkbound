@@ -37,8 +37,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if url.scheme == "inkbound", url.host == "reading-widget" {
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let action = components?.queryItems?.first(where: { $0.name == "action" })?.value ?? ""
+            let bookId = components?.queryItems?.first(where: { $0.name == "bookId" })?.value ?? ""
             if !action.isEmpty {
-                UserDefaults(suiteName: "group.com.inkydameinteractive.inkbound")?.set(action, forKey: "pendingAction")
+                let shared = UserDefaults(suiteName: "group.com.inkydameinteractive.inkbound")
+                shared?.set(bookId, forKey: "pendingBookId")
+                shared?.set(action, forKey: "pendingAction")
             }
         }
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
