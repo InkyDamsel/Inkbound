@@ -149,7 +149,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         ? (b.rating || 0) - (a.rating || 0)
         : sortBy === 'progress'
           ? getCanonicalProgressPercentage(b) - getCanonicalProgressPercentage(a)
-          : new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+          : ((Number.isFinite(Date.parse(b.dateAdded ?? '')) ? Date.parse(b.dateAdded) : 0)
+            - (Number.isFinite(Date.parse(a.dateAdded ?? '')) ? Date.parse(a.dateAdded) : 0))
+            || a.work.title.localeCompare(b.work.title, undefined, { sensitivity: 'base', numeric: true })
+            || a.id.localeCompare(b.id)), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
