@@ -381,7 +381,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
   if (!selectedBook) {
     return (
-      <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4">
         <section className="relative w-full max-w-lg rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] p-6 text-center shadow-2xl sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
           <button type="button" onClick={onClose} className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close reading session"><X className="h-5 w-5" /></button>
           <Clock className="mx-auto h-8 w-8 text-[#e5c158]" />
@@ -395,7 +395,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <section className="relative flex max-h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90dvh] sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
+      <section className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90dvh]" role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close reading session without discarding it" title="Close — your session will remain saved"><X className="h-5 w-5" /></button>
         <div className="overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:p-6">
           <div className="space-y-5">
@@ -408,6 +408,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
             {error && <p className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>}
 
             {!draft.isFinished ? (
+              <>
               <div className="space-y-4 rounded-2xl border border-[#c5a059]/30 bg-[#25132f] p-5 text-center text-[#f4efe6] shadow-inner sm:p-6">
                 <div className="font-mono font-serif text-4xl font-bold tracking-[0.12em] text-[#e5c158] sm:text-5xl">{formatTime(draft.timerSeconds)}</div>
                 <p className="text-xs text-stone-300">{draft.isActive ? 'Session in progress...' : draft.timerSeconds > 0 ? 'Paused' : 'Ready to start'}</p>
@@ -417,7 +418,8 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
                 </div>
                 {(draft.timerSeconds > 0 || draft.notes) && <button type="button" onClick={discardSession} className="mx-auto flex min-h-11 items-center gap-2 text-xs font-bold text-rose-300 hover:text-rose-200"><Trash2 className="h-3.5 w-3.5" /> Discard Session</button>}
               </div>
-              {!draft.isFinished && <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Select Book</label><select value={draft.selectedBookId} onChange={(event) => handleBookChange(event.target.value)} disabled={draft.timerSeconds > 0 || draft.isActive} className="w-full rounded-xl border border-[#3d2448] bg-[#120817] p-3 text-sm font-medium text-[#f4efe6] focus:border-[#c5a059] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60">{selectableBooks.map((book) => <option key={book.id} value={book.id}>{book.work.title} ({book.work.author})</option>)}</select><p className="mt-2 text-xs text-stone-400">Only books marked Currently Reading are available here. This session will begin from your saved {isAudiobook ? `minute ${draft.startMins}` : `page ${draft.startPage}`}. The next session will continue from whatever ending progress you save.</p></div>}
+              <div><label className="mb-1 block text-xs font-bold text-[#f4efe6]">Select Book</label><select value={draft.selectedBookId} onChange={(event) => handleBookChange(event.target.value)} disabled={draft.timerSeconds > 0 || draft.isActive} className="w-full rounded-xl border border-[#3d2448] bg-[#120817] p-3 text-sm font-medium text-[#f4efe6] focus:border-[#c5a059] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60">{selectableBooks.map((book) => <option key={book.id} value={book.id}>{book.work.title} ({book.work.author})</option>)}</select><p className="mt-2 text-xs text-stone-400">Only books marked Currently Reading are available here. This session will begin from your saved {isAudiobook ? `minute ${draft.startMins}` : `page ${draft.startPage}`}. The next session will continue from whatever ending progress you save.</p></div>
+              </>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-4 text-emerald-300"><CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" /><div><p className="text-sm font-bold">Session completed</p><p className="text-xs text-stone-300">{sessionDurationMins} minutes tracked.</p></div></div>
