@@ -253,6 +253,17 @@ export async function syncReadingWidget(
   }
 }
 
+export async function readDisplayedReadingWidgetBookId(): Promise<string | undefined> {
+  if (!isNativeRuntime()) return undefined;
+  try {
+    const snapshot = await ReadingWidget.readState();
+    return snapshot.bookId || undefined;
+  } catch (error) {
+    console.warn('Inkbound could not read the displayed widget book.', error);
+    return undefined;
+  }
+}
+
 export async function consumeReadingWidgetAction(): Promise<ReadingWidgetAction | undefined> {
   if (!isNativeRuntime()) return undefined;
   try {
