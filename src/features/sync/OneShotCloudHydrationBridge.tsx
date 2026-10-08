@@ -11,7 +11,7 @@ import {
 } from '../../platform/largeBrowserStorage';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
 import { isNativeRuntime } from '../../platform/runtimePlatform';
-import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { getRuntimeStorage, notifyRuntimeStorageChanged } from '../../platform/runtimeStorage';
 import { notifyCloudDataUpdated } from './cloudSyncEvents';
 import {
   ACCOUNT_LIBRARY_MIGRATION_VERSION,
@@ -19,6 +19,7 @@ import {
   crossDeviceCursorKey,
   FULL_RECONCILIATION_VERSION,
   fullReconciliationVersionKey,
+  syncPendingStateKey,
   SYNC_STORAGE_KEYS,
 } from './storageKeys';
 
@@ -128,10 +129,60 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
     let disposed = false;
     let timer: number | undefined;
     let hydrationRunning = false;
+    let repairRunning = false;
+    const repairKey = 'inkbound_native_cloud_inventory_repair_' + uid + '_v1';
+
+    // An established native device can have a valid delta cursor while missing
+    // an older cloud book. Repair only missing IDs, never replace local edits,
+    // upload device records, or advance the incremental sync cursor.
+    const repairMissingCloudBooks = async () => {
+      if (disposed || repairRunning || !isNativeRuntime() || !navigator.onLine) return;
+      const storage = getRuntimeStorage();
+      if (!hasEstablishedLocalWorkingCopy(uid) || storage.getItem(repairKey) === 'complete') return;
+      repairRunning = true;
+      try {
+        await hydrateLargeBrowserStorage();
+        if (disposed || !hasEstablishedLocalWorkingCopy(uid)) return;
+        const snapshot = await getDocs(collection(db!, 'users', uid, 'books'));
+        if (disposed) return;
+
+        // Re-read local state after the network request to retain intervening edits.
+        const current = readJson<UserBookRecord[]>(BOOKS_KEY, []);
+        const pending = readJson<{ books?: Record<string, { operation?: string }> }>(
+          syncPendingStateKey(uid), { books: {} },
+        );
+        const ids = new Set(current.map((book) => book.id));
+        const recovered: UserBookRecord[] = [];
+        for (const item of snapshot.docs) {
+          const book = (item.data() as CloudRecord<UserBookRecord>).data;
+          if (!book?.id || ids.has(book.id) || pending.books?.[book.id]?.operation === 'delete') continue;
+          recovered.push(book);
+          ids.add(book.id);
+        }
+        if (recovered.length > 0) {
+          writeJson(BOOKS_KEY, [...current, ...recovered]);
+          await flushLargeBrowserStorage();
+          if (disposed) return;
+          notifyRuntimeStorageChanged(BOOKS_KEY);
+          notifyCloudDataUpdated([BOOKS_KEY]);
+        }
+        storage.setItem(repairKey, 'complete');
+        console.info('[Inkbound sync] Native cloud book inventory checked.', {
+          cloudBooks: snapshot.size,
+          localBooksBefore: current.length,
+          recoveredBooks: recovered.length,
+        });
+      } catch (error) {
+        console.warn('[Inkbound sync] Native book inventory repair will retry.', error);
+      } finally {
+        repairRunning = false;
+      }
+    };
 
     const openFromLocal = () => {
       getRuntimeStorage().setItem(OWNER_UID_KEY, uid);
       notifyCloudDataUpdated([BOOKS_KEY, SESSIONS_KEY, PROFILE_KEY]);
+      void repairMissingCloudBooks();
     };
 
     const hydrate = async () => {
@@ -239,7 +290,10 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
       }, LOCAL_HYDRATION_GRACE_MS);
     }
 
-    const unsubscribeRuntimeResume = subscribeToRuntimeResume(retryHydration);
+    const unsubscribeRuntimeResume = subscribeToRuntimeResume(() => {
+      retryHydration();
+      void repairMissingCloudBooks();
+    });
 
     return () => {
       disposed = true;
