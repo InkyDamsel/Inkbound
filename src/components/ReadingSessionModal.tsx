@@ -411,7 +411,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
             {!draft.isFinished ? (
               <>
-              <div className="flex min-h-[45dvh] flex-col justify-center space-y-4 rounded-2xl border border-[#c5a059]/30 bg-[#25132f] p-5 text-center text-[#f4efe6] shadow-inner sm:min-h-0 sm:p-6">
+              <div className="flex flex-col justify-center space-y-4 rounded-2xl border border-[#c5a059]/30 bg-[#25132f] p-5 text-center text-[#f4efe6] shadow-inner sm:min-h-0 sm:p-6">
                 <div className="font-mono font-serif text-4xl font-bold tracking-[0.12em] text-[#e5c158] sm:text-5xl">{formatTime(draft.timerSeconds)}</div>
                 <p className="text-xs text-stone-300">{draft.isActive ? 'Session in progress...' : draft.timerSeconds > 0 ? 'Paused' : 'Ready to start'}</p>
                 <div className="grid gap-3 pt-2 sm:flex sm:items-center sm:justify-center sm:gap-4">
