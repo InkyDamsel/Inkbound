@@ -62,11 +62,13 @@ public final class ReadingWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let action = defaults.string(forKey: "pendingAction") ?? ""
+        let bookId = defaults.string(forKey: "pendingBookId") ?? ""
         defaults.removeObject(forKey: "pendingAction")
+        defaults.removeObject(forKey: "pendingBookId")
         if action.isEmpty {
             call.resolve()
         } else {
-            call.resolve(["action": action])
+            call.resolve(["action": action, "bookId": bookId])
         }
     }
 }
