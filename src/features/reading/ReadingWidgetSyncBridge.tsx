@@ -7,6 +7,7 @@ import {
   applyReadingWidgetAction,
   buildReadingWidgetSnapshot,
   consumeReadingWidgetAction,
+  readDisplayedReadingWidgetBookId,
   syncReadingWidget,
 } from './readingWidget';
 
@@ -66,6 +67,9 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
     const consume = async () => {
       const action = await consumeReadingWidgetAction();
       if (!action || stopped) return;
+      // Read the book actually shown on the native widget BEFORE syncing a new
+      // snapshot: app hydration may lag behind the widget the reader tapped.
+      const tappedBookId = await readDisplayedReadingWidgetBookId();
       const result = applyReadingWidgetAction(action);
       await syncReadingWidget(booksRef.current, sessionsRef.current);
       if (result.shouldOpenTimer) {
@@ -76,7 +80,7 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
           sessionsRef.current,
         ).bookId;
         openTimerRef.current(
-          action === 'start' ? displayedBookId : (result.bookId ?? displayedBookId),
+          action === 'start' ? (tappedBookId ?? displayedBookId) : (result.bookId ?? tappedBookId ?? displayedBookId),
         );
       }
     };
