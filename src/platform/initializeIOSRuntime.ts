@@ -86,6 +86,7 @@ export async function initializeIOSRuntime() {
   });
 
   configureRuntimeAuthentication({
+    supportsAppleSignIn: true,
     preparePersistence: async () => undefined,
     signInWithGoogle: async (firebaseAuth) => {
       const result = await requestNativeGoogleCredential();
