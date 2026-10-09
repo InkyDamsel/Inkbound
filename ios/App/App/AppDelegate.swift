@@ -36,7 +36,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // The scene lifecycle delivers URLs through SceneDelegate on iOS 27+.
     // Keep the same routing for the legacy application delegate callback so
     // widget actions and Capacitor auth/deep links have one implementation.
-    static func handleIncomingURL(_ url: URL) {
+    @discardableResult
+    static func handleIncomingURL(_ url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         if url.scheme == "inkbound", url.host == "reading-widget" {
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let action = components?.queryItems?.first(where: { $0.name == "action" })?.value ?? ""
@@ -47,7 +48,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 shared?.set(action, forKey: "pendingAction")
             }
         }
-        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: url, options: [:])
+        return ApplicationDelegateProxy.shared.application(UIApplication.shared, open: url, options: options)
     }
 
     static func handleIncomingUserActivity(_ userActivity: NSUserActivity) {
@@ -67,8 +68,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        Self.handleIncomingURL(url)
-        return true
+        return Self.handleIncomingURL(url, options: options)
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
