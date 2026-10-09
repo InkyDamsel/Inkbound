@@ -94,9 +94,17 @@ if (fs.existsSync(infoPlist)) {
     'UISceneConfigurations',
     'UIWindowSceneSessionRoleApplication',
     '$(PRODUCT_MODULE_NAME).SceneDelegate',
-    'UISceneStoryboardFile',
   ]) {
     if (!plist.includes(required)) fail(`iOS 27 launch configuration missing ${required}.`);
+  }
+}
+if (fs.existsSync(infoPlist) && fs.readFileSync(infoPlist, 'utf8').includes('<key>UISceneStoryboardFile</key>')) {
+  fail('Scene storyboard autoload must be disabled; SceneDelegate owns the single Capacitor bridge window.');
+}
+if (fs.existsSync(sceneDelegate)) {
+  const source = fs.readFileSync(sceneDelegate, 'utf8');
+  for (const required of ['UIWindow(windowScene: windowScene)', 'InkboundBridgeViewController()', 'makeKeyAndVisible()']) {
+    if (!source.includes(required)) fail(`SceneDelegate must explicitly initialize the canonical Capacitor window: ${required}.`);
   }
 }
 if (fs.existsSync(project) && !fs.readFileSync(project, 'utf8').includes('SceneDelegate.swift in Sources')) {
