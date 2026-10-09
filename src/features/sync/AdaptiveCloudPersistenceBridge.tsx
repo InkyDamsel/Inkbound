@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
-import { isNativeRuntime } from '../../platform/runtimePlatform';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
@@ -105,16 +104,5 @@ export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   if (!fullReconciliationComplete) {
     return <FullCloudReconciliationBridge onComplete={handleFullReconciliationComplete} />;
   }
-  // Keep the native inventory repair mounted for established devices too.
-  // Previously OneShotCloudHydrationBridge only mounted for devices without a
-  // local library, so its safe, additive missing-cloud-book repair could never
-  // run when an iOS device had a partial but already-established local cache.
-  // This bridge never replaces existing local book records or uploads the
-  // smaller device inventory; CostSafe remains the sole mutation publisher.
-  return (
-    <>
-      {isNativeRuntime() && <OneShotCloudHydrationBridge />}
-      <CostSafeCloudPersistenceBridge />
-    </>
-  );
+  return <CostSafeCloudPersistenceBridge />;
 };
