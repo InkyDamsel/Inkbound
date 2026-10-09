@@ -33,7 +33,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
     }
 
-    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+    // The scene lifecycle delivers URLs through SceneDelegate on iOS 27+.
+    // Keep the same routing for the legacy application delegate callback so
+    // widget actions and Capacitor auth/deep links have one implementation.
+    static func handleIncomingURL(_ url: URL) {
         if url.scheme == "inkbound", url.host == "reading-widget" {
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let action = components?.queryItems?.first(where: { $0.name == "action" })?.value ?? ""
@@ -44,7 +47,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 shared?.set(action, forKey: "pendingAction")
             }
         }
-        return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: url, options: [:])
+    }
+
+    static func handleIncomingUserActivity(_ userActivity: NSUserActivity) {
+        _ = ApplicationDelegateProxy.shared.application(
+            UIApplication.shared,
+            continue: userActivity,
+            restorationHandler: { _ in }
+        )
+    }
+
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        Self.handleIncomingURL(url)
+        return true
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
