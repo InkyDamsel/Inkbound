@@ -198,23 +198,10 @@ const InkboundApplication = () => (
               <CanonicalLibraryNormalizationBridge />
             </BrowserStorageHydrationGate>
             <ThemePersistenceBridge />
-            {isIOSRuntime() ? (
-              // The iOS WebView can restore its IndexedDB-backed library after
-              // React first renders. Never mount App with a stale localStorage
-              // snapshot before the canonical large-storage startup read finishes.
-              // The sync bridges already wait behind this same hydration gate.
-              <BrowserStorageHydrationGate>
-                <CloudDataRefreshBoundary>
-                  <RecoverySafetyBridge />
-                  <App />
-                </CloudDataRefreshBoundary>
-              </BrowserStorageHydrationGate>
-            ) : (
-              <CloudDataRefreshBoundary>
-                <RecoverySafetyBridge />
-                <App />
-              </CloudDataRefreshBoundary>
-            )>
+            <CloudDataRefreshBoundary>
+              <RecoverySafetyBridge />
+              <App />
+            </CloudDataRefreshBoundary>
             <UpgradeModal />
           </AuthSessionGate>
         </AccountSyncProvider>
