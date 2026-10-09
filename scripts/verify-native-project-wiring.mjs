@@ -90,11 +90,10 @@ if (exists('ios/App/App/Info.plist')) {
     '<key>UIWindowSceneSessionRoleApplication</key>',
     '<key>UISceneDelegateClassName</key>',
     '$(PRODUCT_MODULE_NAME).SceneDelegate',
-    '<key>UISceneStoryboardFile</key>',
-    '<string>Main</string>',
   ]) {
     if (!info.includes(required)) fail(`iOS 27 scene manifest is missing ${required}.`);
   }
+  if (info.includes('<key>UISceneStoryboardFile</key>')) fail('iOS scene must not auto-load a second storyboard bridge window.');
 }
 if (exists('ios/App/App.xcodeproj/project.pbxproj')) {
   const project = read('ios/App/App.xcodeproj/project.pbxproj');
@@ -118,6 +117,9 @@ if (exists('ios/App/App/SceneDelegate.swift')) {
     'continue userActivity',
     'AppDelegate.handleIncomingURL',
     'AppDelegate.handleIncomingUserActivity',
+    'UIWindow(windowScene: windowScene)',
+    'InkboundBridgeViewController()',
+    'makeKeyAndVisible()',
   ]) {
     if (!delegate.includes(required)) fail(`iOS scene lifecycle or deep-link forwarding is missing ${required}.`);
   }
