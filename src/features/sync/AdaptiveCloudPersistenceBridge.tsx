@@ -104,5 +104,16 @@ export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   if (!fullReconciliationComplete) {
     return <FullCloudReconciliationBridge onComplete={handleFullReconciliationComplete} />;
   }
-  return <CostSafeCloudPersistenceBridge />;
+  // Keep the native inventory repair mounted for established devices too.
+  // Previously OneShotCloudHydrationBridge only mounted for devices without a
+  // local library, so its safe, additive missing-cloud-book repair could never
+  // run when an iOS device had a partial but already-established local cache.
+  // This bridge never replaces existing local book records or uploads the
+  // smaller device inventory; CostSafe remains the sole mutation publisher.
+  return (
+    <>
+      <OneShotCloudHydrationBridge />
+      <CostSafeCloudPersistenceBridge />
+    </>
+  );
 };
