@@ -16,6 +16,8 @@ const requiredFiles = [
   'android/app/src/main/java/com/inkydameinteractive/inkbound/ReadingWidgetProvider.java',
   'ios/App/App.xcodeproj/project.pbxproj',
   'ios/App/App/Info.plist',
+  'ios/App/App/AppDelegate.swift',
+  'ios/App/App/SceneDelegate.swift',
   'ios/App/App/PrivacyInfo.xcprivacy',
   'ios/App/App/InkboundBarcodeScannerPlugin.swift',
   'ios/App/App/LoanReminderPlugin.swift',
@@ -74,6 +76,50 @@ if (exists('ios/App/App/Info.plist')) {
   const info = read('ios/App/App/Info.plist');
   for (const key of ['NSCameraUsageDescription', 'NSPhotoLibraryUsageDescription']) {
     if (!info.includes(`<key>${key}</key>`)) fail(`iOS Info.plist is missing ${key}.`);
+  }
+}
+
+// iOS 27+ hard-fails launch for apps built with the current SDK that do not
+// declare a valid UIKit scene. Keep this check in release:verify, not only
+// in the optional macOS/iOS readiness command.
+if (exists('ios/App/App/Info.plist')) {
+  const info = read('ios/App/App/Info.plist');
+  for (const required of [
+    '<key>UIApplicationSceneManifest</key>',
+    '<key>UISceneConfigurations</key>',
+    '<key>UIWindowSceneSessionRoleApplication</key>',
+    '<key>UISceneDelegateClassName</key>',
+    '$(PRODUCT_MODULE_NAME).SceneDelegate',
+    '<key>UISceneStoryboardFile</key>',
+    '<string>Main</string>',
+  ]) {
+    if (!info.includes(required)) fail(`iOS 27 scene manifest is missing ${required}.`);
+  }
+}
+if (exists('ios/App/App.xcodeproj/project.pbxproj')) {
+  const project = read('ios/App/App.xcodeproj/project.pbxproj');
+  if (!project.includes('SceneDelegate.swift in Sources')) {
+    fail('SceneDelegate.swift must be compiled in the iOS App target.');
+  }
+}
+if (exists('ios/App/App/AppDelegate.swift')) {
+  const delegate = read('ios/App/App/AppDelegate.swift');
+  if (!delegate.includes('configurationForConnecting') || !delegate.includes('SceneDelegate.self')) {
+    fail('AppDelegate must provide a scene configuration on iOS 27+.');
+  }
+}
+if (exists('ios/App/App/SceneDelegate.swift')) {
+  const delegate = read('ios/App/App/SceneDelegate.swift');
+  for (const required of [
+    'UIWindowSceneDelegate',
+    'connectionOptions.urlContexts',
+    'connectionOptions.userActivities',
+    'openURLContexts',
+    'continue userActivity',
+    'AppDelegate.handleIncomingURL',
+    'AppDelegate.handleIncomingUserActivity',
+  ]) {
+    if (!delegate.includes(required)) fail(`iOS scene lifecycle or deep-link forwarding is missing ${required}.`);
   }
 }
 
