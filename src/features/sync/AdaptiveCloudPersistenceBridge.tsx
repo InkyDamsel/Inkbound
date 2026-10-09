@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { isNativeRuntime } from '../../platform/runtimePlatform';
 import {
   INKBOUND_CLOUD_DATA_EVENT,
   INKBOUND_LOCAL_DATA_CHANGED_EVENT,
@@ -112,7 +113,7 @@ export const AdaptiveCloudPersistenceBridge: React.FC = () => {
   // smaller device inventory; CostSafe remains the sole mutation publisher.
   return (
     <>
-      <OneShotCloudHydrationBridge />
+      {isNativeRuntime() && <OneShotCloudHydrationBridge />}
       <CostSafeCloudPersistenceBridge />
     </>
   );
