@@ -28,6 +28,8 @@ const barcodePlugin = path.join(appRoot, 'InkboundBarcodeScannerPlugin.swift');
 const reminderPlugin = path.join(appRoot, 'LoanReminderPlugin.swift');
 const widgetPlugin = path.join(appRoot, 'ReadingWidgetPlugin.swift');
 const bridgeController = path.join(appRoot, 'InkboundBridgeViewController.swift');
+const sceneDelegate = path.join(appRoot, 'SceneDelegate.swift');
+const appDelegate = path.join(appRoot, 'AppDelegate.swift');
 const widgetRoot = path.join(iosRoot, 'InkboundReadingWidget');
 const widgetSource = path.join(widgetRoot, 'InkboundReadingWidget.swift');
 const widgetInfo = path.join(widgetRoot, 'Info.plist');
@@ -36,6 +38,8 @@ const widgetEntitlements = path.join(widgetRoot, 'InkboundReadingWidget.entitlem
 
 for (const [file, label] of [
   [project, 'Xcode project'],
+  [sceneDelegate, 'UIKit SceneDelegate'],
+  [appDelegate, 'UIKit AppDelegate'],
   [infoPlist, 'Info.plist'],
   [privacyManifest, 'PrivacyInfo.xcprivacy'],
   [googleService, 'GoogleService-Info.plist'],
@@ -78,6 +82,30 @@ if (fs.existsSync(infoPlist)) {
     } else if (!source.includes(`<string>${reversedClientId}</string>`)) {
       fail('Info.plist is missing the Google sign-in callback URL scheme. Run npm run ios:google-signin:configure.');
     }
+  }
+}
+
+// Native launch on iOS 27 requires an actual scene manifest and compiled delegate.
+// Checking this at packaging time prevents a valid archive that immediately SIGTRAPs.
+if (fs.existsSync(infoPlist)) {
+  const plist = fs.readFileSync(infoPlist, 'utf8');
+  for (const required of [
+    'UIApplicationSceneManifest',
+    'UISceneConfigurations',
+    'UIWindowSceneSessionRoleApplication',
+    '$(PRODUCT_MODULE_NAME).SceneDelegate',
+    'UISceneStoryboardFile',
+  ]) {
+    if (!plist.includes(required)) fail(`iOS 27 launch configuration missing ${required}.`);
+  }
+}
+if (fs.existsSync(project) && !fs.readFileSync(project, 'utf8').includes('SceneDelegate.swift in Sources')) {
+  fail('UIKit SceneDelegate must be compiled into the app target.');
+}
+if (fs.existsSync(sceneDelegate)) {
+  const source = fs.readFileSync(sceneDelegate, 'utf8');
+  if (!source.includes('connectionOptions.urlContexts') || !source.includes('openURLContexts')) {
+    fail('SceneDelegate must route cold and warm widget/auth URL callbacks.');
   }
 }
 
