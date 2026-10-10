@@ -106,7 +106,7 @@ if (/\blocalStorage\./.test(app)) {
 if (/useEffect\(\(\) => \{[\s\S]{0,260}writeRuntimeJson\(BOOKS_STORAGE_KEY, books\)[\s\S]{0,160}\}, \[books\]\)/.test(app)) {
   violations.push('App.tsx: canonical library must persist at the mutation boundary, never from a books-state effect');
 }
-if (!app.includes('if (!replaceCanonicalLibrary(next))') || !app.includes('if (!replaceCanonicalSessions(next))')) {
+if (!/if\s*\(!replaceCanonicalLibrary\(next(?:,\s*options)?\)\)/.test(app) || !/if\s*\(!replaceCanonicalSessions\(next(?:,\s*options)?\)\)/.test(app)) {
   violations.push('App.tsx: canonical books/sessions mutations must fail closed when persistence fails');
 }
 if (/safeWriteLocalStorage/.test(app)) {
