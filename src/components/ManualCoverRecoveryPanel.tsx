@@ -4,7 +4,9 @@ import { deleteObject, getDownloadURL, getMetadata, listAll, ref } from 'firebas
 import type { UserBookRecord } from '../types';
 import { auth, storage } from '../lib/firebase';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
-import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
+import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { replaceCanonicalLibrary } from '../features/library/libraryMutations';
+import { compareLibraryLabels } from '../features/library/librarySectionSort';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readImportEnrichmentQueue, writeImportEnrichmentQueue } from '../features/import/libraryEnrichment';
 import { PaginationControls } from './PaginationControls';
@@ -139,7 +141,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
     const normalizedQuery = bookQuery.trim().toLowerCase();
     return [...books]
       .filter((book) => !normalizedQuery || `${book.work.title} ${book.work.author}`.toLowerCase().includes(normalizedQuery))
-      .sort((a, b) => a.work.title.localeCompare(b.work.title));
+      .sort((a, b) => compareLibraryLabels(a.work.title, b.work.title));
   }, [books, bookQuery]);
 
   const coverTotalPages = Math.max(1, Math.ceil(visibleAssets.length / COVER_PAGE_SIZE));
@@ -158,6 +160,10 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
 
   const deleteUnusedAssets = async (targets: StoredManualCover[]) => {
     if (!storage || deleting || !listingVerified || targets.length === 0) return;
+    // A complete Storage listing does not prove the current device has a complete
+    // library. Never delete files based solely on missing local references.
+    setError('Cover cleanup is paused until Inkbound can verify every book reference against the cloud. No cover was deleted.');
+    return;
 
     // Re-check against the current canonical library immediately before delete.
     const confirmedUnused = targets.filter((asset) => isUnusedCover(asset, books));
@@ -238,14 +244,15 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
         };
       });
 
-      const runtimeStorage = getRuntimeStorage();
-      runtimeStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(updatedBooks));
+      if (!replaceCanonicalLibrary(updatedBooks)) {
+        setError('Inkbound could not save that cover assignment. Your existing cover was kept.');
+        return;
+      }
 
       writeImportEnrichmentQueue(
         readImportEnrichmentQueue().filter((item) => item.targetBookId !== selectedBook.id),
       );
 
-      notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
       notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
 
       setRestoredMessage(`Using this manual cover for “${selectedBook.work.title}”.`);
