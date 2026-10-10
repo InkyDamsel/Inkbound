@@ -321,6 +321,26 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       if (!navigator.onLine || disposed || !coreReconciled) return false;
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
+      // Legacy clients could infer destructive mutations from missing cache records.
+      // A persisted delete has no provenance marker, so fail closed rather than
+      // replaying an unverified destructive operation after an app update.
+      // Preserve quarantined entries locally for forensic inspection.
+      for (const kind of ['books', 'sessions'] as const) {
+        const collection = pending[kind];
+        const quarantined = Object.entries(collection).filter(([, mutation]) => mutation.operation === 'delete');
+        if (quarantined.length > 0) {
+          const quarantineKey = `inkbound_quarantined_deletes_${uid}_v1`;
+          const existing = readJson<Record<string, unknown>>(quarantineKey, {});
+          const next = { ...existing };
+          quarantined.forEach(([id, mutation]) => {
+            next[`${kind}/${id}`] = mutation;
+            delete collection[id];
+          });
+          runtimeStorage().setItem(quarantineKey, stable(next));
+          writePending(uid, pending);
+          console.warn(`Inkbound quarantined ${quarantined.length} unverified pending ${kind} deletions.`);
+        }
+      }
       removeNoOpMutations(pending.books, baseline.books);
       removeNoOpMutations(pending.sessions, baseline.sessions);
       if (pending.profile && baseline.profile === stable(pending.profile.data)) delete pending.profile;
