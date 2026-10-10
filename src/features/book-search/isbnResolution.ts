@@ -23,9 +23,21 @@ const isbn13CheckDigit = (twelveDigits: string): string | null => {
   return String((10 - (weighted % 10)) % 10);
 };
 
+export const isValidCatalogIsbn = (value: string): boolean => {
+  const isbn = compactCatalogIsbn(value);
+  if (/^\d{9}[\dX]$/.test(isbn)) {
+    return isbn10CheckDigit(isbn.slice(0, 9)) === isbn[9];
+  }
+  if (/^\d{13}$/.test(isbn) && /^(978|979)/.test(isbn)) {
+    return isbn13CheckDigit(isbn.slice(0, 12)) === isbn[12];
+  }
+  return false;
+};
+
 export const equivalentCatalogIsbns = (value: string): string[] => {
   const isbn = compactCatalogIsbn(value);
   const results = new Set<string>();
+  if (!isValidCatalogIsbn(isbn)) return [];
 
   if (/^\d{9}[\dX]$/.test(isbn)) {
     results.add(isbn);
