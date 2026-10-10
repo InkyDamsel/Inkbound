@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { equivalentCatalogIsbns } from '../src/features/book-search/isbnResolution';
+import { combineIsbnProviderGroups, equivalentCatalogIsbns } from '../src/features/book-search/isbnResolution';
+import { selectExactIsbnEdition } from '../src/features/book-search/catalogHardening';
+import type { BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 
 {
   const blackthornIsbn13 = '9781250379139';
@@ -28,6 +30,36 @@ import { equivalentCatalogIsbns } from '../src/features/book-search/isbnResoluti
     [isbn979],
     '979 ISBNs should not invent an ISBN-10 equivalent.',
   );
+}
+
+{
+  // Actual physical-book ISBNs that previously failed in scanner lookup.
+  const fixtures = [
+    { isbn: '9781250379139', isbn10: '125037913X', title: 'Blackthorn', author: 'J.T. Geissinger' },
+    { isbn: '9781496758088', isbn10: '1496758080', title: 'Dawn of the Cursed Queen', author: 'Amber V. Nicole' },
+  ];
+  for (const fixture of fixtures) {
+    assert.ok(equivalentCatalogIsbns(fixture.isbn).includes(fixture.isbn10));
+    const group: BookSearchWorkGroup = {
+      key: fixture.isbn, title: fixture.title, authors: [fixture.author], genres: [],
+      editions: [{
+        source: 'penguin-random-house', externalEditionId: fixture.isbn,
+        title: fixture.title, authors: [fixture.author], genres: [], publicationYear: 2026,
+        format: 'hardcover', isbn13: fixture.isbn, isbn10: fixture.isbn10, specialFeatures: [],
+      }],
+    };
+    const unrelated: BookSearchWorkGroup = {
+      key: 'unrelated', title: 'Different Book', authors: ['Someone Else'], genres: [],
+      editions: [{
+        source: 'google-books', externalEditionId: 'unrelated',
+        title: 'Different Book', authors: ['Someone Else'], genres: [],
+        publicationYear: 2026, format: 'hardcover', specialFeatures: [],
+      }],
+    };
+    const combined = combineIsbnProviderGroups([[unrelated], [group]]);
+    assert.equal(selectExactIsbnEdition(combined, fixture.isbn)?.work.title, fixture.title,
+      'An unrelated primary provider must not hide the exact ISBN edition from a supplement.');
+  }
 }
 
 console.log('Inkbound ISBN resolution regressions passed.');
