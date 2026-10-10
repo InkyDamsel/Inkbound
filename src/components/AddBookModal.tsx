@@ -731,7 +731,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     <p className="mt-1 text-sm text-[#ad9fac]">
                       {isSearching
                         ? 'Finding books…'
-                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal ? ` of ${authorProviderTotal}` : ''}`}
+                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal && authorProviderTotal >= results.length ? ` of ${authorProviderTotal}` : ''}`}
                     </p>
                   </div>
                 </div>
