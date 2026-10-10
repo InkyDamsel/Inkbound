@@ -516,25 +516,26 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   const builtQuery = buildGoogleBooksQuery(trimmed);
   const isIsbnLookup = /^isbn:/i.test(builtQuery);
 
-  // ISBN lookups remain trusted-catalog first because they are exact and cheap.
-  // For normal title/author search, preserve Google's relevance/order as the
-  // primary result set, then let Open Library and Hardcover fill missing fields
-  // on compatible works. Supplemental providers never replace the primary
-  // ranking or inject unrelated works into a successful primary result set.
+  // An ISBN is an exact identifier, not a relevance-ranked title search.
+  // Do not discard an exact match from Open Library, PRH, or Hardcover just
+  // because Google (or the trusted catalog) returned a different work first.
+  // Title/author searches below retain their Google-first ranking unchanged.
   if (isIsbnLookup) {
-    const trusted = await searchTrustedCatalogBaseline(trimmed);
-    if (trusted.groups.length > 0) {
-      const [google, openLibrary, hardcover, prh] = await Promise.all([
-        searchGoogleBaseline(trimmed, signal),
-        searchOpenLibraryWithAuthorFallback(trimmed, signal),
-        searchHardcoverWithBackoff(trimmed),
-        searchPrhWithBackoff(trimmed),
-      ]);
-      return cacheSearchResponse(cacheKey, {
-        groups: mergeGroups(trusted.groups, [google.groups, openLibrary.groups, hardcover.groups, prh.groups]),
-        totalItems: trusted.totalItems,
-      });
-    }
+    const [trusted, google, openLibrary, hardcover, prh] = await Promise.all([
+      searchTrustedCatalogBaseline(trimmed),
+      searchGoogleBaseline(trimmed, signal),
+      searchOpenLibraryWithAuthorFallback(trimmed, signal),
+      searchHardcoverWithBackoff(trimmed),
+      searchPrhWithBackoff(trimmed),
+    ]);
+    const groups = hardenCatalogGroups([
+      ...trusted.groups,
+      ...google.groups,
+      ...openLibrary.groups,
+      ...hardcover.groups,
+      ...prh.groups,
+    ]);
+    return cacheSearchResponse(cacheKey, { groups, totalItems: groups.length });
   }
 
   const [google, openLibrary, hardcover, prh] = await Promise.all([
