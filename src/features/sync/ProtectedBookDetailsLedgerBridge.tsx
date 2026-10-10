@@ -227,7 +227,10 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
         for (const book of books) {
           const previousSignature = baseline.current.get(book.id);
           const currentSignature = currentSignatures.get(book.id);
-          if (previousSignature === undefined || previousSignature === currentSignature) continue;
+          // A newly added book must be backed up too. Otherwise its first
+          // cloud overwrite can erase reader-entered metadata before any edit
+          // ever creates a protected-details document.
+          if (previousSignature === currentSignature) continue;
 
           await setDoc(doc(db, 'users', uid, LEDGER_COLLECTION, book.id), {
             ...detailsFor(book),
