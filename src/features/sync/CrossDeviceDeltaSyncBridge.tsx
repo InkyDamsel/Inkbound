@@ -290,6 +290,10 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
               latestRecordServerMillis: bookUpdateMillis.get(recordId) ?? 0,
             })) return;
             const pendingMutation = pending.books[recordId];
+            // A book explicitly saved on this device but not yet acknowledged
+            // by the cloud must not disappear because an older tombstone arrived.
+            // Keep the upsert queued until Firestore confirms it.
+            if (pendingMutation?.operation === 'upsert' && pendingMutation.capturedAfterCloudReconcile === true) return;
             if (!tombstoneWinsPending(record, pendingMutation)) return;
             delete pending.books[recordId];
             removedBooks.add(recordId);
