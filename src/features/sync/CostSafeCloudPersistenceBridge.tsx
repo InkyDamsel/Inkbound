@@ -137,6 +137,10 @@ function captureWorkingChanges<T extends { id: string }>(
 
   explicitDeleteIds.forEach((id) => {
     if (next.has(id)) return;
+    if (baseline[id] === undefined) {
+      delete mutations[id];
+      return;
+    }
     if (!shouldCreateDeleteMutation({
       hasCloudBaseline: baseline[id] !== undefined,
       explicitlyAuthorized: true,
