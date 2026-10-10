@@ -217,7 +217,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const scannerAudioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    if (scannedBooks.length && !writeScannerDraft(scannedBooks)) {
+    if (!writeScannerDraft(scannedBooks)) {
       setScannerError('Could not protect this scan batch on this device. Keep this screen open until saved.');
     }
   }, [scannedBooks]);
