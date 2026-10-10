@@ -455,7 +455,11 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       const changedKeys = keys ? new Set(keys) : undefined;
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
+      const previousBookFingerprints = new Map(bookFingerprints.current);
+      const previousSessionFingerprints = new Map(sessionFingerprints.current);
+      const previousProfileFingerprint = profileFingerprint.current;
 
+      try {
       if (!changedKeys || changedKeys.has(BOOKS_KEY)) {
         captureWorkingChanges(
           readJson<UserBookRecord[]>(BOOKS_KEY, []),
@@ -490,6 +494,15 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         }
       }
       writePending(uid, pending);
+      } catch (error) {
+        // The pending queue is the only durable evidence of an unsynced edit.
+        // Revert capture fingerprints so a retry can discover it again.
+        bookFingerprints.current = previousBookFingerprints;
+        sessionFingerprints.current = previousSessionFingerprints;
+        profileFingerprint.current = previousProfileFingerprint;
+        console.error('[Inkbound sync] Could not persist pending mutations; changes remain unacknowledged.', error);
+        throw error;
+      }
     };
 
     const scheduleFlush = () => {
