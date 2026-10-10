@@ -38,6 +38,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
     : initialProgress;
 
   const [bookId, setBookId] = useState(session?.bookId ?? initialBook?.id ?? '');
+  const [bookSearch, setBookSearch] = useState('');
   const [date, setDate] = useState(session?.date ?? localDateKey());
   const [startTime, setStartTime] = useState(session?.startTime ?? '19:00');
   const [endTime, setEndTime] = useState(session?.endTime ?? '19:30');
@@ -48,6 +49,11 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   const [location, setLocation] = useState(session?.location ?? '');
   const [error, setError] = useState('');
 
+  const matchingBooks = useMemo(() => {
+    const query = bookSearch.trim().toLocaleLowerCase();
+    return [...books].filter((book) => !query || `${book.work.title} ${book.work.author} ${book.work.seriesName ?? ''}`.toLocaleLowerCase().includes(query))
+      .sort((a, b) => a.work.title.localeCompare(b.work.title, undefined, { numeric: true, sensitivity: 'base' }) || a.work.author.localeCompare(b.work.author, undefined, { sensitivity: 'base' }));
+  }, [books, bookSearch]);
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
   const edition = selectedBook ? getActiveEdition(selectedBook) : undefined;
   const isAudiobook = edition?.format === 'audiobook';
@@ -140,8 +146,10 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2 text-xs font-bold text-[var(--ink-text-primary)]">Book
-            <select value={bookId} onChange={(event) => handleBookChange(event.target.value)} className="inkbound-select mt-1 w-full">
-              {books.map((book) => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}
+            <input type="search" value={bookSearch} onChange={(event) => setBookSearch(event.target.value)} placeholder="Search title, author, or series" aria-label="Search books for session" className="inkbound-select mt-1 w-full" />
+            <select value={bookId} onChange={(event) => handleBookChange(event.target.value)} className="inkbound-select mt-2 w-full">
+              {selectedBook && !matchingBooks.some((book) => book.id === selectedBook.id) && <option value={selectedBook.id}>{selectedBook.work.title} — {selectedBook.work.author}</option>}
+              {matchingBooks.map((book) => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}
             </select>
           </label>
           <label className="text-xs font-bold text-[var(--ink-text-primary)]">Date<input type="date" max={localDateKey()} value={date} onChange={(event) => setDate(event.target.value)} className="inkbound-select mt-1 w-full" /></label>
