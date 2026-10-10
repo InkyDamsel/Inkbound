@@ -186,7 +186,22 @@ async function getIntegrityDetail(targetUserId: string, section: DetailSection, 
   }
 
   if (section === 'books') {
-    const { docs, hasMore } = await getPagedDocuments(userRef.collection('books'), page, pageSize);
+    // Admin inspection must paginate by human-readable title, not random UUID.
+    // Sort the complete collection BEFORE slicing pages so A-Z is correct across
+    // all pages, including older documents that lack a searchable title field.
+    // This is a read-only, owner/admin-triggered inspection path, not app sync.
+    const bookSnapshot = await userRef.collection('books').get();
+    const sortedBooks = [...bookSnapshot.docs].sort((left, right) => {
+      const titleOf = (document: FirebaseFirestore.QueryDocumentSnapshot) => {
+        const book = safeUnwrapRecord<StoredBook>(document.data());
+        const title = asRecord(book.work).title;
+        return typeof title === 'string' && title.trim() ? title.trim() : 'Untitled book';
+      };
+      return titleOf(left).localeCompare(titleOf(right), undefined, { sensitivity: 'base', numeric: true })
+        || left.id.localeCompare(right.id);
+    });
+    const docs = sortedBooks.slice(page * pageSize, (page + 1) * pageSize);
+    const hasMore = (page + 1) * pageSize < sortedBooks.length;
     const items = docs.map((document) => {
       const stored = document.data();
       const book = unwrapData<StoredBook>(stored);
@@ -209,7 +224,7 @@ async function getIntegrityDetail(targetUserId: string, section: DetailSection, 
         raw: serializeFirestoreValue(stored),
       };
     });
-    return { section, page, pageSize, hasMore, items };
+    return { section, page, pageSize, hasMore, total: sortedBooks.length, items };
   }
 
   if (section === 'sessions') {
