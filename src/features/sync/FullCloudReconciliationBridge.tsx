@@ -431,6 +431,15 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
           if (!initialCloudSessionIds.has(item.id)) baseline.sessions[item.id] = fingerprint(item);
         });
 
+        // Never publish an earlier library snapshot over reader edits made
+        // while cloud uploads and verification were in flight.
+        if (
+          stable(readJson<UserBookRecord[]>(BOOKS_KEY, [])) !== stable(localBooks)
+          || stable(readJson<ReadingSession[]>(SESSIONS_KEY, [])) !== stable(localSessions)
+        ) {
+          throw new Error('Local library changed during reconciliation; stale snapshot application blocked.');
+        }
+
         await setDoc(libraryManifestRef, {
           status: 'complete',
           expectedBookCount: nextBooks.length,
