@@ -190,7 +190,12 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
         const currentBooks = readBooks();
         const restoredBooks = currentBooks.map((book) => {
           const protectedDetails = protectedById.get(book.id);
-          return protectedDetails ? applyProtectedDetails(book, protectedDetails) : book;
+          if (!protectedDetails) return book;
+          // Never restore an older cloud ledger snapshot over unacknowledged
+          // local edits. The local mutation must be persisted first.
+          const acknowledged = baseline.current.get(book.id);
+          if (acknowledged !== undefined && acknowledged !== JSON.stringify(detailsFor(book))) return book;
+          return applyProtectedDetails(book, protectedDetails);
         });
 
         if (JSON.stringify(currentBooks) === JSON.stringify(restoredBooks)) {
