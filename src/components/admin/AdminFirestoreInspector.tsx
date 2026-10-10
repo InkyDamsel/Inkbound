@@ -117,7 +117,7 @@ export const AdminFirestoreInspector: React.FC<Props> = ({ targetUserId }) => {
       );
       const response = await inspect({
         targetUserId,
-        recordIds: forensicIds.split(/[\\s,]+/).map((id) => id.trim()).filter(Boolean),
+        recordIds: forensicIds.split(/[\s,]+/).map((id) => id.trim()).filter(Boolean),
       });
       setForensicReport(response.data);
     } catch (requestError) {
