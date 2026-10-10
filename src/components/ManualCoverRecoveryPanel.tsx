@@ -50,6 +50,7 @@ function isUnusedCover(asset: StoredManualCover, books: UserBookRecord[]) {
 export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> = ({ books }) => {
   const [assets, setAssets] = useState<StoredManualCover[]>([]);
   const [loading, setLoading] = useState(false);
+  const [listingVerified, setListingVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedAssetPath, setSelectedAssetPath] = useState('');
   const [selectedBookId, setSelectedBookId] = useState('');
@@ -71,6 +72,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
     }
 
     setLoading(true);
+    setListingVerified(false);
     setError(null);
     try {
       const folder = ref(storage, `users/${user.uid}/book-covers/manual`);
@@ -89,10 +91,11 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       }));
       loaded.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
       setAssets(loaded);
+      setListingVerified(true);
       setCoverPage(1);
     } catch (caught) {
       console.error('Inkbound manual cover library listing failed.', caught);
-      setError('Inkbound could not load your Manual Cover Library. Check your connection and try again.');
+      setError('Inkbound could not verify your stored covers. Counts are unavailable until the listing succeeds; no covers were deleted.');
     } finally {
       setLoading(false);
     }
@@ -154,7 +157,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   }, [bookPage, bookTotalPages]);
 
   const deleteUnusedAssets = async (targets: StoredManualCover[]) => {
-    if (!storage || deleting || targets.length === 0) return;
+    if (!storage || deleting || !listingVerified || targets.length === 0) return;
 
     // Re-check against the current canonical library immediately before delete.
     const confirmedUnused = targets.filter((asset) => isUnusedCover(asset, books));
@@ -286,12 +289,12 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Stored covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{assets.length.toLocaleString()}</p></div>
-        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Unused covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{unusedCount.toLocaleString()}</p></div>
+        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Stored covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{listingVerified ? assets.length.toLocaleString() : '—'}</p></div>
+        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Unused covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{listingVerified ? unusedCount.toLocaleString() : '—'}</p></div>
         <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books in library</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{books.length.toLocaleString()}</p></div>
       </div>
 
-      {unusedCount > 0 && (
+      {listingVerified && unusedCount > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-bold text-[var(--ink-ivory)]">Unused cover cleanup</p>
