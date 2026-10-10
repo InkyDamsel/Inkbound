@@ -32,6 +32,7 @@ import {
   createTrustedDeleteMutation,
   createTrustedUpsertMutation,
   shouldCaptureReaderMutation,
+  shouldCreateDeleteMutation,
 } from './syncMutationPolicy';
 
 const BOOKS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.books;
@@ -114,6 +115,7 @@ function captureWorkingChanges<T extends { id: string }>(
   fingerprints: React.MutableRefObject<Map<string, string>>,
   mutations: Record<string, RecordMutation<T>>,
   baseline: Record<string, string>,
+  explicitDeleteIds: Set<string> = new Set(),
 ) {
   const next = new Map<string, string>();
   const now = new Date().toISOString();
@@ -135,8 +137,17 @@ function captureWorkingChanges<T extends { id: string }>(
   fingerprints.current.forEach((_value, id) => {
     if (next.has(id)) return;
     if (baseline[id] === undefined) delete mutations[id];
-    else mutations[id] = createTrustedDeleteMutation(now);
   });
+
+  explicitDeleteIds.forEach((id) => {
+    if (next.has(id)) return;
+    if (!shouldCreateDeleteMutation({
+      hasCloudBaseline: baseline[id] !== undefined,
+      explicitlyAuthorized: true,
+    })) return;
+    mutations[id] = createTrustedDeleteMutation(now);
+  });
+
   fingerprints.current = next;
 }
 
@@ -405,6 +416,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     const captureCurrentChanges = (
       keys?: CloudSyncedStorageKey[],
       trustedReaderIntent = false,
+      explicitDeleteIds: string[] = [],
     ) => {
       if (
         disposed
@@ -419,11 +431,23 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       const baseline = readBaseline(uid);
 
       if (!changedKeys || changedKeys.has(BOOKS_KEY)) {
-        captureWorkingChanges(readJson<UserBookRecord[]>(BOOKS_KEY, []), bookFingerprints, pending.books, baseline.books);
+        captureWorkingChanges(
+          readJson<UserBookRecord[]>(BOOKS_KEY, []),
+          bookFingerprints,
+          pending.books,
+          baseline.books,
+          new Set(explicitDeleteIds),
+        );
         removeNoOpMutations(pending.books, baseline.books);
       }
       if (!changedKeys || changedKeys.has(SESSIONS_KEY)) {
-        captureWorkingChanges(readJson<ReadingSession[]>(SESSIONS_KEY, []), sessionFingerprints, pending.sessions, baseline.sessions);
+        captureWorkingChanges(
+          readJson<ReadingSession[]>(SESSIONS_KEY, []),
+          sessionFingerprints,
+          pending.sessions,
+          baseline.sessions,
+          new Set(explicitDeleteIds),
+        );
         removeNoOpMutations(pending.sessions, baseline.sessions);
       }
       if (!changedKeys || changedKeys.has(PROFILE_KEY)) {
@@ -463,7 +487,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       // Unmarked startup/cache rewrites still cannot manufacture fresh intent.
       if (!coreReconciled && !trustedReaderIntent) return;
 
-      captureCurrentChanges(detail?.keys, trustedReaderIntent);
+      captureCurrentChanges(detail?.keys, trustedReaderIntent, detail?.explicitDeleteIds ?? []);
       clearRetryTimer();
       scheduleFlush();
     };
