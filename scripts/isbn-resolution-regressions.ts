@@ -23,13 +23,18 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
 }
 
 {
-  const isbn979 = '9798218403128';
+  const isbn979 = '9798218403126';
   const equivalents = equivalentCatalogIsbns(isbn979);
   assert.deepEqual(
     equivalents,
     [isbn979],
     '979 ISBNs should not invent an ISBN-10 equivalent.',
   );
+}
+
+{
+  assert.deepEqual(equivalentCatalogIsbns('9798218403128'), [], 'Invalid 979 check digits must be rejected.');
+  assert.deepEqual(equivalentCatalogIsbns('065373007506'), [], 'UPC product barcodes must not be treated as ISBNs.');
 }
 
 {
