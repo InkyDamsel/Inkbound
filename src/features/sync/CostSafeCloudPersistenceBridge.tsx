@@ -30,7 +30,6 @@ import {
 } from './storageKeys';
 import {
   createTrustedDeleteMutation,
-  createTrustedUpsertMutation,
   shouldCaptureReaderMutation,
   shouldCreateDeleteMutation,
 } from './syncMutationPolicy';
