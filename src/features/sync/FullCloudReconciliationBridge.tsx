@@ -230,22 +230,16 @@ function reconcileCollection<T extends { id: string }>(
     baseline[item.id] = fingerprint(item);
   });
 
-  // DATA_OWNERSHIP rule: if a local record existed in the previous sync baseline
-  // but is now absent from Firestore, that absence is a remote deletion unless a
-  // durable local mutation says otherwise. This also repairs deletions made by an
-  // older build before sync tombstones existed.
+  // Absence from a cloud snapshot is not evidence of an authorized deletion.
+  // An incomplete cloud upload or transient snapshot must never erase a reader's
+  // existing local record. Explicit remote tombstones are handled below.
   localItems.forEach((item) => {
     if (cloudIds.has(item.id)) return;
     if (pending[item.id]) {
       stats.pendingLocalProtected += 1;
       return;
     }
-    if (baseline[item.id] === undefined) {
-      stats.localOnlyPreserved += 1;
-      return;
-    }
-    if (next.delete(item.id)) stats.baselineDeletesApplied += 1;
-    delete baseline[item.id];
+    stats.localOnlyPreserved += 1;
   });
 
   tombstones.forEach((record) => {
