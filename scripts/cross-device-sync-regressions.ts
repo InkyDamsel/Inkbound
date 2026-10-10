@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
 import { mergeBooksFromServer, mergeServerCollectionById } from '../src/features/sync/cloudServerMergePolicy';
+import { shouldCreateDeleteMutation } from '../src/features/sync/syncMutationPolicy';
 
 const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookRecord => ({
   id,
@@ -115,6 +116,25 @@ const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookR
     merged[0].progressPages,
     210,
     'Legacy/pre-reconcile pending state must never let a stale device overwrite the newer saved account copy.',
+  );
+}
+
+
+{
+  assert.equal(
+    shouldCreateDeleteMutation({ hasCloudBaseline: true, explicitlyAuthorized: false }),
+    false,
+    'A cloud-backed book missing from a local working array must never become a delete without explicit reader authorization.',
+  );
+  assert.equal(
+    shouldCreateDeleteMutation({ hasCloudBaseline: true, explicitlyAuthorized: true }),
+    true,
+    'An explicit reader deletion may create a delete mutation for a cloud-backed record.',
+  );
+  assert.equal(
+    shouldCreateDeleteMutation({ hasCloudBaseline: false, explicitlyAuthorized: true }),
+    false,
+    'A record that never existed in the cloud baseline must not manufacture a cloud tombstone.',
   );
 }
 
