@@ -59,6 +59,7 @@ interface RecordMutation<T> {
   data?: T;
   clientUpdatedAt: string;
   capturedAfterCloudReconcile?: boolean;
+  explicitDeleteAuthorized?: boolean;
 }
 interface ProfileMutation {
   data: ReaderProfile;
@@ -140,7 +141,7 @@ function captureWorkingChanges<T extends { id: string }>(
       hasCloudBaseline: baseline[id] !== undefined,
       explicitlyAuthorized: true,
     })) return;
-    mutations[id] = createTrustedDeleteMutation(now);
+    mutations[id] = { ...createTrustedDeleteMutation(now), explicitDeleteAuthorized: true };
   });
 
   fingerprints.current = next;
@@ -327,7 +328,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       // Preserve quarantined entries locally for forensic inspection.
       for (const kind of ['books', 'sessions'] as const) {
         const collection = pending[kind];
-        const quarantined = Object.entries(collection).filter(([, mutation]) => mutation.operation === 'delete');
+        const quarantined = Object.entries(collection).filter(([, mutation]) => mutation.operation === 'delete' && mutation.explicitDeleteAuthorized !== true);
         if (quarantined.length > 0) {
           const quarantineKey = `inkbound_quarantined_deletes_${uid}_v1`;
           const existing = readJson<Record<string, unknown>>(quarantineKey, {});
