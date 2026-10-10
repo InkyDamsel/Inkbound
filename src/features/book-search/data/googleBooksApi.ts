@@ -7,7 +7,7 @@ import { searchHardcover } from './hardcoverApi';
 import { searchOpenLibrary } from './openLibraryApi';
 import { searchPenguinRandomHouse } from './penguinRandomHouseApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
-import { compactCatalogIsbn, equivalentCatalogIsbns } from '../isbnResolution';
+import { combineIsbnProviderGroups, compactCatalogIsbn, equivalentCatalogIsbns } from '../isbnResolution';
 import {
   catalogTitlesAreCompatible,
   hardenCatalogGroups,
@@ -528,12 +528,8 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
       searchHardcoverWithBackoff(trimmed),
       searchPrhWithBackoff(trimmed),
     ]);
-    const groups = hardenCatalogGroups([
-      ...trusted.groups,
-      ...google.groups,
-      ...openLibrary.groups,
-      ...hardcover.groups,
-      ...prh.groups,
+    const groups = combineIsbnProviderGroups([
+      trusted.groups, google.groups, openLibrary.groups, hardcover.groups, prh.groups,
     ]);
     return cacheSearchResponse(cacheKey, { groups, totalItems: groups.length });
   }
