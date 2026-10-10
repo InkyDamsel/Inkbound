@@ -138,4 +138,48 @@ const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookR
   );
 }
 
+{
+  const localOnly = book('locally-saved-not-in-snapshot', 12, 'Preserve My Book');
+  const cloudOnly = book('cloud-only', 60);
+  const merged = mergeBooksFromServer([localOnly], [cloudOnly], {});
+  assert.deepEqual(
+    merged.map((item) => item.id).sort(),
+    ['cloud-only', 'locally-saved-not-in-snapshot'],
+    'A partial cloud snapshot must not erase a locally saved book absent from the response.',
+  );
+}
+
+{
+  const localSession: ReadingSession = {
+    id: 'local-session-not-in-snapshot',
+    bookId: 'locally-saved-not-in-snapshot',
+    date: '2026-10-09',
+    startTime: '10:00',
+    endTime: '10:20',
+    durationMinutes: 20,
+  };
+  const merged = mergeServerCollectionById([localSession], [], {});
+  assert.equal(merged.length, 1, 'A partial cloud snapshot must not erase a locally saved reading session.');
+  assert.equal(merged[0].id, localSession.id);
+}
+
+{
+  const local = book('manual-metadata', 33, 'Reader Corrected Title');
+  const pending = {
+    ...local,
+    work: { ...local.work, author: 'Reader Corrected Author' },
+  };
+  const server = book('manual-metadata', 21, 'Stale Provider Title');
+  const merged = mergeBooksFromServer([local], [server], {
+    'manual-metadata': {
+      operation: 'upsert',
+      data: pending,
+      clientUpdatedAt: '2026-10-10T20:00:00.000Z',
+      capturedAfterCloudReconcile: true,
+    },
+  });
+  assert.equal(merged[0].work.title, 'Reader Corrected Title', 'Pending reader title corrections must survive server refresh.');
+  assert.equal(merged[0].work.author, 'Reader Corrected Author', 'Pending reader author corrections must survive server refresh.');
+}
+
 console.log('Inkbound cross-device sync regressions passed.');
