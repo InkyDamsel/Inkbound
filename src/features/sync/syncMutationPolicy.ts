@@ -24,6 +24,22 @@ export function shouldCaptureReaderMutation({
   return !localClearIntent && (coreReconciled || trustedReaderIntent);
 }
 
+/**
+ * Destructive sync is never inferred from absence alone. A record can disappear
+ * from a working array because of stale hydration, a partial cache, or a startup
+ * race. Only the exact IDs carried by an explicit reader deletion may become
+ * cloud delete mutations.
+ */
+export function shouldCreateDeleteMutation({
+  hasCloudBaseline,
+  explicitlyAuthorized,
+}: {
+  hasCloudBaseline: boolean;
+  explicitlyAuthorized: boolean;
+}): boolean {
+  return hasCloudBaseline && explicitlyAuthorized;
+}
+
 export function createTrustedUpsertMutation<T>(
   data: T,
   clientUpdatedAt: string,
