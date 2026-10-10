@@ -7,7 +7,7 @@ const COLLECTION_DEFINITIONS_DOC_ID = 'collectionDefinitions';
 const LEGACY_COLLECTION_DEFINITIONS_DOC_ID = 'inkbound_collection_definitions';
 
 type AdminRole = 'owner' | 'support' | 'billing' | 'viewer';
-type DetailSection = 'collections' | 'books' | 'sessions' | 'auxiliary' | 'profile' | 'photoMemories' | 'syncState' | 'recoveryPoints' | 'entitlement';
+type DetailSection = 'collections' | 'books' | 'sessions' | 'auxiliary' | 'profile' | 'photoMemories' | 'syncState' | 'deletions' | 'recoveryPoints' | 'entitlement';
 
 interface AdminRecord {
   enabled: boolean;
@@ -299,6 +299,31 @@ async function getIntegrityDetail(targetUserId: string, section: DetailSection, 
     };
   }
 
+  if (section === 'deletions') {
+    // Read-only evidence of synchronized removals. Never restore or delete
+    // records as a side effect of inspection.
+    const snapshot = await userRef.collection('syncTombstones')
+      .orderBy('deletedAt', 'desc')
+      .offset(page * pageSize)
+      .limit(pageSize + 1)
+      .get();
+    const docs = snapshot.docs.slice(0, pageSize);
+    return {
+      section, page, pageSize, hasMore: snapshot.size > pageSize,
+      items: docs.map((document) => {
+        const data = document.data();
+        return {
+          id: document.id,
+          label: `${typeof data.kind === 'string' ? data.kind : 'Record'} deletion`,
+          subtitle: typeof data.recordId === 'string' ? data.recordId : document.id,
+          updatedAt: timestampToIso(data.deletedAt),
+          clientUpdatedAt: typeof data.clientUpdatedAt === 'string' ? data.clientUpdatedAt : null,
+          raw: serializeFirestoreValue(data),
+        };
+      }),
+    };
+  }
+
   if (section === 'recoveryPoints') {
     const snapshot = await userRef.collection('recoverySnapshots')
       .orderBy('createdAtClient', 'desc')
@@ -424,7 +449,7 @@ export const getAdminDataIntegrity = onCall({
   const targetUserId = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
   if (!targetUserId || targetUserId.length > 128) throw new HttpsError('invalid-argument', 'A valid reader is required.');
 
-  const validDetailSections: DetailSection[] = ['collections', 'books', 'sessions', 'auxiliary', 'profile', 'photoMemories', 'syncState', 'recoveryPoints', 'entitlement'];
+  const validDetailSections: DetailSection[] = ['collections', 'books', 'sessions', 'auxiliary', 'profile', 'photoMemories', 'syncState', 'deletions', 'recoveryPoints', 'entitlement'];
   if (typeof input?.detailSection === 'string') {
     if (!validDetailSections.includes(input.detailSection as DetailSection)) throw new HttpsError('invalid-argument', 'Unsupported Firestore detail section.');
     const page = typeof input.page === 'number' && Number.isFinite(input.page) ? Math.max(0, Math.floor(input.page)) : 0;
