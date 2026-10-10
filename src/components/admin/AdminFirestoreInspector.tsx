@@ -67,6 +67,7 @@ export const AdminFirestoreInspector: React.FC<Props> = ({ targetUserId }) => {
   const [details, setDetails] = useState<DetailResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [forensicIds, setForensicIds] = useState('');
   const [forensicReport, setForensicReport] = useState<unknown>(null);
   const [forensicLoading, setForensicLoading] = useState(false);
   const [bookQuery, setBookQuery] = useState('');
@@ -78,6 +79,7 @@ export const AdminFirestoreInspector: React.FC<Props> = ({ targetUserId }) => {
     setError('');
     setBookQuery('');
     setForensicReport(null);
+    setForensicIds('');
     setAppliedBookQuery('');
   }, [targetUserId]);
 
@@ -115,7 +117,7 @@ export const AdminFirestoreInspector: React.FC<Props> = ({ targetUserId }) => {
       );
       const response = await inspect({
         targetUserId,
-        recordIds: ['book-1791595235234-593eac', 'book-1791595506485-5xidy1'],
+        recordIds: forensicIds.split(/[\\s,]+/).map((id) => id.trim()).filter(Boolean),
       });
       setForensicReport(response.data);
     } catch (requestError) {
@@ -168,8 +170,9 @@ export const AdminFirestoreInspector: React.FC<Props> = ({ targetUserId }) => {
       </div>
 
       {section === 'books' && <div className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] p-3">
-        <p className="text-xs text-[var(--ink-muted)]">Read-only investigation: Call Me Baby Side A / Side B deletion IDs. Does not restore or modify records.</p>
-        <button type="button" disabled={forensicLoading} onClick={() => void inspectMissingBooks()} className="quiet-shelf-secondary-action mt-2 disabled:opacity-45">{forensicLoading ? 'Inspecting…' : 'Inspect missing book evidence'}</button>
+        <p className="text-xs text-[var(--ink-muted)]">Read-only investigation of up to 10 book IDs. Does not restore or modify records.</p>
+        <textarea value={forensicIds} onChange={(event) => setForensicIds(event.target.value)} placeholder="Paste book IDs, one per line" rows={2} className="mt-2 w-full rounded-lg border border-[var(--ink-border-subtle)] bg-transparent p-2 text-xs text-[var(--ink-ivory)]" />
+        <button type="button" disabled={forensicLoading || !forensicIds.trim()} onClick={() => void inspectMissingBooks()} className="quiet-shelf-secondary-action mt-2 disabled:opacity-45">{forensicLoading ? 'Inspecting…' : 'Inspect missing book evidence'}</button>
         {forensicReport !== null && <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs text-[var(--ink-muted)]">{formatRaw(forensicReport)}</pre>}
       </div>}
       {section === 'books' && <form onSubmit={(event) => { event.preventDefault(); void loadDetails('books', 0, bookQuery.trim()); }} className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
