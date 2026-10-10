@@ -641,8 +641,8 @@ export default function App() {
       activitySource: newSession.activitySource ?? 'timer',
     };
     const projectedSessions = [recordedSession, ...sessionsRef.current];
+    if (commitCanonicalSessions(projectedSessions) !== projectedSessions) return;
     maybeShowFirstSessionMilestone(recordedSession, projectedSessions);
-    commitCanonicalSessions(projectedSessions);
     updateBookFromSession(recordedSession, updatedPages, updatedMinutes);
     setTimerInitialBookId(undefined);
     setIsTimerOpen(false);
@@ -657,8 +657,8 @@ export default function App() {
       activitySource: session.activitySource ?? 'manual-session',
     };
     const nextSessions = [recordedSession, ...sessionsRef.current];
+    if (commitCanonicalSessions(nextSessions) !== nextSessions) return;
     maybeShowFirstSessionMilestone(recordedSession, nextSessions);
-    commitCanonicalSessions(nextSessions);
     commitCanonicalBooks((current) => current.map((bookRecord) =>
       bookRecord.id === recordedSession.bookId ? reconcileBookAfterSessionMutation(bookRecord, nextSessions) : bookRecord,
     ));
@@ -677,14 +677,14 @@ export default function App() {
     });
     const nextSessions = [...recordedSessions, ...sessionsRef.current];
     const affectedBookIds = new Set(recordedSessions.map((session) => session.bookId));
-    commitCanonicalSessions(nextSessions);
+    if (commitCanonicalSessions(nextSessions) !== nextSessions) return;
     commitCanonicalBooks((current) => current.map((book) =>
       affectedBookIds.has(book.id) ? reconcileBookAfterSessionMutation(book, nextSessions) : book,
     ));
     showToast(`Added ${recordedSessions.length} past reading session${recordedSessions.length === 1 ? '' : 's'}.`);
   };
-  const handleUpdateSession = (session: ReadingSession) => { const previous = sessions.find((item) => item.id === session.id); const nextSessions = sessions.map((item) => item.id === session.id ? session : item); commitCanonicalSessions(nextSessions); if (previous && previous.bookId !== session.bookId) { reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous); reconcileBookProgressFromSessions(session.bookId, nextSessions); } else reconcileBookProgressFromSessions(session.bookId, nextSessions, previous); showToast('Updated reading session and reconciled book progress.'); };
-  const handleDeleteSession = (sessionId: string) => { const removed = sessions.find((session) => session.id === sessionId); const nextSessions = sessions.filter((session) => session.id !== sessionId); commitCanonicalSessions(nextSessions, { deletedSessionIds: [sessionId] }); if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed); showToast('Deleted reading session and reconciled book progress.'); };
+  const handleUpdateSession = (session: ReadingSession) => { const previous = sessions.find((item) => item.id === session.id); const nextSessions = sessions.map((item) => item.id === session.id ? session : item); if (commitCanonicalSessions(nextSessions) !== nextSessions) return; if (previous && previous.bookId !== session.bookId) { reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous); reconcileBookProgressFromSessions(session.bookId, nextSessions); } else reconcileBookProgressFromSessions(session.bookId, nextSessions, previous); showToast('Updated reading session and reconciled book progress.'); };
+  const handleDeleteSession = (sessionId: string) => { const removed = sessions.find((session) => session.id === sessionId); const nextSessions = sessions.filter((session) => session.id !== sessionId); if (commitCanonicalSessions(nextSessions, { deletedSessionIds: [sessionId] }) !== nextSessions) return; if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed); showToast('Deleted reading session and reconciled book progress.'); };
 
   const handleExecuteImport = async (importedItems: ImportRecordItem[]): Promise<ImportRecordItem[]> => {
     const currentLibrary = booksRef.current; const { unique: acceptedItems, duplicates: writeDuplicates } = analyzeImportDuplicates(importedItems, currentLibrary);
