@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Image, LibraryBig, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
-import { deleteObject, getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
+import { getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
 import type { UserBookRecord } from '../types';
 import { auth, storage } from '../lib/firebase';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
@@ -57,7 +57,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   const [selectedAssetPath, setSelectedAssetPath] = useState('');
   const [selectedBookId, setSelectedBookId] = useState('');
   const [restoring, setRestoring] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [deleting] = useState(false);
   const [restoredMessage, setRestoredMessage] = useState<string | null>(null);
   const [showUnusedOnly, setShowUnusedOnly] = useState(false);
   const [coverQuery, setCoverQuery] = useState('');
@@ -160,61 +160,9 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
 
   const deleteUnusedAssets = async (targets: StoredManualCover[]) => {
     if (!storage || deleting || !listingVerified || targets.length === 0) return;
-    // A complete Storage listing does not prove the current device has a complete
-    // library. Never delete files based solely on missing local references.
+    // The local book collection may be a partial cloud snapshot. An unreferenced
+    // cover on this device is not proof that the file is unused by the account.
     setError('Cover cleanup is paused until Inkbound can verify every book reference against the cloud. No cover was deleted.');
-    return;
-
-    // Re-check against the current canonical library immediately before delete.
-    const confirmedUnused = targets.filter((asset) => isUnusedCover(asset, books));
-    if (confirmedUnused.length === 0) {
-      setError('Those covers are now linked to a book, so Inkbound did not delete anything.');
-      return;
-    }
-
-    const count = confirmedUnused.length;
-    const confirmed = window.confirm(
-      count === 1
-        ? 'Delete this unused cover permanently? This removes only the stored cover file and does not change any book.'
-        : `Delete all ${count} unused covers permanently? This removes only cover files with zero current book references.`,
-    );
-    if (!confirmed) return;
-
-    setDeleting(true);
-    setError(null);
-    setRestoredMessage(null);
-    try {
-      const results = await Promise.allSettled(
-        confirmedUnused.map((asset) => deleteObject(ref(storage, asset.fullPath))),
-      );
-      const deletedPaths = new Set(
-        confirmedUnused
-          .filter((_, index) => results[index]?.status === 'fulfilled')
-          .map((asset) => asset.fullPath),
-      );
-      const failed = results.length - deletedPaths.size;
-
-      setAssets((current) => current.filter((asset) => !deletedPaths.has(asset.fullPath)));
-      setSelectedUnusedPaths((current) => new Set([...current].filter((path) => !deletedPaths.has(path))));
-      if (selectedAssetPath && deletedPaths.has(selectedAssetPath)) setSelectedAssetPath('');
-      setCoverPage(1);
-
-      if (deletedPaths.size > 0) {
-        setRestoredMessage(
-          failed > 0
-            ? `Deleted ${deletedPaths.size} unused cover${deletedPaths.size === 1 ? '' : 's'}. ${failed} could not be deleted.`
-            : `Deleted ${deletedPaths.size} unused cover${deletedPaths.size === 1 ? '' : 's'}.`,
-        );
-      }
-      if (failed > 0 && deletedPaths.size === 0) {
-        setError('Inkbound could not delete the selected unused cover files. Nothing in your library was changed.');
-      }
-    } catch (caught) {
-      console.error('Inkbound unused cover cleanup failed.', caught);
-      setError('Inkbound could not clean up those unused covers. Nothing in your library was changed.');
-    } finally {
-      setDeleting(false);
-    }
   };
 
   const useCover = () => {
