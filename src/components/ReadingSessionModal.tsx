@@ -1,3 +1,4 @@
+import { compareLibraryLabels } from '../features/library/librarySectionSort';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CanonicalNumberInput } from './form/CanonicalInput';
 import { ReadingSession, UserBookRecord } from '../types';
@@ -101,7 +102,7 @@ function allocateSplitMinutes(totalSeconds: number, firstSeconds: number) {
 
 export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books, sessions, initialBookId, onClose, onSaveSession }) => {
   const selectableBooks = books.filter((book) => book.status === 'currently-reading')
-    .sort((a, b) => a.work.title.localeCompare(b.work.title, undefined, { numeric: true, sensitivity: 'base' }) || a.work.author.localeCompare(b.work.author, undefined, { sensitivity: 'base' }));
+    .sort((a, b) => compareLibraryLabels(a.work.title, b.work.title) || compareLibraryLabels(a.work.author, b.work.author));
   const requestedInitialBook = selectableBooks.find((book) => book.id === initialBookId);
   const initialBook = requestedInitialBook ?? selectableBooks[0];
   const [error, setError] = useState('');
