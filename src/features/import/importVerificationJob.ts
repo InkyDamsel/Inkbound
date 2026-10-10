@@ -1,5 +1,6 @@
 import type { ImportRecordItem, UserBookRecord } from '../../types';
-import { getRuntimeStorage, writeRuntimeJson } from '../../platform/runtimeStorage';
+import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import { findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
@@ -157,9 +158,14 @@ async function applySourceFieldsToNewBooks(items: ImportRecordItem[], fallbackLi
   }
 
   if (bestResult.matched > 0) {
-    writeRuntimeJson(SYNC_STORAGE_KEYS.books, bestResult.library);
-    notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
-    return bestResult.library;
+    // Retry results may be older than reader edits made during the wait.
+    // Reapply enrichment to the latest canonical library before committing.
+    const latest = readCurrentBooks(bestResult.library);
+    const refreshed = applySourceFieldsToBooks(items, latest);
+    if (!replaceCanonicalLibrary(refreshed.library)) {
+      throw new Error('Import metadata could not be saved; completion was not confirmed.');
+    }
+    return refreshed.library;
   }
 
   return latestLibrary;
@@ -190,7 +196,9 @@ export function startImportVerificationJob(
       const mergeResult = mergeExistingRecords(normalizedItems, startingLibrary);
       let workingLibrary = mergeResult.library;
       if (mergeResult.merged.length > 0) {
-        writeRuntimeJson(SYNC_STORAGE_KEYS.books, workingLibrary);
+        if (!replaceCanonicalLibrary(workingLibrary)) {
+          throw new Error('Imported book updates could not be saved.');
+        }
         restoreManualSeriesOverridesFromImport(mergeResult.merged, workingLibrary);
         notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
       }
