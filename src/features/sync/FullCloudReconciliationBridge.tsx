@@ -449,6 +449,15 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
           updatedAt: serverTimestamp(),
         }, { merge: true });
 
+        // The manifest write itself awaits the network. Recheck immediately
+        // before any local overwrite or sync baseline acknowledgement.
+        if (
+          stable(readJson<UserBookRecord[]>(BOOKS_KEY, [])) !== stable(localBooks)
+          || stable(readJson<ReadingSession[]>(SESSIONS_KEY, [])) !== stable(localSessions)
+        ) {
+          throw new Error('Local library changed while finalizing reconciliation; stale snapshot application blocked.');
+        }
+
         const changedKeys: CloudSyncedStorageKey[] = [];
 
         if (stable(localBooks) !== stable(nextBooks)) {
