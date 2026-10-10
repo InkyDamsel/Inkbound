@@ -14,6 +14,7 @@ export interface CloudDataUpdatedDetail {
 export interface LocalDataChangedDetail {
   keys: CloudSyncedStorageKey[];
   trustedReaderIntent?: boolean;
+  explicitDeleteIds?: string[];
 }
 
 export interface BeforeSignOutDetail {
