@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Database, RefreshCw } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
 
-type DetailSection = 'collections' | 'books' | 'sessions' | 'auxiliary' | 'profile' | 'photoMemories' | 'syncState' | 'recoveryPoints' | 'entitlement';
+type DetailSection = 'collections' | 'books' | 'sessions' | 'auxiliary' | 'profile' | 'photoMemories' | 'syncState' | 'deletions' | 'recoveryPoints' | 'entitlement';
 
 interface DetailItem {
   id: string;
@@ -49,6 +49,7 @@ const SECTION_LABELS: Record<DetailSection, string> = {
   profile: 'Profile',
   photoMemories: 'Photo Memories',
   syncState: 'Sync state',
+  deletions: 'Deletion history',
   recoveryPoints: 'Recovery points',
   entitlement: 'Entitlement',
 };
