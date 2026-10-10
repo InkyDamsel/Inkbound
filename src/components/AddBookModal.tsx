@@ -640,8 +640,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="relative max-h-[100dvh] w-full max-w-5xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center overflow-hidden bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="relative min-w-0 max-h-[100dvh] w-full max-w-5xl overflow-x-hidden overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
         <button type="button" onClick={onClose} className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full bg-black/30 text-[#ad9fac]" aria-label="Close add reading material dialog"><X className="h-5 w-5" /></button>
 
         <header className="pr-12">
@@ -650,10 +650,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           <p className="mt-2 text-sm text-[#ad9fac]">Search, scan a stack of books, or add something manually.</p>
         </header>
 
-        <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
-          <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
-          <button type="button" onClick={() => { setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
-          <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
+        <div className="mt-6 grid min-w-0 grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
+          <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
+          <button type="button" onClick={() => { setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
+          <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
         </div>
 
         {activeTab === 'search' ? (
@@ -838,7 +838,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               {scannerError && <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{scannerError}</p>}
             </section>
 
-            <section className="rounded-2xl border border-[#3d2448] bg-[#1d1422] p-4 sm:p-5">
+            <section className="min-w-0 rounded-2xl border border-[#3d2448] bg-[#1d1422] p-3 sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="inkbound-kicker">Review before saving</p>
@@ -855,12 +855,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     {scannedBooks.map((item) => {
                       const edition = item.book.editions.find((candidate) => candidate.id === item.book.activeEditionId) ?? item.book.editions[0];
                       return (
-                        <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">
+                        <article key={`${item.isbn}-${item.book.id}`} className="flex min-w-0 items-start gap-2 rounded-xl border border-white/8 bg-[#120c15] p-2.5 sm:items-center sm:gap-3 sm:p-3">
                           {edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover" /> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5" /></span>}
                           <div className="min-w-0 flex-1">
-                            <p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p>
-                            <p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p>
-                            <p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · {readingStatusSelectionLabel(scannerCategory)}</p>
+                            <p className="break-words text-sm font-semibold leading-snug text-[#f4efe6] sm:text-base">{item.book.work.title}</p>
+                            <p className="break-words text-xs text-[#ad9fac]">{item.book.work.author}</p>
+                            <p className="mt-1 break-all text-[11px] text-[#8f8290]">ISBN {item.isbn} · {readingStatusSelectionLabel(scannerCategory)}</p>
                           </div>
                           <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4" /></button>
                         </article>
