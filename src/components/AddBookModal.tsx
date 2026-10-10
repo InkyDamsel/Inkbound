@@ -520,12 +520,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const openAuthorPage = async (authorName: string) => {
     if (isSearching) return;
+    const knownAuthorBooks = filterExactAuthorResults(results, authorName);
     setAuthorPage({
       name: authorName,
       previousQuery: query,
       previousResults: results,
       previousHasSearched: hasSearched,
     });
+    // Keep already-discovered books visible while the author provider loads.
+    // An empty or unavailable provider response must never erase these books.
+    setResults(knownAuthorBooks);
     setAuthorNextStartIndex(0);
     setAuthorProviderTotal(null);
     setAuthorHasMore(false);
@@ -538,14 +542,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     try {
       const response = await searchGoogleBooksAuthorPage(authorName, 0);
       const exactAuthorResults = filterExactAuthorResults(response.groups, authorName);
-      setResults(exactAuthorResults);
+      setResults(mergeCatalogResultGroups(knownAuthorBooks, exactAuthorResults));
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || null);
       setAuthorHasMore(response.hasMore);
     } catch (error) {
-      setResults([]);
       setAuthorHasMore(false);
-      setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
+      if (knownAuthorBooks.length === 0) {
+        setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
+      }
+      // Retain matching books already returned by the main search.
     } finally {
       setIsSearching(false);
     }
