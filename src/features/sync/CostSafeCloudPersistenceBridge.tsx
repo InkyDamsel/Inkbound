@@ -130,10 +130,10 @@ function captureWorkingChanges<T extends { id: string }>(
     }
   });
 
-  fingerprints.current.forEach((_value, id) => {
-    if (next.has(id)) return;
-    if (baseline[id] === undefined) delete mutations[id];
-  });
+  // Never erase an unsynced upsert merely because a working array stopped
+  // containing it. Hydration and stale-device refreshes can temporarily shrink
+  // the array; absence is not evidence that the reader deleted the book.
+  // An explicit reader deletion is handled below with its authorized IDs.
 
   explicitDeleteIds.forEach((id) => {
     if (next.has(id)) return;
