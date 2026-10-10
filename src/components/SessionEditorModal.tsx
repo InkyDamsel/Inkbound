@@ -1,3 +1,4 @@
+import { compareLibraryLabels } from '../features/library/librarySectionSort';
 import React, { useMemo, useState } from 'react';
 import { CanonicalNumberInput } from './form/CanonicalInput';
 import { ReadingSession, UserBookRecord } from '../types';
@@ -52,7 +53,7 @@ export const SessionEditorModal: React.FC<SessionEditorModalProps> = ({ books, s
   const matchingBooks = useMemo(() => {
     const query = bookSearch.trim().toLocaleLowerCase();
     return [...books].filter((book) => !query || `${book.work.title} ${book.work.author} ${book.work.seriesName ?? ''}`.toLocaleLowerCase().includes(query))
-      .sort((a, b) => a.work.title.localeCompare(b.work.title, undefined, { numeric: true, sensitivity: 'base' }) || a.work.author.localeCompare(b.work.author, undefined, { sensitivity: 'base' }));
+      .sort((a, b) => compareLibraryLabels(a.work.title, b.work.title) || compareLibraryLabels(a.work.author, b.work.author));
   }, [books, bookSearch]);
   const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
   const edition = selectedBook ? getActiveEdition(selectedBook) : undefined;
