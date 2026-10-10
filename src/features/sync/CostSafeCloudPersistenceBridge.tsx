@@ -30,6 +30,7 @@ import {
 } from './storageKeys';
 import {
   createTrustedDeleteMutation,
+  createTrustedUpsertMutation,
   shouldCaptureReaderMutation,
   shouldCreateDeleteMutation,
 } from './syncMutationPolicy';
@@ -124,12 +125,7 @@ function captureWorkingChanges<T extends { id: string }>(
     next.set(item.id, itemFingerprint);
     if (fingerprints.current.get(item.id) !== itemFingerprint) {
       if (baseline[item.id] === itemFingerprint) delete mutations[item.id];
-      else mutations[item.id] = {
-        operation: 'upsert',
-        data: item,
-        clientUpdatedAt: now,
-        capturedAfterCloudReconcile: true,
-      };
+      else mutations[item.id] = createTrustedUpsertMutation(item, now);
     }
   });
 
