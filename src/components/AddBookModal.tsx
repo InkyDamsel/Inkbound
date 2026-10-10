@@ -14,6 +14,7 @@ import {
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { isValidCatalogIsbn } from '../features/book-search/isbnResolution';
+import { auth } from '../lib/firebase';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -47,6 +48,32 @@ type ReadingStatusSelection = Exclude<ReadingStatus, 'custom' | 'wishlist'> | Cu
 type CustomOwnershipSelection = `custom:${string}`;
 type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
+
+const scannerDraftKey = () => `inkbound:scanner-draft:v1:${auth?.currentUser?.uid ?? 'signed-out'}`;
+const readScannerDraft = (): ScannedBook[] => {
+  try {
+    const stored = window.localStorage.getItem(scannerDraftKey());
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is ScannedBook =>
+      !!item && typeof item === 'object' && typeof item.isbn === 'string'
+      && !!item.book && typeof item.book.id === 'string' && !!item.book.work
+      && Array.isArray(item.book.editions));
+  } catch {
+    return [];
+  }
+};
+const writeScannerDraft = (books: ScannedBook[]): boolean => {
+  try {
+    if (books.length) window.localStorage.setItem(scannerDraftKey(), JSON.stringify(books));
+    else window.localStorage.removeItem(scannerDraftKey());
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 type AuthorPageState = {
   name: string;
   previousQuery: string;
@@ -176,7 +203,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [ownershipSelection, setOwnershipSelection] = useState<OwnershipSelection>('owned');
   const [priority, setPriority] = useState<Priority>('medium');
 
-  const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>([]);
+  const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>(readScannerDraft);
   const [scannerCategory, setScannerCategory] = useState<ReadingStatusSelection>('tbr');
   const [manualIsbn, setManualIsbn] = useState('');
   const [scannerBusy, setScannerBusy] = useState(false);
@@ -188,6 +215,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const scanLoopRef = useRef<number | null>(null);
   const scannerAudioContextRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    if (scannedBooks.length && !writeScannerDraft(scannedBooks)) {
+      setScannerError('Could not protect this scan batch on this device. Keep this screen open until saved.');
+    }
+  }, [scannedBooks]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -427,6 +460,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       }
       if (!onAddMultipleBooks(books)) {
         setScannerError('Inkbound could not save this batch. All scanned books are still here; do not close this screen.');
+        return;
+      }
+      if (!writeScannerDraft([])) {
+        setScannerError('Books saved locally, but the scan draft could not be cleared. Verify your library before retrying.');
         return;
       }
       setScannedBooks([]);
