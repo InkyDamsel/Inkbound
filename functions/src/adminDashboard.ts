@@ -141,7 +141,7 @@ async function getPagedDocuments(collection: FirebaseFirestore.CollectionReferen
   return { docs: snapshot.docs.slice(0, pageSize), hasMore: snapshot.size > pageSize };
 }
 
-async function getIntegrityDetail(targetUserId: string, section: DetailSection, page: number, pageSize: number) {
+async function getIntegrityDetail(targetUserId: string, section: DetailSection, page: number, pageSize: number, bookQuery = '') {
   const db = getFirestore();
   const userRef = db.doc(`users/${targetUserId}`);
 
@@ -191,7 +191,16 @@ async function getIntegrityDetail(targetUserId: string, section: DetailSection, 
     // all pages, including older documents that lack a searchable title field.
     // This is a read-only, owner/admin-triggered inspection path, not app sync.
     const bookSnapshot = await userRef.collection('books').get();
-    const sortedBooks = [...bookSnapshot.docs].sort((left, right) => {
+    const normalizedBookQuery = bookQuery.trim().toLocaleLowerCase();
+    const matchingBooks = bookSnapshot.docs.filter((document) => {
+      if (!normalizedBookQuery) return true;
+      const book = safeUnwrapRecord<StoredBook>(document.data());
+      const work = asRecord(book.work);
+      const editions = asRecordArray(book.editions);
+      const searchable = [document.id, work.title, work.author, ...editions.flatMap((edition) => [edition.isbn13, edition.isbn10, edition.isbn])];
+      return searchable.some((value) => typeof value === 'string' && value.toLocaleLowerCase().includes(normalizedBookQuery));
+    });
+    const sortedBooks = matchingBooks.sort((left, right) => {
       const titleOf = (document: FirebaseFirestore.QueryDocumentSnapshot) => {
         const book = safeUnwrapRecord<StoredBook>(document.data());
         const title = asRecord(book.work).title;
@@ -411,7 +420,7 @@ export const getAdminDataIntegrity = onCall({
   timeoutSeconds: 120,
 }, async (request) => {
   await requireAdmin(request, ['owner']);
-  const input = request.data as { targetUserId?: unknown; detailSection?: unknown; page?: unknown; pageSize?: unknown } | undefined;
+  const input = request.data as { targetUserId?: unknown; detailSection?: unknown; page?: unknown; pageSize?: unknown; bookQuery?: unknown } | undefined;
   const targetUserId = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
   if (!targetUserId || targetUserId.length > 128) throw new HttpsError('invalid-argument', 'A valid reader is required.');
 
@@ -421,7 +430,8 @@ export const getAdminDataIntegrity = onCall({
     const page = typeof input.page === 'number' && Number.isFinite(input.page) ? Math.max(0, Math.floor(input.page)) : 0;
     const requestedPageSize = typeof input.pageSize === 'number' && Number.isFinite(input.pageSize) ? Math.floor(input.pageSize) : 25;
     const pageSize = Math.min(50, Math.max(1, requestedPageSize));
-    return { generatedAt: new Date().toISOString(), targetUserId, details: await getIntegrityDetail(targetUserId, input.detailSection as DetailSection, page, pageSize) };
+    const bookQuery = typeof input.bookQuery === 'string' ? input.bookQuery.trim().slice(0, 120) : '';
+    return { generatedAt: new Date().toISOString(), targetUserId, details: await getIntegrityDetail(targetUserId, input.detailSection as DetailSection, page, pageSize, bookQuery) };
   }
 
   const db = getFirestore();
