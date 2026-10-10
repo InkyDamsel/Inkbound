@@ -380,10 +380,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
-      setScannedBooks((current) => {
-        const next = [...current, { isbn, book }];
-        return next;
-      });
+      const nextBatch = [...scannedBooks, { isbn, book }];
+      if (!writeScannerDraft(nextBatch)) {
+        setScannerError('Device storage is full or unavailable. This book was not added to the batch because it could not be protected.');
+        return;
+      }
+      setScannedBooks(nextBatch);
       setManualIsbn('');
       setScannerMessage(exactIsbn
         ? `Added “${work.title}” to this scan batch.`
