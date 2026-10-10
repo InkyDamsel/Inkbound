@@ -133,12 +133,16 @@ interface BookProgressCorrection {
 }
 
 function readStoredCollection<T>(primaryKey: string, legacyKey: string, fallback: T): T {
+  const storage = getRuntimeStorage();
+  const stored = storage.getItem(primaryKey) ?? storage.getItem(legacyKey);
+  if (stored === null) return fallback;
   try {
-    const storage = getRuntimeStorage();
-    const stored = storage.getItem(primaryKey) ?? storage.getItem(legacyKey);
-    return stored ? (JSON.parse(stored) as T) : fallback;
-  } catch {
-    return fallback;
+    return JSON.parse(stored) as T;
+  } catch (error) {
+    // Unreadable canonical data is NOT an empty library. Keep the original
+    // bytes untouched and stop this read instead of overwriting with [].
+    console.error('[Inkbound persistence] Stored collection is unreadable; preserving original bytes.', primaryKey, error);
+    throw new Error(`Inkbound cannot safely read saved collection ${primaryKey}. Existing data has not been replaced.`);
   }
 }
 
