@@ -201,8 +201,12 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
         // Mark the restored state as the protected baseline before the canonical
         // write emits its local-change event, otherwise the ledger bridge can
         // mistake recovery for a fresh reader edit and loop.
-        baseline.current = signaturesFor(restoredBooks);
-        replaceCanonicalLibrary(restoredBooks);
+        const restoredSignatures = signaturesFor(restoredBooks);
+        if (replaceCanonicalLibrary(restoredBooks)) {
+          baseline.current = restoredSignatures;
+        } else {
+          console.error('Inkbound could not commit protected book details recovery; retaining the previous baseline.');
+        }
       } catch (error) {
         console.error('Inkbound could not restore protected book details.', error);
       }
@@ -219,6 +223,7 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
         const books = readBooks();
         const currentSignatures = signaturesFor(books);
 
+        const acknowledgedSignatures = new Map(baseline.current);
         for (const book of books) {
           const previousSignature = baseline.current.get(book.id);
           const currentSignature = currentSignatures.get(book.id);
@@ -229,9 +234,11 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
             clientUpdatedAt: new Date().toISOString(),
             updatedAt: serverTimestamp(),
           }, { merge: false });
+          // Advance the acknowledged baseline only after Firestore confirms the write.
+          acknowledgedSignatures.set(book.id, currentSignature!);
         }
 
-        baseline.current = currentSignatures;
+        baseline.current = acknowledgedSignatures;
       } catch (error) {
         console.error('Inkbound could not persist protected book details.', error);
       } finally {
