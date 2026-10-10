@@ -216,7 +216,7 @@ export {
   sendAdminPasswordResetEmail,
   addAdminSupportNote,
 } from './readerDirectoryMaintenance.js';
-export { getAdminDataIntegrity, setAdminAccess } from './adminDashboard.js';
+export { getAdminDataIntegrity, inspectMissingBookEvidence, setAdminAccess } from './adminDashboard.js';
 export { listAdminRecoveryPoints, restoreAdminRecoveryPoint } from './adminRecovery.js';
 export { previewAdminRecoveryPoint, listAdminRecoveryBooksForMonth, restoreAdminRecoverySelection } from './adminSelectiveRecovery.js';
 export { searchHardcoverBooks } from './bookSearch.js';
