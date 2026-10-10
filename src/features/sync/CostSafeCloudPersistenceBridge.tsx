@@ -276,6 +276,12 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         const results = await Promise.allSettled(batch.map(async ([id, mutation]) => {
           const target = doc(db!, 'users', uid, kind, id);
           if (mutation.operation === 'delete') {
+            // Final destructive-write gate. Even if a legacy queue bypasses the
+            // earlier quarantine, it must never reach Firestore without proof
+            // of an explicit user deletion.
+            if (mutation.explicitDeleteAuthorized !== true) {
+              throw new Error('Unverified cloud deletion blocked');
+            }
             await Promise.all([
               deleteDoc(target),
               setDoc(
