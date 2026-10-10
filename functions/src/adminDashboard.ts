@@ -359,6 +359,64 @@ async function getIntegrityDetail(targetUserId: string, section: DetailSection, 
   };
 }
 
+/**
+ * Owner-only, strictly read-only investigation of missing book IDs.
+ * Never creates records, changes tombstones, or initiates recovery.
+ */
+export const inspectMissingBookEvidence = onCall({
+  enforceAppCheck: ENFORCE_APP_CHECK,
+  memory: '512MiB',
+  timeoutSeconds: 120,
+}, async (request) => {
+  await requireAdmin(request, ['owner']);
+  const input = request.data as { targetUserId?: unknown; recordIds?: unknown } | undefined;
+  const targetUserId = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
+  const recordIds = Array.isArray(input?.recordIds) ? input.recordIds : [];
+  if (!targetUserId || targetUserId.length > 128 || recordIds.length < 1 || recordIds.length > 10
+    || recordIds.some((id) => typeof id !== 'string' || !/^book-[a-zA-Z0-9-]{1,100}$/.test(id))) {
+    throw new HttpsError('invalid-argument', 'A valid reader and up to ten book IDs are required.');
+  }
+  const ids = [...new Set(recordIds as string[])];
+  const user = getFirestore().doc(`users/${targetUserId}`);
+  const snapshotIndex = await user.collection('recoverySnapshots').orderBy('createdAtClient', 'desc').limit(30).get();
+  const results = await Promise.all(ids.map(async (id) => {
+    const [live, tombstone, snapshots] = await Promise.all([
+      user.collection('books').doc(id).get(),
+      user.collection('syncTombstones').doc(`books_${id}`).get(),
+      Promise.all(snapshotIndex.docs.map(async (snapshot) => {
+        const record = await snapshot.ref.collection('books').doc(id).get();
+        if (!record.exists) return null;
+        const stored = record.data() ?? {};
+        const book = safeUnwrapRecord<StoredBook>(stored);
+        const work = asRecord(book.work);
+        return {
+          snapshotId: snapshot.id,
+          createdAtClient: snapshot.get('createdAtClient') ?? null,
+          title: typeof work.title === 'string' ? work.title : null,
+          author: typeof work.author === 'string' ? work.author : null,
+          record: serializeFirestoreValue(stored),
+        };
+      })),
+    ]);
+    const liveStored = live.data() ?? {};
+    const liveWork = asRecord(safeUnwrapRecord<StoredBook>(liveStored).work);
+    return {
+      id,
+      liveExists: live.exists,
+      liveTitle: live.exists && typeof liveWork.title === 'string' ? liveWork.title : null,
+      liveRecord: live.exists ? serializeFirestoreValue(liveStored) : null,
+      tombstone: tombstone.exists ? serializeFirestoreValue(tombstone.data()) : null,
+      snapshotMatches: snapshots.filter((entry) => entry !== null),
+    };
+  }));
+  return {
+    readOnly: true,
+    snapshotsInspected: snapshotIndex.size,
+    snapshotLimit: 30,
+    results,
+  };
+});
+
 export const getAdminDashboard = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
   const { admin } = await requireAdmin(request);
   const db = getFirestore();
