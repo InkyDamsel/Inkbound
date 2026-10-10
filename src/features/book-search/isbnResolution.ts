@@ -1,3 +1,6 @@
+import { hardenCatalogGroups } from './catalogHardening';
+import type { BookSearchWorkGroup } from './model/bookSearch';
+
 export const compactCatalogIsbn = (value: string): string =>
   value.replace(/[^0-9X]/gi, '').toUpperCase();
 
@@ -41,3 +44,8 @@ export const equivalentCatalogIsbns = (value: string): string[] => {
 
   return [...results];
 };
+
+/** ISBN lookup must retain exact editions from every provider, even when an
+ * earlier provider returned an unrelated or incomplete work. */
+export const combineIsbnProviderGroups = (providers: BookSearchWorkGroup[][]): BookSearchWorkGroup[] =>
+  hardenCatalogGroups(providers.flat());
