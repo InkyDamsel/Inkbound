@@ -274,10 +274,9 @@ function reconcileCollection<T extends { id: string }>(
  * performs one bounded full reconciliation per account/device version.
  *
  * Cloud records replace stale local copies unless a durable local mutation is
- * newer. Cloud tombstones and baseline-confirmed remote deletions remove stale
- * cached records under the same conflict rule. Local-only records that never
- * appeared in the baseline are preserved so recovery cannot silently discard an
- * unsynced legacy item.
+ * newer. Only explicit cloud tombstones remove cached records; absence from
+ * a snapshot never authorizes deletion. Local-only records remain available
+ * for recovery and migration uploads.
  */
 export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
   const { user } = useAccountSync();
