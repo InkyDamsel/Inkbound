@@ -35,7 +35,7 @@ interface AddBookModalProps {
   currentBookCount: number;
   onClose: () => void;
   onAddBook: (newBook: UserBookRecord) => void;
-  onAddMultipleBooks?: (newBooks: UserBookRecord[]) => void;
+  onAddMultipleBooks?: (newBooks: UserBookRecord[]) => boolean;
   onRemoveBook?: (book: UserBookRecord) => void;
 }
 
@@ -413,13 +413,23 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   const addScannedBatch = () => {
-    if (scannedBooks.length === 0) return;
+    if (scannedBooks.length === 0 || scannerBusy) return;
     const books = scannedBooks.map((item) => applyReadingStatusSelection(item.book, scannerCategory));
-    if (onAddMultipleBooks) onAddMultipleBooks(books);
-    else books.forEach(onAddBook);
-    setScannedBooks([]);
-    stopCamera();
-    onClose();
+    try {
+      if (!onAddMultipleBooks) {
+        setScannerError('Batch saving is unavailable. Your scanned books have been kept for retry.');
+        return;
+      }
+      if (!onAddMultipleBooks(books)) {
+        setScannerError('Inkbound could not save this batch. All scanned books are still here; do not close this screen.');
+        return;
+      }
+      setScannedBooks([]);
+      stopCamera();
+      onClose();
+    } catch (error) {
+      setScannerError(error instanceof Error ? `Batch save failed: ${error.message}` : 'Batch save failed. Your scanned books are still here.');
+    }
   };
 
 
@@ -881,7 +891,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 </Field>
               </div>
 
-              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {readingStatusSelectionLabel(scannerCategory)}</button>
+              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0 || scannerBusy} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {readingStatusSelectionLabel(scannerCategory)}</button>
             </section>
           </div>
         ) : (
