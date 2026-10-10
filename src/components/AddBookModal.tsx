@@ -13,6 +13,7 @@ import {
   searchGoogleBooksAuthorPage,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
+import { isValidCatalogIsbn } from '../features/book-search/isbnResolution';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -321,8 +322,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const lookupScannedIsbn = async (rawIsbn: string) => {
     const isbn = normalizeIsbn(rawIsbn);
-    if (!(isbn.length === 10 || isbn.length === 13) || scannerBusy) {
-      if (isbn) setScannerError('Enter or scan a valid 10- or 13-digit ISBN.');
+    if (!isValidCatalogIsbn(isbn) || scannerBusy) {
+      if (isbn) setScannerError('This barcode is not a valid ISBN-10 or ISBN-13. Check for a separate ISBN barcode; UPC product codes cannot identify a book edition.');
       return;
     }
     if (scannedBooks.some((item) => item.isbn === isbn)) {
@@ -341,6 +342,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       const { work, edition, exactIsbn } = resolved;
+      if (!exactIsbn) {
+        setScannerError('A catalog returned a possible title but could not verify this ISBN. Nothing was added; search by title or enter the book manually to avoid saving the wrong edition.');
+        return;
+      }
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
       setScannedBooks((current) => {
         const next = [...current, { isbn, book }];
