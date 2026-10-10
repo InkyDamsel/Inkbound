@@ -59,13 +59,13 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
 
   const matchingBooks = useMemo(() => {
     const query = bookSearch.trim().toLowerCase();
-    if (!query) return books.slice(0, 100);
-    return books
-      .filter((book) =>
+    return [...books]
+      .filter((book) => !query ||
         book.work.title.toLowerCase().includes(query)
         || book.work.author.toLowerCase().includes(query)
         || book.work.seriesName?.toLowerCase().includes(query),
       )
+      .sort((a, b) => a.work.title.localeCompare(b.work.title, undefined, { numeric: true, sensitivity: 'base' }) || a.work.author.localeCompare(b.work.author, undefined, { sensitivity: 'base' }))
       .slice(0, 100);
   }, [bookSearch, books]);
 
