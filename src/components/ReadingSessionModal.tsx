@@ -100,7 +100,8 @@ function allocateSplitMinutes(totalSeconds: number, firstSeconds: number) {
 }
 
 export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books, sessions, initialBookId, onClose, onSaveSession }) => {
-  const selectableBooks = books.filter((book) => book.status === 'currently-reading');
+  const selectableBooks = books.filter((book) => book.status === 'currently-reading')
+    .sort((a, b) => a.work.title.localeCompare(b.work.title, undefined, { numeric: true, sensitivity: 'base' }) || a.work.author.localeCompare(b.work.author, undefined, { sensitivity: 'base' }));
   const requestedInitialBook = selectableBooks.find((book) => book.id === initialBookId);
   const initialBook = requestedInitialBook ?? selectableBooks[0];
   const [error, setError] = useState('');
