@@ -66,14 +66,18 @@ export const AdminFirestoreInspector: React.FC<Props> = ({ targetUserId }) => {
   const [details, setDetails] = useState<DetailResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [bookQuery, setBookQuery] = useState('');
+  const [appliedBookQuery, setAppliedBookQuery] = useState('');
 
   useEffect(() => {
     setPage(0);
     setDetails(null);
     setError('');
+    setBookQuery('');
+    setAppliedBookQuery('');
   }, [targetUserId]);
 
-  const loadDetails = async (nextSection = section, nextPage = page) => {
+  const loadDetails = async (nextSection = section, nextPage = page, nextBookQuery = appliedBookQuery) => {
     if (!functions || !targetUserId || loading) return;
     setLoading(true);
     setError('');
@@ -83,10 +87,12 @@ export const AdminFirestoreInspector: React.FC<Props> = ({ targetUserId }) => {
         detailSection: DetailSection;
         page: number;
         pageSize: number;
+        bookQuery: string;
       }, DetailResponse>(functions, 'getAdminDataIntegrity');
-      const response = await inspect({ targetUserId, detailSection: nextSection, page: nextPage, pageSize: PAGE_SIZE });
+      const response = await inspect({ targetUserId, detailSection: nextSection, page: nextPage, pageSize: PAGE_SIZE, bookQuery: nextSection === 'books' ? nextBookQuery : '' });
       setSection(nextSection);
       setPage(nextPage);
+      setAppliedBookQuery(nextBookQuery);
       setDetails(response.data.details);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not load Firestore details.');
@@ -136,6 +142,16 @@ export const AdminFirestoreInspector: React.FC<Props> = ({ targetUserId }) => {
           </button>
         ))}
       </div>
+
+      {section === 'books' && <form onSubmit={(event) => { event.preventDefault(); void loadDetails('books', 0, bookQuery.trim()); }} className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] px-3">
+          <span className="sr-only">Search all saved Firestore books</span>
+          <input type="search" value={bookQuery} onChange={(event) => setBookQuery(event.target.value)} placeholder="Search all books by title, author, or ISBN" className="w-full min-w-0 bg-transparent text-sm text-[var(--ink-ivory)] outline-none" />
+        </label>
+        <button type="submit" disabled={loading} className="quiet-shelf-secondary-action justify-center disabled:opacity-45">Search books</button>
+        {(appliedBookQuery || bookQuery) && <button type="button" disabled={loading} onClick={() => { setBookQuery(''); void loadDetails('books', 0, ''); }} className="quiet-shelf-secondary-action justify-center disabled:opacity-45">Clear</button>}
+      </form>}
+      {section === 'books' && <p className="mt-2 text-xs text-[var(--ink-muted)]">Books are sorted A–Z by title across the complete Firestore collection, before pagination. This inspector is read-only.</p>}
 
       {!details && !loading && !error && <div className="mt-4 rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-raised)] p-4 text-sm text-[var(--ink-muted)]">Choose a section above to inspect its saved Firestore records.</div>}
       {error && <div className="mt-4 rounded-xl border border-[#c97b7b]/35 bg-[#c97b7b]/5 p-4 text-sm text-[#e9b2b2]">{error}</div>}
