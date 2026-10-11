@@ -145,14 +145,12 @@ async function readMatchingLargeValues(predicate: (key: string) => boolean): Pro
       const request = transaction.objectStore(STORE_NAME).openCursor();
       request.onsuccess = () => {
         const cursor = request.result;
-        if (!cursor) {
-          resolve(entries);
-          return;
-        }
+        if (!cursor) return; // Resolve only when the read transaction commits.
         const key = String(cursor.key);
         if (predicate(key) && typeof cursor.value === 'string' && cursor.value.length > 0) entries.push([key, cursor.value]);
         cursor.continue();
       };
+      transaction.oncomplete = () => resolve(entries);
       request.onerror = () => reject(request.error ?? new Error('IndexedDB cursor read failed.'));
       transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB read transaction failed.'));
       transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB read transaction aborted.'));
