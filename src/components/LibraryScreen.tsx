@@ -151,8 +151,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           ? getCanonicalProgressPercentage(b) - getCanonicalProgressPercentage(a)
           : ((Number.isFinite(Date.parse(b.dateAdded ?? '')) ? Date.parse(b.dateAdded) : 0)
             - (Number.isFinite(Date.parse(a.dateAdded ?? '')) ? Date.parse(a.dateAdded) : 0))
-            || a.work.title.localeCompare(b.work.title, undefined, { sensitivity: 'base', numeric: true })
-            || a.id.localeCompare(b.id)), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+            // dateAdded is often a calendar date rather than a timestamp. For
+            // same-day additions preserve canonical library order (new additions
+            // are prepended), instead of alphabetizing them and hiding the latest.
+            || books.indexOf(a) - books.indexOf(b)), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
