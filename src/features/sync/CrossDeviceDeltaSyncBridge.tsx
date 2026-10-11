@@ -97,11 +97,15 @@ const hashText = (value: string) => {
 const fingerprint = (value: unknown) => hashText(stable(value));
 
 function readJson<T>(key: string, fallback: T): T {
+  // An unreadable canonical value is not evidence of an empty library or
+  // queue. Preserve its original bytes and refuse to reconcile over it.
+  const raw = runtimeStorage().getItem(key);
+  if (raw === null) return fallback;
   try {
-    const raw = runtimeStorage().getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.error('[Inkbound persistence] Refusing to replace unreadable stored data.', { key, error });
+    throw new Error(`Inkbound cannot safely read ${key}; existing data was preserved.`);
   }
 }
 
