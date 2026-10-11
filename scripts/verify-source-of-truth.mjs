@@ -364,8 +364,11 @@ if (!applicationEntry.includes('prepareLargeBrowserStorageForStartup();')) {
 if (/if \(!isNativeRuntime\(\)\) prepareLargeBrowserStorageForStartup\(\)/.test(applicationEntry)) {
   violations.push('applicationEntry.tsx: Android must not bypass canonical large-storage startup protection');
 }
-if (!applicationEntry.includes('void hydrateLargeBrowserStorage().finally')) {
-  violations.push('applicationEntry.tsx: every current runtime must hydrate canonical large storage');
+if (!applicationEntry.includes('void hydrateLargeBrowserStorage()') ||
+    !applicationEntry.includes('hydrateDeferredLargeBrowserStorage()') ||
+    !applicationEntry.includes(".catch((error) => {") ||
+    !applicationEntry.includes('Startup halted to protect existing library data.')) {
+  violations.push('applicationEntry.tsx: every runtime must hydrate canonical storage and fail closed on hydration errors');
 }
 
 const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');
