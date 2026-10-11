@@ -20,6 +20,8 @@ import { getReadingSessionTimestamp, sortCurrentlyReadingByRecency } from '../fe
 import { selectPrimaryCurrentlyReadingBook } from '../features/reading/primaryReadingSelection';
 import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
 import { BookCover } from './BookCover';
+import { usePersistentState } from '../hooks/usePersistentState';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 
 interface HomeDashboardProps {
   books: UserBookRecord[];
@@ -56,6 +58,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onNavigateToTab,
   onOpenAddBook,
 }) => {
+  const [dragon] = usePersistentState(ACCOUNT_DATA_STORAGE_KEYS.dragonProfile, { id: 'library-dragon', name: 'Lumis' });
+  const dragonName = dragon.name?.trim() || 'Lumis';
   const now = new Date();
   const greeting = getGreeting(now.getHours());
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -121,8 +125,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     && recentSessionTimestamp <= Date.now()
     && Date.now() - recentSessionTimestamp <= RECENT_READING_WINDOW_MS;
   const lumisPortrait = isAwakePose
-    ? { src: AWAKE_LUMIS_ASSET, alt: 'Lumis, an alert purple library dragon resting on a book beside a candle and tea', title: 'Lumis is curled up by your newest book', detail: 'Eager for your next adventure.' }
-    : { src: SLEEPING_LUMIS_ASSET, alt: 'Lumis, a sleeping purple library dragon resting on a book beside a candle and tea', title: 'Lumis is resting after a day of stories', detail: "Dreaming of tomorrow's adventures." };
+    ? { src: AWAKE_LUMIS_ASSET, alt: `${dragonName}, an alert purple library dragon resting on a book beside a candle and tea`, title: `${dragonName} is curled up by your newest book', detail: 'Eager for your next adventure.' }
+    : { src: SLEEPING_LUMIS_ASSET, alt: `${dragonName}, a sleeping purple library dragon resting on a book beside a candle and tea`, title: `${dragonName} is resting after a day of stories', detail: "Dreaming of tomorrow's adventures." };
 
   return (
     <div className="space-y-8 pb-24 md:pb-12">
@@ -138,9 +142,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
         <ContinueReadingCard book={currentBook} onSelectBook={onSelectBook} onStartSessionForBook={onStartSessionForBook} onNavigateToLibrary={() => onNavigateToTab('library')} />
         <button type="button" onClick={() => onNavigateToTab('my-dragon')} className="inkbound-panel group overflow-hidden rounded-3xl text-left transition hover:border-[var(--ink-border-strong)]" aria-label="Open My Dragon">
-          <div className="p-5 pb-4 sm:p-6 sm:pb-4"><div className="flex items-center justify-between gap-3"><div><p className="inkbound-kicker">Your companion</p><h2 className="mt-1 font-serif text-2xl text-[var(--ink-ivory)]">Lumis</h2></div><Sparkles className="h-5 w-5 text-[var(--ink-mauve)] transition group-hover:scale-110" /></div></div>
+          <div className="p-5 pb-4 sm:p-6 sm:pb-4"><div className="flex items-center justify-between gap-3"><div><p className="inkbound-kicker">Your companion</p><h2 className="mt-1 font-serif text-2xl text-[var(--ink-ivory)]">{dragonName}</h2></div><Sparkles className="h-5 w-5 text-[var(--ink-mauve)] transition group-hover:scale-110" /></div></div>
           <div className="mx-5 overflow-hidden rounded-2xl border border-[var(--ink-border-subtle)] bg-[#171117] sm:mx-6"><img src={lumisPortrait.src} alt={lumisPortrait.alt} className="aspect-[16/9] w-full object-cover" /><div className="border-t border-white/10 bg-[#171117] px-5 py-4 text-center"><p className="font-serif text-lg leading-6 text-[#f2e9df]">{lumisPortrait.title}</p><p className="mt-1 text-xs leading-5 text-[#b9a9b5]">{lumisPortrait.detail}</p></div></div>
-          <p className="px-5 py-4 text-xs leading-6 text-[var(--ink-muted)] sm:px-6">Lumis stays quiet, notices your reading life, and never interrupts it.</p>
+          <p className="px-5 py-4 text-xs leading-6 text-[var(--ink-muted)] sm:px-6">{dragonName} stays quiet, notices your reading life, and never interrupts it.</p>
         </button>
       </div>
 
