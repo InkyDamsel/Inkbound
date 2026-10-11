@@ -32,6 +32,7 @@ import {
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 import { scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -457,7 +458,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
   };
 
-  const addScannedBatch = () => {
+  const addScannedBatch = async () => {
     if (scannedBooks.length === 0 || scannerBusy) return;
     const books = scannedBooks.map((item) => applyReadingStatusSelection(item.book, scannerCategory));
     try {
@@ -469,16 +470,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setScannerError('Inkbound could not save this batch. All scanned books are still here; do not close this screen.');
         return;
       }
-      if (!writeScannerDraft([])) {
-        setScannerError('Books saved locally, but the scan draft could not be cleared. Verify your library before retrying.');
-        return;
-      }
+      // A synchronous runtime write is not proof that IndexedDB committed.
+      // Keep the recoverable scan draft if the durable write failed.
+      await flushLargeBrowserStorage();
       setScannedBooks([]);
       setScannerReviewPage(1);
       stopCamera();
+      // Keep the scanned ISBN draft as an independent recovery copy. Cloud
+      // upload is asynchronous and must not be mistaken for a confirmed save.
       onClose();
     } catch (error) {
-      setScannerError(error instanceof Error ? `Batch save failed: ${error.message}` : 'Batch save failed. Your scanned books are still here.');
+      setScannerError(error instanceof Error ? `Batch durability not confirmed: ${error.message}. The scanned ISBN backup is retained.` : 'Batch durability not confirmed. Your scanned ISBN backup is retained.');
     }
   };
 
