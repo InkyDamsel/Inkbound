@@ -204,6 +204,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [priority, setPriority] = useState<Priority>('medium');
 
   const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>(readScannerDraft);
+  const [scannerReviewPage, setScannerReviewPage] = useState(1);
+  const scannerReviewPageSize = 8;
+  const scannerReviewPageCount = Math.max(1, Math.ceil(scannedBooks.length / scannerReviewPageSize));
+  const safeScannerReviewPage = Math.min(scannerReviewPage, scannerReviewPageCount);
   const [scannerCategory, setScannerCategory] = useState<ReadingStatusSelection>('tbr');
   const [manualIsbn, setManualIsbn] = useState('');
   const [scannerBusy, setScannerBusy] = useState(false);
@@ -386,6 +390,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       setScannedBooks(nextBatch);
+      setScannerReviewPage(Math.ceil(nextBatch.length / scannerReviewPageSize));
       setManualIsbn('');
       setScannerMessage(exactIsbn
         ? `Added “${work.title}” to this scan batch.`
@@ -469,6 +474,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       setScannedBooks([]);
+      setScannerReviewPage(1);
       stopCamera();
       onClose();
     } catch (error) {
@@ -904,7 +910,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   <p className="inkbound-kicker">Review before saving</p>
                   <h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scanned books</h3>
                 </div>
-                {scannedBooks.length > 0 && <button type="button" onClick={() => { setScannedBooks([]); }} className="text-xs font-bold text-rose-300">Clear all</button>}
+                {scannedBooks.length > 0 && <button type="button" onClick={() => { setScannedBooks([]); setScannerReviewPage(1); }} className="text-xs font-bold text-rose-300">Clear all</button>}
               </div>
 
               {scannedBooks.length === 0 ? (
@@ -912,7 +918,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               ) : (
                 <>
                   <div className="mt-4 space-y-3">
-                    {scannedBooks.map((item) => {
+                    {scannedBooks.slice((safeScannerReviewPage - 1) * scannerReviewPageSize, safeScannerReviewPage * scannerReviewPageSize).map((item) => {
                       const edition = item.book.editions.find((candidate) => candidate.id === item.book.activeEditionId) ?? item.book.editions[0];
                       return (
                         <article key={`${item.isbn}-${item.book.id}`} className="flex min-w-0 items-start gap-2 rounded-xl border border-white/8 bg-[#120c15] p-2.5 sm:items-center sm:gap-3 sm:p-3">
@@ -928,7 +934,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     })}
                   </div>
 
-                  <p className="mt-4 text-center text-xs font-semibold text-[#ad9fac]" aria-live="polite">Showing all {scannedBooks.length} scanned books. Scroll to review each one before saving.</p>
+                  {scannerReviewPageCount > 1 && (
+                    <nav className="mt-4 flex items-center justify-center gap-4" aria-label="Scanned books pages">
+                      <button type="button" className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40" disabled={safeScannerReviewPage <= 1} onClick={() => setScannerReviewPage((page) => Math.max(1, page - 1))}>Previous</button>
+                      <span className="text-sm text-[#ad9fac]">Page {safeScannerReviewPage} of {scannerReviewPageCount}</span>
+                      <button type="button" className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40" disabled={safeScannerReviewPage >= scannerReviewPageCount} onClick={() => setScannerReviewPage((page) => Math.min(scannerReviewPageCount, page + 1))}>Next</button>
+                    </nav>
+                  )}
+                  <p className="mt-4 text-center text-xs font-semibold text-[#ad9fac]" aria-live="polite">Showing {((safeScannerReviewPage - 1) * scannerReviewPageSize) + 1}–{Math.min(safeScannerReviewPage * scannerReviewPageSize, scannedBooks.length)} of {scannedBooks.length} scanned books.</p>
                 </>
               )}
 
