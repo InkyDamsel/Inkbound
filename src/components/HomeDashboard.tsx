@@ -125,8 +125,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     && recentSessionTimestamp <= Date.now()
     && Date.now() - recentSessionTimestamp <= RECENT_READING_WINDOW_MS;
   const lumisPortrait = isAwakePose
-    ? { src: AWAKE_LUMIS_ASSET, alt: `${dragonName}, an alert purple library dragon resting on a book beside a candle and tea`, title: `${dragonName} is curled up by your newest book', detail: 'Eager for your next adventure.' }
-    : { src: SLEEPING_LUMIS_ASSET, alt: `${dragonName}, a sleeping purple library dragon resting on a book beside a candle and tea`, title: `${dragonName} is resting after a day of stories', detail: "Dreaming of tomorrow's adventures." };
+    ? { src: AWAKE_LUMIS_ASSET, alt: `${dragonName}, an alert purple library dragon resting on a book beside a candle and tea`, title: `${dragonName} is curled up by your newest book`, detail: 'Eager for your next adventure.' }
+    : { src: SLEEPING_LUMIS_ASSET, alt: `${dragonName}, a sleeping purple library dragon resting on a book beside a candle and tea`, title: `${dragonName} is resting after a day of stories`, detail: "Dreaming of tomorrow's adventures." };
 
   return (
     <div className="space-y-8 pb-24 md:pb-12">
