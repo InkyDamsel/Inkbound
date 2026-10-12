@@ -155,10 +155,10 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
           getDocs(collection(db!, 'users', uid, 'syncTombstones')),
         ]);
         if (disposed) return;
-        const deletedBookIds = new Set(tombstoneSnapshot.docs
+        const deletedBookMillis = new Map(tombstoneSnapshot.docs
           .map((item) => item.data() as { kind?: string; recordId?: string; deletedAt?: { toMillis(): number } })
           .filter((item) => item.kind === 'books' && item.recordId && item.deletedAt)
-          .map((item) => item.recordId!));
+          .map((item) => [item.recordId!, item.deletedAt!.toMillis()] as const));
 
         // Re-read local state after the network request to retain intervening edits.
         const current = readJson<UserBookRecord[]>(BOOKS_KEY, []);
@@ -168,8 +168,11 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         const ids = new Set(current.map((book) => book.id));
         const recovered: UserBookRecord[] = [];
         for (const item of snapshot.docs) {
-          const book = (item.data() as CloudRecord<UserBookRecord>).data;
-          if (!book?.id || ids.has(book.id) || deletedBookIds.has(book.id) || pending.books?.[book.id]?.operation === 'delete') continue;
+          const cloudRecord = item.data() as CloudRecord<UserBookRecord>;
+          const book = cloudRecord.data;
+          if (!book?.id || ids.has(book.id) || pending.books?.[book.id]?.operation === 'delete') continue;
+          const deletedAt = deletedBookMillis.get(book.id);
+          if (deletedAt !== undefined && deletedAt >= (cloudRecord.updatedAt?.toMillis() ?? 0)) continue;
           recovered.push(book);
           ids.add(book.id);
         }
