@@ -422,9 +422,19 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         const verifiedSessionCount = verifiedSessionSnapshot?.size ?? cloudSessions.length;
         const missingVerifiedBooks = nextBooks.filter((item) => !verifiedBookIds.has(item.id));
         const missingVerifiedSessions = nextSessions.filter((item) => !verifiedSessionIds.has(item.id));
-        if (missingVerifiedBooks.length > 0 || missingVerifiedSessions.length > 0) {
+        const expectedBookIds = snapshotIds(nextBooks);
+        const expectedSessionIds = snapshotIds(nextSessions);
+        const unexpectedVerifiedBooks = [...verifiedBookIds].filter((id) => !expectedBookIds.has(id));
+        const unexpectedVerifiedSessions = [...verifiedSessionIds].filter((id) => !expectedSessionIds.has(id));
+        if (
+          missingVerifiedBooks.length > 0 || missingVerifiedSessions.length > 0
+          || unexpectedVerifiedBooks.length > 0 || unexpectedVerifiedSessions.length > 0
+        ) {
+          // A stale cloud record may be a previously deleted or merged edition.
+          // Never delete it automatically, and never certify a mismatched cloud
+          // inventory as a completed migration. Preserve the recovery snapshot.
           throw new Error(
-            `Account migration verification failed: ${missingVerifiedBooks.length} book(s) and ${missingVerifiedSessions.length} session(s) are still missing from cloud.`,
+            `Account migration inventory mismatch: missing ${missingVerifiedBooks.length} book(s) and ${missingVerifiedSessions.length} session(s); unexpected ${unexpectedVerifiedBooks.length} book(s) and ${unexpectedVerifiedSessions.length} session(s). No cloud records were deleted.`,
           );
         }
 
@@ -545,6 +555,10 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         };
 
         storage().setItem(diagnosticKey(uid), stable(diagnostic));
+        // Ensure reconciled books, sessions, pending mutations, and baselines
+        // reach durable storage before acknowledging migration completion.
+        await flushLargeBrowserStorage();
+        if (disposed) return;
         // These markers are deliberately last. A failed upload/read-back leaves
         // the local working copy and recovery snapshot intact and forces retry.
         storage().setItem(accountLibraryMigrationVersionKey(uid), ACCOUNT_LIBRARY_MIGRATION_VERSION);
