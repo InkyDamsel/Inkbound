@@ -28,4 +28,4 @@ export const recentBookSortMillis = (book: UserBookRecord): number => {
 
 export const compareRecentlyAddedBooks = (a: UserBookRecord, b: UserBookRecord): number =>
   recentBookSortMillis(b) - recentBookSortMillis(a)
-  || a.id.localeCompare(b.id);
+;
