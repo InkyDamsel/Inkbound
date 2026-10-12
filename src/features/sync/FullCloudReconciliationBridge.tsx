@@ -412,11 +412,11 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         // If reconciliation uploaded nothing, the initial full snapshots are
         // already the verified cloud state. Do not bill a second full-library
         // read just to rediscover the same IDs.
-        const verifiedBookIds = verifiedBookSnapshot
-          ? new Set(verifiedBookSnapshot.docs.map((item) => item.id))
+        const verifiedBookIds: Set<string> = verifiedBookSnapshot
+          ? new Set<string>(verifiedBookSnapshot.docs.map((item) => item.id))
           : initialCloudBookIds;
-        const verifiedSessionIds = verifiedSessionSnapshot
-          ? new Set(verifiedSessionSnapshot.docs.map((item) => item.id))
+        const verifiedSessionIds: Set<string> = verifiedSessionSnapshot
+          ? new Set<string>(verifiedSessionSnapshot.docs.map((item) => item.id))
           : initialCloudSessionIds;
         const verifiedBookCount = verifiedBookSnapshot?.size ?? cloudBooks.length;
         const verifiedSessionCount = verifiedSessionSnapshot?.size ?? cloudSessions.length;
