@@ -126,6 +126,8 @@ export interface UserBookRecord {
   // False means the book was imported as finished without a trustworthy historical date.
   importFinishedDateProvided?: boolean;
   dateAdded: string;
+  /** Exact original addition time, separate from the reader-facing calendar date. */
+  dateAddedAt?: string;
   dateStarted?: string;
   dateFinished?: string;
   lastSessionDate?: string;
