@@ -3,6 +3,7 @@ import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, 
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, READING_STATUS_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
+import { compareRecentlyAddedBooks } from '../features/library/libraryRecentSort';
 import { bookMatchesLibrarySearch } from '../features/library/librarySearch';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
 import {
@@ -149,12 +150,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         ? (b.rating || 0) - (a.rating || 0)
         : sortBy === 'progress'
           ? getCanonicalProgressPercentage(b) - getCanonicalProgressPercentage(a)
-          : ((Number.isFinite(Date.parse(b.dateAdded ?? '')) ? Date.parse(b.dateAdded) : 0)
-            - (Number.isFinite(Date.parse(a.dateAdded ?? '')) ? Date.parse(a.dateAdded) : 0))
-            // dateAdded is often a calendar date rather than a timestamp. For
-            // same-day additions preserve canonical library order (new additions
-            // are prepended), instead of alphabetizing them and hiding the latest.
-            || books.indexOf(a) - books.indexOf(b)), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+          : compareRecentlyAddedBooks(a, b)), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
