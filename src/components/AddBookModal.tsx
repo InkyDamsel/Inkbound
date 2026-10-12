@@ -701,6 +701,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       collections: [],
       sourceOfImport: 'Manual entry',
       dateAdded: addedOn,
+      dateAddedAt: new Date().toISOString(),
     };
 
     onAddBook(applyReadingStatusSelection(baseBook, statusSelection, addedOn));
