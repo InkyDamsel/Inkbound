@@ -5,8 +5,8 @@ import { shouldCreateDeleteMutation } from '../src/features/sync/syncMutationPol
 import { compareRecentlyAddedBooks } from '../src/features/library/libraryRecentSort';
 
 {
-  const older = { ...book('book-1791849600000-abc123', 0), dateAdded: '2026-10-12' };
-  const newest = { ...book('book-1791853200000-abc123', 0), dateAdded: '2026-10-12' };
+  const older = { ...book(`book-${new Date('2026-10-12T12:00:00').getTime()}-abc123`, 0), dateAdded: '2026-10-12' };
+  const newest = { ...book(`book-${new Date('2026-10-12T13:00:00').getTime()}-abc123`, 0), dateAdded: '2026-10-12' };
   const explicit = { ...book('imported-1', 0), dateAdded: '2026-10-12', dateAddedAt: '2026-10-12T23:59:00.000Z' };
   const ordered = [older, newest, explicit].sort(compareRecentlyAddedBooks);
   assert.equal(ordered[0].id, explicit.id, 'Exact addition timestamps must win over array order after sync.');
