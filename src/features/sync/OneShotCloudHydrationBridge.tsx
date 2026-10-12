@@ -147,8 +147,18 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
       try {
         await hydrateLargeBrowserStorage();
         if (disposed || !hasEstablishedLocalWorkingCopy(uid)) return;
-        const snapshot = await getDocs(collection(db!, 'users', uid, 'books'));
+        // Read deletion evidence alongside the inventory. A cloud document can
+        // temporarily coexist with a tombstone on older clients; never restore
+        // a record that was explicitly merged away or deleted.
+        const [snapshot, tombstoneSnapshot] = await Promise.all([
+          getDocs(collection(db!, 'users', uid, 'books')),
+          getDocs(collection(db!, 'users', uid, 'syncTombstones')),
+        ]);
         if (disposed) return;
+        const deletedBookIds = new Set(tombstoneSnapshot.docs
+          .map((item) => item.data() as { kind?: string; recordId?: string; deletedAt?: { toMillis(): number } })
+          .filter((item) => item.kind === 'books' && item.recordId && item.deletedAt)
+          .map((item) => item.recordId!));
 
         // Re-read local state after the network request to retain intervening edits.
         const current = readJson<UserBookRecord[]>(BOOKS_KEY, []);
@@ -159,7 +169,7 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
         const recovered: UserBookRecord[] = [];
         for (const item of snapshot.docs) {
           const book = (item.data() as CloudRecord<UserBookRecord>).data;
-          if (!book?.id || ids.has(book.id) || pending.books?.[book.id]?.operation === 'delete') continue;
+          if (!book?.id || ids.has(book.id) || deletedBookIds.has(book.id) || pending.books?.[book.id]?.operation === 'delete') continue;
           recovered.push(book);
           ids.add(book.id);
         }
