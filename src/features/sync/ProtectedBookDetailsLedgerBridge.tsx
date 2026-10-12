@@ -121,7 +121,7 @@ function signaturesFor(books: UserBookRecord[]): Map<string, string> {
 
 function usableSummary(value: string | undefined): boolean {
   const text = value?.trim();
-  return Boolean(text && !/^summary unavailable\\.?$/i.test(text));
+  return Boolean(text && !/^summary unavailable\.?$/i.test(text));
 }
 
 /**
