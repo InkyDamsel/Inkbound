@@ -26,10 +26,21 @@ function makeReaderFriendly(next: CloudSyncHealth): CloudSyncHealth {
   const progress = next.message.match(/\(([\d,]+) of ([\d,]+) books saved\)/i);
   if (progress) {
     const [, saved, expected] = progress;
+    const savedCount = Number(saved.replace(/,/g, ''));
+    const expectedCount = Number(expected.replace(/,/g, ''));
+    if (savedCount > expectedCount) {
+      // The manifest may lag behind new cloud writes. Do not describe this
+      // as missing books or imply that the smaller count is the cloud total.
+      return {
+        ...next,
+        status: 'checking',
+        message: `Inkbound is updating your library sync count. ${saved} books are reported saved, while the last checkpoint expected ${expected}. Your library remains available on this device.`,
+      };
+    }
     return {
       ...next,
-      status: 'idle',
-      message: `${saved} of ${expected} books are saved to your account. Your complete library is safe on this device while Inkbound saves the rest.`,
+      status: 'checking',
+      message: `${saved} of ${expected} books are reported saved to your account. Inkbound is still checking synchronization; your library remains available on this device.`,
     };
   }
 
