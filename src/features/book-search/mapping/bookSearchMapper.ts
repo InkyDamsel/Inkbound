@@ -114,6 +114,7 @@ export function createBookFromSearchEdition({
     collections: [],
     sourceOfImport: providerLabel(hardenedEdition.source),
     dateAdded: addedOn,
+    dateAddedAt: new Date().toISOString(),
   };
 
   return withReadingStatus(baseBook, status, addedOn);
