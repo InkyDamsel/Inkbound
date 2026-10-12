@@ -13,6 +13,8 @@ import {
   searchGoogleBooksAuthorPage,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
+import { isValidCatalogIsbn } from '../features/book-search/isbnResolution';
+import { auth } from '../lib/firebase';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
   CUSTOM_OWNERSHIP_CATEGORIES_CHANGED_EVENT,
@@ -30,12 +32,13 @@ import {
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 import { scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
   currentBookCount: number;
   onClose: () => void;
   onAddBook: (newBook: UserBookRecord) => void;
-  onAddMultipleBooks?: (newBooks: UserBookRecord[]) => void;
+  onAddMultipleBooks?: (newBooks: UserBookRecord[]) => boolean;
   onRemoveBook?: (book: UserBookRecord) => void;
 }
 
@@ -46,6 +49,32 @@ type ReadingStatusSelection = Exclude<ReadingStatus, 'custom' | 'wishlist'> | Cu
 type CustomOwnershipSelection = `custom:${string}`;
 type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
+
+const scannerDraftKey = () => `inkbound:scanner-draft:v1:${auth?.currentUser?.uid ?? 'signed-out'}`;
+const readScannerDraft = (): ScannedBook[] => {
+  try {
+    const stored = window.localStorage.getItem(scannerDraftKey());
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is ScannedBook =>
+      !!item && typeof item === 'object' && typeof item.isbn === 'string'
+      && !!item.book && typeof item.book.id === 'string' && !!item.book.work
+      && Array.isArray(item.book.editions));
+  } catch {
+    return [];
+  }
+};
+const writeScannerDraft = (books: ScannedBook[]): boolean => {
+  try {
+    if (books.length) window.localStorage.setItem(scannerDraftKey(), JSON.stringify(books));
+    else window.localStorage.removeItem(scannerDraftKey());
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 type AuthorPageState = {
   name: string;
   previousQuery: string;
@@ -59,7 +88,6 @@ type BarcodeDetectorLike = {
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
 
 const ADD_TO_LIST_OPTIONS = READING_STATUS_OPTIONS.filter((option) => option.value !== 'custom') as Array<{ value: Exclude<ReadingStatus, 'custom' | 'wishlist'>; label: string; description?: string }>;
-const SCANNER_REVIEW_PAGE_SIZE = 6;
 const AUTHOR_CATALOG_PAGE_SIZE = 12;
 const builtInStatusLabel = (value: ReadingStatus) => READING_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value;
 const isCustomReadingStatusSelection = (selection: ReadingStatusSelection): selection is CustomReadingStatusSelection =>
@@ -176,9 +204,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [ownershipSelection, setOwnershipSelection] = useState<OwnershipSelection>('owned');
   const [priority, setPriority] = useState<Priority>('medium');
 
-  const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>([]);
-  const [scannerCategory, setScannerCategory] = useState<ReadingStatusSelection>('tbr');
+  const [scannedBooks, setScannedBooks] = useState<ScannedBook[]>(readScannerDraft);
   const [scannerReviewPage, setScannerReviewPage] = useState(1);
+  const scannerReviewPageSize = 8;
+  const scannerReviewPageCount = Math.max(1, Math.ceil(scannedBooks.length / scannerReviewPageSize));
+  const safeScannerReviewPage = Math.min(scannerReviewPage, scannerReviewPageCount);
+  const [scannerCategory, setScannerCategory] = useState<ReadingStatusSelection>('tbr');
   const [manualIsbn, setManualIsbn] = useState('');
   const [scannerBusy, setScannerBusy] = useState(false);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
@@ -189,6 +220,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const scanLoopRef = useRef<number | null>(null);
   const scannerAudioContextRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    if (!writeScannerDraft(scannedBooks)) {
+      setScannerError('Could not protect this scan batch on this device. Keep this screen open until saved.');
+    }
+  }, [scannedBooks]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -323,8 +360,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const lookupScannedIsbn = async (rawIsbn: string) => {
     const isbn = normalizeIsbn(rawIsbn);
-    if (!(isbn.length === 10 || isbn.length === 13) || scannerBusy) {
-      if (isbn) setScannerError('Enter or scan a valid 10- or 13-digit ISBN.');
+    if (!isValidCatalogIsbn(isbn) || scannerBusy) {
+      if (isbn) setScannerError('This barcode is not a valid ISBN-10 or ISBN-13. Check for a separate ISBN barcode; UPC product codes cannot identify a book edition.');
       return;
     }
     if (scannedBooks.some((item) => item.isbn === isbn)) {
@@ -343,12 +380,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       const { work, edition, exactIsbn } = resolved;
+      if (!exactIsbn) {
+        setScannerError('A catalog returned a possible title but could not verify this ISBN. Nothing was added; search by title or enter the book manually to avoid saving the wrong edition.');
+        return;
+      }
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
-      setScannedBooks((current) => {
-        const next = [...current, { isbn, book }];
-        setScannerReviewPage(Math.ceil(next.length / SCANNER_REVIEW_PAGE_SIZE));
-        return next;
-      });
+      const nextBatch = [...scannedBooks, { isbn, book }];
+      if (!writeScannerDraft(nextBatch)) {
+        setScannerError('Device storage is full or unavailable. This book was not added to the batch because it could not be protected.');
+        return;
+      }
+      setScannedBooks(nextBatch);
+      setScannerReviewPage(Math.ceil(nextBatch.length / scannerReviewPageSize));
       setManualIsbn('');
       setScannerMessage(exactIsbn
         ? `Added “${work.title}” to this scan batch.`
@@ -415,20 +458,32 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
   };
 
-  const addScannedBatch = () => {
-    if (scannedBooks.length === 0) return;
+  const addScannedBatch = async () => {
+    if (scannedBooks.length === 0 || scannerBusy) return;
     const books = scannedBooks.map((item) => applyReadingStatusSelection(item.book, scannerCategory));
-    if (onAddMultipleBooks) onAddMultipleBooks(books);
-    else books.forEach(onAddBook);
-    setScannedBooks([]);
-    setScannerReviewPage(1);
-    stopCamera();
-    onClose();
+    try {
+      if (!onAddMultipleBooks) {
+        setScannerError('Batch saving is unavailable. Your scanned books have been kept for retry.');
+        return;
+      }
+      if (!onAddMultipleBooks(books)) {
+        setScannerError('Inkbound could not save this batch. All scanned books are still here; do not close this screen.');
+        return;
+      }
+      // A synchronous runtime write is not proof that IndexedDB committed.
+      // Keep the recoverable scan draft if the durable write failed.
+      await flushLargeBrowserStorage();
+      setScannedBooks([]);
+      setScannerReviewPage(1);
+      stopCamera();
+      // Keep the scanned ISBN draft as an independent recovery copy. Cloud
+      // upload is asynchronous and must not be mistaken for a confirmed save.
+      onClose();
+    } catch (error) {
+      setScannerError(error instanceof Error ? `Batch durability not confirmed: ${error.message}. The scanned ISBN backup is retained.` : 'Batch durability not confirmed. Your scanned ISBN backup is retained.');
+    }
   };
 
-  const scannerReviewTotalPages = Math.max(1, Math.ceil(scannedBooks.length / SCANNER_REVIEW_PAGE_SIZE));
-  const scannerReviewStart = (scannerReviewPage - 1) * SCANNER_REVIEW_PAGE_SIZE;
-  const scannerReviewBooks = scannedBooks.slice(scannerReviewStart, scannerReviewStart + SCANNER_REVIEW_PAGE_SIZE);
 
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
@@ -473,12 +528,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const openAuthorPage = async (authorName: string) => {
     if (isSearching) return;
+    const knownAuthorBooks = filterExactAuthorResults(results, authorName);
     setAuthorPage({
       name: authorName,
       previousQuery: query,
       previousResults: results,
       previousHasSearched: hasSearched,
     });
+    // Keep already-discovered books visible while the author provider loads.
+    // An empty or unavailable provider response must never erase these books.
+    setResults(knownAuthorBooks);
     setAuthorNextStartIndex(0);
     setAuthorProviderTotal(null);
     setAuthorHasMore(false);
@@ -491,14 +550,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     try {
       const response = await searchGoogleBooksAuthorPage(authorName, 0);
       const exactAuthorResults = filterExactAuthorResults(response.groups, authorName);
-      setResults(exactAuthorResults);
+      setResults(mergeCatalogResultGroups(knownAuthorBooks, exactAuthorResults));
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || null);
       setAuthorHasMore(response.hasMore);
     } catch (error) {
-      setResults([]);
       setAuthorHasMore(false);
-      setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
+      if (knownAuthorBooks.length === 0) {
+        setSearchError(error instanceof Error ? error.message : 'Author catalog search failed. Please try again.');
+      }
+      // Retain matching books already returned by the main search.
     } finally {
       setIsSearching(false);
     }
@@ -647,8 +708,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="relative max-h-[100dvh] w-full max-w-5xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center overflow-hidden bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="relative min-w-0 max-h-[100dvh] w-full max-w-5xl overflow-x-hidden overflow-y-auto overscroll-contain rounded-t-3xl border border-[#c5a059]/40 bg-[#17101b] px-[max(1.25rem,env(safe-area-inset-left))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:p-7" role="dialog" aria-modal="true" aria-labelledby="add-book-title">
         <button type="button" onClick={onClose} className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full bg-black/30 text-[#ad9fac]" aria-label="Close add reading material dialog"><X className="h-5 w-5" /></button>
 
         <header className="pr-12">
@@ -657,10 +718,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           <p className="mt-2 text-sm text-[#ad9fac]">Search, scan a stack of books, or add something manually.</p>
         </header>
 
-        <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
-          <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
-          <button type="button" onClick={() => { setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
-          <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
+        <div className="mt-6 grid min-w-0 grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
+          <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
+          <button type="button" onClick={() => { setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
+          <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
         </div>
 
         {activeTab === 'search' ? (
@@ -678,7 +739,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     <p className="mt-1 text-sm text-[#ad9fac]">
                       {isSearching
                         ? 'Finding books…'
-                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal ? ` of ${authorProviderTotal}` : ''}`}
+                        : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal && authorProviderTotal >= results.length ? ` of ${authorProviderTotal}` : ''}`}
                     </p>
                   </div>
                 </div>
@@ -845,7 +906,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               {scannerError && <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{scannerError}</p>}
             </section>
 
-            <section className="rounded-2xl border border-[#3d2448] bg-[#1d1422] p-4 sm:p-5">
+            <section className="min-w-0 rounded-2xl border border-[#3d2448] bg-[#1d1422] p-3 sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="inkbound-kicker">Review before saving</p>
@@ -859,15 +920,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               ) : (
                 <>
                   <div className="mt-4 space-y-3">
-                    {scannerReviewBooks.map((item) => {
+                    {scannedBooks.slice((safeScannerReviewPage - 1) * scannerReviewPageSize, safeScannerReviewPage * scannerReviewPageSize).map((item) => {
                       const edition = item.book.editions.find((candidate) => candidate.id === item.book.activeEditionId) ?? item.book.editions[0];
                       return (
-                        <article key={`${item.isbn}-${item.book.id}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#120c15] p-3">
+                        <article key={`${item.isbn}-${item.book.id}`} className="flex min-w-0 items-start gap-2 rounded-xl border border-white/8 bg-[#120c15] p-2.5 sm:items-center sm:gap-3 sm:p-3">
                           {edition?.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover" /> : <span className="grid h-20 w-14 shrink-0 place-items-center rounded bg-gradient-to-br from-[#5c3d62] to-[#171117]"><BookOpen className="h-5 w-5" /></span>}
                           <div className="min-w-0 flex-1">
-                            <p className="truncate font-semibold text-[#f4efe6]">{item.book.work.title}</p>
-                            <p className="truncate text-xs text-[#ad9fac]">{item.book.work.author}</p>
-                            <p className="mt-1 text-[11px] text-[#8f8290]">ISBN {item.isbn} · {readingStatusSelectionLabel(scannerCategory)}</p>
+                            <p className="break-words text-sm font-semibold leading-snug text-[#f4efe6] sm:text-base">{item.book.work.title}</p>
+                            <p className="break-words text-xs text-[#ad9fac]">{item.book.work.author}</p>
+                            <p className="mt-1 break-all text-[11px] text-[#8f8290]">ISBN {item.isbn} · {readingStatusSelectionLabel(scannerCategory)}</p>
                           </div>
                           <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4" /></button>
                         </article>
@@ -875,13 +936,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     })}
                   </div>
 
-                  {scannerReviewTotalPages > 1 && (
-                    <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-[#120c15] p-2">
-                      <button type="button" onClick={() => setScannerReviewPage((current) => Math.max(1, current - 1))} disabled={scannerReviewPage === 1} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">← Previous</button>
-                      <span className="text-xs font-semibold text-[#ad9fac]">Page {scannerReviewPage} of {scannerReviewTotalPages} · {scannedBooks.length} books</span>
-                      <button type="button" onClick={() => setScannerReviewPage((current) => Math.min(scannerReviewTotalPages, current + 1))} disabled={scannerReviewPage === scannerReviewTotalPages} className="quiet-shelf-secondary-action min-h-10 px-3 disabled:opacity-35">Next →</button>
-                    </div>
+                  {scannerReviewPageCount > 1 && (
+                    <nav className="mt-4 flex items-center justify-center gap-4" aria-label="Scanned books pages">
+                      <button type="button" className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40" disabled={safeScannerReviewPage <= 1} onClick={() => setScannerReviewPage((page) => Math.max(1, page - 1))}>Previous</button>
+                      <span className="text-sm text-[#ad9fac]">Page {safeScannerReviewPage} of {scannerReviewPageCount}</span>
+                      <button type="button" className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40" disabled={safeScannerReviewPage >= scannerReviewPageCount} onClick={() => setScannerReviewPage((page) => Math.min(scannerReviewPageCount, page + 1))}>Next</button>
+                    </nav>
                   )}
+                  <p className="mt-4 text-center text-xs font-semibold text-[#ad9fac]" aria-live="polite">Showing {((safeScannerReviewPage - 1) * scannerReviewPageSize) + 1}–{Math.min(safeScannerReviewPage * scannerReviewPageSize, scannedBooks.length)} of {scannedBooks.length} scanned books.</p>
                 </>
               )}
 
@@ -894,7 +956,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 </Field>
               </div>
 
-              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {readingStatusSelectionLabel(scannerCategory)}</button>
+              <button type="button" onClick={addScannedBatch} disabled={scannedBooks.length === 0 || scannerBusy} className="quiet-shelf-primary-action mt-3 w-full justify-center disabled:opacity-40"><Check className="h-4 w-4" /> Save {scannedBooks.length || ''} Book{scannedBooks.length === 1 ? '' : 's'} to {readingStatusSelectionLabel(scannerCategory)}</button>
             </section>
           </div>
         ) : (

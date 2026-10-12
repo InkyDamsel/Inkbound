@@ -44,11 +44,15 @@ interface ReaderProfile {
 }
 
 function readJson<T>(key: string, fallback: T): T {
+  // An unreadable canonical value is not evidence of an empty library or
+  // queue. Preserve its original bytes and refuse to reconcile over it.
+  const raw = getRuntimeStorage().getItem(key);
+  if (raw === null) return fallback;
   try {
-    const raw = getRuntimeStorage().getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.error('[Inkbound persistence] Refusing to replace unreadable stored data.', { key, error });
+    throw new Error(`Inkbound cannot safely read ${key}; existing data was preserved.`);
   }
 }
 
@@ -222,8 +226,26 @@ export const OneShotCloudHydrationBridge: React.FC = () => {
 
         const localBooks = sameAccountLocalData ? readJson<UserBookRecord[]>(BOOKS_KEY, []) : [];
         const localSessions = sameAccountLocalData ? readJson<ReadingSession[]>(SESSIONS_KEY, []) : [];
-        writeJson(BOOKS_KEY, mergeBooksById(localBooks, cloudBooks));
-        writeJson(SESSIONS_KEY, mergeById(localSessions, cloudSessions));
+        const pending = readJson<{
+          books: Record<string, { operation: string }>;
+          sessions: Record<string, { operation: string }>;
+        }>(syncPendingStateKey(uid), { books: {}, sessions: {} });
+        // A full snapshot can predate this device's unsynced changes. Protect
+        // local edits AND pending deletions from being resurrected by hydration.
+        const protectedBooks = new Map(localBooks.map((book) => [book.id, book]));
+        const protectedSessions = new Map(localSessions.map((session) => [session.id, session]));
+        const mergedBooks = mergeBooksById(
+          localBooks,
+          cloudBooks.filter((book) => pending.books?.[book.id]?.operation !== 'delete'),
+        ).map((book) => pending.books?.[book.id]?.operation === 'upsert'
+          ? (protectedBooks.get(book.id) ?? book) : book);
+        const mergedSessions = mergeById(
+          localSessions,
+          cloudSessions.filter((session) => pending.sessions?.[session.id]?.operation !== 'delete'),
+        ).map((session) => pending.sessions?.[session.id]?.operation === 'upsert'
+          ? (protectedSessions.get(session.id) ?? session) : session);
+        writeJson(BOOKS_KEY, mergedBooks.filter((book) => pending.books?.[book.id]?.operation !== 'delete'));
+        writeJson(SESSIONS_KEY, mergedSessions.filter((session) => pending.sessions?.[session.id]?.operation !== 'delete'));
 
         if (profileSnapshot.exists()) {
           const cloudProfile = (profileSnapshot.data() as CloudRecord<ReaderProfile>).data;

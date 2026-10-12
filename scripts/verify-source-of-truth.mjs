@@ -106,7 +106,7 @@ if (/\blocalStorage\./.test(app)) {
 if (/useEffect\(\(\) => \{[\s\S]{0,260}writeRuntimeJson\(BOOKS_STORAGE_KEY, books\)[\s\S]{0,160}\}, \[books\]\)/.test(app)) {
   violations.push('App.tsx: canonical library must persist at the mutation boundary, never from a books-state effect');
 }
-if (!app.includes('if (!replaceCanonicalLibrary(next))') || !app.includes('if (!replaceCanonicalSessions(next))')) {
+if (!/if\s*\(!replaceCanonicalLibrary\(next(?:,\s*options)?\)\)/.test(app) || !/if\s*\(!replaceCanonicalSessions\(next(?:,\s*options)?\)\)/.test(app)) {
   violations.push('App.tsx: canonical books/sessions mutations must fail closed when persistence fails');
 }
 if (/safeWriteLocalStorage/.test(app)) {
@@ -364,8 +364,11 @@ if (!applicationEntry.includes('prepareLargeBrowserStorageForStartup();')) {
 if (/if \(!isNativeRuntime\(\)\) prepareLargeBrowserStorageForStartup\(\)/.test(applicationEntry)) {
   violations.push('applicationEntry.tsx: Android must not bypass canonical large-storage startup protection');
 }
-if (!applicationEntry.includes('void hydrateLargeBrowserStorage().finally')) {
-  violations.push('applicationEntry.tsx: every current runtime must hydrate canonical large storage');
+if (!applicationEntry.includes('void hydrateLargeBrowserStorage()') ||
+    !applicationEntry.includes('hydrateDeferredLargeBrowserStorage()') ||
+    !applicationEntry.includes(".catch((error) => {") ||
+    !applicationEntry.includes('Startup halted to protect existing library data.')) {
+  violations.push('applicationEntry.tsx: every runtime must hydrate canonical storage and fail closed on hydration errors');
 }
 
 const adaptiveSync = read('src/features/sync/AdaptiveCloudPersistenceBridge.tsx');

@@ -97,11 +97,15 @@ const hashText = (value: string) => {
 const fingerprint = (value: unknown) => hashText(stable(value));
 
 function readJson<T>(key: string, fallback: T): T {
+  // An unreadable canonical value is not evidence of an empty library or
+  // queue. Preserve its original bytes and refuse to reconcile over it.
+  const raw = runtimeStorage().getItem(key);
+  if (raw === null) return fallback;
   try {
-    const raw = runtimeStorage().getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.error('[Inkbound persistence] Refusing to replace unreadable stored data.', { key, error });
+    throw new Error(`Inkbound cannot safely read ${key}; existing data was preserved.`);
   }
 }
 
@@ -290,6 +294,10 @@ export const CrossDeviceDeltaSyncBridge: React.FC = () => {
               latestRecordServerMillis: bookUpdateMillis.get(recordId) ?? 0,
             })) return;
             const pendingMutation = pending.books[recordId];
+            // A book explicitly saved on this device but not yet acknowledged
+            // by the cloud must not disappear because an older tombstone arrived.
+            // Keep the upsert queued until Firestore confirms it.
+            if (pendingMutation?.operation === 'upsert' && pendingMutation.capturedAfterCloudReconcile === true) return;
             if (!tombstoneWinsPending(record, pendingMutation)) return;
             delete pending.books[recordId];
             removedBooks.add(recordId);

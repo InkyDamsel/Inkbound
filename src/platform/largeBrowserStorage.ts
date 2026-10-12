@@ -31,9 +31,11 @@ const STARTUP_PREFIXES = [
 
 const cache = new Map<string, string>();
 const pendingWrites = new Set<Promise<void>>();
+const failedWriteKeys = new Set<string>();
 let databasePromise: Promise<IDBDatabase | null> | null = null;
 let installed = false;
 let startupHydrationPending = false;
+let startupHydrationFailed = false;
 let startupHydrationPromise: Promise<void> | null = null;
 let deferredHydrationPromise: Promise<void> | null = null;
 let originalGetItem: Storage['getItem'] | null = null;
@@ -104,59 +106,59 @@ async function putLargeValue(key: string, value: string): Promise<boolean> {
   });
 }
 
-async function deleteLargeValue(key: string) {
+async function deleteLargeValue(key: string): Promise<boolean> {
   const database = await openDatabase();
-  if (!database) return;
-  await new Promise<void>((resolve) => {
+  if (!database) return false;
+  return new Promise<boolean>((resolve) => {
     try {
       const transaction = database.transaction(STORE_NAME, 'readwrite');
-      const request = transaction.objectStore(STORE_NAME).delete(key);
+      transaction.objectStore(STORE_NAME).delete(key);
       let settled = false;
-      const finish = () => {
+      const finish = (ok: boolean) => {
         if (settled) return;
         settled = true;
-        resolve();
+        resolve(ok);
       };
-      request.onerror = finish;
-      transaction.oncomplete = finish;
-      transaction.onerror = finish;
-      transaction.onabort = finish;
+      transaction.oncomplete = () => finish(true);
+      transaction.onerror = () => finish(false);
+      transaction.onabort = () => finish(false);
     } catch {
-      resolve();
+      resolve(false);
     }
   });
 }
 
-function trackWrite(promise: Promise<unknown>) {
-  const tracked = promise.then(() => undefined, () => undefined);
+function trackWrite(promise: Promise<unknown>, key: string) {
+  const tracked = promise.then(() => undefined, (error) => {
+    failedWriteKeys.add(key);
+    console.error('[Inkbound persistence] Managed storage commit failed.', { key, error });
+  });
   pendingWrites.add(tracked);
   void tracked.finally(() => pendingWrites.delete(tracked));
 }
 
 async function readMatchingLargeValues(predicate: (key: string) => boolean): Promise<Array<[string, string]>> {
   const database = await openDatabase();
-  if (!database) return [];
+  if (!database) throw new Error('IndexedDB is unavailable; canonical library hydration cannot be verified.');
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const entries: Array<[string, string]> = [];
     try {
       const transaction = database.transaction(STORE_NAME, 'readonly');
       const request = transaction.objectStore(STORE_NAME).openCursor();
       request.onsuccess = () => {
         const cursor = request.result;
-        if (!cursor) {
-          resolve(entries);
-          return;
-        }
+        if (!cursor) return; // Resolve only when the read transaction commits.
         const key = String(cursor.key);
         if (predicate(key) && typeof cursor.value === 'string' && cursor.value.length > 0) entries.push([key, cursor.value]);
         cursor.continue();
       };
-      request.onerror = () => resolve(entries);
-      transaction.onerror = () => resolve(entries);
-      transaction.onabort = () => resolve(entries);
-    } catch {
-      resolve(entries);
+      transaction.oncomplete = () => resolve(entries);
+      request.onerror = () => reject(request.error ?? new Error('IndexedDB cursor read failed.'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB read transaction failed.'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB read transaction aborted.'));
+    } catch (error) {
+      reject(error);
     }
   });
 }
@@ -180,7 +182,7 @@ function installStorageBridge() {
       return;
     }
 
-    if (startupHydrationPending && isStartupKey(key)) {
+    if ((startupHydrationPending || startupHydrationFailed) && isStartupKey(key)) {
       throw new Error(`Inkbound blocked a write to ${key} until canonical large-storage hydration completed.`);
     }
 
@@ -228,8 +230,12 @@ function installStorageBridge() {
         window.dispatchEvent(new CustomEvent(LARGE_BROWSER_STORAGE_WRITE_FAILED_EVENT, {
           detail: { key },
         }));
-        return;
+        throw new Error(`IndexedDB failed to commit managed key ${key}.`);
       }
+      if (!saved && !localBackupWritten) {
+        throw new Error(`IndexedDB failed to commit managed key ${key}.`);
+      }
+      if (saved) failedWriteKeys.delete(key);
 
       if (
         saved
@@ -244,7 +250,7 @@ function installStorageBridge() {
         } catch { /* Keeping the backup is safer than deleting uncertain state. */ }
       }
     });
-    trackWrite(persist);
+    trackWrite(persist, key);
   };
 
   Storage.prototype.removeItem = function removeItem(key: string): void {
@@ -253,7 +259,10 @@ function installStorageBridge() {
         throw new Error(`Inkbound blocked a removal of ${key} until canonical large-storage hydration completed.`);
       }
       cache.delete(key);
-      trackWrite(deleteLargeValue(key));
+      trackWrite(deleteLargeValue(key).then((saved) => {
+        if (!saved) throw new Error(`IndexedDB failed to delete managed key ${key}.`);
+        failedWriteKeys.delete(key);
+      }), key);
     }
     originalRemoveItem!.call(this, key);
   };
@@ -294,16 +303,20 @@ export function hasPendingLargeBrowserStorageWrites(): boolean {
 }
 
 export function isLargeBrowserStorageHydrated(): boolean {
-  return startupHydrationPromise !== null && !startupHydrationPending;
+  return startupHydrationPromise !== null && !startupHydrationPending && !startupHydrationFailed;
 }
 
 export async function flushLargeBrowserStorage(): Promise<void> {
-  while (pendingWrites.size > 0) await Promise.allSettled([...pendingWrites]);
+  while (pendingWrites.size > 0) await Promise.all([...pendingWrites]);
+  if (failedWriteKeys.size > 0) {
+    throw new Error(`Managed storage failed to commit: ${[...failedWriteKeys].join(', ')}`);
+  }
 }
 
 export function prepareLargeBrowserStorageForStartup(): void {
   if (typeof window === 'undefined' || typeof Storage === 'undefined') return;
   startupHydrationPending = true;
+  startupHydrationFailed = false;
   installStorageBridge();
 }
 
@@ -314,18 +327,20 @@ export function hydrateLargeBrowserStorage(): Promise<void> {
   installStorageBridge();
   startupHydrationPending = true;
   startupHydrationPromise = (async () => {
-    if (typeof indexedDB !== 'undefined') {
+    {
       const startupEntries = await readMatchingLargeValues((key) => isManagedKey(key) && isStartupKey(key));
       startupEntries.forEach(([key, value]) => cache.set(key, value));
       await migrateManagedLocalStorageValues(isStartupKey);
     }
   })()
     .catch((error) => {
-      console.warn('Inkbound could not fully restore large browser storage.', error);
+      startupHydrationFailed = true;
+      console.error('Inkbound blocked startup because canonical large browser storage could not be restored.', error);
+      throw error;
     })
     .finally(() => {
       startupHydrationPending = false;
-      announceStartupHydrated();
+      if (!startupHydrationFailed) announceStartupHydrated();
     });
 
   return startupHydrationPromise;

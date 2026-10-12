@@ -233,7 +233,8 @@ export async function mountApplication(rootElement: HTMLElement) {
     void initializeIOSRuntime().catch(markNativeRuntimeFailed);
   }
 
-  createRoot(rootElement).render(
+  const root = createRoot(rootElement);
+  root.render(
     <StrictMode>
       <AppErrorBoundary>
         <InkboundApplication />
@@ -242,8 +243,17 @@ export async function mountApplication(rootElement: HTMLElement) {
   );
 
   window.setTimeout(() => {
-    void hydrateLargeBrowserStorage().finally(() => {
-      void hydrateDeferredLargeBrowserStorage();
-    });
+    void hydrateLargeBrowserStorage()
+      .then(() => hydrateDeferredLargeBrowserStorage())
+      .catch((error) => {
+        console.error('[Inkbound persistence] Startup halted to protect existing library data.', error);
+        root.render(
+          <OpeningScreen
+            message="Saved library storage could not be opened. Inkbound has blocked changes to protect your books. Do not clear app data or reinstall. Try restarting the app."
+            actionLabel="Try Again"
+            onAction={() => window.location.reload()}
+          />,
+        );
+      });
   }, 0);
 }

@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Image, LibraryBig, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
-import { deleteObject, getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
+import { getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
 import type { UserBookRecord } from '../types';
 import { auth, storage } from '../lib/firebase';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
-import { notifyCloudDataUpdated, notifyLocalDataChanged } from '../features/sync/cloudSyncEvents';
+import { notifyCloudDataUpdated } from '../features/sync/cloudSyncEvents';
+import { replaceCanonicalLibrary } from '../features/library/libraryMutations';
+import { compareLibraryLabels } from '../features/library/librarySectionSort';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readImportEnrichmentQueue, writeImportEnrichmentQueue } from '../features/import/libraryEnrichment';
 import { PaginationControls } from './PaginationControls';
@@ -50,11 +52,12 @@ function isUnusedCover(asset: StoredManualCover, books: UserBookRecord[]) {
 export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> = ({ books }) => {
   const [assets, setAssets] = useState<StoredManualCover[]>([]);
   const [loading, setLoading] = useState(false);
+  const [listingVerified, setListingVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedAssetPath, setSelectedAssetPath] = useState('');
   const [selectedBookId, setSelectedBookId] = useState('');
   const [restoring, setRestoring] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [deleting] = useState(false);
   const [restoredMessage, setRestoredMessage] = useState<string | null>(null);
   const [showUnusedOnly, setShowUnusedOnly] = useState(false);
   const [coverQuery, setCoverQuery] = useState('');
@@ -71,6 +74,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
     }
 
     setLoading(true);
+    setListingVerified(false);
     setError(null);
     try {
       const folder = ref(storage, `users/${user.uid}/book-covers/manual`);
@@ -89,10 +93,11 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       }));
       loaded.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
       setAssets(loaded);
+      setListingVerified(true);
       setCoverPage(1);
     } catch (caught) {
       console.error('Inkbound manual cover library listing failed.', caught);
-      setError('Inkbound could not load your Manual Cover Library. Check your connection and try again.');
+      setError('Inkbound could not verify your stored covers. Counts are unavailable until the listing succeeds; no covers were deleted.');
     } finally {
       setLoading(false);
     }
@@ -136,7 +141,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
     const normalizedQuery = bookQuery.trim().toLowerCase();
     return [...books]
       .filter((book) => !normalizedQuery || `${book.work.title} ${book.work.author}`.toLowerCase().includes(normalizedQuery))
-      .sort((a, b) => a.work.title.localeCompare(b.work.title));
+      .sort((a, b) => compareLibraryLabels(a.work.title, b.work.title));
   }, [books, bookQuery]);
 
   const coverTotalPages = Math.max(1, Math.ceil(visibleAssets.length / COVER_PAGE_SIZE));
@@ -154,58 +159,10 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   }, [bookPage, bookTotalPages]);
 
   const deleteUnusedAssets = async (targets: StoredManualCover[]) => {
-    if (!storage || deleting || targets.length === 0) return;
-
-    // Re-check against the current canonical library immediately before delete.
-    const confirmedUnused = targets.filter((asset) => isUnusedCover(asset, books));
-    if (confirmedUnused.length === 0) {
-      setError('Those covers are now linked to a book, so Inkbound did not delete anything.');
-      return;
-    }
-
-    const count = confirmedUnused.length;
-    const confirmed = window.confirm(
-      count === 1
-        ? 'Delete this unused cover permanently? This removes only the stored cover file and does not change any book.'
-        : `Delete all ${count} unused covers permanently? This removes only cover files with zero current book references.`,
-    );
-    if (!confirmed) return;
-
-    setDeleting(true);
-    setError(null);
-    setRestoredMessage(null);
-    try {
-      const results = await Promise.allSettled(
-        confirmedUnused.map((asset) => deleteObject(ref(storage, asset.fullPath))),
-      );
-      const deletedPaths = new Set(
-        confirmedUnused
-          .filter((_, index) => results[index]?.status === 'fulfilled')
-          .map((asset) => asset.fullPath),
-      );
-      const failed = results.length - deletedPaths.size;
-
-      setAssets((current) => current.filter((asset) => !deletedPaths.has(asset.fullPath)));
-      setSelectedUnusedPaths((current) => new Set([...current].filter((path) => !deletedPaths.has(path))));
-      if (selectedAssetPath && deletedPaths.has(selectedAssetPath)) setSelectedAssetPath('');
-      setCoverPage(1);
-
-      if (deletedPaths.size > 0) {
-        setRestoredMessage(
-          failed > 0
-            ? `Deleted ${deletedPaths.size} unused cover${deletedPaths.size === 1 ? '' : 's'}. ${failed} could not be deleted.`
-            : `Deleted ${deletedPaths.size} unused cover${deletedPaths.size === 1 ? '' : 's'}.`,
-        );
-      }
-      if (failed > 0 && deletedPaths.size === 0) {
-        setError('Inkbound could not delete the selected unused cover files. Nothing in your library was changed.');
-      }
-    } catch (caught) {
-      console.error('Inkbound unused cover cleanup failed.', caught);
-      setError('Inkbound could not clean up those unused covers. Nothing in your library was changed.');
-    } finally {
-      setDeleting(false);
-    }
+    if (!storage || deleting || !listingVerified || targets.length === 0) return;
+    // The local book collection may be a partial cloud snapshot. An unreferenced
+    // cover on this device is not proof that the file is unused by the account.
+    setError('Cover cleanup is paused until Inkbound can verify every book reference against the cloud. No cover was deleted.');
   };
 
   const useCover = () => {
@@ -235,14 +192,15 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
         };
       });
 
-      const runtimeStorage = getRuntimeStorage();
-      runtimeStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(updatedBooks));
+      if (!replaceCanonicalLibrary(updatedBooks)) {
+        setError('Inkbound could not save that cover assignment. Your existing cover was kept.');
+        return;
+      }
 
       writeImportEnrichmentQueue(
         readImportEnrichmentQueue().filter((item) => item.targetBookId !== selectedBook.id),
       );
 
-      notifyLocalDataChanged([BOOKS_STORAGE_KEY]);
       notifyCloudDataUpdated([BOOKS_STORAGE_KEY]);
 
       setRestoredMessage(`Using this manual cover for “${selectedBook.work.title}”.`);
@@ -286,12 +244,12 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Stored covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{assets.length.toLocaleString()}</p></div>
-        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Unused covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{unusedCount.toLocaleString()}</p></div>
+        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Stored covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{listingVerified ? assets.length.toLocaleString() : '—'}</p></div>
+        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Unused covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{listingVerified ? unusedCount.toLocaleString() : '—'}</p></div>
         <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books in library</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{books.length.toLocaleString()}</p></div>
       </div>
 
-      {unusedCount > 0 && (
+      {listingVerified && unusedCount > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-bold text-[var(--ink-ivory)]">Unused cover cleanup</p>

@@ -32,6 +32,7 @@ import {
   createTrustedDeleteMutation,
   createTrustedUpsertMutation,
   shouldCaptureReaderMutation,
+  shouldCreateDeleteMutation,
 } from './syncMutationPolicy';
 
 const BOOKS_KEY: CloudSyncedStorageKey = SYNC_STORAGE_KEYS.books;
@@ -58,6 +59,7 @@ interface RecordMutation<T> {
   data?: T;
   clientUpdatedAt: string;
   capturedAfterCloudReconcile?: boolean;
+  explicitDeleteAuthorized?: boolean;
 }
 interface ProfileMutation {
   data: ReaderProfile;
@@ -86,11 +88,15 @@ const emptyPending = (): PendingSyncState => ({ books: {}, sessions: {} });
 const emptyBaseline = (): SyncBaseline => ({ books: {}, sessions: {} });
 
 function readJson<T>(key: string, fallback: T): T {
+  // An unreadable canonical value is not evidence of an empty library or
+  // queue. Preserve its original bytes and refuse to reconcile over it.
+  const raw = runtimeStorage().getItem(key);
+  if (raw === null) return fallback;
   try {
-    const raw = runtimeStorage().getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.error('[Inkbound persistence] Refusing to replace unreadable stored data.', { key, error });
+    throw new Error(`Inkbound cannot safely read ${key}; existing data was preserved.`);
   }
 }
 
@@ -114,6 +120,7 @@ function captureWorkingChanges<T extends { id: string }>(
   fingerprints: React.MutableRefObject<Map<string, string>>,
   mutations: Record<string, RecordMutation<T>>,
   baseline: Record<string, string>,
+  explicitDeleteIds: Set<string> = new Set(),
 ) {
   const next = new Map<string, string>();
   const now = new Date().toISOString();
@@ -123,20 +130,28 @@ function captureWorkingChanges<T extends { id: string }>(
     next.set(item.id, itemFingerprint);
     if (fingerprints.current.get(item.id) !== itemFingerprint) {
       if (baseline[item.id] === itemFingerprint) delete mutations[item.id];
-      else mutations[item.id] = {
-        operation: 'upsert',
-        data: item,
-        clientUpdatedAt: now,
-        capturedAfterCloudReconcile: true,
-      };
+      else mutations[item.id] = createTrustedUpsertMutation(item, now);
     }
   });
 
-  fingerprints.current.forEach((_value, id) => {
+  // Never erase an unsynced upsert merely because a working array stopped
+  // containing it. Hydration and stale-device refreshes can temporarily shrink
+  // the array; absence is not evidence that the reader deleted the book.
+  // An explicit reader deletion is handled below with its authorized IDs.
+
+  explicitDeleteIds.forEach((id) => {
     if (next.has(id)) return;
-    if (baseline[id] === undefined) delete mutations[id];
-    else mutations[id] = createTrustedDeleteMutation(now);
+    if (baseline[id] === undefined) {
+      delete mutations[id];
+      return;
+    }
+    if (!shouldCreateDeleteMutation({
+      hasCloudBaseline: baseline[id] !== undefined,
+      explicitlyAuthorized: true,
+    })) return;
+    mutations[id] = { ...createTrustedDeleteMutation(now), explicitDeleteAuthorized: true };
   });
+
   fingerprints.current = next;
 }
 
@@ -269,6 +284,12 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         const results = await Promise.allSettled(batch.map(async ([id, mutation]) => {
           const target = doc(db!, 'users', uid, kind, id);
           if (mutation.operation === 'delete') {
+            // Final destructive-write gate. Even if a legacy queue bypasses the
+            // earlier quarantine, it must never reach Firestore without proof
+            // of an explicit user deletion.
+            if (mutation.explicitDeleteAuthorized !== true) {
+              throw new Error('Unverified cloud deletion blocked');
+            }
             await Promise.all([
               deleteDoc(target),
               setDoc(
@@ -315,6 +336,26 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       if (!navigator.onLine || disposed || !coreReconciled) return false;
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
+      // Legacy clients could infer destructive mutations from missing cache records.
+      // A persisted delete has no provenance marker, so fail closed rather than
+      // replaying an unverified destructive operation after an app update.
+      // Preserve quarantined entries locally for forensic inspection.
+      for (const kind of ['books', 'sessions'] as const) {
+        const collection = pending[kind];
+        const quarantined = Object.entries(collection).filter(([, mutation]) => mutation.operation === 'delete' && mutation.explicitDeleteAuthorized !== true);
+        if (quarantined.length > 0) {
+          const quarantineKey = `inkbound_quarantined_deletes_${uid}_v1`;
+          const existing = readJson<Record<string, unknown>>(quarantineKey, {});
+          const next = { ...existing };
+          quarantined.forEach(([id, mutation]) => {
+            next[`${kind}/${id}`] = mutation;
+            delete collection[id];
+          });
+          runtimeStorage().setItem(quarantineKey, stable(next));
+          writePending(uid, pending);
+          console.warn(`Inkbound quarantined ${quarantined.length} unverified pending ${kind} deletions.`);
+        }
+      }
       removeNoOpMutations(pending.books, baseline.books);
       removeNoOpMutations(pending.sessions, baseline.sessions);
       if (pending.profile && baseline.profile === stable(pending.profile.data)) delete pending.profile;
@@ -405,6 +446,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
     const captureCurrentChanges = (
       keys?: CloudSyncedStorageKey[],
       trustedReaderIntent = false,
+      explicitDeleteIds: string[] = [],
     ) => {
       if (
         disposed
@@ -417,13 +459,29 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       const changedKeys = keys ? new Set(keys) : undefined;
       const pending = readPending(uid);
       const baseline = readBaseline(uid);
+      const previousBookFingerprints = new Map(bookFingerprints.current);
+      const previousSessionFingerprints = new Map(sessionFingerprints.current);
+      const previousProfileFingerprint = profileFingerprint.current;
 
+      try {
       if (!changedKeys || changedKeys.has(BOOKS_KEY)) {
-        captureWorkingChanges(readJson<UserBookRecord[]>(BOOKS_KEY, []), bookFingerprints, pending.books, baseline.books);
+        captureWorkingChanges(
+          readJson<UserBookRecord[]>(BOOKS_KEY, []),
+          bookFingerprints,
+          pending.books,
+          baseline.books,
+          new Set(explicitDeleteIds),
+        );
         removeNoOpMutations(pending.books, baseline.books);
       }
       if (!changedKeys || changedKeys.has(SESSIONS_KEY)) {
-        captureWorkingChanges(readJson<ReadingSession[]>(SESSIONS_KEY, []), sessionFingerprints, pending.sessions, baseline.sessions);
+        captureWorkingChanges(
+          readJson<ReadingSession[]>(SESSIONS_KEY, []),
+          sessionFingerprints,
+          pending.sessions,
+          baseline.sessions,
+          new Set(explicitDeleteIds),
+        );
         removeNoOpMutations(pending.sessions, baseline.sessions);
       }
       if (!changedKeys || changedKeys.has(PROFILE_KEY)) {
@@ -440,6 +498,15 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
         }
       }
       writePending(uid, pending);
+      } catch (error) {
+        // The pending queue is the only durable evidence of an unsynced edit.
+        // Revert capture fingerprints so a retry can discover it again.
+        bookFingerprints.current = previousBookFingerprints;
+        sessionFingerprints.current = previousSessionFingerprints;
+        profileFingerprint.current = previousProfileFingerprint;
+        console.error('[Inkbound sync] Could not persist pending mutations; changes remain unacknowledged.', error);
+        throw error;
+      }
     };
 
     const scheduleFlush = () => {
@@ -463,7 +530,7 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
       // Unmarked startup/cache rewrites still cannot manufacture fresh intent.
       if (!coreReconciled && !trustedReaderIntent) return;
 
-      captureCurrentChanges(detail?.keys, trustedReaderIntent);
+      captureCurrentChanges(detail?.keys, trustedReaderIntent, detail?.explicitDeleteIds ?? []);
       clearRetryTimer();
       scheduleFlush();
     };

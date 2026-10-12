@@ -57,12 +57,11 @@ interface ProtectedBookDetails {
 }
 
 function readBooks(): UserBookRecord[] {
-  try {
-    const raw = getRuntimeStorage().getItem(BOOKS_KEY);
-    return raw ? JSON.parse(raw) as UserBookRecord[] : [];
-  } catch {
-    return [];
-  }
+  const raw = getRuntimeStorage().getItem(BOOKS_KEY);
+  if (!raw) return [];
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('Canonical library is not an array; refusing protected ledger reconciliation.');
+  return parsed as UserBookRecord[];
 }
 
 function omitUndefined<T>(value: T): T {
@@ -120,45 +119,22 @@ function signaturesFor(books: UserBookRecord[]): Map<string, string> {
   return new Map(books.map((book) => [book.id, JSON.stringify(detailsFor(book))]));
 }
 
-function applyProtectedDetails(book: UserBookRecord, details: ProtectedBookDetails): UserBookRecord {
-  const nextEditions = [...book.editions];
-  if (details.editionId && details.edition) {
-    const index = nextEditions.findIndex((edition) => edition.id === details.editionId);
-    if (index >= 0) {
-      nextEditions[index] = {
-        ...nextEditions[index],
-        ...details.edition,
-        coverUrl: nextEditions[index].coverUrl,
-      };
-    }
-  }
+function usableSummary(value: string | undefined): boolean {
+  const text = value?.trim();
+  return Boolean(text && !/^summary unavailable\.?$/i.test(text));
+}
 
+/**
+ * The account library is canonical. This ledger is recovery evidence only:
+ * never replay its older reading status, notes, tags, editions or metadata
+ * over a valid current record. A missing synopsis is the one recoverable
+ * field we can identify without confusing an intentional edit with a gap.
+ */
+function applyProtectedDetails(book: UserBookRecord, details: ProtectedBookDetails): UserBookRecord {
+  if (usableSummary(book.work.summary) || !usableSummary(details.work?.summary)) return book;
   return {
     ...book,
-    work: {
-      ...book.work,
-      ...details.work,
-    },
-    review: details.reader.review,
-    personalNotes: details.reader.personalNotes,
-    favoriteQuotes: details.reader.favoriteQuotes,
-    privateTags: details.reader.privateTags ?? book.privateTags,
-    collections: details.reader.collections ?? book.collections,
-    whyIAddedThis: details.reader.whyIAddedThis,
-    ...(details.reading ? {
-      status: details.reading.status,
-      customReadingStatusId: details.reading.customReadingStatusId,
-      dateStarted: details.reading.dateStarted,
-      dateFinished: details.reading.dateFinished,
-      rating: details.reading.rating,
-      spiceLevel: details.reading.spiceLevel,
-      priority: details.reading.priority,
-      moods: details.reading.moods ?? book.moods,
-    } : {}),
-    activeEditionId: details.editionId && nextEditions.some((edition) => edition.id === details.editionId)
-      ? details.editionId
-      : book.activeEditionId,
-    editions: nextEditions,
+    work: { ...book.work, summary: details.work.summary },
   };
 }
 
@@ -190,7 +166,12 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
         const currentBooks = readBooks();
         const restoredBooks = currentBooks.map((book) => {
           const protectedDetails = protectedById.get(book.id);
-          return protectedDetails ? applyProtectedDetails(book, protectedDetails) : book;
+          if (!protectedDetails) return book;
+          // Never restore an older cloud ledger snapshot over unacknowledged
+          // local edits. The local mutation must be persisted first.
+          const acknowledged = baseline.current.get(book.id);
+          if (acknowledged !== undefined && acknowledged !== JSON.stringify(detailsFor(book))) return book;
+          return applyProtectedDetails(book, protectedDetails);
         });
 
         if (JSON.stringify(currentBooks) === JSON.stringify(restoredBooks)) {
@@ -201,8 +182,12 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
         // Mark the restored state as the protected baseline before the canonical
         // write emits its local-change event, otherwise the ledger bridge can
         // mistake recovery for a fresh reader edit and loop.
-        baseline.current = signaturesFor(restoredBooks);
-        replaceCanonicalLibrary(restoredBooks);
+        const restoredSignatures = signaturesFor(restoredBooks);
+        if (replaceCanonicalLibrary(restoredBooks)) {
+          baseline.current = restoredSignatures;
+        } else {
+          console.error('Inkbound could not commit protected book details recovery; retaining the previous baseline.');
+        }
       } catch (error) {
         console.error('Inkbound could not restore protected book details.', error);
       }
@@ -219,19 +204,25 @@ export const ProtectedBookDetailsLedgerBridge: React.FC = () => {
         const books = readBooks();
         const currentSignatures = signaturesFor(books);
 
+        const acknowledgedSignatures = new Map(baseline.current);
         for (const book of books) {
           const previousSignature = baseline.current.get(book.id);
           const currentSignature = currentSignatures.get(book.id);
-          if (previousSignature === undefined || previousSignature === currentSignature) continue;
+          // A newly added book must be backed up too. Otherwise its first
+          // cloud overwrite can erase reader-entered metadata before any edit
+          // ever creates a protected-details document.
+          if (previousSignature === currentSignature) continue;
 
           await setDoc(doc(db, 'users', uid, LEDGER_COLLECTION, book.id), {
             ...detailsFor(book),
             clientUpdatedAt: new Date().toISOString(),
             updatedAt: serverTimestamp(),
           }, { merge: false });
+          // Advance the acknowledged baseline only after Firestore confirms the write.
+          acknowledgedSignatures.set(book.id, currentSignature!);
         }
 
-        baseline.current = currentSignatures;
+        baseline.current = acknowledgedSignatures;
       } catch (error) {
         console.error('Inkbound could not persist protected book details.', error);
       } finally {

@@ -12,8 +12,14 @@ import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
  * cloud-data refresh makes the persistence bridge believe the new value came
  * from cloud and can silently skip the upload.
  */
-export function replaceCanonicalLibrary(nextBooks: UserBookRecord[]) {
-  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.books, nextBooks, { trustedReaderIntent: true })) return false;
+export function replaceCanonicalLibrary(
+  nextBooks: UserBookRecord[],
+  options?: { deletedBookIds?: string[] },
+) {
+  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.books, nextBooks, {
+    trustedReaderIntent: true,
+    explicitDeleteIds: options?.deletedBookIds,
+  })) return false;
   notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
   return true;
 }
@@ -32,8 +38,14 @@ export function replaceCanonicalBook(currentBooks: UserBookRecord[], updatedBook
  * Replace the whole canonical local session collection in one canonical write.
  * Session mutations use the same persist-first contract as the library.
  */
-export function replaceCanonicalSessions(nextSessions: ReadingSession[]) {
-  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.sessions, nextSessions, { trustedReaderIntent: true })) return false;
+export function replaceCanonicalSessions(
+  nextSessions: ReadingSession[],
+  options?: { deletedSessionIds?: string[] },
+) {
+  if (!writeRuntimeJson(SYNC_STORAGE_KEYS.sessions, nextSessions, {
+    trustedReaderIntent: true,
+    explicitDeleteIds: options?.deletedSessionIds,
+  })) return false;
   notifyCloudDataUpdated([SYNC_STORAGE_KEYS.sessions]);
   return true;
 }

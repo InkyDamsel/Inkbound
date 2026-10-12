@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
 import { mergeBooksFromServer, mergeServerCollectionById } from '../src/features/sync/cloudServerMergePolicy';
+import { shouldCreateDeleteMutation } from '../src/features/sync/syncMutationPolicy';
 
 const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookRecord => ({
   id,
@@ -116,6 +117,69 @@ const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookR
     210,
     'Legacy/pre-reconcile pending state must never let a stale device overwrite the newer saved account copy.',
   );
+}
+
+
+{
+  assert.equal(
+    shouldCreateDeleteMutation({ hasCloudBaseline: true, explicitlyAuthorized: false }),
+    false,
+    'A cloud-backed book missing from a local working array must never become a delete without explicit reader authorization.',
+  );
+  assert.equal(
+    shouldCreateDeleteMutation({ hasCloudBaseline: true, explicitlyAuthorized: true }),
+    true,
+    'An explicit reader deletion may create a delete mutation for a cloud-backed record.',
+  );
+  assert.equal(
+    shouldCreateDeleteMutation({ hasCloudBaseline: false, explicitlyAuthorized: true }),
+    false,
+    'A record that never existed in the cloud baseline must not manufacture a cloud tombstone.',
+  );
+}
+
+{
+  const localOnly = book('locally-saved-not-in-snapshot', 12, 'Preserve My Book');
+  const cloudOnly = book('cloud-only', 60);
+  const merged = mergeBooksFromServer([localOnly], [cloudOnly], {});
+  assert.deepEqual(
+    merged.map((item) => item.id).sort(),
+    ['cloud-only', 'locally-saved-not-in-snapshot'],
+    'A partial cloud snapshot must not erase a locally saved book absent from the response.',
+  );
+}
+
+{
+  const localSession: ReadingSession = {
+    id: 'local-session-not-in-snapshot',
+    bookId: 'locally-saved-not-in-snapshot',
+    date: '2026-10-09',
+    startTime: '10:00',
+    endTime: '10:20',
+    durationMinutes: 20,
+  };
+  const merged = mergeServerCollectionById([localSession], [], {});
+  assert.equal(merged.length, 1, 'A partial cloud snapshot must not erase a locally saved reading session.');
+  assert.equal(merged[0].id, localSession.id);
+}
+
+{
+  const local = book('manual-metadata', 33, 'Reader Corrected Title');
+  const pending = {
+    ...local,
+    work: { ...local.work, author: 'Reader Corrected Author' },
+  };
+  const server = book('manual-metadata', 21, 'Stale Provider Title');
+  const merged = mergeBooksFromServer([local], [server], {
+    'manual-metadata': {
+      operation: 'upsert',
+      data: pending,
+      clientUpdatedAt: '2026-10-10T20:00:00.000Z',
+      capturedAfterCloudReconcile: true,
+    },
+  });
+  assert.equal(merged[0].work.title, 'Reader Corrected Title', 'Pending reader title corrections must survive server refresh.');
+  assert.equal(merged[0].work.author, 'Reader Corrected Author', 'Pending reader author corrections must survive server refresh.');
 }
 
 console.log('Inkbound cross-device sync regressions passed.');

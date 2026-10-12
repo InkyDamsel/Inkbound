@@ -152,11 +152,15 @@ function snapshotIds<T extends { id: string }>(items: T[]): Set<string> {
 
 
 function readJson<T>(key: string, fallback: T): T {
+  // An unreadable canonical value is not evidence of an empty library or
+  // queue. Preserve its original bytes and refuse to reconcile over it.
+  const raw = storage().getItem(key);
+  if (raw === null) return fallback;
   try {
-    const raw = storage().getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.error('[Inkbound persistence] Refusing to replace unreadable stored data.', { key, error });
+    throw new Error(`Inkbound cannot safely read ${key}; existing data was preserved.`);
   }
 }
 
@@ -230,22 +234,16 @@ function reconcileCollection<T extends { id: string }>(
     baseline[item.id] = fingerprint(item);
   });
 
-  // DATA_OWNERSHIP rule: if a local record existed in the previous sync baseline
-  // but is now absent from Firestore, that absence is a remote deletion unless a
-  // durable local mutation says otherwise. This also repairs deletions made by an
-  // older build before sync tombstones existed.
+  // Absence from a cloud snapshot is not evidence of an authorized deletion.
+  // An incomplete cloud upload or transient snapshot must never erase a reader's
+  // existing local record. Explicit remote tombstones are handled below.
   localItems.forEach((item) => {
     if (cloudIds.has(item.id)) return;
     if (pending[item.id]) {
       stats.pendingLocalProtected += 1;
       return;
     }
-    if (baseline[item.id] === undefined) {
-      stats.localOnlyPreserved += 1;
-      return;
-    }
-    if (next.delete(item.id)) stats.baselineDeletesApplied += 1;
-    delete baseline[item.id];
+    stats.localOnlyPreserved += 1;
   });
 
   tombstones.forEach((record) => {
@@ -280,10 +278,9 @@ function reconcileCollection<T extends { id: string }>(
  * performs one bounded full reconciliation per account/device version.
  *
  * Cloud records replace stale local copies unless a durable local mutation is
- * newer. Cloud tombstones and baseline-confirmed remote deletions remove stale
- * cached records under the same conflict rule. Local-only records that never
- * appeared in the baseline are preserved so recovery cannot silently discard an
- * unsynced legacy item.
+ * newer. Only explicit cloud tombstones remove cached records; absence from
+ * a snapshot never authorizes deletion. Local-only records remain available
+ * for recovery and migration uploads.
  */
 export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
   const { user } = useAccountSync();
@@ -438,6 +435,15 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
           if (!initialCloudSessionIds.has(item.id)) baseline.sessions[item.id] = fingerprint(item);
         });
 
+        // Never publish an earlier library snapshot over reader edits made
+        // while cloud uploads and verification were in flight.
+        if (
+          stable(readJson<UserBookRecord[]>(BOOKS_KEY, [])) !== stable(localBooks)
+          || stable(readJson<ReadingSession[]>(SESSIONS_KEY, [])) !== stable(localSessions)
+        ) {
+          throw new Error('Local library changed during reconciliation; stale snapshot application blocked.');
+        }
+
         await setDoc(libraryManifestRef, {
           status: 'complete',
           expectedBookCount: nextBooks.length,
@@ -446,6 +452,15 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
           completedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }, { merge: true });
+
+        // The manifest write itself awaits the network. Recheck immediately
+        // before any local overwrite or sync baseline acknowledgement.
+        if (
+          stable(readJson<UserBookRecord[]>(BOOKS_KEY, [])) !== stable(localBooks)
+          || stable(readJson<ReadingSession[]>(SESSIONS_KEY, [])) !== stable(localSessions)
+        ) {
+          throw new Error('Local library changed while finalizing reconciliation; stale snapshot application blocked.');
+        }
 
         const changedKeys: CloudSyncedStorageKey[] = [];
 

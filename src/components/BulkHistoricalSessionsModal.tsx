@@ -1,3 +1,4 @@
+import { compareLibraryLabels } from '../features/library/librarySectionSort';
 import React, { useMemo, useState } from 'react';
 import { CopyPlus, Plus, Save, Trash2, X } from 'lucide-react';
 import type { ReadingSession, UserBookRecord } from '../types';
@@ -59,13 +60,13 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
 
   const matchingBooks = useMemo(() => {
     const query = bookSearch.trim().toLowerCase();
-    if (!query) return books.slice(0, 100);
-    return books
-      .filter((book) =>
+    return [...books]
+      .filter((book) => !query ||
         book.work.title.toLowerCase().includes(query)
         || book.work.author.toLowerCase().includes(query)
         || book.work.seriesName?.toLowerCase().includes(query),
       )
+      .sort((a, b) => compareLibraryLabels(a.work.title, b.work.title) || compareLibraryLabels(a.work.author, b.work.author))
       .slice(0, 100);
   }, [bookSearch, books]);
 
