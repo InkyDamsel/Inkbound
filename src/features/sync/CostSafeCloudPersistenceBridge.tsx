@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import {
-  deleteDoc,
   doc,
   serverTimestamp,
   setDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import type { ReadingSession, UserBookRecord } from '../../types';
@@ -290,19 +290,21 @@ export const CostSafeCloudPersistenceBridge: React.FC = () => {
             if (mutation.explicitDeleteAuthorized !== true) {
               throw new Error('Unverified cloud deletion blocked');
             }
-            await Promise.all([
-              deleteDoc(target),
-              setDoc(
-                doc(db!, 'users', uid, 'syncTombstones', `${kind}_${id}`),
-                {
-                  kind,
-                  recordId: id,
-                  clientUpdatedAt: mutation.clientUpdatedAt,
-                  deletedAt: serverTimestamp(),
-                },
-                { merge: true },
-              ),
-            ]);
+            // A deletion without its tombstone can be resurrected by another
+            // device. Commit both operations atomically, or commit neither.
+            const deletionBatch = writeBatch(db!);
+            deletionBatch.delete(target);
+            deletionBatch.set(
+              doc(db!, 'users', uid, 'syncTombstones', `${kind}_${id}`),
+              {
+                kind,
+                recordId: id,
+                clientUpdatedAt: mutation.clientUpdatedAt,
+                deletedAt: serverTimestamp(),
+              },
+              { merge: true },
+            );
+            await deletionBatch.commit();
           } else if (mutation.data) {
             // Book/session mutations contain the complete canonical record.
             // Replace the document so deliberately removed optional fields
