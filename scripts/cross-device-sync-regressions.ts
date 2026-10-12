@@ -2,6 +2,19 @@ import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
 import { mergeBooksFromServer, mergeServerCollectionById } from '../src/features/sync/cloudServerMergePolicy';
 import { shouldCreateDeleteMutation } from '../src/features/sync/syncMutationPolicy';
+import { compareRecentlyAddedBooks } from '../src/features/library/libraryRecentSort';
+
+{
+  const older = { ...book('book-1791849600000-abc123', 0), dateAdded: '2026-10-12' };
+  const newest = { ...book('book-1791853200000-abc123', 0), dateAdded: '2026-10-12' };
+  const explicit = { ...book('imported-1', 0), dateAdded: '2026-10-12', dateAddedAt: '2026-10-12T23:59:00.000Z' };
+  const ordered = [older, newest, explicit].sort(compareRecentlyAddedBooks);
+  assert.equal(ordered[0].id, explicit.id, 'Exact addition timestamps must win over array order after sync.');
+  assert.equal(ordered[1].id, newest.id, 'Legacy timestamped book IDs must restore recent order.');
+  assert.equal(ordered[2].id, older.id, 'Older same-day additions must not jump ahead.');
+  assert.equal(compareRecentlyAddedBooks(book('legacy-a', 0), book('legacy-b', 0)), 0,
+    'Historical date-only books must retain stable existing order.');
+}
 
 const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookRecord => ({
   id,
