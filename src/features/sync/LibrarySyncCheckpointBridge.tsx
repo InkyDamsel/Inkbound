@@ -95,7 +95,14 @@ async function repairMissingGrowthRecords(uid: string, checkpoint: LocalCheckpoi
   const booksRef = collection(db, 'users', uid, 'books');
   const cloudSnapshot = await getDocs(booksRef);
   const cloudIds = new Set(cloudSnapshot.docs.map((item) => item.id));
-  const missingBooks = localBooks.filter((book) => book?.id && !cloudIds.has(book.id));
+  // Legacy growth repair must not resurrect an explicitly deleted book.
+  // Compare server timestamps so a genuinely newer re-add can still survive.
+  const tombstones = await getDocs(collection(db, 'users', uid, 'syncTombstones'));
+  const deletedBookMillis = new Map(tombstones.docs
+    .map((item) => item.data() as { kind?: string; recordId?: string; deletedAt?: { toMillis(): number } })
+    .filter((item) => item.kind === 'books' && item.recordId && item.deletedAt)
+    .map((item) => [item.recordId!, item.deletedAt!.toMillis()] as const));
+  const missingBooks = localBooks.filter((book) => book?.id && !cloudIds.has(book.id) && !deletedBookMillis.has(book.id));
   if (missingBooks.length === 0) return 0;
 
   const clientUpdatedAt = new Date().toISOString();
