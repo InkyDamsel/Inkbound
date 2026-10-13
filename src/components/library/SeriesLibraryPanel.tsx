@@ -9,6 +9,7 @@ import {
   SERIES_FOCUS_BOOK_STORAGE_KEY,
 } from '../../features/library/libraryNavigation';
 import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
+import { recentBookSortMillis } from '../../features/library/libraryRecentSort';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
 import {
@@ -56,7 +57,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
-  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.seriesSort, 'az');
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.seriesSort, 'newest');
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -77,19 +78,18 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
       : [...series];
 
     const seriesDate = (item: (typeof series)[number], newest: boolean) => {
-      const dates = item.books.map(({ book }) => book.dateAdded).filter(Boolean);
-      if (!dates.length) return '';
-      const ordered = [...dates].sort(compareLibraryDates);
-      return ordered[newest ? ordered.length - 1 : 0];
+      const dates = item.books.map(({ book }) => recentBookSortMillis(book));
+      if (!dates.length) return 0;
+      return newest ? Math.max(...dates) : Math.min(...dates);
     };
 
     return source.sort((a, b) => {
       if (sortMode === 'za') return compareLibraryLabels(b.name, a.name);
       if (sortMode === 'newest') {
-        return compareLibraryDates(seriesDate(b, true), seriesDate(a, true)) || compareLibraryLabels(a.name, b.name);
+        return seriesDate(b, true) - seriesDate(a, true) || compareLibraryLabels(a.name, b.name);
       }
       if (sortMode === 'oldest') {
-        return compareLibraryDates(seriesDate(a, false), seriesDate(b, false)) || compareLibraryLabels(a.name, b.name);
+        return seriesDate(a, false) - seriesDate(b, false) || compareLibraryLabels(a.name, b.name);
       }
       return compareLibraryLabels(a.name, b.name);
     });
@@ -281,7 +281,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
           || compareLibraryLabels(a.work.title, b.work.title);
       }
       if (draftBookSort === 'recent') {
-        return compareLibraryDates(b.dateAdded, a.dateAdded)
+        return recentBookSortMillis(b) - recentBookSortMillis(a)
           || compareLibraryLabels(a.work.title, b.work.title);
       }
       return compareLibraryLabels(a.work.title, b.work.title);
@@ -350,7 +350,6 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
         <section className="inkbound-panel rounded-3xl p-8 text-center text-sm text-[var(--ink-muted)]">No series match that search.</section>
       ) : (
         <>
-          {pagination}
           <div className="grid gap-4">
             {pagedSeries.map((item) => {
               const expanded = expandedSeriesId === item.id;
