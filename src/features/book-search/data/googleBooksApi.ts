@@ -231,7 +231,8 @@ const mergeGroups = (
 };
 
 async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchResponse> {
-  const compact = compactIsbn(query);
+  const isbnQuery = query.trim().replace(/^isbn:\s*/i, '');
+  const compact = compactIsbn(isbnQuery);
   if (/^(?:97[89])?\d{9}[\dX]$/i.test(compact)) {
     return searchInkboundTrustedCatalog({ isbn: compact });
   }
@@ -420,7 +421,7 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
 async function searchPrhWithBackoff(query: string): Promise<BookSearchResponse> {
   if (Date.now() < prhBackoffUntil) return { groups: [], totalItems: 0 };
   try {
-    return await searchPenguinRandomHouse(buildGoogleBooksQuery(query));
+    return await searchPenguinRandomHouse(query);
   } catch (error) {
     if (shouldBackOffCatalog(error)) {
       prhBackoffUntil = Math.max(prhBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
@@ -521,12 +522,16 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
   // because Google (or the trusted catalog) returned a different work first.
   // Title/author searches below retain their Google-first ranking unchanged.
   if (isIsbnLookup) {
+    // Google Books and Open Library understand the explicit isbn: operator.
+    // Hardcover, PRH, and the trusted catalog are more reliable when given the
+    // identifier itself rather than provider-specific query syntax.
+    const exactIsbn = compactIsbn(trimmed.replace(/^isbn:\s*/i, ''));
     const [trusted, google, openLibrary, hardcover, prh] = await Promise.all([
-      searchTrustedCatalogBaseline(trimmed),
-      searchGoogleBaseline(trimmed, signal),
-      searchOpenLibraryWithAuthorFallback(trimmed, signal),
-      searchHardcoverWithBackoff(trimmed),
-      searchPrhWithBackoff(trimmed),
+      searchTrustedCatalogBaseline(exactIsbn),
+      searchGoogleBaseline(`isbn:${exactIsbn}`, signal),
+      searchOpenLibraryWithAuthorFallback(`isbn:${exactIsbn}`, signal),
+      searchHardcoverWithBackoff(exactIsbn),
+      searchPrhWithBackoff(exactIsbn),
     ]);
     const groups = combineIsbnProviderGroups([
       trusted.groups, google.groups, openLibrary.groups, hardcover.groups, prh.groups,
