@@ -286,6 +286,16 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         updatedAt: serverTimestamp(),
       }, { merge: true }).catch(() => undefined);
       scheduleVerification();
+    } else if (readBookCount() > 0) {
+      // Older builds may have cleared their device checkpoint while leaving
+      // a stale server manifest. A read-only ID comparison can safely
+      // establish a fresh checkpoint; it must not infer any deletions.
+      writeCheckpoint(uid, {
+        expectedBookCount: readBookCount(),
+        previousBookCount: readBookCount(),
+        createdAt: new Date().toISOString(),
+      });
+      scheduleVerification();
     }
 
     return () => {
