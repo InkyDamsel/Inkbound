@@ -662,7 +662,8 @@ export const getAdminDataIntegrity = onCall({
   const expectedBookCount = typeof syncState.expectedBookCount === 'number' ? Math.max(0, syncState.expectedBookCount) : 0;
   const cloudBookCount = bookDocs.length;
   const backupRemaining = expectedBookCount > 0 ? Math.max(0, expectedBookCount - cloudBookCount) : 0;
-  const backupComplete = expectedBookCount === 0 || cloudBookCount >= expectedBookCount;
+  const backupComplete = expectedBookCount > 0 && cloudBookCount === expectedBookCount && syncState.status === 'complete';
+  const backupCountMismatch = expectedBookCount > 0 && cloudBookCount !== expectedBookCount;
 
   console.info('Inkbound admin integrity: inspection completed.', {
     targetUserId,
@@ -694,8 +695,8 @@ export const getAdminDataIntegrity = onCall({
       expectedBooks: expectedBookCount,
       savedBooks: cloudBookCount,
       remainingBooks: backupRemaining,
-      percentComplete: expectedBookCount > 0 ? Math.min(100, Math.round((cloudBookCount / expectedBookCount) * 100)) : 100,
-      status: typeof syncState.status === 'string' ? syncState.status : (backupComplete ? 'complete' : 'syncing'),
+      percentComplete: backupComplete ? 100 : backupCountMismatch ? Math.min(99, Math.round((Math.min(cloudBookCount, expectedBookCount) / expectedBookCount) * 100)) : 0,
+      status: backupCountMismatch ? 'inventory-mismatch' : (typeof syncState.status === 'string' ? syncState.status : 'unverified'),
     },
     structure: {
       bookIdMismatches: bookIdMismatchCount,
