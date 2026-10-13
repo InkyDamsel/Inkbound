@@ -77,8 +77,8 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
   };
 
   return (
-    <section className={`rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 sm:p-5 ${nativeDialogLayout ? "flex h-full min-h-0 flex-col" : ""}`}>
-      <div className={nativeDialogLayout ? "min-h-0 flex-1 overflow-y-auto overscroll-contain" : ""}>
+    <section className={`rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 sm:p-5 ${nativeDialogLayout ? "relative flex h-full min-h-0 flex-col" : ""}`}>
+      <div className={nativeDialogLayout ? "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-20" : ""}>
       <div className="flex items-start gap-3">
         <Database className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
         <div className="min-w-0 flex-1">
@@ -140,7 +140,7 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
       </div>
       </div>
       {nativeDialogLayout && (
-        <div className="shrink-0 border-t border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pt-3">
+        <div className="absolute inset-x-4 bottom-4 z-30 border-t border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pt-3">
           <button type="button" onClick={() => void submit()} disabled={!fields || submitting || !asinIsValid} className="quiet-shelf-secondary-action min-h-11 w-full justify-center border border-[var(--ink-mauve)]/50 bg-[#2c1b32] disabled:opacity-40">
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {submitting ? 'Sending…' : 'Share edition details for review'}
