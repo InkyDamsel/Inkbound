@@ -432,7 +432,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
 
   return (
     <div className="fixed inset-0 z-[130] flex items-end bg-black/75 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4" onClick={onClose}>
-      <section className="flex max-h-[96dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[92dvh] sm:max-w-5xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+      <section className="inkbound-modal-surface flex max-h-[96dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[92dvh] sm:max-w-5xl sm:rounded-3xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <header className="book-details-modal-header relative border-b border-[#3d2448] bg-gradient-to-r from-[#281333] via-[#1d0e26] to-[#140a1a] p-4 sm:p-6" onTouchStart={beginSwipeToClose} onTouchEnd={finishSwipeToClose}>
           <div className="book-details-swipe-handle mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/25 sm:hidden" aria-hidden="true" />
           <button type="button" onClick={onClose} className="book-details-close-button absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-300" aria-label="Close book details"><X className="h-5 w-5" /></button>
