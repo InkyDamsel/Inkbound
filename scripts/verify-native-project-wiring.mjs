@@ -53,7 +53,7 @@ if (exists('ios/App/App.xcodeproj/project.pbxproj')) {
   const project = read('ios/App/App.xcodeproj/project.pbxproj');
   const buildNumbers = [...project.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((match) => Number(match[1]));
   if (buildNumbers.length === 0 || buildNumbers.some((value) => value !== 19)) {
-    fail('All iOS app/widget configurations must use build 19.');
+    fail('All iOS app/widget configurations must use build 20.');
   }
   const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((match) => match[1].trim());
   if (marketingVersions.length === 0 || marketingVersions.some((value) => value !== '1.0')) {
