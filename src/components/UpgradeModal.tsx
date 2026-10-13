@@ -111,7 +111,7 @@ export const UpgradeModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[140] flex items-end overflow-y-auto bg-black/75 backdrop-blur-sm sm:items-center sm:justify-center sm:p-4" role="presentation" onClick={closeUpgradeModal}>
-      <section className="relative flex max-h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-surface)] shadow-2xl sm:max-h-[92dvh] sm:max-w-3xl sm:rounded-3xl" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title" onClick={(event) => event.stopPropagation()}>
+      <section className="relative flex min-h-0 max-h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-surface)] shadow-2xl sm:max-h-[92dvh] sm:max-w-3xl sm:rounded-3xl" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title" onClick={(event) => event.stopPropagation()}>
         <div className="relative shrink-0 overflow-hidden border-b border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-5 py-6 text-center sm:px-8 sm:py-8">
           <button type="button" onClick={closeUpgradeModal} className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-muted)] transition hover:bg-[var(--ink-surface)] hover:text-[var(--ink-ivory)]" aria-label="Close Premium plans"><X className="h-5 w-5" /></button>
           <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[var(--ink-mauve)]/30 bg-[var(--ink-mauve)]/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[var(--ink-mauve)]"><Sparkles className="h-3.5 w-3.5" /> Inkbound Premium</span>
@@ -120,7 +120,7 @@ export const UpgradeModal: React.FC = () => {
           {sandboxBillingTest && <div className="mx-auto mt-4 max-w-xl rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-left text-xs font-semibold text-amber-100">Owner-only Stripe Sandbox test mode is active. No real payment will be charged.</div>}
         </div>
 
-        <div className="flex-1 space-y-6 overflow-y-auto px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:space-y-8 sm:px-8 sm:py-8">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:space-y-8 sm:px-8 sm:py-8">
           {!entitlementLoading && trialAvailable && (
             <div className="rounded-2xl border-2 border-[var(--ink-gold)]/50 bg-[var(--ink-gold)]/5 p-5 sm:p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
