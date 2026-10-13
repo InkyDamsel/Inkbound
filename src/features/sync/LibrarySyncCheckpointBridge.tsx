@@ -279,20 +279,9 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
       void verifyCheckpoint();
     });
 
-    const existingCheckpoint = readCheckpoint(uid);
-    if (existingCheckpoint) {
-      void setDoc(manifestRef, {
-        status: 'syncing',
-        expectedBookCount: existingCheckpoint.expectedBookCount,
-        syncDirection: existingCheckpoint.direction ?? 'unknown',
-        updatedAt: serverTimestamp(),
-      }, { merge: true }).catch(() => undefined);
-      scheduleVerification();
-    } else {
-      // A legacy cloud manifest can be stale even when the device checkpoint
-      // was cleared. Verify actual IDs without writing a startup checkpoint.
-      scheduleVerification();
-    }
+    // Do not publish an unverified local checkpoint during startup. Local
+    // storage may still be hydrating; verification is the only authority.
+    scheduleVerification();
 
     return () => {
       window.removeEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
