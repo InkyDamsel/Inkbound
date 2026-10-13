@@ -77,7 +77,8 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
   };
 
   return (
-    <section className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 sm:p-5">
+    <section className={`rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 sm:p-5 ${nativeDialogLayout ? "flex h-full min-h-0 flex-col" : ""}`}>
+      <div className={nativeDialogLayout ? "min-h-0 flex-1 overflow-y-auto overscroll-contain" : ""}>
       <div className="flex items-start gap-3">
         <Database className="mt-0.5 h-5 w-5 shrink-0 text-[var(--ink-mauve)]" />
         <div className="min-w-0 flex-1">
@@ -114,10 +115,12 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
                 {fields.pageCount && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.pageCount} pages</span>}
                 {fields.format && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.format}</span>}
               </div>
-              <button type="button" onClick={() => void submit()} disabled={submitting || !asinIsValid} className={`quiet-shelf-secondary-action mt-4 justify-center disabled:opacity-40 ${nativeDialogLayout ? "sticky bottom-0 z-10 w-full border border-[var(--ink-mauve)]/50 bg-[#2c1b32] py-3 shadow-[0_-12px_18px_#17101b]" : ""}`}>
+              {!nativeDialogLayout && (
+              <button type="button" onClick={() => void submit()} disabled={submitting || !asinIsValid} className="quiet-shelf-secondary-action mt-4 w-full justify-center disabled:opacity-40">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 {submitting ? 'Sending…' : 'Share edition details for review'}
               </button>
+              )}
             </>
           ) : (
             <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-xs leading-5 text-amber-200">
@@ -135,6 +138,15 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
           )}
         </div>
       </div>
+      </div>
+      {nativeDialogLayout && (
+        <div className="shrink-0 border-t border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pt-3">
+          <button type="button" onClick={() => void submit()} disabled={!fields || submitting || !asinIsValid} className="quiet-shelf-secondary-action min-h-11 w-full justify-center border border-[var(--ink-mauve)]/50 bg-[#2c1b32] disabled:opacity-40">
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {submitting ? 'Sending…' : 'Share edition details for review'}
+          </button>
+        </div>
+      )}
     </section>
   );
 };
