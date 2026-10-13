@@ -5,6 +5,7 @@ import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels
 import { usePersistentState } from '../../hooks/usePersistentState';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { BookCover } from '../BookCover';
+import { recentBookSortMillis } from '../../features/library/libraryRecentSort';
 
 interface LoansLibraryPanelProps {
   books: UserBookRecord[];
@@ -32,7 +33,7 @@ const formatDueDate = (value?: string) => {
 };
 
 export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onSelectBook }) => {
-  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.loansSort, 'az');
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.loansSort, 'newest');
   const loans = useMemo(() => books
     .filter((book) => book.ownership === 'borrowed-library')
     .map((book) => {
@@ -55,10 +56,10 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
     .sort((a, b) => {
       if (sortMode === 'za') return compareLibraryLabels(b.book.work.title, a.book.work.title);
       if (sortMode === 'newest') {
-        return compareLibraryDates(b.book.dateAdded, a.book.dateAdded) || compareLibraryLabels(a.book.work.title, b.book.work.title);
+        return recentBookSortMillis(b.book) - recentBookSortMillis(a.book) || compareLibraryLabels(a.book.work.title, b.book.work.title);
       }
       if (sortMode === 'oldest') {
-        return compareLibraryDates(a.book.dateAdded, b.book.dateAdded) || compareLibraryLabels(a.book.work.title, b.book.work.title);
+        return recentBookSortMillis(a.book) - recentBookSortMillis(b.book) || compareLibraryLabels(a.book.work.title, b.book.work.title);
       }
       return compareLibraryLabels(a.book.work.title, b.book.work.title);
     }), [books, sortMode]);
