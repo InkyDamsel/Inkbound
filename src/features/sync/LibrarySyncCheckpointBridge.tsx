@@ -169,7 +169,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
 
     const verifyCheckpoint = async () => {
       const checkpoint = readCheckpoint(uid);
-      if (!checkpoint || !navigator.onLine) return;
+      if (!navigator.onLine) return;
       try {
         // Counts alone cannot establish a complete backup. Compare actual
         // record IDs before advancing any checkpoint or manifest.
@@ -180,7 +180,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         let identitiesMatch = localIds.size === cloudIds.size
           && [...localIds].every((id) => cloudIds.has(id));
         let complete = identitiesMatch;
-        if (checkpoint.direction === 'shrink' && !identitiesMatch) {
+        if (checkpoint?.direction === 'shrink' && !identitiesMatch) {
           const verified = await reconcileShrinkCheckpoint(uid);
           uploadedBookCount = verified.cloudCount;
           identitiesMatch = verified.matches;
@@ -193,7 +193,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         // local working copy. Never run this for shrink checkpoints, and never
         // run it when the local device no longer has the expected full library.
         if (!complete
-          && checkpoint.direction === 'grow'
+          && checkpoint?.direction === 'grow'
           && readBookCount() >= checkpoint.expectedBookCount
           && !repairInFlight.current) {
           repairInFlight.current = true;
@@ -211,18 +211,20 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         }
 
         // A newer local change may have replaced this checkpoint during async reads.
-        if (readCheckpoint(uid)?.createdAt !== checkpoint.createdAt) return;
+        if (readCheckpoint(uid)?.createdAt !== checkpoint?.createdAt) return;
+        // With no local checkpoint, never publish an unverified startup count.
+        if (!checkpoint && !complete) return;
         await setDoc(manifestRef, {
           status: complete ? 'complete' : 'syncing',
           // A legacy count is not authoritative once every local record ID
           // has a matching cloud record ID. Rebase only on proven equality.
-          expectedBookCount: complete ? uploadedBookCount : checkpoint.expectedBookCount,
+          expectedBookCount: complete ? uploadedBookCount : checkpoint!.expectedBookCount,
           uploadedBookCount,
-          syncDirection: checkpoint.direction ?? 'unknown',
+          syncDirection: checkpoint?.direction ?? 'unknown',
           updatedAt: serverTimestamp(),
           ...(complete ? { completedAt: serverTimestamp() } : {}),
         }, { merge: true });
-        if (complete) clearCheckpoint(uid);
+        if (complete && checkpoint) clearCheckpoint(uid);
       } catch (error) {
         console.warn('Inkbound library checkpoint verification will retry later.', error);
         // The local checkpoint remains durable and will be checked again later.
@@ -274,7 +276,7 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
 
     window.addEventListener(INKBOUND_LOCAL_DATA_CHANGED_EVENT, handleLocalChange);
     const unsubscribeRuntimeResume = subscribeToRuntimeResume(() => {
-      if (readCheckpoint(uid)) void verifyCheckpoint();
+      void verifyCheckpoint();
     });
 
     const existingCheckpoint = readCheckpoint(uid);
@@ -286,7 +288,10 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         updatedAt: serverTimestamp(),
       }, { merge: true }).catch(() => undefined);
       scheduleVerification();
-
+    } else {
+      // A legacy cloud manifest can be stale even when the device checkpoint
+      // was cleared. Verify actual IDs without writing a startup checkpoint.
+      scheduleVerification();
     }
 
     return () => {
