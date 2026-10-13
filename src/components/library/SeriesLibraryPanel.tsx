@@ -8,8 +8,7 @@ import {
   readLibrarySeriesFocusBookId,
   SERIES_FOCUS_BOOK_STORAGE_KEY,
 } from '../../features/library/libraryNavigation';
-import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
-import { recentBookSortMillis } from '../../features/library/libraryRecentSort';
+import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
 import {
@@ -57,7 +56,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
   const { userPlan, openUpgradeModal } = useUserPlan();
   const [overrides, setOverrides] = usePersistentState<SeriesOverrides>(SERIES_OVERRIDES_STORAGE_KEY, {});
   const [search, setSearch] = useState('');
-  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.seriesSort, 'newest');
+  const [sortMode, setSortMode] = usePersistentState<LibrarySectionSortMode>(DEVICE_STORAGE_KEYS.seriesSort, 'az');
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -78,18 +77,19 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
       : [...series];
 
     const seriesDate = (item: (typeof series)[number], newest: boolean) => {
-      const dates = item.books.map(({ book }) => recentBookSortMillis(book));
-      if (!dates.length) return 0;
-      return newest ? Math.max(...dates) : Math.min(...dates);
+      const dates = item.books.map(({ book }) => book.dateAdded).filter(Boolean);
+      if (!dates.length) return '';
+      const ordered = [...dates].sort(compareLibraryDates);
+      return ordered[newest ? ordered.length - 1 : 0];
     };
 
     return source.sort((a, b) => {
       if (sortMode === 'za') return compareLibraryLabels(b.name, a.name);
       if (sortMode === 'newest') {
-        return seriesDate(b, true) - seriesDate(a, true) || compareLibraryLabels(a.name, b.name);
+        return compareLibraryDates(seriesDate(b, true), seriesDate(a, true)) || compareLibraryLabels(a.name, b.name);
       }
       if (sortMode === 'oldest') {
-        return seriesDate(a, false) - seriesDate(b, false) || compareLibraryLabels(a.name, b.name);
+        return compareLibraryDates(seriesDate(a, false), seriesDate(b, false)) || compareLibraryLabels(a.name, b.name);
       }
       return compareLibraryLabels(a.name, b.name);
     });
@@ -281,7 +281,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
           || compareLibraryLabels(a.work.title, b.work.title);
       }
       if (draftBookSort === 'recent') {
-        return recentBookSortMillis(b) - recentBookSortMillis(a)
+        return compareLibraryDates(b.dateAdded, a.dateAdded)
           || compareLibraryLabels(a.work.title, b.work.title);
       }
       return compareLibraryLabels(a.work.title, b.work.title);
