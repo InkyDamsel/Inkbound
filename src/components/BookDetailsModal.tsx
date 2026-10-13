@@ -14,7 +14,7 @@ import { readSeriesOverrides } from '../features/series/seriesOverrides';
 import { SYNC_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { readRuntimeJson } from '../platform/runtimeStorage';
 import type { Edition, UserBookRecord } from '../types';
-import { isNativeRuntime } from '../platform/runtimePlatform';
+import { usesEmbeddedBookDetailsToolbar } from '../platform/bookDetailsLayoutCapability';
 import './bookDetailsResponsive.css';
 
 function normalizeStoredIsbn(value?: string): string | undefined {
@@ -204,7 +204,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
       )
     : null;
 
-  const nativeBookToolbar = isNativeRuntime();
+  const nativeBookToolbar = usesEmbeddedBookDetailsToolbar();
 
   return (
     <div className={`book-details-modal-host${nativeBookToolbar ? " book-details-native" : ""}`}>
