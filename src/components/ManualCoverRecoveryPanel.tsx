@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Image, LibraryBig, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
-import { getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
+import { deleteObject, getDownloadURL, getMetadata, listAll, ref } from 'firebase/storage';
 import type { UserBookRecord } from '../types';
 import { auth, storage } from '../lib/firebase';
 import { getRuntimeStorage } from '../platform/runtimeStorage';
@@ -57,8 +57,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   const [selectedAssetPath, setSelectedAssetPath] = useState('');
   const [selectedBookId, setSelectedBookId] = useState('');
   const [restoring, setRestoring] = useState(false);
-  // Deletion remains locked until a complete account-wide cloud reference audit exists.
-  const coverDeletionVerified = false;
+  const [deleting, setDeleting] = useState(false);
   const [restoredMessage, setRestoredMessage] = useState<string | null>(null);
   const [showUnusedOnly, setShowUnusedOnly] = useState(false);
   const [coverQuery, setCoverQuery] = useState('');
@@ -159,6 +158,49 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
     if (bookPage > bookTotalPages) setBookPage(bookTotalPages);
   }, [bookPage, bookTotalPages]);
 
+  const deleteCovers = async (targets: StoredManualCover[]) => {
+    const user = auth?.currentUser;
+    if (!user || !storage || deleting || targets.length === 0) return;
+    const linked = targets.flatMap((asset) => linkedBooksFor(asset, books).map((book) => book.work.title));
+    if (linked.length > 0) {
+      setError(`Cannot delete a cover referenced by a book in this library: ${[...new Set(linked)].join(', ')}. Reassign those covers first.`);
+      return;
+    }
+    const accepted = window.confirm(
+      `Permanently delete ${targets.length} selected manual cover file${targets.length === 1 ? '' : 's'} from cloud storage? This cannot be undone. The current library shows no direct references, but another device or an unsynced record may still use a file. Books and reading history will not be deleted.`
+    );
+    if (!accepted) return;
+    setDeleting(true);
+    setError(null);
+    let removed = 0;
+    try {
+      for (const asset of targets) {
+        if (!asset.fullPath.startsWith(`users/${user.uid}/book-covers/manual/`)) {
+          setError('Cover deletion stopped: unexpected storage path.');
+          break;
+        }
+        try {
+          await deleteObject(ref(storage, asset.fullPath));
+          removed += 1;
+          setAssets((current) => current.filter((item) => item.fullPath !== asset.fullPath));
+          setSelectedUnusedPaths((current) => {
+            const next = new Set(current);
+            next.delete(asset.fullPath);
+            return next;
+          });
+          setSelectedAssetPath((current) => current === asset.fullPath ? '' : current);
+        } catch (caught) {
+          console.error('Inkbound manual cover deletion failed.', caught);
+          setError(`Deleted ${removed} of ${targets.length} covers. Another deletion failed; refresh to check the remaining files.`);
+          break;
+        }
+      }
+      if (removed === targets.length) setRestoredMessage(`Deleted ${removed} selected manual cover file${removed === 1 ? '' : 's'}.`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const useCover = () => {
     if (!selectedAsset || !selectedBook || restoring) return;
     const activeEdition = activeEditionFor(selectedBook);
@@ -246,20 +288,20 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
       {listingVerified && unusedCount > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-bold text-[var(--ink-ivory)]">Cover cleanup unavailable</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">These covers have no matches in the currently loaded library. Complete cloud reference verification is required before any deletion can be offered. You can still select and reuse a cover.</p>
+            <p className="text-sm font-bold text-[var(--ink-ivory)]">Manual cover cleanup</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">These covers have no matching references in the loaded library. You can delete selected files after confirmation. Deletion is permanent; unsynced devices may still reference a file.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setSelectedUnusedPaths(new Set(unusedAssets.map((asset) => asset.fullPath)))} disabled={selectedUnusedPaths.size === unusedCount} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Select all</button>
             <button type="button" onClick={() => setSelectedUnusedPaths(new Set())} disabled={selectedUnusedPaths.size === 0} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Clear</button>
             <button
               type="button"
-              onClick={() => {}}
-              disabled={!coverDeletionVerified || selectedUnusedPaths.size === 0}
+              onClick={() => void deleteCovers(unusedAssets.filter((asset) => selectedUnusedPaths.has(asset.fullPath)))}
+              disabled={deleting || selectedUnusedPaths.size === 0}
               className="quiet-shelf-secondary-action justify-center text-rose-300 disabled:opacity-40"
             >
               <Trash2 className="h-4 w-4" />
-              Delete unavailable
+              {deleting ? 'Deleting…' : `Delete selected (${selectedUnusedPaths.size})`}
             </button>
           </div>
         </div>
@@ -311,7 +353,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
 
           <aside className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
             <div className="flex items-center gap-2"><Image className="h-5 w-5 text-[var(--ink-gold)]" /><h3 className="font-serif text-lg font-bold text-[var(--ink-ivory)]">Use selected cover</h3></div>
-            {selectedAsset ? <div className="mt-4"><img src={selectedAsset.url} alt="Selected manual cover" className="mx-auto max-h-72 rounded-xl object-contain" />{linkedBooksFor(selectedAsset, books).length > 0 ? <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">Currently used by: {linkedBooksFor(selectedAsset, books).map((book) => book.work.title).join(', ')}</p> : <div className="mt-3 space-y-2"><p className="text-xs leading-5 text-amber-200">No matching book reference was found in the currently loaded library. This does not prove the cover is unused in the cloud. Deletion is paused until account-wide verification is available.</p><button type="button" disabled={!coverDeletionVerified} className="quiet-shelf-secondary-action w-full justify-center text-rose-300 disabled:opacity-40"><Trash2 className="h-4 w-4" />Delete unavailable</button></div>}</div> : <div className="mt-4 grid h-56 place-items-center rounded-xl border border-dashed border-[var(--ink-border)] text-center text-xs text-[var(--ink-muted)]">Select a cover thumbnail first.</div>}
+            {selectedAsset ? <div className="mt-4"><img src={selectedAsset.url} alt="Selected manual cover" className="mx-auto max-h-72 rounded-xl object-contain" />{linkedBooksFor(selectedAsset, books).length > 0 ? <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">Currently used by: {linkedBooksFor(selectedAsset, books).map((book) => book.work.title).join(', ')}</p> : <div className="mt-3 space-y-2"><p className="text-xs leading-5 text-amber-200">No book in the loaded library references this exact stored file. If you recognize it as a duplicate, you can permanently delete it after confirmation. Unsynced devices may still reference it.</p><button type="button" onClick={() => void deleteCovers([selectedAsset])} disabled={deleting} className="quiet-shelf-secondary-action w-full justify-center text-rose-300 disabled:opacity-40"><Trash2 className="h-4 w-4" />{deleting ? "Deleting…" : "Delete This Cover"}</button></div>}</div> : <div className="mt-4 grid h-56 place-items-center rounded-xl border border-dashed border-[var(--ink-border)] text-center text-xs text-[var(--ink-muted)]">Select a cover thumbnail first.</div>}
 
             <label className="relative mt-4 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={bookQuery} onChange={(event) => setBookQuery(event.target.value)} placeholder="Find a book by title or author" className="min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] pl-10 pr-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
             <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Choose a book</span><span className="text-[11px] text-[var(--ink-muted)]">{visibleBooks.length.toLocaleString()} of {books.length.toLocaleString()}</span></div>
