@@ -57,7 +57,8 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
   const [selectedAssetPath, setSelectedAssetPath] = useState('');
   const [selectedBookId, setSelectedBookId] = useState('');
   const [restoring, setRestoring] = useState(false);
-  const [deleting] = useState(false);
+  // Deletion remains locked until a complete account-wide cloud reference audit exists.
+  const coverDeletionVerified = false;
   const [restoredMessage, setRestoredMessage] = useState<string | null>(null);
   const [showUnusedOnly, setShowUnusedOnly] = useState(false);
   const [coverQuery, setCoverQuery] = useState('');
@@ -158,13 +159,6 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
     if (bookPage > bookTotalPages) setBookPage(bookTotalPages);
   }, [bookPage, bookTotalPages]);
 
-  const deleteUnusedAssets = async (targets: StoredManualCover[]) => {
-    if (!storage || deleting || !listingVerified || targets.length === 0) return;
-    // The local book collection may be a partial cloud snapshot. An unreferenced
-    // cover on this device is not proof that the file is unused by the account.
-    setError('Cover cleanup is paused until Inkbound can verify every book reference against the cloud. No cover was deleted.');
-  };
-
   const useCover = () => {
     if (!selectedAsset || !selectedBook || restoring) return;
     const activeEdition = activeEditionFor(selectedBook);
@@ -245,27 +239,27 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Stored covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{listingVerified ? assets.length.toLocaleString() : '—'}</p></div>
-        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Unused covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{listingVerified ? unusedCount.toLocaleString() : '—'}</p></div>
+        <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Potentially unused covers</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{listingVerified ? unusedCount.toLocaleString() : '—'}</p></div>
         <div className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4"><p className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Books in library</p><p className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">{books.length.toLocaleString()}</p></div>
       </div>
 
       {listingVerified && unusedCount > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-bold text-[var(--ink-ivory)]">Unused cover cleanup</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">Select the unused covers you want to remove. Only files with zero references from any current book edition are eligible.</p>
+            <p className="text-sm font-bold text-[var(--ink-ivory)]">Cover cleanup unavailable</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">These covers have no matches in the currently loaded library. Complete cloud reference verification is required before any deletion can be offered. You can still select and reuse a cover.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setSelectedUnusedPaths(new Set(unusedAssets.map((asset) => asset.fullPath)))} disabled={deleting || selectedUnusedPaths.size === unusedCount} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Select all</button>
-            <button type="button" onClick={() => setSelectedUnusedPaths(new Set())} disabled={deleting || selectedUnusedPaths.size === 0} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Clear</button>
+            <button type="button" onClick={() => setSelectedUnusedPaths(new Set(unusedAssets.map((asset) => asset.fullPath)))} disabled={selectedUnusedPaths.size === unusedCount} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Select all</button>
+            <button type="button" onClick={() => setSelectedUnusedPaths(new Set())} disabled={selectedUnusedPaths.size === 0} className="quiet-shelf-secondary-action justify-center disabled:opacity-40">Clear</button>
             <button
               type="button"
-              onClick={() => void deleteUnusedAssets(unusedAssets.filter((asset) => selectedUnusedPaths.has(asset.fullPath)))}
-              disabled={deleting || selectedUnusedPaths.size === 0}
+              onClick={() => {}}
+              disabled={!coverDeletionVerified || selectedUnusedPaths.size === 0}
               className="quiet-shelf-secondary-action justify-center text-rose-300 disabled:opacity-40"
             >
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {deleting ? 'Deleting…' : `Delete selected (${selectedUnusedPaths.size})`}
+              <Trash2 className="h-4 w-4" />
+              Delete unavailable
             </button>
           </div>
         </div>
@@ -308,7 +302,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
                       />
                     </label>
                   )}
-                  <button type="button" onClick={() => setSelectedAssetPath(asset.fullPath)} className={`w-full min-w-0 rounded-2xl border p-2 text-left transition ${bulkSelected ? 'ring-2 ring-rose-400/70' : ''} ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}><img src={asset.url} alt="Manual book cover" className="aspect-[2/3] w-full rounded-xl object-cover" loading="lazy" /><p className="mt-2 line-clamp-2 text-xs font-bold text-[var(--ink-ivory)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.title).join(', ') : 'Unused cover'}</p><p className="mt-1 truncate text-[10px] text-[var(--ink-muted)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.author).join(', ') : asset.updatedAt ? new Date(asset.updatedAt).toLocaleString() : asset.name}</p></button>
+                  <button type="button" onClick={() => setSelectedAssetPath(asset.fullPath)} className={`w-full min-w-0 rounded-2xl border p-2 text-left transition ${bulkSelected ? 'ring-2 ring-rose-400/70' : ''} ${selected ? 'border-[var(--ink-gold)] bg-[var(--ink-gold)]/10' : 'border-[var(--ink-border)] bg-[var(--ink-surface-soft)]'}`}><img src={asset.url} alt="Manual book cover" className="aspect-[2/3] w-full rounded-xl object-cover" loading="lazy" /><p className="mt-2 line-clamp-2 text-xs font-bold text-[var(--ink-ivory)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.title).join(', ') : 'Potentially unused cover'}</p><p className="mt-1 truncate text-[10px] text-[var(--ink-muted)]">{linkedBooks.length > 0 ? linkedBooks.map((book) => book.work.author).join(', ') : asset.updatedAt ? new Date(asset.updatedAt).toLocaleString() : asset.name}</p></button>
                 </div>;
               })}
             </div>
@@ -317,7 +311,7 @@ export const ManualCoverRecoveryPanel: React.FC<ManualCoverRecoveryPanelProps> =
 
           <aside className="rounded-2xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] p-4">
             <div className="flex items-center gap-2"><Image className="h-5 w-5 text-[var(--ink-gold)]" /><h3 className="font-serif text-lg font-bold text-[var(--ink-ivory)]">Use selected cover</h3></div>
-            {selectedAsset ? <div className="mt-4"><img src={selectedAsset.url} alt="Selected manual cover" className="mx-auto max-h-72 rounded-xl object-contain" />{linkedBooksFor(selectedAsset, books).length > 0 ? <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">Currently used by: {linkedBooksFor(selectedAsset, books).map((book) => book.work.title).join(', ')}</p> : <div className="mt-3 space-y-2"><p className="text-xs leading-5 text-amber-200">This cover has zero current book references and is safe to remove if you no longer need it.</p><button type="button" onClick={() => void deleteUnusedAssets([selectedAsset])} disabled={deleting} className="quiet-shelf-secondary-action w-full justify-center text-rose-300 disabled:opacity-40">{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}{deleting ? 'Deleting…' : 'Delete This Unused Cover'}</button></div>}</div> : <div className="mt-4 grid h-56 place-items-center rounded-xl border border-dashed border-[var(--ink-border)] text-center text-xs text-[var(--ink-muted)]">Select a cover thumbnail first.</div>}
+            {selectedAsset ? <div className="mt-4"><img src={selectedAsset.url} alt="Selected manual cover" className="mx-auto max-h-72 rounded-xl object-contain" />{linkedBooksFor(selectedAsset, books).length > 0 ? <p className="mt-3 text-xs leading-5 text-[var(--ink-muted)]">Currently used by: {linkedBooksFor(selectedAsset, books).map((book) => book.work.title).join(', ')}</p> : <div className="mt-3 space-y-2"><p className="text-xs leading-5 text-amber-200">No matching book reference was found in the currently loaded library. This does not prove the cover is unused in the cloud. Deletion is paused until account-wide verification is available.</p><button type="button" disabled={!coverDeletionVerified} className="quiet-shelf-secondary-action w-full justify-center text-rose-300 disabled:opacity-40"><Trash2 className="h-4 w-4" />Delete unavailable</button></div>}</div> : <div className="mt-4 grid h-56 place-items-center rounded-xl border border-dashed border-[var(--ink-border)] text-center text-xs text-[var(--ink-muted)]">Select a cover thumbnail first.</div>}
 
             <label className="relative mt-4 block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={bookQuery} onChange={(event) => setBookQuery(event.target.value)} placeholder="Find a book by title or author" className="min-h-11 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface)] pl-10 pr-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
             <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">Choose a book</span><span className="text-[11px] text-[var(--ink-muted)]">{visibleBooks.length.toLocaleString()} of {books.length.toLocaleString()}</span></div>
