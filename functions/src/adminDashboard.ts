@@ -806,3 +806,42 @@ export const auditAdminLibraryInventory = onCall({
     note: 'Read-only comparison against this device. Differences can include pending changes; no records were modified.',
   };
 });
+
+
+/** Owner-only, exact-record cleanup for the verified orphaned Bad Bishop hardcover.
+ * Atomically writes deletion evidence and deletes the one cloud document.
+ * No checkpoint, backup, other book, or admin data is changed.
+ */
+export const removeVerifiedOrphanedBadBishopHardcover = onCall({
+  enforceAppCheck: ENFORCE_APP_CHECK,
+}, async (request) => {
+  await requireAdmin(request, ['owner']);
+  const input = request.data as { targetUserId?: unknown; recordId?: unknown; confirmation?: unknown } | undefined;
+  const uid = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
+  const recordId = 'book-import-import-1058-bad-bishop-standard-edition-';
+  if (!uid || uid.length > 128 || input?.recordId !== recordId || input?.confirmation !== 'DELETE HARDCOVER') {
+    throw new HttpsError('invalid-argument', 'Exact record and DELETE HARDCOVER confirmation are required.');
+  }
+  const store = getFirestore();
+  const bookRef = store.doc(`users/${uid}/books/${recordId}`);
+  const tombstoneRef = store.doc(`users/${uid}/syncTombstones/books_${recordId}`);
+  const result = await store.runTransaction(async (transaction) => {
+    const bookSnapshot = await transaction.get(bookRef);
+    if (!bookSnapshot.exists) return { removed: false, alreadyAbsent: true };
+    const record = safeUnwrapRecord<StoredBook>(bookSnapshot.data() ?? {});
+    const editions = asRecordArray(record.editions);
+    const activeEdition = editions.find((edition) => edition.id === record.activeEditionId);
+    if (editions.length !== 1 || !activeEdition || normalizeText(activeEdition.format) !== 'hardcover') {
+      throw new HttpsError('failed-precondition', 'Record is not the single verified hardcover edition. No changes made.');
+    }
+    if (record.id !== recordId) throw new HttpsError('failed-precondition', 'Record ID mismatch. No changes made.');
+    transaction.set(tombstoneRef, {
+      kind: 'books', recordId, deletedAt: FieldValue.serverTimestamp(),
+      clientUpdatedAt: new Date().toISOString(),
+      reason: 'owner-verified-orphaned-hardcover-cleanup',
+    }, { merge: true });
+    transaction.delete(bookRef);
+    return { removed: true, alreadyAbsent: false };
+  });
+  return { ...result, recordId };
+});
