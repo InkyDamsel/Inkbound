@@ -141,14 +141,10 @@ function captureWorkingChanges<T extends { id: string }>(
 
   explicitDeleteIds.forEach((id) => {
     if (next.has(id)) return;
-    if (baseline[id] === undefined) {
-      delete mutations[id];
-      return;
-    }
-    if (!shouldCreateDeleteMutation({
-      hasCloudBaseline: baseline[id] !== undefined,
-      explicitlyAuthorized: true,
-    })) return;
+    // A device's fingerprint baseline is not a complete cloud inventory.
+    // Imported records may exist remotely without having been fingerprinted
+    // locally. Explicit reader deletion remains authoritative in that case.
+    // Never manufacture deletes from an unmarked array shrink.
     mutations[id] = { ...createTrustedDeleteMutation(now), explicitDeleteAuthorized: true };
   });
 
@@ -158,7 +154,8 @@ function captureWorkingChanges<T extends { id: string }>(
 function removeNoOpMutations<T>(mutations: Record<string, RecordMutation<T>>, baseline: Record<string, string>) {
   Object.entries(mutations).forEach(([id, mutation]) => {
     if (mutation.operation === 'delete') {
-      if (baseline[id] === undefined) delete mutations[id];
+      // Keep explicitly authorized deletions until Firestore atomically writes
+      // the deletion and tombstone, even if the local baseline lacks the ID.
       return;
     }
     if (mutation.data !== undefined && baseline[id] === fingerprint(mutation.data)) delete mutations[id];
