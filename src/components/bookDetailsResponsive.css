@@ -224,3 +224,34 @@
     scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom));
   }
 }
+
+/* Portrait: three independently fixed controls cannot share the same bottom
+   coordinate. Give catalog/LCCN a dedicated lower row and put the finish
+   planner above them, while reserving enough scroll clearance for the form. */
+@media (orientation: portrait) and (max-width: 639px) {
+  .book-details-modal-host > button[aria-label^='Add LCCN'],
+  .book-details-modal-host > button[aria-label^='Edit LCCN'],
+  .book-details-modal-host > button[aria-label^='Add LCCN / LOC'],
+  .book-details-modal-host > button[aria-label^='Edit LCCN / LOC'] {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom)) !important;
+    left: max(0.75rem, env(safe-area-inset-left)) !important;
+    max-width: calc(50vw - 1rem);
+  }
+  .book-details-modal-host > button[aria-label='Share catalog details'] {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom)) !important;
+    right: max(0.75rem, env(safe-area-inset-right)) !important;
+    max-width: calc(50vw - 1rem);
+  }
+  .book-details-modal-host > button[aria-label^='Set a finish-by date'],
+  .book-details-modal-host > button[aria-label^='Finish by'],
+  .book-details-modal-host > button[aria-label^='Finished on time'],
+  .book-details-modal-host > button[aria-label^='Deadline passed'],
+  .book-details-modal-host > button[aria-label^='Add a due date'] {
+    bottom: calc(4.25rem + env(safe-area-inset-bottom)) !important;
+    max-width: calc(100vw - 1.5rem);
+  }
+  .book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
+    padding-bottom: calc(11rem + env(safe-area-inset-bottom)) !important;
+    scroll-padding-bottom: calc(11rem + env(safe-area-inset-bottom));
+  }
+}
