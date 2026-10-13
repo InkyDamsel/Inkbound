@@ -317,6 +317,21 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setCameraActive(false);
   };
 
+  // Mobile WebViews require audio to be unlocked during a user gesture, before
+  // asynchronous barcode detection/catalog lookup completes.
+  const primeScannerAudio = () => {
+    try {
+      const AudioContextClass = window.AudioContext
+        ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = scannerAudioContextRef.current ?? new AudioContextClass();
+      scannerAudioContextRef.current = context;
+      if (context.state === 'suspended') void context.resume().catch(() => undefined);
+    } catch {
+      // Audio availability must never prevent scanning.
+    }
+  };
+
   const playScannerSuccessFeedback = async () => {
     try {
       const AudioContextClass = window.AudioContext
@@ -405,6 +420,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   const startCamera = async () => {
+    primeScannerAudio();
     setScannerError(null);
     setScannerMessage(null);
 
@@ -732,7 +748,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         <div className="mt-6 grid min-w-0 grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
           <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
-          <button type="button" onClick={() => { setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
+          <button type="button" onClick={() => { primeScannerAudio(); setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
           <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
         </div>
 
@@ -909,7 +925,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 </div>
               )}
 
-              <form onSubmit={(event) => { event.preventDefault(); void lookupScannedIsbn(manualIsbn); }} className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <form onSubmit={(event) => { event.preventDefault(); primeScannerAudio(); void lookupScannedIsbn(manualIsbn); }} className="mt-4 flex flex-col gap-2 sm:flex-row">
                 <input value={manualIsbn} onChange={(event) => setManualIsbn(event.target.value)} inputMode="numeric" placeholder="Or enter an ISBN" className="inkbound-select min-h-11 min-w-0 flex-1" />
                 <button type="submit" disabled={!manualIsbn.trim() || scannerBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
               </form>
