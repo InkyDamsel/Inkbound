@@ -52,6 +52,7 @@ type BookDetailsModalProps = React.ComponentProps<typeof BookDetailsModalCore> &
 export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   const [seriesHeaderTarget, setSeriesHeaderTarget] = useState<HTMLElement | null>(null);
   const [tagPickerTarget, setTagPickerTarget] = useState<HTMLElement | null>(null);
+  const [bottomToolbarTarget, setBottomToolbarTarget] = useState<HTMLElement | null>(null);
   const normalizedBook = useMemo(
     () => props.book ? normalizeBookIdentifiers(props.book) : null,
     [props.book],
@@ -102,11 +103,14 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
     if (!displayBook) {
       setSeriesHeaderTarget(null);
       setTagPickerTarget(null);
+      setBottomToolbarTarget(null);
       return;
     }
     const host = document.querySelector('.book-details-modal-host');
     const header = host?.querySelector("section[role='dialog'] > header");
     setSeriesHeaderTarget(header instanceof HTMLElement ? header : null);
+    const footer = host?.querySelector('.book-details-bottom-toolbar');
+    setBottomToolbarTarget(footer instanceof HTMLElement ? footer : null);
 
     const labels = Array.from(host?.querySelectorAll("section[role='dialog'] label") ?? []);
     const tagsLabel = labels.find((label) => label.textContent?.trim().startsWith('Tags'));
@@ -207,10 +211,12 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
         book={displayBook}
         onUpdateBook={handleUpdateBook}
       />
-      {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
-      {normalizedBook && <EditionLccnControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
-      {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
-      {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
+      {bottomToolbarTarget ? createPortal(<>
+        {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
+        {normalizedBook && <EditionLccnControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
+        {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
+        {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
+      </>, bottomToolbarTarget) : null}
       {seriesShortcut}
       {tagPicker}
     </div>
