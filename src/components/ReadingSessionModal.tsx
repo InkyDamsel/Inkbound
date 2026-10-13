@@ -386,7 +386,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
   if (!selectedBook) {
     return (
       <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4">
-        <section className="relative w-full max-w-lg rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] p-6 text-center shadow-2xl sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
+        <section className="inkbound-modal-surface relative w-full max-w-lg rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] p-6 text-center shadow-2xl sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
           <button type="button" onClick={onClose} className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close reading session"><X className="h-5 w-5" /></button>
           <Clock className="mx-auto h-8 w-8 text-[#e5c158]" />
           <h3 id="reading-session-title" className="mt-3 font-serif text-2xl font-bold text-[#f4efe6]">No books currently being read</h3>
