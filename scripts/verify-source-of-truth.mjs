@@ -546,9 +546,16 @@ if (!fullReconciliation.includes('mergeIncomingBookLoanState')) {
 }
 
 const checkpointSync = read('src/features/sync/LibrarySyncCheckpointBridge.tsx');
-for (const required of ['checkpoint.direction === \'grow\'', 'uploadedBookCount >= checkpoint.expectedBookCount', 'uploadedBookCount === checkpoint.expectedBookCount']) {
+for (const required of [
+  "checkpoint.direction === 'grow'",
+  "checkpoint.direction === 'shrink'",
+  'localIds.size === cloudIds.size',
+  '[...localIds].every((id) => cloudIds.has(id))',
+  'expectedBookCount: complete ? uploadedBookCount : checkpoint.expectedBookCount',
+  'verified.matches',
+]) {
   if (!checkpointSync.includes(required)) {
-    violations.push(`LibrarySyncCheckpointBridge.tsx: count verification must preserve safe growth/shrink behavior (${required})`);
+    violations.push(`LibrarySyncCheckpointBridge.tsx: checkpoint completion must verify cloud/local book IDs and only rebase an exactly verified inventory (${required})`);
   }
 }
 if (!checkpointSync.includes('subscribeToRuntimeResume')) {
