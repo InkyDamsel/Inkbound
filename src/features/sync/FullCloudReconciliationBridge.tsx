@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -403,9 +404,46 @@ export const FullCloudReconciliationBridge: React.FC<{ onComplete: () => void }>
         ]);
         if (disposed) return;
 
+        // A delete can leave a stale physical cloud document beside its tombstone.
+        // Remove ONLY records with an explicit, newer server-confirmed tombstone;
+        // never infer deletion from a missing local ID or a count difference.
+        const reconciledBookIds = snapshotIds(nextBooks);
+        const reconciledSessionIds = snapshotIds(nextSessions);
+        const pruneTombstonedRecords = async <T extends { id: string }>(
+          kind: RecordKind,
+          records: Array<CloudRecord<T>>,
+          deletionRecords: TombstoneRecord[],
+          expectedIds: ReadonlySet<string>,
+          pendingMutations: Record<string, RecordMutation<T>>,
+        ) => {
+          const latestTombstone = new Map<string, TombstoneRecord>();
+          deletionRecords.forEach((record) => {
+            const id = record.recordId?.trim();
+            if (!id || !record.deletedAt) return;
+            const previous = latestTombstone.get(id);
+            if (!previous || (previous.deletedAt?.toMillis() ?? 0) < record.deletedAt.toMillis()) latestTombstone.set(id, record);
+          });
+          const stale = records.filter((record) => {
+            const id = record.data.id;
+            const tombstone = latestTombstone.get(id);
+            return !expectedIds.has(id) && !pendingMutations[id] && Boolean(tombstone)
+              && shouldApplyRemoteTombstone({
+                tombstoneServerMillis: tombstone!.deletedAt!.toMillis(),
+                latestRecordServerMillis: record.updatedAt?.toMillis() ?? 0,
+              });
+          });
+          await Promise.all(stale.map((record) => deleteDoc(doc(db!, 'users', uid, kind, record.data.id))));
+          return stale.length;
+        };
+        const [prunedBooks, prunedSessions] = await Promise.all([
+          pruneTombstonedRecords('books', cloudBooks, bookTombstones, reconciledBookIds, pending.books),
+          pruneTombstonedRecords('sessions', cloudSessions, sessionTombstones, reconciledSessionIds, pending.sessions),
+        ]);
+        if (disposed) return;
+
         const [verifiedBookSnapshot, verifiedSessionSnapshot] = await Promise.all([
-          uploadedBooks > 0 ? getDocs(collection(db!, 'users', uid, 'books')) : Promise.resolve(null),
-          uploadedSessions > 0 ? getDocs(collection(db!, 'users', uid, 'sessions')) : Promise.resolve(null),
+          uploadedBooks > 0 || prunedBooks > 0 ? getDocs(collection(db!, 'users', uid, 'books')) : Promise.resolve(null),
+          uploadedSessions > 0 || prunedSessions > 0 ? getDocs(collection(db!, 'users', uid, 'sessions')) : Promise.resolve(null),
         ]);
         if (disposed) return;
 
