@@ -8,7 +8,7 @@ import {
   readLibrarySeriesFocusBookId,
   SERIES_FOCUS_BOOK_STORAGE_KEY,
 } from '../../features/library/libraryNavigation';
-import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
+import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { recentBookSortMillis } from '../../features/library/libraryRecentSort';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { INKBOUND_RUNTIME_STORAGE_REFRESH_EVENT } from '../../platform/runtimeStorage';
@@ -311,8 +311,9 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
 
   return (
     <div className="space-y-5" data-series-library-start>
-      <section className="inkbound-panel rounded-3xl p-4 sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <details className="inkbound-panel rounded-3xl p-4 sm:p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--ink-gold)]">Series tools — search, sort & create</summary>
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="inkbound-kicker">Series</p>
             <h2 className="font-serif text-2xl text-[var(--ink-ivory)]">Your reading worlds</h2>
@@ -337,7 +338,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
             <button type="button" onClick={openCreate} className="quiet-shelf-primary-action shrink-0"><Plus className="h-4 w-4" />Create Series</button>
           </div>
         </div>
-      </section>
+      </details>
 
       {series.length === 0 ? (
         <section className="inkbound-panel rounded-3xl p-6 text-center sm:p-10">
