@@ -6,6 +6,7 @@ import { buildCatalogContributionFields, submitCatalogContribution } from '../..
 interface CatalogContributionPanelProps {
   book: UserBookRecord;
   onUpdateBook: (updatedBook: UserBookRecord) => void;
+  nativeDialogLayout?: boolean;
 }
 
 function contributionErrorMessage(error: unknown): string {
@@ -25,7 +26,7 @@ function contributionErrorMessage(error: unknown): string {
 
 const cleanAsin = (value: string) => value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 10);
 
-export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> = ({ book, onUpdateBook }) => {
+export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> = ({ book, onUpdateBook, nativeDialogLayout = false }) => {
   const activeEdition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
   const [asin, setAsin] = useState(activeEdition?.asin ?? '');
   const [submitting, setSubmitting] = useState(false);
@@ -113,7 +114,7 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
                 {fields.pageCount && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.pageCount} pages</span>}
                 {fields.format && <span className="rounded-full border border-[var(--ink-border)] px-2.5 py-1">{fields.format}</span>}
               </div>
-              <button type="button" onClick={() => void submit()} disabled={submitting || !asinIsValid} className="quiet-shelf-secondary-action mt-4 justify-center disabled:opacity-40">
+              <button type="button" onClick={() => void submit()} disabled={submitting || !asinIsValid} className={`quiet-shelf-secondary-action mt-4 justify-center disabled:opacity-40 ${nativeDialogLayout ? "sticky bottom-0 z-10 w-full border border-[var(--ink-mauve)]/50 bg-[#2c1b32] py-3 shadow-[0_-12px_18px_#17101b]" : ""}`}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 {submitting ? 'Sending…' : 'Share edition details for review'}
               </button>
