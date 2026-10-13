@@ -2,6 +2,8 @@ import React, { useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, CheckCircle2, Clock3, Cloud, Database, HardDrive, Image, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
+import { getRuntimeStorage } from '../../platform/runtimeStorage';
+import { SYNC_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { AdminSelectiveRecoveryPanel } from './AdminSelectiveRecoveryPanel';
 
 interface DataIntegrityReport {
@@ -26,6 +28,15 @@ interface DataIntegrityReport {
     photoMemoryRecords: number;
     exactFileCountEnumerated: boolean;
   };
+}
+
+interface LibraryInventoryAudit {
+  generatedAt: string; deviceCount: number; cloudCount: number;
+  checkpointExpected: number | null; checkpointStatus: string | null;
+  cloudOnly: Array<{ id: string; title: string; tombstoned: boolean; tombstoneAt: string | null }>;
+  localOnly: Array<{ id: string; title: string }>;
+  tombstonedButPresent: Array<{ id: string; title: string; tombstoneAt: string }>;
+  note: string;
 }
 
 interface RecoveryPointSummary {
@@ -61,6 +72,30 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
   const [recoveryConfirmation, setRecoveryConfirmation] = useState('');
   const [restoring, setRestoring] = useState(false);
   const [recoveryStatus, setRecoveryStatus] = useState('');
+  const [inventoryAudit, setInventoryAudit] = useState<LibraryInventoryAudit | null>(null);
+  const [inventoryAuditError, setInventoryAuditError] = useState('');
+  const [inventoryAuditing, setInventoryAuditing] = useState(false);
+  const runInventoryAudit = async () => {
+    if (!functions || !targetUserId || inventoryAuditing) return;
+    setInventoryAuditing(true); setInventoryAudit(null); setInventoryAuditError('');
+    try {
+      const raw = getRuntimeStorage().getItem(SYNC_STORAGE_KEYS.books);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) throw new Error('Local library is not readable on this device.');
+      const localBooks = parsed.map((item: unknown) => {
+        const book = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+        const work = book.work && typeof book.work === 'object' ? book.work as Record<string, unknown> : {};
+        return { id: typeof book.id === 'string' ? book.id : '', title: String(work.title ?? book.title ?? '') };
+      });
+      const audit = httpsCallable<{ targetUserId: string; localBooks: Array<{ id: string; title: string }> }, LibraryInventoryAudit>(functions, 'auditAdminLibraryInventory');
+      const result = await audit({ targetUserId, localBooks });
+      setInventoryAudit(result.data);
+    } catch (error) {
+      setInventoryAuditError(error instanceof Error ? error.message : 'Inventory audit failed.');
+    } finally {
+      setInventoryAuditing(false);
+    }
+  };
 
   const runIntegrityCheckFromClick = async () => {
     if (!targetUserId) { updateDataSafetyState({ error: 'Select a reader before running an integrity check.' }); return; }
@@ -135,6 +170,27 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
 
       {!targetUserId && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Select a reader above to inspect their saved library and recovery history.</p>}
       {loading && inspectedUserId === targetUserId && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Checking the reader’s saved library and recovery points now…</p>}
+      <section className="mt-4 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h3 className="font-semibold text-[var(--ink-ivory)]">Read-only library inventory audit</h3><p className="mt-1 text-xs text-[var(--ink-muted)]">Compares this device with cloud record IDs and deletion evidence. Does not modify any books.</p></div>
+          <button type="button" className="quiet-shelf-secondary-action" disabled={!targetUserId || inventoryAuditing} onClick={() => void runInventoryAudit()}>{inventoryAuditing ? 'Comparing records…' : 'Compare book IDs'}</button>
+        </div>
+        {inventoryAuditError && <p role="alert" className="mt-3 text-sm text-rose-300">{inventoryAuditError}</p>}
+        {inventoryAudit && <div className="mt-4 space-y-3 text-sm text-[var(--ink-muted)]">
+          <p>Device: <strong>{inventoryAudit.deviceCount.toLocaleString()}</strong> · Cloud: <strong>{inventoryAudit.cloudCount.toLocaleString()}</strong> · Saved checkpoint: <strong>{inventoryAudit.checkpointExpected?.toLocaleString() ?? 'None'}</strong> ({inventoryAudit.checkpointStatus ?? 'unknown'})</p>
+          {([
+            ['Cloud-only records', inventoryAudit.cloudOnly],
+            ['Device-only records', inventoryAudit.localOnly],
+            ['Cloud records with deletion tombstones', inventoryAudit.tombstonedButPresent],
+          ] as const).map(([heading, records]) => <div key={heading}>
+            <h4 className="font-semibold text-[var(--ink-ivory)]">{heading}: {records.length}</h4>
+            {records.length > 0 && <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-[var(--ink-border-subtle)] p-3">
+              {records.map((book) => <p key={book.id} className="mb-2 break-all">{book.title || 'Untitled'} · {book.id}{'tombstoned' in book && book.tombstoned ? ' · deletion tombstone exists' : ''}</p>)}
+            </div>}
+          </div>)}
+          <p className="text-xs">{inventoryAudit.note}</p>
+        </div>}
+      </section>
       {needsManualInspection && <p className="mt-5 rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-4 text-sm text-[var(--ink-muted)]">Ready to inspect this reader. No integrity or recovery request has been sent.</p>}
       {currentError && <p className="mt-5 rounded-2xl border border-[#c97b7b]/35 bg-[#c97b7b]/5 p-4 text-sm text-[#e9b2b2]">Data Safety is temporarily unavailable. Administration remains usable. {currentError}</p>}
 
