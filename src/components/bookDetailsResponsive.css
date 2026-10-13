@@ -255,3 +255,55 @@
     scroll-padding-bottom: calc(11rem + env(safe-area-inset-bottom));
   }
 }
+
+/* Single in-flow toolbar: no viewport-fixed buttons, no overlap with the editor.
+   All companion controls mount here through the Book Details wrapper. */
+.book-details-modal-host .book-details-bottom-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+  min-height: 3.5rem;
+  max-height: min(30dvh, 8rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+.book-details-modal-host .book-details-bottom-toolbar > button {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  flex: 1 1 auto;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  min-height: 44px;
+  margin: 0 !important;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem !important;
+  font-size: 0.7rem;
+}
+.book-details-modal-host .book-details-bottom-toolbar > button span {
+  white-space: normal;
+}
+.book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
+  padding-bottom: 1rem !important;
+  scroll-padding-bottom: 1rem;
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  .book-details-modal-host .book-details-bottom-toolbar {
+    flex-wrap: nowrap;
+    max-height: 3.75rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .book-details-modal-host .book-details-bottom-toolbar > button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
+    padding-bottom: 1rem !important;
+    scroll-padding-bottom: 1rem;
+  }
+}
