@@ -33,7 +33,7 @@ interface DataIntegrityReport {
 interface LibraryInventoryAudit {
   generatedAt: string; deviceCount: number; cloudCount: number;
   checkpointExpected: number | null; checkpointStatus: string | null;
-  cloudOnly: Array<{ id: string; title: string; tombstoned: boolean; tombstoneAt: string | null }>;
+  cloudOnly: Array<{ id: string; title: string; updatedAt: string | null; tombstoned: boolean; tombstoneAt: string | null }>;
   localOnly: Array<{ id: string; title: string }>;
   tombstonedButPresent: Array<{ id: string; title: string; tombstoneAt: string }>;
   note: string;
@@ -76,21 +76,25 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
   const [inventoryAuditError, setInventoryAuditError] = useState('');
   const [inventoryAuditing, setInventoryAuditing] = useState(false);
   const [orphanConfirmation, setOrphanConfirmation] = useState('');
+  const [selectedOrphanId, setSelectedOrphanId] = useState<string | null>(null);
+  const [auditedLocalIds, setAuditedLocalIds] = useState<string[]>([]);
   const [orphanRemoving, setOrphanRemoving] = useState(false);
   const [orphanResult, setOrphanResult] = useState('');
-  const removeOrphanedHardcover = async () => {
-    if (!functions || !targetUserId || orphanRemoving || orphanConfirmation !== 'DELETE HARDCOVER') return;
+  const removeSelectedCloudOnlyBook = async () => {
+    const selected = inventoryAudit?.cloudOnly.find((book) => book.id === selectedOrphanId);
+    if (!functions || !targetUserId || orphanRemoving || !selected || orphanConfirmation !== `DELETE ${selected.id}`) return;
     setOrphanRemoving(true); setOrphanResult('');
     try {
-      const cleanup = httpsCallable<{ targetUserId: string; recordId: string; confirmation: string }, { removed: boolean; alreadyAbsent: boolean }>(functions, 'removeVerifiedOrphanedBadBishopHardcover');
+      const cleanup = httpsCallable<{
+        targetUserId: string; recordId: string; confirmation: string;
+        localBookIds: string[]; expectedUpdatedAt: string | null;
+      }, { removed: boolean; alreadyAbsent: boolean }>(functions, 'removeAdminCloudOnlyBook');
       const result = await cleanup({
-        targetUserId,
-        recordId: 'book-import-import-1058-bad-bishop-standard-edition-',
-        confirmation: orphanConfirmation,
+        targetUserId, recordId: selected.id, confirmation: orphanConfirmation,
+        localBookIds: auditedLocalIds, expectedUpdatedAt: selected.updatedAt,
       });
-      setOrphanResult(result.data.removed ? 'Hardcover removed with deletion tombstone. Rerun the inventory audit to confirm.' : 'Hardcover was already absent.');
-      setOrphanConfirmation('');
-      setInventoryAudit(null);
+      setOrphanResult(result.data.removed ? 'Selected cloud-only record removed with deletion tombstone. Run Compare book IDs again.' : 'Selected record was already absent.');
+      setOrphanConfirmation(''); setSelectedOrphanId(null); setInventoryAudit(null);
       await runIntegrityCheckFromClick();
     } catch (error) {
       setOrphanResult(error instanceof Error ? error.message : 'Cleanup failed; no confirmation of removal.');
@@ -98,7 +102,7 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
   };
   const runInventoryAudit = async () => {
     if (!functions || !targetUserId || inventoryAuditing) return;
-    setInventoryAuditing(true); setInventoryAudit(null); setInventoryAuditError('');
+    setInventoryAuditing(true); setInventoryAudit(null); setInventoryAuditError(''); setSelectedOrphanId(null); setOrphanConfirmation(''); setAuditedLocalIds([]);
     try {
       const raw = getRuntimeStorage().getItem(SYNC_STORAGE_KEYS.books);
       const parsed: unknown = raw ? JSON.parse(raw) : [];
@@ -110,6 +114,7 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
       });
       const audit = httpsCallable<{ targetUserId: string; localBooks: Array<{ id: string; title: string }> }, LibraryInventoryAudit>(functions, 'auditAdminLibraryInventory');
       const result = await audit({ targetUserId, localBooks });
+      setAuditedLocalIds(localBooks.map((book) => book.id).filter(Boolean));
       setInventoryAudit(result.data);
     } catch (error) {
       setInventoryAuditError(error instanceof Error ? error.message : 'Inventory audit failed.');
@@ -209,12 +214,20 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
               {records.map((book) => <p key={book.id} className="mb-2 break-all">{book.title || 'Untitled'} · {book.id}{'tombstoned' in book && book.tombstoned ? ' · deletion tombstone exists' : ''}</p>)}
             </div>}
           </div>)}
-          {inventoryAudit.cloudOnly.some((book) => book.id === 'book-import-import-1058-bad-bishop-standard-edition-') && <div className="rounded-xl border border-amber-600/50 p-3 space-y-2">
-            <h4 className="font-semibold text-[var(--ink-ivory)]">Verified orphan: Bad Bishop hardcover</h4>
-            <p className="text-xs">Owner-only, exact-record cleanup. Writes a deletion tombstone and removes this hardcover document atomically. The ebook and all other records are untouched.</p>
-            <label className="block text-xs" htmlFor="orphan-delete-confirmation">Type DELETE HARDCOVER to confirm</label>
-            <input id="orphan-delete-confirmation" className="w-full rounded-lg border border-[var(--ink-border-subtle)] bg-transparent p-2" value={orphanConfirmation} onChange={(event) => setOrphanConfirmation(event.target.value)} autoComplete="off" />
-            <button type="button" className="quiet-shelf-secondary-action" disabled={orphanConfirmation !== 'DELETE HARDCOVER' || orphanRemoving} onClick={() => void removeOrphanedHardcover()}>{orphanRemoving ? 'Removing verified hardcover…' : 'Remove verified hardcover only'}</button>
+          {inventoryAudit.cloudOnly.length > 0 && <div className="rounded-xl border border-amber-600/50 p-3 space-y-2">
+            <h4 className="font-semibold text-[var(--ink-ivory)]">Owner-only cloud record cleanup</h4>
+            <p className="text-xs">Select a cloud-only record after confirming it was intentionally deleted. Other devices may contain legitimate books absent from this device. This action writes a tombstone and removes only the selected cloud document.</p>
+            <label className="block text-xs" htmlFor="cloud-only-record">Cloud-only record</label>
+            <select id="cloud-only-record" className="w-full rounded-lg border border-[var(--ink-border-subtle)] bg-transparent p-2" value={selectedOrphanId ?? ''} onChange={(event) => { setSelectedOrphanId(event.target.value || null); setOrphanConfirmation(''); }}>
+              <option value="">Select a record</option>
+              {inventoryAudit.cloudOnly.map((book) => <option key={book.id} value={book.id}>{book.title || 'Untitled'} — {book.id}</option>)}
+            </select>
+            {selectedOrphanId && <>
+              <p className="break-all text-xs">Selected record: {selectedOrphanId}</p>
+              <label className="block text-xs" htmlFor="orphan-delete-confirmation">Type DELETE {selectedOrphanId} to confirm</label>
+              <input id="orphan-delete-confirmation" className="w-full rounded-lg border border-[var(--ink-border-subtle)] bg-transparent p-2" value={orphanConfirmation} onChange={(event) => setOrphanConfirmation(event.target.value)} autoComplete="off" />
+              <button type="button" className="quiet-shelf-secondary-action" disabled={orphanConfirmation !== `DELETE ${selectedOrphanId}` || orphanRemoving} onClick={() => void removeSelectedCloudOnlyBook()}>{orphanRemoving ? 'Removing selected record…' : 'Remove selected cloud-only record'}</button>
+            </>}
           </div>}
           {orphanResult && <p role="status">{orphanResult}</p>}
           <p className="text-xs">{inventoryAudit.note}</p>
