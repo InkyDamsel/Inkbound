@@ -75,6 +75,27 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
   const [inventoryAudit, setInventoryAudit] = useState<LibraryInventoryAudit | null>(null);
   const [inventoryAuditError, setInventoryAuditError] = useState('');
   const [inventoryAuditing, setInventoryAuditing] = useState(false);
+  const [orphanConfirmation, setOrphanConfirmation] = useState('');
+  const [orphanRemoving, setOrphanRemoving] = useState(false);
+  const [orphanResult, setOrphanResult] = useState('');
+  const removeOrphanedHardcover = async () => {
+    if (!functions || !targetUserId || orphanRemoving || orphanConfirmation !== 'DELETE HARDCOVER') return;
+    setOrphanRemoving(true); setOrphanResult('');
+    try {
+      const cleanup = httpsCallable<{ targetUserId: string; recordId: string; confirmation: string }, { removed: boolean; alreadyAbsent: boolean }>(functions, 'removeVerifiedOrphanedBadBishopHardcover');
+      const result = await cleanup({
+        targetUserId,
+        recordId: 'book-import-import-1058-bad-bishop-standard-edition-',
+        confirmation: orphanConfirmation,
+      });
+      setOrphanResult(result.data.removed ? 'Hardcover removed with deletion tombstone. Rerun the inventory audit to confirm.' : 'Hardcover was already absent.');
+      setOrphanConfirmation('');
+      setInventoryAudit(null);
+      await runIntegrityCheckFromClick();
+    } catch (error) {
+      setOrphanResult(error instanceof Error ? error.message : 'Cleanup failed; no confirmation of removal.');
+    } finally { setOrphanRemoving(false); }
+  };
   const runInventoryAudit = async () => {
     if (!functions || !targetUserId || inventoryAuditing) return;
     setInventoryAuditing(true); setInventoryAudit(null); setInventoryAuditError('');
@@ -188,6 +209,14 @@ export const AdminDataSafetyPanel: React.FC<AdminDataSafetyPanelProps> = ({ targ
               {records.map((book) => <p key={book.id} className="mb-2 break-all">{book.title || 'Untitled'} · {book.id}{'tombstoned' in book && book.tombstoned ? ' · deletion tombstone exists' : ''}</p>)}
             </div>}
           </div>)}
+          {inventoryAudit.cloudOnly.some((book) => book.id === 'book-import-import-1058-bad-bishop-standard-edition-') && <div className="rounded-xl border border-amber-600/50 p-3 space-y-2">
+            <h4 className="font-semibold text-[var(--ink-ivory)]">Verified orphan: Bad Bishop hardcover</h4>
+            <p className="text-xs">Owner-only, exact-record cleanup. Writes a deletion tombstone and removes this hardcover document atomically. The ebook and all other records are untouched.</p>
+            <label className="block text-xs" htmlFor="orphan-delete-confirmation">Type DELETE HARDCOVER to confirm</label>
+            <input id="orphan-delete-confirmation" className="w-full rounded-lg border border-[var(--ink-border-subtle)] bg-transparent p-2" value={orphanConfirmation} onChange={(event) => setOrphanConfirmation(event.target.value)} autoComplete="off" />
+            <button type="button" className="quiet-shelf-secondary-action" disabled={orphanConfirmation !== 'DELETE HARDCOVER' || orphanRemoving} onClick={() => void removeOrphanedHardcover()}>{orphanRemoving ? 'Removing verified hardcover…' : 'Remove verified hardcover only'}</button>
+          </div>}
+          {orphanResult && <p role="status">{orphanResult}</p>}
           <p className="text-xs">{inventoryAudit.note}</p>
         </div>}
       </section>
