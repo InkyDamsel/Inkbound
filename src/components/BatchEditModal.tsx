@@ -163,7 +163,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title">
-      <div className="relative flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl">
+      <div className="relative flex min-h-0 max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl">
         <header className="flex items-center justify-between border-b border-[#3d2448] p-5 sm:p-6 sm:pb-4">
           <div><span className="rounded bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#120817]">Batch Edit</span><h3 id="batch-edit-title" className="mt-2 font-serif text-xl font-bold text-[#f4efe6]">{selectedBooks.length} Items Selected</h3></div>
           <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-2 text-stone-400 hover:text-white" aria-label="Close batch edit"><X className="h-5 w-5" /></button>
@@ -174,7 +174,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
           {selectedBooks.length > 25 && <div className="grid h-16 min-w-12 place-items-center rounded border border-[#3d2448] bg-[#120817] px-2 text-[10px] font-bold text-stone-400">+{selectedBooks.length - 25}</div>}
         </div>
 
-        <div className="flex-1 space-y-6 overflow-y-auto p-5 text-xs sm:p-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5 text-xs sm:p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {field('Reading Status', <select value={status} onChange={(event) => setStatus(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{status === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(READING_STATUS_OPTIONS)}{customReadingStatuses.length > 0 && <optgroup label="Custom statuses">{customReadingStatuses.map((customStatus) => <option key={customStatus.id} value={`custom:${customStatus.id}`}>{customStatus.name}</option>)}</optgroup>}</select>)}
             {field('Ownership', <select value={ownership} onChange={(event) => setOwnership(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{ownership === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom'))}{customOwnershipCategories.length > 0 && <optgroup label="Custom categories">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>)}
