@@ -817,7 +817,7 @@ export const auditAdminLibraryInventory = onCall({
 export const removeAdminCloudOnlyBook = onCall({
   enforceAppCheck: ENFORCE_APP_CHECK,
 }, async (request) => {
-  const admin = await requireAdmin(request, ['owner']);
+  const { auth } = await requireAdmin(request, ['owner']);
   const input = request.data as {
     targetUserId?: unknown; recordId?: unknown; confirmation?: unknown;
     localBookIds?: unknown; expectedUpdatedAt?: unknown;
@@ -854,7 +854,7 @@ export const removeAdminCloudOnlyBook = onCall({
       kind: 'books', recordId, deletedAt: FieldValue.serverTimestamp(),
       clientUpdatedAt: new Date().toISOString(),
       reason: 'owner-confirmed-cloud-only-record-cleanup',
-      performedBy: admin.uid,
+      performedBy: auth.uid,
     }, { merge: true });
     transaction.delete(bookRef);
     return { removed: true, alreadyAbsent: false };
