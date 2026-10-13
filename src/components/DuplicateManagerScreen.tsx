@@ -151,7 +151,21 @@ const buildDuplicateCandidates = (books: UserBookRecord[]): DuplicateCandidate[]
     ids.add(book.id);
     isbnMap.set(isbn, ids);
   }));
-  isbnMap.forEach((ids, isbn) => { if (ids.size > 1) candidateSets.push({ reason: 'isbn', key: isbn, ids: [...ids] }); });
+  isbnMap.forEach((ids, isbn) => {
+    if (ids.size < 2) return;
+    // Identical ISBN metadata can be incorrectly attached to different formats.
+    // A hardcover and an ebook are not safe automatic duplicate candidates.
+    const byFormat = new Map<string, string[]>();
+    [...ids].forEach((id) => {
+      const book = books.find((item) => item.id === id);
+      if (!book) return;
+      const format = activeEdition(book)?.format ?? 'unknown';
+      byFormat.set(format, [...(byFormat.get(format) ?? []), id]);
+    });
+    byFormat.forEach((formatIds, format) => {
+      if (formatIds.length > 1) candidateSets.push({ reason: 'isbn', key: `${isbn}::${format}`, ids: formatIds });
+    });
+  });
 
   const titleAuthorMap = new Map<string, Set<string>>();
   books.forEach((book) => {
@@ -163,7 +177,27 @@ const buildDuplicateCandidates = (books: UserBookRecord[]): DuplicateCandidate[]
     ids.add(book.id);
     titleAuthorMap.set(key, ids);
   });
-  titleAuthorMap.forEach((ids, key) => { if (ids.size > 1) candidateSets.push({ reason: 'title-author', key, ids: [...ids] }); });
+  titleAuthorMap.forEach((ids, key) => {
+    if (ids.size < 2) return;
+    const byFormat = new Map<string, UserBookRecord[]>();
+    [...ids].forEach((id) => {
+      const book = books.find((item) => item.id === id);
+      if (!book) return;
+      const format = activeEdition(book)?.format ?? 'unknown';
+      byFormat.set(format, [...(byFormat.get(format) ?? []), book]);
+    });
+    byFormat.forEach((sameFormat, format) => {
+      const compatible = sameFormat.filter((book) => {
+        const ownIsbns = allBookIsbns(book);
+        return sameFormat.some((other) => other.id !== book.id &&
+          (ownIsbns.length === 0 || allBookIsbns(other).length === 0 ||
+            ownIsbns.some((isbn) => allBookIsbns(other).includes(isbn))));
+      });
+      if (compatible.length > 1) candidateSets.push({
+        reason: 'title-author', key: `${key}::${format}`, ids: compatible.map((book) => book.id),
+      });
+    });
+  });
   return candidateSets;
 };
 
@@ -255,7 +289,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
   };
 
   const mergeGroup = (group: DuplicateGroup) => {
-    const keepBookId = keeperByGroup[group.id] ?? group.books[0].id;
+    const keepBookId = keeperByGroup[group.id] ?? group.books.find((book) => getBookReadingState(book).status === 'finished')?.id ?? group.books[0].id;
     const keeper = group.books.find((book) => book.id === keepBookId) ?? group.books[0];
     const removeBookIds = group.books.filter((book) => book.id !== keeper.id).map((book) => book.id);
     onMergeGroup({ keepBookId: keeper.id, removeBookIds, mergedBook: mergeDuplicateBooks(keeper, group.books) });
@@ -319,7 +353,7 @@ export const DuplicateManagerScreen: React.FC<DuplicateManagerScreenProps> = ({ 
         <div className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search duplicate groups by title or author" className="min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pl-11 pr-4 text-sm text-[var(--ink-ivory)] outline-none" /></div>
 
         {visibleGroups.length === 0 ? <section className="rounded-3xl border border-dashed border-[var(--ink-border)] p-10 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No duplicate groups to review</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">Your current library scan is clean, or the remaining groups were marked as separate books.</p></section> : <div className="space-y-5">{paginatedGroups.map((group) => {
-          const selectedKeeper = keeperByGroup[group.id] ?? group.books[0].id;
+          const selectedKeeper = keeperByGroup[group.id] ?? group.books.find((book) => getBookReadingState(book).status === 'finished')?.id ?? group.books[0].id;
           return <article key={group.id} className="inkbound-panel rounded-3xl p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><Copy className="h-4 w-4 shrink-0 text-[var(--ink-gold)]" /><h2 className="min-w-0 truncate font-serif text-xl font-bold text-[var(--ink-ivory)]">{group.books[0].work.title}</h2></div><p className="mt-1 text-xs text-[var(--ink-muted)]">{group.reason === 'isbn' ? 'Exact ISBN match' : 'Exact normalized title + author'} · {group.books.length} copies</p></div><div className="flex flex-col gap-2 min-[430px]:flex-row"><button type="button" onClick={() => ignoreGroup(group.id)} className="quiet-shelf-secondary-action justify-center">Not Duplicates</button><button type="button" onClick={() => mergeGroup(group)} className="quiet-shelf-primary-action justify-center"><Merge className="h-4 w-4" /> Merge Group</button></div></div>
             <div className="mt-5 grid gap-3 lg:grid-cols-2">{group.books.map((book) => {
