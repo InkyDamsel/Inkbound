@@ -309,3 +309,65 @@
 }
 
 .book-details-modal-host:not(.book-details-native) .book-details-bottom-toolbar { display: none !important; }
+
+/* Native footer layout owns the position of its buttons. This deliberately
+   overrides legacy fixed/left/right/translate utilities on all action triggers. */
+.book-details-modal-host.book-details-native .book-details-bottom-toolbar {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 3.75rem;
+  max-height: none;
+  overflow: visible;
+  padding: 0.5rem 0.65rem max(0.5rem, env(safe-area-inset-bottom));
+}
+.book-details-modal-host.book-details-native .book-details-bottom-toolbar > button {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  inset: auto !important;
+  translate: none !important;
+  transform: none !important;
+  display: inline-flex !important;
+  flex: none !important;
+  justify-self: stretch;
+  align-self: stretch;
+  justify-content: center;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 44px;
+  height: auto;
+  margin: 0 !important;
+  padding: 0.45rem 0.3rem !important;
+  border-radius: 0.75rem !important;
+  box-shadow: none;
+  font-size: 0.65rem !important;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal !important;
+}
+.book-details-modal-host.book-details-native .book-details-bottom-toolbar > button span {
+  min-width: 0;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  .book-details-modal-host.book-details-native .book-details-bottom-toolbar {
+    display: flex !important;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    max-height: 3.75rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .book-details-modal-host.book-details-native .book-details-bottom-toolbar > button {
+    flex: 1 0 0 !important;
+    width: auto !important;
+    min-width: 5.5rem !important;
+  }
+}
