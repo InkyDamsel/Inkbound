@@ -808,37 +808,53 @@ export const auditAdminLibraryInventory = onCall({
 });
 
 
-/** Owner-only, exact-record cleanup for the verified orphaned Bad Bishop hardcover.
- * Atomically writes deletion evidence and deletes the one cloud document.
- * No checkpoint, backup, other book, or admin data is changed.
+/**
+ * Owner-only cleanup of a cloud-only book discovered by a fresh inventory
+ * comparison. The supplied device inventory is evidence, not authorization
+ * to delete arbitrary records: the owner must confirm the exact record ID.
+ * Only the selected document and its deletion tombstone are written.
  */
-export const removeVerifiedOrphanedBadBishopHardcover = onCall({
+export const removeAdminCloudOnlyBook = onCall({
   enforceAppCheck: ENFORCE_APP_CHECK,
 }, async (request) => {
-  await requireAdmin(request, ['owner']);
-  const input = request.data as { targetUserId?: unknown; recordId?: unknown; confirmation?: unknown } | undefined;
+  const admin = await requireAdmin(request, ['owner']);
+  const input = request.data as {
+    targetUserId?: unknown; recordId?: unknown; confirmation?: unknown;
+    localBookIds?: unknown; expectedUpdatedAt?: unknown;
+  } | undefined;
   const uid = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
-  const recordId = 'book-import-import-1058-bad-bishop-standard-edition-';
-  if (!uid || uid.length > 128 || input?.recordId !== recordId || input?.confirmation !== 'DELETE HARDCOVER') {
-    throw new HttpsError('invalid-argument', 'Exact record and DELETE HARDCOVER confirmation are required.');
+  const recordId = typeof input?.recordId === 'string' ? input.recordId.trim() : '';
+  const ids = input?.localBookIds;
+  if (!uid || uid.length > 128 || !recordId || recordId.length > 256 || recordId.includes('/')
+      || !Array.isArray(ids) || ids.length < 1 || ids.length > 10000
+      || ids.some((id) => typeof id !== 'string' || !id || id.length > 256)
+      || input?.confirmation !== `DELETE ${recordId}`
+      || ids.includes(recordId)) {
+    throw new HttpsError('invalid-argument', 'A current device inventory and exact record ID confirmation are required.');
   }
   const store = getFirestore();
-  const bookRef = store.doc(`users/${uid}/books/${recordId}`);
-  const tombstoneRef = store.doc(`users/${uid}/syncTombstones/books_${recordId}`);
+  const user = store.doc(`users/${uid}`);
+  const bookRef = user.collection('books').doc(recordId);
+  const tombstoneRef = user.collection('syncTombstones').doc(`books_${recordId}`);
   const result = await store.runTransaction(async (transaction) => {
-    const bookSnapshot = await transaction.get(bookRef);
-    if (!bookSnapshot.exists) return { removed: false, alreadyAbsent: true };
-    const record = safeUnwrapRecord<StoredBook>(bookSnapshot.data() ?? {});
-    const editions = asRecordArray(record.editions);
-    const activeEdition = editions.find((edition) => edition.id === record.activeEditionId);
-    if (editions.length !== 1 || !activeEdition || normalizeText(activeEdition.format) !== 'hardcover') {
-      throw new HttpsError('failed-precondition', 'Record is not the single verified hardcover edition. No changes made.');
+    const snapshot = await transaction.get(bookRef);
+    if (!snapshot.exists) return { removed: false, alreadyAbsent: true };
+    const raw = snapshot.data() ?? {};
+    const currentUpdatedAt = timestampToIso(raw.updatedAt);
+    if (typeof input?.expectedUpdatedAt !== 'string' || input.expectedUpdatedAt !== currentUpdatedAt) {
+      throw new HttpsError('failed-precondition', 'Cloud record changed since the audit. Run the inventory audit again.');
     }
-    if (record.id !== recordId) throw new HttpsError('failed-precondition', 'Record ID mismatch. No changes made.');
+    const book = safeUnwrapRecord<StoredBook>(raw);
+    if (book.id !== recordId) {
+      throw new HttpsError('failed-precondition', 'Book ID mismatch. No changes made.');
+    }
+    // A cloud-only record may still be legitimate on another device.
+    // Require explicit owner selection; never delete automatically.
     transaction.set(tombstoneRef, {
       kind: 'books', recordId, deletedAt: FieldValue.serverTimestamp(),
       clientUpdatedAt: new Date().toISOString(),
-      reason: 'owner-verified-orphaned-hardcover-cleanup',
+      reason: 'owner-confirmed-cloud-only-record-cleanup',
+      performedBy: admin.uid,
     }, { merge: true });
     transaction.delete(bookRef);
     return { removed: true, alreadyAbsent: false };
