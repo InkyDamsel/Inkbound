@@ -34,6 +34,24 @@ export const isValidCatalogIsbn = (value: string): boolean => {
   return false;
 };
 
+export const selectCatalogIsbnFromBarcodes = (values: string[]): string | null => {
+  const valid = [...new Set(values.map(compactCatalogIsbn).filter(isValidCatalogIsbn))];
+  if (valid.length === 0) return null;
+  if (valid.length === 1) return valid[0];
+
+  // A printed ISBN-10 and its 978 ISBN-13 are the same edition identity.
+  // Prefer ISBN-13 so provider lookup has the strongest canonical identifier.
+  const families = valid.map((isbn) => new Set(equivalentCatalogIsbns(isbn)));
+  const firstFamily = families[0];
+  if (families.every((family) => [...family].some((isbn) => firstFamily.has(isbn)))) {
+    return valid.find((isbn) => isbn.length === 13) ?? valid[0];
+  }
+
+  // More than one unrelated valid ISBN is visible. Do not guess which book
+  // the user intended to scan.
+  return null;
+};
+
 export const equivalentCatalogIsbns = (value: string): string[] => {
   const isbn = compactCatalogIsbn(value);
   const results = new Set<string>();
