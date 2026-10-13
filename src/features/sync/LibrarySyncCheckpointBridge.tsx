@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import {
   collection,
   doc,
-  getCountFromServer,
   getDocs,
   deleteDoc,
   serverTimestamp,
@@ -63,17 +62,6 @@ function writeCheckpoint(uid: string, checkpoint: LocalCheckpoint) {
 
 function clearCheckpoint(uid: string) {
   getRuntimeStorage().removeItem(`${CHECKPOINT_KEY_PREFIX}${uid}`);
-}
-
-function checkpointComplete(checkpoint: LocalCheckpoint, uploadedBookCount: number): boolean {
-  // Growth can safely complete at-or-above the local expectation because another
-  // device may have added books concurrently. Shrinks must land exactly on the
-  // expected count; otherwise stale cloud documents still exist. Older beta
-  // checkpoints did not record direction, so keep the conservative exact rule.
-  if (checkpoint.direction === 'grow') {
-    return uploadedBookCount >= checkpoint.expectedBookCount;
-  }
-  return uploadedBookCount === checkpoint.expectedBookCount;
 }
 
 /**
@@ -183,13 +171,20 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
       const checkpoint = readCheckpoint(uid);
       if (!checkpoint || !navigator.onLine) return;
       try {
-        let countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
-        let uploadedBookCount = countSnapshot.data().count;
-        let complete = checkpointComplete(checkpoint, uploadedBookCount);
-        if (checkpoint.direction === 'shrink') {
+        // Counts alone cannot establish a complete backup. Compare actual
+        // record IDs before advancing any checkpoint or manifest.
+        const cloudSnapshot = await getDocs(collection(db!, 'users', uid, 'books'));
+        const localIds = new Set(readBooks().map((book) => book.id).filter(Boolean));
+        let cloudIds = new Set(cloudSnapshot.docs.map((entry) => entry.id));
+        let uploadedBookCount = cloudIds.size;
+        let identitiesMatch = localIds.size === cloudIds.size
+          && [...localIds].every((id) => cloudIds.has(id));
+        let complete = identitiesMatch;
+        if (checkpoint.direction === 'shrink' && !identitiesMatch) {
           const verified = await reconcileShrinkCheckpoint(uid);
           uploadedBookCount = verified.cloudCount;
-          complete = verified.matches && uploadedBookCount === checkpoint.expectedBookCount;
+          identitiesMatch = verified.matches;
+          complete = identitiesMatch;
           if (!complete) console.warn('Inkbound shrink checkpoint inventory differs from local IDs.', { extraIds: verified.extraIds, missingIds: verified.missingIds });
         }
 
@@ -205,9 +200,10 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
           try {
             const repaired = await repairMissingGrowthRecords(uid, checkpoint);
             if (repaired > 0) {
-              countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
-              uploadedBookCount = countSnapshot.data().count;
-              complete = checkpointComplete(checkpoint, uploadedBookCount);
+              const refreshed = await getDocs(collection(db!, 'users', uid, 'books'));
+              cloudIds = new Set(refreshed.docs.map((entry) => entry.id));
+              uploadedBookCount = cloudIds.size;
+              complete = localIds.size === cloudIds.size && [...localIds].every((id) => cloudIds.has(id));
             }
           } finally {
             repairInFlight.current = false;
@@ -218,7 +214,9 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         if (readCheckpoint(uid)?.createdAt !== checkpoint.createdAt) return;
         await setDoc(manifestRef, {
           status: complete ? 'complete' : 'syncing',
-          expectedBookCount: checkpoint.expectedBookCount,
+          // A legacy count is not authoritative once every local record ID
+          // has a matching cloud record ID. Rebase only on proven equality.
+          expectedBookCount: complete ? uploadedBookCount : checkpoint.expectedBookCount,
           uploadedBookCount,
           syncDirection: checkpoint.direction ?? 'unknown',
           updatedAt: serverTimestamp(),
