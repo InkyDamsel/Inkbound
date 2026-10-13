@@ -191,3 +191,38 @@
     padding-left: max(1rem, env(safe-area-inset-left));
   }
 }
+
+/* Inkbound modal contract: shared across all reading and library dialogs.
+   Orientation changes layout, never the availability of an action. */
+.inkbound-modal-surface {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-width: 100%;
+  overscroll-behavior: contain;
+}
+.inkbound-modal-surface :is(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+.inkbound-modal-surface :is(button, [role='button']) {
+  max-width: 100%;
+}
+.inkbound-modal-surface :is(.quiet-shelf-primary-action, .quiet-shelf-secondary-action) {
+  min-height: 44px;
+}
+.inkbound-modal-surface > .flex-1,
+.inkbound-modal-surface > [class*='overflow-y-auto'] {
+  min-height: 0;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.inkbound-modal-surface > :is(header, footer, nav) {
+  min-width: 0;
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  .inkbound-modal-surface {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
