@@ -52,7 +52,7 @@ if (exists('android/app/src/main/java/com/inkydameinteractive/inkbound/MainActiv
 if (exists('ios/App/App.xcodeproj/project.pbxproj')) {
   const project = read('ios/App/App.xcodeproj/project.pbxproj');
   const buildNumbers = [...project.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((match) => Number(match[1]));
-  if (buildNumbers.length === 0 || buildNumbers.some((value) => value !== 19)) {
+  if (buildNumbers.length === 0 || buildNumbers.some((value) => value !== 20)) {
     fail('All iOS app/widget configurations must use build 20.');
   }
   const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((match) => match[1].trim());
