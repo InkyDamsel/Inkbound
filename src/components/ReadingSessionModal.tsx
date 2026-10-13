@@ -399,7 +399,7 @@ export const ReadingSessionModal: React.FC<ReadingSessionModalProps> = ({ books,
 
   return (
     <div className={`fixed inset-0 z-[110] flex justify-center bg-black/75 backdrop-blur-sm ${draft.isFinished ? "items-end p-0 sm:items-center sm:p-4" : "items-center p-3 sm:p-4"}`}>
-      <section className={`relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl ${draft.isFinished ? "max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh]" : "max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh]"}`} role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
+      <section className={`relative flex min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl ${draft.isFinished ? "max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh]" : "max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh]"}`} role="dialog" aria-modal="true" aria-labelledby="reading-session-title">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-black/30 text-stone-400 transition hover:bg-black/50 hover:text-white" aria-label="Close reading session without discarding it" title="Close — your session will remain saved"><X className="h-5 w-5" /></button>
         <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:p-6 ${draft.isFinished ? "" : "flex flex-col"}`}>
           <div className="space-y-5">
