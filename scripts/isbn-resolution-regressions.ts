@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { combineIsbnProviderGroups, equivalentCatalogIsbns } from '../src/features/book-search/isbnResolution';
+import { combineIsbnProviderGroups, equivalentCatalogIsbns, selectCatalogIsbnFromBarcodes } from '../src/features/book-search/isbnResolution';
 import { selectExactIsbnEdition } from '../src/features/book-search/catalogHardening';
 import type { BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 
@@ -65,6 +65,25 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
     assert.equal(selectExactIsbnEdition(combined, fixture.isbn)?.work.title, fixture.title,
       'An unrelated primary provider must not hide the exact ISBN edition from a supplement.');
   }
+}
+
+
+{
+  assert.equal(
+    selectCatalogIsbnFromBarcodes(['065373007506', '9781250379139']),
+    '9781250379139',
+    'A nearby UPC must not beat a valid ISBN.',
+  );
+  assert.equal(
+    selectCatalogIsbnFromBarcodes(['125037913X', '9781250379139']),
+    '9781250379139',
+    'Equivalent ISBN-10/ISBN-13 barcodes should resolve to canonical ISBN-13.',
+  );
+  assert.equal(
+    selectCatalogIsbnFromBarcodes(['9781250379139', '9781496758088']),
+    null,
+    'Two unrelated valid ISBNs in one frame must be treated as ambiguous instead of guessed.',
+  );
 }
 
 console.log('Inkbound ISBN resolution regressions passed.');
