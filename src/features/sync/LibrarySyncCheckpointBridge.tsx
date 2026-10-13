@@ -250,17 +250,11 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         direction,
         createdAt: new Date().toISOString(),
       };
+      // A local count change is not a verified cloud inventory. Hydration,
+      // reconciliation, and an actual user deletion all emit this event.
+      // Never overwrite the shared cloud manifest with an unverified count:
+      // verifyCheckpoint compares record IDs before publishing any count.
       writeCheckpoint(uid, checkpoint);
-      try {
-        await setDoc(manifestRef, {
-          status: 'syncing',
-          expectedBookCount,
-          syncDirection: direction,
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-      } catch {
-        // Keep the local checkpoint; a later event/open can publish it.
-      }
       scheduleVerification();
     };
 
