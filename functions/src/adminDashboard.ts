@@ -742,3 +742,67 @@ export const setAdminAccess = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, asy
   await db.collection('adminAudit').add({ action: enabled ? 'set_admin_access' : 'disable_admin_access', targetUserId, targetEmail: email, performedBy: auth.uid, performedByEmail: admin.email, reason, previousValue: previous, newValue: { role, enabled }, createdAt: FieldValue.serverTimestamp() });
   return { success: true };
 });
+
+/**
+ * Read-only record-ID inventory audit. Does not restore, delete, or modify data.
+ * Local IDs are supplied by the inspecting device, never treated as authoritative
+ * deletion instructions.
+ */
+export const auditAdminLibraryInventory = onCall({
+  enforceAppCheck: ENFORCE_APP_CHECK,
+  memory: '512MiB',
+  timeoutSeconds: 120,
+}, async (request) => {
+  await requireAdmin(request, ['owner']);
+  const input = request.data as { targetUserId?: unknown; localBooks?: unknown } | undefined;
+  const uid = typeof input?.targetUserId === 'string' ? input.targetUserId.trim() : '';
+  if (!uid || uid.length > 128) throw new HttpsError('invalid-argument', 'A valid reader is required.');
+  if (!Array.isArray(input?.localBooks) || input.localBooks.length > 10000) {
+    throw new HttpsError('invalid-argument', 'Provide the inspecting device library inventory (up to 10,000 books).');
+  }
+  const local = new Map<string, { id: string; title: string }>();
+  for (const item of input.localBooks) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as { id?: unknown; title?: unknown };
+    if (typeof record.id !== 'string' || !record.id.trim() || record.id.length > 256) continue;
+    local.set(record.id, { id: record.id, title: typeof record.title === 'string' ? record.title.slice(0, 200) : '' });
+  }
+  const user = getFirestore().doc(`users/${uid}`);
+  const [cloudSnapshot, tombstoneSnapshot, manifestSnapshot] = await Promise.all([
+    user.collection('books').get(),
+    user.collection('syncTombstones').get(),
+    user.collection('syncState').doc('library').get(),
+  ]);
+  const cloud = new Map(cloudSnapshot.docs.map((entry) => {
+    const data = entry.data();
+    const work = asRecord(data.work);
+    return [entry.id, {
+      id: entry.id,
+      title: String(work.title ?? data.title ?? '').slice(0, 200),
+      updatedAt: timestampToIso(data.updatedAt),
+    }] as const;
+  }));
+  const deleted = new Map<string, number>();
+  tombstoneSnapshot.docs.forEach((entry) => {
+    const data = entry.data();
+    if (data.kind !== 'books' || typeof data.recordId !== 'string' || !(data.deletedAt instanceof Timestamp)) return;
+    deleted.set(data.recordId, Math.max(deleted.get(data.recordId) ?? 0, data.deletedAt.toMillis()));
+  });
+  const cloudOnly = [...cloud.values()].filter((book) => !local.has(book.id)).map((book) => ({
+    ...book, tombstoned: deleted.has(book.id), tombstoneAt: deleted.has(book.id) ? new Date(deleted.get(book.id)!).toISOString() : null,
+  }));
+  const localOnly = [...local.values()].filter((book) => !cloud.has(book.id));
+  const tombstonedButPresent = [...cloud.values()].filter((book) => deleted.has(book.id)).map((book) => ({
+    ...book, tombstoneAt: new Date(deleted.get(book.id)!).toISOString(),
+  }));
+  const manifest = manifestSnapshot.data() ?? {};
+  return {
+    generatedAt: new Date().toISOString(),
+    deviceCount: local.size,
+    cloudCount: cloud.size,
+    checkpointExpected: typeof manifest.expectedBookCount === 'number' ? manifest.expectedBookCount : null,
+    checkpointStatus: typeof manifest.status === 'string' ? manifest.status : null,
+    cloudOnly, localOnly, tombstonedButPresent,
+    note: 'Read-only comparison against this device. Differences can include pending changes; no records were modified.',
+  };
+});
