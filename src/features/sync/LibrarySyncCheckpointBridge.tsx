@@ -4,6 +4,7 @@ import {
   doc,
   getCountFromServer,
   getDocs,
+  deleteDoc,
   serverTimestamp,
   setDoc,
 } from 'firebase/firestore';
@@ -73,6 +74,37 @@ function checkpointComplete(checkpoint: LocalCheckpoint, uploadedBookCount: numb
     return uploadedBookCount >= checkpoint.expectedBookCount;
   }
   return uploadedBookCount === checkpoint.expectedBookCount;
+}
+
+/**
+ * A shrink checkpoint must be verified by record identity, not only count.
+ * Only remove stale cloud documents when a newer, server-confirmed deletion
+ * tombstone exists. Never infer deletion from a missing local record.
+ */
+async function reconcileShrinkCheckpoint(uid: string): Promise<{ cloudCount: number; matches: boolean; extraIds: string[]; missingIds: string[] }> {
+  if (!db) throw new Error('Cloud unavailable');
+  const localIds = new Set(readBooks().map((book) => book.id));
+  const cloud = await getDocs(collection(db, 'users', uid, 'books'));
+  const tombstones = await getDocs(collection(db, 'users', uid, 'syncTombstones'));
+  const deletedAt = new Map<string, number>();
+  tombstones.docs.forEach((entry) => {
+    const value = entry.data() as { kind?: string; recordId?: string; deletedAt?: { toMillis(): number } };
+    if (value.kind !== 'books' || !value.recordId || !value.deletedAt) return;
+    deletedAt.set(value.recordId, Math.max(deletedAt.get(value.recordId) ?? 0, value.deletedAt.toMillis()));
+  });
+  const stale = cloud.docs.filter((entry) => {
+    if (localIds.has(entry.id)) return false;
+    const deletedMillis = deletedAt.get(entry.id);
+    const updatedMillis = (entry.data() as { updatedAt?: { toMillis(): number } }).updatedAt?.toMillis() ?? 0;
+    return deletedMillis !== undefined && deletedMillis > updatedMillis;
+  });
+  // The tombstone is durable evidence of an explicit deletion. An unrecognized
+  // extra document is never removed here, even when counts differ.
+  await Promise.all(stale.map((entry) => deleteDoc(entry.ref)));
+  const remainingIds = new Set(cloud.docs.filter((entry) => !stale.includes(entry)).map((entry) => entry.id));
+  const extraIds = [...remainingIds].filter((id) => !localIds.has(id));
+  const missingIds = [...localIds].filter((id) => !remainingIds.has(id));
+  return { cloudCount: remainingIds.size, matches: extraIds.length === 0 && missingIds.length === 0, extraIds, missingIds };
 }
 
 /**
@@ -154,6 +186,12 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
         let countSnapshot = await getCountFromServer(collection(db!, 'users', uid, 'books'));
         let uploadedBookCount = countSnapshot.data().count;
         let complete = checkpointComplete(checkpoint, uploadedBookCount);
+        if (checkpoint.direction === 'shrink') {
+          const verified = await reconcileShrinkCheckpoint(uid);
+          uploadedBookCount = verified.cloudCount;
+          complete = verified.matches && uploadedBookCount === checkpoint.expectedBookCount;
+          if (!complete) console.warn('Inkbound shrink checkpoint inventory differs from local IDs.', { extraIds: verified.extraIds, missingIds: verified.missingIds });
+        }
 
         // If an older build stranded part of a growing library outside the
         // durable pending queue, repair only the cloud-missing IDs from the full
@@ -176,6 +214,8 @@ export const LibrarySyncCheckpointBridge: React.FC = () => {
           }
         }
 
+        // A newer local change may have replaced this checkpoint during async reads.
+        if (readCheckpoint(uid)?.createdAt !== checkpoint.createdAt) return;
         await setDoc(manifestRef, {
           status: complete ? 'complete' : 'syncing',
           expectedBookCount: checkpoint.expectedBookCount,
