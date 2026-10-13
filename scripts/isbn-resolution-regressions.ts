@@ -42,6 +42,10 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
   const fixtures = [
     { isbn: '9781250379139', isbn10: '125037913X', title: 'Blackthorn', author: 'J.T. Geissinger' },
     { isbn: '9781496758088', isbn10: '1496758080', title: 'Dawn of the Cursed Queen', author: 'Amber V. Nicole' },
+    // Real-device scanner regressions: these must remain valid/equivalent lookup
+    // identities even when a provider only returns the ISBN-10 form.
+    { isbn: '9780345506931', isbn10: '0345506936', title: 'Seven Years to Sin', author: 'Sylvia Day' },
+    { isbn: '9781501110368', isbn10: '1501110365', title: 'It Ends with Us', author: 'Colleen Hoover' },
   ];
   for (const fixture of fixtures) {
     assert.ok(equivalentCatalogIsbns(fixture.isbn).includes(fixture.isbn10));
