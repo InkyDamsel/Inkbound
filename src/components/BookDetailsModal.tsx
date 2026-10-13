@@ -214,12 +214,12 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
         book={displayBook}
         onUpdateBook={handleUpdateBook}
       />
-      {nativeBookToolbar && bottomToolbarTarget ? createPortal(<>
+      {nativeBookToolbar ? (bottomToolbarTarget ? createPortal(<>
         {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
         {normalizedBook && <EditionLccnControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
         {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
         {normalizedBook && <LibraryLoanReminderControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
-      </>, bottomToolbarTarget) : <>
+      </>, bottomToolbarTarget) : null) : <>
         {displayBook && <CatalogContributionLauncher book={displayBook} onUpdateBook={handleUpdateBook} />}
         {normalizedBook && <EditionLccnControl book={normalizedBook} onUpdateBook={handleUpdateBook} />}
         {normalizedBook && <FinishOnTimeControl book={normalizedBook} sessions={props.sessions} onUpdateBook={handleUpdateBook} />}
