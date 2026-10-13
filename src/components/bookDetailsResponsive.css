@@ -163,3 +163,27 @@
     line-height: 1.6rem;
   }
 }
+
+/* The primary actions are a sibling of the scroll-limited cover header.
+   Keep them reachable in both orientations, including short landscape screens. */
+.book-details-modal-host .book-details-action-bar {
+  max-height: min(35dvh, 10rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+.book-details-modal-host > div.fixed > section[role='dialog'] {
+  min-height: 0;
+}
+.book-details-modal-host > div.fixed > section[role='dialog'] > div.flex-1 {
+  min-height: 0;
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  .book-details-modal-host > div.fixed > section[role='dialog'] > header {
+    max-height: 32dvh;
+  }
+  .book-details-modal-host .book-details-action-bar {
+    max-height: 32dvh;
+  }
+}
