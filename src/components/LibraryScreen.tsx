@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CheckSquare, LayoutGrid, List, Lock, Plus, Search, Sparkles, Square, Star, X } from 'lucide-react';
+import { BookOpen, CheckSquare, ChevronDown, SlidersHorizontal, LayoutGrid, List, Lock, Plus, Search, Sparkles, Square, Star, X } from 'lucide-react';
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, READING_STATUS_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
@@ -63,6 +63,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const { canUseBatchEdit, openUpgradeModal } = useUserPlan();
   const [section, setSection] = usePersistentState<LibrarySection>(LIBRARY_SECTION_STORAGE_KEY, DEFAULT_LIBRARY_SECTION);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [filtersExpanded, setFiltersExpanded] = usePersistentState<boolean>('inkbound_library_filters_expanded', false);
   const [activeCategory, setActiveCategory] = useState('all');
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [customReadingStatuses, setCustomReadingStatuses] = useState<CustomReadingStatus[]>(() => readCustomReadingStatuses());
@@ -75,6 +76,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
   const [page, setPage] = useState(1);
+  const activeFilterCount = [activeCategory, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter].filter((value) => value !== 'all').length + (searchFilter.trim() ? 1 : 0);
 
   useEffect(() => {
     const refresh = () => setCustomOwnershipCategories(readCustomOwnershipCategories());
@@ -199,7 +201,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       ) : section === 'loans' ? (
         <LoansLibraryPanel books={books} onSelectBook={onSelectBook} />
       ) : <>
-        <section className="inkbound-panel p-4 sm:p-5">
+        <section className="inkbound-panel p-3 sm:p-4">
+          <button type="button" aria-expanded={filtersExpanded} aria-controls="library-filter-controls" onClick={() => setFiltersExpanded(!filtersExpanded)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-2 text-sm font-semibold text-[#f4efe6]"><span className="flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-[#c5a059]" />Filters & Sort{activeFilterCount > 0 && <span className="rounded-full bg-[#c5a059]/20 px-2 py-0.5 text-xs text-[#e2bd66]">{activeFilterCount} active</span>}</span><ChevronDown className={`h-4 w-4 transition-transform ${filtersExpanded ? "rotate-180" : ""}`} /></button>
+          {filtersExpanded && <div id="library-filter-controls" className="mt-3">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-9">
             <label className="relative xl:col-span-2"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#807482]" /><input type="search" placeholder="Search title, author, series, or tag" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} className="h-11 w-full rounded-xl border border-[#c5a059]/18 bg-[#0d0910] pl-10 pr-4 text-sm text-[#f4efe6] outline-none" /></label>
             <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)} className="inkbound-select" aria-label="Reading status filter">
@@ -220,6 +224,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <button type="button" onClick={handleSelectAll} className="quiet-shelf-secondary-action">{canUseBatchEdit ? (allFilteredSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />) : <Lock className="h-4 w-4" />}{canUseBatchEdit ? (allFilteredSelected ? 'Deselect all' : 'Select all') : 'Batch edit'}</button>
             <div className="flex rounded-full border border-[#c5a059]/20 bg-[#0d0910] p-1"><button type="button" onClick={() => setViewMode('grid')} className={`rounded-full p-2 ${viewMode === 'grid' ? 'bg-[#c5a059] text-[#171015]' : 'text-[#ad9fac]'}`}><LayoutGrid className="h-4 w-4" /></button><button type="button" onClick={() => setViewMode('list')} className={`rounded-full p-2 ${viewMode === 'list' ? 'bg-[#c5a059] text-[#171015]' : 'text-[#ad9fac]'}`}><List className="h-4 w-4" /></button></div>
           </div>
+          </div>}
         </section>
 
         <div className="text-xs text-[#807482]">{filteredBooks.length.toLocaleString()} matching items · {books.length.toLocaleString()} total</div>
