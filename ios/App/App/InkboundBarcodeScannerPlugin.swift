@@ -136,8 +136,47 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
         onResult?(value)
     }
 
+    private func compactIsbn(_ value: String) -> String {
+        value.uppercased().filter { $0.isNumber || $0 == "X" }
+    }
+
+    private func isValidIsbn(_ value: String) -> Bool {
+        let isbn = compactIsbn(value)
+        if isbn.count == 10 {
+            let characters = Array(isbn)
+            guard characters.prefix(9).allSatisfy({ $0.isNumber }) else { return false }
+            var sum = 0
+            for (index, character) in characters.enumerated() {
+                let digit: Int
+                if character == "X" && index == 9 {
+                    digit = 10
+                } else if let value = character.wholeNumberValue {
+                    digit = value
+                } else {
+                    return false
+                }
+                sum += digit * (10 - index)
+            }
+            return sum % 11 == 0
+        }
+        if isbn.count == 13 && (isbn.hasPrefix("978") || isbn.hasPrefix("979")) {
+            let digits = isbn.compactMap(\.wholeNumberValue)
+            guard digits.count == 13 else { return false }
+            let sum = digits.prefix(12).enumerated().reduce(0) { total, pair in
+                total + pair.element * (pair.offset.isMultiple(of: 2) ? 1 : 3)
+            }
+            return digits[12] == (10 - (sum % 10)) % 10
+        }
+        return false
+    }
+
     func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-        guard let code = metadataObjects.compactMap({ ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue }).first else { return }
+        let codes = metadataObjects
+            .compactMap { ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue }
+            .map(compactIsbn)
+            .filter(isValidIsbn)
+        let uniqueCodes = Array(Set(codes))
+        guard uniqueCodes.count == 1, let code = uniqueCodes.first else { return }
         finish(code)
     }
 }
