@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Clock3, Save, X } from 'lucide-react';
 import type { ReadingSession, UserBookRecord } from '../../types';
 import { buildReadingDeadlinePlan } from '../../features/reading/readingDeadline';
+import { usesEmbeddedBookDetailsToolbar } from '../../platform/bookDetailsLayoutCapability';
 
 interface FinishOnTimeControlProps {
   book: UserBookRecord;
@@ -24,6 +25,7 @@ const formatMinutes = (minutes: number) => {
 
 export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, sessions, onUpdateBook }) => {
   const [open, setOpen] = useState(false);
+  const nativeDialogLayout = usesEmbeddedBookDetailsToolbar();
   const [finishByDate, setFinishByDate] = useState(book.finishByDate ?? '');
   const [blockedByChildDialog, setBlockedByChildDialog] = useState(false);
   const activeEdition = useMemo(
@@ -96,8 +98,8 @@ export const FinishOnTimeControl: React.FC<FinishOnTimeControlProps> = ({ book, 
       )}
 
       {open && (
-        <div className="fixed inset-0 z-[270] flex items-end justify-center bg-black/80 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
-          <section className="w-full max-w-lg rounded-t-3xl border border-[var(--ink-gold)]/30 bg-[#17101b] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:p-6" role="dialog" aria-modal="true" aria-label="Finish on time" onClick={(event) => event.stopPropagation()}>
+        <div className={`fixed inset-0 z-[270] flex justify-center bg-black/80 ${nativeDialogLayout ? "items-center overflow-y-auto p-3 py-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]" : "items-end sm:items-center sm:p-4"}`} onClick={() => setOpen(false)}>
+          <section className={`w-full max-w-lg border border-[var(--ink-gold)]/30 bg-[#17101b] p-5 shadow-2xl sm:p-6 ${nativeDialogLayout ? "my-auto min-h-0 max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain rounded-3xl" : "rounded-t-3xl pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:rounded-3xl"}`} role="dialog" aria-modal="true" aria-label="Finish on time" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="inkbound-kicker">Reading plan</p>
