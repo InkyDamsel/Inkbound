@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { AlertTriangle, CalendarClock, Clock3, Library, TimerReset } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
-import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryDates, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
+import { LIBRARY_SECTION_SORT_OPTIONS, compareLibraryLabels, type LibrarySectionSortMode } from '../../features/library/librarySectionSort';
 import { usePersistentState } from '../../hooks/usePersistentState';
 import { DEVICE_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import { BookCover } from '../BookCover';
@@ -80,8 +80,9 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
 
   return (
     <div className="space-y-5">
-      <section className="inkbound-panel p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <details className="inkbound-panel p-5 sm:p-6">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--ink-gold)]">Library loan summary & sorting</summary>
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
           <div>
             <span className="text-xs font-bold uppercase tracking-[0.18em] text-[#c5a059]">Library loans</span>
             <h2 className="mt-1 font-serif text-2xl text-[#f4efe6]">Finish before they go back</h2>
@@ -107,7 +108,7 @@ export const LoansLibraryPanel: React.FC<LoansLibraryPanelProps> = ({ books, onS
             </div>
           </div>
         </div>
-      </section>
+      </details>
 
       <div className="grid gap-4 xl:grid-cols-2">
         {loans.map(({ book, edition, rawDays, isAudiobook, remainingUnits, unitsPerDay }) => {
