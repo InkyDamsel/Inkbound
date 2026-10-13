@@ -13,7 +13,7 @@ import {
   searchGoogleBooksAuthorPage,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { isValidCatalogIsbn } from '../features/book-search/isbnResolution';
+import { isValidCatalogIsbn, selectCatalogIsbnFromBarcodes } from '../features/book-search/isbnResolution';
 import { auth } from '../lib/firebase';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
@@ -440,11 +440,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         if (!videoRef.current || !detectorRef.current || !streamRef.current) return;
         try {
           const codes = await detectorRef.current.detect(videoRef.current);
-          const raw = codes.find((code) => code.rawValue)?.rawValue;
+          const rawValues = codes
+            .map((code) => code.rawValue?.trim() ?? '')
+            .filter(Boolean);
+          const raw = selectCatalogIsbnFromBarcodes(rawValues);
           if (raw) {
             stopCamera();
             await lookupScannedIsbn(raw);
             return;
+          }
+          const validVisibleIsbns = [...new Set(rawValues.filter(isValidCatalogIsbn))];
+          if (validVisibleIsbns.length > 1) {
+            setScannerError('More than one ISBN is visible. Center one book barcode inside the scan frame so Inkbound does not choose the wrong edition.');
           }
         } catch {
           // Keep scanning; transient detector errors should not end the camera session.
