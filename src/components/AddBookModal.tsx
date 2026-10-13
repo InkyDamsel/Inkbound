@@ -480,11 +480,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // A synchronous runtime write is not proof that IndexedDB committed.
       // Keep the recoverable scan draft if the durable write failed.
       await flushLargeBrowserStorage();
+      // Clear the persisted draft synchronously before closing the modal.
+      // React's state effect may never run if onClose unmounts this component.
+      if (!writeScannerDraft([])) {
+        setScannerError('Books were saved, but the scanner draft could not be cleared. Please clear the stack before scanning again.');
+        return;
+      }
       setScannedBooks([]);
       setScannerReviewPage(1);
       stopCamera();
-      // Keep the scanned ISBN draft as an independent recovery copy. Cloud
-      // upload is asynchronous and must not be mistaken for a confirmed save.
       onClose();
     } catch (error) {
       setScannerError(error instanceof Error ? `Batch durability not confirmed: ${error.message}. The scanned ISBN backup is retained.` : 'Batch durability not confirmed. Your scanned ISBN backup is retained.');
