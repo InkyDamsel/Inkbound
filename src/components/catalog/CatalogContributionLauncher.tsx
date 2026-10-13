@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Database, X } from 'lucide-react';
 import type { UserBookRecord } from '../../types';
 import { CatalogContributionPanel } from './CatalogContributionPanel';
+import { usesEmbeddedBookDetailsToolbar } from '../../platform/bookDetailsLayoutCapability';
 
 interface CatalogContributionLauncherProps {
   book: UserBookRecord;
@@ -10,6 +11,7 @@ interface CatalogContributionLauncherProps {
 
 export const CatalogContributionLauncher: React.FC<CatalogContributionLauncherProps> = ({ book, onUpdateBook }) => {
   const [open, setOpen] = useState(false);
+  const nativeDialogLayout = usesEmbeddedBookDetailsToolbar();
 
   return (
     <>
@@ -23,8 +25,8 @@ export const CatalogContributionLauncher: React.FC<CatalogContributionLauncherPr
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[260] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onClick={() => setOpen(false)}>
-          <section className="relative w-full max-w-xl rounded-3xl border border-[var(--ink-border)] bg-[#17101b] p-5 shadow-2xl sm:p-6" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Share catalog details">
+        <div className={`fixed inset-0 z-[260] grid place-items-center bg-black/75 backdrop-blur-sm ${nativeDialogLayout ? "overflow-hidden p-3" : "p-4"}`} onClick={() => setOpen(false)}>
+          <section className={`relative w-full max-w-xl rounded-3xl border border-[var(--ink-border)] bg-[#17101b] p-5 shadow-2xl sm:p-6 ${nativeDialogLayout ? "min-h-0 max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain" : ""}`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Share catalog details">
             <button type="button" onClick={() => setOpen(false)} className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-black/25 text-[var(--ink-muted)]" aria-label="Close catalog contribution"><X className="h-5 w-5" /></button>
             <div className="pr-10">
               <CatalogContributionPanel book={book} onUpdateBook={onUpdateBook} />
