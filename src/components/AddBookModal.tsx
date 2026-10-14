@@ -457,22 +457,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (!videoRef.current) { stopCamera(); return; }
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
-      setCameraActive(true);
-
+      if (!videoRef.current) return;
       if (!Detector) {
-        // Safari and Firefox lack BarcodeDetector. ZXing decodes frames locally.
-        // Reuse the already-permitted stream; no second camera permission prompt.
-        stream.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        videoRef.current.srcObject = null;
+        // ZXing uses its own camera stream and decodes frames on-device.
         const reader = new BrowserMultiFormatReader();
         webScannerReaderRef.current = reader;
         const controls = await reader.decodeFromConstraints(
@@ -487,8 +474,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           },
         );
         webScannerControlsRef.current = controls;
+        setCameraActive(true);
         return;
       }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setCameraActive(true);
       detectorRef.current = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
 
       const scanFrame = async () => {
