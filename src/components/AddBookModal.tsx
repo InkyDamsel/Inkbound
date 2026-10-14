@@ -31,7 +31,7 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { playScannerSuccessFeedbackOnNativeAndroid, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner, usesIOSNativeScannerFeedback } from '../platform/runtimeBarcodeScanner';
+import { playScannerSuccessFeedbackOnNativeAndroid, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
@@ -335,12 +335,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   const playScannerSuccessFeedback = async () => {
-    // Native iOS confirmation plays at barcode recognition, before dismissal.
-    if (usesIOSNativeScannerFeedback()) return;
     try {
       if (await playScannerSuccessFeedbackOnNativeAndroid()) return;
     } catch (error) {
-      console.warn('[Inkbound scanner] Native Android feedback unavailable; falling back to Web Audio.', error);
+      console.warn('[Inkbound scanner] Native scanner feedback unavailable; falling back to Web Audio.', error);
     }
     try {
       const AudioContextClass = window.AudioContext
@@ -1010,8 +1008,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   </div>
 
                   {scannerReviewPageCount > 1 && (
-                    <nav className="mt-4 flex w-full min-w-0 items-center justify-between gap-2" aria-label="Scanned books pages">
-                      <button type="button" aria-label="Previous scanned books page" style={{ display: 'inline-flex', visibility: 'visible', minHeight: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center', padding: '8px 12px', border: '1px solid #94738b', borderRadius: 12, backgroundColor: '#50354f', color: '#fff1f7', fontWeight: 700, opacity: safeScannerReviewPage <= 1 ? 0.45 : 1 }} disabled={safeScannerReviewPage <= 1} onClick={() => setScannerReviewPage((page) => Math.max(1, page - 1))}>← Previous</button>
+                    <nav className="sticky bottom-0 z-20 mt-4 flex w-full min-w-0 items-center justify-between gap-1 rounded-xl border border-[#c5a059]/50 bg-[#241629] p-2 shadow-lg" aria-label="Scanned books pages">
+                      <button type="button" aria-label="Previous scanned books page" style={{ display: 'inline-flex', visibility: 'visible', minHeight: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center', padding: '8px 6px', border: '1px solid #94738b', borderRadius: 12, backgroundColor: '#50354f', color: '#fff1f7', fontWeight: 700, opacity: safeScannerReviewPage <= 1 ? 0.45 : 1 }} disabled={safeScannerReviewPage <= 1} onClick={() => setScannerReviewPage((page) => Math.max(1, page - 1))}>← Previous</button>
                       <span className="min-w-0 text-center text-xs font-semibold text-[#d7c7d7]" aria-live="polite">Page {safeScannerReviewPage} of {scannerReviewPageCount}</span>
                       <button type="button" aria-label="Next scanned books page" style={{ display: 'inline-flex', visibility: 'visible', minHeight: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center', padding: '8px 12px', border: '1px solid #94738b', borderRadius: 12, backgroundColor: '#50354f', color: '#fff1f7', fontWeight: 700, opacity: safeScannerReviewPage >= scannerReviewPageCount ? 0.45 : 1 }} disabled={safeScannerReviewPage >= scannerReviewPageCount} onClick={() => setScannerReviewPage((page) => Math.min(scannerReviewPageCount, page + 1))}>Next →</button>
                     </nav>
