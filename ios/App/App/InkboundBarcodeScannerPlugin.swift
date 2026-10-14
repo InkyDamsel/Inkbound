@@ -10,31 +10,8 @@ public final class InkboundBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "InkboundBarcodeScanner"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "scan", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "confirmSuccess", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "recognizePhotoText", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "confirmSuccess", returnType: CAPPluginReturnPromise)
     ]
-
-    @objc func recognizePhotoText(_ call: CAPPluginCall) {
-        guard let encoded = call.getString("base64"),
-              let data = Data(base64Encoded: encoded),
-              let image = UIImage(data: data),
-              let cgImage = image.cgImage else {
-            call.reject("Could not decode the photo.")
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let request = VNRecognizeTextRequest()
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = false
-            do {
-                try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
-                let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
-                call.resolve(["text": text])
-            } catch {
-                call.reject("Photo text recognition failed: \(error.localizedDescription)")
-            }
-        }
-    }
 
     @objc func confirmSuccess(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
