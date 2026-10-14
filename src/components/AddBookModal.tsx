@@ -32,6 +32,7 @@ import {
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 import { scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { isIOSRuntime } from '../platform/runtimePlatform';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
@@ -333,6 +334,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   const playScannerSuccessFeedback = async () => {
+    // Native iOS confirmation plays at barcode recognition, before dismissal.
+    if (isIOSRuntime()) return;
     try {
       const AudioContextClass = window.AudioContext
         ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
