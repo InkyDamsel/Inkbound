@@ -1,6 +1,12 @@
 package com.inkydameinteractive.inkbound;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.util.Base64;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.os.Build;
@@ -18,6 +24,33 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
 
 @CapacitorPlugin(name = "InkboundBarcodeScanner")
 public class InkboundBarcodeScannerPlugin extends Plugin {
+    @PluginMethod
+    public void recognizePhotoText(PluginCall call) {
+        String encoded = call.getString("base64");
+        if (encoded == null || encoded.isEmpty()) {
+            call.reject("Photo data is missing.");
+            return;
+        }
+        try {
+            byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
+            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (bitmap == null) {
+                call.reject("Could not decode the photo.");
+                return;
+            }
+            InputImage image = InputImage.fromBitmap(bitmap, 0);
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(image)
+                .addOnSuccessListener(result -> {
+                    JSObject response = new JSObject();
+                    response.put("text", result.getText());
+                    call.resolve(response);
+                })
+                .addOnFailureListener(error -> call.reject("Photo text recognition failed.", error));
+        } catch (Exception error) {
+            call.reject("Could not process the photo.", error);
+        }
+    }
+
     @PluginMethod
     public void confirmSuccess(PluginCall call) {
         getBridge().executeOnMainThread(() -> {
