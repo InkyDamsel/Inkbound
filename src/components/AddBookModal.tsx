@@ -1,5 +1,6 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { ArrowLeft, BookOpen, Camera, Check, Loader2, ScanLine, Search, Trash2, UserRound, X } from 'lucide-react';
 import {
   FORMAT_OPTIONS,
@@ -222,6 +223,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const scanLoopRef = useRef<number | null>(null);
   const webScannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const webScannerControlsRef = useRef<{ stop(): void } | null>(null);
+  const webScanHandledRef = useRef(false);
   const scannerAudioContextRef = useRef<AudioContext | null>(null);
   const scannerPhotoVideoRef = useRef<HTMLVideoElement | null>(null);
   const scannerPhotoStreamRef = useRef<MediaStream | null>(null);
@@ -317,6 +319,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
 
   const stopCamera = () => {
+    webScanHandledRef.current = false;
     webScannerControlsRef.current?.stop();
     webScannerControlsRef.current = null;
     webScannerReaderRef.current = null;
@@ -450,67 +453,45 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       return;
     }
 
-    const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
     if (!navigator.mediaDevices?.getUserMedia) {
-      setScannerError('Camera access is unavailable. Open Inkbound using HTTPS and allow camera access, or enter the ISBN manually.');
+      setScannerError('Camera access is unavailable. Open Inkbound over HTTPS and allow camera access, or enter the ISBN manually.');
       return;
     }
 
     try {
       if (!videoRef.current) return;
-      if (!Detector) {
-        // ZXing uses its own camera stream and decodes frames on-device.
-        const reader = new BrowserMultiFormatReader();
-        webScannerReaderRef.current = reader;
-        const controls = await reader.decodeFromConstraints(
-          { video: { facingMode: { ideal: 'environment' } }, audio: false },
-          videoRef.current,
-          (result) => {
-            if (!result) return;
-            const raw = selectCatalogIsbnFromBarcodes([result.getText()]);
-            if (!raw) return;
-            stopCamera();
-            void lookupScannedIsbn(raw);
-          },
-        );
-        webScannerControlsRef.current = controls;
-        setCameraActive(true);
-        return;
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
+      // Use the same proven barcode decoder on every web browser, including
+      // Safari, Chrome and Firefox. Browser BarcodeDetector support varies.
+      const hints = new Map<DecodeHintType, unknown>();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13, BarcodeFormat.UPC_A, BarcodeFormat.EAN_8,
+      ]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      const reader = new BrowserMultiFormatReader(hints, {
+        delayBetweenScanAttempts: 140,
+        delayBetweenScanSuccess: 500,
       });
-      streamRef.current = stream;
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
-      setCameraActive(true);
-      detectorRef.current = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-
-      const scanFrame = async () => {
-        if (!videoRef.current || !detectorRef.current || !streamRef.current) return;
-        try {
-          const codes = await detectorRef.current.detect(videoRef.current);
-          const rawValues = codes
-            .map((code) => code.rawValue?.trim() ?? '')
-            .filter(Boolean);
-          const raw = selectCatalogIsbnFromBarcodes(rawValues);
-          if (raw) {
-            stopCamera();
-            await lookupScannedIsbn(raw);
+      webScannerReaderRef.current = reader;
+      webScanHandledRef.current = false;
+      const controls = await reader.decodeFromConstraints(
+        { video: { facingMode: { ideal: 'environment' } }, audio: false },
+        videoRef.current,
+        (result) => {
+          if (!result || webScanHandledRef.current) return;
+          const decoded = result.getText();
+          const isbn = selectCatalogIsbnFromBarcodes([decoded]);
+          if (!isbn) {
+            setScannerMessage('Barcode detected, but it is not a book ISBN. Center the 13-digit ISBN barcode and move closer until the bars are sharp.');
             return;
           }
-          const validVisibleIsbns = [...new Set(rawValues.filter(isValidCatalogIsbn))];
-          if (validVisibleIsbns.length > 1) {
-            setScannerError('More than one ISBN is visible. Center one book barcode inside the scan frame so Inkbound does not choose the wrong edition.');
-          }
-        } catch {
-          // Keep scanning; transient detector errors should not end the camera session.
-        }
-        scanLoopRef.current = requestAnimationFrame(scanFrame);
-      };
-      scanLoopRef.current = requestAnimationFrame(scanFrame);
+          webScanHandledRef.current = true;
+          stopCamera();
+          void lookupScannedIsbn(isbn);
+        },
+      );
+      webScannerControlsRef.current = controls;
+      setCameraActive(true);
+      setScannerMessage('Point the camera at the 13-digit ISBN barcode. Hold steady and keep the bars in focus.');
     } catch (error) {
       stopCamera();
       setScannerError(error instanceof Error ? error.message : 'Inkbound could not open the camera.');
