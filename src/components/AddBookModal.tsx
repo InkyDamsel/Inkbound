@@ -31,7 +31,7 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { playScannerSuccessFeedbackOnNativeAndroid, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookPhotoText, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
@@ -224,6 +224,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const scannerPhotoStreamRef = useRef<MediaStream | null>(null);
   const [scannerPhotoCameraOpen, setScannerPhotoCameraOpen] = useState(false);
   const [scannerPhotoBusy, setScannerPhotoBusy] = useState(false);
+  const [photoIsbnChoices, setPhotoIsbnChoices] = useState<string[]>([]);
 
   useEffect(() => {
     if (!writeScannerDraft(scannedBooks)) {
@@ -489,11 +490,27 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     scannerPhotoStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
+  const findPrintedIsbns = (text: string): string[] => {
+    const matches = text.match(/(?:97[89][\\d\\s-]{10,24}|\\b\\d[\\d\\s-]{8,20}[\\dXx]\\b)/g) ?? [];
+    return [...new Set(matches.map((value) => value.replace(/[^0-9Xx]/g, '').toUpperCase()).filter(isValidCatalogIsbn))];
+  };
+
+  const photoToBase64 = async (file: File): Promise<string> => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Could not read photo bytes.'));
+      reader.readAsDataURL(file);
+    });
+    return dataUrl.slice(dataUrl.indexOf(',') + 1);
+  };
+
   const inspectScannerPhoto = async (file: File) => {
     if (scannerBusy || scannerPhotoBusy) return;
     setScannerPhotoBusy(true);
     setScannerError(null);
     setScannerMessage(null);
+    setPhotoIsbnChoices([]);
     const imageUrl = URL.createObjectURL(file);
     try {
       const image = new Image();
@@ -509,9 +526,20 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           return;
         }
       }
-      // Do not guess a title or silently add a different edition from a cover.
-      setScannerMessage('Photo captured. No verified ISBN was found in the image. Search for the title and author to confirm the correct edition.');
-      setActiveTab('search');
+      const recognizedText = await recognizeBookPhotoText(await photoToBase64(file));
+      if (recognizedText !== null) {
+        const candidates = findPrintedIsbns(recognizedText);
+        if (candidates.length === 1) {
+          await lookupScannedIsbn(candidates[0]);
+          return;
+        }
+        if (candidates.length > 1) {
+          setPhotoIsbnChoices(candidates);
+          setScannerMessage('Multiple ISBNs found on this page. Choose the ISBN printed for your edition.');
+          return;
+        }
+      }
+      setScannerMessage('No valid ISBN found in this picture. Photograph the copyright page with the printed ISBN in focus, or search by title and author.');
     } catch (error) {
       setScannerError(error instanceof Error ? error.message : 'Could not read this photo. Try another picture or enter the ISBN.');
     } finally {
@@ -1045,6 +1073,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 <button type="submit" disabled={!manualIsbn.trim() || scannerBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
               </form>
 
+              {photoIsbnChoices.length > 0 && (
+                <div className="mt-3 space-y-2 rounded-xl border border-[#c5a059]/40 p-3" aria-label="Choose photographed ISBN">
+                  <p className="text-sm font-semibold text-[#f4efe6]">Which ISBN matches your copy?</p>
+                  {photoIsbnChoices.map((isbn) => <button key={isbn} type="button" disabled={scannerBusy} onClick={() => { setPhotoIsbnChoices([]); void lookupScannedIsbn(isbn); }} className="flex min-h-11 w-full items-center justify-center rounded-xl border border-[#c5a059]/45 bg-[#50354f] px-3 text-sm font-semibold text-white disabled:opacity-40">Use ISBN {isbn}</button>)}
+                </div>
+              )}
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
               {scannerError && <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{scannerError}</p>}
             </section>
