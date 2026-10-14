@@ -223,6 +223,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const webScannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const webScannerControlsRef = useRef<{ stop(): void } | null>(null);
   const webScanHandledRef = useRef(false);
+  const webScannerStartingRef = useRef(false);
+  const webScannerControlsPendingRef = useRef(false);
   const scannerAudioContextRef = useRef<AudioContext | null>(null);
   const scannerPhotoVideoRef = useRef<HTMLVideoElement | null>(null);
   const scannerPhotoStreamRef = useRef<MediaStream | null>(null);
@@ -318,7 +320,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
 
   const stopCamera = () => {
-    webScanHandledRef.current = false;
+    webScannerStartingRef.current = false;
+    webScannerControlsPendingRef.current = false;
     webScannerControlsRef.current?.stop();
     webScannerControlsRef.current = null;
     webScannerReaderRef.current = null;
@@ -438,6 +441,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   const startCamera = async () => {
+    if (webScannerStartingRef.current || cameraActive) return;
+    webScannerStartingRef.current = true;
     primeScannerAudio();
     setScannerError(null);
     setScannerMessage(null);
@@ -449,16 +454,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       } catch (error) {
         setScannerError(error instanceof Error ? error.message : 'Inkbound could not open the barcode scanner.');
       }
+      webScannerStartingRef.current = false;
       return;
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setScannerError('Camera access is unavailable. Open Inkbound over HTTPS and allow camera access, or enter the ISBN manually.');
+      webScannerStartingRef.current = false;
       return;
     }
 
     try {
-      if (!videoRef.current) return;
+      if (!videoRef.current) { webScannerStartingRef.current = false; return; }
       // Use the same proven barcode decoder on every web browser, including
       // Safari, Chrome and Firefox. Browser BarcodeDetector support varies.
       const hints = new Map<DecodeHintType, unknown>();
@@ -473,7 +480,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       webScannerReaderRef.current = reader;
       webScanHandledRef.current = false;
       const controls = await reader.decodeFromConstraints(
-        { video: { facingMode: { ideal: 'environment' } }, audio: false },
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
         videoRef.current,
         (result) => {
           if (!result || webScanHandledRef.current) return;
@@ -489,11 +496,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         },
       );
       webScannerControlsRef.current = controls;
+      webScannerStartingRef.current = false;
       setCameraActive(true);
       setScannerMessage('Point the camera at the 13-digit ISBN barcode. Hold steady and keep the bars in focus.');
     } catch (error) {
       stopCamera();
       setScannerError(error instanceof Error ? error.message : 'Inkbound could not open the camera.');
+      webScannerStartingRef.current = false;
     }
   };
 
