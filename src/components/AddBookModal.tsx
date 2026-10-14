@@ -1,4 +1,5 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
+import { BrowserMultiFormatReader } from '@zxing/browser';
 import { ArrowLeft, BookOpen, Camera, Check, Loader2, ScanLine, Search, Trash2, UserRound, X } from 'lucide-react';
 import {
   FORMAT_OPTIONS,
@@ -219,6 +220,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const scanLoopRef = useRef<number | null>(null);
+  const webScannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const webScannerControlsRef = useRef<{ stop(): void } | null>(null);
   const scannerAudioContextRef = useRef<AudioContext | null>(null);
   const scannerPhotoVideoRef = useRef<HTMLVideoElement | null>(null);
   const scannerPhotoStreamRef = useRef<MediaStream | null>(null);
@@ -314,6 +317,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const normalizeIsbn = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase();
 
   const stopCamera = () => {
+    webScannerControlsRef.current?.stop();
+    webScannerControlsRef.current = null;
+    webScannerReaderRef.current = null;
     if (scanLoopRef.current !== null) cancelAnimationFrame(scanLoopRef.current);
     scanLoopRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -445,8 +451,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
 
     const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
-    if (!Detector) {
-      setScannerError('Barcode scanning is not supported in this browser. You can still enter the ISBN manually.');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScannerError('Camera access is unavailable. Open Inkbound using HTTPS and allow camera access, or enter the ISBN manually.');
       return;
     }
 
@@ -456,11 +462,34 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         audio: false,
       });
       streamRef.current = stream;
-      detectorRef.current = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-      if (!videoRef.current) return;
+      if (!videoRef.current) { stopCamera(); return; }
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
       setCameraActive(true);
+
+      if (!Detector) {
+        // Safari and Firefox lack BarcodeDetector. ZXing decodes frames locally.
+        // Reuse the already-permitted stream; no second camera permission prompt.
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        videoRef.current.srcObject = null;
+        const reader = new BrowserMultiFormatReader();
+        webScannerReaderRef.current = reader;
+        const controls = await reader.decodeFromConstraints(
+          { video: { facingMode: { ideal: 'environment' } }, audio: false },
+          videoRef.current,
+          (result) => {
+            if (!result) return;
+            const raw = selectCatalogIsbnFromBarcodes([result.getText()]);
+            if (!raw) return;
+            stopCamera();
+            void lookupScannedIsbn(raw);
+          },
+        );
+        webScannerControlsRef.current = controls;
+        return;
+      }
+      detectorRef.current = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
 
       const scanFrame = async () => {
         if (!videoRef.current || !detectorRef.current || !streamRef.current) return;
@@ -900,8 +929,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             )}
           </div>
         ) : activeTab === 'scan' ? (
-          <div className="mt-6 space-y-5">
-            <section className="rounded-2xl border border-[#c5a059]/25 bg-[#120c15] p-4 sm:p-5">
+          <div className="mt-5 grid min-w-0 items-start gap-4 lg:grid-cols-2">
+            <section className="min-w-0 rounded-2xl border border-[#c5a059]/25 bg-[#120c15] p-4 sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="inkbound-kicker">Stack scanner</p>
@@ -911,7 +940,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 <div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div>
               </div>
 
-              <div className="relative mt-5 aspect-[4/3] max-h-[420px] overflow-hidden rounded-2xl border border-white/10 bg-black">
+              <div className="relative mt-5 aspect-[4/3] max-h-[300px] overflow-hidden rounded-2xl border border-white/10 bg-black">
                 <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
                 {cameraActive && (
                   <div className="pointer-events-none absolute inset-[18%] rounded-2xl border-2 border-[#e5c158]/80">
@@ -944,7 +973,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               {scannerError && <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{scannerError}</p>}
             </section>
 
-            <section className="min-w-0 rounded-2xl border border-[#3d2448] bg-[#1d1422] p-3 sm:p-5">
+            <section className="min-w-0 rounded-2xl border border-[#3d2448] bg-[#1d1422] p-3 sm:p-5 lg:max-h-[min(66dvh,650px)] lg:overflow-y-auto">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="inkbound-kicker">Review before saving</p>
