@@ -9,8 +9,23 @@ public final class InkboundBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "InkboundBarcodeScannerPlugin"
     public let jsName = "InkboundBarcodeScanner"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "scan", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "scan", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "confirmSuccess", returnType: CAPPluginReturnPromise)
     ]
+
+    @objc func confirmSuccess(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            do {
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+                try AVAudioSession.sharedInstance().setActive(true)
+            } catch {
+                NSLog("[Inkbound scanner] Could not activate confirmation audio: %@", String(describing: error))
+            }
+            AudioServicesPlaySystemSound(1057)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            call.resolve()
+        }
+    }
 
     @objc func scan(_ call: CAPPluginCall) {
         let begin = { [weak self] in
@@ -57,7 +72,6 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
     private let visionQueue = DispatchQueue(label: "com.inkydameinteractive.inkbound.barcode-vision", qos: .userInitiated)
     private var lastVisionScan: CFTimeInterval = 0
     private var observedBarcodeCount = 0
-    private var successSound: SystemSoundID = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -154,12 +168,6 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
     private func finish(_ value: String?) {
         guard !finished else { return }
         finished = true
-        if let value, !value.isEmpty {
-            // Native feedback is required: WebAudio often remains muted after the
-            // full-screen iOS camera controller dismisses.
-            AudioServicesPlaySystemSound(1057)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
         let completion = onResult
         onResult = nil
         DispatchQueue.global(qos: .userInitiated).async { [session] in
