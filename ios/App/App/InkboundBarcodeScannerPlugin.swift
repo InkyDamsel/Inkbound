@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import Capacitor
 import UIKit
 import Vision
@@ -56,6 +57,7 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
     private let visionQueue = DispatchQueue(label: "com.inkydameinteractive.inkbound.barcode-vision", qos: .userInitiated)
     private var lastVisionScan: CFTimeInterval = 0
     private var observedBarcodeCount = 0
+    private var successSound: SystemSoundID = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -152,6 +154,12 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
     private func finish(_ value: String?) {
         guard !finished else { return }
         finished = true
+        if let value, !value.isEmpty {
+            // Native feedback is required: WebAudio often remains muted after the
+            // full-screen iOS camera controller dismisses.
+            AudioServicesPlaySystemSound(1057)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
         let completion = onResult
         onResult = nil
         DispatchQueue.global(qos: .userInitiated).async { [session] in
