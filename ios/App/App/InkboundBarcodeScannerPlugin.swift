@@ -55,6 +55,7 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
     private var finished = false
     private let visionQueue = DispatchQueue(label: "com.inkydameinteractive.inkbound.barcode-vision", qos: .userInitiated)
     private var lastVisionScan: CFTimeInterval = 0
+    private var observedBarcodeCount = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -112,9 +113,12 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
             return
         }
 
+        session.beginConfiguration()
+        session.sessionPreset = .high
         session.addInput(input)
         let output = AVCaptureMetadataOutput()
         guard session.canAddOutput(output) else {
+            session.commitConfiguration()
             finish(nil)
             return
         }
@@ -132,6 +136,9 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
             session.addOutput(videoOutput)
             videoOutput.setSampleBufferDelegate(self, queue: visionQueue)
         }
+
+        session.commitConfiguration()
+        NSLog("[Inkbound scanner] Capture configured; metadata types: %@, Vision video output: %@", String(describing: output.metadataObjectTypes), String(session.outputs.contains(videoOutput)))
 
         let preview = AVCaptureVideoPreviewLayer(session: session)
         preview.videoGravity = .resizeAspectFill
@@ -204,6 +211,7 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
                 .filter(isValidIsbn)
             let uniqueCodes = Array(Set(codes))
             guard uniqueCodes.count == 1, let code = uniqueCodes.first else { return }
+            NSLog("[Inkbound scanner] Valid ISBN recognized by Vision")
             DispatchQueue.main.async { [weak self] in self?.finish(code) }
         } catch {
             // Metadata scanning remains active if Vision cannot process a frame.
@@ -216,7 +224,12 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
             .map(compactIsbn)
             .filter(isValidIsbn)
         let uniqueCodes = Array(Set(codes))
+        if !metadataObjects.isEmpty && observedBarcodeCount < 5 {
+            observedBarcodeCount += 1
+            NSLog("[Inkbound scanner] Metadata candidates: %d, valid ISBNs: %d", metadataObjects.count, uniqueCodes.count)
+        }
         guard uniqueCodes.count == 1, let code = uniqueCodes.first else { return }
+        NSLog("[Inkbound scanner] Valid ISBN recognized by metadata")
         finish(code)
     }
 }
