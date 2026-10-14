@@ -491,8 +491,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   }, []);
 
   const findPrintedIsbns = (text: string): string[] => {
-    const matches = text.match(/(?:97[89][\\d\\s-]{10,24}|\\b\\d[\\d\\s-]{8,20}[\\dXx]\\b)/g) ?? [];
-    return [...new Set(matches.map((value) => value.replace(/[^0-9Xx]/g, '').toUpperCase()).filter(isValidCatalogIsbn))];
+    const candidates: string[] = [];
+    // OCR may insert spaces and hyphens between digits on copyright pages.
+    for (const line of text.split(/\r?\n/)) {
+      const normalized = line.replace(/[^0-9Xx]/g, '').toUpperCase();
+      for (let index = 0; index < normalized.length; index += 1) {
+        for (const length of [13, 10]) {
+          const candidate = normalized.slice(index, index + length);
+          if (candidate.length === length && isValidCatalogIsbn(candidate)) candidates.push(candidate);
+        }
+      }
+    }
+    return [...new Set(candidates)];
   };
 
   const photoToBase64 = async (file: File): Promise<string> => {
@@ -518,12 +528,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       await image.decode();
       const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
       if (Detector) {
-        const detector = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-        const candidates = (await detector.detect(image)).map((item) => item.rawValue ?? '');
-        const isbn = selectCatalogIsbnFromBarcodes(candidates);
-        if (isbn) {
-          await lookupScannedIsbn(isbn);
-          return;
+        try {
+          const detector = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+          const candidates = (await detector.detect(image)).map((item) => item.rawValue ?? '');
+          const isbn = selectCatalogIsbnFromBarcodes(candidates);
+          if (isbn) {
+            await lookupScannedIsbn(isbn);
+            return;
+          }
+        } catch {
+          // Photo barcode detection is optional; always try native text OCR next.
         }
       }
       const recognizedText = await recognizeBookPhotoText(await photoToBase64(file));
