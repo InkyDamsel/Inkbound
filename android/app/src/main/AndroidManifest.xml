@@ -62,6 +62,7 @@
          remains optional so Play does not exclude devices that can use Inkbound
          without scanning (tablets, Chromebooks, cars, TVs, etc.). -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
