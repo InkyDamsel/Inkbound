@@ -965,10 +965,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   </div>
 
                   {scannerReviewPageCount > 1 && (
-                    <nav className="mt-4 flex items-center justify-center gap-4" aria-label="Scanned books pages">
-                      <button type="button" className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40" disabled={safeScannerReviewPage <= 1} onClick={() => setScannerReviewPage((page) => Math.max(1, page - 1))}>Previous</button>
-                      <span className="text-sm text-[#ad9fac]">Page {safeScannerReviewPage} of {scannerReviewPageCount}</span>
-                      <button type="button" className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40" disabled={safeScannerReviewPage >= scannerReviewPageCount} onClick={() => setScannerReviewPage((page) => Math.min(scannerReviewPageCount, page + 1))}>Next</button>
+                    <nav className="mt-4 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2" aria-label="Scanned books pages">
+                      <button type="button" aria-label="Previous scanned books page" className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-xl border border-[#c5a059]/45 bg-[#35233c] px-2 py-2 text-sm font-semibold text-[#f4efe6] disabled:cursor-not-allowed disabled:opacity-35" disabled={safeScannerReviewPage <= 1} onClick={() => setScannerReviewPage((page) => Math.max(1, page - 1))}>← Previous</button>
+                      <span className="whitespace-nowrap px-1 text-center text-xs font-semibold text-[#d7c7d7]" aria-live="polite">Page {safeScannerReviewPage} of {scannerReviewPageCount}</span>
+                      <button type="button" aria-label="Next scanned books page" className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-xl border border-[#c5a059]/45 bg-[#35233c] px-2 py-2 text-sm font-semibold text-[#f4efe6] disabled:cursor-not-allowed disabled:opacity-35" disabled={safeScannerReviewPage >= scannerReviewPageCount} onClick={() => setScannerReviewPage((page) => Math.min(scannerReviewPageCount, page + 1))}>Next →</button>
                     </nav>
                   )}
                   <p className="mt-4 text-center text-xs font-semibold text-[#ad9fac]" aria-live="polite">Showing {((safeScannerReviewPage - 1) * scannerReviewPageSize) + 1}–{Math.min(safeScannerReviewPage * scannerReviewPageSize, scannedBooks.length)} of {scannedBooks.length} scanned books.</p>
