@@ -141,7 +141,7 @@ export const CatalogContributionPanel: React.FC<CatalogContributionPanelProps> =
       </div>
       {nativeDialogLayout && (
         <div className="absolute inset-x-4 bottom-4 z-30 border-t border-[var(--ink-border)] bg-[var(--ink-surface-soft)] pt-3">
-          <button type="button" onClick={() => void submit()} disabled={!fields || submitting || !asinIsValid} className="quiet-shelf-secondary-action min-h-11 w-full justify-center border border-[var(--ink-mauve)]/50 bg-[#2c1b32] disabled:opacity-40">
+          <button type="button" onClick={() => void submit()} disabled={!fields || submitting || !asinIsValid} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--ink-mauve)]/50 bg-[#79566f] px-4 py-3 text-sm font-semibold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40">
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {submitting ? 'Sending…' : 'Share edition details for review'}
           </button>
