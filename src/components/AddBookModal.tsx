@@ -220,7 +220,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const scanLoopRef = useRef<number | null>(null);
   const scannerAudioContextRef = useRef<AudioContext | null>(null);
-  const scannerPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const scannerPhotoVideoRef = useRef<HTMLVideoElement | null>(null);
+  const scannerPhotoStreamRef = useRef<MediaStream | null>(null);
+  const [scannerPhotoCameraOpen, setScannerPhotoCameraOpen] = useState(false);
   const [scannerPhotoBusy, setScannerPhotoBusy] = useState(false);
 
   useEffect(() => {
@@ -425,6 +427,67 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerBusy(false);
     }
   };
+
+  const closeScannerPhotoCamera = () => {
+    scannerPhotoStreamRef.current?.getTracks().forEach((track) => track.stop());
+    scannerPhotoStreamRef.current = null;
+    if (scannerPhotoVideoRef.current) scannerPhotoVideoRef.current.srcObject = null;
+    setScannerPhotoCameraOpen(false);
+  };
+
+  const openScannerPhotoCamera = async () => {
+    if (scannerPhotoBusy || scannerPhotoCameraOpen) return;
+    setScannerError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      scannerPhotoStreamRef.current = stream;
+      setScannerPhotoCameraOpen(true);
+    } catch (error) {
+      setScannerError(error instanceof Error ? `Could not open camera: ${error.message}` : 'Could not open camera. Check camera permission.');
+    }
+  };
+
+  const captureScannerPhoto = async () => {
+    const video = scannerPhotoVideoRef.current;
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setScannerError('Camera is still starting. Try again in a moment.');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    if (!canvas.width || !canvas.height) {
+      setScannerError('Camera image is not ready yet.');
+      return;
+    }
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setScannerError('Could not capture this image.');
+      return;
+    }
+    context.drawImage(video, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    if (!blob) {
+      setScannerError('Could not save the camera image.');
+      return;
+    }
+    closeScannerPhotoCamera();
+    await inspectScannerPhoto(new File([blob], 'inkbound-book-photo.jpg', { type: 'image/jpeg' }));
+  };
+
+  useEffect(() => {
+    if (!scannerPhotoCameraOpen || !scannerPhotoVideoRef.current || !scannerPhotoStreamRef.current) return;
+    const video = scannerPhotoVideoRef.current;
+    video.srcObject = scannerPhotoStreamRef.current;
+    void video.play().catch(() => setScannerError('Camera preview could not start.'));
+  }, [scannerPhotoCameraOpen]);
+
+  useEffect(() => () => {
+    scannerPhotoStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   const inspectScannerPhoto = async (file: File) => {
     if (scannerBusy || scannerPhotoBusy) return;
@@ -957,9 +1020,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <input ref={scannerPhotoInputRef} type="file" accept="image/*" capture="environment" className="sr-only" aria-label="Take a picture of a book cover or ISBN" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void inspectScannerPhoto(file); }} />
-                <button type="button" onClick={() => scannerPhotoInputRef.current?.click()} disabled={scannerBusy || scannerPhotoBusy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c5a059]/45 bg-[#50354f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"><Camera className="h-4 w-4" />{scannerPhotoBusy ? 'Checking picture…' : 'Take Picture'}</button>
+              <div className="mt-3">
+                {scannerPhotoCameraOpen ? (
+                  <div className="space-y-3">
+                    <video ref={scannerPhotoVideoRef} autoPlay playsInline muted className="max-h-[55dvh] w-full rounded-xl bg-black object-contain" aria-label="Book photo camera preview" />
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void captureScannerPhoto()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#79566f] px-4 py-2 font-semibold text-white"><Camera className="h-4 w-4" /> Capture Photo</button>
+                      <button type="button" onClick={closeScannerPhotoCamera} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#c5a059]/45 px-4 py-2 text-white">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => void openScannerPhotoCamera()} disabled={scannerBusy || scannerPhotoBusy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c5a059]/45 bg-[#50354f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"><Camera className="h-4 w-4" />{scannerPhotoBusy ? 'Checking picture…' : 'Take Picture'}</button>
+                )}
               </div>
 
               {cameraActive && (
