@@ -219,7 +219,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [cameraActive, setCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const scanLoopRef = useRef<number | null>(null);
   const webScannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const webScannerControlsRef = useRef<{ stop(): void } | null>(null);
