@@ -4,6 +4,7 @@ import { isAndroidRuntime, isIOSRuntime } from './runtimePlatform';
 interface NativeBarcodeScannerPlugin {
   scan(): Promise<{ rawValue?: string; canceled?: boolean }>;
   confirmSuccess(): Promise<void>;
+  recognizePhotoText(options: { base64: string }): Promise<{ text: string }>;
 }
 
 const NativeBarcodeScanner = registerPlugin<NativeBarcodeScannerPlugin>('InkboundBarcodeScanner');
@@ -33,3 +34,10 @@ export async function confirmNativeBarcodeScanSuccess(): Promise<void> {
 
 // Backward-compatible alias while older call sites migrate.
 export const scanBarcodeWithNativeAndroid = scanBarcodeWithNativeRuntime;
+
+/** OCR stays on-device; only recognized ISBNs enter the existing catalog lookup. */
+export async function recognizeBookPhotoText(base64: string): Promise<string | null> {
+  if (!shouldUseNativeBarcodeScanner()) return null;
+  const result = await NativeBarcodeScanner.recognizePhotoText({ base64 });
+  return result.text ?? '';
+}
