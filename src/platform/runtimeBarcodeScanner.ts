@@ -3,6 +3,7 @@ import { isAndroidRuntime, isIOSRuntime } from './runtimePlatform';
 
 interface NativeBarcodeScannerPlugin {
   scan(): Promise<{ rawValue?: string; canceled?: boolean }>;
+  confirmSuccess(): Promise<void>;
 }
 
 const NativeBarcodeScanner = registerPlugin<NativeBarcodeScannerPlugin>('InkboundBarcodeScanner');
@@ -17,6 +18,11 @@ export async function scanBarcodeWithNativeRuntime(): Promise<string | null> {
   if (result.canceled) return null;
   const raw = result.rawValue?.trim() ?? '';
   return raw || null;
+}
+
+export async function confirmNativeBarcodeScanSuccess(): Promise<void> {
+  if (!isAndroidRuntime()) return;
+  await NativeBarcodeScanner.confirmSuccess();
 }
 
 // Backward-compatible alias while older call sites migrate.
