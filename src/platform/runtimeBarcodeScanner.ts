@@ -20,12 +20,8 @@ export async function scanBarcodeWithNativeRuntime(): Promise<string | null> {
   return raw || null;
 }
 
-export function usesIOSNativeScannerFeedback(): boolean {
-  return isIOSRuntime();
-}
-
 export async function playScannerSuccessFeedbackOnNativeAndroid(): Promise<boolean> {
-  if (!isAndroidRuntime()) return false;
+  if (!shouldUseNativeBarcodeScanner()) return false;
   await NativeBarcodeScanner.confirmSuccess();
   return true;
 }
