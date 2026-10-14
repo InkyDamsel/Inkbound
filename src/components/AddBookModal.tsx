@@ -31,8 +31,8 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
-import { isIOSRuntime } from '../platform/runtimePlatform';
+import { confirmNativeBarcodeScanSuccess, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { isAndroidRuntime, isIOSRuntime } from '../platform/runtimePlatform';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
@@ -336,6 +336,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const playScannerSuccessFeedback = async () => {
     // Native iOS confirmation plays at barcode recognition, before dismissal.
     if (isIOSRuntime()) return;
+    if (isAndroidRuntime()) {
+      try {
+        await confirmNativeBarcodeScanSuccess();
+        return;
+      } catch (error) {
+        console.warn('[Inkbound scanner] Native Android feedback unavailable; falling back to Web Audio.', error);
+      }
+    }
     try {
       const AudioContextClass = window.AudioContext
         ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -968,10 +976,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   </div>
 
                   {scannerReviewPageCount > 1 && (
-                    <nav className="mt-4 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2" aria-label="Scanned books pages">
-                      <button type="button" aria-label="Previous scanned books page" className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-xl border border-[#c5a059]/45 bg-[#35233c] px-2 py-2 text-sm font-semibold text-[#f4efe6] disabled:cursor-not-allowed disabled:opacity-35" disabled={safeScannerReviewPage <= 1} onClick={() => setScannerReviewPage((page) => Math.max(1, page - 1))}>← Previous</button>
-                      <span className="whitespace-nowrap px-1 text-center text-xs font-semibold text-[#d7c7d7]" aria-live="polite">Page {safeScannerReviewPage} of {scannerReviewPageCount}</span>
-                      <button type="button" aria-label="Next scanned books page" className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-xl border border-[#c5a059]/45 bg-[#35233c] px-2 py-2 text-sm font-semibold text-[#f4efe6] disabled:cursor-not-allowed disabled:opacity-35" disabled={safeScannerReviewPage >= scannerReviewPageCount} onClick={() => setScannerReviewPage((page) => Math.min(scannerReviewPageCount, page + 1))}>Next →</button>
+                    <nav className="mt-4 flex w-full min-w-0 items-center justify-between gap-2" aria-label="Scanned books pages">
+                      <button type="button" aria-label="Previous scanned books page" style={{ display: 'inline-flex', visibility: 'visible', minHeight: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center', padding: '8px 12px', border: '1px solid #94738b', borderRadius: 12, backgroundColor: '#50354f', color: '#fff1f7', fontWeight: 700, opacity: safeScannerReviewPage <= 1 ? 0.45 : 1 }} disabled={safeScannerReviewPage <= 1} onClick={() => setScannerReviewPage((page) => Math.max(1, page - 1))}>← Previous</button>
+                      <span className="min-w-0 text-center text-xs font-semibold text-[#d7c7d7]" aria-live="polite">Page {safeScannerReviewPage} of {scannerReviewPageCount}</span>
+                      <button type="button" aria-label="Next scanned books page" style={{ display: 'inline-flex', visibility: 'visible', minHeight: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center', padding: '8px 12px', border: '1px solid #94738b', borderRadius: 12, backgroundColor: '#50354f', color: '#fff1f7', fontWeight: 700, opacity: safeScannerReviewPage >= scannerReviewPageCount ? 0.45 : 1 }} disabled={safeScannerReviewPage >= scannerReviewPageCount} onClick={() => setScannerReviewPage((page) => Math.min(scannerReviewPageCount, page + 1))}>Next →</button>
                     </nav>
                   )}
                   <p className="mt-4 text-center text-xs font-semibold text-[#ad9fac]" aria-live="polite">Showing {((safeScannerReviewPage - 1) * scannerReviewPageSize) + 1}–{Math.min(safeScannerReviewPage * scannerReviewPageSize, scannedBooks.length)} of {scannedBooks.length} scanned books.</p>
