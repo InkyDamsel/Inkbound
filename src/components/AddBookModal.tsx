@@ -84,7 +84,7 @@ type AuthorPageState = {
 };
 
 type BarcodeDetectorLike = {
-  detect(source: HTMLVideoElement): Promise<Array<{ rawValue?: string }>>;
+  detect(source: HTMLVideoElement | HTMLImageElement): Promise<Array<{ rawValue?: string }>>;
 };
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
 
@@ -221,6 +221,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const scanLoopRef = useRef<number | null>(null);
   const scannerAudioContextRef = useRef<AudioContext | null>(null);
+  const scannerPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const [scannerPhotoBusy, setScannerPhotoBusy] = useState(false);
 
   useEffect(() => {
     if (!writeScannerDraft(scannedBooks)) {
@@ -427,6 +429,37 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerError(error instanceof Error ? error.message : 'ISBN lookup failed. Please try again.');
     } finally {
       setScannerBusy(false);
+    }
+  };
+
+  const inspectScannerPhoto = async (file: File) => {
+    if (scannerBusy || scannerPhotoBusy) return;
+    setScannerPhotoBusy(true);
+    setScannerError(null);
+    setScannerMessage(null);
+    const imageUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = imageUrl;
+      await image.decode();
+      const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+      if (Detector) {
+        const detector = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+        const candidates = (await detector.detect(image)).map((item) => item.rawValue ?? '');
+        const isbn = selectCatalogIsbnFromBarcodes(candidates);
+        if (isbn) {
+          await lookupScannedIsbn(isbn);
+          return;
+        }
+      }
+      // Do not guess a title or silently add a different edition from a cover.
+      setScannerMessage('Photo captured. No verified ISBN was found in the image. Search for the title and author to confirm the correct edition.');
+      setActiveTab('search');
+    } catch (error) {
+      setScannerError(error instanceof Error ? error.message : 'Could not read this photo. Try another picture or enter the ISBN.');
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+      setScannerPhotoBusy(false);
     }
   };
 
@@ -928,6 +961,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <input ref={scannerPhotoInputRef} type="file" accept="image/*" capture="environment" className="sr-only" aria-label="Take a picture of a book cover or ISBN" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void inspectScannerPhoto(file); }} />
+                <button type="button" onClick={() => scannerPhotoInputRef.current?.click()} disabled={scannerBusy || scannerPhotoBusy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c5a059]/45 bg-[#50354f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"><Camera className="h-4 w-4" />{scannerPhotoBusy ? 'Checking picture…' : 'Take Picture'}</button>
               </div>
 
               {cameraActive && (
