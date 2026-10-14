@@ -31,7 +31,7 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookPhotoText, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { playScannerSuccessFeedbackOnNativeAndroid, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
@@ -426,139 +426,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerError(error instanceof Error ? error.message : 'ISBN lookup failed. Please try again.');
     } finally {
       setScannerBusy(false);
-    }
-  };
-
-  const closeScannerPhotoCamera = () => {
-    scannerPhotoStreamRef.current?.getTracks().forEach((track) => track.stop());
-    scannerPhotoStreamRef.current = null;
-    if (scannerPhotoVideoRef.current) scannerPhotoVideoRef.current.srcObject = null;
-    setScannerPhotoCameraOpen(false);
-  };
-
-  const openScannerPhotoCamera = async () => {
-    if (scannerPhotoBusy || scannerPhotoCameraOpen) return;
-    setScannerError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      });
-      scannerPhotoStreamRef.current = stream;
-      setScannerPhotoCameraOpen(true);
-    } catch (error) {
-      setScannerError(error instanceof Error ? `Could not open camera: ${error.message}` : 'Could not open camera. Check camera permission.');
-    }
-  };
-
-  const captureScannerPhoto = async () => {
-    const video = scannerPhotoVideoRef.current;
-    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      setScannerError('Camera is still starting. Try again in a moment.');
-      return;
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    if (!canvas.width || !canvas.height) {
-      setScannerError('Camera image is not ready yet.');
-      return;
-    }
-    const context = canvas.getContext('2d');
-    if (!context) {
-      setScannerError('Could not capture this image.');
-      return;
-    }
-    context.drawImage(video, 0, 0);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-    if (!blob) {
-      setScannerError('Could not save the camera image.');
-      return;
-    }
-    closeScannerPhotoCamera();
-    await inspectScannerPhoto(new File([blob], 'inkbound-book-photo.jpg', { type: 'image/jpeg' }));
-  };
-
-  useEffect(() => {
-    if (!scannerPhotoCameraOpen || !scannerPhotoVideoRef.current || !scannerPhotoStreamRef.current) return;
-    const video = scannerPhotoVideoRef.current;
-    video.srcObject = scannerPhotoStreamRef.current;
-    void video.play().catch(() => setScannerError('Camera preview could not start.'));
-  }, [scannerPhotoCameraOpen]);
-
-  useEffect(() => () => {
-    scannerPhotoStreamRef.current?.getTracks().forEach((track) => track.stop());
-  }, []);
-
-  const findPrintedIsbns = (text: string): string[] => {
-    const candidates: string[] = [];
-    // OCR may insert spaces and hyphens between digits on copyright pages.
-    for (const line of text.split(/\r?\n/)) {
-      const normalized = line.replace(/[^0-9Xx]/g, '').toUpperCase();
-      for (let index = 0; index < normalized.length; index += 1) {
-        for (const length of [13, 10]) {
-          const candidate = normalized.slice(index, index + length);
-          if (candidate.length === length && isValidCatalogIsbn(candidate)) candidates.push(candidate);
-        }
-      }
-    }
-    return [...new Set(candidates)];
-  };
-
-  const photoToBase64 = async (file: File): Promise<string> => {
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('Could not read photo bytes.'));
-      reader.readAsDataURL(file);
-    });
-    return dataUrl.slice(dataUrl.indexOf(',') + 1);
-  };
-
-  const inspectScannerPhoto = async (file: File) => {
-    if (scannerBusy || scannerPhotoBusy) return;
-    setScannerPhotoBusy(true);
-    setScannerError(null);
-    setScannerMessage(null);
-    setPhotoIsbnChoices([]);
-    const imageUrl = URL.createObjectURL(file);
-    try {
-      const image = new Image();
-      image.src = imageUrl;
-      await image.decode();
-      const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
-      if (Detector) {
-        try {
-          const detector = new Detector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-          const candidates = (await detector.detect(image)).map((item) => item.rawValue ?? '');
-          const isbn = selectCatalogIsbnFromBarcodes(candidates);
-          if (isbn) {
-            await lookupScannedIsbn(isbn);
-            return;
-          }
-        } catch {
-          // Photo barcode detection is optional; always try native text OCR next.
-        }
-      }
-      const recognizedText = await recognizeBookPhotoText(await photoToBase64(file));
-      if (recognizedText !== null) {
-        const candidates = findPrintedIsbns(recognizedText);
-        if (candidates.length === 1) {
-          await lookupScannedIsbn(candidates[0]);
-          return;
-        }
-        if (candidates.length > 1) {
-          setPhotoIsbnChoices(candidates);
-          setScannerMessage('Multiple ISBNs found on this page. Choose the ISBN printed for your edition.');
-          return;
-        }
-      }
-      setScannerMessage('No valid ISBN found in this picture. Photograph the copyright page with the printed ISBN in focus, or search by title and author.');
-    } catch (error) {
-      setScannerError(error instanceof Error ? error.message : 'Could not read this photo. Try another picture or enter the ISBN.');
-    } finally {
-      URL.revokeObjectURL(imageUrl);
-      setScannerPhotoBusy(false);
     }
   };
 
@@ -1062,20 +929,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 )}
               </div>
 
-              <div className="mt-3">
-                {scannerPhotoCameraOpen ? (
-                  <div className="space-y-3">
-                    <video ref={scannerPhotoVideoRef} autoPlay playsInline muted className="max-h-[55dvh] w-full rounded-xl bg-black object-contain" aria-label="Book photo camera preview" />
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => void captureScannerPhoto()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#79566f] px-4 py-2 font-semibold text-white"><Camera className="h-4 w-4" /> Capture Photo</button>
-                      <button type="button" onClick={closeScannerPhotoCamera} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#c5a059]/45 px-4 py-2 text-white">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => void openScannerPhotoCamera()} disabled={scannerBusy || scannerPhotoBusy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#c5a059]/45 bg-[#50354f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"><Camera className="h-4 w-4" />{scannerPhotoBusy ? 'Checking picture…' : 'Take Picture'}</button>
-                )}
-              </div>
-
               {cameraActive && (
                 <div className="mt-3 flex justify-end">
                   <button type="button" onClick={stopCamera} className="quiet-shelf-secondary-action">Stop Camera</button>
@@ -1087,12 +940,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 <button type="submit" disabled={!manualIsbn.trim() || scannerBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
               </form>
 
-              {photoIsbnChoices.length > 0 && (
-                <div className="mt-3 space-y-2 rounded-xl border border-[#c5a059]/40 p-3" aria-label="Choose photographed ISBN">
-                  <p className="text-sm font-semibold text-[#f4efe6]">Which ISBN matches your copy?</p>
-                  {photoIsbnChoices.map((isbn) => <button key={isbn} type="button" disabled={scannerBusy} onClick={() => { setPhotoIsbnChoices([]); void lookupScannedIsbn(isbn); }} className="flex min-h-11 w-full items-center justify-center rounded-xl border border-[#c5a059]/45 bg-[#50354f] px-3 text-sm font-semibold text-white disabled:opacity-40">Use ISBN {isbn}</button>)}
-                </div>
-              )}
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
               {scannerError && <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{scannerError}</p>}
             </section>
