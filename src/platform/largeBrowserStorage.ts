@@ -131,7 +131,7 @@ async function deleteLargeValue(key: string): Promise<boolean> {
 function trackWrite(promise: Promise<unknown>, key: string) {
   const tracked = promise.then(() => undefined, (error) => {
     failedWriteKeys.add(key);
-    console.error('[Inkbound persistence] Managed storage commit failed.', { key, error });
+    console.error('[Inkbound persistence] Managed storage commit failed.', { key, reason: error instanceof Error ? error.message : String(error), error });
   });
   pendingWrites.add(tracked);
   void tracked.finally(() => pendingWrites.delete(tracked));
