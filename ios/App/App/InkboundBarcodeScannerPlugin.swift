@@ -1,6 +1,7 @@
 import AVFoundation
 import Capacitor
 import UIKit
+import Vision
 
 @objc(InkboundBarcodeScannerPlugin)
 public final class InkboundBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -46,12 +47,14 @@ public final class InkboundBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 
-private final class InkboundBarcodeScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+private final class InkboundBarcodeScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     var onResult: ((String?) -> Void)?
 
     private let session = AVCaptureSession()
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var finished = false
+    private let visionQueue = DispatchQueue(label: "com.inkydameinteractive.inkbound.barcode-vision", qos: .userInitiated)
+    private var lastVisionScan: CFTimeInterval = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -118,7 +121,17 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
 
         session.addOutput(output)
         output.setMetadataObjectsDelegate(self, queue: .main)
-        output.metadataObjectTypes = [.ean13, .ean8, .upce]
+        let supportedTypes: [AVMetadataObject.ObjectType] = [.ean13, .ean8, .upce]
+        output.metadataObjectTypes = supportedTypes.filter { output.availableMetadataObjectTypes.contains($0) }
+
+        // iOS camera metadata callbacks are not reliable on every device/OS.
+        // Analyze video frames with Vision as a second, independent barcode reader.
+        let videoOutput = AVCaptureVideoDataOutput()
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        if session.canAddOutput(videoOutput) {
+            session.addOutput(videoOutput)
+            videoOutput.setSampleBufferDelegate(self, queue: visionQueue)
+        }
 
         let preview = AVCaptureVideoPreviewLayer(session: session)
         preview.videoGravity = .resizeAspectFill
@@ -132,8 +145,12 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
     private func finish(_ value: String?) {
         guard !finished else { return }
         finished = true
-        session.stopRunning()
-        onResult?(value)
+        let completion = onResult
+        onResult = nil
+        DispatchQueue.global(qos: .userInitiated).async { [session] in
+            if session.isRunning { session.stopRunning() }
+        }
+        completion?(value)
     }
 
     private func compactIsbn(_ value: String) -> String {
@@ -168,6 +185,29 @@ private final class InkboundBarcodeScannerViewController: UIViewController, AVCa
             return digits[12] == (10 - (sum % 10)) % 10
         }
         return false
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        // Limit Vision work to roughly four frames per second.
+        let now = CACurrentMediaTime()
+        guard now - lastVisionScan >= 0.25 else { return }
+        lastVisionScan = now
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        let request = VNDetectBarcodesRequest()
+        request.symbologies = [.ean13, .ean8, .upce]
+        do {
+            try VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([request])
+            let codes = (request.results ?? [])
+                .compactMap(\.payloadStringValue)
+                .map(compactIsbn)
+                .filter(isValidIsbn)
+            let uniqueCodes = Array(Set(codes))
+            guard uniqueCodes.count == 1, let code = uniqueCodes.first else { return }
+            DispatchQueue.main.async { [weak self] in self?.finish(code) }
+        } catch {
+            // Metadata scanning remains active if Vision cannot process a frame.
+        }
     }
 
     func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
