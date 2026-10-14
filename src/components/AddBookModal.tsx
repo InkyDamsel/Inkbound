@@ -31,8 +31,7 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { confirmNativeBarcodeScanSuccess, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
-import { isAndroidRuntime, isIOSRuntime } from '../platform/runtimePlatform';
+import { playScannerSuccessFeedbackOnNativeAndroid, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner, usesIOSNativeScannerFeedback } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
@@ -337,14 +336,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const playScannerSuccessFeedback = async () => {
     // Native iOS confirmation plays at barcode recognition, before dismissal.
-    if (isIOSRuntime()) return;
-    if (isAndroidRuntime()) {
-      try {
-        await confirmNativeBarcodeScanSuccess();
-        return;
-      } catch (error) {
-        console.warn('[Inkbound scanner] Native Android feedback unavailable; falling back to Web Audio.', error);
-      }
+    if (usesIOSNativeScannerFeedback()) return;
+    try {
+      if (await playScannerSuccessFeedbackOnNativeAndroid()) return;
+    } catch (error) {
+      console.warn('[Inkbound scanner] Native Android feedback unavailable; falling back to Web Audio.', error);
     }
     try {
       const AudioContextClass = window.AudioContext
