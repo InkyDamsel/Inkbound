@@ -47,6 +47,18 @@
         android:textSize="11sp" />
 
     <TextView
+        android:id="@+id/widget_daily_pages"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textColor="#D8B56D"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/widget_pace"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
