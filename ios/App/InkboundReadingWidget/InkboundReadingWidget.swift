@@ -75,6 +75,7 @@ struct ReadingProvider: TimelineProvider {
 
 struct ReadingWidgetView: View {
     let entry: ReadingEntry
+    @Environment(\.widgetFamily) private var family
 
     private var openURL: URL {
         var components = URLComponents()
@@ -125,7 +126,8 @@ struct ReadingWidgetView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let compact = geometry.size.height < 170
+            let small = family == .systemSmall
+            let compact = small || geometry.size.height < 170
             let hasLoan = !libraryReminder.isEmpty
             let hasPace = !entry.paceLabel.isEmpty
             let dense = hasLoan && hasPace
@@ -156,7 +158,7 @@ struct ReadingWidgetView: View {
                     Spacer(minLength: 0)
                 } else {
                     Text(entry.title)
-                        .font(.system(size: tight ? 14 : 17, weight: .bold))
+                        .font(.system(size: small ? 13 : (tight ? 14 : 17), weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -177,9 +179,10 @@ struct ReadingWidgetView: View {
 
                     if !entry.dailyPagesLabel.isEmpty {
                         Text(entry.dailyPagesLabel)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: small ? 10 : 12, weight: .bold))
                             .foregroundColor(gold)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
 
                     if entry.sessionMode == "active" {
@@ -192,21 +195,21 @@ struct ReadingWidgetView: View {
                             .foregroundColor(.white)
                     }
 
-                    if !entry.paceLabel.isEmpty {
+                    if !small && !entry.paceLabel.isEmpty {
                         Text(entry.paceLabel)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.white.opacity(0.85))
                             .lineLimit(1)
                     }
 
-                    if !entry.paceDetail.isEmpty && !dense {
+                    if !small && !entry.paceDetail.isEmpty && !dense {
                         Text(entry.paceDetail)
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.65))
                             .lineLimit(1)
                     }
 
-                    if !libraryReminder.isEmpty {
+                    if !small && !libraryReminder.isEmpty {
                         Text(libraryReminder)
                             .font(.system(size: 11))
                             .foregroundColor(gold)
@@ -225,15 +228,15 @@ struct ReadingWidgetView: View {
                             }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: tight ? 27 : 32)
+                            .frame(height: small ? 25 : (tight ? 27 : 32))
                             .background(Color(red: 0.478, green: 0.325, blue: 0.408), in: RoundedRectangle(cornerRadius: 6))
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, tight ? 8 : 13)
+            .padding(.horizontal, small ? 10 : 14)
+            .padding(.vertical, small ? 8 : (tight ? 8 : 13))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .inkboundWidgetBackground()
