@@ -119,10 +119,10 @@ struct ReadingWidgetView: View {
         guard !entry.dueLabel.isEmpty, !entry.dueDate.isEmpty, !entry.dueTitle.isEmpty, entry.dueTitle == entry.title else { return "" }
         if entry.dueLabel.localizedCaseInsensitiveContains("library:") { return entry.dueLabel }
         let context = [entry.dueTitle.isEmpty ? nil : entry.dueTitle,
-                       entry.dueDate.isEmpty ? nil : "Due back \\(entry.dueDate)"]
+                       entry.dueDate.isEmpty ? nil : "Due back \(entry.dueDate)"]
             .compactMap { $0 }
             .joined(separator: " · ")
-        return context.isEmpty ? entry.dueLabel : "Library: \\(context) · \\(entry.dueLabel)"
+        return context.isEmpty ? entry.dueLabel : "Library: \(context) · \(entry.dueLabel)"
     }
 
     var body: some View {
