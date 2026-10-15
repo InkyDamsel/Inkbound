@@ -1,5 +1,7 @@
 import { registerPlugin } from '@capacitor/core';
 import type { ReadingSession, UserBookRecord } from '../../types';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../../platform/storageKeys';
+import { getSessionPagesRead, isRecordedReadingActivity } from './sessionAnalytics';
 import { buildReadingDeadlinePlan } from './readingDeadline';
 import { selectReadingWidgetBook } from './readingWidgetSelection';
 import { isNativeRuntime } from '../../platform/runtimePlatform';
@@ -39,6 +41,7 @@ interface ReadingWidgetSnapshot {
   timerRunning?: boolean;
   timerAnchorMillis?: number;
   paceLabel?: string;
+  dailyPagesLabel?: string;
   paceDetail?: string;
   dueTitle?: string;
   dueDate?: string;
@@ -203,6 +206,11 @@ export function buildReadingWidgetSnapshot(
     }
   }
 
+  const todayKey = localDateKey(Date.now());
+  const pagesToday = sessions.filter((session) => session.date?.slice(0, 10) === todayKey && isRecordedReadingActivity(session)).reduce((total, session) => total + getSessionPagesRead(session), 0);
+  const rawGoal = readRuntimeJson<number>(ACCOUNT_DATA_STORAGE_KEYS.dailyReadingGoalPages, 20);
+  const dailyGoal = Number.isFinite(Number(rawGoal)) && Number(rawGoal) > 0 ? Math.floor(Number(rawGoal)) : 20;
+  const dailyPagesLabel = `Today: ${pagesToday} / ${dailyGoal} pages`;
   const timerSeconds = draft?.timerSeconds ?? 0;
   const running = Boolean(draft?.isActive && draft.lastActiveAt);
   return {
@@ -217,6 +225,7 @@ export function buildReadingWidgetSnapshot(
     timerRunning: running,
     timerAnchorMillis: running ? draft!.lastActiveAt : undefined,
     paceLabel,
+    dailyPagesLabel,
     paceDetail,
     dueTitle: loan?.work.title,
     dueDate: loan?.libraryLoan?.dueDate,
