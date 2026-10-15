@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import type { ReadingSession, UserBookRecord } from '../../types';
-import { ACCOUNT_DATA_STORAGE_KEYS } from '../../platform/storageKeys';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../sync/storageKeys';
 import { getSessionPagesRead, isRecordedReadingActivity } from './sessionAnalytics';
 import { buildReadingDeadlinePlan } from './readingDeadline';
 import { selectReadingWidgetBook } from './readingWidgetSelection';
