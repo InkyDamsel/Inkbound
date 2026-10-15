@@ -3,10 +3,19 @@ import { isAndroidRuntime, isIOSRuntime } from './runtimePlatform';
 
 interface NativeBarcodeScannerPlugin {
   scan(): Promise<{ rawValue?: string; canceled?: boolean }>;
+  recognizeCover(options: { image: string }): Promise<{ lines: string[] }>;
   confirmSuccess(): Promise<void>;
 }
 
 const NativeBarcodeScanner = registerPlugin<NativeBarcodeScannerPlugin>('InkboundBarcodeScanner');
+
+export async function recognizeBookCover(image: string): Promise<string[]> {
+  if (!shouldUseNativeBarcodeScanner()) {
+    throw new Error('Cover text recognition requires the native iOS or Android app.');
+  }
+  const result = await NativeBarcodeScanner.recognizeCover({ image });
+  return result.lines.filter((line) => typeof line === 'string' && line.trim().length > 1);
+}
 
 export function shouldUseNativeBarcodeScanner(): boolean {
   return isAndroidRuntime() || isIOSRuntime();
