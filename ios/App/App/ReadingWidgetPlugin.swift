@@ -20,7 +20,7 @@ public final class ReadingWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        let stringKeys = ["sessionMode", "bookId", "title", "author", "progressLabel", "paceLabel", "paceDetail", "dueTitle", "dueDate", "dueLabel"]
+        let stringKeys = ["sessionMode", "bookId", "title", "author", "progressLabel", "dailyPagesLabel", "paceLabel", "paceDetail", "dueTitle", "dueDate", "dueLabel"]
         for key in stringKeys {
             defaults.set(call.getString(key) ?? "", forKey: key)
         }
@@ -48,6 +48,7 @@ public final class ReadingWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
             "timerSeconds": defaults.integer(forKey: "timerSeconds"),
             "timerRunning": defaults.bool(forKey: "timerRunning"),
             "timerAnchorMillis": defaults.double(forKey: "timerAnchorMillis"),
+            "dailyPagesLabel": defaults.string(forKey: "dailyPagesLabel") ?? "",
             "paceLabel": defaults.string(forKey: "paceLabel") ?? "",
             "paceDetail": defaults.string(forKey: "paceDetail") ?? "",
             "dueTitle": defaults.string(forKey: "dueTitle") ?? "",
