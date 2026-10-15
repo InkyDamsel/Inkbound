@@ -61,9 +61,13 @@ export function getBookReadingRecency(
     .filter((session) => session.bookId === book.id)
     .reduce((latest, session) => Math.max(latest, getReadingSessionTimestamp(session)), Number.NEGATIVE_INFINITY);
 
+  // Actual reading sessions are the authoritative evidence for which book
+  // the reader used most recently. A metadata/progress timestamp must not
+  // push an older session ahead of a newer timer session on another book.
+  if (Number.isFinite(latestSession)) return latestSession;
+
   return Math.max(
     parseStoredTimestamp(book.lastProgressUpdatedAt),
-    latestSession,
     parseDateOnly(book.lastSessionDate),
     parseDateOnly(book.dateStarted),
     parseDateOnly(book.dateAdded),
