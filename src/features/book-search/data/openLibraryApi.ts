@@ -223,10 +223,10 @@ export async function searchOpenLibrary(query: string, signal?: AbortSignal): Pr
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
 
-  const isbnMatch = trimmed.match(/^isbn:\\s*(.+)$/i);
+  const isbnMatch = trimmed.match(/^isbn:\s*(.+)$/i);
   if (isbnMatch) {
     const isbn = compactIsbn(isbnMatch[1]);
-    if (/^(?:978|979)\\d{10}$|^\\d{9}[\\dX]$/.test(isbn)) {
+    if (/^(?:978|979)\d{10}$|^\d{9}[\dX]$/.test(isbn)) {
       const exact = await searchExactOpenLibraryEdition(isbn, signal);
       if (exact) return exact;
     }
