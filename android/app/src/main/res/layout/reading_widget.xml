@@ -4,6 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:gravity="center_vertical"
     android:padding="14dp"
     android:background="@drawable/reading_widget_background">
 
@@ -22,7 +23,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="7dp"
-        android:maxLines="1"
+        android:maxLines="2"
         android:ellipsize="end"
         android:text="Inkbound"
         android:textColor="#F6EDF0"
