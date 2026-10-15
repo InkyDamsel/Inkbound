@@ -113,13 +113,27 @@ struct ReadingWidgetView: View {
             : String(format: "%02d:%02d", minutes, seconds)
     }
 
+    private let gold = Color(red: 0.82, green: 0.66, blue: 0.39)
+
+    private var libraryReminder: String {
+        guard !entry.dueLabel.isEmpty else { return "" }
+        if entry.dueLabel.localizedCaseInsensitiveContains("library:") { return entry.dueLabel }
+        let context = [entry.dueTitle.isEmpty ? nil : entry.dueTitle,
+                       entry.dueDate.isEmpty ? nil : "Due back \\(entry.dueDate)"]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        return context.isEmpty ? entry.dueLabel : "Library: \\(context) · \\(entry.dueLabel)"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        GeometryReader { geometry in
+            let compact = geometry.size.height < 170
+            VStack(alignment: .leading, spacing: compact ? 3 : 6) {
                 HStack {
                     Text("INKBOUND")
                         .font(.caption2.weight(.bold))
                         .tracking(1.3)
-                        .foregroundColor(Color(red: 0.82, green: 0.66, blue: 0.39))
+                        .foregroundColor(gold)
                     Spacer()
                     if entry.sessionMode == "active" {
                         Text("READING")
@@ -129,37 +143,39 @@ struct ReadingWidgetView: View {
                 }
 
                 if entry.title.isEmpty {
-                    Spacer()
+                    Spacer(minLength: 0)
                     Text("No current read")
                         .font(.headline)
                         .foregroundColor(.white)
                     Text("Choose a Currently Reading book in Inkbound.")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.65))
-                    Spacer()
+                    Spacer(minLength: 0)
                 } else {
                     Text(entry.title)
-                        .font(.headline)
+                        .font(compact ? .subheadline.weight(.bold) : .headline)
                         .foregroundColor(.white)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     if !entry.author.isEmpty {
                         Text(entry.author)
                             .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.white.opacity(0.72))
                             .lineLimit(1)
                     }
 
                     if !entry.progressLabel.isEmpty {
                         Text(entry.progressLabel)
                             .font(.caption.weight(.semibold))
-                            .foregroundColor(Color(red: 0.87, green: 0.74, blue: 0.52))
+                            .foregroundColor(gold)
+                            .lineLimit(1)
                     }
 
                     if !entry.dailyPagesLabel.isEmpty {
                         Text(entry.dailyPagesLabel)
-                            .font(.caption2.weight(.bold))
-                            .foregroundColor(Color(red: 0.85, green: 0.71, blue: 0.43))
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(gold)
                             .lineLimit(1)
                     }
 
@@ -176,34 +192,36 @@ struct ReadingWidgetView: View {
                     if !entry.paceLabel.isEmpty {
                         Text(entry.paceLabel)
                             .font(.caption2)
-                            .foregroundColor(.white.opacity(0.72))
+                            .foregroundColor(.white.opacity(0.75))
                             .lineLimit(1)
                     }
 
-                    if !entry.dueLabel.isEmpty {
-                        Text(entry.dueLabel)
+                    if !libraryReminder.isEmpty {
+                        Text(libraryReminder)
                             .font(.caption2)
-                            .foregroundColor(Color(red: 0.85, green: 0.71, blue: 0.43))
-                            .lineLimit(2)
+                            .foregroundColor(gold)
+                            .lineLimit(compact ? 1 : 2)
                     }
 
-                    Spacer(minLength: 2)
+                    Spacer(minLength: 0)
 
                     if entry.sessionMode == "none" {
                         Link(destination: startURL) {
                             Text("Start Reading")
                                 .font(.caption.weight(.bold))
                                 .foregroundColor(Color(red: 0.071, green: 0.031, blue: 0.09))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color(red: 0.82, green: 0.66, blue: 0.39))
-                                .cornerRadius(8)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, compact ? 4 : 7)
+                                .background(gold, in: RoundedRectangle(cornerRadius: 9))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(.horizontal, 14)
+            .padding(.vertical, compact ? 10 : 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
         .inkboundWidgetBackground()
         .widgetURL(openURL)
     }
