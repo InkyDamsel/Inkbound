@@ -454,12 +454,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setHasSearched(true);
     setAuthorPage(null);
     setPendingSearchEdition(null);
-    setQuery([titleQuery, authorQuery].filter(Boolean).join(' '));
-    setActiveTab('search');
+    setQuery(titleQuery);
     try {
+      // Query the work, not the retailer-specific ISBN. A title/author match
+      // can recover metadata even when that edition is absent from catalogs.
       const response = await searchGoogleBooks(titleQuery);
-      // Title-only retrieval is intentional: provider full-text search can
-      // miss valid editions when the author's name is appended to the query.
       const normalizedTitle = normalizeCatalogText(titleQuery);
       const normalizedAuthor = normalizeAuthorName(authorQuery);
       const candidates = response.groups.filter((work) => {
@@ -472,11 +471,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return titleMatches && authorMatches;
       });
       setResults(candidates);
+      setActiveTab('search');
       if (!candidates.length) {
         setSearchError('No matching title and author found. Try a shorter title, adjust the author, or enter the book manually. Your scanned ISBN is retained.');
       }
     } catch (error) {
       setResults([]);
+      setActiveTab('search');
       setSearchError(error instanceof Error ? error.message : 'Catalog search unavailable. Your scanned ISBN is retained.');
     } finally {
       setIsSearching(false);
@@ -1003,13 +1004,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </form>
 
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
-              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{unresolvedIsbn && <div className="mt-3 space-y-3">
-                <p className="text-xs text-[#e6d6e2]">Know the title? Search other editions without losing ISBN {unresolvedIsbn}.</p>
-                <input aria-label="Book title for scanner recovery" value={scannerRecoveryTitle} onChange={(event) => setScannerRecoveryTitle(event.target.value)} placeholder="Book title" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
-                <input aria-label="Author for scanner recovery" value={scannerRecoveryAuthor} onChange={(event) => setScannerRecoveryAuthor(event.target.value)} placeholder="Author (optional)" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
-                <button type="button" disabled={!scannerRecoveryTitle.trim() || isSearching} className="quiet-shelf-secondary-action disabled:opacity-50" onClick={() => { void recoverScannedBookByTitle(); }}>Find other editions</button>
-                <button type="button" className="quiet-shelf-secondary-action" onClick={() => { setActiveTab('manual'); setScannerError(null); }}>Complete book details for ISBN {unresolvedIsbn}</button>
-              </div>}</div>}
+              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
+                <p className="text-xs text-[#e6d6e2]">Enter a title and optionally an author. Inkbound will look up book details and available editions automatically, keeping scanned ISBN {unresolvedIsbn} separate.</p>
+                <input aria-label="Book title for scanner recovery" value={scannerRecoveryTitle} onChange={(event) => setScannerRecoveryTitle(event.target.value)} placeholder="Book title" enterKeyHint="next" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
+                <input aria-label="Author for scanner recovery" value={scannerRecoveryAuthor} onChange={(event) => setScannerRecoveryAuthor(event.target.value)} placeholder="Author (optional)" enterKeyHint="search" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
+                <button type="submit" disabled={!scannerRecoveryTitle.trim() || isSearching} className="quiet-shelf-secondary-action w-full min-h-11 disabled:opacity-50">{isSearching ? 'Looking up book details…' : 'Find book details & editions'}</button>
+                <button type="button" className="quiet-shelf-secondary-action w-full min-h-11" onClick={() => { setActiveTab('manual'); setScannerError(null); }}>Enter details manually instead</button>
+              </form>}</div>}
             </section>
 
             <section className="min-w-0 rounded-2xl border border-[#3d2448] bg-[#1d1422] p-3 sm:p-5 lg:max-h-[min(66dvh,650px)] lg:overflow-y-auto">
