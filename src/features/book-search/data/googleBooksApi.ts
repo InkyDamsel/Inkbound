@@ -482,6 +482,32 @@ export async function resolveCatalogIsbn(
     }
   }
 
+  // The protected catalog proxy can lag behind newly published or retailer-only
+  // ISBNs. Before asking a reader to type, independently query Google's public
+  // ISBN index. Never silently attach the scanned ISBN to a different edition.
+  for (const candidate of candidates) {
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    try {
+      const payload = await requestDirectGoogleBooks(`isbn:${candidate}`, signal);
+      const groups = hardenCatalogGroups(groupGoogleEditions(
+        (payload.items ?? []).map(mapGoogleVolume)
+          .filter((item): item is BookSearchEdition => Boolean(item)),
+      ));
+      const exact = selectExactIsbnEdition(groups, candidate);
+      if (exact) {
+        return { work: exact.work, edition: exact.edition, exactIsbn: true, matchedIsbn: candidate };
+      }
+      // Google's ISBN-specific search can return the correct work even if its
+      // edition metadata lacks the identifier. Accept only an unambiguous work.
+      if (groups.length === 1 && groups[0].editions.length > 0) {
+        return { work: groups[0], edition: groups[0].editions[0], exactIsbn: false };
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Direct Google Books ISBN recovery unavailable.', error);
+    }
+  }
+
   // Some catalogs can identify a work from the raw barcode text even when the
   // exact edition record is missing or the provider attached incomplete ISBN
   // metadata. Treat this as a work-level fallback, never as a verified edition.
