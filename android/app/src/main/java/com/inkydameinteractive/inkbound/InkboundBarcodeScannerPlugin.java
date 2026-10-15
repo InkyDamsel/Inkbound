@@ -44,6 +44,44 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
         });
     }
     @PluginMethod
+    public void recognizeCover(PluginCall call) {
+        String base64 = call.getString("image");
+        if (base64 == null || base64.isEmpty()) {
+            call.reject("No cover image was supplied.");
+            return;
+        }
+        try {
+            byte[] bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+            android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (bitmap == null) { call.reject("Could not read cover image."); return; }
+            com.google.mlkit.vision.common.InputImage image =
+                com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0);
+            com.google.mlkit.vision.text.TextRecognizer recognizer =
+                com.google.mlkit.vision.text.TextRecognition.getClient(
+                    com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS);
+            recognizer.process(image)
+                .addOnSuccessListener(result -> {
+                    com.getcapacitor.JSArray lines = new com.getcapacitor.JSArray();
+                    for (com.google.mlkit.vision.text.Text.TextBlock block : result.getTextBlocks()) {
+                        for (com.google.mlkit.vision.text.Text.Line line : block.getLines()) {
+                            lines.put(line.getText());
+                        }
+                    }
+                    JSObject response = new JSObject();
+                    response.put("lines", lines);
+                    call.resolve(response);
+                    recognizer.close();
+                })
+                .addOnFailureListener(error -> {
+                    recognizer.close();
+                    call.reject("Cover text recognition failed.", error);
+                });
+        } catch (Exception error) {
+            call.reject("Could not process cover image.", error);
+        }
+    }
+
+    @PluginMethod
     public void scan(PluginCall call) {
         GmsBarcodeScannerOptions options = new GmsBarcodeScannerOptions.Builder()
             .setBarcodeFormats(
