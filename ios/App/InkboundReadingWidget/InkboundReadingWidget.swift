@@ -113,34 +113,33 @@ struct ReadingWidgetView: View {
             : String(format: "%02d:%02d", minutes, seconds)
     }
 
-    private let gold = Color(red: 0.82, green: 0.66, blue: 0.39)
+    private let plum = Color(red: 0.105, green: 0.068, blue: 0.125)
+    private let rose = Color(red: 0.78, green: 0.60, blue: 0.70)
+    private let gold = Color(red: 0.847, green: 0.710, blue: 0.427)
 
     private var libraryReminder: String {
-        guard !entry.dueLabel.isEmpty, !entry.dueDate.isEmpty, !entry.dueTitle.isEmpty, entry.dueTitle == entry.title else { return "" }
-        if entry.dueLabel.localizedCaseInsensitiveContains("library:") { return entry.dueLabel }
-        let context = [entry.dueTitle.isEmpty ? nil : entry.dueTitle,
-                       entry.dueDate.isEmpty ? nil : "Due back \(entry.dueDate)"]
-            .compactMap { $0 }
-            .joined(separator: " · ")
-        return context.isEmpty ? entry.dueLabel : "Library: \(context) · \(entry.dueLabel)"
+        guard !entry.dueTitle.isEmpty, !entry.dueDate.isEmpty, !entry.dueLabel.isEmpty else { return "" }
+        let bookPrefix = entry.dueTitle == entry.title ? "" : entry.dueTitle + " · "
+        return "Library: " + bookPrefix + "Due back " + entry.dueDate + " · " + entry.dueLabel
     }
 
     var body: some View {
         GeometryReader { geometry in
             let compact = geometry.size.height < 170
-            VStack(alignment: .leading, spacing: compact ? 3 : 6) {
+            VStack(alignment: .leading, spacing: compact ? 3 : 5) {
                 HStack {
                     Text("INKBOUND")
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.3)
-                        .foregroundColor(gold)
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(2)
+                        .foregroundColor(rose)
                     Spacer()
                     if entry.sessionMode == "active" {
                         Text("READING")
-                            .font(.caption2.weight(.bold))
-                            .foregroundColor(.green)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(gold)
                     }
                 }
+                .padding(.bottom, compact ? 1 : 3)
 
                 if entry.title.isEmpty {
                     Spacer(minLength: 0)
@@ -149,32 +148,32 @@ struct ReadingWidgetView: View {
                         .foregroundColor(.white)
                     Text("Choose a Currently Reading book in Inkbound.")
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.65))
+                        .foregroundColor(.white.opacity(0.7))
                     Spacer(minLength: 0)
                 } else {
                     Text(entry.title)
-                        .font(compact ? .subheadline.weight(.bold) : .headline)
+                        .font(.system(size: compact ? 14 : 17, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if !entry.author.isEmpty {
                         Text(entry.author)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.72))
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(red: 0.78, green: 0.72, blue: 0.75))
                             .lineLimit(1)
                     }
 
                     if !entry.progressLabel.isEmpty {
                         Text(entry.progressLabel)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(gold)
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.75))
                             .lineLimit(1)
                     }
 
                     if !entry.dailyPagesLabel.isEmpty {
                         Text(entry.dailyPagesLabel)
-                            .font(.caption.weight(.bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundColor(gold)
                             .lineLimit(1)
                     }
@@ -191,35 +190,47 @@ struct ReadingWidgetView: View {
 
                     if !entry.paceLabel.isEmpty {
                         Text(entry.paceLabel)
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.75))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.85))
+                            .lineLimit(1)
+                    }
+
+                    if !entry.paceDetail.isEmpty {
+                        Text(entry.paceDetail)
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.65))
                             .lineLimit(1)
                     }
 
                     if !libraryReminder.isEmpty {
                         Text(libraryReminder)
-                            .font(.caption2)
+                            .font(.system(size: 11))
                             .foregroundColor(gold)
-                            .lineLimit(compact ? 1 : 2)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Spacer(minLength: 0)
 
                     if entry.sessionMode == "none" {
                         Link(destination: startURL) {
-                            Text("Start Reading")
-                                .font(.caption.weight(.bold))
-                                .foregroundColor(Color(red: 0.071, green: 0.031, blue: 0.09))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, compact ? 4 : 7)
-                                .background(gold, in: RoundedRectangle(cornerRadius: 9))
+                            HStack(spacing: 5) {
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 9))
+                                Text("Start")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: compact ? 27 : 32)
+                            .background(Color(red: 0.478, green: 0.325, blue: 0.408), in: RoundedRectangle(cornerRadius: 6))
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, compact ? 10 : 14)
+            .padding(.vertical, compact ? 10 : 13)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .inkboundWidgetBackground()
@@ -232,10 +243,10 @@ private extension View {
     func inkboundWidgetBackground() -> some View {
         if #available(iOSApplicationExtension 17.0, *) {
             containerBackground(for: .widget) {
-                Color(red: 0.071, green: 0.031, blue: 0.09)
+                Color(red: 0.105, green: 0.068, blue: 0.125)
             }
         } else {
-            background(Color(red: 0.071, green: 0.031, blue: 0.09))
+            background(Color(red: 0.105, green: 0.068, blue: 0.125))
         }
     }
 }
