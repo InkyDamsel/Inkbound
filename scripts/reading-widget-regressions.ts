@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
 import { selectReadingWidgetBook } from '../src/features/reading/readingWidgetSelection';
+import { selectPrimaryCurrentlyReadingBook } from '../src/features/reading/primaryReadingSelection';
 
 const book = (
   id: string,
@@ -109,6 +110,26 @@ const session = (
   const newer = book('newer', 'Newer', '2026-10-05');
   const selected = selectReadingWidgetBook([older, newer], [], null);
   assert.equal(selected?.id, 'newer');
+}
+
+// Web dashboard and both native widgets share the same canonical selection.
+// A later timer session wins even if an older book has a newer metadata timestamp.
+{
+  const breakIn = { ...book('break', 'Break In The Girl'), lastProgressUpdatedAt: '2026-10-15T18:00:00.000Z' };
+  const tom = book('tom', 'Tom Clancy Target Acquired');
+  const sessions = [
+    session('break-morning', 'break', '2026-10-15', '07:34', '07:55'),
+    session('tom-later', 'tom', '2026-10-15', '11:50', '11:52'),
+  ];
+  const books = [breakIn, tom];
+  assert.equal(selectPrimaryCurrentlyReadingBook(books, sessions)?.id, 'tom');
+  assert.equal(selectReadingWidgetBook(books, sessions, null)?.id, 'tom');
+  assert.equal(selectReadingWidgetBook(books, sessions, {
+    selectedBookId: 'break', isActive: false, isFinished: false, timerSeconds: 1260,
+  })?.id, 'tom', 'A paused stale timer cannot override the latest completed session.');
+  assert.equal(selectReadingWidgetBook(books, sessions, {
+    selectedBookId: 'break', isActive: true, isFinished: false, timerSeconds: 1260,
+  })?.id, 'break', 'An actively running timer remains the widget focus.');
 }
 
 console.log('Inkbound reading widget selection regressions passed.');
