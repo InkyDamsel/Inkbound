@@ -124,7 +124,106 @@ struct ReadingWidgetView: View {
         return "Library: " + bookPrefix + "Due back " + entry.dueDate + " · " + entry.dueLabel
     }
 
+    // The small iOS family has much less vertical space than Android's resizable
+    // widget. Keep the same information hierarchy, using compact reminders.
+    private var compactLibraryReminder: String {
+        guard !entry.dueDate.isEmpty, !entry.dueLabel.isEmpty else { return "" }
+        return "Library: " + entry.dueDate + " · " + entry.dueLabel
+    }
+
+    private var compactWidget: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("INKBOUND")
+                .font(.system(size: 8, weight: .bold))
+                .tracking(1.5)
+                .foregroundColor(rose)
+
+            if entry.title.isEmpty {
+                Spacer(minLength: 0)
+                Text("No current read")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                Spacer(minLength: 0)
+            } else {
+                Text(entry.title)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                if !entry.author.isEmpty {
+                    Text(entry.author)
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.75))
+                        .lineLimit(1)
+                }
+                if !entry.progressLabel.isEmpty {
+                    Text(entry.progressLabel)
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.75))
+                        .lineLimit(1)
+                }
+                if !entry.dailyPagesLabel.isEmpty {
+                    Text(entry.dailyPagesLabel)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(gold)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                if entry.sessionMode == "active" {
+                    Text(timerStartDate, style: .timer)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                } else if entry.sessionMode == "paused" || entry.sessionMode == "finished" {
+                    Text(staticTimer)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                }
+                if !entry.paceLabel.isEmpty {
+                    Text(entry.paceLabel)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.85))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                if !compactLibraryReminder.isEmpty {
+                    Text(compactLibraryReminder)
+                        .font(.system(size: 9))
+                        .foregroundColor(gold)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                Spacer(minLength: 0)
+                if entry.sessionMode == "none" {
+                    Link(destination: startURL) {
+                        Label("Start", systemImage: "play.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 23)
+                            .background(Color(red: 0.478, green: 0.325, blue: 0.408), in: RoundedRectangle(cornerRadius: 5))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     var body: some View {
+        Group {
+            if family == .systemSmall {
+                compactWidget
+            } else {
+                mediumWidget
+            }
+        }
+        .inkboundWidgetBackground()
+        .widgetURL(openURL)
+    }
+
+    private var mediumWidget: some View {
         GeometryReader { geometry in
             let small = family == .systemSmall
             let compact = small || geometry.size.height < 170
@@ -239,8 +338,6 @@ struct ReadingWidgetView: View {
             .padding(.vertical, small ? 8 : (tight ? 8 : 13))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .inkboundWidgetBackground()
-        .widgetURL(openURL)
     }
 }
 
