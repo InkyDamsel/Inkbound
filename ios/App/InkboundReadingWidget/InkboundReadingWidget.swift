@@ -116,7 +116,7 @@ struct ReadingWidgetView: View {
     private let gold = Color(red: 0.82, green: 0.66, blue: 0.39)
 
     private var libraryReminder: String {
-        guard !entry.dueLabel.isEmpty else { return "" }
+        guard !entry.dueLabel.isEmpty, !entry.dueDate.isEmpty, !entry.dueTitle.isEmpty, entry.dueTitle == entry.title else { return "" }
         if entry.dueLabel.localizedCaseInsensitiveContains("library:") { return entry.dueLabel }
         let context = [entry.dueTitle.isEmpty ? nil : entry.dueTitle,
                        entry.dueDate.isEmpty ? nil : "Due back \\(entry.dueDate)"]
