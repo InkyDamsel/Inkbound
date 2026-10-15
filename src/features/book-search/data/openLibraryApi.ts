@@ -18,6 +18,9 @@ interface OpenLibraryEdition {
   language?: string[];
   ebook_access?: string;
   series?: string[];
+  publishers?: string[];
+  physical_format?: string;
+  authors?: Array<{ key?: string }>;
 }
 
 interface OpenLibraryWork {
@@ -174,9 +177,60 @@ function buildSearchParams(query: string): URLSearchParams {
   return params;
 }
 
+// Open Library search results only expose a small subset of each work's editions.
+// For barcode scans, fetch the edition by its exact ISBN first so retail and
+// special editions cannot disappear behind the search endpoint's edition limit.
+async function searchExactOpenLibraryEdition(isbn: string, signal?: AbortSignal): Promise<BookSearchResponse | null> {
+  const response = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Open Library ISBN edition lookup failed (${response.status}).`);
+  const edition = (await response.json()) as OpenLibraryEdition;
+  if (!edition.title) return null;
+  const declaredIsbns = [...(edition.isbn_13 ?? []), ...(edition.isbn_10 ?? []), ...(edition.isbn ?? [])]
+    .map(compactIsbn);
+  if (!declaredIsbns.includes(isbn)) return null;
+
+  const work: OpenLibraryWork = {
+    title: edition.title,
+    subtitle: edition.subtitle,
+    publisher: edition.publishers ?? edition.publisher,
+    isbn: [isbn],
+  };
+  const mapped = toEdition(work, edition, 0);
+  if (!mapped) return null;
+  // Preserve the exact scanned ISBN even if the provider omitted its
+  // normalized isbn_13 / isbn_10 field.
+  if (isbn.length === 13) mapped.isbn13 = isbn;
+  else mapped.isbn10 = isbn;
+  if (edition.physical_format) mapped.binding = edition.physical_format;
+  return {
+    groups: [{
+      key: `open-library:edition:${edition.key ?? isbn}`,
+      title: edition.title,
+      subtitle: edition.subtitle,
+      authors: mapped.authors,
+      genres: [],
+      editions: [mapped],
+    }],
+    totalItems: 1,
+  };
+}
+
 export async function searchOpenLibrary(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
+
+  const isbnMatch = trimmed.match(/^isbn:\\s*(.+)$/i);
+  if (isbnMatch) {
+    const isbn = compactIsbn(isbnMatch[1]);
+    if (/^(?:978|979)\\d{10}$|^\\d{9}[\\dX]$/.test(isbn)) {
+      const exact = await searchExactOpenLibraryEdition(isbn, signal);
+      if (exact) return exact;
+    }
+  }
 
   const params = buildSearchParams(trimmed);
   const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
