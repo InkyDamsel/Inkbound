@@ -13,6 +13,7 @@ struct ReadingEntry: TimelineEntry {
     let timerSeconds: Int
     let timerRunning: Bool
     let timerAnchorMillis: Double
+    let dailyPagesLabel: String
     let paceLabel: String
     let paceDetail: String
     let dueTitle: String
@@ -32,6 +33,7 @@ struct ReadingProvider: TimelineProvider {
             timerSeconds: 0,
             timerRunning: false,
             timerAnchorMillis: 0,
+            dailyPagesLabel: "",
             paceLabel: "",
             paceDetail: "",
             dueTitle: "",
@@ -61,6 +63,7 @@ struct ReadingProvider: TimelineProvider {
             timerSeconds: defaults?.integer(forKey: "timerSeconds") ?? 0,
             timerRunning: defaults?.bool(forKey: "timerRunning") ?? false,
             timerAnchorMillis: defaults?.double(forKey: "timerAnchorMillis") ?? 0,
+            dailyPagesLabel: defaults?.string(forKey: "dailyPagesLabel") ?? "",
             paceLabel: defaults?.string(forKey: "paceLabel") ?? "",
             paceDetail: defaults?.string(forKey: "paceDetail") ?? "",
             dueTitle: defaults?.string(forKey: "dueTitle") ?? "",
@@ -153,6 +156,13 @@ struct ReadingWidgetView: View {
                             .foregroundColor(Color(red: 0.87, green: 0.74, blue: 0.52))
                     }
 
+                    if !entry.dailyPagesLabel.isEmpty {
+                        Text(entry.dailyPagesLabel)
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(Color(red: 0.85, green: 0.71, blue: 0.43))
+                            .lineLimit(1)
+                    }
+
                     if entry.sessionMode == "active" {
                         Text(timerStartDate, style: .timer)
                             .font(.system(.title3, design: .monospaced).weight(.bold))
@@ -170,6 +180,13 @@ struct ReadingWidgetView: View {
                             .lineLimit(1)
                     }
 
+                    if !entry.dueLabel.isEmpty {
+                        Text(entry.dueLabel)
+                            .font(.caption2)
+                            .foregroundColor(Color(red: 0.85, green: 0.71, blue: 0.43))
+                            .lineLimit(2)
+                    }
+
                     Spacer(minLength: 2)
 
                     if entry.sessionMode == "none" {
@@ -182,14 +199,11 @@ struct ReadingWidgetView: View {
                                 .background(Color(red: 0.82, green: 0.66, blue: 0.39))
                                 .cornerRadius(8)
                         }
-                    } else if !entry.dueLabel.isEmpty {
-                        Text(entry.dueLabel)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundColor(.orange)
                     }
                 }
             }
         .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .inkboundWidgetBackground()
         .widgetURL(openURL)
     }
