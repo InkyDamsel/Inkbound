@@ -55,6 +55,7 @@ export function ReadingWidgetSyncBridge({ books, sessions, onOpenTimer }: Readin
         timerSeconds: snapshot.timerRunning ? undefined : snapshot.timerSeconds,
         timerBaseMillis,
         paceLabel: snapshot.paceLabel,
+        dailyPagesLabel: snapshot.dailyPagesLabel,
         paceDetail: snapshot.paceDetail,
         dueTitle: snapshot.dueTitle,
         dueDate: snapshot.dueDate,
