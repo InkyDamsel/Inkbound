@@ -419,11 +419,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       const { work, edition, exactIsbn } = resolved;
-      if (!exactIsbn) {
-        setUnresolvedIsbn(isbn);
-        setScannerError(`ISBN ${isbn} is valid, but the catalog match could not be verified. Complete the book manually to avoid saving the wrong edition.`);
-        return;
-      }
+      // A work-level match is useful even when a retailer-exclusive ISBN is
+      // missing from catalog editions. Keep the catalog edition's own ISBN;
+      // never mislabel it as the scanned edition.
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
       const nextBatch = [...scannedBooks, { isbn, book }];
       if (!writeScannerDraft(nextBatch)) {
@@ -435,7 +433,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setManualIsbn('');
       setScannerMessage(exactIsbn
         ? `Added “${work.title}” to this scan batch.`
-        : `Added “${work.title}” from a work-level match. Verify this edition’s page count/format before saving if needed.`);
+        : `Added “${work.title}” as a different edition (scanned ISBN ${isbn}). Review the edition before saving; the catalog edition’s ISBN was kept unchanged.`);
       void playScannerSuccessFeedback();
     } catch (error) {
       setUnresolvedIsbn(isbn);
