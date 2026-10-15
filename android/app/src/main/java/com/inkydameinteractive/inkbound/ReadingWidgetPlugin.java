@@ -27,6 +27,7 @@ public class ReadingWidgetPlugin extends Plugin {
         editor.putLong("timerSeconds", longValue(call, "timerSeconds"));
         editor.putBoolean("timerRunning", Boolean.TRUE.equals(call.getBoolean("timerRunning")));
         editor.putLong("timerAnchorMillis", longValue(call, "timerAnchorMillis"));
+        editor.putString("dailyPagesLabel", value(call.getString("dailyPagesLabel")));
         editor.putString("paceLabel", value(call.getString("paceLabel")));
         editor.putString("paceDetail", value(call.getString("paceDetail")));
         editor.putString("dueTitle", value(call.getString("dueTitle")));
@@ -49,6 +50,7 @@ public class ReadingWidgetPlugin extends Plugin {
         result.put("timerSeconds", prefs.getLong("timerSeconds", 0L));
         result.put("timerRunning", prefs.getBoolean("timerRunning", false));
         result.put("timerAnchorMillis", prefs.getLong("timerAnchorMillis", 0L));
+        result.put("dailyPagesLabel", prefs.getString("dailyPagesLabel", ""));
         result.put("paceLabel", prefs.getString("paceLabel", ""));
         result.put("paceDetail", prefs.getString("paceDetail", ""));
         result.put("dueTitle", prefs.getString("dueTitle", ""));
