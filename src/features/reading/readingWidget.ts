@@ -137,12 +137,6 @@ export function applyReadingWidgetAction(action: ReadingWidgetAction): {
   return { bookId: next.selectedBookId, shouldOpenTimer: true };
 }
 
-function nextLibraryLoan(books: UserBookRecord[]) {
-  return books
-    .filter((book) => book.ownership === 'borrowed-library' && /^\d{4}-\d{2}-\d{2}$/.test(book.libraryLoan?.dueDate ?? ''))
-    .sort((a, b) => (a.libraryLoan?.dueDate ?? '').localeCompare(b.libraryLoan?.dueDate ?? ''))[0];
-}
-
 function dueLabel(dueDate?: string) {
   if (!dueDate) return undefined;
   const [year, month, day] = dueDate.split('-').map(Number);
@@ -173,7 +167,8 @@ export function buildReadingWidgetSnapshot(
   const currentBookLoan = currentBook?.ownership === 'borrowed-library' && currentBook.libraryLoan?.dueDate
     ? currentBook
     : undefined;
-  const loan = currentBookLoan ?? nextLibraryLoan(books);
+  // A widget for a personal book must never show an unrelated library loan.
+  const loan = currentBookLoan;
   const deadlinePlan = currentBook
     ? buildReadingDeadlinePlan(currentBook, edition, sessions)
     : null;
