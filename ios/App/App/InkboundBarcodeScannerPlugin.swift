@@ -10,6 +10,7 @@ public final class InkboundBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "InkboundBarcodeScanner"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "scan", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "recognizeCover", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "confirmSuccess", returnType: CAPPluginReturnPromise)
     ]
 
@@ -24,6 +25,28 @@ public final class InkboundBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             AudioServicesPlaySystemSound(1057)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             call.resolve()
+        }
+    }
+
+    @objc func recognizeCover(_ call: CAPPluginCall) {
+        guard let encoded = call.getString("image"),
+              let data = Data(base64Encoded: encoded),
+              let image = UIImage(data: data),
+              let cgImage = image.cgImage else {
+            call.reject("Could not read cover image.")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            do {
+                try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
+                let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+                call.resolve(["lines": lines])
+            } catch {
+                call.reject("Cover text recognition failed: \\(error.localizedDescription)")
+            }
         }
     }
 
