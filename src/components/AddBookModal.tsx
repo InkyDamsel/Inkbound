@@ -213,6 +213,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const safeScannerReviewPage = Math.min(scannerReviewPage, scannerReviewPageCount);
   const [scannerCategory, setScannerCategory] = useState<ReadingStatusSelection>('tbr');
   const [manualIsbn, setManualIsbn] = useState('');
+  const [unresolvedIsbn, setUnresolvedIsbn] = useState<string | null>(null);
   const [scannerBusy, setScannerBusy] = useState(false);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -407,17 +408,20 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
 
     setScannerBusy(true);
+    setUnresolvedIsbn(null);
     setScannerError(null);
     setScannerMessage(null);
     try {
       const resolved = await resolveCatalogIsbn(isbn);
       if (!resolved) {
-        setScannerError('Inkbound checked all available catalog paths but could not identify this barcode yet.');
+        setUnresolvedIsbn(isbn);
+        setScannerError(`ISBN ${isbn} is valid, but no catalog returned a verified edition. You can complete its details manually without losing the ISBN.`);
         return;
       }
       const { work, edition, exactIsbn } = resolved;
       if (!exactIsbn) {
-        setScannerError('A catalog returned a possible title but could not verify this ISBN. Nothing was added; search by title or enter the book manually to avoid saving the wrong edition.');
+        setUnresolvedIsbn(isbn);
+        setScannerError(`ISBN ${isbn} is valid, but the catalog match could not be verified. Complete the book manually to avoid saving the wrong edition.`);
         return;
       }
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
@@ -434,7 +438,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         : `Added “${work.title}” from a work-level match. Verify this edition’s page count/format before saving if needed.`);
       void playScannerSuccessFeedback();
     } catch (error) {
-      setScannerError(error instanceof Error ? error.message : 'ISBN lookup failed. Please try again.');
+      setUnresolvedIsbn(isbn);
+      setScannerError(`ISBN ${isbn} is valid, but catalog lookup failed. Retry or complete the details manually. ${error instanceof Error ? error.message : ''}`);
     } finally {
       setScannerBusy(false);
     }
@@ -709,6 +714,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const handleManualAdd = () => {
     if (!title.trim() || !author.trim()) return;
+    if (unresolvedIsbn && !isValidCatalogIsbn(unresolvedIsbn)) return;
     const workId = uniqueId('work');
     const editionId = uniqueId('edition');
     const bookId = uniqueId('book');
@@ -737,6 +743,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       editions: [{
         id: editionId,
         format,
+        isbn13: unresolvedIsbn?.length === 13 ? unresolvedIsbn : undefined,
+        isbn10: unresolvedIsbn?.length === 10 ? unresolvedIsbn : undefined,
         pageCount: format === 'audiobook' ? undefined : validPageCount,
         coverGradient: 'from-[#5c3d62] via-[#35243f] to-[#171117]',
       }],
@@ -956,7 +964,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </form>
 
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
-              {scannerError && <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{scannerError}</p>}
+              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{unresolvedIsbn && <button type="button" className="quiet-shelf-secondary-action mt-3" onClick={() => { setActiveTab('manual'); setScannerError(null); }}>Complete book details for ISBN {unresolvedIsbn}</button>}</div>}
             </section>
 
             <section className="min-w-0 rounded-2xl border border-[#3d2448] bg-[#1d1422] p-3 sm:p-5 lg:max-h-[min(66dvh,650px)] lg:overflow-y-auto">
@@ -1017,6 +1025,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Title *"><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" /></Field>
               <Field label="Author / creator *"><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Author or creator" /></Field>
+              {unresolvedIsbn && <div className="rounded-xl border border-[#c5a059]/35 bg-[#c5a059]/10 p-3 text-sm text-[#e5c158] sm:col-span-2">ISBN {unresolvedIsbn} will be retained on this edition. Enter the title and author to save it.</div>}
               <Field label="Reading material"><select value={materialType} onChange={(event) => setMaterialType(event.target.value as ReadingMaterialType)}>{MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
               <Field label="Genres"><input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="Fantasy, Romance" /></Field>
               {format !== 'audiobook' && <Field label="Page count"><input type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Optional" /></Field>}
