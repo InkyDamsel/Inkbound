@@ -33,7 +33,7 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { playScannerSuccessFeedbackOnNativeAndroid, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 
 interface AddBookModalProps {
@@ -233,6 +233,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const scannerPhotoStreamRef = useRef<MediaStream | null>(null);
   const [scannerPhotoCameraOpen, setScannerPhotoCameraOpen] = useState(false);
   const [scannerPhotoBusy, setScannerPhotoBusy] = useState(false);
+  const coverFileInputRef = useRef<HTMLInputElement | null>(null);
   const [photoIsbnChoices, setPhotoIsbnChoices] = useState<string[]>([]);
 
   useEffect(() => {
@@ -481,6 +482,69 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setSearchError(error instanceof Error ? error.message : 'Catalog search unavailable. Your scanned ISBN is retained.');
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const recoverBookFromCover = async (file: File) => {
+    if (scannerPhotoBusy || scannerBusy) return;
+    setScannerPhotoBusy(true);
+    setScannerError(null);
+    setScannerMessage('Reading the cover and searching the catalog…');
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not process cover photograph.');
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const image = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+      const lines = await recognizeBookCover(image);
+      const candidates = lines.map((line) => line.trim())
+        .filter((line) => line.length >= 5 && line.length <= 75 && /[a-z]{3}/i.test(line))
+        .filter((line) => !/^(new york times|bestselling|author|a novel|exclusive|walmart|book club|edition|isbn|\$|slay)/i.test(line))
+        .sort((a, b) => {
+          const words = (value: string) => value.split(/\s+/).length;
+          const rank = (value: string) => (words(value) >= 2 && words(value) <= 7 ? 10 : 0) + Math.min(value.length, 32) / 10;
+          return rank(b) - rank(a);
+        }).slice(0, 6);
+      if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
+      const recognized = normalizeCatalogText(lines.join(' '));
+      let best: { work: BookSearchWorkGroup; score: number } | null = null;
+      let found: BookSearchWorkGroup[] = [];
+      for (const candidate of candidates) {
+        const response = await searchGoogleBooks(candidate);
+        for (const work of response.groups) {
+          const titleWords = normalizeCatalogText(work.title).split(' ').filter((word) => word.length > 2);
+          if (titleWords.length === 0) continue;
+          const titleScore = titleWords.filter((word) => recognized.includes(word)).length / titleWords.length;
+          const authorScore = work.authors.some((name) => normalizeAuthorName(name).split(' ').filter((word) => word.length > 3).some((word) => recognized.includes(word))) ? 0.25 : 0;
+          const score = titleScore + authorScore;
+          if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
+        }
+        if (best && best.score >= 1.2) break;
+      }
+      if (!best || best.score < 0.75) {
+        setScannerRecoveryTitle(candidates[0]);
+        throw new Error('Cover text was detected, but no reliable catalog match was found. Try another photo or search the title.');
+      }
+      setResults(found.filter((work) => normalizeCatalogText(work.title) === normalizeCatalogText(best!.work.title)));
+      setQuery(best.work.title);
+      setHasSearched(true);
+      setSearchError(null);
+      setPendingSearchEdition(null);
+      setActiveTab('search');
+      setScannerMessage(null);
+      // The cover identifies a work, not a verified ISBN edition.
+      // Keep unresolvedIsbn intact until the user explicitly selects an edition.
+    } catch (error) {
+      setScannerMessage(null);
+      setScannerError(error instanceof Error ? error.message : 'Cover recognition failed. Try another photo.');
+    } finally {
+      setScannerPhotoBusy(false);
+      if (coverFileInputRef.current) coverFileInputRef.current.value = '';
     }
   };
 
@@ -1003,6 +1067,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 <button type="submit" disabled={!manualIsbn.trim() || scannerBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
               </form>
 
+              <input ref={coverFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Photograph book cover" onChange={(event) => { const file = event.target.files?.[0]; if (file) void recoverBookFromCover(file); }} />
+              {shouldUseNativeBarcodeScanner() && <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => coverFileInputRef.current?.click()} className="quiet-shelf-secondary-action mt-3 w-full min-h-11 justify-center disabled:opacity-50"><Camera className="h-4 w-4" /> {scannerPhotoBusy ? 'Recognizing cover…' : 'Scan Cover Instead'}</button>}
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
               {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
                 <p className="text-xs text-[#e6d6e2]">Enter a title and optionally an author. Inkbound will look up book details and available editions automatically, keeping scanned ISBN {unresolvedIsbn} separate.</p>
