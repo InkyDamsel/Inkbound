@@ -214,6 +214,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [scannerCategory, setScannerCategory] = useState<ReadingStatusSelection>('tbr');
   const [manualIsbn, setManualIsbn] = useState('');
   const [unresolvedIsbn, setUnresolvedIsbn] = useState<string | null>(null);
+  const [scannerRecoveryTitle, setScannerRecoveryTitle] = useState('');
+  const [scannerRecoveryAuthor, setScannerRecoveryAuthor] = useState('');
   const [scannerBusy, setScannerBusy] = useState(false);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -440,6 +442,44 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerError(`ISBN ${isbn} is valid, but catalog lookup failed. Retry or complete the details manually. ${error instanceof Error ? error.message : ''}`);
     } finally {
       setScannerBusy(false);
+    }
+  };
+
+  const recoverScannedBookByTitle = async () => {
+    const titleQuery = scannerRecoveryTitle.trim();
+    const authorQuery = scannerRecoveryAuthor.trim();
+    if (!unresolvedIsbn || !titleQuery || isSearching) return;
+    setIsSearching(true);
+    setSearchError(null);
+    setHasSearched(true);
+    setAuthorPage(null);
+    setPendingSearchEdition(null);
+    setQuery([titleQuery, authorQuery].filter(Boolean).join(' '));
+    setActiveTab('search');
+    try {
+      const response = await searchGoogleBooks(titleQuery);
+      // Title-only retrieval is intentional: provider full-text search can
+      // miss valid editions when the author's name is appended to the query.
+      const normalizedTitle = normalizeCatalogText(titleQuery);
+      const normalizedAuthor = normalizeAuthorName(authorQuery);
+      const candidates = response.groups.filter((work) => {
+        const workTitle = normalizeCatalogText(work.title);
+        const titleMatches = workTitle === normalizedTitle
+          || workTitle.startsWith(normalizedTitle + ' ')
+          || normalizedTitle.startsWith(workTitle + ' ');
+        const authorMatches = !normalizedAuthor || work.authors.some((name) =>
+          normalizeAuthorName(name) === normalizedAuthor);
+        return titleMatches && authorMatches;
+      });
+      setResults(candidates);
+      if (!candidates.length) {
+        setSearchError('No matching title and author found. Try a shorter title, adjust the author, or enter the book manually. Your scanned ISBN is retained.');
+      }
+    } catch (error) {
+      setResults([]);
+      setSearchError(error instanceof Error ? error.message : 'Catalog search unavailable. Your scanned ISBN is retained.');
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -785,6 +825,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         {activeTab === 'search' ? (
           <div className="mt-6 space-y-5">
+            {unresolvedIsbn && <div className="rounded-xl border border-[#c5a059]/40 bg-[#c5a059]/10 p-3 text-sm text-[#f1d9a1]">Scanned ISBN {unresolvedIsbn} is preserved. Results below are possible other editions, not verified matches for that ISBN. Choose an edition deliberately, or return to Scan Books to complete the original edition manually.</div>}
             {authorPage ? (
               <section className="overflow-hidden rounded-2xl border border-[#c5a059]/25 bg-gradient-to-br from-[#241726] via-[#1d1422] to-[#120c15] p-5 sm:p-6">
                 <button type="button" onClick={closeAuthorPage} className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs font-bold text-[#d8c28b] transition hover:bg-white/5 hover:text-[#f1d37b]">
@@ -962,7 +1003,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </form>
 
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
-              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{unresolvedIsbn && <button type="button" className="quiet-shelf-secondary-action mt-3" onClick={() => { setActiveTab('manual'); setScannerError(null); }}>Complete book details for ISBN {unresolvedIsbn}</button>}</div>}
+              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{unresolvedIsbn && <div className="mt-3 space-y-3">
+                <p className="text-xs text-[#e6d6e2]">Know the title? Search other editions without losing ISBN {unresolvedIsbn}.</p>
+                <input aria-label="Book title for scanner recovery" value={scannerRecoveryTitle} onChange={(event) => setScannerRecoveryTitle(event.target.value)} placeholder="Book title" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
+                <input aria-label="Author for scanner recovery" value={scannerRecoveryAuthor} onChange={(event) => setScannerRecoveryAuthor(event.target.value)} placeholder="Author (optional)" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
+                <button type="button" disabled={!scannerRecoveryTitle.trim() || isSearching} className="quiet-shelf-secondary-action disabled:opacity-50" onClick={() => { void recoverScannedBookByTitle(); }}>Find other editions</button>
+                <button type="button" className="quiet-shelf-secondary-action" onClick={() => { setActiveTab('manual'); setScannerError(null); }}>Complete book details for ISBN {unresolvedIsbn}</button>
+              </div>}</div>}
             </section>
 
             <section className="min-w-0 rounded-2xl border border-[#3d2448] bg-[#1d1422] p-3 sm:p-5 lg:max-h-[min(66dvh,650px)] lg:overflow-y-auto">
