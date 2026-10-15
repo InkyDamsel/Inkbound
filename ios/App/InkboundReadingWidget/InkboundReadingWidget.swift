@@ -126,7 +126,11 @@ struct ReadingWidgetView: View {
     var body: some View {
         GeometryReader { geometry in
             let compact = geometry.size.height < 170
-            VStack(alignment: .leading, spacing: compact ? 3 : 5) {
+            let hasLoan = !libraryReminder.isEmpty
+            let hasPace = !entry.paceLabel.isEmpty
+            let dense = hasLoan && hasPace
+            let tight = compact || dense
+            VStack(alignment: .leading, spacing: tight ? 2 : 5) {
                 HStack {
                     Text("INKBOUND")
                         .font(.system(size: 10, weight: .bold))
@@ -139,7 +143,7 @@ struct ReadingWidgetView: View {
                             .foregroundColor(gold)
                     }
                 }
-                .padding(.bottom, compact ? 1 : 3)
+                .padding(.bottom, tight ? 0 : 3)
 
                 if entry.title.isEmpty {
                     Spacer(minLength: 0)
@@ -152,7 +156,7 @@ struct ReadingWidgetView: View {
                     Spacer(minLength: 0)
                 } else {
                     Text(entry.title)
-                        .font(.system(size: compact ? 14 : 17, weight: .bold))
+                        .font(.system(size: tight ? 14 : 17, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -195,7 +199,7 @@ struct ReadingWidgetView: View {
                             .lineLimit(1)
                     }
 
-                    if !entry.paceDetail.isEmpty {
+                    if !entry.paceDetail.isEmpty && !dense {
                         Text(entry.paceDetail)
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.65))
@@ -206,8 +210,7 @@ struct ReadingWidgetView: View {
                         Text(libraryReminder)
                             .font(.system(size: 11))
                             .foregroundColor(gold)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(dense ? 1 : 2)
                     }
 
                     Spacer(minLength: 0)
@@ -222,7 +225,7 @@ struct ReadingWidgetView: View {
                             }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: compact ? 27 : 32)
+                            .frame(height: tight ? 27 : 32)
                             .background(Color(red: 0.478, green: 0.325, blue: 0.408), in: RoundedRectangle(cornerRadius: 6))
                         }
                         .buttonStyle(.plain)
@@ -230,7 +233,7 @@ struct ReadingWidgetView: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, compact ? 10 : 13)
+            .padding(.vertical, tight ? 8 : 13)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .inkboundWidgetBackground()
