@@ -453,7 +453,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const resolved = await resolveCatalogIsbn(isbn);
       if (!resolved) {
         setUnresolvedIsbn(isbn);
-        setScannerError(`ISBN ${isbn} is valid, but no catalog returned a verified edition. You can complete its details manually without losing the ISBN.`);
+        setScannerRecoveryTitle('');
+        setScannerRecoveryAuthor('');
+        setScannerError(`ISBN ${isbn} is valid, but no catalog returned a verified edition. Try Scan Cover Instead to identify the book, or enter its title below. Your scanned ISBN is retained.`);
         return;
       }
       const { edition, exactIsbn } = resolved;
@@ -602,15 +604,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setScannerRecoveryTitle(candidates[0]);
         throw new Error('Cover text was detected, but no reliable catalog match was found. Try another photo or search the title.');
       }
-      setResults(found.filter((work) => normalizeCatalogText(work.title) === normalizeCatalogText(best!.work.title)));
-      setQuery(best.work.title);
-      setHasSearched(true);
-      setSearchError(null);
-      setPendingSearchEdition(null);
-      setActiveTab('search');
-      setScannerMessage(null);
-      // The cover identifies a work, not a verified ISBN edition.
-      // Keep unresolvedIsbn intact until the user explicitly selects an edition.
+      // Cover OCR identifies a work, not the scanned edition. Offer the
+      // matching catalog editions in Scanner, never silently substitute ISBNs.
+      const titleKey = normalizeCatalogText(best.work.title);
+      const matches = found.filter((work) =>
+        normalizeCatalogText(work.title) === titleKey
+        && work.authors.some((name) => normalizeAuthorName(name) !== 'unknown author'));
+      if (!matches.length) throw new Error('The cover title was found, but no edition with a known author is available.');
+      setScannerEditionOptions(matches);
+      setScannerRecoveryTitle(best.work.title);
+      setScannerMessage('Cover identified a possible book. Review the editions below and choose Add to Stack.');
+      setScannerError(null);
+      // Keep the original scanned ISBN until the reader selects an edition.
     } catch (error) {
       setScannerMessage(null);
       setScannerError(error instanceof Error ? error.message : 'Cover recognition failed. Try another photo.');
@@ -1150,7 +1155,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </form>
 
               <input ref={coverFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Photograph book cover" onChange={(event) => { const file = event.target.files?.[0]; if (file) void recoverBookFromCover(file); }} />
-              {shouldUseNativeBarcodeScanner() && <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => coverFileInputRef.current?.click()} className="quiet-shelf-secondary-action mt-3 w-full min-h-11 justify-center disabled:opacity-50"><Camera className="h-4 w-4" /> {scannerPhotoBusy ? 'Recognizing cover…' : 'Scan Cover Instead'}</button>}
+              <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => coverFileInputRef.current?.click()} className="quiet-shelf-secondary-action mt-3 w-full min-h-11 justify-center disabled:opacity-50"><Camera className="h-4 w-4" /> {scannerPhotoBusy ? 'Recognizing cover…' : 'Scan Cover Instead'}</button>
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
               {unresolvedIsbn && scannerEditionOptions.length > 0 && <div className="mt-3 rounded-xl border border-[#c5a059]/40 bg-[#1d1422] p-3">
                 <p className="font-serif text-lg text-[#f4efe6]">Possible editions</p>
