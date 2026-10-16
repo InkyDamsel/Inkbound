@@ -37,4 +37,11 @@ assert.match(scanner, /setUnresolvedIsbn\(isbn\)/, 'Incomplete scanner results m
 assert.ok(scanner.indexOf('if (!work.title.trim() || !hasVerifiedAuthor)') < scanner.indexOf('writeScannerDraft(nextBatch)'),
   'Incomplete books must be rejected before scanner draft persistence.');
 
+const enrichment = section(modal, 'const recoverMissingScanAuthor = async', 'const lookupScannedIsbn = async');
+assert.match(enrichment, /searchGoogleBooks\(work\.title\)/, 'Missing scanner authors must use the existing title search.');
+assert.match(enrichment, /normalizeCatalogText\(candidate\.title\) === title/, 'Author recovery must require exact normalized title.');
+assert.match(enrichment, /distinctAuthors\.size !== 1/, 'Ambiguous author matches must not be auto-selected.');
+assert.match(enrichment, /return \{ \.\.\.work, authors: candidates\[0\]\.authors \}/, 'Enrichment must only modify work authors, not edition metadata.');
+assert.match(scanner, /recoverMissingScanAuthor\(resolved\.work\)/, 'Scanner must run automatic author recovery before validating metadata.');
+
 console.log('Inkbound protected search contracts passed.');
