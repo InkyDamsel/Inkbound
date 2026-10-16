@@ -31,8 +31,7 @@ public final class InkboundBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func recognizeCover(_ call: CAPPluginCall) {
         guard let encoded = call.getString("image"),
               let data = Data(base64Encoded: encoded),
-              let image = UIImage(data: data),
-              let cgImage = image.cgImage else {
+              UIImage(data: data) != nil else {
             call.reject("Could not read cover image.")
             return
         }
@@ -41,7 +40,9 @@ public final class InkboundBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
             do {
-                try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
+                // Use the encoded image so Vision can honor its EXIF orientation.
+                // UIImage.cgImage alone drops that orientation, especially for iPhone photos.
+                try VNImageRequestHandler(data: data, options: [:]).perform([request])
                 let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
                 call.resolve(["lines": lines])
             } catch {
