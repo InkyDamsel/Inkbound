@@ -422,6 +422,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       const { work, edition, exactIsbn } = resolved;
+      // Scanner identification must meet the same minimum metadata standard
+      // as Search. Never persist an unidentified author as a successful scan.
+      const hasVerifiedAuthor = work.authors.some((author) => {
+        const normalized = normalizeAuthorName(author);
+        return Boolean(normalized) && normalized !== 'unknown author';
+      });
+      if (!work.title.trim() || !hasVerifiedAuthor) {
+        setUnresolvedIsbn(isbn);
+        setScannerRecoveryTitle(work.title.trim());
+        setScannerError(`ISBN ${isbn} returned incomplete book metadata (missing title or author). This scan was not added. Use the title lookup to identify the book before saving; your ISBN is retained.`);
+        return;
+      }
       // A work-level match is useful even when a retailer-exclusive ISBN is
       // missing from catalog editions. Keep the catalog edition's own ISBN;
       // never mislabel it as the scanned edition.
