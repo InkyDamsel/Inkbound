@@ -591,11 +591,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       for (const candidate of candidates) {
         const response = await searchGoogleBooks(candidate);
         for (const work of response.groups) {
-          const titleWords = normalizeCatalogText(work.title).split(' ').filter((word) => word.length > 2);
-          if (titleWords.length === 0) continue;
-          const titleScore = titleWords.filter((word) => recognized.includes(word)).length / titleWords.length;
-          const authorScore = work.authors.some((name) => normalizeAuthorName(name).split(' ').filter((word) => word.length > 3).some((word) => recognized.includes(word))) ? 0.25 : 0;
-          const score = titleScore + authorScore;
+          // Require a distinctive, whole-word title phrase from the cover.
+          // Substring matches (e.g. "you" in "your") create false positives.
+          const titleKey = normalizeCatalogText(work.title);
+          const titleWords = titleKey.split(' ').filter(Boolean);
+          if (titleWords.length < 2 || titleKey.length < 9) continue;
+          const coverWords = new Set(recognized.split(' ').filter(Boolean));
+          const meaningful = titleWords.filter((word) => word.length >= 4);
+          if (meaningful.length < 2 || !meaningful.every((word) => coverWords.has(word))) continue;
+          const authorScore = work.authors.some((name) => {
+            const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
+            return authorWords.length > 0 && authorWords.every((word) => coverWords.has(word));
+          }) ? 0.5 : 0;
+          const score = 1 + authorScore;
           if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
         }
         if (best && best.score >= 1.2) break;
@@ -611,6 +619,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         normalizeCatalogText(work.title) === titleKey
         && work.authors.some((name) => normalizeAuthorName(name) !== 'unknown author'));
       if (!matches.length) throw new Error('The cover title was found, but no edition with a known author is available.');
+      if (!unresolvedIsbn) {
+        // A cover-only scan must not pretend a catalog edition's ISBN was
+        // scanned. Require the reader to select an ISBN or add manually.
+        setScannerRecoveryTitle(best.work.title);
+        setScannerRecoveryAuthor(best.work.authors.join(', '));
+        setScannerMessage(null);
+        setScannerError('Cover title found. Scan or enter the book ISBN first to keep edition identity accurate, then scan the cover again if needed.');
+        return;
+      }
       setScannerEditionOptions(matches);
       setScannerRecoveryTitle(best.work.title);
       setScannerMessage('Cover identified a possible book. Review the editions below and choose Add to Stack.');
