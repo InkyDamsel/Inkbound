@@ -969,9 +969,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           <p className="mt-2 text-sm text-[#ad9fac]">Search, scan a stack of books, or add something manually.</p>
         </header>
 
-        <div className="mt-6 grid min-w-0 grid-cols-3 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
+        <input ref={coverFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Photograph book cover" onChange={(event) => { const file = event.target.files?.[0]; if (file) void recoverBookFromCover(file); }} />
+        <div className="mt-6 grid min-w-0 grid-cols-4 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
           <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
           <button type="button" onClick={() => { primeScannerAudio(); setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
+          <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => { setActiveTab('scan'); setAuthorPage(null); coverFileInputRef.current?.click(); }} className="min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold text-[#e5c158] disabled:opacity-50 sm:px-3 sm:text-sm"><Camera className="mx-auto h-4 w-4 sm:inline sm:mr-1" />{scannerPhotoBusy ? 'Reading…' : 'Scan Cover'}</button>
           <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
         </div>
 
@@ -1154,8 +1156,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 <button type="submit" disabled={!manualIsbn.trim() || scannerBusy} className="quiet-shelf-secondary-action justify-center disabled:opacity-50">{scannerBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Add ISBN</button>
               </form>
 
-              <input ref={coverFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Photograph book cover" onChange={(event) => { const file = event.target.files?.[0]; if (file) void recoverBookFromCover(file); }} />
-              <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => coverFileInputRef.current?.click()} className="quiet-shelf-secondary-action mt-3 w-full min-h-11 justify-center disabled:opacity-50"><Camera className="h-4 w-4" /> {scannerPhotoBusy ? 'Recognizing cover…' : 'Scan Cover Instead'}</button>
+
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
               {unresolvedIsbn && scannerEditionOptions.length > 0 && <div className="mt-3 rounded-xl border border-[#c5a059]/40 bg-[#1d1422] p-3">
                 <p className="font-serif text-lg text-[#f4efe6]">Possible editions</p>
