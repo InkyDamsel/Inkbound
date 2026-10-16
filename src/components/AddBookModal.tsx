@@ -405,6 +405,32 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
   };
 
+  // A barcode identifies an edition, while title search can identify its work.
+  // Only copy a confidently identified author: never copy a different edition's
+  // ISBN, cover or page count into the scanned edition.
+  const recoverMissingScanAuthor = async (work: BookSearchWorkGroup): Promise<BookSearchWorkGroup> => {
+    if (!work.title.trim() || work.authors.some((author) => {
+      const normalized = normalizeAuthorName(author);
+      return Boolean(normalized) && normalized !== 'unknown author';
+    })) return work;
+    try {
+      const response = await searchGoogleBooks(work.title);
+      const title = normalizeCatalogText(work.title);
+      const candidates = response.groups.filter((candidate) =>
+        normalizeCatalogText(candidate.title) === title
+        && candidate.authors.some((author) => {
+          const normalized = normalizeAuthorName(author);
+          return Boolean(normalized) && normalized !== 'unknown author';
+        }));
+      const distinctAuthors = new Set(candidates.map((candidate) =>
+        candidate.authors.map(normalizeAuthorName).filter((author) => author !== 'unknown author').join('|')));
+      if (distinctAuthors.size !== 1 || !candidates.length) return work;
+      return { ...work, authors: candidates[0].authors };
+    } catch {
+      return work;
+    }
+  };
+
   const lookupScannedIsbn = async (rawIsbn: string) => {
     const isbn = normalizeIsbn(rawIsbn);
     if (!isValidCatalogIsbn(isbn) || scannerBusy) {
@@ -428,7 +454,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setScannerError(`ISBN ${isbn} is valid, but no catalog returned a verified edition. You can complete its details manually without losing the ISBN.`);
         return;
       }
-      const { work, edition, exactIsbn } = resolved;
+      const { edition, exactIsbn } = resolved;
+      const work = await recoverMissingScanAuthor(resolved.work);
       // Scanner identification must meet the same minimum metadata standard
       // as Search. Never persist an unidentified author as a successful scan.
       const hasVerifiedAuthor = work.authors.some((author) => {
