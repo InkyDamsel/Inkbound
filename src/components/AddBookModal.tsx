@@ -665,7 +665,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         try {
           const authorResponse = await searchGoogleBooksAuthorPage(trimmedQuery, 0);
           const exactAuthorResults = filterExactAuthorResults(authorResponse.groups, trimmedQuery);
-          setResults(mergeCatalogResultGroups(exactAuthorResults, response.groups));
+          // An author-qualified search must not be diluted by generic keyword
+          // matches (e.g. books with the author's name in their title).
+          // Retain generic results only when no verified author match exists.
+          setResults(exactAuthorResults.length > 0
+            ? mergeCatalogResultGroups(exactAuthorResults, filterExactAuthorResults(response.groups, trimmedQuery))
+            : response.groups);
         } catch {
           // Generic search remains fully usable if the author-qualified
           // supplement is unavailable or rate-limited.
