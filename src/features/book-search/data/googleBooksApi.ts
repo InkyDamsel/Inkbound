@@ -445,6 +445,31 @@ export interface IsbnLookupResult {
   matchedIsbn?: string;
 }
 
+// Author identification is work-level metadata. A verified title match can
+// repair a missing author without borrowing another edition's ISBN/pages/cover.
+export async function enrichIsbnLookupAuthor(
+  result: IsbnLookupResult,
+  searchByTitle: (title: string) => Promise<BookSearchResponse> = (title) => searchGoogleBooks(title),
+): Promise<IsbnLookupResult> {
+  const knownAuthor = (authors: string[]) =>
+    authors.some((name) => Boolean(name.trim()) && normalizeText(name) !== 'unknown author');
+  if (knownAuthor(result.work.authors)) return result;
+  const titleKey = normalizeText(result.work.title);
+  if (!titleKey) return result;
+  try {
+    const response = await searchByTitle(result.work.title);
+    const matching = response.groups.filter((group) =>
+      normalizeText(group.title) === titleKey && knownAuthor(group.authors));
+    const authorKeys = new Set(matching.map((group) =>
+      group.authors.map((name) => normalizeText(name)).filter((name) => name !== 'unknown author').join('|')));
+    if (authorKeys.size !== 1 || !matching.length) return result;
+    return { ...result, work: { ...result.work, authors: matching[0].authors } };
+  } catch {
+    // An enrichment failure must not discard a valid ISBN result.
+    return result;
+  }
+}
+
 export async function resolveCatalogIsbn(
   rawIsbn: string,
   signal?: AbortSignal,
@@ -460,12 +485,7 @@ export async function resolveCatalogIsbn(
 
     const exact = selectExactIsbnEdition(response.groups, candidate);
     if (exact) {
-      return {
-        work: exact.work,
-        edition: exact.edition,
-        exactIsbn: true,
-        matchedIsbn: candidate,
-      };
+      return enrichIsbnLookupAuthor({ work: exact.work, edition: exact.edition, exactIsbn: true, matchedIsbn: candidate });
     }
   }
 
@@ -473,12 +493,7 @@ export async function resolveCatalogIsbn(
   for (const candidate of candidates) {
     const exact = selectExactIsbnEdition(hardened, candidate);
     if (exact) {
-      return {
-        work: exact.work,
-        edition: exact.edition,
-        exactIsbn: true,
-        matchedIsbn: candidate,
-      };
+      return enrichIsbnLookupAuthor({ work: exact.work, edition: exact.edition, exactIsbn: true, matchedIsbn: candidate });
     }
   }
 
@@ -495,12 +510,12 @@ export async function resolveCatalogIsbn(
       ));
       const exact = selectExactIsbnEdition(groups, candidate);
       if (exact) {
-        return { work: exact.work, edition: exact.edition, exactIsbn: true, matchedIsbn: candidate };
+        return enrichIsbnLookupAuthor({ work: exact.work, edition: exact.edition, exactIsbn: true, matchedIsbn: candidate });
       }
       // Google's ISBN-specific search can return the correct work even if its
       // edition metadata lacks the identifier. Accept only an unambiguous work.
       if (groups.length === 1 && groups[0].editions.length > 0) {
-        return { work: groups[0], edition: groups[0].editions[0], exactIsbn: false };
+        return enrichIsbnLookupAuthor({ work: groups[0], edition: groups[0].editions[0], exactIsbn: false });
       }
     } catch (error) {
       if (signal?.aborted) throw error;
@@ -517,11 +532,7 @@ export async function resolveCatalogIsbn(
     const fallbackWork = response.groups[0];
     const fallbackEdition = fallbackWork?.editions[0];
     if (fallbackWork && fallbackEdition) {
-      return {
-        work: fallbackWork,
-        edition: fallbackEdition,
-        exactIsbn: false,
-      };
+      return enrichIsbnLookupAuthor({ work: fallbackWork, edition: fallbackEdition, exactIsbn: false });
     }
   }
 
