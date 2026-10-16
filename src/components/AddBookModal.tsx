@@ -223,6 +223,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [unresolvedIsbn, setUnresolvedIsbn] = useState<string | null>(null);
   const [scannerRecoveryTitle, setScannerRecoveryTitle] = useState('');
   const [scannerRecoveryAuthor, setScannerRecoveryAuthor] = useState('');
+  const [scannerEditionOptions, setScannerEditionOptions] = useState<BookSearchWorkGroup[]>([]);
   const [scannerBusy, setScannerBusy] = useState(false);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -445,6 +446,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
     setScannerBusy(true);
     setUnresolvedIsbn(null);
+    setScannerEditionOptions([]);
     setScannerError(null);
     setScannerMessage(null);
     try {
@@ -465,7 +467,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       if (!work.title.trim() || !hasVerifiedAuthor) {
         setUnresolvedIsbn(isbn);
         setScannerRecoveryTitle(work.title.trim());
-        setScannerError(`ISBN ${isbn} returned incomplete book metadata (missing title or author). This scan was not added. Use the title lookup to identify the book before saving; your ISBN is retained.`);
+        if (work.title.trim()) {
+          const response = await searchGoogleBooks(work.title);
+          const matches = response.groups.filter((candidate) => normalizeCatalogText(candidate.title) === normalizeCatalogText(work.title) && candidate.authors.some((name) => normalizeAuthorName(name) !== 'unknown author' && Boolean(normalizeAuthorName(name))));
+          setScannerEditionOptions(matches);
+        }
+        setScannerError(`We could not verify the scanned edition. ${work.title.trim() ? 'Choose a matching catalog edition below, or search manually.' : 'Enter a title to find alternative editions.'}`);
         return;
       }
       // A work-level match is useful even when a retailer-exclusive ISBN is
@@ -492,11 +499,30 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
   };
 
+  const chooseScannerAlternative = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
+    if (!unresolvedIsbn || scannedBooks.some((item) => item.isbn === unresolvedIsbn)) return;
+    const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
+    if (!hasIdentifiedBook(book)) return;
+    const nextBatch = [...scannedBooks, { isbn: unresolvedIsbn, book }];
+    if (!writeScannerDraft(nextBatch)) {
+      setScannerError('Device storage is unavailable. This selection was not added to the batch.');
+      return;
+    }
+    setScannedBooks(nextBatch);
+    setScannerReviewPage(Math.ceil(nextBatch.length / scannerReviewPageSize));
+    setScannerMessage(`Added “${work.title}” using a catalog edition. Scanned ISBN ${unresolvedIsbn} is retained separately; review the selected edition before saving.`);
+    setUnresolvedIsbn(null);
+    setScannerEditionOptions([]);
+    setScannerError(null);
+    void playScannerSuccessFeedback();
+  };
+
   const recoverScannedBookByTitle = async () => {
     const titleQuery = scannerRecoveryTitle.trim();
     const authorQuery = scannerRecoveryAuthor.trim();
     if (!unresolvedIsbn || !titleQuery || isSearching) return;
     setIsSearching(true);
+    setScannerEditionOptions([]);
     setSearchError(null);
     setHasSearched(true);
     setAuthorPage(null);
@@ -1126,6 +1152,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               <input ref={coverFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Photograph book cover" onChange={(event) => { const file = event.target.files?.[0]; if (file) void recoverBookFromCover(file); }} />
               {shouldUseNativeBarcodeScanner() && <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => coverFileInputRef.current?.click()} className="quiet-shelf-secondary-action mt-3 w-full min-h-11 justify-center disabled:opacity-50"><Camera className="h-4 w-4" /> {scannerPhotoBusy ? 'Recognizing cover…' : 'Scan Cover Instead'}</button>}
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
+              {unresolvedIsbn && scannerEditionOptions.length > 0 && <div className="mt-3 rounded-xl border border-[#c5a059]/40 bg-[#1d1422] p-3">
+                <p className="font-serif text-lg text-[#f4efe6]">Possible editions</p>
+                <p className="mt-1 text-xs text-[#b9a9ba]">The scanned ISBN is not verified for these editions. Select only if the book and author match; the selected catalog edition keeps its own details.</p>
+                <div className="mt-3 grid gap-2">
+                  {scannerEditionOptions.flatMap((work) => work.editions.slice(0, 3).map((edition) => ({ work, edition }))).slice(0, 9).map(({ work, edition }, index) => <div key={`${work.key}-${edition.externalEditionId}-${index}`} className="flex items-center gap-3 rounded-lg border border-[#c5a059]/20 bg-[#120c15] p-2">
+                    {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover" /> : <BookOpen className="h-10 w-14 shrink-0 text-[#c5a059]" />}
+                    <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-[#f4efe6]">{work.title}</p><p className="text-xs text-[#b9a9ba]">{work.authors.join(', ')}</p><p className="text-xs text-[#ad9fac]">{edition.format} · {edition.pageCount ? `${edition.pageCount} pages` : 'Pages unavailable'}</p><button type="button" onClick={() => chooseScannerAlternative(work, edition)} className="quiet-shelf-secondary-action mt-2 min-h-9">Add this edition to stack</button></div>
+                  </div>)}
+                </div>
+              </div>}
               {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
                 <p className="text-xs text-[#e6d6e2]">Enter a title and optionally an author. Inkbound will look up book details and available editions automatically, keeping scanned ISBN {unresolvedIsbn} separate.</p>
                 <input aria-label="Book title for scanner recovery" value={scannerRecoveryTitle} onChange={(event) => setScannerRecoveryTitle(event.target.value)} placeholder="Book title" enterKeyHint="next" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
