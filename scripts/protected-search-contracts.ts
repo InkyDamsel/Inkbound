@@ -30,4 +30,11 @@ assert.match(provider, /googleGroups\.filter\(creditedToAuthor\)/, 'Google autho
 assert.match(provider, /prh\.groups\.filter\(creditedToAuthor\)/, 'Supplementary author results must be credited to author.');
 assert.match(provider, /nextStartIndex = startIndex \+ rawItems\.length/, 'Author paging must advance by provider results, not filtered matches.');
 
+const scanner = section(modal, 'const lookupScannedIsbn = async', 'const recoverScannedBookByTitle = async');
+assert.match(scanner, /resolveCatalogIsbn\(isbn\)/, 'Scanner must use ISBN resolution.');
+assert.match(scanner, /hasVerifiedAuthor/, 'Scanner must verify author before accepting a scan.');
+assert.match(scanner, /setUnresolvedIsbn\(isbn\)/, 'Incomplete scanner results must preserve the ISBN for recovery.');
+assert.ok(scanner.indexOf('if (!work.title.trim() || !hasVerifiedAuthor)') < scanner.indexOf('writeScannerDraft(nextBatch)'),
+  'Incomplete books must be rejected before scanner draft persistence.');
+
 console.log('Inkbound protected search contracts passed.');
