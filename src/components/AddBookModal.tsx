@@ -52,6 +52,13 @@ type CustomOwnershipSelection = `custom:${string}`;
 type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
 
+const hasIdentifiedBook = (book: UserBookRecord): boolean => {
+  const title = book.work?.title?.trim() ?? '';
+  const author = book.work?.author?.trim() ?? '';
+  return Boolean(title && author && normalizeAuthorName(author) !== 'unknown author'
+    && !author.split(',').every((name) => normalizeAuthorName(name) === 'unknown author'));
+};
+
 const scannerDraftKey = () => `inkbound:scanner-draft:v1:${auth?.currentUser?.uid ?? 'signed-out'}`;
 const readScannerDraft = (): ScannedBook[] => {
   try {
@@ -62,7 +69,7 @@ const readScannerDraft = (): ScannedBook[] => {
     return parsed.filter((item): item is ScannedBook =>
       !!item && typeof item === 'object' && typeof item.isbn === 'string'
       && !!item.book && typeof item.book.id === 'string' && !!item.book.work
-      && Array.isArray(item.book.editions));
+      && Array.isArray(item.book.editions) && hasIdentifiedBook(item.book));
   } catch {
     return [];
   }
@@ -628,6 +635,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const addScannedBatch = async () => {
     if (scannedBooks.length === 0 || scannerBusy) return;
+    const incomplete = scannedBooks.filter((item) => !hasIdentifiedBook(item.book));
+    if (incomplete.length) {
+      setScannerError(`${incomplete.length} scanned book(s) have missing titles or authors. They cannot be saved until identified. Remove them from the batch and use title recovery; the rest of your batch remains intact.`);
+      return;
+    }
     const books = scannedBooks.map((item) => applyReadingStatusSelection(item.book, scannerCategory));
     try {
       if (!onAddMultipleBooks) {
