@@ -37,7 +37,7 @@ export function applySessionProgressToBook(
   if (book.id !== session.bookId) return book;
   const activeEdition = getActiveEdition(book);
   const isAudiobook = activeEdition?.format === 'audiobook';
-  const nextPages = isAudiobook ? book.progressPages : Math.max(book.progressPages, Math.max(0, updatedPages));
+  const nextPages = isAudiobook ? book.progressPages : Math.max(book.progressPages, Math.max(0, updatedPages), Math.max(0, session.endPage ?? 0));
   const nextMinutes = isAudiobook ? Math.max(book.progressMinutes, Math.max(0, updatedMinutes)) : book.progressMinutes;
   const total = isAudiobook ? activeEdition?.audiobookDurationMins : activeEdition?.pageCount;
   const completed = isAudiobook ? nextMinutes : nextPages;
