@@ -576,14 +576,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       bitmap.close();
       const image = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
       const lines = await recognizeBookCover(image);
-      const candidates = lines.map((line) => line.trim())
-        .filter((line) => line.length >= 5 && line.length <= 75 && /[a-z]{3}/i.test(line))
-        .filter((line) => !/^(new york times|bestselling|author|a novel|exclusive|walmart|book club|edition|isbn|\$|slay)/i.test(line))
-        .sort((a, b) => {
-          const words = (value: string) => value.split(/\s+/).length;
-          const rank = (value: string) => (words(value) >= 2 && words(value) <= 7 ? 10 : 0) + Math.min(value.length, 32) / 10;
-          return rank(b) - rank(a);
-        }).slice(0, 6);
+      // OCR returns fragmented lines and decorative cover copy. Build title
+      // phrases from neighboring lines, and reject endorsements/taglines.
+      const coverLines = lines.map((line) => line.trim()).filter(Boolean);
+      const isNoise = (value: string) => /(?:new york times|bestsell|walmart|exclusive|author|edition|isbn|book club|a novel|anything you can do|slay)/i.test(value) || /[#0-9]/.test(value);
+      const phrases = coverLines.flatMap((line, index) => [
+        line,
+        coverLines[index + 1] ? `${line} ${coverLines[index + 1]}` : '',
+        coverLines[index + 2] ? `${line} ${coverLines[index + 1]} ${coverLines[index + 2]}` : '',
+      ]);
+      const candidates = [...new Set(phrases.map((phrase) => phrase.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()))]
+        .filter((phrase) => phrase.length >= 8 && phrase.length <= 75 && phrase.split(/\s+/).length >= 2 && !isNoise(phrase))
+        .sort((left, right) => right.split(/\s+/).length - left.split(/\s+/).length)
+        .slice(0, 16);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
@@ -609,7 +614,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         if (best && best.score >= 1.2) break;
       }
       if (!best || best.score < 0.75) {
-        setScannerRecoveryTitle(candidates[0]);
+        setScannerRecoveryTitle('');
         throw new Error('Cover text was detected, but no reliable catalog match was found. Try another photo or search the title.');
       }
       // Cover OCR identifies a work, not the scanned edition. Offer the
@@ -990,7 +995,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         <div className="mt-6 grid min-w-0 grid-cols-4 gap-1 rounded-xl border border-[#3d2448] bg-[#0d0910] p-1">
           <button type="button" onClick={() => setActiveTab('search')} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'search' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Search</button>
           <button type="button" onClick={() => { primeScannerAudio(); setActiveTab('scan'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'scan' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Scan Books</button>
-          <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => { setActiveTab('scan'); setAuthorPage(null); coverFileInputRef.current?.click(); }} className="min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold text-[#e5c158] disabled:opacity-50 sm:px-3 sm:text-sm">{scannerPhotoBusy ? 'Reading…' : 'Scan Cover'}</button>
+          <button type="button" disabled={scannerPhotoBusy || scannerBusy} onClick={() => { setActiveTab('scan'); setAuthorPage(null); coverFileInputRef.current?.click(); }} className="min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold text-[#ad9fac] disabled:opacity-50 sm:px-3 sm:text-sm">{scannerPhotoBusy ? 'Reading…' : 'Scan Cover'}</button>
           <button type="button" onClick={() => { setActiveTab('manual'); setAuthorPage(null); }} className={`min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:px-3 sm:text-sm ${activeTab === 'manual' ? 'bg-gradient-to-r from-[#c5a059] to-[#d4af37] text-[#120817]' : 'text-[#ad9fac]'}`}>Add Manually</button>
         </div>
 
