@@ -578,7 +578,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const lines = await recognizeBookCover(image);
       // Build title candidates from OCR lines without letting cover blurbs,
       // badges, or endorsements contaminate the actual title.
-      const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\\s'-]/g, ' ').replace(/\\s+/g, ' ').trim()).filter(Boolean);
+      const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
       const isNoise = (value: string) => /(?:new york times|bestsell|walmart|exclusive|author|edition|isbn|book club|a novel|anything you can do|slay)/i.test(value);
       const cleanLines = coverLines.filter((line) => !isNoise(line));
       const phrases = cleanLines.flatMap((line, index) => [
@@ -587,8 +587,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         cleanLines[index + 2] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]}` : '',
       ]);
       const candidates = [...new Set(phrases)]
-        .filter((phrase) => phrase.length >= 8 && phrase.length <= 75 && phrase.split(/\\s+/).length >= 2 && !isNoise(phrase))
-        .sort((left, right) => right.split(/\\s+/).length - left.split(/\\s+/).length)
+        .filter((phrase) => phrase.length >= 8 && phrase.length <= 75 && phrase.split(/\s+/).length >= 2 && !isNoise(phrase))
+        .sort((left, right) => right.split(/\s+/).length - left.split(/\s+/).length)
         .slice(0, 20);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
