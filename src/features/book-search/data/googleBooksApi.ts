@@ -357,7 +357,16 @@ export async function searchGoogleBooksAuthorPage(
   const prh = startIndex === 0
     ? await searchPrhWithBackoff(trimmedAuthor)
     : { groups: [], totalItems: 0 };
-  const groups = hardenCatalogGroups([...googleGroups, ...prh.groups]);
+  // Author pages must only contain works credited to the selected author.
+  // PRH's broad text lookup can return books mentioning the name in a title
+  // or description; do not let those pollute an otherwise accurate catalog.
+  const requestedAuthor = normalizeText(trimmedAuthor);
+  const creditedToAuthor = (work: BookSearchWorkGroup) =>
+    work.authors.some((author) => normalizeText(author) === requestedAuthor);
+  const groups = hardenCatalogGroups([
+    ...googleGroups.filter(creditedToAuthor),
+    ...prh.groups.filter(creditedToAuthor),
+  ]).filter(creditedToAuthor);
   const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
   const nextStartIndex = startIndex + rawItems.length;
   const hasMore = rawItems.length > 0 && (
