@@ -479,6 +479,36 @@ export async function enrichIsbnLookupAuthor(
   }
 }
 
+// Scanner-only work discovery for ISBNs absent from the regular search index.
+// This endpoint is independent of Open Library's search.json and /isbn route.
+// Never treat its title as proof that a particular edition's metadata matches.
+async function discoverIsbnWorkFromOpenLibraryBooksApi(
+  isbn: string,
+  signal?: AbortSignal,
+): Promise<IsbnLookupResult | null> {
+  const key = `ISBN:${isbn}`;
+  const params = new URLSearchParams({ bibkeys: key, format: 'json', jscmd: 'data' });
+  const response = await fetch(`https://openlibrary.org/api/books?${params}`, { signal });
+  if (!response.ok) return null;
+  const payload = await response.json() as Record<string, {
+    title?: string;
+    authors?: Array<{ name?: string }>;
+  }>;
+  const record = payload[key];
+  const title = record?.title?.trim();
+  if (!title) return null;
+  const authorNames = (record.authors ?? []).map((author) => author.name?.trim() ?? '').filter(Boolean);
+  const searched = await searchGoogleBooks(title, signal);
+  const titleKey = normalizeText(title);
+  const authorKeys = authorNames.map(normalizeText);
+  const matches = searched.groups.filter((group) =>
+    normalizeText(group.title) === titleKey
+    && (!authorKeys.length || group.authors.some((name) => authorKeys.includes(normalizeText(name)))));
+  const matched = matches.find((group) => group.editions.length > 0);
+  if (!matched) return null;
+  return { work: matched, edition: matched.editions[0], exactIsbn: false };
+}
+
 export async function resolveCatalogIsbn(
   rawIsbn: string,
   signal?: AbortSignal,
@@ -529,6 +559,20 @@ export async function resolveCatalogIsbn(
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn('Direct Google Books ISBN recovery unavailable.', error);
+    }
+  }
+
+  // An alternate Open Library bibliographic endpoint may recognize an ISBN
+  // missing from the search index. Only use it to discover the work and offer
+  // a catalog edition; it does not verify the scanned physical edition.
+  for (const candidate of candidates) {
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    try {
+      const discovered = await discoverIsbnWorkFromOpenLibraryBooksApi(candidate, signal);
+      if (discovered) return enrichIsbnLookupAuthor(discovered);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('Alternate ISBN work discovery unavailable.', error);
     }
   }
 
