@@ -576,46 +576,46 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       bitmap.close();
       const image = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
       const lines = await recognizeBookCover(image);
-      // OCR returns fragmented lines and decorative cover copy. Build title
-      // phrases from neighboring lines, and reject endorsements/taglines.
-      const coverLines = lines.map((line) => line.trim()).filter(Boolean);
-      const isNoise = (value: string) => /(?:new york times|bestsell|walmart|exclusive|author|edition|isbn|book club|a novel|anything you can do|slay)/i.test(value) || /[#0-9]/.test(value);
-      const phrases = coverLines.flatMap((line, index) => [
+      // Build title candidates from OCR lines without letting cover blurbs,
+      // badges, or endorsements contaminate the actual title.
+      const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\\s'-]/g, ' ').replace(/\\s+/g, ' ').trim()).filter(Boolean);
+      const isNoise = (value: string) => /(?:new york times|bestsell|walmart|exclusive|author|edition|isbn|book club|a novel|anything you can do|slay)/i.test(value);
+      const cleanLines = coverLines.filter((line) => !isNoise(line));
+      const phrases = cleanLines.flatMap((line, index) => [
         line,
-        coverLines[index + 1] ? `${line} ${coverLines[index + 1]}` : '',
-        coverLines[index + 2] ? `${line} ${coverLines[index + 1]} ${coverLines[index + 2]}` : '',
+        cleanLines[index + 1] ? `${line} ${cleanLines[index + 1]}` : '',
+        cleanLines[index + 2] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]}` : '',
       ]);
-      const candidates = [...new Set(phrases.map((phrase) => phrase.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()))]
-        .filter((phrase) => phrase.length >= 8 && phrase.length <= 75 && phrase.split(/\s+/).length >= 2 && !isNoise(phrase))
-        .sort((left, right) => right.split(/\s+/).length - left.split(/\s+/).length)
-        .slice(0, 16);
+      const candidates = [...new Set(phrases)]
+        .filter((phrase) => phrase.length >= 8 && phrase.length <= 75 && phrase.split(/\\s+/).length >= 2 && !isNoise(phrase))
+        .sort((left, right) => right.split(/\\s+/).length - left.split(/\\s+/).length)
+        .slice(0, 20);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
+      const coverWords = new Set(recognized.split(' ').filter(Boolean));
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
       for (const candidate of candidates) {
         const response = await searchGoogleBooks(candidate);
         for (const work of response.groups) {
-          // Require a distinctive, whole-word title phrase from the cover.
-          // Substring matches (e.g. "you" in "your") create false positives.
           const titleKey = normalizeCatalogText(work.title);
           const titleWords = titleKey.split(' ').filter(Boolean);
           if (titleWords.length < 2 || titleKey.length < 9) continue;
-          const coverWords = new Set(recognized.split(' ').filter(Boolean));
           const meaningful = titleWords.filter((word) => word.length >= 4);
           if (meaningful.length < 2 || !meaningful.every((word) => coverWords.has(word))) continue;
           const authorScore = work.authors.some((name) => {
             const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
-            return authorWords.length > 0 && authorWords.every((word) => coverWords.has(word));
+            return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word));
           }) ? 0.5 : 0;
-          const score = 1 + authorScore;
+          // A complete multiword title is required; author confirmation ranks matches.
+          const score = 1 + authorScore + Math.min(0.2, meaningful.length * 0.05);
           if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
         }
-        if (best && best.score >= 1.2) break;
+        if (best && best.score >= 1.5) break;
       }
-      if (!best || best.score < 0.75) {
+      if (!best) {
         setScannerRecoveryTitle('');
-        throw new Error('Cover text was detected, but no reliable catalog match was found. Try another photo or search the title.');
+        throw new Error('Cover text was detected, but no reliable catalog match was found. Try another photo or enter the title.');
       }
       // Cover OCR identifies a work, not the scanned edition. Offer the
       // matching catalog editions in Scanner, never silently substitute ISBNs.
