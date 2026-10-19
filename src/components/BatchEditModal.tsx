@@ -173,19 +173,19 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const valueOptions = (values: string[]) => values.map((value) => <option key={value} value={value}>{value}</option>);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title">
-      <div className="inkbound-modal-surface relative flex min-h-0 max-h-[min(82dvh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[min(85dvh,760px)] sm:rounded-2xl">
-        <header className="flex items-center justify-between border-b border-[#3d2448] p-5 sm:p-6 sm:pb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/75 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title">
+      <div className="inkbound-modal-surface relative flex min-h-0 max-h-[min(76dvh,680px)] w-full max-w-[min(100%,560px)] flex-col overflow-hidden rounded-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[min(80dvh,720px)]">
+        <header className="flex shrink-0 items-center justify-between border-b border-[#3d2448] px-4 py-3 sm:px-5 sm:py-4">
           <div><span className="rounded bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#120817]">Batch Edit</span><h3 id="batch-edit-title" className="mt-2 font-serif text-xl font-bold text-[#f4efe6]">{selectedBooks.length} Items Selected</h3></div>
           <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-2 text-stone-400 hover:text-white" aria-label="Close batch edit"><X className="h-5 w-5" /></button>
         </header>
 
-        <div className="flex gap-2 overflow-x-auto border-b border-[#3d2448] px-5 py-3 sm:px-6">
+        <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-[#3d2448] px-4 py-2 sm:px-5">
           {selectedBooks.slice(0, 25).map((book) => <div key={book.id} title={book.work.title} className="flex h-16 w-12 shrink-0 items-end justify-center rounded border border-[#3d2448] bg-gradient-to-br from-[#2a1435] to-[#120817] p-1 text-center font-serif text-[8px] text-stone-200"><span className="line-clamp-2">{book.work.title}</span></div>)}
           {selectedBooks.length > 25 && <div className="grid h-16 min-w-12 place-items-center rounded border border-[#3d2448] bg-[#120817] px-2 text-[10px] font-bold text-stone-400">+{selectedBooks.length - 25}</div>}
         </div>
 
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5 text-xs sm:p-6">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 text-xs sm:px-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {field('Reading Status', <select value={status} onChange={(event) => setStatus(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{status === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(READING_STATUS_OPTIONS)}{customReadingStatuses.length > 0 && <optgroup label="Custom statuses">{customReadingStatuses.map((customStatus) => <option key={customStatus.id} value={`custom:${customStatus.id}`}>{customStatus.name}</option>)}</optgroup>}</select>)}
             {field('Ownership', <select value={ownership} onChange={(event) => setOwnership(event.target.value)} className={selectClass}><option value="keep">Keep Current Values</option>{ownership === 'multiple' && <option value="multiple" disabled>— Multiple values —</option>}{optionSet(OWNERSHIP_OPTIONS.filter((option) => option.value !== 'custom'))}{customOwnershipCategories.length > 0 && <optgroup label="Custom categories">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>)}
@@ -220,7 +220,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
           {confirmDelete && <div className="space-y-3 rounded-xl border border-rose-500/40 bg-rose-950/90 p-4 text-xs text-white"><p className="font-bold text-rose-200">Delete these {selectedBooks.length} items? Their reading sessions will also be removed. This cannot be undone.</p><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setConfirmDelete(false)} className="min-h-11 rounded-lg bg-stone-800 px-4 font-bold">Cancel</button><button type="button" onClick={() => { onDeleteSelected(); onClose(); }} className="min-h-11 rounded-lg bg-rose-600 px-4 font-bold">Yes, Delete</button></div></div>}
         </div>
 
-        <footer className="grid gap-2 border-t border-[#3d2448] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:grid-cols-[auto_1fr] sm:p-6 sm:pt-4">
+        <footer className="grid shrink-0 gap-2 border-t border-[#3d2448] px-4 py-3 sm:grid-cols-[auto_1fr] sm:px-5">
           <button type="button" onClick={() => setConfirmDelete(true)} className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-rose-500/20 px-4 text-xs font-bold text-rose-400 hover:bg-rose-950/60"><Trash2 className="h-4 w-4" /> Delete Selected</button>
           <div className="grid grid-cols-2 gap-2 sm:justify-self-end"><button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-[#3d2448] px-4 text-xs font-bold text-stone-300 hover:bg-[#25132f]">Cancel</button><button type="button" onClick={() => { if (preview.length) { onApplyBatchChanges(changes); onClose(); } }} disabled={!selectedBooks.length || !preview.length} className="min-h-11 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-5 text-xs font-bold text-[#120817] disabled:opacity-40">Apply Changes</button></div>
         </footer>
