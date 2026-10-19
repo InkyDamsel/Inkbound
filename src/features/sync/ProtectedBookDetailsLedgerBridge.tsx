@@ -131,10 +131,20 @@ function usableSummary(value: string | undefined): boolean {
  * field we can identify without confusing an intentional edit with a gap.
  */
 function applyProtectedDetails(book: UserBookRecord, details: ProtectedBookDetails): UserBookRecord {
-  if (usableSummary(book.work.summary) || !usableSummary(details.work?.summary)) return book;
+  const protectedWork = details.work;
+  if (!protectedWork) return book;
+  const usableAuthor = (value?: string) =>
+    Boolean(value?.trim() && value.trim().toLowerCase() !== 'unknown author');
+  const author = usableAuthor(book.work.author) || !usableAuthor(protectedWork.author)
+    ? book.work.author : protectedWork.author;
+  const summary = usableSummary(book.work.summary) || !usableSummary(protectedWork.summary)
+    ? book.work.summary : protectedWork.summary;
+  const publisherSummary = usableSummary(book.work.publisherSummary) || !usableSummary(protectedWork.publisherSummary)
+    ? book.work.publisherSummary : protectedWork.publisherSummary;
+  if (author === book.work.author && summary === book.work.summary && publisherSummary === book.work.publisherSummary) return book;
   return {
     ...book,
-    work: { ...book.work, summary: details.work.summary },
+    work: { ...book.work, author, summary, publisherSummary },
   };
 }
 
