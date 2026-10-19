@@ -30,6 +30,7 @@ export interface BatchEditChanges {
   removeTag?: string;
   addCollection?: string;
   removeCollection?: string;
+  seriesName?: string | null;
 }
 
 interface BatchEditModalProps {
@@ -94,6 +95,9 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const [tagRemove, setTagRemove] = useState('');
   const [collectionAdd, setCollectionAdd] = useState('');
   const [collectionRemove, setCollectionRemove] = useState('');
+  const [seriesMode, setSeriesMode] = useState<DateMode>('keep');
+  const [seriesName, setSeriesName] = useState('');
+  const allSeries = useMemo(() => [...new Set(books.map((book) => book.work.seriesName?.trim()).filter((name): name is string => Boolean(name)))].sort((a, b) => a.localeCompare(b)), [books]);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const changes = useMemo<BatchEditChanges>(() => {
@@ -127,8 +131,9 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
       removeTag: optionalText(tagRemove)?.toLowerCase(),
       addCollection: optionalText(collectionAdd),
       removeCollection: optionalText(collectionRemove),
+      seriesName: seriesMode === 'clear' ? null : seriesMode === 'set' ? optionalText(seriesName) : undefined,
     };
-  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, spiceLevel, startedMode, status, tagAdd, tagRemove]);
+  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, spiceLevel, startedMode, status, tagAdd, tagRemove, seriesMode, seriesName]);
 
   const preview = useMemo(() => {
     const items: string[] = [];
@@ -152,6 +157,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     if (changes.dateFinished !== undefined) items.push(changes.dateFinished === null ? 'Clear date finished' : `Date finished → ${changes.dateFinished}`);
     if (changes.addTag) items.push(`Add tag “${changes.addTag}”`);
     if (changes.removeTag) items.push(`Remove tag “${changes.removeTag}”`);
+    if (changes.seriesName !== undefined) items.push(changes.seriesName === null ? 'Clear series assignment' : `Series → ${changes.seriesName}`);
     if (changes.addCollection) items.push(`Add collection “${changes.addCollection}”`);
     if (changes.removeCollection) items.push(`Remove collection “${changes.removeCollection}”`);
     return items;
@@ -186,6 +192,10 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {field('Date Started', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={startedMode} onChange={(event) => setStartedMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={dateStarted} onChange={(event) => setDateStarted(event.target.value)} disabled={startedMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
             {field('Date Finished', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={finishedMode} onChange={(event) => setFinishedMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={dateFinished} onChange={(event) => setDateFinished(event.target.value)} disabled={finishedMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {field('Series', <div className="space-y-2"><select value={seriesMode} onChange={(event) => setSeriesMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep current series</option><option value="set">Assign to series</option><option value="clear">Remove series assignment</option></select>{seriesMode === 'set' && <><input type="text" list="batch-series-names" value={seriesName} onChange={(event) => setSeriesName(event.target.value)} placeholder="Choose or enter a series name" className={selectClass} /><datalist id="batch-series-names">{allSeries.map((name) => <option key={name} value={name} />)}</datalist><p className="text-[11px] text-stone-400">Existing series numbers are preserved when the name stays the same; changing series clears the old series number.</p></>}</div>)}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
