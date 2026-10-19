@@ -569,6 +569,13 @@ export default function App() {
     commitCanonicalBooks((current) => current.map((book) => {
       if (!selectedBookIds.includes(book.id)) return book;
       let updatedBook: UserBookRecord = { ...book };
+      if (changes.seriesName !== undefined) {
+        updatedBook.work = {
+          ...updatedBook.work,
+          seriesName: changes.seriesName ?? undefined,
+          seriesOrder: undefined,
+        };
+      }
       if (changes.format) updatedBook.editions = updatedBook.editions.map((edition) => edition.id === updatedBook.activeEditionId ? { ...edition, format: changes.format! } : edition);
       if (changes.status) {
         updatedBook = changes.status === 'custom' && changes.customReadingStatusId
