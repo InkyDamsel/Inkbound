@@ -174,7 +174,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/75 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title">
-      <div className="inkbound-modal-surface relative flex min-h-0 max-h-[min(76dvh,680px)] w-full max-w-[min(100%,560px)] flex-col overflow-hidden rounded-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[min(80dvh,720px)]">
+      <div style={{ width: "min(100%, 560px)", maxWidth: "560px", maxHeight: "min(76dvh, 680px)", marginInline: "auto" }} className="inkbound-modal-surface relative flex min-h-0 flex-col overflow-hidden rounded-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[min(80dvh,720px)]">
         <header className="flex shrink-0 items-center justify-between border-b border-[#3d2448] px-4 py-3 sm:px-5 sm:py-4">
           <div><span className="rounded bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#120817]">Batch Edit</span><h3 id="batch-edit-title" className="mt-2 font-serif text-xl font-bold text-[#f4efe6]">{selectedBooks.length} Items Selected</h3></div>
           <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-2 text-stone-400 hover:text-white" aria-label="Close batch edit"><X className="h-5 w-5" /></button>
