@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
-import { mergeBooksFromServer, mergeServerCollectionById } from '../src/features/sync/cloudServerMergePolicy';
+import { mergeBooksFromServer, mergeServerCollectionById, preserveExistingBookMetadata } from '../src/features/sync/cloudServerMergePolicy';
 import { shouldCreateDeleteMutation } from '../src/features/sync/syncMutationPolicy';
 import { compareRecentlyAddedBooks } from '../src/features/library/libraryRecentSort';
 
@@ -32,6 +32,35 @@ const book = (id: string, progressPages: number, title = 'Sync Test'): UserBookR
   collections: [],
   dateAdded: '2026-10-01',
 });
+
+
+{
+  const corrected = { ...book('corrected-author', 12), work: {
+    ...book('corrected-author', 12).work,
+    author: 'Hannah Nicole Maehrer',
+    summary: 'A verified publisher synopsis.',
+    publisherSummary: 'A verified publisher synopsis.',
+  } };
+  const stale = { ...corrected, work: {
+    ...corrected.work,
+    author: 'Unknown author',
+    summary: 'Summary unavailable.',
+    publisherSummary: undefined,
+  } };
+  const live = preserveExistingBookMetadata(corrected, stale);
+  assert.equal(live.work.author, corrected.work.author, 'A cloud delta cannot erase a corrected author.');
+  assert.equal(live.work.summary, corrected.work.summary, 'A cloud delta cannot erase a saved synopsis.');
+  assert.equal(live.work.publisherSummary, corrected.work.publisherSummary, 'A cloud delta cannot erase a publisher synopsis.');
+
+  const refreshed = mergeBooksFromServer([corrected], [stale], {});
+  assert.equal(refreshed[0].work.author, corrected.work.author, 'A full cloud refresh cannot restore Unknown author.');
+  assert.equal(refreshed[0].work.publisherSummary, corrected.work.publisherSummary, 'A full cloud refresh must preserve publisher summaries.');
+  const newer = { ...corrected, work: { ...corrected.work, author: 'Updated Author', publisherSummary: 'Updated publisher text' } };
+  const accepted = mergeBooksFromServer([corrected], [newer], {});
+  assert.equal(accepted[0].work.author, 'Updated Author', 'A valid remote author update must still sync.');
+  assert.equal(accepted[0].work.publisherSummary, 'Updated publisher text', 'A valid remote summary update must still sync.');
+}
+
 
 {
   const older = { ...book(`book-${new Date('2026-10-12T12:00:00').getTime()}-abc123`, 0), dateAdded: '2026-10-12' };
