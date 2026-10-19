@@ -159,7 +159,7 @@ function upsertBooksById(current: UserBookRecord[], incoming: UserBookRecord[]):
     const usefulAuthor = (value?: string) =>
       Boolean(value?.trim() && value.trim().toLowerCase() !== 'unknown author');
     const usefulSummary = (value?: string) =>
-      Boolean(value?.trim() && !/^summary unavailable\\.?$/i.test(value.trim()));
+      Boolean(value?.trim() && !/^summary unavailable\.?$/i.test(value.trim()));
     const incomingWork = withCover.work;
     const localWork = local?.work;
     next.set(item.id, localWork ? {
