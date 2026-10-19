@@ -26,6 +26,7 @@ export interface BatchEditChanges {
   spiceLevel?: number | null;
   dateStarted?: string | null;
   dateFinished?: string | null;
+  loanDueDate?: string | null;
   addTag?: string;
   removeTag?: string;
   addCollection?: string;
@@ -91,6 +92,8 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const [finishedMode, setFinishedMode] = useState<DateMode>('keep');
   const [dateStarted, setDateStarted] = useState('');
   const [dateFinished, setDateFinished] = useState('');
+  const [loanDueMode, setLoanDueMode] = useState<DateMode>('keep');
+  const [loanDueDate, setLoanDueDate] = useState('');
   const [tagAdd, setTagAdd] = useState('');
   const [tagRemove, setTagRemove] = useState('');
   const [collectionAdd, setCollectionAdd] = useState('');
@@ -127,13 +130,14 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
       spiceLevel: spiceLevel === 'clear' ? null : spiceLevel !== 'keep' ? Number(spiceLevel) : undefined,
       dateStarted: startedMode === 'clear' ? null : startedMode === 'set' && dateStarted ? dateStarted : undefined,
       dateFinished: finishDateChange,
+      loanDueDate: loanDueMode === 'clear' ? null : loanDueMode === 'set' && loanDueDate ? loanDueDate : undefined,
       addTag: optionalText(tagAdd)?.toLowerCase(),
       removeTag: optionalText(tagRemove)?.toLowerCase(),
       addCollection: optionalText(collectionAdd),
       removeCollection: optionalText(collectionRemove),
       seriesName: seriesMode === 'clear' ? null : seriesMode === 'set' ? optionalText(seriesName) : undefined,
     };
-  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, finishedMode, format, ownership, priority, rating, spiceLevel, startedMode, status, tagAdd, tagRemove, seriesMode, seriesName]);
+  }, [collectionAdd, collectionRemove, dateFinished, dateStarted, loanDueDate, loanDueMode, finishedMode, format, ownership, priority, rating, spiceLevel, startedMode, status, tagAdd, tagRemove, seriesMode, seriesName]);
 
   const preview = useMemo(() => {
     const items: string[] = [];
@@ -155,6 +159,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     if (changes.spiceLevel !== undefined) items.push(changes.spiceLevel === null ? 'Clear spice level' : `Spice → ${changes.spiceLevel}/5`);
     if (changes.dateStarted !== undefined) items.push(changes.dateStarted === null ? 'Clear date started' : `Date started → ${changes.dateStarted}`);
     if (changes.dateFinished !== undefined) items.push(changes.dateFinished === null ? 'Clear date finished' : `Date finished → ${changes.dateFinished}`);
+    if (changes.loanDueDate !== undefined) items.push(changes.loanDueDate === null ? 'Clear loan due date' : `Loan due date → ${changes.loanDueDate}`);
     if (changes.addTag) items.push(`Add tag “${changes.addTag}”`);
     if (changes.removeTag) items.push(`Remove tag “${changes.removeTag}”`);
     if (changes.seriesName !== undefined) items.push(changes.seriesName === null ? 'Clear series assignment' : `Series → ${changes.seriesName}`);
@@ -169,7 +174,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title">
-      <div className="inkbound-modal-surface relative flex min-h-0 max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl">
+      <div className="inkbound-modal-surface relative flex min-h-0 max-h-[min(82dvh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-[#c5a059]/40 bg-[#1c0f24] shadow-2xl sm:max-h-[min(85dvh,760px)] sm:rounded-2xl">
         <header className="flex items-center justify-between border-b border-[#3d2448] p-5 sm:p-6 sm:pb-4">
           <div><span className="rounded bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#120817]">Batch Edit</span><h3 id="batch-edit-title" className="mt-2 font-serif text-xl font-bold text-[#f4efe6]">{selectedBooks.length} Items Selected</h3></div>
           <button type="button" onClick={onClose} className="rounded-full bg-black/30 p-2 text-stone-400 hover:text-white" aria-label="Close batch edit"><X className="h-5 w-5" /></button>
@@ -191,6 +196,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {field('Date Started', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={startedMode} onChange={(event) => setStartedMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={dateStarted} onChange={(event) => setDateStarted(event.target.value)} disabled={startedMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
+            {field('Loan Due Date', <div className="grid grid-cols-[minmax(0,110px)_minmax(0,1fr)] gap-2"><select value={loanDueMode} onChange={(event) => setLoanDueMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={loanDueDate} onChange={(event) => setLoanDueDate(event.target.value)} disabled={loanDueMode !== 'set'} className={`${selectClass} min-w-0 disabled:opacity-40`} /></div>)}
             {field('Date Finished', <div className="grid grid-cols-[130px_1fr] gap-2"><select value={finishedMode} onChange={(event) => setFinishedMode(event.target.value as DateMode)} className={selectClass}><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select><input type="date" value={dateFinished} onChange={(event) => setDateFinished(event.target.value)} disabled={finishedMode !== 'set'} className={`${selectClass} disabled:opacity-40`} /></div>)}
           </div>
 
