@@ -43,7 +43,7 @@ interface LibraryScreenProps {
 }
 
 type ViewMode = 'grid' | 'list';
-type SortMode = 'recent' | 'title' | 'author' | 'rating' | 'progress';
+type SortMode = 'recent' | 'finished-newest' | 'finished-oldest' | 'title' | 'author' | 'rating' | 'progress';
 
 const LIBRARY_BANNER_ASSET = '/assets/library/cozy-library-background.png';
 const LIBRARY_PAGE_SIZE = 24;
@@ -75,6 +75,19 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ownershipFilter, setOwnershipFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
+  const compareFinished = (a: UserBookRecord, b: UserBookRecord, oldestFirst: boolean) => {
+    const time = (value?: string) => {
+      if (!value?.trim()) return null;
+      const parsed = Date.parse(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const first = time(a.dateFinished);
+    const second = time(b.dateFinished);
+    if (first === null && second === null) return compareRecentlyAddedBooks(a, b);
+    if (first === null) return 1;
+    if (second === null) return -1;
+    return (oldestFirst ? first - second : second - first) || compareRecentlyAddedBooks(a, b);
+  };
   const [page, setPage] = useState(1);
   const activeFilterCount = [activeCategory, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter].filter((value) => value !== 'all').length + (searchFilter.trim() ? 1 : 0);
 
@@ -144,7 +157,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
     } else if (ownershipFilter !== 'all' && book.ownership !== ownershipFilter) return false;
     if (ratingFilter !== 'all' && (book.rating || 0) < Number(ratingFilter)) return false;
     return true;
-  }).sort((a, b) => sortBy === 'title'
+  }).sort((a, b) => sortBy === 'finished-newest'
+    ? compareFinished(a, b, false)
+    : sortBy === 'finished-oldest'
+      ? compareFinished(a, b, true)
+      : sortBy === 'title'
     ? a.work.title.localeCompare(b.work.title)
     : sortBy === 'author'
       ? a.work.author.localeCompare(b.work.author)
@@ -217,7 +234,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)} className="inkbound-select"><option value="all">All genres</option>{allGenres.map((genre) => <option key={genre}>{genre}</option>)}</select>
             <select value={ownershipFilter} onChange={(event) => setOwnershipFilter(event.target.value)} className="inkbound-select"><option value="all">Any ownership</option><optgroup label="Ownership">{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customOwnershipCategories.length > 0 && <optgroup label="Custom ownership">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>
             <select value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)} className="inkbound-select"><option value="all">Any rating</option><option value="5">5 stars</option><option value="4">4+ stars</option><option value="3">3+ stars</option></select>
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select"><option value="recent">Recently added</option><option value="title">Title</option><option value="author">Author</option><option value="rating">Rating</option><option value="progress">Progress</option></select>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select"><option value="recent">Recently added</option><option value="finished-newest">Date finished (newest first)</option><option value="finished-oldest">Date finished (oldest first)</option><option value="title">Title</option><option value="author">Author</option><option value="rating">Rating</option><option value="progress">Progress</option></select>
           </div>
 
           <div className="mt-4 flex justify-between border-t border-white/5 pt-4">
