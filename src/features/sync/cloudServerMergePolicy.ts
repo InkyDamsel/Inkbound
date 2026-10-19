@@ -95,6 +95,26 @@ function mergeServerMetadataIntoBook(localBook: UserBookRecord, serverBook: User
   };
 }
 
+/**
+ * Protect corrected book metadata against incomplete cloud snapshots.
+ * This deliberately does not prefer arbitrary stale local metadata: a valid
+ * incoming author or summary wins when there is no pending local edit.
+ */
+export function preserveExistingBookMetadata(local: UserBookRecord | undefined, incoming: UserBookRecord): UserBookRecord {
+  if (!local) return incoming;
+  const validAuthor = (value?: string) => Boolean(value?.trim() && value.trim().toLowerCase() !== 'unknown author');
+  const validSummary = (value?: string) => Boolean(value?.trim() && !/^summary unavailable[.]?$/i.test(value.trim()));
+  return {
+    ...incoming,
+    work: {
+      ...incoming.work,
+      author: validAuthor(incoming.work.author) ? incoming.work.author : validAuthor(local.work.author) ? local.work.author : incoming.work.author,
+      summary: validSummary(incoming.work.summary) ? incoming.work.summary : validSummary(local.work.summary) ? local.work.summary : incoming.work.summary,
+      publisherSummary: validSummary(incoming.work.publisherSummary) ? incoming.work.publisherSummary : validSummary(local.work.publisherSummary) ? local.work.publisherSummary : incoming.work.publisherSummary,
+    },
+  };
+}
+
 export function mergeBooksFromServer(
   current: UserBookRecord[],
   server: UserBookRecord[],
@@ -122,7 +142,7 @@ export function mergeBooksFromServer(
     // replacement (quotes, loan state, and manual cover choices).
     const withQuotes = mergeIncomingBookQuoteState(localBook, serverBook);
     const withLoan = mergeIncomingBookLoanState(localBook, withQuotes);
-    return mergeIncomingManualCoverState(localBook, withLoan);
+    return preserveExistingBookMetadata(localBook, mergeIncomingManualCoverState(localBook, withLoan));
   });
 
   serverById.forEach((serverBook, id) => {
