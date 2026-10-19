@@ -14,6 +14,8 @@ import { readCustomOwnershipCategories } from '../features/ownership/customOwner
 import { readCustomReadingStatuses } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingStatus, UserBookRecord } from '../types';
 import { IconStepRating } from './reading/IconStepRating';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { readRuntimeValue } from '../platform/runtimeStorage';
 
 export interface BatchEditChanges {
   status?: ReadingStatus;
@@ -61,10 +63,14 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
     () => [...new Set(selectedBooks.flatMap((book) => book.privateTags ?? []).map((tag) => tag.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [selectedBooks],
   );
-  const allCollections = useMemo(
-    () => [...new Set(books.flatMap((book) => book.collections ?? []).map((collection) => collection.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
-    [books],
-  );
+  const allCollections = useMemo(() => {
+    let definedNames: string[] = [];
+    try {
+      const saved = JSON.parse(readRuntimeValue(ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions) ?? '[]');
+      if (Array.isArray(saved)) definedNames = saved.filter((entry): entry is { name: string; kind?: string } => typeof entry?.name === 'string' && entry.kind !== 'smart').map((entry) => entry.name);
+    } catch { /* Invalid optional definitions must not block editing. */ }
+    return [...new Set([...definedNames, ...books.flatMap((book) => book.collections ?? [])].map((name) => name.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [books]);
   const selectedCollections = useMemo(
     () => [...new Set(selectedBooks.flatMap((book) => book.collections ?? []).map((collection) => collection.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [selectedBooks],
@@ -98,6 +104,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
   const [seriesMode, setSeriesMode] = useState<'keep' | 'assign' | 'clear'>('keep');
   const [seriesName, setSeriesName] = useState('');
   const existingSeries = useMemo(() => [...new Set(books.map((book) => book.work.seriesName?.trim()).filter((name): name is string => Boolean(name)))].sort((a, b) => a.localeCompare(b)), [books]);
+  const invalidSeries = seriesMode === 'assign' && !seriesName.trim();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const changes = useMemo<BatchEditChanges>(() => {
@@ -206,6 +213,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
             {seriesMode === 'assign' && field('Existing or New Series', <><input list="batch-edit-series-options" value={seriesName} onChange={(event) => setSeriesName(event.target.value)} placeholder="Choose or type a series name" className={selectClass} /><datalist id="batch-edit-series-options">{existingSeries.map((name) => <option key={name} value={name} />)}</datalist></>)}
           </div>
 
+          {invalidSeries && <p className="text-xs text-[#e5c158]">Enter or select a series name before applying changes.</p>}
           <div className="rounded-xl border border-[#c5a059]/30 bg-[#25132f] p-4 text-stone-200">
             <p className="font-bold text-[#f4efe6]">Change preview</p>
             {preview.length === 0 ? <p className="mt-2 text-stone-400">No changes selected yet. Existing values will be left alone.</p> : <ul className="mt-2 space-y-1.5 text-stone-300">{preview.map((item) => <li key={item}>• {item}</li>)}</ul>}
@@ -217,7 +225,7 @@ export const BatchEditModal: React.FC<BatchEditModalProps> = ({ selectedBookIds,
 
         <footer className="grid gap-2 border-t border-[#3d2448] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:grid-cols-[auto_1fr] sm:p-6 sm:pt-4">
           <button type="button" onClick={() => setConfirmDelete(true)} className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-rose-500/20 px-4 text-xs font-bold text-rose-400 hover:bg-rose-950/60"><Trash2 className="h-4 w-4" /> Delete Selected</button>
-          <div className="grid grid-cols-2 gap-2 sm:justify-self-end"><button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-[#3d2448] px-4 text-xs font-bold text-stone-300 hover:bg-[#25132f]">Cancel</button><button type="button" onClick={() => { if (preview.length) { onApplyBatchChanges(changes); onClose(); } }} disabled={!selectedBooks.length || !preview.length} className="min-h-11 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-5 text-xs font-bold text-[#120817] disabled:opacity-40">Apply Changes</button></div>
+          <div className="grid grid-cols-2 gap-2 sm:justify-self-end"><button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-[#3d2448] px-4 text-xs font-bold text-stone-300 hover:bg-[#25132f]">Cancel</button><button type="button" onClick={() => { if (preview.length) { onApplyBatchChanges(changes); onClose(); } }} disabled={!selectedBooks.length || !preview.length || invalidSeries} className="min-h-11 rounded-xl bg-gradient-to-r from-[#c5a059] to-[#d4af37] px-5 text-xs font-bold text-[#120817] disabled:opacity-40">Apply Changes</button></div>
         </footer>
       </div>
     </div>
