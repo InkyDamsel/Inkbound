@@ -1,3 +1,4 @@
+import { preserveExistingBookMetadata } from './cloudServerMergePolicy';
 import React, { useEffect, useRef } from 'react';
 import {
   collection,
@@ -153,24 +154,7 @@ function upsertBooksById(current: UserBookRecord[], incoming: UserBookRecord[]):
     const withQuotes = mergeIncomingBookQuoteState(local, item);
     const withLoan = mergeIncomingBookLoanState(local, withQuotes);
     const withCover = mergeIncomingManualCoverState(local, withLoan);
-    // A stale or incomplete cloud record must not erase a reader's corrected
-    // author or a publisher synopsis that is already present on this device.
-    // Real non-placeholder cloud values remain authoritative for normal sync.
-    const usefulAuthor = (value?: string) =>
-      Boolean(value?.trim() && value.trim().toLowerCase() !== 'unknown author');
-    const usefulSummary = (value?: string) =>
-      Boolean(value?.trim() && !/^summary unavailable\.?$/i.test(value.trim()));
-    const incomingWork = withCover.work;
-    const localWork = local?.work;
-    next.set(item.id, localWork ? {
-      ...withCover,
-      work: {
-        ...incomingWork,
-        author: usefulAuthor(incomingWork.author) ? incomingWork.author : usefulAuthor(localWork.author) ? localWork.author : incomingWork.author,
-        publisherSummary: usefulSummary(incomingWork.publisherSummary) ? incomingWork.publisherSummary : usefulSummary(localWork.publisherSummary) ? localWork.publisherSummary : incomingWork.publisherSummary,
-        summary: usefulSummary(incomingWork.summary) ? incomingWork.summary : usefulSummary(localWork.summary) ? localWork.summary : incomingWork.summary,
-      },
-    } : withCover);
+    next.set(item.id, preserveExistingBookMetadata(local, withCover));
   });
   return [...next.values()];
 }
