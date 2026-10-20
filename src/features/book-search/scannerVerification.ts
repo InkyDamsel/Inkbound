@@ -2,8 +2,6 @@
 const words = (value: string): string[] =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 
-const compact = (value: string): string => words(value).join('');
-
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const text = words(lines.join(' '));
   const tokens = new Set(text);
