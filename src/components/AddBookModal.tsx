@@ -583,28 +583,22 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // A photographed copyright page can identify the exact edition without a barcode.
       // OCR may split ISBN-13 and ISBN-10 across lines or include both on one line.
       // Only accept checksum-valid values explicitly adjacent to an ISBN label.
-      const isbnText = lines.join(' ').replace(/\s+/g, ' ');
-      const detectedIsbns = [...new Set([...isbnText.matchAll(/ISBN\s*[-–]?\s*(?:1[03])?\s*[:：]?\s*((?:[0-9Xx][\s-]*){10,13})/gi)]
-        .map((match) => normalizeIsbn(match[1]))
-        .filter(isValidCatalogIsbn))];
-      // Retail copyright pages can list five editions. Prioritize the actual
-      // retailer named beside the ISBN rather than arbitrarily choosing one.
-      const editionIsbns = lines.flatMap((line) => {
-        const found = [...line.matchAll(/(?:ISBN\s*)?(97[89][\d\s-]{10,18}\d)/gi)]
-          .map((match) => normalizeIsbn(match[1])).filter(isValidCatalogIsbn);
-        return found.map((isbn) => ({ isbn, retailer: /walmart/i.test(line) ? 'walmart' : /target/i.test(line) ? 'target' : /b&n|barnes/i.test(line) ? 'barnes' : '' }));
-      });
-      const preferredRetailIsbn = unresolvedIsbn && editionIsbns.find((entry) => entry.isbn === unresolvedIsbn);
-      if (preferredRetailIsbn) {
-        setScannerMessage('The photographed copyright page confirms the scanned ISBN. Identifying its title and author…');
-      }
-      if (detectedIsbns.length === 1) {
-        await lookupScannedIsbn(detectedIsbns[0]);
-        return;
-      }
-      if (detectedIsbns.length > 1 && !unresolvedIsbn) {
+      // Parse ISBNs per OCR line: joining lines used to consume adjacent edition
+      // numbers and accidentally suppress all matches on retailer copyright pages.
+      const detectedIsbns = [...new Set(lines.flatMap((line) =>
+        [...line.matchAll(/(?:ISBN(?:-1[03])?\s*[:：]?\s*)(97[89][\d\s-]{9,20}\d|[\d\s-]{9,18}[\dX])/gi)]
+          .map((match) => normalizeIsbn(match[1]).slice(0, 13))
+          .filter(isValidCatalogIsbn)))];
+      if (detectedIsbns.length > 0) {
+        const selected = unresolvedIsbn && detectedIsbns.includes(unresolvedIsbn)
+          ? unresolvedIsbn : detectedIsbns.length === 1 ? detectedIsbns[0] : null;
+        if (selected) {
+          if (selected !== unresolvedIsbn) await lookupScannedIsbn(selected);
+          else setScannerMessage('Printed ISBN matches the scanned ISBN. Scan the front cover to identify this uncatalogued edition.');
+          return;
+        }
         setPhotoIsbnChoices(detectedIsbns);
-        setScannerMessage('Multiple valid ISBNs detected. Choose the edition below.');
+        setScannerMessage('Select the ISBN printed for your edition, then scan the front cover if its catalog entry is missing.');
         return;
       }
       // Never carry a previous book's author/title into this cover attempt.
@@ -618,22 +612,21 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const cleanLines = coverLines.filter((line) => !isNoise(line));
       const phrases = cleanLines.flatMap((line, index) => [
         line,
-        cleanLines[index + 1] ? `${line} ${cleanLines[index + 1]}` : '',
-        cleanLines[index + 2] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]}` : '',
-        cleanLines[index + 3] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]} ${cleanLines[index + 3]}` : '',
+        ...[2, 3, 4].map((count) => cleanLines.slice(index, index + count).join(' ')),
       ]);
-      // Prefer distinctive multi-word cover titles over generic one-word OCR
-      // fragments. This is scanner-only; the protected Search flow is unchanged.
+      // Search the title as it appears on the cover, not 32 unrelated fragments.
       const candidates = [...new Set(phrases)]
-        .filter((phrase) => phrase.length >= 4 && phrase.length <= 75 && !isNoise(phrase))
+        .filter((phrase) => phrase.length >= 4 && phrase.length <= 85 && !isNoise(phrase))
         .sort((left, right) => {
-          const leftWords = left.split(/\s+/).length;
-          const rightWords = right.split(/\s+/).length;
-          const priority = (words: number) => words >= 2 && words <= 7 ? 0 : 1;
-          return priority(leftWords) - priority(rightWords)
-            || rightWords - leftWords;
+          const score = (value: string) => {
+            const words = value.split(/\s+/);
+            const useful = words.filter((word) => word.length >= 4);
+            return (words.length >= 2 && words.length <= 7 ? 10 : 0)
+              + useful.length * 2 - Math.max(0, words.length - 7) * 3;
+          };
+          return score(right) - score(left);
         })
-        .slice(0, 32);
+        .slice(0, 12);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
