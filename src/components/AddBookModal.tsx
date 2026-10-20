@@ -587,11 +587,22 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const detectedIsbns = [...new Set([...isbnText.matchAll(/ISBN\s*[-–]?\s*(?:1[03])?\s*[:：]?\s*((?:[0-9Xx][\s-]*){10,13})/gi)]
         .map((match) => normalizeIsbn(match[1]))
         .filter(isValidCatalogIsbn))];
+      // Retail copyright pages can list five editions. Prioritize the actual
+      // retailer named beside the ISBN rather than arbitrarily choosing one.
+      const editionIsbns = lines.flatMap((line) => {
+        const found = [...line.matchAll(/(?:ISBN\s*)?(97[89][\d\s-]{10,18}\d)/gi)]
+          .map((match) => normalizeIsbn(match[1])).filter(isValidCatalogIsbn);
+        return found.map((isbn) => ({ isbn, retailer: /walmart/i.test(line) ? 'walmart' : /target/i.test(line) ? 'target' : /b&n|barnes/i.test(line) ? 'barnes' : '' }));
+      });
+      const preferredRetailIsbn = unresolvedIsbn && editionIsbns.find((entry) => entry.isbn === unresolvedIsbn);
+      if (preferredRetailIsbn) {
+        setScannerMessage('The photographed copyright page confirms the scanned ISBN. Identifying its title and author…');
+      }
       if (detectedIsbns.length === 1) {
         await lookupScannedIsbn(detectedIsbns[0]);
         return;
       }
-      if (detectedIsbns.length > 1) {
+      if (detectedIsbns.length > 1 && !unresolvedIsbn) {
         setPhotoIsbnChoices(detectedIsbns);
         setScannerMessage('Multiple valid ISBNs detected. Choose the edition below.');
         return;
@@ -635,7 +646,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           const titleWords = titleKey.split(' ').filter(Boolean);
           if (!titleWords.length || titleKey.length < 4) continue;
           const meaningful = titleWords.filter((word) => word.length >= 4);
-          if (!meaningful.length || !meaningful.every((word) => coverWords.has(word))) continue;
+          // OCR may split or slightly misread large decorative cover lettering.
+          // Require most distinctive title words plus author confirmation.
+          const titleHits = meaningful.filter((word) => coverWords.has(word)).length;
+          if (!meaningful.length || titleHits < Math.max(1, Math.ceil(meaningful.length * 0.65))) continue;
           // Single-word titles need an exact OCR word and a matching author;
           // otherwise a generic cover word could identify an unrelated book.
           const singleWordTitle = titleWords.length === 1;
