@@ -578,6 +578,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       bitmap.close();
       const image = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
       const lines = await recognizeBookCover(image);
+      // Never carry a previous book's author/title into this cover attempt.
+      setScannerRecoveryTitle('');
+      setScannerRecoveryAuthor('');
+      setScannerEditionOptions([]);
       // Build title candidates from OCR lines without letting cover blurbs,
       // badges, or endorsements contaminate the actual title.
       const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
@@ -588,9 +592,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         cleanLines[index + 1] ? `${line} ${cleanLines[index + 1]}` : '',
         cleanLines[index + 2] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]}` : '',
       ]);
+      // Prefer distinctive multi-word cover titles over generic one-word OCR
+      // fragments. This is scanner-only; the protected Search flow is unchanged.
       const candidates = [...new Set(phrases)]
         .filter((phrase) => phrase.length >= 4 && phrase.length <= 75 && !isNoise(phrase))
-        .sort((left, right) => left.split(/\s+/).length - right.split(/\s+/).length)
+        .sort((left, right) => {
+          const leftWords = left.split(/\s+/).length;
+          const rightWords = right.split(/\s+/).length;
+          const priority = (words: number) => words >= 2 && words <= 7 ? 0 : 1;
+          return priority(leftWords) - priority(rightWords)
+            || rightWords - leftWords;
+        })
         .slice(0, 24);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
