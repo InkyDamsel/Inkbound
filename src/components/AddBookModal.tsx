@@ -578,6 +578,20 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       bitmap.close();
       const image = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
       const lines = await recognizeBookCover(image);
+      // A photographed copyright page can identify the exact edition without a barcode.
+      const detectedIsbns = [...new Set(lines.flatMap((line) => {
+        const candidates = line.match(/(?:[0-9Xx][\\s:.-]*){10,13}/g) ?? [];
+        return candidates.map(normalizeIsbn).filter(isValidCatalogIsbn);
+      }))];
+      if (detectedIsbns.length === 1) {
+        await lookupScannedIsbn(detectedIsbns[0]);
+        return;
+      }
+      if (detectedIsbns.length > 1) {
+        setPhotoIsbnChoices(detectedIsbns);
+        setScannerMessage('Multiple valid ISBNs detected. Choose the edition below.');
+        return;
+      }
       // Never carry a previous book's author/title into this cover attempt.
       setScannerRecoveryTitle('');
       setScannerRecoveryAuthor('');
