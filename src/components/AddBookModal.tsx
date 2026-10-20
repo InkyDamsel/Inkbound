@@ -607,12 +607,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         .slice(0, 24);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
-      const coverWords = new Set(recognized.split(' ').filter(Boolean));
+      const recognizedWords = recognized.split(/\s+/).filter(Boolean);
+      const coverWords = new Set(recognizedWords);
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
-      // Search a small number of likely title phrases concurrently instead
-      // of making up to twenty slow sequential catalog round trips.
-      // Each wave finishes before the next, and confident matches stop lookup.
+      // Use the same catalog lookup as Search, but score OCR against the
+      // returned WORK title. Cover typography can split or distort words.
+      // Never require a matching retailer edition or ISBN.
       const shortlist = candidates.slice(0, 12);
       for (let offset = 0; offset < shortlist.length; offset += 3) {
         const wave = shortlist.slice(offset, offset + 3);
@@ -621,29 +622,34 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           if (response.status !== 'fulfilled') continue;
           for (const work of response.value.groups) {
             const titleKey = normalizeCatalogText(work.title);
-            const titleWords = titleKey.split(' ').filter(Boolean);
+            const titleWords = titleKey.split(/\s+/).filter(Boolean);
             if (titleWords.length < 2 || titleKey.length < 9) continue;
             const meaningful = titleWords.filter((word) => word.length >= 4);
-            if (meaningful.length < 2 || !meaningful.every((word) => coverWords.has(word))) continue;
-            const authorScore = work.authors.some((name) => {
-              const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
-              return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word));
-            }) ? 0.5 : 0;
-            const score = 1 + authorScore + Math.min(0.2, meaningful.length * 0.05);
+            if (meaningful.length < 2) continue;
+            // Allow one imperfect OCR word; require strong title coverage.
+            const coverage = meaningful.filter((word) => coverWords.has(word)).length / meaningful.length;
+            const phraseMatch = recognized.includes(titleKey);
+            const authorMatch = work.authors.some((name) => {
+              const words = normalizeAuthorName(name).split(/\s+/).filter((word) => word.length >= 4);
+              return words.length >= 2 && words.every((word) => coverWords.has(word));
+            });
+            if (!phraseMatch && coverage < 0.75) continue;
+            // Never auto-stack an uncertain title without author evidence.
+            if (!authorMatch && !phraseMatch) continue;
+            const score = coverage + (phraseMatch ? 1 : 0) + (authorMatch ? 1 : 0);
             if (score > (best?.score ?? 0)) {
               best = { work, score };
               found = response.value.groups;
             }
           }
         }
-        if (best && best.score >= 1.5) break;
+        if (best && best.score >= 2) break;
       }
       if (!best) {
-        // Keep OCR evidence available for recovery rather than clearing the
-        // title field and forcing the reader to begin again.
-        setScannerRecoveryTitle(cleanLines[0] ?? '');
+        // Preserve OCR evidence, including for cover-only scans.
+        setScannerRecoveryTitle(cleanLines.slice(0, 3).join(' ').slice(0, 100));
         setScannerRecoveryAuthor('');
-        throw new Error('Cover text was detected but the book was not identified. Check the suggested title below and search by title/author.');
+        throw new Error('Cover text was detected, but a title and author match could not be confirmed. Review the detected text below or search manually.');
       }
       // Cover scanning identifies a WORK, not a retailer-specific edition.
       // Never require a barcode or edition selection when title and author
