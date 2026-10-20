@@ -447,6 +447,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerBusy(true);
     setUnresolvedIsbn(null);
     setScannerEditionOptions([]);
+    setScannerRecoveryTitle('');
+    setScannerRecoveryAuthor('');
     setScannerError(null);
     setScannerMessage(null);
     try {
@@ -587,9 +589,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         cleanLines[index + 2] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]}` : '',
       ]);
       const candidates = [...new Set(phrases)]
-        .filter((phrase) => phrase.length >= 8 && phrase.length <= 75 && phrase.split(/\s+/).length >= 2 && !isNoise(phrase))
-        .sort((left, right) => right.split(/\s+/).length - left.split(/\s+/).length)
-        .slice(0, 20);
+        .filter((phrase) => phrase.length >= 4 && phrase.length <= 75 && !isNoise(phrase))
+        .sort((left, right) => left.split(/\s+/).length - right.split(/\s+/).length)
+        .slice(0, 24);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
@@ -600,21 +602,27 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         for (const work of response.groups) {
           const titleKey = normalizeCatalogText(work.title);
           const titleWords = titleKey.split(' ').filter(Boolean);
-          if (titleWords.length < 2 || titleKey.length < 9) continue;
+          if (!titleWords.length || titleKey.length < 4) continue;
           const meaningful = titleWords.filter((word) => word.length >= 4);
-          if (meaningful.length < 2 || !meaningful.every((word) => coverWords.has(word))) continue;
+          if (!meaningful.length || !meaningful.every((word) => coverWords.has(word))) continue;
+          // Single-word titles need an exact OCR word and a matching author;
+          // otherwise a generic cover word could identify an unrelated book.
+          const singleWordTitle = titleWords.length === 1;
           const authorScore = work.authors.some((name) => {
             const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
             return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word));
           }) ? 0.5 : 0;
           // A complete multiword title is required; author confirmation ranks matches.
+          if (singleWordTitle && !authorScore) continue;
           const score = 1 + authorScore + Math.min(0.2, meaningful.length * 0.05);
           if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
         }
         if (best && best.score >= 1.5) break;
       }
       if (!best) {
+        setScannerEditionOptions([]);
         setScannerRecoveryTitle('');
+        setScannerRecoveryAuthor('');
         throw new Error('Cover text was detected, but no reliable catalog match was found. Try another photo or enter the title.');
       }
       // Cover OCR identifies a work, not the scanned edition. Offer the
