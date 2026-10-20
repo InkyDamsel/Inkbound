@@ -477,9 +477,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setScannerError(`We could not verify the scanned edition. ${work.title.trim() ? 'Choose a matching catalog edition below, or search manually.' : 'Enter a title to find alternative editions.'}`);
         return;
       }
-      // A work-level match is useful even when a retailer-exclusive ISBN is
-      // missing from catalog editions. Keep the catalog edition's own ISBN;
-      // never mislabel it as the scanned edition.
+      // An approximate ISBN resolution is NOT proof that this is the scanned
+      // book. Require explicit reader confirmation instead of silently adding
+      // a possibly unrelated catalog work to the batch.
+      if (!exactIsbn) {
+        setUnresolvedIsbn(isbn);
+        setScannerRecoveryTitle(work.title);
+        setScannerRecoveryAuthor(work.authors.join(', '));
+        setScannerEditionOptions([work]);
+        setScannerError('This ISBN did not verify an exact catalog edition. Check the title and author carefully before choosing Add to Stack, or search for the correct book. Nothing was added automatically.');
+        return;
+      }
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
       const nextBatch = [...scannedBooks, { isbn, book }];
       if (!writeScannerDraft(nextBatch)) {
