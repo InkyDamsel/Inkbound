@@ -48,7 +48,7 @@ interface BookDetailsModalProps {
 }
 
 type DetailsTab = 'details' | 'summary' | 'quotes' | 'reading' | 'sessions' | 'editions';
-type CoverMode = 'choices' | 'search';
+type CoverMode = 'choices' | 'search' | 'url';
 
 const MAX_COVER_FILE_BYTES = 12 * 1024 * 1024;
 const ACCEPTED_COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
