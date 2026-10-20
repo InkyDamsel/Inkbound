@@ -569,7 +569,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerMessage('Reading the cover and searching the catalog…');
     try {
       const bitmap = await createImageBitmap(file);
-      const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
+      const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(bitmap.width * scale);
       canvas.height = Math.round(bitmap.height * scale);
@@ -626,10 +626,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           };
           return score(right) - score(left);
         })
-        .slice(0, 12);
+        .slice(0, 24);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
+      const compactCover = recognized.replace(/\s+/g, '');
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
       for (const candidate of candidates) {
@@ -647,21 +648,21 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           const meaningful = titleWords.filter((word) => word.length >= 4);
           // OCR may split or slightly misread large decorative cover lettering.
           // Require most distinctive title words plus author confirmation.
-          const titleHits = meaningful.filter((word) => coverWords.has(word)).length;
+          const titleHits = meaningful.filter((word) => coverWords.has(word) || compactCover.includes(word)).length;
           if (!meaningful.length || titleHits < Math.max(1, Math.ceil(meaningful.length * 0.65))) continue;
           // Single-word titles need an exact OCR word and a matching author;
           // otherwise a generic cover word could identify an unrelated book.
           const singleWordTitle = titleWords.length === 1;
           const authorScore = work.authors.some((name) => {
             const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
-            return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word));
+            return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word) || compactCover.includes(word));
           }) ? 0.5 : 0;
           // A complete multiword title is required; author confirmation ranks matches.
           if (singleWordTitle && !authorScore) continue;
           const score = titleHits / meaningful.length + authorScore + Math.min(0.2, meaningful.length * 0.05);
           if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
         }
-        if (best && best.score >= 1.5) break;
+        if (best && best.score >= 1.65) break;
       }
       if (!best) {
         setScannerEditionOptions([]);
