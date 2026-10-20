@@ -1282,7 +1282,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                           <div className="min-w-0 flex-1">
                             <p className="break-words text-sm font-semibold leading-snug text-[#f4efe6] sm:text-base">{item.book.work.title}</p>
                             <p className="break-words text-xs text-[#ad9fac]">{item.book.work.author}</p>
-                            <p className="mt-1 break-all text-[11px] text-[#8f8290]">ISBN {item.isbn} · {readingStatusSelectionLabel(scannerCategory)}</p>
+                            <p className="mt-1 break-all text-[11px] text-[#8f8290]">{item.isbn.startsWith('cover:') ? 'Identified by Cover' : `ISBN ${item.isbn}`} · {readingStatusSelectionLabel(scannerCategory)}</p>
                           </div>
                           <button type="button" onClick={() => setScannedBooks((current) => current.filter((candidate) => candidate !== item))} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-rose-300" aria-label={`Remove ${item.book.work.title}`}><Trash2 className="h-4 w-4" /></button>
                         </article>
