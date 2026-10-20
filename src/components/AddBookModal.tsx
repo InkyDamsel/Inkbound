@@ -677,8 +677,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             return authorWords.length >= 2
               ? authorWords.every((word) => coverWords.has(word) || compactCover.includes(word))
               : authorWords.length === 1 && fullTitleOnCover
-                && (coverWords.has(authorWords[0]) || compactCover.includes(authorWords[0]))
-                : false;
+                && (coverWords.has(authorWords[0]) || compactCover.includes(authorWords[0]));
           });
           if (!authorConfirmed || !coverMatchesWork(lines, work.title, work.authors)) continue;
           const score = titleHits / meaningful.length + 0.5 + Math.min(0.2, meaningful.length * 0.05);
