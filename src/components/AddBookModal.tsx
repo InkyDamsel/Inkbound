@@ -581,15 +581,30 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
       const isNoise = (value: string) => /(?:new york times|bestsell|walmart|exclusive|author|edition|isbn|book club|a novel|anything you can do|slay)/i.test(value);
       const cleanLines = coverLines.filter((line) => !isNoise(line));
+      // OCR often splits large cover typography into single-word lines:
+      // "ADVERSARY" / "TO THE" / "VILLAIN". Preserve those lines and
+      // prioritize short contiguous title phrases over long blurbs.
       const phrases = cleanLines.flatMap((line, index) => [
         line,
         cleanLines[index + 1] ? `${line} ${cleanLines[index + 1]}` : '',
         cleanLines[index + 2] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]}` : '',
+        cleanLines[index + 3] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]} ${cleanLines[index + 3]}` : '',
       ]);
       const candidates = [...new Set(phrases)]
-        .filter((phrase) => phrase.length >= 8 && phrase.length <= 75 && phrase.split(/\s+/).length >= 2 && !isNoise(phrase))
-        .sort((left, right) => right.split(/\s+/).length - left.split(/\s+/).length)
-        .slice(0, 20);
+        .filter((phrase) => phrase.length >= 5 && phrase.length <= 75 && !isNoise(phrase))
+        .sort((left, right) => {
+          const rank = (value: string) => {
+            const words = value.split(/\\s+/);
+            // Favor plausible cover titles; avoid ranking a long phrase
+            // containing author names and taglines ahead of the actual title.
+            return (words.length >= 2 && words.length <= 6 ? 10 : 0)
+              + (words.length >= 3 && words.length <= 4 ? 5 : 0)
+              - Math.max(0, words.length - 6) * 3
+              - Math.max(0, value.length - 45) / 5;
+          };
+          return rank(right) - rank(left);
+        })
+        .slice(0, 24);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
@@ -598,7 +613,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Search a small number of likely title phrases concurrently instead
       // of making up to twenty slow sequential catalog round trips.
       // Each wave finishes before the next, and confident matches stop lookup.
-      const shortlist = candidates.slice(0, 9);
+      const shortlist = candidates.slice(0, 12);
       for (let offset = 0; offset < shortlist.length; offset += 3) {
         const wave = shortlist.slice(offset, offset + 3);
         const responses = await Promise.allSettled(wave.map((candidate) => searchGoogleBooks(candidate)));
