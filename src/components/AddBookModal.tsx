@@ -633,7 +633,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
       for (const candidate of candidates) {
-        const response = await searchGoogleBooks(candidate);
+        // One failed provider request must not discard the entire photograph.
+        let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
+        try {
+          response = await searchGoogleBooks(candidate);
+        } catch {
+          continue;
+        }
         for (const work of response.groups) {
           const titleKey = normalizeCatalogText(work.title);
           const titleWords = titleKey.split(' ').filter(Boolean);
@@ -652,7 +658,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           }) ? 0.5 : 0;
           // A complete multiword title is required; author confirmation ranks matches.
           if (singleWordTitle && !authorScore) continue;
-          const score = 1 + authorScore + Math.min(0.2, meaningful.length * 0.05);
+          const score = titleHits / meaningful.length + authorScore + Math.min(0.2, meaningful.length * 0.05);
           if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
         }
         if (best && best.score >= 1.5) break;
