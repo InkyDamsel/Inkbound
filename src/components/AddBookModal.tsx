@@ -650,16 +650,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           // Require most distinctive title words plus author confirmation.
           const titleHits = meaningful.filter((word) => coverWords.has(word) || compactCover.includes(word)).length;
           if (!meaningful.length || titleHits < Math.max(1, Math.ceil(meaningful.length * 0.65))) continue;
-          // Single-word titles need an exact OCR word and a matching author;
-          // otherwise a generic cover word could identify an unrelated book.
-          const singleWordTitle = titleWords.length === 1;
-          const authorScore = work.authors.some((name) => {
-            const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
-            return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word) || compactCover.includes(word));
-          }) ? 0.5 : 0;
-          // A complete multiword title is required; author confirmation ranks matches.
-          if (singleWordTitle && !authorScore) continue;
-          const score = titleHits / meaningful.length + authorScore + Math.min(0.2, meaningful.length * 0.05);
+          // Cover identification requires both a matching title and an author.
+          // Never suggest a different author's book because its title contains
+          // generic cover words such as "darkest" or "age".
+          const authorConfirmed = work.authors.some((name) => {
+            const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 3);
+            return authorWords.length >= 2 && authorWords.every((word) =>
+              coverWords.has(word) || compactCover.includes(word));
+          });
+          if (!authorConfirmed) continue;
+          const score = titleHits / meaningful.length + 0.5 + Math.min(0.2, meaningful.length * 0.05);
           if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
         }
         if (best && best.score >= 1.65) break;
