@@ -16,6 +16,7 @@ import {
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { isValidCatalogIsbn, selectCatalogIsbnFromBarcodes } from '../features/book-search/isbnResolution';
+import { coverMatchesWork, isScannerBatchIdentityConsistent, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
@@ -69,7 +70,8 @@ const readScannerDraft = (): ScannedBook[] => {
     return parsed.filter((item): item is ScannedBook =>
       !!item && typeof item === 'object' && typeof item.isbn === 'string'
       && !!item.book && typeof item.book.id === 'string' && !!item.book.work
-      && Array.isArray(item.book.editions) && hasIdentifiedBook(item.book));
+      && Array.isArray(item.book.editions) && hasIdentifiedBook(item.book)
+      && isScannerBatchIdentityConsistent(item.isbn, item.book.editions));
   } catch {
     return [];
   }
@@ -483,6 +485,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // missing from catalog editions. Keep the catalog edition's own ISBN;
       // never mislabel it as the scanned edition.
       const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
+      if (!exactIsbn) {
+        setUnresolvedIsbn(isbn);
+        setScannerEditionOptions([work]);
+        setScannerMessage('The scanned ISBN was not verified for this edition. Review and explicitly select the suggested catalog edition.');
+        return;
+      }
       const nextBatch = [...scannedBooks, { isbn, book }];
       if (!writeScannerDraft(nextBatch)) {
         setScannerError('Device storage is full or unavailable. This book was not added to the batch because it could not be protected.');
@@ -504,11 +512,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   const chooseScannerAlternative = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
-    const chosenIsbn = edition.isbn13 ?? edition.isbn10 ?? `catalog:${edition.source}:${edition.externalEditionId}`;
+    const chosenIsbn = scannerEditionKey(edition);
     if (scannedBooks.some((item) => item.isbn === chosenIsbn)) return;
     const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
     if (!hasIdentifiedBook(book)) return;
-    const nextBatch = [...scannedBooks, { isbn: chosenIsbn, book }];
+    const persistedKey = book.editions.find((item) => item.id === book.activeEditionId);
+    const batchKey = persistedKey?.isbn13 ?? persistedKey?.isbn10 ?? persistedKey?.isbn
+      ?? (persistedKey?.externalSource && persistedKey.externalEditionId
+        ? `catalog:${persistedKey.externalSource}:${persistedKey.externalEditionId}` : chosenIsbn);
+    if (scannedBooks.some((item) => item.isbn === batchKey)) return;
+    const nextBatch = [...scannedBooks, { isbn: batchKey, book }];
     if (!writeScannerDraft(nextBatch)) {
       setScannerError('Device storage is unavailable. This selection was not added to the batch.');
       return;
@@ -602,6 +615,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return;
       }
       // Never carry a previous book's author/title into this cover attempt.
+      setUnresolvedIsbn(null);
       setScannerRecoveryTitle('');
       setScannerRecoveryAuthor('');
       setScannerEditionOptions([]);
@@ -666,7 +680,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 && (coverWords.has(authorWords[0]) || compactCover.includes(authorWords[0]))
                 : false;
           });
-          if (!authorConfirmed) continue;
+          if (!authorConfirmed || !coverMatchesWork(lines, work.title, work.authors)) continue;
           const score = titleHits / meaningful.length + 0.5 + Math.min(0.2, meaningful.length * 0.05);
           if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
         }
