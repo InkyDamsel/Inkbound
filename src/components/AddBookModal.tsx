@@ -607,14 +607,20 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         .slice(0, 24);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
-      const recognizedWords = recognized.split(/\s+/).filter(Boolean);
-      const coverWords = new Set(recognizedWords);
+      const coverWords = new Set(recognized.split(/\s+/).filter(Boolean));
+      // OCR can return decorative slogans before the actual title. Search
+      // several distinct cover phrases, not just the first OCR lines.
+      const stopWords = new Set(['the', 'and', 'for', 'with', 'from', 'that', 'this', 'you', 'your', 'can', 'are', 'was', 'new', 'york', 'times', 'walmart', 'exclusive', 'content']);
+      const distinct = [...new Set(candidates)].sort((left, right) => {
+        const quality = (value: string) => value.split(/\s+/).filter((word) => word.length >= 4 && !stopWords.has(word.toLowerCase())).length;
+        return quality(right) - quality(left);
+      });
+      const shortlist = distinct.slice(0, 18);
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
+      let runnerUp = 0;
       let found: BookSearchWorkGroup[] = [];
-      // Use the same catalog lookup as Search, but score OCR against the
-      // returned WORK title. Cover typography can split or distort words.
-      // Never require a matching retailer edition or ISBN.
-      const shortlist = candidates.slice(0, 12);
+      // Catalog matches are evidence, not proof: title tokens must actually
+      // appear in the photographed text, with author corroboration preferred.
       for (let offset = 0; offset < shortlist.length; offset += 3) {
         const wave = shortlist.slice(offset, offset + 3);
         const responses = await Promise.allSettled(wave.map((candidate) => searchGoogleBooks(candidate)));
@@ -622,34 +628,34 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           if (response.status !== 'fulfilled') continue;
           for (const work of response.value.groups) {
             const titleKey = normalizeCatalogText(work.title);
-            const titleWords = titleKey.split(/\s+/).filter(Boolean);
-            if (titleWords.length < 2 || titleKey.length < 9) continue;
-            const meaningful = titleWords.filter((word) => word.length >= 4);
+            const meaningful = titleKey.split(/\s+/).filter((word) => word.length >= 4 && !stopWords.has(word));
             if (meaningful.length < 2) continue;
-            // Allow one imperfect OCR word; require strong title coverage.
-            const coverage = meaningful.filter((word) => coverWords.has(word)).length / meaningful.length;
+            const hits = meaningful.filter((word) => coverWords.has(word)).length;
+            const coverage = hits / meaningful.length;
             const phraseMatch = recognized.includes(titleKey);
             const authorMatch = work.authors.some((name) => {
               const words = normalizeAuthorName(name).split(/\s+/).filter((word) => word.length >= 4);
               return words.length >= 2 && words.every((word) => coverWords.has(word));
             });
-            if (!phraseMatch && coverage < 0.75) continue;
-            // Never auto-stack an uncertain title without author evidence.
+            if (!phraseMatch && (hits < 2 || coverage < 0.75)) continue;
             if (!authorMatch && !phraseMatch) continue;
-            const score = coverage + (phraseMatch ? 1 : 0) + (authorMatch ? 1 : 0);
+            const score = coverage * 2 + (phraseMatch ? 2 : 0) + (authorMatch ? 2 : 0) + Math.min(hits, 5) * 0.1;
             if (score > (best?.score ?? 0)) {
+              runnerUp = best?.score ?? runnerUp;
               best = { work, score };
               found = response.value.groups;
+            } else if (titleKey !== normalizeCatalogText(best?.work.title ?? '') && score > runnerUp) {
+              runnerUp = score;
             }
           }
         }
-        if (best && best.score >= 2) break;
+        if (best && best.score >= 6) break;
       }
-      if (!best) {
-        // Preserve OCR evidence, including for cover-only scans.
-        setScannerRecoveryTitle(cleanLines.slice(0, 3).join(' ').slice(0, 100));
+      if (!best || (runnerUp > 0 && best.score - runnerUp < 0.25)) {
+        // Do not prefill a decorative slogan as though it were the title.
+        setScannerRecoveryTitle('');
         setScannerRecoveryAuthor('');
-        throw new Error('Cover text was detected, but a title and author match could not be confirmed. Review the detected text below or search manually.');
+        throw new Error('Cover text was detected, but a reliable title and author match could not be confirmed. Enter the title and author below to search the catalog.');
       }
       // Cover scanning identifies a WORK, not a retailer-specific edition.
       // Never require a barcode or edition selection when title and author
