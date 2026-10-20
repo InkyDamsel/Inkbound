@@ -504,17 +504,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   const chooseScannerAlternative = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
-    if (!unresolvedIsbn || scannedBooks.some((item) => item.isbn === unresolvedIsbn)) return;
+    const chosenIsbn = unresolvedIsbn ?? edition.isbn13 ?? edition.isbn10 ?? `catalog:${edition.source}:${edition.externalEditionId}`;
+    if (scannedBooks.some((item) => item.isbn === chosenIsbn)) return;
     const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
     if (!hasIdentifiedBook(book)) return;
-    const nextBatch = [...scannedBooks, { isbn: unresolvedIsbn, book }];
+    const nextBatch = [...scannedBooks, { isbn: chosenIsbn, book }];
     if (!writeScannerDraft(nextBatch)) {
       setScannerError('Device storage is unavailable. This selection was not added to the batch.');
       return;
     }
     setScannedBooks(nextBatch);
     setScannerReviewPage(Math.ceil(nextBatch.length / scannerReviewPageSize));
-    setScannerMessage(`Added “${work.title}” using a catalog edition. Scanned ISBN ${unresolvedIsbn} is retained separately; review the selected edition before saving.`);
+    setScannerMessage(unresolvedIsbn ? `Added “${work.title}” using a catalog edition. Scanned ISBN ${unresolvedIsbn} is retained separately; review the selected edition before saving.` : `Added “${work.title}” from its cover. Review the selected catalog edition before saving.`);
     setUnresolvedIsbn(null);
     setScannerEditionOptions([]);
     setScannerError(null);
@@ -1217,9 +1218,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               {photoIsbnChoices.length > 0 && <div className="mt-3 grid gap-2" aria-label="ISBNs found in photo">
                 {photoIsbnChoices.map((isbn) => <button key={isbn} type="button" disabled={scannerBusy} onClick={() => { setPhotoIsbnChoices([]); void lookupScannedIsbn(isbn); }} className="quiet-shelf-secondary-action justify-center">Use ISBN {isbn}</button>)}
               </div>}
-              {unresolvedIsbn && scannerEditionOptions.length > 0 && <div className="mt-3 rounded-xl border border-[#c5a059]/40 bg-[#1d1422] p-3">
+              {scannerEditionOptions.length > 0 && <div className="mt-3 rounded-xl border border-[#c5a059]/40 bg-[#1d1422] p-3">
                 <p className="font-serif text-lg text-[#f4efe6]">Possible editions</p>
-                <p className="mt-1 text-xs text-[#b9a9ba]">The scanned ISBN is not verified for these editions. Select only if the book and author match; the selected catalog edition keeps its own details.</p>
+                <p className="mt-1 text-xs text-[#b9a9ba]">Select only if the book and author match. Cover recognition does not verify the physical edition; the selected catalog edition keeps its own ISBN and details.</p>
                 <div className="mt-3 grid gap-2">
                   {scannerEditionOptions.flatMap((work) => work.editions.slice(0, 3).map((edition) => ({ work, edition }))).slice(0, 9).map(({ work, edition }, index) => <div key={`${work.key}-${edition.externalEditionId}-${index}`} className="flex items-center gap-3 rounded-lg border border-[#c5a059]/20 bg-[#120c15] p-2">
                     {edition.coverUrl ? <img src={edition.coverUrl} alt="" className="h-20 w-14 shrink-0 rounded object-cover" /> : <BookOpen className="h-10 w-14 shrink-0 text-[#c5a059]" />}
