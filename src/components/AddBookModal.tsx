@@ -631,10 +631,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Decorative titles are often OCR'd as separate lines (THE / CIRCLE / OF /
       // STONE). Keep short adjacent title lines together before searching; do
       // not allow long blurbs or author text to displace these candidates.
-      const titlePhrases = cleanLines.flatMap((line, index) => [2, 3, 4, 5]
-        .map((count) => cleanLines.slice(index, index + count))
-        .filter((parts) => parts.length === count && parts.every((part) => part.split(/\s+/).length <= 3))
-        .map((parts) => parts.join(' ')));
+      const titlePhrases = cleanLines.flatMap((_line, index) => [2, 3, 4, 5]
+        .map((count) => ({ count, parts: cleanLines.slice(index, index + count) }))
+        .filter(({ count, parts }) => parts.length === count && parts.every((part) => part.split(/\s+/).length <= 3))
+        .map(({ parts }) => parts.join(' ')));
       // Search the title as it appears on the cover, not 32 unrelated fragments.
       const candidates = [...new Set([...titlePhrases, ...phrases])]
         .filter((phrase) => phrase.length >= 4 && phrase.length <= 85 && !isNoise(phrase))
