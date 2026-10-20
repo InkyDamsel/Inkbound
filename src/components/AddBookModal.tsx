@@ -594,7 +594,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         .filter((phrase) => phrase.length >= 5 && phrase.length <= 75 && !isNoise(phrase))
         .sort((left, right) => {
           const rank = (value: string) => {
-            const words = value.split(/\\s+/);
+            const words = value.split(/\s+/);
             // Favor plausible cover titles; avoid ranking a long phrase
             // containing author names and taglines ahead of the actual title.
             return (words.length >= 2 && words.length <= 6 ? 10 : 0)
