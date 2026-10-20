@@ -607,11 +607,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
             return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word));
           }) ? 0.5 : 0;
-          // A complete multiword title is required; author confirmation ranks matches.
-          const score = 1 + authorScore + Math.min(0.2, meaningful.length * 0.05);
+          // A series name can also appear on the cover (for example,
+          // "Gods & Monsters" beneath "The Dawn of the Cursed Queen").
+          // Prefer the most specific complete title, not the first plausible
+          // two-word series label returned by a catalog provider.
+          const score = 1 + authorScore + meaningful.length * 0.2;
           if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
         }
-        if (best && best.score >= 1.5) break;
+        // Evaluate all OCR title candidates: stopping at the first author
+        // match can select a series name instead of the actual book title.
       }
       if (!best) {
         setScannerRecoveryTitle('');
