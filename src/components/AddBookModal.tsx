@@ -614,30 +614,60 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         if (best && best.score >= 1.5) break;
       }
       if (!best) {
-        setScannerRecoveryTitle('');
-        throw new Error('Cover text was detected, but no reliable catalog match was found. Try another photo or enter the title.');
+        // Keep OCR evidence available for recovery rather than clearing the
+        // title field and forcing the reader to begin again.
+        setScannerRecoveryTitle(cleanLines[0] ?? '');
+        setScannerRecoveryAuthor('');
+        throw new Error('Cover text was detected but the book was not identified. Check the suggested title below and search by title/author.');
       }
-      // Cover OCR identifies a work, not the scanned edition. Offer the
-      // matching catalog editions in Scanner, never silently substitute ISBNs.
-      const titleKey = normalizeCatalogText(best.work.title);
-      const matches = found.filter((work) =>
-        normalizeCatalogText(work.title) === titleKey
-        && work.authors.some((name) => normalizeAuthorName(name) !== 'unknown author'));
-      if (!matches.length) throw new Error('The cover title was found, but no edition with a known author is available.');
-      if (!unresolvedIsbn) {
-        // A cover-only scan must not pretend a catalog edition's ISBN was
-        // scanned. Require the reader to select an ISBN or add manually.
-        setScannerRecoveryTitle(best.work.title);
-        setScannerRecoveryAuthor(best.work.authors.join(', '));
+      // Cover scanning identifies a WORK, not a retailer-specific edition.
+      // Never require a barcode or edition selection when title and author
+      // have already been matched confidently to a catalog work.
+      const work = await recoverMissingScanAuthor(best.work);
+      const verifiedAuthor = work.authors.some((name) =>
+        Boolean(normalizeAuthorName(name)) && normalizeAuthorName(name) !== 'unknown author');
+      setScannerRecoveryTitle(work.title);
+      setScannerRecoveryAuthor(work.authors.join(', '));
+      if (!verifiedAuthor) {
+        setScannerError('Title recognized, but the author could not be verified. Confirm the author below before adding.');
         setScannerMessage(null);
-        setScannerError('Cover title found. Scan or enter the book ISBN first to keep edition identity accurate, then scan the cover again if needed.');
         return;
       }
-      setScannerEditionOptions(matches);
-      setScannerRecoveryTitle(best.work.title);
-      setScannerMessage('Cover identified a possible book. Review the editions below and choose Add to Stack.');
+      const edition = work.editions[0] ?? found.flatMap((group) => group.editions)[0];
+      if (!edition) {
+        setScannerError('Title and author found, but no catalog book record is available. Use the title and author below to add it manually.');
+        setScannerMessage(null);
+        return;
+      }
+      const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
+      if (!hasIdentifiedBook(book)) {
+        setScannerError('The cover match needs a confirmed title and author before it can be stacked.');
+        setScannerMessage(null);
+        return;
+      }
+      // Cover-only scans have no verified scanned ISBN. Use a distinct batch
+      // identity rather than claiming the catalog edition ISBN was scanned.
+      const scanKey = unresolvedIsbn ?? `cover:${book.id}:${Date.now()}`;
+      if (scannedBooks.some((item) =>
+        normalizeCatalogText(item.book.work.title) === normalizeCatalogText(book.work.title)
+        && normalizeAuthorName(item.book.work.author) === normalizeAuthorName(book.work.author))) {
+        setScannerMessage(`“${work.title}” is already in this scan batch.`);
+        setScannerError(null);
+        return;
+      }
+      const nextBatch = [...scannedBooks, { isbn: scanKey, book }];
+      if (!writeScannerDraft(nextBatch)) {
+        setScannerError('Device storage is unavailable. This cover scan was not added to the stack.');
+        setScannerMessage(null);
+        return;
+      }
+      setScannedBooks(nextBatch);
+      setScannerReviewPage(Math.ceil(nextBatch.length / scannerReviewPageSize));
+      setUnresolvedIsbn(null);
+      setScannerEditionOptions([]);
       setScannerError(null);
-      // Keep the original scanned ISBN until the reader selects an edition.
+      setScannerMessage(`Added “${work.title}” by cover (title and author). Review the cover/edition later if needed.`);
+      void playScannerSuccessFeedback();
     } catch (error) {
       setScannerMessage(null);
       setScannerError(error instanceof Error ? error.message : 'Cover recognition failed. Try another photo.');
