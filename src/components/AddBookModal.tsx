@@ -655,8 +655,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           // generic cover words such as "darkest" or "age".
           const authorConfirmed = work.authors.some((name) => {
             const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 3);
-            return authorWords.length >= 2 && authorWords.every((word) =>
+            // Initialed authors (e.g. A. J. Lake) have only one long token.
+            // Require that surname plus the FULL title appears on the cover;
+            // never accept a surname-only match for an unrelated title.
+            const fullTitleOnCover = titleWords.every((word) =>
               coverWords.has(word) || compactCover.includes(word));
+            return authorWords.length >= 2
+              ? authorWords.every((word) => coverWords.has(word) || compactCover.includes(word))
+              : authorWords.length === 1 && fullTitleOnCover
+                && (coverWords.has(authorWords[0]) || compactCover.includes(authorWords[0]))
+                : false;
           });
           if (!authorConfirmed) continue;
           const score = titleHits / meaningful.length + 0.5 + Math.min(0.2, meaningful.length * 0.05);
