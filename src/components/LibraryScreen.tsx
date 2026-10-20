@@ -257,7 +257,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <PaginationControls page={safePage} totalItems={filteredBooks.length} pageSize={LIBRARY_PAGE_SIZE} onPageChange={setPage} itemLabel="items" />
       </>}
 
-      {section === 'books' && selectedBookIds.length > 0 && <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-[#c5a059]/35 bg-[#17101b] px-5 py-3 shadow-2xl lg:bottom-6"><span className="text-xs font-bold text-[#f4efe6]">{selectedBookIds.length} selected</span><button type="button" onClick={onOpenBatchEdit} className="quiet-shelf-primary-action">Edit</button><button type="button" onClick={onClearSelection} className="grid h-10 w-10 place-items-center rounded-full text-[#ad9fac]"><X className="h-4 w-4" /></button></div>}
+      {section === 'books' && selectedBookIds.length > 0 && <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[#c5a059]/35 bg-[#17101b] px-3 py-2 shadow-2xl sm:gap-3 sm:px-5 sm:py-3 lg:bottom-6"><span className="shrink-0 whitespace-nowrap text-xs font-bold text-[#f4efe6]">{selectedBookIds.length} selected</span><button type="button" onClick={onOpenBatchEdit} className="quiet-shelf-primary-action">Edit</button><button type="button" onClick={onClearSelection} className="grid h-10 w-10 place-items-center rounded-full text-[#ad9fac]"><X className="h-4 w-4" /></button></div>}
     </div>
   );
 };
