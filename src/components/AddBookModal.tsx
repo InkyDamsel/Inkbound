@@ -626,10 +626,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const cleanLines = coverLines.filter((line) => !isNoise(line));
       const phrases = cleanLines.flatMap((line, index) => [
         line,
-        ...[2, 3, 4].map((count) => cleanLines.slice(index, index + count).join(' ')),
+        ...[2, 3, 4, 5].map((count) => cleanLines.slice(index, index + count).join(' ')),
       ]);
+      // Decorative titles are often OCR'd as separate lines (THE / CIRCLE / OF /
+      // STONE). Keep short adjacent title lines together before searching; do
+      // not allow long blurbs or author text to displace these candidates.
+      const titlePhrases = cleanLines.flatMap((line, index) => [2, 3, 4, 5]
+        .map((count) => cleanLines.slice(index, index + count))
+        .filter((parts) => parts.length === count && parts.every((part) => part.split(/\\s+/).length <= 3))
+        .map((parts) => parts.join(' ')));
       // Search the title as it appears on the cover, not 32 unrelated fragments.
-      const candidates = [...new Set(phrases)]
+      const candidates = [...new Set([...titlePhrases, ...phrases])]
         .filter((phrase) => phrase.length >= 4 && phrase.length <= 85 && !isNoise(phrase))
         .sort((left, right) => {
           const score = (value: string) => {
@@ -640,7 +647,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           };
           return score(right) - score(left);
         })
-        .slice(0, 24);
+        .slice(0, 48);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
