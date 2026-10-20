@@ -504,7 +504,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   };
 
   const chooseScannerAlternative = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
-    const chosenIsbn = unresolvedIsbn ?? edition.isbn13 ?? edition.isbn10 ?? `catalog:${edition.source}:${edition.externalEditionId}`;
+    const chosenIsbn = edition.isbn13 ?? edition.isbn10 ?? `catalog:${edition.source}:${edition.externalEditionId}`;
     if (scannedBooks.some((item) => item.isbn === chosenIsbn)) return;
     const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
     if (!hasIdentifiedBook(book)) return;
@@ -515,7 +515,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     }
     setScannedBooks(nextBatch);
     setScannerReviewPage(Math.ceil(nextBatch.length / scannerReviewPageSize));
-    setScannerMessage(unresolvedIsbn ? `Added “${work.title}” using a catalog edition. Scanned ISBN ${unresolvedIsbn} is retained separately; review the selected edition before saving.` : `Added “${work.title}” from its cover. Review the selected catalog edition before saving.`);
+    setScannerMessage(`Added “${work.title}” using the selected catalog edition. Its ISBN is not replaced by an earlier scanned ISBN. Review before saving.`);
     setUnresolvedIsbn(null);
     setScannerEditionOptions([]);
     setScannerError(null);
