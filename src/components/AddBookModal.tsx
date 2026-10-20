@@ -580,10 +580,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setPhotoIsbnChoices([]);
       const lines = await recognizeBookCover(image);
       // A photographed copyright page can identify the exact edition without a barcode.
-      const detectedIsbns = [...new Set(lines.flatMap((line) => {
-        const candidates = line.match(/(?:[0-9Xx][\s:.-]*){10,13}/g) ?? [];
-        return candidates.map(normalizeIsbn).filter(isValidCatalogIsbn);
-      }))];
+      // OCR may split ISBN-13 and ISBN-10 across lines or include both on one line.
+      // Only accept checksum-valid values explicitly adjacent to an ISBN label.
+      const isbnText = lines.join(' ').replace(/\s+/g, ' ');
+      const detectedIsbns = [...new Set([...isbnText.matchAll(/ISBN\s*[-–]?\s*(?:1[03])?\s*[:：]?\s*((?:[0-9Xx][\s-]*){10,13})/gi)]
+        .map((match) => normalizeIsbn(match[1]))
+        .filter(isValidCatalogIsbn))];
       if (detectedIsbns.length === 1) {
         await lookupScannedIsbn(detectedIsbns[0]);
         return;
@@ -606,6 +608,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         line,
         cleanLines[index + 1] ? `${line} ${cleanLines[index + 1]}` : '',
         cleanLines[index + 2] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]}` : '',
+        cleanLines[index + 3] ? `${line} ${cleanLines[index + 1]} ${cleanLines[index + 2]} ${cleanLines[index + 3]}` : '',
       ]);
       // Prefer distinctive multi-word cover titles over generic one-word OCR
       // fragments. This is scanner-only; the protected Search flow is unchanged.
@@ -618,7 +621,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           return priority(leftWords) - priority(rightWords)
             || rightWords - leftWords;
         })
-        .slice(0, 24);
+        .slice(0, 32);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
@@ -660,13 +663,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         && work.authors.some((name) => normalizeAuthorName(name) !== 'unknown author'));
       if (!matches.length) throw new Error('The cover title was found, but no edition with a known author is available.');
       if (!unresolvedIsbn) {
-        // A cover-only scan must not pretend a catalog edition's ISBN was
-        // scanned. Require the reader to select an ISBN or add manually.
         setScannerRecoveryTitle(best.work.title);
         setScannerRecoveryAuthor(best.work.authors.join(', '));
-        setScannerMessage(null);
-        setScannerError('Cover title found. Scan or enter the book ISBN first to keep edition identity accurate, then scan the cover again if needed.');
-        return;
+        setScannerMessage('Cover identified a possible book. Review the matching editions below.');
       }
       setScannerEditionOptions(matches);
       setScannerRecoveryTitle(best.work.title);
