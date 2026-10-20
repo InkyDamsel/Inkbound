@@ -577,10 +577,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       bitmap.close();
       const image = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+      setPhotoIsbnChoices([]);
       const lines = await recognizeBookCover(image);
       // A photographed copyright page can identify the exact edition without a barcode.
       const detectedIsbns = [...new Set(lines.flatMap((line) => {
-        const candidates = line.match(/(?:[0-9Xx][\\s:.-]*){10,13}/g) ?? [];
+        const candidates = line.match(/(?:[0-9Xx][\s:.-]*){10,13}/g) ?? [];
         return candidates.map(normalizeIsbn).filter(isValidCatalogIsbn);
       }))];
       if (detectedIsbns.length === 1) {
@@ -1214,6 +1215,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
 
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
+              {photoIsbnChoices.length > 0 && <div className="mt-3 grid gap-2" aria-label="ISBNs found in photo">
+                {photoIsbnChoices.map((isbn) => <button key={isbn} type="button" disabled={scannerBusy} onClick={() => { setPhotoIsbnChoices([]); void lookupScannedIsbn(isbn); }} className="quiet-shelf-secondary-action justify-center">Use ISBN {isbn}</button>)}
+              </div>}
               {unresolvedIsbn && scannerEditionOptions.length > 0 && <div className="mt-3 rounded-xl border border-[#c5a059]/40 bg-[#1d1422] p-3">
                 <p className="font-serif text-lg text-[#f4efe6]">Possible editions</p>
                 <p className="mt-1 text-xs text-[#b9a9ba]">The scanned ISBN is not verified for these editions. Select only if the book and author match; the selected catalog edition keeps its own details.</p>
