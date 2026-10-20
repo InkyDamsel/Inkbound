@@ -595,21 +595,31 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
-      for (const candidate of candidates) {
-        const response = await searchGoogleBooks(candidate);
-        for (const work of response.groups) {
-          const titleKey = normalizeCatalogText(work.title);
-          const titleWords = titleKey.split(' ').filter(Boolean);
-          if (titleWords.length < 2 || titleKey.length < 9) continue;
-          const meaningful = titleWords.filter((word) => word.length >= 4);
-          if (meaningful.length < 2 || !meaningful.every((word) => coverWords.has(word))) continue;
-          const authorScore = work.authors.some((name) => {
-            const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
-            return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word));
-          }) ? 0.5 : 0;
-          // A complete multiword title is required; author confirmation ranks matches.
-          const score = 1 + authorScore + Math.min(0.2, meaningful.length * 0.05);
-          if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
+      // Search a small number of likely title phrases concurrently instead
+      // of making up to twenty slow sequential catalog round trips.
+      // Each wave finishes before the next, and confident matches stop lookup.
+      const shortlist = candidates.slice(0, 9);
+      for (let offset = 0; offset < shortlist.length; offset += 3) {
+        const wave = shortlist.slice(offset, offset + 3);
+        const responses = await Promise.allSettled(wave.map((candidate) => searchGoogleBooks(candidate)));
+        for (const response of responses) {
+          if (response.status !== 'fulfilled') continue;
+          for (const work of response.value.groups) {
+            const titleKey = normalizeCatalogText(work.title);
+            const titleWords = titleKey.split(' ').filter(Boolean);
+            if (titleWords.length < 2 || titleKey.length < 9) continue;
+            const meaningful = titleWords.filter((word) => word.length >= 4);
+            if (meaningful.length < 2 || !meaningful.every((word) => coverWords.has(word))) continue;
+            const authorScore = work.authors.some((name) => {
+              const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 4);
+              return authorWords.length >= 2 && authorWords.every((word) => coverWords.has(word));
+            }) ? 0.5 : 0;
+            const score = 1 + authorScore + Math.min(0.2, meaningful.length * 0.05);
+            if (score > (best?.score ?? 0)) {
+              best = { work, score };
+              found = response.value.groups;
+            }
+          }
         }
         if (best && best.score >= 1.5) break;
       }
