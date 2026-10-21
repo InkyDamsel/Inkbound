@@ -622,7 +622,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Build title candidates from OCR lines without letting cover blurbs,
       // badges, or endorsements contaminate the actual title.
       const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
-      const isNoise = (value: string) => /(?:new york times|bestsell|walmart|exclusive|author|edition|isbn|book club|a novel|anything you can do|slay)/i.test(value);
+      const isNoise = (value: string) => /(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\s*[:#]|book club edition|^a novel$)/i.test(value);
+      // Only discard obvious promotional OCR lines. Never reject an otherwise
+      // valid title because it contains words like 'slay', 'author', or 'edition'.
       const cleanLines = coverLines.filter((line) => !isNoise(line));
       const phrases = cleanLines.flatMap((line, index) => [
         line,
