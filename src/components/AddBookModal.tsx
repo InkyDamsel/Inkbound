@@ -614,50 +614,37 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setScannerMessage('Select the ISBN printed for your edition, then scan the front cover if its catalog entry is missing.');
         return;
       }
-      // Never carry a previous book's author/title into this cover attempt.
-      setUnresolvedIsbn(null);
-      setScannerRecoveryTitle('');
-      setScannerRecoveryAuthor('');
+      // Preserve a previously verified physical ISBN while identifying the work.
+      // Cover OCR identifies the work; it never proves a catalog edition ISBN.
       setScannerEditionOptions([]);
-      // Build title candidates from OCR lines without letting cover blurbs,
-      // badges, or endorsements contaminate the actual title.
-      const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
-      const isNoise = (value: string) => /(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\s*[:#]|book club edition|^a novel$)/i.test(value);
-      // Only discard obvious promotional OCR lines. Never reject an otherwise
-      // valid title because it contains words like 'slay', 'author', or 'edition'.
+      const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\\s'-]/g, ' ').replace(/\\s+/g, ' ').trim()).filter(Boolean);
+      const isNoise = (value: string) => /(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\\s*[:#]|book club edition|^a novel$)/i.test(value);
       const cleanLines = coverLines.filter((line) => !isNoise(line));
-      const phrases = cleanLines.flatMap((line, index) => [
-        line,
-        ...[2, 3, 4, 5].map((count) => cleanLines.slice(index, index + count).join(' ')),
-      ]);
-      // Decorative titles are often OCR'd as separate lines (THE / CIRCLE / OF /
-      // STONE). Keep short adjacent title lines together before searching; do
-      // not allow long blurbs or author text to displace these candidates.
-      const titlePhrases = cleanLines.flatMap((_line, index) => [2, 3, 4, 5]
-        .map((count) => ({ count, parts: cleanLines.slice(index, index + count) }))
-        .filter(({ count, parts }) => parts.length === count && parts.every((part) => part.split(/\s+/).length <= 3))
-        .map(({ parts }) => parts.join(' ')));
-      // Search the title as it appears on the cover, not 32 unrelated fragments.
-      const candidates = [...new Set([...titlePhrases, ...phrases])]
+      // Search recognizable title lines FIRST, including one-word titles.
+      // Then try adjacent lines for decorative multi-line titles. Do not rank
+      // long blurb combinations above the actual cover title.
+      const combined = cleanLines.flatMap((_line, index) => [2, 3, 4, 5]
+        .map((count) => cleanLines.slice(index, index + count))
+        .filter((parts) => parts.length >= 2 && parts.every((part) => part.split(/\\s+/).length <= 3))
+        .map((parts) => parts.join(' ')));
+      const candidateScore = (value: string): number => {
+        const tokens = value.split(/\\s+/);
+        const lengthPenalty = Math.max(0, tokens.length - 6) * 5;
+        return (tokens.length <= 6 ? 12 : 0) + tokens.filter((word) => word.length >= 4).length * 2 - lengthPenalty;
+      };
+      const candidates = [...new Set([...cleanLines, ...combined])]
         .filter((phrase) => phrase.length >= 4 && phrase.length <= 85 && !isNoise(phrase))
-        .sort((left, right) => {
-          const score = (value: string) => {
-            const words = value.split(/\s+/);
-            const useful = words.filter((word) => word.length >= 4);
-            return (words.length >= 2 && words.length <= 7 ? 10 : 0)
-              + useful.length * 2 - Math.max(0, words.length - 7) * 3;
-          };
-          return score(right) - score(left);
-        })
-        .slice(0, 48);
+        .sort((left, right) => candidateScore(right) - candidateScore(left))
+        .slice(0, 40);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
-      const compactCover = recognized.replace(/\s+/g, '');
+      const compactCover = recognized.replace(/\\s+/g, '');
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
+      // Every candidate uses the existing protected Search provider pipeline.
+      // Scanner-only checks decide whether its results are safe to offer.
       for (const candidate of candidates) {
-        // One failed provider request must not discard the entire photograph.
         let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
         try {
           response = await searchGoogleBooks(candidate);
@@ -667,38 +654,26 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         for (const work of response.groups) {
           const titleKey = normalizeCatalogText(work.title);
           const titleWords = titleKey.split(' ').filter(Boolean);
-          if (!titleWords.length || titleKey.length < 4) continue;
           const meaningful = titleWords.filter((word) => word.length >= 4);
-          // OCR may split or slightly misread large decorative cover lettering.
-          // Require most distinctive title words plus author confirmation.
+          if (!meaningful.length || titleKey.length < 4) continue;
           const titleHits = meaningful.filter((word) => coverWords.has(word) || compactCover.includes(word)).length;
-          if (!meaningful.length || titleHits < Math.max(1, Math.ceil(meaningful.length * 0.65))) continue;
-          // Cover identification requires both a matching title and an author.
-          // Never suggest a different author's book because its title contains
-          // generic cover words such as "darkest" or "age".
-          const authorConfirmed = work.authors.some((name) => {
-            const authorWords = normalizeAuthorName(name).split(' ').filter((word) => word.length >= 3);
-            // Initialed authors (e.g. A. J. Lake) have only one long token.
-            // Require that surname plus the FULL title appears on the cover;
-            // never accept a surname-only match for an unrelated title.
-            const fullTitleOnCover = titleWords.every((word) =>
-              coverWords.has(word) || compactCover.includes(word));
-            return authorWords.length >= 2
-              ? authorWords.every((word) => coverWords.has(word) || compactCover.includes(word))
-              : authorWords.length === 1 && fullTitleOnCover
-                && (coverWords.has(authorWords[0]) || compactCover.includes(authorWords[0]));
-          });
-          if (!authorConfirmed || !coverMatchesWork(lines, work.title, work.authors)) continue;
-          const score = titleHits / meaningful.length + 0.5 + Math.min(0.2, meaningful.length * 0.05);
-          if (score > (best?.score ?? 0)) { best = { work, score }; found = response.groups; }
+          if (titleHits !== meaningful.length) continue;
+          if (!coverMatchesWork(lines, work.title, work.authors)) continue;
+          // Prefer exact, complete title evidence over partial OCR phrases.
+          const score = 1 + titleHits / meaningful.length
+            + (compactCover.includes(titleKey.replace(/\\s+/g, '')) ? 0.5 : 0)
+            + Math.min(0.2, meaningful.length * 0.05);
+          if (score > (best?.score ?? 0)) {
+            best = { work, score };
+            found = response.groups;
+          }
         }
-        if (best && best.score >= 1.65) break;
+        // Continue only until a high-confidence full title + author match.
+        if (best && best.score >= 2.5) break;
       }
       if (!best) {
         setScannerEditionOptions([]);
-        setScannerRecoveryTitle('');
-        setScannerRecoveryAuthor('');
-        throw new Error('Cover text was detected, but no reliable catalog match was found. Try another photo or enter the title.');
+        throw new Error('Cover text was detected, but no verified title-and-author catalog match was found. Try entering the title.');
       }
       // Cover OCR identifies a work, not the scanned edition. Offer the
       // matching catalog editions in Scanner, never silently substitute ISBNs.
