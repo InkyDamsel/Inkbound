@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Download, Share2, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
@@ -270,6 +270,21 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   };
   const downloadCurrent = async () => { try { const file = await createPngFile(); await exportRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file }); setMessage('Wrapped card saved.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Save failed.'); } };
   const shareCurrent = async () => { try { const file = await createPngFile(); const result = await shareRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file, title: `${selectedMonth.label} Reading Wrapped`, text: 'Made with Inkbound' }); setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the card was saved instead.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); } };
+  // Preview the exact PNG bytes used by Save and Share; no parallel layout.
+  const [exportPreview, setExportPreview] = useState('');
+  const previewKey = JSON.stringify([preferences.monthKey,preferences.theme,preferences.format,cardIndex,cards]);
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    setExportPreview('');
+    void createPngFile().then((file) => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(file);
+      setExportPreview(objectUrl);
+    }).catch(() => { if (active) setExportPreview(''); });
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey]);
   const dayChange = stats.changes.days;
 
   return <div className="space-y-7 pb-24">
@@ -283,7 +298,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"><button type="button" onClick={() => void shareCurrent()} className="quiet-shelf-primary-action min-h-12 justify-center"><Share2 className="h-4 w-4" /> Share</button><button type="button" onClick={() => void downloadCurrent()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Save PNG</button></div>{message && <p role="status" className="text-sm text-[var(--ink-muted)]">{message}</p>}
     </section>
     <section className="inkbound-panel flex min-h-[620px] flex-col items-center justify-center rounded-3xl p-4 sm:p-8"><div className="mb-4 flex w-full max-w-[620px] items-center justify-between"><button type="button" onClick={() => changeCard(cardIndex - 1)} className="quiet-shelf-icon-button h-11 w-11" aria-label="Previous Wrapped card"><ChevronLeft /></button><span className="text-xs font-semibold text-[var(--ink-muted)]">Card {cardIndex + 1} of {cards.length}</span><button type="button" onClick={() => changeCard(cardIndex + 1)} className="quiet-shelf-icon-button h-11 w-11" aria-label="Next Wrapped card"><ChevronRight /></button></div>
-      <div className={`inkbound-themed-preview relative flex w-full max-w-[620px] flex-col justify-between overflow-hidden rounded-[32px] border border-white/20 text-center shadow-2xl ${previewCardPadding}`} style={{ aspectRatio: `${format.width} / ${format.height}`, background: previewBackground, color: theme.text, '--preview-theme-text': theme.text, boxShadow: '0 30px 80px rgba(0,0,0,.42), inset 0 0 80px rgba(0,0,0,.18)' } as React.CSSProperties}><div><p className="text-[10px] font-bold uppercase tracking-[0.35em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p><p className={`${isSquare ? 'mt-2' : isStory ? 'mt-4' : 'mt-3'} text-[10px] font-bold uppercase tracking-[0.18em] opacity-80 sm:text-xs sm:tracking-[0.23em]`}>{currentCard.eyebrow}</p></div><div className="flex flex-1 flex-col items-center justify-center py-3 sm:py-5"><Sparkles className={`${isSquare ? 'mb-3 h-6 w-6' : isStory ? 'mb-8 h-10 w-10' : 'mb-4 h-7 w-7'} mx-auto drop-shadow`} style={{ color: theme.accent }} /><h2 className={`font-serif font-bold leading-[1.08] drop-shadow-lg ${previewTitleClass}`}>{currentCard.title}</h2><p className={`mx-auto max-w-xl opacity-90 drop-shadow ${previewBodyClass}`}>{currentCard.body}</p><div className={`mx-auto max-w-xl rounded-2xl border border-white/10 bg-black/[0.12] px-4 py-3 backdrop-blur-[2px] shadow-[0_8px_24px_rgba(0,0,0,0.12)] ${previewFooterClass}`}>{currentCard.footer}</div></div><p className={`${isSquare ? 'text-[10px]' : 'text-xs'} font-semibold drop-shadow`} style={{ color: theme.accent }}>{cardIndex + 1} / {cards.length} · Created with Inkbound</p></div>
+      <div className={`inkbound-themed-preview relative flex w-full max-w-[620px] flex-col justify-between overflow-hidden rounded-[32px] border border-white/20 text-center shadow-2xl ${previewCardPadding}`} style={{ aspectRatio: `${format.width} / ${format.height}`, background: previewBackground, color: theme.text, '--preview-theme-text': theme.text, boxShadow: '0 30px 80px rgba(0,0,0,.42), inset 0 0 80px rgba(0,0,0,.18)' } as React.CSSProperties}>{exportPreview && <img src={exportPreview} alt="Exact exported PNG preview" className="absolute inset-0 z-50 h-full w-full object-fill pointer-events-none" />}<div><p className="text-[10px] font-bold uppercase tracking-[0.35em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p><p className={`${isSquare ? 'mt-2' : isStory ? 'mt-4' : 'mt-3'} text-[10px] font-bold uppercase tracking-[0.18em] opacity-80 sm:text-xs sm:tracking-[0.23em]`}>{currentCard.eyebrow}</p></div><div className="flex flex-1 flex-col items-center justify-center py-3 sm:py-5"><Sparkles className={`${isSquare ? 'mb-3 h-6 w-6' : isStory ? 'mb-8 h-10 w-10' : 'mb-4 h-7 w-7'} mx-auto drop-shadow`} style={{ color: theme.accent }} /><h2 className={`font-serif font-bold leading-[1.08] drop-shadow-lg ${previewTitleClass}`}>{currentCard.title}</h2><p className={`mx-auto max-w-xl opacity-90 drop-shadow ${previewBodyClass}`}>{currentCard.body}</p><div className={`mx-auto max-w-xl rounded-2xl border border-white/10 bg-black/[0.12] px-4 py-3 backdrop-blur-[2px] shadow-[0_8px_24px_rgba(0,0,0,0.12)] ${previewFooterClass}`}>{currentCard.footer}</div></div><p className={`${isSquare ? 'text-[10px]' : 'text-xs'} font-semibold drop-shadow`} style={{ color: theme.accent }}>{cardIndex + 1} / {cards.length} · Created with Inkbound</p></div>
     </section></div>
     {dayChange !== 0 && <p className="text-center text-xs text-[var(--ink-muted)]">Monthly page totals use Inkbound's canonical reading-history calculation. Reading time and reading days use completed Inkbound sessions.</p>}
   </div>;
