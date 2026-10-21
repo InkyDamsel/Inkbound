@@ -326,24 +326,6 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     return { filename: `inkbound-reading-shelf-${slug}.png`, blob };
   };
 
-  // Keep the interactive shelf intact, but show the exact image Save/Share creates.
-  const [shelfExportPreview, setShelfExportPreview] = useState('');
-  const shelfExportKey = JSON.stringify([selectedMonth, preferences.theme, preferences.showRatings, preferences.showStats, preferences.highlightNew, shelfBooks.map((book) => [book.id, book.rating, book.dateFinished, book.activeEditionId, book.editions])]);
-  useEffect(() => {
-    let active = true;
-    let objectUrl = '';
-    setShelfExportPreview('');
-    if (shelfBooks.length > 0) {
-      void createShelfPng().then(({ blob }) => {
-        if (!active) return;
-        objectUrl = URL.createObjectURL(blob);
-        setShelfExportPreview(objectUrl);
-      }).catch(() => { if (active) setShelfExportPreview(''); });
-    }
-    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shelfExportKey]);
-
   const shareShelf = async () => {
     setShareMessage(null);
     try {
@@ -397,10 +379,6 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
       </header>
       {shareMessage && <p role="status" className="px-1 text-sm text-[var(--ink-muted)]">{shareMessage}</p>}
 
-      {shelfBooks.length > 0 && <div className="inkbound-panel rounded-3xl p-4 sm:p-6">
-        <p className="mb-3 text-sm font-semibold text-[var(--ink-ivory)]">Exact Save / Share preview</p>
-        {shelfExportPreview ? <img src={shelfExportPreview} alt="Exact bookshelf PNG export preview" className="mx-auto block h-auto max-h-[640px] max-w-full rounded-xl object-contain" /> : <p className="text-sm text-[var(--ink-muted)]">Preparing your shelf export preview…</p>}
-      </div>}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className={`inkbound-themed-preview relative min-h-[560px] min-w-0 overflow-hidden rounded-3xl bg-gradient-to-br ${themeClasses[preferences.theme]} p-4 shadow-2xl sm:p-8`}>
           {themeBackgroundImage && (
