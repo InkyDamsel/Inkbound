@@ -978,7 +978,7 @@ const prhFormat = (value?: string): 'hardcover' | 'paperback' | 'ebook' | 'audio
 };
 
 const prhAuthorList = (record: PrhSearchRecord): string[] =>
-  record.author?.split(/s*(?:;|\band\b)\s*/i).map((value) => value.trim()).filter(Boolean)
+  record.author?.split(/\s*(?:;|\band\b)\s*/i).map((value) => value.trim()).filter(Boolean)
   ?? ['Unknown author'];
 
 const prhExtractSearchRecords = (payload: unknown): PrhSearchRecord[] =>
@@ -1062,6 +1062,58 @@ async function detectivePrhCatalog(
     anchorTitles?: string[];
   } = {},
 ) {
+  const compactIsbn = query.replace(/[^0-9X]/gi, '').toUpperCase();
+  if (/^(?:978|979)\d{10}$/.test(compactIsbn)) {
+    try {
+      const titlePayload = await prhFetchJson(`/titles/${encodeURIComponent(compactIsbn)}`);
+      const exactTitles = prhExtractTitles([titlePayload])
+        .filter((title) => String(title.isbn ?? '').replace(/[^0-9X]/gi, '').toUpperCase() === compactIsbn);
+      if (exactTitles.length > 0) {
+        const title = exactTitles[0];
+        const isbn = String(title.isbn ?? '').replace(/[^0-9X]/gi, '');
+        const publicationYear = Number(title.onsale?.slice(0, 4));
+        const imprint = typeof title.imprint === 'string' ? title.imprint : title.imprint?.name;
+        const authors = prhAuthorList(title);
+        return {
+          groups: [{
+            key: `penguin-random-house:${isbn}`,
+            title: title.title ?? 'Untitled',
+            subtitle: title.subtitle,
+            authors,
+            genres: [] as string[],
+            editions: [{
+              source: 'penguin-random-house' as const,
+              externalEditionId: isbn,
+              title: title.title ?? 'Untitled',
+              subtitle: title.subtitle,
+              authors,
+              genres: [] as string[],
+              publisher: title.publisher ?? imprint,
+              publicationDate: title.onsale,
+              publicationYear: Number.isFinite(publicationYear) && publicationYear > 0
+                ? publicationYear
+                : new Date().getFullYear(),
+              language: title.language,
+              format: prhFormat(title.format?.description ?? title.format?.code),
+              isbn13: isbn.length === 13 ? isbn : undefined,
+              isbn10: isbn.length === 10 ? isbn : undefined,
+              pageCount: title.pageCount ?? title.pages,
+              coverUrl: title.coverUrl ?? (isbn ? `https://images.randomhouse.com/cover/${isbn}` : undefined),
+              editionName: title.format?.description,
+              binding: title.format?.description,
+              specialFeatures: [] as string[],
+              seriesName: title.seriesName?.trim(),
+              seriesOrder: prhSeriesPosition(title.seriesNumber),
+            }],
+          }],
+          totalItems: 1,
+        };
+      }
+    } catch (error) {
+      console.warn('Penguin Random House exact-ISBN lookup unavailable; falling back to work search.', error);
+    }
+  }
+
   const searchPayload = await prhFetchJson('/search/views/search-display', {
     q: query,
     docType: 'work',
