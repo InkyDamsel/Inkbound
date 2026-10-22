@@ -128,7 +128,6 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
    };
    // Canvas-only rendering avoids the SVG foreignObject cross-origin taint.
    const bg=await load(STUDIO_BACKGROUND);
-   const bgScale=Math.max(root.width/bg.width,root.height/bg.height);
    drawCover(bg,0,0,root.width,root.height,'cover');
    fill(0,0,root.width,root.height,theme.background+'88');
    const gradient=ctx.createLinearGradient(0,0,0,root.height);
@@ -161,7 +160,7 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
        if(node.nodeType!==Node.TEXT_NODE||!node.textContent?.trim())continue;
        const content=node.textContent;
        const range=document.createRange();
-       const pieces=content.match(/\\S+|\\s+/g)||[];
+       const pieces=content.match(/\S+|\s+/g)||[];
        const fontSize=parseFloat(style.fontSize)||12;
        ctx.font=`${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
        ctx.fillStyle=style.color;
