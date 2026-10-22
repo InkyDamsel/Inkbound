@@ -624,9 +624,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Then try adjacent lines for decorative multi-line titles. Do not rank
       // long blurb combinations above the actual cover title.
       const combined = cleanLines.flatMap((_line, index) => [2, 3, 4, 5]
-        .map((count) => cleanLines.slice(index, index + count))
-        .filter((parts) => parts.length >= 2 && parts.every((part) => part.split(/\\s+/).length <= 3))
-        .map((parts) => parts.join(' ')));
+        .map((count) => ({ count, parts: cleanLines.slice(index, index + count) }))
+        .filter(({ count, parts }) => parts.length === count && parts.every((part) => part.split(/\\s+/).length <= 3))
+        .map(({ parts }) => parts.join(' ')));
       const candidateScore = (value: string): number => {
         const tokens = value.split(/\\s+/);
         const lengthPenalty = Math.max(0, tokens.length - 6) * 5;
