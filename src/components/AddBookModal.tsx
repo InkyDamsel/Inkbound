@@ -705,6 +705,56 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         if (best && best.score >= 2.5) break;
       }
       if (!best) {
+        // Crowded covers can make a correct but generic title query rank the
+        // wrong books ahead of the photographed work. Retry only the strongest
+        // OCR title phrases with likely author-name lines as query hints. The
+        // hint never proves identity: results must still pass the same strict
+        // full-title + cover author verification below.
+        const likelyAuthorHints = [...new Set(cleanLines
+          .filter((line) => {
+            const tokens = line.split(/\s+/).filter(Boolean);
+            if (tokens.length < 2 || tokens.length > 4 || isNoise(line)) return false;
+            const normalized = normalizeCatalogText(line);
+            return normalized.length >= 5 && !candidates.slice(0, 8).some((titleCandidate) => {
+              const title = normalizeCatalogText(titleCandidate);
+              return title === normalized || title.includes(normalized) || normalized.includes(title);
+            });
+          })
+          .sort((left, right) => {
+            const initialBonus = (value: string) => (/(?:^|\s)[A-Z](?:\.|\s|$)/.test(value) ? 2 : 0);
+            return initialBonus(right) - initialBonus(left)
+              || Math.abs(3 - left.split(/\s+/).length) - Math.abs(3 - right.split(/\s+/).length);
+          }))].slice(0, 6);
+        const targetedQueries = [...new Set(candidates.slice(0, 8).flatMap((titleCandidate) =>
+          likelyAuthorHints.map((authorHint) => `${titleCandidate} ${authorHint}`)))].slice(0, 18);
+
+        for (const query of targetedQueries) {
+          let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
+          try {
+            response = await searchGoogleBooks(query);
+          } catch {
+            continue;
+          }
+          for (const work of response.groups) {
+            const titleKey = normalizeCatalogText(work.title);
+            const titleWords = titleKey.split(' ').filter(Boolean);
+            const meaningful = titleWords.filter((word) => word.length >= 4);
+            if (!meaningful.length || titleKey.length < 4) continue;
+            const titleHits = meaningful.filter((word) => coverWords.has(word) || compactCover.includes(word)).length;
+            if (titleHits !== meaningful.length) continue;
+            if (!coverMatchesWork(lines, work.title, work.authors)) continue;
+            const score = 1 + titleHits / meaningful.length
+              + (compactCover.includes(titleKey.replace(/\s+/g, '')) ? 0.5 : 0)
+              + Math.min(0.2, meaningful.length * 0.05);
+            if (score > (best?.score ?? 0)) {
+              best = { work, score };
+              found = response.groups;
+            }
+          }
+          if (best) break;
+        }
+      }
+      if (!best) {
         setScannerEditionOptions([]);
         throw new Error('Cover text was detected, but no verified title-and-author catalog match was found. Try entering the title.');
       }
