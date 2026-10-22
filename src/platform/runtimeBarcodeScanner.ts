@@ -5,9 +5,16 @@ interface NativeBarcodeScannerPlugin {
   scan(): Promise<{ rawValue?: string; canceled?: boolean }>;
   recognizeCover(options: { image: string }): Promise<{ lines: string[] }>;
   confirmSuccess(): Promise<void>;
+  getBuildInfo(): Promise<{ debug?: boolean }>;
 }
 
 const NativeBarcodeScanner = registerPlugin<NativeBarcodeScannerPlugin>('InkboundBarcodeScanner');
+
+export async function isNativeDebugBuild(): Promise<boolean> {
+  if (!shouldUseNativeBarcodeScanner()) return false;
+  const result = await NativeBarcodeScanner.getBuildInfo();
+  return result.debug === true;
+}
 
 export async function recognizeBookCover(image: string): Promise<string[]> {
   if (!shouldUseNativeBarcodeScanner()) {
