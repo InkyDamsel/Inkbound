@@ -36,8 +36,7 @@ import {
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
-import { getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
-import { isNativeRuntime } from '../platform/runtimePlatform';
+import { diagnoseNativeAppCheckFailure } from '../platform/runtimeNativeAppCheck';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -461,14 +460,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setUnresolvedIsbn(isbn);
         setScannerRecoveryTitle('');
         setScannerRecoveryAuthor('');
-        if (isNativeRuntime()) {
-          try {
-            await getNativeAppCheckToken(true);
-          } catch (appCheckError) {
-            console.warn('Scanner catalog lookup could not obtain a native App Check token.', appCheckError);
-            setScannerError(`ISBN ${isbn} is valid, but Inkbound could not verify this test build with Firebase App Check, so protected catalog providers may be unavailable. If this is an Android debug build, register its App Check debug token in Firebase, then retry. Your scanned ISBN is retained.`);
-            return;
-          }
+        const appCheckError = await diagnoseNativeAppCheckFailure();
+        if (appCheckError) {
+          console.warn('Scanner catalog lookup could not obtain a native App Check token.', appCheckError);
+          setScannerError(`ISBN ${isbn} is valid, but Inkbound could not verify this test build with Firebase App Check, so protected catalog providers may be unavailable. If this is an Android debug build, register its App Check debug token in Firebase, then retry. Your scanned ISBN is retained.`);
+          return;
         }
         setScannerError(`ISBN ${isbn} is valid, but no catalog returned a verified edition. Try Scan Cover Instead to identify the book, or enter its title below. Your scanned ISBN is retained.`);
         return;
