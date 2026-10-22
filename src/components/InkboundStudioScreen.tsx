@@ -90,73 +90,100 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
 
  const previewRef=React.useRef<HTMLDivElement>(null);
  // Export the approved HTML preview itself; never reconstruct a competing card layout.
+
  const createPng=async()=>{
    if(!selectedBook)throw new Error('Choose a book before exporting.');
    const source=previewRef.current;
    if(!source)throw new Error('Studio preview is not ready.');
    await document.fonts.ready;
-   const rect=source.getBoundingClientRect();
-   if(!rect.width||!rect.height)throw new Error('Studio preview has no visible dimensions.');
-   const clone=source.cloneNode(true) as HTMLElement;
-   const originalNodes=[source,...Array.from(source.querySelectorAll('*'))];
-   const clonedNodes=[clone,...Array.from(clone.querySelectorAll('*'))];
-   const images=new Map<string,string>();
-   const embed=async(url:string)=>{
-     if(url.startsWith('data:'))return url;
-     if(!images.has(url)){
-       const data=await fetchRuntimeMediaDataUrl(url);
-       if(!data)throw new Error('Could not load a Studio image for export.');
-       images.set(url,data);
-     }
-     return images.get(url)!;
+   const root=source.getBoundingClientRect();
+   if(!root.width||!root.height)throw new Error('Studio preview is not visible.');
+   const canvas=document.createElement('canvas');
+   canvas.width=format.width;canvas.height=format.height;
+   const ctx=canvas.getContext('2d');
+   if(!ctx)throw new Error('Cannot initialize PNG renderer.');
+   ctx.scale(format.width/root.width,format.height/root.height);
+   const load=async(url:string)=>{
+     const data=url.startsWith('data:')?url:await fetchRuntimeMediaDataUrl(url);
+     if(!data)throw new Error('Unable to load card artwork for PNG export.');
+     const image=new window.Image();
+     image.src=data;
+     await image.decode();
+     return image;
    };
-   // Inline computed styles, so Tailwind and theme rules survive SVG serialization.
-   for(let i=0;i<originalNodes.length;i++){
-     const original=originalNodes[i],target=clonedNodes[i] as HTMLElement|SVGElement;
-     const computed=getComputedStyle(original);
-     let css='';
-     for(let j=0;j<computed.length;j++){
-       const property=computed.item(j);
-       css+=property+':'+computed.getPropertyValue(property)+';';
+   const round=(x:number,y:number,w:number,h:number,r:number)=>{
+     ctx.beginPath();ctx.roundRect(x,y,w,h,Math.max(0,Math.min(r,w/2,h/2)));
+   };
+   const bounds=(element:Element)=>{
+     const rect=element.getBoundingClientRect();
+     return {x:rect.left-root.left,y:rect.top-root.top,w:rect.width,h:rect.height};
+   };
+   const fill=(x:number,y:number,w:number,h:number,color:string,r=0)=>{
+     ctx.fillStyle=color;round(x,y,w,h,r);ctx.fill();
+   };
+   const drawCover=(image:HTMLImageElement,x:number,y:number,w:number,h:number,mode:'cover'|'contain')=>{
+     const ratio=mode==='contain'?Math.min(w/image.width,h/image.height):Math.max(w/image.width,h/image.height);
+     const dw=image.width*ratio,dh=image.height*ratio;
+     ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+   };
+   // Canvas-only rendering avoids the SVG foreignObject cross-origin taint.
+   const bg=await load(STUDIO_BACKGROUND);
+   const bgScale=Math.max(root.width/bg.width,root.height/bg.height);
+   drawCover(bg,0,0,root.width,root.height,'cover');
+   fill(0,0,root.width,root.height,theme.background+'88');
+   const gradient=ctx.createLinearGradient(0,0,0,root.height);
+   gradient.addColorStop(0,theme.background+'33');gradient.addColorStop(1,theme.background+'aa');
+   ctx.fillStyle=gradient;ctx.fillRect(0,0,root.width,root.height);
+   ctx.save();round(0,0,root.width,root.height,28);ctx.clip();
+   const panel=source.querySelector('.inkbound-studio-preview-panel');
+   if(panel){const p=bounds(panel);fill(p.x,p.y,p.w,p.h,'rgba(0,0,0,0.72)',24);}
+   const elements=Array.from(source.querySelectorAll('*'));
+   for(const element of elements){
+     const rect=bounds(element),style=getComputedStyle(element);
+     if(!rect.w||!rect.h||style.display==='none'||style.visibility==='hidden')continue;
+     if(element===panel)continue;
+     if(element instanceof HTMLImageElement){
+       const img=await load(element.currentSrc||element.src);
+       ctx.save();round(rect.x,rect.y,rect.w,rect.h,parseFloat(style.borderTopLeftRadius)||0);ctx.clip();
+       drawCover(img,rect.x,rect.y,rect.w,rect.h,style.objectFit==='contain'?'contain':'cover');
+       ctx.restore();continue;
      }
-     target.setAttribute('style',css);
-     // The serialized preview must not depend on external fonts or browser stylesheets.
-     if(computed.fontFamily.includes('var(')) (target as HTMLElement).style.fontFamily=getComputedStyle(original).fontFamily;
-     if(original instanceof HTMLImageElement && target instanceof HTMLImageElement){
-       target.src=await embed(original.currentSrc||original.src);
+     const background=style.backgroundColor;
+     if(background&&background!=='rgba(0, 0, 0, 0)'&&background!=='transparent'){
+       fill(rect.x,rect.y,rect.w,rect.h,background,parseFloat(style.borderTopLeftRadius)||0);
      }
-     const bg=computed.backgroundImage;
-     if(bg&&bg!=='none'&&bg.includes('url(')){
-       let updated=bg;
-       const urls=Array.from(bg.matchAll(/url\(["']?([^"')]+)["']?\)/g));
-       for(const match of urls){
-         updated=updated.replace(match[0], 'url("'+await embed(match[1])+'")');
+     if(element instanceof SVGSVGElement){
+       const markup=new XMLSerializer().serializeToString(element);
+       const svgData='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(markup);
+       try{const icon=await load(svgData);ctx.drawImage(icon,rect.x,rect.y,rect.w,rect.h);}catch{/* Decorative icon is optional. */}
+     }
+     for(const node of Array.from(element.childNodes)){
+       if(node.nodeType!==Node.TEXT_NODE||!node.textContent?.trim())continue;
+       const content=node.textContent;
+       const range=document.createRange();
+       const pieces=content.match(/\\S+|\\s+/g)||[];
+       const fontSize=parseFloat(style.fontSize)||12;
+       ctx.font=`${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+       ctx.fillStyle=style.color;
+       ctx.textBaseline='alphabetic';
+       let index=0;
+       for(const piece of pieces){
+         const from=index;index+=piece.length;
+         if(!piece.trim())continue;
+         range.setStart(node,from);range.setEnd(node,index);
+         const textRect=range.getBoundingClientRect();
+         if(!textRect.width||!textRect.height)continue;
+         const x=textRect.left-root.left;
+         const y=textRect.top-root.top+(textRect.height-fontSize)/2+fontSize*.84;
+         ctx.fillText(piece,x,y);
        }
-       (target as HTMLElement).style.backgroundImage=updated;
+       range.detach();
      }
    }
-   // Strip cloned IDs so serialized markup cannot reference the surrounding page.
-   clone.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'));
-   clone.style.width=rect.width+'px';
-   clone.style.height=rect.height+'px';
-   clone.style.maxWidth='none';
-   clone.style.margin='0';
-   const serialized=new XMLSerializer().serializeToString(clone);
-   const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+rect.width+'" height="'+rect.height+'" viewBox="0 0 '+rect.width+' '+rect.height+'"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%">'+serialized+'</div></foreignObject></svg>';
-   const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
-   try{
-     const image=new window.Image();
-     image.src=url;
-     try { await image.decode(); } catch { throw new Error('Could not render the Studio preview for PNG export.'); }
-     const canvas=document.createElement('canvas');
-     canvas.width=format.width;canvas.height=format.height;
-     const context=canvas.getContext('2d');
-     if(!context)throw new Error('Could not prepare the Studio image.');
-     context.drawImage(image,0,0,canvas.width,canvas.height);
-     const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Could not create the Studio PNG.')),'image/png'));
-     const slug=selectedBook.work.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-     return {filename:`inkbound-${preferences.template}-${preferences.layout}-${slug}.png`,blob};
-   }finally{URL.revokeObjectURL(url);}
+   ctx.restore();
+   const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('PNG encoding failed.')),'image/png'));
+   const slug=selectedBook.work.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+   return {filename:`inkbound-${preferences.template}-${preferences.layout}-${slug}.png`,blob};
  };
  const downloadImage=async()=>{try{const{filename,blob}=await createPng();await exportRuntimeBinaryFile({filename,mimeType:'image/png',contents:blob});setMessage('Studio card saved.')}catch(e){setMessage(e instanceof Error?e.message:'Export failed.')}}; const shareImage=async()=>{try{const{filename,blob}=await createPng();const result=await shareRuntimeBinaryFile({filename,mimeType:'image/png',contents:blob,title:'My Inkbound reading card',text:'Made with Inkbound'});setMessage(result==='shared'?'Share sheet opened.':'Sharing is unavailable here, so the card was saved instead.')}catch(e){setMessage(e instanceof Error?e.message:'Sharing was cancelled.')}};
  const compactFormat=preferences.format==='square'||preferences.format==='portrait'; const templateIcon=preferences.template==='quote-card'?<MessageSquareQuote className={`${compactFormat?'h-5 w-5':'h-6 w-6'} mx-auto mb-3`} style={{color:theme.accent}}/>:preferences.template==='review-card'?<Star className={`${compactFormat?'h-5 w-5':'h-6 w-6'} mx-auto mb-3`} style={{color:theme.accent}}/>:<Sparkles className={`${compactFormat?'h-5 w-5':'h-6 w-6'} mx-auto mb-3`} style={{color:theme.accent}}/>; const previewTitleSize=previewTitleRem(preferences.template,preferences.layout,preferences.format,cardCopy.title.length); const copyPreview=<div className="min-w-0">{templateIcon}<p className={`${compactFormat?'text-[9px] sm:text-[10px]':'text-[10px] sm:text-xs'} font-bold uppercase tracking-[0.22em]`} style={{color:theme.accent}}>{cardCopy.kicker}</p><h2 className="mt-3 font-serif font-bold leading-[1.08] [overflow-wrap:normal] [word-break:normal]" style={{fontSize:`${previewTitleSize}rem`}}>{cardCopy.title}</h2><p className={`${compactFormat?'mt-2 text-[11px] leading-4 sm:text-xs':'mt-3 text-xs leading-relaxed sm:text-sm'} mx-auto max-w-[96%] opacity-75 ${preferences.template==='review-card'?'line-clamp-6':''}`}>{cardCopy.body}</p><p className={`${compactFormat?'mt-2 text-[10px] sm:text-[11px]':'mt-3 text-[11px] sm:text-xs'} font-semibold`} style={{color:theme.accent}}>{cardCopy.footer}</p>{preferences.template==='reading-update'&&<div className={`${compactFormat?'mt-3':'mt-4'} mx-auto h-1.5 w-[80%] overflow-hidden rounded-full bg-white/10`}><div className="h-full rounded-full" style={{width:`${progress}%`,background:theme.accent}}/></div>}</div>;
