@@ -752,7 +752,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             continue;
           }
           for (const work of response.groups) {
-            const titleKey = normalizeCatalogText(work.title);
+            const titleKey = normalizeCatalogText(scannerCoverTitle(work.title));
             const titleWords = titleKey.split(' ').filter(Boolean);
             const meaningful = titleWords.filter((word) => word.length >= 4);
             if (!meaningful.length || titleKey.length < 4) continue;
