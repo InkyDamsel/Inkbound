@@ -686,6 +686,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const compactCover = recognized.replace(/\s+/g, '');
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
+      const scannerDiagnostics: string[] = [];
+      const recordScannerResponse = (query: string, groups: BookSearchWorkGroup[]) => {
+        const sample = groups.slice(0, 5).map((work) =>
+          `${work.title} — ${work.authors.join(', ') || 'Unknown author'}`).join(' | ');
+        scannerDiagnostics.push(`${query} => ${groups.length} [${sample || 'no results'}]`);
+      };
       // Cover OCR gives Scanner stronger evidence than a typed broad search.
       // Try the scanner-only exact-title index first, then fall back to the
       // multi-provider broad catalog. Identity is still accepted only after
@@ -697,7 +703,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           response = exactTitle.groups.length > 0
             ? exactTitle
             : await searchScannerCoverCatalog(candidate);
-        } catch {
+          recordScannerResponse(candidate, response.groups);
+        } catch (error) {
+          scannerDiagnostics.push(`${candidate} => ERROR ${error instanceof Error ? error.message : String(error)}`);
           continue;
         }
         for (const work of response.groups) {
@@ -748,7 +756,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
           try {
             response = await searchScannerCoverCatalog(query);
-          } catch {
+            recordScannerResponse(query, response.groups);
+          } catch (error) {
+            scannerDiagnostics.push(`${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
             continue;
           }
           for (const work of response.groups) {
@@ -772,7 +782,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       }
       if (!best) {
         setScannerEditionOptions([]);
-        throw new Error('Cover text was detected, but no verified title-and-author catalog match was found. Try entering the title.');
+        const diagnostic = [
+          '[Inkbound scanner] Cover identification failed',
+          `OCR: ${lines.join(' || ')}`,
+          `Clean: ${cleanLines.join(' || ')}`,
+          `Candidates: ${candidates.slice(0, 20).join(' || ')}`,
+          ...scannerDiagnostics.slice(0, 30),
+        ].join('\n');
+        console.error(diagnostic);
+        throw new Error('Cover text was detected, but no verified title-and-author catalog match was found. Scanner diagnostics were written to the console.');
       }
       // Cover OCR identifies a work, not the scanned edition. Offer the
       // matching catalog editions in Scanner, never silently substitute ISBNs.
