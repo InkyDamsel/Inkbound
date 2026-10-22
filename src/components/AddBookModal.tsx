@@ -14,6 +14,7 @@ import {
   searchGoogleBooks,
   searchGoogleBooksAuthorPage,
   searchScannerCoverCatalog,
+  searchScannerCoverTitleCatalog,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { isValidCatalogIsbn, selectCatalogIsbnFromBarcodes } from '../features/book-search/isbnResolution';
@@ -685,12 +686,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const compactCover = recognized.replace(/\s+/g, '');
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
-      // Every candidate uses the existing protected Search provider pipeline.
-      // Scanner-only checks decide whether its results are safe to offer.
+      // Cover OCR gives Scanner stronger evidence than a typed broad search.
+      // Try the scanner-only exact-title index first, then fall back to the
+      // multi-provider broad catalog. Identity is still accepted only after
+      // the same full title + author cover verification below.
       for (const candidate of candidates) {
         let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
         try {
-          response = await searchScannerCoverCatalog(candidate);
+          const exactTitle = await searchScannerCoverTitleCatalog(candidate);
+          response = exactTitle.groups.length > 0
+            ? exactTitle
+            : await searchScannerCoverCatalog(candidate);
         } catch {
           continue;
         }
