@@ -617,18 +617,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Preserve a previously verified physical ISBN while identifying the work.
       // Cover OCR identifies the work; it never proves a catalog edition ISBN.
       setScannerEditionOptions([]);
-      const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\\s'-]/g, ' ').replace(/\\s+/g, ' ').trim()).filter(Boolean);
-      const isNoise = (value: string) => /(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\\s*[:#]|book club edition|^a novel$)/i.test(value);
+      const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      const isNoise = (value: string) => /(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\s*[:#]|book club edition|^a novel$)/i.test(value);
       const cleanLines = coverLines.filter((line) => !isNoise(line));
       // Search recognizable title lines FIRST, including one-word titles.
       // Then try adjacent lines for decorative multi-line titles. Do not rank
       // long blurb combinations above the actual cover title.
       const combined = cleanLines.flatMap((_line, index) => [2, 3, 4, 5]
         .map((count) => ({ count, parts: cleanLines.slice(index, index + count) }))
-        .filter(({ count, parts }) => parts.length === count && parts.every((part) => part.split(/\\s+/).length <= 3))
+        .filter(({ count, parts }) => parts.length === count && parts.every((part) => part.split(/\s+/).length <= 3))
         .map(({ parts }) => parts.join(' ')));
       const candidateScore = (value: string): number => {
-        const tokens = value.split(/\\s+/);
+        const tokens = value.split(/\s+/);
         const lengthPenalty = Math.max(0, tokens.length - 6) * 5;
         return (tokens.length <= 6 ? 12 : 0) + tokens.filter((word) => word.length >= 4).length * 2 - lengthPenalty;
       };
@@ -639,7 +639,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
-      const compactCover = recognized.replace(/\\s+/g, '');
+      const compactCover = recognized.replace(/\s+/g, '');
       let best: { work: BookSearchWorkGroup; score: number } | null = null;
       let found: BookSearchWorkGroup[] = [];
       // Every candidate uses the existing protected Search provider pipeline.
@@ -661,7 +661,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           if (!coverMatchesWork(lines, work.title, work.authors)) continue;
           // Prefer exact, complete title evidence over partial OCR phrases.
           const score = 1 + titleHits / meaningful.length
-            + (compactCover.includes(titleKey.replace(/\\s+/g, '')) ? 0.5 : 0)
+            + (compactCover.includes(titleKey.replace(/\s+/g, '')) ? 0.5 : 0)
             + Math.min(0.2, meaningful.length * 0.05);
           if (score > (best?.score ?? 0)) {
             best = { work, score };
