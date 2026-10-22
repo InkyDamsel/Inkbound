@@ -46,6 +46,7 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
     // identities even when a provider only returns the ISBN-10 form.
     { isbn: '9780345506931', isbn10: '0345506936', title: 'Seven Years to Sin', author: 'Sylvia Day' },
     { isbn: '9781501110368', isbn10: '1501110365', title: 'It Ends with Us', author: 'Colleen Hoover' },
+    { isbn: '9780593718056', isbn10: '0593718054', title: 'Tom Clancy Terminal Velocity', author: 'M.P. Woodward' },
   ];
   for (const fixture of fixtures) {
     assert.ok(equivalentCatalogIsbns(fixture.isbn).includes(fixture.isbn10));
