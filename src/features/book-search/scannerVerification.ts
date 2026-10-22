@@ -30,11 +30,19 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
 
     const given = authorWords.slice(0, -1).filter((word) => word.length >= 3);
     if (given.length) {
-      return given.every((word) => tokens.has(word) || joined.includes(word));
+      const givenHits = given.filter((word) => tokens.has(word) || joined.includes(word)).length;
+      if (givenHits > 0) return true;
+
+      // A cover can identify a work safely when every significant title word
+      // and the author's complete surname are present, even if OCR mangles a
+      // short/stylized given name. The surname alone is never sufficient:
+      // titleVerified above must already prove the complete distinctive title.
+      // This keeps verification generic instead of special-casing authors.
+      return significant.length >= 1 && titleVerified;
     }
 
-    // Initialed authors (J. T. Geissinger, M. P. Woodward) are verified by
-    // their complete surname once the full distinctive title is also present.
+    // Initialed authors are verified by their complete surname once the full
+    // distinctive title is also present.
     return authorWords.slice(0, -1).every((word) => word.length <= 2);
   });
 }
