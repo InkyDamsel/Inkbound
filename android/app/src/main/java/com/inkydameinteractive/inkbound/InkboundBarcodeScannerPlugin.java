@@ -19,6 +19,12 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
 @CapacitorPlugin(name = "InkboundBarcodeScanner")
 public class InkboundBarcodeScannerPlugin extends Plugin {
     @PluginMethod
+    public void getBuildInfo(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("debug", BuildConfig.DEBUG);
+        call.resolve(result);
+    }
+    @PluginMethod
     public void confirmSuccess(PluginCall call) {
         getBridge().executeOnMainThread(() -> {
             try {
