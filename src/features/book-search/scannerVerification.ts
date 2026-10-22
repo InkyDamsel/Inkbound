@@ -17,11 +17,24 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
     const authorWords = words(author);
     if (!authorWords.length) return false;
     const surname = authorWords[authorWords.length - 1];
-    if (surname.length < 3 || !tokens.has(surname)) return false;
+    if (surname.length < 3) return false;
+
+    // Decorative cover fonts commonly make OCR split a name into fragments
+    // (for example "G E I S S I N G E R" or "R E I D"). Title verification
+    // already tolerates that by checking the compact OCR stream; author
+    // verification must do the same or a correct catalog work is rejected.
+    // We still require the complete surname plus the meaningful given name,
+    // so compact matching cannot turn a title-only hit into a verified book.
+    const surnameVerified = tokens.has(surname) || joined.includes(surname);
+    if (!surnameVerified) return false;
+
     const given = authorWords.slice(0, -1).filter((word) => word.length >= 3);
-    // A surname alone is acceptable only for initialed authors with exact
-    // distinctive title evidence; non-initialed authors need their given name.
-    if (given.length) return given.every((word) => tokens.has(word));
+    if (given.length) {
+      return given.every((word) => tokens.has(word) || joined.includes(word));
+    }
+
+    // Initialed authors (J. T. Geissinger, M. P. Woodward) are verified by
+    // their complete surname once the full distinctive title is also present.
     return authorWords.slice(0, -1).every((word) => word.length <= 2);
   });
 }
