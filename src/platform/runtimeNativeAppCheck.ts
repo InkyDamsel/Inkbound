@@ -31,3 +31,18 @@ export async function getNativeAppCheckToken(forceRefresh = false): Promise<Nati
   }
   return result;
 }
+
+
+/**
+ * Scanner-facing capability probe. Shared UI can ask whether native App Check
+ * is available without branching on platform identity.
+ */
+export async function diagnoseNativeAppCheckFailure(): Promise<unknown | null> {
+  if (!activeNativeAppCheckAdapter) return null;
+  try {
+    await getNativeAppCheckToken(true);
+    return null;
+  } catch (error) {
+    return error;
+  }
+}
