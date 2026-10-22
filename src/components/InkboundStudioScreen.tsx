@@ -126,7 +126,7 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
      const bg=computed.backgroundImage;
      if(bg&&bg!=='none'&&bg.includes('url(')){
        let updated=bg;
-       const urls=Array.from(bg.matchAll(/url\\(["']?([^"')]+)["']?\\)/g));
+       const urls=Array.from(bg.matchAll(/url\(["']?([^"')]+)["']?\)/g));
        for(const match of urls){
          updated=updated.replace(match[0], 'url("'+await embed(match[1])+'")');
        }
