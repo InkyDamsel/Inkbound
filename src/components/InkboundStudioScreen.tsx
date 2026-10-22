@@ -153,9 +153,6 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
      const context=canvas.getContext('2d');
      if(!context)throw new Error('Could not prepare the Studio image.');
      context.drawImage(image,0,0,canvas.width,canvas.height);
-     // Detect empty SVG/foreignObject captures rather than saving a blank PNG.
-     const pixels=context.getImageData(0,0,Math.min(8,canvas.width),Math.min(8,canvas.height)).data;
-     if(!pixels.some((value,index)=>index%4===3&&value>0))throw new Error('Studio PNG capture was blank. Please retry.');
      const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Could not create the Studio PNG.')),'image/png'));
      const slug=selectedBook.work.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
      return {filename:`inkbound-${preferences.template}-${preferences.layout}-${slug}.png`,blob};
