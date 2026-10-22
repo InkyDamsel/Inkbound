@@ -669,7 +669,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const rankedSingleLines = [...new Set(cleanLines)]
         .filter(usableCandidate)
         .sort((left, right) => candidateScore(right) - candidateScore(left));
-      const candidates = [...new Set([...rankedCombined, ...rankedSingleLines])].slice(0, 40);
+      // Literal OCR lines are stronger evidence than synthetic 3-5 line
+      // combinations. Keep adjacent pairs first for titles split across two
+      // decorative lines, then literal single lines, and only then broader
+      // combinations. This prevents harmless OCR line-order changes from
+      // pushing an obvious one-line title out of the provider query budget.
+      const candidates = [...new Set([
+        ...adjacentTitlePairs.filter(usableCandidate).sort((left, right) => candidateScore(right) - candidateScore(left)),
+        ...rankedSingleLines,
+        ...rankedCombined,
+      ])].slice(0, 40);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
