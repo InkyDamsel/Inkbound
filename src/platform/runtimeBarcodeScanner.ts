@@ -12,8 +12,13 @@ const NativeBarcodeScanner = registerPlugin<NativeBarcodeScannerPlugin>('Inkboun
 
 export async function isNativeDebugBuild(): Promise<boolean> {
   if (!shouldUseNativeBarcodeScanner()) return false;
-  const result = await NativeBarcodeScanner.getBuildInfo();
-  return result.debug === true;
+  try {
+    const result = await NativeBarcodeScanner.getBuildInfo();
+    return result.debug === true;
+  } catch (error) {
+    console.warn('Native debug-build detection unavailable; keeping release App Check behavior.', error);
+    return false;
+  }
 }
 
 export async function recognizeBookCover(image: string): Promise<string[]> {
