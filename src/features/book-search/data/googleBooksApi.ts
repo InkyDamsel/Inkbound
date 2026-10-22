@@ -592,6 +592,41 @@ export async function resolveCatalogIsbn(
   return null;
 }
 
+// Scanner-only cover recovery. Unlike normal Search, cover OCR must inspect
+// matching works from every catalog because a noisy Google relevance result
+// must not hide an exact title/author match returned only by a supplement.
+// The scanner still verifies title + author against OCR before offering it.
+export async function searchScannerCoverCatalog(
+  query: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  const trimmed = query.trim();
+  if (!trimmed) return { groups: [], totalItems: 0 };
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+
+  await waitUntilAdministrationInactive(signal);
+
+  const [google, openLibrary, hardcover, prh, trusted] = await Promise.all([
+    searchGoogleBaseline(trimmed, signal),
+    searchOpenLibraryWithAuthorFallback(trimmed, signal),
+    searchHardcoverWithBackoff(trimmed),
+    searchPrhWithBackoff(trimmed),
+    searchTrustedCatalogBaseline(trimmed).catch((error) => {
+      console.warn('Trusted catalog scanner supplement failed.', error);
+      return { groups: [], totalItems: 0 };
+    }),
+  ]);
+
+  const groups = hardenCatalogGroups([
+    ...google.groups,
+    ...openLibrary.groups,
+    ...hardcover.groups,
+    ...prh.groups,
+    ...trusted.groups,
+  ]);
+  return { groups, totalItems: groups.length };
+}
+
 export async function searchGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
