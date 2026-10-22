@@ -596,6 +596,41 @@ export async function resolveCatalogIsbn(
 // matching works from every catalog because a noisy Google relevance result
 // must not hide an exact title/author match returned only by a supplement.
 // The scanner still verifies title + author against OCR before offering it.
+// Scanner-only exact-title recovery. Cover OCR often gives us a literal title,
+// so do not force that evidence through broad relevance ranking. Query Google's
+// title index directly and keep only catalog works whose normalized title is
+// exactly the OCR title or begins with it before a subtitle. This does not
+// change normal Search and does not weaken cover title+author verification.
+export async function searchScannerCoverTitleCatalog(
+  title: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  const trimmed = title.trim();
+  if (!trimmed) return { groups: [], totalItems: 0 };
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+
+  await waitUntilAdministrationInactive(signal);
+
+  const escaped = trimmed.replace(/"/g, '');
+  let payload: GoogleVolumesResponse;
+  try {
+    payload = await requestDirectGoogleBooks(`intitle:"${escaped}"`, signal);
+  } catch (error) {
+    console.warn('Scanner exact-title Google Books recovery unavailable.', error);
+    return { groups: [], totalItems: 0 };
+  }
+
+  const titleKey = normalizeText(trimmed);
+  const groups = hardenCatalogGroups(groupGoogleEditions(
+    (payload.items ?? []).map(mapGoogleVolume)
+      .filter((item): item is BookSearchEdition => Boolean(item)),
+  )).filter((work) => {
+    const workTitle = normalizeText(work.title);
+    return workTitle === titleKey || workTitle.startsWith(`${titleKey} `);
+  });
+  return { groups, totalItems: groups.length };
+}
+
 export async function searchScannerCoverCatalog(
   query: string,
   signal?: AbortSignal,
