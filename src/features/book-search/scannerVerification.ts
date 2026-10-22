@@ -2,11 +2,17 @@
 const words = (value: string): string[] =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 
+export function scannerCoverTitle(title: string): string {
+  // Catalogs commonly append subtitles or edition descriptors that are not
+  // printed on the front cover. Cover identity is the primary title only.
+  return title.split(/\s*[:—–]\s*|\s+\((?:[^)]*)\)\s*$/u, 1)[0].trim();
+}
+
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const text = words(lines.join(' '));
   const tokens = new Set(text);
   const joined = text.join('');
-  const titleWords = words(title);
+  const titleWords = words(scannerCoverTitle(title));
   if (!titleWords.length) return false;
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
