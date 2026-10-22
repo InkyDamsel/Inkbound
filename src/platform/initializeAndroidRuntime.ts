@@ -25,6 +25,7 @@ import {
 } from './runtimePremiumPurchase';
 import { configureRuntimeReauthentication } from './runtimeReauthentication';
 import { isAndroidRuntime } from './runtimePlatform';
+import { isNativeDebugBuild } from './runtimeBarcodeScanner';
 import {
   configureRuntimeSubscriptionManagement,
   getStripeSubscriptionPortalUrl,
@@ -126,9 +127,14 @@ const verifyPlayPurchase = async (purchase: PlayPurchaseResult) => {
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
+  const nativeDebugBuild = await isNativeDebugBuild();
   const nativeAppCheckReady = FirebaseAppCheck.initialize({
     isTokenAutoRefreshEnabled: true,
+    ...(nativeDebugBuild ? { debugToken: true } : {}),
   });
+  if (nativeDebugBuild) {
+    console.info('Inkbound Android debug build: Firebase App Check debug provider enabled. Register the generated debug token in Firebase before testing protected catalog services.');
+  }
 
   configureRuntimeAuthentication({
     supportsAppleSignIn: true,
