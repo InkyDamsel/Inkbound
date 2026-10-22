@@ -129,13 +129,12 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
    // Canvas-only rendering avoids the SVG foreignObject cross-origin taint.
    const bg=await load(STUDIO_BACKGROUND);
    drawCover(bg,0,0,root.width,root.height,'cover');
-   fill(0,0,root.width,root.height,theme.background+'88');
    const gradient=ctx.createLinearGradient(0,0,0,root.height);
    gradient.addColorStop(0,theme.background+'33');gradient.addColorStop(1,theme.background+'aa');
    ctx.fillStyle=gradient;ctx.fillRect(0,0,root.width,root.height);
    ctx.save();round(0,0,root.width,root.height,28);ctx.clip();
    const panel=source.querySelector('.inkbound-studio-preview-panel');
-   if(panel){const p=bounds(panel);fill(p.x,p.y,p.w,p.h,'rgba(0,0,0,0.72)',24);}
+   if(panel){const p=bounds(panel);fill(p.x,p.y,p.w,p.h,getComputedStyle(panel).backgroundColor,parseFloat(getComputedStyle(panel).borderTopLeftRadius)||24);}
    const elements=Array.from(source.querySelectorAll('*'));
    for(const element of elements){
      const rect=bounds(element),style=getComputedStyle(element);
@@ -162,9 +161,11 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
        const range=document.createRange();
        const pieces=content.match(/\S+|\s+/g)||[];
        const fontSize=parseFloat(style.fontSize)||12;
-       ctx.font=`${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+       ctx.font=`${style.fontStyle} ${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+       ctx.letterSpacing=style.letterSpacing==='normal'?'0px':style.letterSpacing;
        ctx.fillStyle=style.color;
        ctx.textBaseline='alphabetic';
+       ctx.globalAlpha=Number.isFinite(Number(style.opacity))?Number(style.opacity):1;
        let index=0;
        for(const piece of pieces){
          const from=index;index+=piece.length;
@@ -176,6 +177,7 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
          const y=textRect.top-root.top+(textRect.height-fontSize)/2+fontSize*.84;
          ctx.fillText(piece,x,y);
        }
+       ctx.globalAlpha=1;
        range.detach();
      }
    }
