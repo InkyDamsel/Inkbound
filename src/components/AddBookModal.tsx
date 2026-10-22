@@ -18,7 +18,7 @@ import {
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { isValidCatalogIsbn, selectCatalogIsbnFromBarcodes } from '../features/book-search/isbnResolution';
-import { coverMatchesWork, isScannerBatchIdentityConsistent, scannerEditionKey } from '../features/book-search/scannerVerification';
+import { coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
@@ -701,7 +701,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           continue;
         }
         for (const work of response.groups) {
-          const titleKey = normalizeCatalogText(work.title);
+          const titleKey = normalizeCatalogText(scannerCoverTitle(work.title));
           const titleWords = titleKey.split(' ').filter(Boolean);
           const meaningful = titleWords.filter((word) => word.length >= 4);
           if (!meaningful.length || titleKey.length < 4) continue;
