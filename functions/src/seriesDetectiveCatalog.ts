@@ -1066,8 +1066,15 @@ async function detectivePrhCatalog(
   if (/^(?:978|979)\d{10}$/.test(compactIsbn)) {
     try {
       const titlePayload = await prhFetchJson(`/titles/${encodeURIComponent(compactIsbn)}`);
-      const exactTitles = prhExtractTitles([titlePayload])
-        .filter((title) => String(title.isbn ?? '').replace(/[^0-9X]/gi, '').toUpperCase() === compactIsbn);
+      const exactTitles = [
+        ...prhExtractTitles(titlePayload),
+        ...prhExtractTitles([titlePayload]),
+      ].filter((title, index, all) =>
+        String(title.isbn ?? '').replace(/[^0-9X]/gi, '').toUpperCase() === compactIsbn
+        && all.findIndex((candidate) =>
+          String(candidate.isbn ?? '').replace(/[^0-9X]/gi, '').toUpperCase() === compactIsbn
+          && candidate.title === title.title
+        ) === index);
       if (exactTitles.length > 0) {
         const title = exactTitles[0];
         const isbn = String(title.isbn ?? '').replace(/[^0-9X]/gi, '');
