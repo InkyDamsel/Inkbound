@@ -590,6 +590,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerPhotoBusy(true);
     setScannerError(null);
     setScannerMessage('Reading the cover and searching the catalog…');
+    // A new cover attempt must not inherit recovery text or edition choices
+    // from the previous photograph. Preserve unresolvedIsbn separately.
+    setScannerRecoveryTitle('');
+    setScannerRecoveryAuthor('');
+    setScannerEditionOptions([]);
     try {
       const bitmap = await createImageBitmap(file);
       const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
@@ -649,10 +654,21 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         .map((line, index) => [line, cleanLines[index + 1]])
         .filter((parts) => parts.every((part) => part.split(/\s+/).length <= 2))
         .map((parts) => parts.join(' '));
-      const candidates = [...new Set([...adjacentTitlePairs, ...cleanLines, ...combined])]
-        .filter((phrase) => phrase.length >= 4 && phrase.length <= 85 && !isNoise(phrase))
-        .sort((left, right) => candidateScore(right) - candidateScore(left))
-        .slice(0, 40);
+      const usableCandidate = (phrase: string) =>
+        phrase.length >= 4 && phrase.length <= 85 && !isNoise(phrase);
+      // Keep OCR title evidence in deliberate tiers instead of globally
+      // re-sorting everything together. Decorative covers often contain
+      // franchise/series text (for example "Tom Clancy" or "Darkest Age")
+      // that can outrank the actual title and exhaust provider calls first.
+      // Multi-line title phrases get first chance, then strong single lines,
+      // while preserving deterministic ordering inside each tier.
+      const rankedCombined = [...new Set([...adjacentTitlePairs, ...combined])]
+        .filter(usableCandidate)
+        .sort((left, right) => candidateScore(right) - candidateScore(left));
+      const rankedSingleLines = [...new Set(cleanLines)]
+        .filter(usableCandidate)
+        .sort((left, right) => candidateScore(right) - candidateScore(left));
+      const candidates = [...new Set([...rankedCombined, ...rankedSingleLines])].slice(0, 40);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
