@@ -150,6 +150,13 @@ for (const requiredSnippet of [
 ]) {
   if (!androidRuntimeSource.includes(requiredSnippet)) fail(`Android runtime adapter is missing required Build 26 native integration: ${requiredSnippet}`);
 }
+if (!androidRuntimeSource.includes('const nativeDebugBuild = await isNativeDebugBuild()')) fail('Android App Check debug mode must be gated by the native APK build type.');
+if (!androidRuntimeSource.includes("...(nativeDebugBuild ? { debugToken: true } : {})")) fail('Android debug APKs must use the App Check debug provider without enabling it for release APKs.');
+if (/FirebaseAppCheck\.initialize\(\{[\s\S]*?debugToken:\s*true[\s\S]*?\}\)/.test(androidRuntimeSource)
+  && !androidRuntimeSource.includes('nativeDebugBuild ? { debugToken: true }')) {
+  fail('Firebase App Check debug provider must never be enabled unconditionally in Android release builds.');
+}
+
 for (const forbiddenSnippet of [
   'FirebaseAuthentication.signInWithEmailAndPassword',
   'FirebaseAuthentication.createUserWithEmailAndPassword',
