@@ -54,10 +54,13 @@ type CustomOwnershipSelection = `custom:${string}`;
 type OwnershipSelection = Exclude<OwnershipStatus, 'custom'> | CustomOwnershipSelection;
 type ScannedBook = { isbn: string; book: UserBookRecord };
 
+const isPlaceholderCatalogTitle = (value: string): boolean =>
+  /^(?:untitled(?:\s*#?\s*\d+)?|unknown title|title unavailable)$/i.test(value.trim());
+
 const hasIdentifiedBook = (book: UserBookRecord): boolean => {
   const title = book.work?.title?.trim() ?? '';
   const author = book.work?.author?.trim() ?? '';
-  return Boolean(title && author && normalizeAuthorName(author) !== 'unknown author'
+  return Boolean(title && !isPlaceholderCatalogTitle(title) && author && normalizeAuthorName(author) !== 'unknown author'
     && !author.split(',').every((name) => normalizeAuthorName(name) === 'unknown author'));
 };
 
@@ -626,7 +629,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerEditionOptions([]);
       const coverLines = lines.map((line) => line.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
       const isNoise = (value: string) => /(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\s*[:#]|book club edition|^a novel$)/i.test(value);
-      const cleanLines = coverLines.filter((line) => !isNoise(line));
+      const cleanLines = coverLines
+        .filter((line) => !isNoise(line))
+        .map((line) => line.replace(/^by\s+/i, '').trim())
+        .filter(Boolean);
       // Search recognizable title lines FIRST, including one-word titles.
       // Then try adjacent lines for decorative multi-line titles. Do not rank
       // long blurb combinations above the actual cover title.
@@ -639,7 +645,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         const lengthPenalty = Math.max(0, tokens.length - 6) * 5;
         return (tokens.length <= 6 ? 12 : 0) + tokens.filter((word) => word.length >= 4).length * 2 - lengthPenalty;
       };
-      const candidates = [...new Set([...cleanLines, ...combined])]
+      const adjacentTitlePairs = cleanLines.slice(0, -1)
+        .map((line, index) => [line, cleanLines[index + 1]])
+        .filter((parts) => parts.every((part) => part.split(/\s+/).length <= 2))
+        .map((parts) => parts.join(' '));
+      const candidates = [...new Set([...adjacentTitlePairs, ...cleanLines, ...combined])]
         .filter((phrase) => phrase.length >= 4 && phrase.length <= 85 && !isNoise(phrase))
         .sort((left, right) => candidateScore(right) - candidateScore(left))
         .slice(0, 40);
@@ -686,7 +696,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // matching catalog editions in Scanner, never silently substitute ISBNs.
       const titleKey = normalizeCatalogText(best.work.title);
       const matches = found.filter((work) =>
-        normalizeCatalogText(work.title) === titleKey
+        !isPlaceholderCatalogTitle(work.title)
+        && normalizeCatalogText(work.title) === titleKey
         && work.authors.some((name) => normalizeAuthorName(name) !== 'unknown author'));
       if (!matches.length) throw new Error('The cover title was found, but no edition with a known author is available.');
       if (!unresolvedIsbn) {
