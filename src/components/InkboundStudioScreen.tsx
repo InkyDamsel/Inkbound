@@ -120,6 +120,8 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
        css+=property+':'+computed.getPropertyValue(property)+';';
      }
      target.setAttribute('style',css);
+     // The serialized preview must not depend on external fonts or browser stylesheets.
+     if(computed.fontFamily.includes('var(')) (target as HTMLElement).style.fontFamily=getComputedStyle(original).fontFamily;
      if(original instanceof HTMLImageElement && target instanceof HTMLImageElement){
        target.src=await embed(original.currentSrc||original.src);
      }
@@ -133,6 +135,8 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
        (target as HTMLElement).style.backgroundImage=updated;
      }
    }
+   // Strip cloned IDs so serialized markup cannot reference the surrounding page.
+   clone.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'));
    clone.style.width=rect.width+'px';
    clone.style.height=rect.height+'px';
    clone.style.maxWidth='none';
@@ -143,12 +147,15 @@ export const InkboundStudioScreen:React.FC<InkboundStudioScreenProps>=({books,se
    try{
      const image=new window.Image();
      image.src=url;
-     await image.decode();
+     try { await image.decode(); } catch { throw new Error('Could not render the Studio preview for PNG export.'); }
      const canvas=document.createElement('canvas');
      canvas.width=format.width;canvas.height=format.height;
      const context=canvas.getContext('2d');
      if(!context)throw new Error('Could not prepare the Studio image.');
      context.drawImage(image,0,0,canvas.width,canvas.height);
+     // Detect empty SVG/foreignObject captures rather than saving a blank PNG.
+     const pixels=context.getImageData(0,0,Math.min(8,canvas.width),Math.min(8,canvas.height)).data;
+     if(!pixels.some((value,index)=>index%4===3&&value>0))throw new Error('Studio PNG capture was blank. Please retry.');
      const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Could not create the Studio PNG.')),'image/png'));
      const slug=selectedBook.work.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
      return {filename:`inkbound-${preferences.template}-${preferences.layout}-${slug}.png`,blob};
