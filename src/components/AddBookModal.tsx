@@ -13,6 +13,7 @@ import {
   resolveCatalogIsbn,
   searchGoogleBooks,
   searchGoogleBooksAuthorPage,
+  searchScannerCoverCatalog,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { isValidCatalogIsbn, selectCatalogIsbnFromBarcodes } from '../features/book-search/isbnResolution';
@@ -680,7 +681,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       for (const candidate of candidates) {
         let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
         try {
-          response = await searchGoogleBooks(candidate);
+          response = await searchScannerCoverCatalog(candidate);
         } catch {
           continue;
         }
@@ -731,7 +732,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         for (const query of targetedQueries) {
           let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
           try {
-            response = await searchGoogleBooks(query);
+            response = await searchScannerCoverCatalog(query);
           } catch {
             continue;
           }
