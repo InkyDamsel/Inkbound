@@ -75,3 +75,45 @@ export function isScannerBatchIdentityConsistent(
     || (!!edition.externalSource && !!edition.externalEditionId
       && key === `catalog:${edition.externalSource}:${edition.externalEditionId}`));
 }
+
+
+const editDistance = (left: string, right: string): number => {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+};
+
+export function coverApproximatelyMatchesWork(lines: string[], title: string, authors: string[]): boolean {
+  const compactLines = lines
+    .map((line) => words(line).join(''))
+    .filter((line) => line.length >= 5);
+  const compactTitle = words(scannerCoverTitle(title)).join('');
+  if (compactTitle.length < 5) return false;
+
+  // Approximate title recovery is only allowed after the author's complete
+  // surname is independently visible on the cover. This prevents a fuzzy
+  // title alone from accepting an unrelated catalog result.
+  const coverCompact = words(lines.join(' ')).join('');
+  const authorVerified = authors.some((author) => {
+    const authorWords = words(author);
+    const surname = authorWords[authorWords.length - 1] ?? '';
+    return surname.length >= 3 && coverCompact.includes(surname);
+  });
+  if (!authorVerified) return false;
+
+  return compactLines.some((line) => {
+    const distance = editDistance(line, compactTitle);
+    const allowance = compactTitle.length >= 10 ? 3 : compactTitle.length >= 7 ? 2 : 1;
+    return distance <= allowance;
+  });
+}
