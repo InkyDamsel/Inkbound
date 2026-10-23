@@ -898,7 +898,24 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             try {
               const response = await searchScannerAuthorCatalog(surnameHint);
               recordScannerResponse(`author-recovery-surname:${surnameHint}`, response.groups);
-              const recovered = response.groups.find((work) =>
+              const exactAuthorEvidence = authorRecoveryQueries
+                .map((value) => normalizeCatalogText(value))
+                .filter((value) => value.split(/\s+/).length >= 2);
+              const authorScopedGroups = response.groups.filter((work) =>
+                work.authors.some((author) => {
+                  const normalizedAuthor = normalizeCatalogText(author);
+                  return exactAuthorEvidence.some((evidence) =>
+                    normalizedAuthor === evidence
+                    || normalizedAuthor.split(/\s+/).every((token) =>
+                      evidence.split(/\s+/).some((word) =>
+                        word === token
+                        || (word.length >= 3 && token.length >= 3
+                          && Math.abs(word.length - token.length) <= 1))));
+                }));
+              scannerDiagnostics.push(
+                `author-recovery-surname-scoped:${surnameHint} => ${authorScopedGroups.length} [${authorScopedGroups.slice(0, 20).map((work) => `${work.title} — ${work.authors.join(', ')}`).join(' | ') || 'no results'}]`,
+              );
+              const recovered = authorScopedGroups.find((work) =>
                 coverApproximatelyMatchesWork(lines, work.title, work.authors));
               if (recovered) {
                 best = { work: recovered, score: 2.23 };
