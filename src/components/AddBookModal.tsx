@@ -850,8 +850,26 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             scannerDiagnostics.push(`author-recovery:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
             continue;
           }
-          const recovered = authorGroups.find((work) =>
+          let recovered = authorGroups.find((work) =>
             coverApproximatelyMatchesWork(lines, work.title, work.authors));
+
+          // Google can have an incomplete author bibliography even when other
+          // scanner catalogs know the photographed work. Reuse the existing
+          // scanner-only multi-provider catalog once per author hint, then keep
+          // the same strict author + approximate-full-title acceptance gate.
+          if (!recovered) {
+            try {
+              const response = await searchScannerCoverCatalog(authorQuery);
+              recordScannerResponse(`author-recovery-multi:${authorQuery}`, response.groups);
+              const supplemental = response.groups.filter((work) =>
+                coverApproximatelyMatchesWork(lines, work.title, work.authors));
+              recovered = supplemental[0];
+              if (recovered) authorGroups = response.groups;
+            } catch (error) {
+              scannerDiagnostics.push(`author-recovery-multi:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+
           if (recovered) {
             best = { work: recovered, score: 2.25 };
             found = authorGroups;
