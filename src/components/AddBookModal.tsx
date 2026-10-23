@@ -857,6 +857,43 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         }
       }
       if (!best) {
+        // Final bounded recovery: merged native OCR can preserve complementary
+        // title fragments and a nearly-correct author while exact provider
+        // queries still return nothing. Build a few short cross-pass title
+        // pairs and combine them with the strongest author-shaped evidence.
+        // Retrieval is permissive; acceptance still requires BOTH approximate
+        // full title and approximate full surname verification.
+        const shortTitleFragments = cleanLines
+          .filter((line) => {
+            const compact = normalizeCatalogText(line).replace(/\s+/g, '');
+            const tokens = line.split(/\s+/).filter(Boolean);
+            return tokens.length <= 2 && compact.length >= 3 && compact.length <= 12
+              && !isNoise(line) && !/(?:first|forget|author|times|york|plan|upgrade)/i.test(line);
+          })
+          .slice(0, 8);
+        const crossPassTitles = [...new Set(shortTitleFragments.flatMap((left, index) =>
+          shortTitleFragments.slice(index + 1).map((right) => `${left} ${right}`)))].slice(0, 8);
+        const recoveryQueries = [...new Set(crossPassTitles.slice(0, 4).flatMap((titleHint) =>
+          authorRecoveryQueries.slice(0, 2).map((authorHint) => `${titleHint} ${authorHint}`)))].slice(0, 6);
+
+        for (const query of recoveryQueries) {
+          try {
+            const response = await searchScannerCoverCatalog(query);
+            recordScannerResponse(`cross-pass:${query}`, response.groups);
+            const recovered = response.groups.find((work) =>
+              coverApproximatelyMatchesWork(lines, work.title, work.authors));
+            if (recovered) {
+              best = { work: recovered, score: 2.2 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`cross-pass:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+
+      if (!best) {
         setScannerEditionOptions([]);
         const diagnostic = [
           '[Inkbound scanner] Cover identification failed',
