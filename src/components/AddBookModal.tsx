@@ -17,7 +17,7 @@ import {
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { isValidCatalogIsbn, selectCatalogIsbnFromBarcodes } from '../features/book-search/isbnResolution';
-import { coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
+import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
 import {
@@ -781,6 +781,35 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             }
           }
           if (best) break;
+        }
+      }
+      if (!best) {
+        // If OCR damaged the title but preserved a credible author line, use
+        // that author's catalog as a bounded recovery source. A result is only
+        // accepted when the author surname is independently visible and the
+        // catalog title closely matches one OCR line.
+        const authorRecoveryQueries = [...new Set(cleanLines
+          .filter((line) => {
+            const tokens = line.split(/\s+/).filter(Boolean);
+            return tokens.length >= 2 && tokens.length <= 4 && normalizeCatalogText(line).length >= 5;
+          }))].slice(0, 3);
+
+        for (const authorQuery of authorRecoveryQueries) {
+          let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
+          try {
+            response = await searchScannerCoverCatalog(authorQuery);
+            recordScannerResponse(`author-recovery:${authorQuery}`, response.groups);
+          } catch (error) {
+            scannerDiagnostics.push(`author-recovery:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+            continue;
+          }
+          const recovered = response.groups.find((work) =>
+            coverApproximatelyMatchesWork(lines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.25 };
+            found = response.groups;
+            break;
+          }
         }
       }
       if (!best) {
