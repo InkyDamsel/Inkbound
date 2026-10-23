@@ -2,10 +2,16 @@
 const words = (value: string): string[] =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 
+const EDITION_DESCRIPTOR = /\s+(?:(?:deluxe|special|collector'?s|limited|illustrated|anniversary|signed|exclusive|annotated|international|walmart|target)\s+)*(?:edition|version|exclusive(?: art)?)\s*$/i;
+
 export function scannerCoverTitle(title: string): string {
   // Catalogs commonly append subtitles or edition descriptors that are not
   // printed on the front cover. Cover identity is the primary title only.
-  return title.split(/\s*[:—–]\s*|\s+\((?:[^)]*)\)\s*$/u, 1)[0].trim();
+  let normalized = title.split(/\s*[:—–]\s*|\s+\((?:[^)]*)\)\s*$/u, 1)[0].trim();
+  // Descriptors can be stacked (for example "Deluxe Limited Edition").
+  // Strip them generically from catalog titles before cover verification.
+  for (let pass = 0; pass < 2; pass += 1) normalized = normalized.replace(EDITION_DESCRIPTOR, '').trim();
+  return normalized;
 }
 
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
