@@ -783,12 +783,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           if (best) break;
         }
       }
-      if (!best) {
-        // If OCR damaged the title but preserved a credible author line, use
-        // that author's catalog as a bounded recovery source. A result is only
-        // accepted when the author surname is independently visible and the
-        // catalog title closely matches one OCR line.
-        const authorRecoveryQueries = [...new Set(cleanLines
+      // Shared by both author-catalog recovery and cross-pass title recovery.
+      // Keep this outside the recovery blocks so a failed author-catalog pass
+      // can safely reuse the same bounded author evidence.
+      const authorRecoveryQueries = [...new Set(cleanLines
           .map((line) => {
             const tokens = line.split(/\s+/).filter(Boolean);
             if (tokens.length < 2 || tokens.length > 5) return null;
@@ -824,6 +822,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             return authorShape(right) - authorShape(left);
           }))].slice(0, 3);
 
+      if (!best) {
+        // If OCR damaged the title but preserved a credible author line, use
+        // that author's catalog as a bounded recovery source. A result is only
+        // accepted when the author surname is independently visible and the
+        // catalog title closely matches one OCR line.
         for (const authorQuery of authorRecoveryQueries) {
           let authorGroups: BookSearchWorkGroup[];
           try {
