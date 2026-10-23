@@ -13,6 +13,7 @@ import {
   resolveCatalogIsbn,
   searchGoogleBooks,
   searchGoogleBooksAuthorPage,
+  searchScannerAuthorCatalog,
   searchScannerCoverCatalog,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
@@ -859,14 +860,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           // the same strict author + approximate-full-title acceptance gate.
           if (!recovered) {
             try {
-              const response = await searchScannerCoverCatalog(authorQuery);
-              recordScannerResponse(`author-recovery-multi:${authorQuery}`, response.groups);
+              const response = await searchScannerAuthorCatalog(authorQuery);
+              recordScannerResponse(`author-recovery-bibliography:${authorQuery}`, response.groups);
               const supplemental = response.groups.filter((work) =>
                 coverApproximatelyMatchesWork(lines, work.title, work.authors));
               recovered = supplemental[0];
               if (recovered) authorGroups = response.groups;
             } catch (error) {
-              scannerDiagnostics.push(`author-recovery-multi:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+              scannerDiagnostics.push(`author-recovery-bibliography:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
             }
           }
 
