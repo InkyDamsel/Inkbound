@@ -4,7 +4,7 @@ import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover } from './hardcoverApi';
-import { searchOpenLibrary } from './openLibraryApi';
+import { searchOpenLibrary, searchOpenLibraryAuthorBibliography } from './openLibraryApi';
 import { searchPenguinRandomHouse } from './penguinRandomHouseApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { combineIsbnProviderGroups, compactCatalogIsbn, equivalentCatalogIsbns } from '../isbnResolution';
@@ -646,7 +646,7 @@ export async function searchScannerAuthorCatalog(
   // Ask providers explicitly for the author and retain only exact author
   // credits before OCR title verification sees these works.
   const [openLibrary, hardcover, prh, trusted] = await Promise.all([
-    searchOpenLibrary(`inauthor:${trimmed}`, signal).catch((error) => {
+    searchOpenLibraryAuthorBibliography(trimmed, signal).catch((error) => {
       console.warn('Open Library scanner author bibliography unavailable.', error);
       return { groups: [], totalItems: 0 };
     }),
