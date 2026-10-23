@@ -72,6 +72,28 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
         return enhanced;
     }
 
+    private android.graphics.Bitmap thresholdCoverForText(android.graphics.Bitmap source) {
+        android.graphics.Bitmap thresholded = android.graphics.Bitmap.createBitmap(
+            source.getWidth(), source.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+        int width = source.getWidth();
+        int height = source.getHeight();
+        int[] pixels = new int[width * height];
+        source.getPixels(pixels, 0, width, 0, 0, width, height);
+        for (int index = 0; index < pixels.length; index++) {
+            int color = pixels[index];
+            int gray = Math.round(
+                android.graphics.Color.red(color) * 0.299f
+                + android.graphics.Color.green(color) * 0.587f
+                + android.graphics.Color.blue(color) * 0.114f);
+            // A moderate threshold exposes high-contrast decorative glyphs
+            // without relying on any title, author, or cover-specific rule.
+            int value = gray >= 145 ? 255 : 0;
+            pixels[index] = android.graphics.Color.rgb(value, value, value);
+        }
+        thresholded.setPixels(pixels, 0, width, 0, 0, width, height);
+        return thresholded;
+    }
+
     private void appendRecognizedLines(
         com.google.mlkit.vision.text.Text result,
         java.util.LinkedHashSet<String> merged
@@ -97,6 +119,7 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
             if (bitmap == null) { call.reject("Could not read cover image."); return; }
 
             android.graphics.Bitmap enhanced = enhanceCoverForText(bitmap);
+            android.graphics.Bitmap thresholded = thresholdCoverForText(bitmap);
             com.google.mlkit.vision.text.TextRecognizer recognizer =
                 com.google.mlkit.vision.text.TextRecognition.getClient(
                     com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS);
@@ -113,6 +136,14 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
                         com.google.mlkit.vision.common.InputImage.fromBitmap(enhanced, 0);
                     return recognizer.process(enhancedImage);
                 })
+                .continueWithTask(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        appendRecognizedLines(task.getResult(), merged);
+                    }
+                    com.google.mlkit.vision.common.InputImage thresholdedImage =
+                        com.google.mlkit.vision.common.InputImage.fromBitmap(thresholded, 0);
+                    return recognizer.process(thresholdedImage);
+                })
                 .addOnSuccessListener(result -> {
                     appendRecognizedLines(result, merged);
                     com.getcapacitor.JSArray lines = new com.getcapacitor.JSArray();
@@ -121,12 +152,14 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
                     response.put("lines", lines);
                     call.resolve(response);
                     recognizer.close();
-                    if (enhanced != bitmap) enhanced.recycle();
+                    enhanced.recycle();
+                    thresholded.recycle();
                     bitmap.recycle();
                 })
                 .addOnFailureListener(error -> {
                     recognizer.close();
-                    if (enhanced != bitmap) enhanced.recycle();
+                    enhanced.recycle();
+                    thresholded.recycle();
                     bitmap.recycle();
                     call.reject("Cover text recognition failed.", error);
                 });
