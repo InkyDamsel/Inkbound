@@ -50,6 +50,40 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
             call.resolve();
         });
     }
+    private android.graphics.Bitmap enhanceCoverForText(android.graphics.Bitmap source) {
+        android.graphics.Bitmap enhanced = android.graphics.Bitmap.createBitmap(
+            source.getWidth(), source.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(enhanced);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        android.graphics.ColorMatrix matrix = new android.graphics.ColorMatrix();
+        matrix.setSaturation(0f);
+        // Increase contrast around the midpoint while preserving the full cover.
+        float contrast = 1.45f;
+        float translate = (-0.5f * contrast + 0.5f) * 255f;
+        android.graphics.ColorMatrix contrastMatrix = new android.graphics.ColorMatrix(new float[] {
+            contrast, 0, 0, 0, translate,
+            0, contrast, 0, 0, translate,
+            0, 0, contrast, 0, translate,
+            0, 0, 0, 1, 0
+        });
+        matrix.postConcat(contrastMatrix);
+        paint.setColorFilter(new android.graphics.ColorMatrixColorFilter(matrix));
+        canvas.drawBitmap(source, 0, 0, paint);
+        return enhanced;
+    }
+
+    private void appendRecognizedLines(
+        com.google.mlkit.vision.text.Text result,
+        java.util.LinkedHashSet<String> merged
+    ) {
+        for (com.google.mlkit.vision.text.Text.TextBlock block : result.getTextBlocks()) {
+            for (com.google.mlkit.vision.text.Text.Line line : block.getLines()) {
+                String value = line.getText();
+                if (value != null && !value.trim().isEmpty()) merged.add(value.trim());
+            }
+        }
+    }
+
     @PluginMethod
     public void recognizeCover(PluginCall call) {
         String base64 = call.getString("image");
@@ -61,26 +95,39 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
             byte[] bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
             android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
             if (bitmap == null) { call.reject("Could not read cover image."); return; }
-            com.google.mlkit.vision.common.InputImage image =
-                com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0);
+
+            android.graphics.Bitmap enhanced = enhanceCoverForText(bitmap);
             com.google.mlkit.vision.text.TextRecognizer recognizer =
                 com.google.mlkit.vision.text.TextRecognition.getClient(
                     com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS);
-            recognizer.process(image)
-                .addOnSuccessListener(result -> {
-                    com.getcapacitor.JSArray lines = new com.getcapacitor.JSArray();
-                    for (com.google.mlkit.vision.text.Text.TextBlock block : result.getTextBlocks()) {
-                        for (com.google.mlkit.vision.text.Text.Line line : block.getLines()) {
-                            lines.put(line.getText());
-                        }
+            java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
+
+            com.google.mlkit.vision.common.InputImage originalImage =
+                com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0);
+            recognizer.process(originalImage)
+                .continueWithTask(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        appendRecognizedLines(task.getResult(), merged);
                     }
+                    com.google.mlkit.vision.common.InputImage enhancedImage =
+                        com.google.mlkit.vision.common.InputImage.fromBitmap(enhanced, 0);
+                    return recognizer.process(enhancedImage);
+                })
+                .addOnSuccessListener(result -> {
+                    appendRecognizedLines(result, merged);
+                    com.getcapacitor.JSArray lines = new com.getcapacitor.JSArray();
+                    for (String line : merged) lines.put(line);
                     JSObject response = new JSObject();
                     response.put("lines", lines);
                     call.resolve(response);
                     recognizer.close();
+                    if (enhanced != bitmap) enhanced.recycle();
+                    bitmap.recycle();
                 })
                 .addOnFailureListener(error -> {
                     recognizer.close();
+                    if (enhanced != bitmap) enhanced.recycle();
+                    bitmap.recycle();
                     call.reject("Cover text recognition failed.", error);
                 });
         } catch (Exception error) {
