@@ -107,14 +107,24 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   const compactTitle = words(scannerCoverTitle(title)).join('');
   if (compactTitle.length < 5) return false;
 
-  // Approximate title recovery is only allowed after the author's complete
-  // surname is independently visible on the cover. This prevents a fuzzy
-  // title alone from accepting an unrelated catalog result.
-  const coverCompact = words(lines.join(' ')).join('');
+  // Approximate recovery requires independent author evidence as well as the
+  // fuzzy title. OCR may substitute/drop one or two glyphs in a decorative
+  // surname, so compare the complete catalog surname against OCR tokens and
+  // adjacent token joins with a tightly bounded edit distance.
+  const rawWords = words(lines.join(' '));
+  const authorCandidates = [
+    ...rawWords,
+    ...rawWords.slice(0, -1).map((word, index) => `${word}${rawWords[index + 1]}`),
+    ...rawWords.slice(0, -2).map((word, index) => `${word}${rawWords[index + 1]}${rawWords[index + 2]}`),
+  ];
   const authorVerified = authors.some((author) => {
     const authorWords = words(author);
     const surname = authorWords[authorWords.length - 1] ?? '';
-    return surname.length >= 3 && coverCompact.includes(surname);
+    if (surname.length < 5) return false;
+    const allowance = surname.length >= 9 ? 2 : 1;
+    return authorCandidates.some((candidate) =>
+      Math.abs(candidate.length - surname.length) <= allowance
+      && editDistance(candidate, surname) <= allowance);
   });
   if (!authorVerified) return false;
 
