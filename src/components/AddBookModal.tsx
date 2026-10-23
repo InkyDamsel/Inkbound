@@ -879,6 +879,39 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         }
       }
       if (!best) {
+        // When the cover preserves a surname but damages a short given name
+        // (for example AVA -> ANA), exact author lookup can miss the correct
+        // bibliography entirely. Use the surname as a bounded retrieval hint
+        // only when we also have title-like OCR evidence. Identity is still
+        // decided by coverApproximatelyMatchesWork, which requires BOTH the
+        // catalog surname and approximate full title to match the photograph.
+        const titleLikeEvidence = cleanLines.filter((line) => {
+          const compact = normalizeCatalogText(line).replace(/\s+/g, '');
+          return compact.length >= 5 && compact.length <= 14 && !isNoise(line);
+        });
+        const surnameHints = [...new Set(authorRecoveryQueries
+          .map((line) => line.split(/\s+/).filter(Boolean).at(-1) ?? '')
+          .filter((surname) => surname.length >= 4))].slice(0, 2);
+
+        if (titleLikeEvidence.length && surnameHints.length) {
+          for (const surnameHint of surnameHints) {
+            try {
+              const response = await searchScannerAuthorCatalog(surnameHint);
+              recordScannerResponse(`author-recovery-surname:${surnameHint}`, response.groups);
+              const recovered = response.groups.find((work) =>
+                coverApproximatelyMatchesWork(lines, work.title, work.authors));
+              if (recovered) {
+                best = { work: recovered, score: 2.23 };
+                found = response.groups;
+                break;
+              }
+            } catch (error) {
+              scannerDiagnostics.push(`author-recovery-surname:${surnameHint} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+        }
+      }
+      if (!best) {
         // Final bounded recovery: merged native OCR can preserve complementary
         // title fragments and a nearly-correct author while exact provider
         // queries still return nothing. Build a few short cross-pass title
