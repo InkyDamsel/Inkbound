@@ -160,10 +160,11 @@ const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
   };
 };
 
-function buildSearchParams(query: string): URLSearchParams {
+function buildSearchParams(query: string, offset = 0): URLSearchParams {
   const trimmed = query.trim();
   const operator = trimmed.match(/^(inauthor|intitle|isbn):\s*(.+)$/i);
   const params = new URLSearchParams({ limit: '40', fields: FIELDS });
+  if (offset > 0) params.set('offset', String(offset));
   if (!operator) {
     params.set('q', trimmed);
     return params;
@@ -244,6 +245,40 @@ export async function searchOpenLibrary(query: string, signal?: AbortSignal): Pr
     .map(mapWork)
     .filter((group): group is BookSearchWorkGroup => Boolean(group));
   return { groups, totalItems: payload.numFound ?? payload.num_found ?? groups.length };
+}
+
+export async function searchOpenLibraryAuthorBibliography(
+  authorName: string,
+  signal?: AbortSignal,
+  maxPages = 5,
+): Promise<BookSearchResponse> {
+  const trimmed = authorName.trim();
+  if (!trimmed) return { groups: [], totalItems: 0 };
+
+  const groups: BookSearchWorkGroup[] = [];
+  let totalItems = 0;
+  const pageSize = 40;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+    const params = buildSearchParams(`inauthor:${trimmed}`, page * pageSize);
+    const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error(`Open Library author bibliography failed (${response.status}).`);
+
+    const payload = (await response.json()) as OpenLibraryResponse;
+    totalItems = payload.numFound ?? payload.num_found ?? totalItems;
+    const pageGroups = (payload.docs ?? [])
+      .map(mapWork)
+      .filter((group): group is BookSearchWorkGroup => Boolean(group));
+    groups.push(...pageGroups);
+
+    if ((payload.docs ?? []).length < pageSize || groups.length >= totalItems) break;
+  }
+
+  return { groups, totalItems: totalItems || groups.length };
 }
 
 export async function fetchOpenLibrarySummary(title: string, author: string, signal?: AbortSignal): Promise<string | undefined> {
