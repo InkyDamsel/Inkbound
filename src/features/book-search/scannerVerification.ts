@@ -94,9 +94,16 @@ const editDistance = (left: string, right: string): number => {
 };
 
 export function coverApproximatelyMatchesWork(lines: string[], title: string, authors: string[]): boolean {
-  const compactLines = lines
-    .map((line) => words(line).join(''))
-    .filter((line) => line.length >= 5);
+  const rawCompactLines = lines.map((line) => words(line).join(''));
+  const compactLines = [
+    ...rawCompactLines.filter((line) => line.length >= 5),
+    // Decorative cover titles are frequently split across adjacent lines, and
+    // OCR can damage a glyph on each line independently. Compare the joined
+    // adjacent lines too, but only inside this author-verified recovery path.
+    ...rawCompactLines.slice(0, -1)
+      .map((line, index) => `${line}${rawCompactLines[index + 1]}`)
+      .filter((line) => line.length >= 5),
+  ];
   const compactTitle = words(scannerCoverTitle(title)).join('');
   if (compactTitle.length < 5) return false;
 
