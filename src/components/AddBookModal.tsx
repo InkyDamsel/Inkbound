@@ -904,13 +904,23 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               const authorScopedGroups = response.groups.filter((work) =>
                 work.authors.some((author) => {
                   const normalizedAuthor = normalizeCatalogText(author);
-                  return exactAuthorEvidence.some((evidence) =>
-                    normalizedAuthor === evidence
-                    || normalizedAuthor.split(/\s+/).every((token) =>
-                      evidence.split(/\s+/).some((word) =>
-                        word === token
-                        || (word.length >= 3 && token.length >= 3
-                          && Math.abs(word.length - token.length) <= 1))));
+                  return exactAuthorEvidence.some((evidence) => {
+                    if (normalizedAuthor === evidence) return true;
+                    const authorWords = normalizedAuthor.split(/\s+/).filter(Boolean);
+                    const evidenceWords = evidence.split(/\s+/).filter(Boolean);
+                    if (authorWords.length !== evidenceWords.length) return false;
+                    return authorWords.every((token, index) => {
+                      const word = evidenceWords[index] ?? '';
+                      if (word === token) return true;
+                      if (word.length < 3 || token.length < 3 || Math.abs(word.length - token.length) > 1) return false;
+                      let mismatches = 0;
+                      const length = Math.max(word.length, token.length);
+                      for (let charIndex = 0; charIndex < length; charIndex += 1) {
+                        if (word[charIndex] !== token[charIndex]) mismatches += 1;
+                      }
+                      return mismatches <= 1;
+                    });
+                  });
                 }));
               scannerDiagnostics.push(
                 `author-recovery-surname-scoped:${surnameHint} => ${authorScopedGroups.length} [${authorScopedGroups.slice(0, 20).map((work) => `${work.title} — ${work.authors.join(', ')}`).join(' | ') || 'no results'}]`,
@@ -926,6 +936,42 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               scannerDiagnostics.push(`author-recovery-surname:${surnameHint} => ERROR ${error instanceof Error ? error.message : String(error)}`);
             }
           }
+        }
+      }
+      if (!best) {
+        // Strong OCR can preserve almost the entire title while adding or
+        // substituting a few decorative glyphs (TMINTERVEI -> WINTERVEIL).
+        // Query title-shaped OCR directly with the strongest full author line.
+        // Retrieval may be fuzzy/provider-ranked; acceptance remains the
+        // existing approximate full-title + full-surname verification gate.
+        const fullAuthorHints = authorRecoveryQueries
+          .filter((value) => value.split(/\s+/).filter(Boolean).length === 2)
+          .slice(0, 2);
+        const strongTitleHints = cleanLines
+          .filter((line) => {
+            const compact = normalizeCatalogText(line).replace(/\s+/g, '');
+            return compact.length >= 7 && compact.length <= 14
+              && !fullAuthorHints.some((author) => normalizeCatalogText(author) === normalizeCatalogText(line))
+              && !isNoise(line);
+          })
+          .slice(0, 4);
+        for (const titleHint of strongTitleHints) {
+          for (const authorHint of fullAuthorHints) {
+            try {
+              const response = await searchScannerCoverCatalog(`${titleHint} ${authorHint}`);
+              recordScannerResponse(`fuzzy-title-author:${titleHint} ${authorHint}`, response.groups);
+              const recovered = response.groups.find((work) =>
+                coverApproximatelyMatchesWork(lines, work.title, work.authors));
+              if (recovered) {
+                best = { work: recovered, score: 2.24 };
+                found = response.groups;
+                break;
+              }
+            } catch (error) {
+              scannerDiagnostics.push(`fuzzy-title-author:${titleHint} ${authorHint} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+          if (best) break;
         }
       }
       if (!best) {
