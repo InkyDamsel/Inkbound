@@ -829,10 +829,20 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           try {
             // This recovery has author-shaped evidence, so use the existing
             // author catalog path instead of feeding a person's name into the
-            // title-oriented cover search.
-            const response = await searchGoogleBooksAuthorPage(authorQuery, 0);
-            authorGroups = response.groups;
-            recordScannerResponse(`author-recovery:${authorQuery}`, authorGroups);
+            // title-oriented cover search. Walk a small bounded number of
+            // provider pages because prolific authors can push the photographed
+            // work off page one even when the author itself is verified.
+            let startIndex = 0;
+            authorGroups = [];
+            for (let page = 0; page < 3; page += 1) {
+              const response = await searchGoogleBooksAuthorPage(authorQuery, startIndex);
+              authorGroups.push(...response.groups);
+              recordScannerResponse(`author-recovery:${authorQuery}:page-${page + 1}`, response.groups);
+              const pageMatch = response.groups.find((work) =>
+                coverApproximatelyMatchesWork(lines, work.title, work.authors));
+              if (pageMatch || !response.hasMore || response.nextStartIndex <= startIndex) break;
+              startIndex = response.nextStartIndex;
+            }
           } catch (error) {
             scannerDiagnostics.push(`author-recovery:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
             continue;
