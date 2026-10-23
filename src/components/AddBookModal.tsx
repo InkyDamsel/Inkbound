@@ -675,11 +675,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // decorative lines, then literal single lines, and only then broader
       // combinations. This prevents harmless OCR line-order changes from
       // pushing an obvious one-line title out of the provider query budget.
+      const compactAdjacentTitles = adjacentTitlePairs
+        .map((value) => value.replace(/\s+/g, ''))
+        .filter((value) => value.length >= 6);
       const candidates = [...new Set([
         ...adjacentTitlePairs.filter(usableCandidate).sort((left, right) => candidateScore(right) - candidateScore(left)),
+        // Decorative titles are often split across lines even when catalogs
+        // store them as one word ("Black Thorn" -> "Blackthorn").
+        ...compactAdjacentTitles,
         ...rankedSingleLines,
         ...rankedCombined,
-      ])].slice(0, 40);
+      ])].slice(0, 8);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
@@ -692,17 +698,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           `${work.title} — ${work.authors.join(', ') || 'Unknown author'}`).join(' | ');
         scannerDiagnostics.push(`${query} => ${groups.length} [${sample || 'no results'}]`);
       };
-      // Cover OCR gives Scanner stronger evidence than a typed broad search.
-      // Try the scanner-only exact-title index first, then fall back to the
-      // multi-provider broad catalog. Identity is still accepted only after
-      // the same full title + author cover verification below.
+      // Keep cover recovery inside a small request budget. The previous path
+      // could make dozens of direct Google requests in one failed scan and hit
+      // HTTP 429 before the correct OCR phrase was reached. Use the scanner's
+      // multi-provider catalog union for each of the strongest OCR candidates;
+      // identity is still accepted only after full title + author verification.
       for (const candidate of candidates) {
         let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
         try {
-          const exactTitle = await searchScannerCoverTitleCatalog(candidate);
-          response = exactTitle.groups.length > 0
-            ? exactTitle
-            : await searchScannerCoverCatalog(candidate);
+          response = await searchScannerCoverCatalog(candidate);
           recordScannerResponse(candidate, response.groups);
         } catch (error) {
           scannerDiagnostics.push(`${candidate} => ERROR ${error instanceof Error ? error.message : String(error)}`);
@@ -749,8 +753,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             return initialBonus(right) - initialBonus(left)
               || Math.abs(3 - left.split(/\s+/).length) - Math.abs(3 - right.split(/\s+/).length);
           }))].slice(0, 6);
-        const targetedQueries = [...new Set(candidates.slice(0, 8).flatMap((titleCandidate) =>
-          likelyAuthorHints.map((authorHint) => `${titleCandidate} ${authorHint}`)))].slice(0, 18);
+        const targetedQueries = [...new Set(candidates.slice(0, 4).flatMap((titleCandidate) =>
+          likelyAuthorHints.slice(0, 2).map((authorHint) => `${titleCandidate} ${authorHint}`)))].slice(0, 4);
 
         for (const query of targetedQueries) {
           let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
