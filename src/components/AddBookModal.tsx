@@ -824,7 +824,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             return authorShape(right) - authorShape(left);
           }))].slice(0, 3);
 
-        for (const authorQuery of authorRecoveryQueries) {
+        const expandedAuthorRecoveryQueries = [...new Set(authorRecoveryQueries.flatMap((query) => {
+          const tokens = query.split(/\s+/).filter(Boolean);
+          const surname = tokens[tokens.length - 1] ?? '';
+          // When OCR damages the leading glyphs of a surname, a distinctive
+          // suffix can still retrieve the author's catalog. Identity is never
+          // accepted from this suffix: the returned work must pass fuzzy full
+          // surname + fuzzy full title verification against the cover.
+          const suffix = surname.length >= 8 ? surname.slice(-6) : '';
+          return suffix ? [query, suffix] : [query];
+        }))].slice(0, 6);
+
+        for (const authorQuery of expandedAuthorRecoveryQueries) {
           let authorGroups: BookSearchWorkGroup[];
           try {
             // This recovery has author-shaped evidence, so use the existing
