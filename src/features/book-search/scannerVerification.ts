@@ -97,11 +97,14 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   const rawCompactLines = lines.map((line) => words(line).join(''));
   const compactLines = [
     ...rawCompactLines.filter((line) => line.length >= 5),
-    // Decorative cover titles are frequently split across adjacent lines, and
-    // OCR can damage a glyph on each line independently. Compare the joined
-    // adjacent lines too, but only inside this author-verified recovery path.
+    // Decorative cover titles are frequently split across lines. Native OCR
+    // merges evidence from several image treatments, so two title fragments
+    // from different passes may no longer be adjacent in the merged list.
     ...rawCompactLines.slice(0, -1)
-      .map((line, index) => `${line}${rawCompactLines[index + 1]}`)
+      .flatMap((line, index) => rawCompactLines
+        .slice(index + 1)
+        .filter((other) => line.length >= 3 && other.length >= 3 && line.length <= 12 && other.length <= 12)
+        .map((other) => `${line}${other}`))
       .filter((line) => line.length >= 5),
   ];
   const compactTitle = words(scannerCoverTitle(title)).join('');
