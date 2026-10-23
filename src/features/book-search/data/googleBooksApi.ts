@@ -631,6 +631,47 @@ export async function searchScannerCoverTitleCatalog(
   return { groups, totalItems: groups.length };
 }
 
+export async function searchScannerAuthorCatalog(
+  authorName: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  const trimmed = authorName.trim();
+  if (!trimmed) return { groups: [], totalItems: 0 };
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+
+  await waitUntilAdministrationInactive(signal);
+
+  // Scanner-only bibliography recovery. Broad text searches can stop after a
+  // handful of relevance-ranked works, which hides newer/less-indexed titles.
+  // Ask providers explicitly for the author and retain only exact author
+  // credits before OCR title verification sees these works.
+  const [openLibrary, hardcover, prh, trusted] = await Promise.all([
+    searchOpenLibrary(`inauthor:${trimmed}`, signal).catch((error) => {
+      console.warn('Open Library scanner author bibliography unavailable.', error);
+      return { groups: [], totalItems: 0 };
+    }),
+    searchHardcoverWithBackoff(trimmed),
+    searchPrhWithBackoff(trimmed),
+    searchTrustedCatalogBaseline(trimmed).catch((error) => {
+      console.warn('Trusted catalog scanner author supplement failed.', error);
+      return { groups: [], totalItems: 0 };
+    }),
+  ]);
+
+  const requestedAuthor = normalizeText(trimmed);
+  const creditedToAuthor = (work: BookSearchWorkGroup) =>
+    work.authors.some((author) => normalizeText(author) === requestedAuthor);
+
+  const groups = hardenCatalogGroups([
+    ...openLibrary.groups,
+    ...hardcover.groups,
+    ...prh.groups,
+    ...trusted.groups,
+  ]).filter(creditedToAuthor);
+
+  return { groups, totalItems: groups.length };
+}
+
 export async function searchScannerCoverCatalog(
   query: string,
   signal?: AbortSignal,
