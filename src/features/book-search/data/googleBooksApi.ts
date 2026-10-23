@@ -659,8 +659,19 @@ export async function searchScannerAuthorCatalog(
   ]);
 
   const requestedAuthor = normalizeText(trimmed);
+  const requestedWords = requestedAuthor.split(/\s+/).filter(Boolean);
   const creditedToAuthor = (work: BookSearchWorkGroup) =>
-    work.authors.some((author) => normalizeText(author) === requestedAuthor);
+    work.authors.some((author) => {
+      const normalizedAuthor = normalizeText(author);
+      if (normalizedAuthor === requestedAuthor) return true;
+      // Scanner surname recovery intentionally supplies only the surname when
+      // OCR damages a short given name. Treat a single requested token as a
+      // complete author-name token, never a substring (REID matches Ava Reid,
+      // but not Reidinger). Final cover verification still requires both the
+      // catalog surname and approximate full title from the photograph.
+      if (requestedWords.length !== 1 || requestedWords[0].length < 4) return false;
+      return normalizedAuthor.split(/\s+/).includes(requestedWords[0]);
+    });
 
   const groups = hardenCatalogGroups([
     ...openLibrary.groups,
