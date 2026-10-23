@@ -14,7 +14,6 @@ import {
   searchGoogleBooks,
   searchGoogleBooksAuthorPage,
   searchScannerCoverCatalog,
-  searchScannerCoverTitleCatalog,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { isValidCatalogIsbn, selectCatalogIsbnFromBarcodes } from '../features/book-search/isbnResolution';
