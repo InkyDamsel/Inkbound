@@ -825,19 +825,23 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           }))].slice(0, 3);
 
         for (const authorQuery of authorRecoveryQueries) {
-          let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
+          let authorGroups: BookSearchWorkGroup[];
           try {
-            response = await searchScannerCoverCatalog(authorQuery);
-            recordScannerResponse(`author-recovery:${authorQuery}`, response.groups);
+            // This recovery has author-shaped evidence, so use the existing
+            // author catalog path instead of feeding a person's name into the
+            // title-oriented cover search.
+            const response = await searchGoogleBooksAuthorPage(authorQuery, 0);
+            authorGroups = response.groups;
+            recordScannerResponse(`author-recovery:${authorQuery}`, authorGroups);
           } catch (error) {
             scannerDiagnostics.push(`author-recovery:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
             continue;
           }
-          const recovered = response.groups.find((work) =>
+          const recovered = authorGroups.find((work) =>
             coverApproximatelyMatchesWork(lines, work.title, work.authors));
           if (recovered) {
             best = { work: recovered, score: 2.25 };
-            found = response.groups;
+            found = authorGroups;
             break;
           }
         }
