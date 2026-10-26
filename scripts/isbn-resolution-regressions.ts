@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { combineIsbnProviderGroups, equivalentCatalogIsbns, selectCatalogIsbnFromBarcodes } from '../src/features/book-search/isbnResolution';
+import { collectPrintedIsbnEvidence, combineIsbnProviderGroups, equivalentCatalogIsbns, extractValidPrintedIsbns, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { selectExactIsbnEdition } from '../src/features/book-search/catalogHardening';
 import type { BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 
@@ -89,6 +89,36 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
     null,
     'Two unrelated valid ISBNs in one frame must be treated as ambiguous instead of guessed.',
   );
+}
+
+
+{
+  const walmartPages = [
+    {
+      lines: ['Copyright © 2023 by S. J. Tilly', 'ISBN 978-1-68281-641-7', 'Walmart Edition ISBN 978-1-68281-818-3', 'First Edition October 2026'],
+      standard: '9781682816417',
+      walmart: '9781682818183',
+    },
+    {
+      lines: ['Entangled Publishing / Amara', 'ISBN 978-1-64937-982-5', 'Walmart Edition ISBN 978-1-68281-817-6', 'First Edition October 2026'],
+      standard: '9781649379825',
+      walmart: '9781682818176',
+    },
+  ];
+  for (const fixture of walmartPages) {
+    const evidence = collectPrintedIsbnEvidence(fixture.lines);
+    assert.ok(evidence.some((item) => item.isbn === fixture.standard && item.priority === 2),
+      'Copyright-page scanner must retain the standard ISBN as companion evidence.');
+    assert.ok(evidence.some((item) => item.isbn === fixture.walmart && item.priority === 3),
+      'Explicit Walmart Edition ISBN must be recognized as retailer-edition evidence.');
+    assert.equal(selectPreferredPrintedIsbn(evidence), fixture.walmart,
+      'Explicit Walmart Edition ISBN must outrank the generic ISBN on the same copyright page.');
+  }
+
+  assert.deepEqual(extractValidPrintedIsbns('ISBN 978L-68281-641-7'), ['9781682816417'],
+    'Bounded OCR repair should recover a checksum-valid ISBN from a common 1/L confusion.');
+  assert.deepEqual(extractValidPrintedIsbns('ISBN 978-1-68281-641-8'), [],
+    'Copyright OCR must reject a plausible-looking ISBN when its checksum is invalid.');
 }
 
 console.log('Inkbound ISBN resolution regressions passed.');
