@@ -43,7 +43,7 @@ interface LibraryScreenProps {
 }
 
 type ViewMode = 'grid' | 'list';
-type SortMode = 'recent' | 'finished-newest' | 'finished-oldest' | 'title' | 'author' | 'rating' | 'progress';
+type SortMode = 'recent' | 'finished-newest' | 'finished-oldest' | 'title' | 'author' | 'rating' | 'progress' | 'rereads';
 
 const LIBRARY_BANNER_ASSET = '/assets/library/cozy-library-background.png';
 const LIBRARY_PAGE_SIZE = 24;
@@ -75,7 +75,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ownershipFilter, setOwnershipFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
-  const totalRereads = useMemo(() => books.reduce((sum, book) => sum + Math.max(0, book.rereadCount ?? 0), 0), [books]);
+  const rereadBooks = useMemo(() => books.filter((book) => (book.rereadCount ?? 0) > 0), [books]);
+  const totalRereads = useMemo(() => rereadBooks.reduce((sum, book) => sum + Math.max(0, book.rereadCount ?? 0), 0), [rereadBooks]);
+  const mostReread = useMemo(() => rereadBooks.reduce<UserBookRecord | null>((best, book) => !best || (book.rereadCount ?? 0) > (best.rereadCount ?? 0) ? book : best, null), [rereadBooks]);
   const compareFinished = (a: UserBookRecord, b: UserBookRecord, oldestFirst: boolean) => {
     const time = (value?: string) => {
       if (!value?.trim()) return null;
@@ -122,7 +124,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   useEffect(() => {
     setPage(1);
-  }, [activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+  }, [section, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const updateLibraryBook = onUpdateBook ?? ((book: UserBookRecord) => replaceCanonicalBook(books, book));
   const allGenres = useMemo(() => Array.from(new Set(books.flatMap((book) => book.work.genres))).sort(), [books]);
@@ -140,7 +142,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
     if (tagFilter !== 'all' && !allTags.some(([normalized]) => normalized === tagFilter)) setTagFilter('all');
   }, [allTags, tagFilter]);
 
-  const filteredBooks = useMemo(() => books.filter((book) => {
+  const filteredBooks = useMemo(() => (section === 'rereads' ? rereadBooks : books).filter((book) => {
     if (activeCategory.startsWith('status:')) {
       const statusId = activeCategory.slice('status:'.length);
       if (book.status !== 'custom' || book.customReadingStatusId !== statusId) return false;
@@ -170,7 +172,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         ? (b.rating || 0) - (a.rating || 0)
         : sortBy === 'progress'
           ? getCanonicalProgressPercentage(b) - getCanonicalProgressPercentage(a)
-          : compareRecentlyAddedBooks(a, b)), [books, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
+          : sortBy === 'rereads'
+            ? (b.rereadCount ?? 0) - (a.rereadCount ?? 0)
+            : compareRecentlyAddedBooks(a, b)), [books, rereadBooks, section, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -208,9 +212,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         </div>
       </section>
 
-      <nav className="inkbound-panel grid grid-cols-4 gap-1 p-1.5" aria-label="Library sections">
-        {(['books', 'series', 'collections', 'loans'] as LibrarySection[]).map((item) => <button key={item} type="button" onClick={() => switchSection(item)} className={`flex min-h-11 min-w-0 items-center justify-center rounded-xl px-1 text-[10px] font-bold capitalize leading-none transition min-[390px]:px-1.5 min-[390px]:text-[11px] sm:px-3 sm:text-sm ${section === item ? 'bg-[#c5a059] text-[#171015]' : 'text-[#b9acba] hover:bg-white/5 hover:text-[#f4efe6]'}`}>{item}</button>)}
+      <nav className="inkbound-panel grid grid-cols-5 gap-1 p-1.5" aria-label="Library sections">
+        {(['books', 'rereads', 'series', 'collections', 'loans'] as LibrarySection[]).map((item) => <button key={item} type="button" onClick={() => switchSection(item)} className={`flex min-h-11 min-w-0 items-center justify-center rounded-xl px-1 text-[10px] font-bold capitalize leading-none transition min-[390px]:px-1.5 min-[390px]:text-[11px] sm:px-3 sm:text-sm ${section === item ? 'bg-[#c5a059] text-[#171015]' : 'text-[#b9acba] hover:bg-white/5 hover:text-[#f4efe6]'}`}>{item}</button>)}
       </nav>
+
+      {section === 'rereads' && <section className="grid gap-3 sm:grid-cols-3"><div className="inkbound-panel p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#ad9fac]">Books reread</p><p className="mt-2 font-serif text-3xl text-[#f4efe6]">{rereadBooks.length.toLocaleString()}</p></div><div className="inkbound-panel p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#ad9fac]">Total rereads</p><p className="mt-2 font-serif text-3xl text-[#f4efe6]">{totalRereads.toLocaleString()}</p></div><div className="inkbound-panel p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#ad9fac]">Most reread</p><p className="mt-2 line-clamp-1 font-serif text-xl text-[#f4efe6]">{mostReread?.work.title ?? '—'}</p>{mostReread && <p className="mt-1 text-xs text-[#e2bd66]">Read {(mostReread.rereadCount ?? 0) + 1}×</p>}</div></section>}
 
       {section === 'series' ? (
         <SeriesLibraryPanel books={books} onSelectBook={onSelectBook} />
@@ -235,7 +241,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)} className="inkbound-select"><option value="all">All genres</option>{allGenres.map((genre) => <option key={genre}>{genre}</option>)}</select>
             <select value={ownershipFilter} onChange={(event) => setOwnershipFilter(event.target.value)} className="inkbound-select"><option value="all">Any ownership</option><optgroup label="Ownership">{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customOwnershipCategories.length > 0 && <optgroup label="Custom ownership">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>
             <select value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)} className="inkbound-select"><option value="all">Any rating</option><option value="5">5 stars</option><option value="4">4+ stars</option><option value="3">3+ stars</option></select>
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select w-auto max-w-full min-w-0 sm:max-w-[260px]" aria-label="Sort library books"><option value="recent">Recently added</option><option value="finished-newest">Date finished (newest first)</option><option value="finished-oldest">Date finished (oldest first)</option><option value="title">Title</option><option value="author">Author</option><option value="rating">Rating</option><option value="progress">Progress</option></select>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select w-auto max-w-full min-w-0 sm:max-w-[260px]" aria-label="Sort library books"><option value="recent">Recently added</option><option value="finished-newest">Date finished (newest first)</option><option value="finished-oldest">Date finished (oldest first)</option><option value="title">Title</option><option value="author">Author</option><option value="rating">Rating</option><option value="progress">Progress</option>{section === 'rereads' && <option value="rereads">Most reread</option>}</select>
           </div>
 
           <div className="mt-4 flex justify-between border-t border-white/5 pt-4">
@@ -245,7 +251,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </div>}
         </section>
 
-        <div className="text-xs text-[#807482]">{filteredBooks.length.toLocaleString()} matching items · {books.length.toLocaleString()} total</div>
+        <div className="text-xs text-[#807482]">{filteredBooks.length.toLocaleString()} matching items · {(section === 'rereads' ? rereadBooks.length : books.length).toLocaleString()} total</div>
 
         {filteredBooks.length === 0 ? (
           <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another status, tag, reading type, format, ownership, or search.</p></div>
