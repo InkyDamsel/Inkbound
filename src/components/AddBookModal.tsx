@@ -615,13 +615,43 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Only accept checksum-valid values explicitly adjacent to an ISBN label.
       // Parse ISBNs per OCR line: joining lines used to consume adjacent edition
       // numbers and accidentally suppress all matches on retailer copyright pages.
-      const detectedIsbns = [...new Set(lines.flatMap((line) =>
-        [...line.matchAll(/(?:ISBN(?:-1[03])?\s*[:：]?\s*)(97[89][\d\s-]{9,20}\d|[\d\s-]{9,18}[\dX])/gi)]
-          .map((match) => normalizeIsbn(match[1]).slice(0, 13))
-          .filter(isValidCatalogIsbn)))];
+      type PrintedIsbnEvidence = { isbn: string; label: string; priority: number };
+      const printedIsbnEvidence: PrintedIsbnEvidence[] = [];
+      // ML Kit does not guarantee that "ISBN" and its digits stay on one OCR
+      // line. Inspect small neighboring-line windows so a clean copyright page
+      // remains useful even when the recognizer splits the label from the
+      // number. A checksum-valid ISBN is still mandatory.
+      for (let index = 0; index < lines.length; index += 1) {
+        const window = lines.slice(index, index + 3).join(' ');
+        if (!/isbn/i.test(window)) continue;
+        const compactCandidates = [...window.matchAll(/(?:97[89][\d\s-]{9,20}\d|\b\d[\d\s-]{8,18}[\dX]\b)/gi)]
+          .map((match) => normalizeIsbn(match[0]).slice(0, 13))
+          .filter(isValidCatalogIsbn);
+        for (const isbn of compactCandidates) {
+          const isbnPosition = window.replace(/[^0-9XxA-Za-z]+/g, ' ').toUpperCase().indexOf(isbn);
+          const normalizedWindow = window.toLowerCase();
+          const retailerLabel = /(?:walmart|target|exclusive|special|limited|collector'?s)\s+(?:edition\s+)?isbn/i.test(window);
+          printedIsbnEvidence.push({
+            isbn,
+            label: window,
+            priority: retailerLabel ? 3 : isbnPosition >= 0 ? 2 : 1,
+          });
+        }
+      }
+      const bestPrintedEvidence = [...new Map(
+        printedIsbnEvidence
+          .sort((left, right) => right.priority - left.priority)
+          .map((item) => [item.isbn, item]),
+      ).values()];
+      const detectedIsbns = bestPrintedEvidence.map((item) => item.isbn);
       if (detectedIsbns.length > 0) {
+        const highestPriority = Math.max(...bestPrintedEvidence.map((item) => item.priority));
+        const preferred = bestPrintedEvidence.filter((item) => item.priority === highestPriority);
         const selected = unresolvedIsbn && detectedIsbns.includes(unresolvedIsbn)
-          ? unresolvedIsbn : detectedIsbns.length === 1 ? detectedIsbns[0] : null;
+          ? unresolvedIsbn
+          : preferred.length === 1 && highestPriority >= 3
+            ? preferred[0].isbn
+            : detectedIsbns.length === 1 ? detectedIsbns[0] : null;
         if (selected) {
           if (selected !== unresolvedIsbn) await lookupScannedIsbn(selected);
           else setScannerMessage('Printed ISBN matches the scanned ISBN. Scan the front cover to identify this uncatalogued edition.');
