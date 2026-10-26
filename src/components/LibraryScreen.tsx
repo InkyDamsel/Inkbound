@@ -12,7 +12,7 @@ import {
   readCustomOwnershipCategories,
   type CustomOwnershipCategory,
 } from '../features/ownership/customOwnershipCategories';
-import { getCanonicalProgressPercentage } from '../features/reading/bookReadingState';
+import { getCanonicalProgressPercentage, getEffectiveRereadCount } from '../features/reading/bookReadingState';
 import {
   CUSTOM_READING_STATUSES_CHANGED_EVENT,
   CUSTOM_READING_STATUSES_KEY,
@@ -75,9 +75,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ownershipFilter, setOwnershipFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
-  const rereadBooks = useMemo(() => books.filter((book) => (book.rereadCount ?? 0) > 0), [books]);
-  const totalRereads = useMemo(() => rereadBooks.reduce((sum, book) => sum + Math.max(0, book.rereadCount ?? 0), 0), [rereadBooks]);
-  const mostReread = useMemo(() => rereadBooks.reduce<UserBookRecord | null>((best, book) => !best || (book.rereadCount ?? 0) > (best.rereadCount ?? 0) ? book : best, null), [rereadBooks]);
+  const rereadBooks = useMemo(() => books.filter((book) => (getEffectiveRereadCount(book)) > 0), [books]);
+  const totalRereads = useMemo(() => rereadBooks.reduce((sum, book) => sum + Math.max(0, getEffectiveRereadCount(book)), 0), [rereadBooks]);
+  const mostReread = useMemo(() => rereadBooks.reduce<UserBookRecord | null>((best, book) => !best || (getEffectiveRereadCount(book)) > (getEffectiveRereadCount(best)) ? book : best, null), [rereadBooks]);
   const compareFinished = (a: UserBookRecord, b: UserBookRecord, oldestFirst: boolean) => {
     const time = (value?: string) => {
       if (!value?.trim()) return null;
@@ -173,7 +173,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         : sortBy === 'progress'
           ? getCanonicalProgressPercentage(b) - getCanonicalProgressPercentage(a)
           : sortBy === 'rereads'
-            ? (b.rereadCount ?? 0) - (a.rereadCount ?? 0)
+            ? (getEffectiveRereadCount(b)) - (getEffectiveRereadCount(a))
             : compareRecentlyAddedBooks(a, b)), [books, rereadBooks, section, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
