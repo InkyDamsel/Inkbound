@@ -144,8 +144,8 @@ export function getEffectiveRereadCount(book: UserBookRecord): number {
 
 export function appendReadingCompletion(book: UserBookRecord, date = localDateKey(), source: ReadingCompletion['source'] = 'tracked'): UserBookRecord {
   const existing = getReadingCompletions(book);
-  const sameDate = existing.some((completion) => completion.date === date);
-  if (sameDate && book.status === 'finished') return book;
+  const latest = existing.at(-1);
+  if (latest?.date === date) return { ...book, readingCompletions: existing, rereadCount: Math.max(book.rereadCount ?? 0, Math.max(0, existing.length - 1)), dateFinished: date };
   const next: ReadingCompletion = { id: `completion-${book.id}-${date}-${existing.length + 1}`, date, source };
   const readingCompletions = [...existing, next];
   return { ...book, readingCompletions, rereadCount: Math.max(book.rereadCount ?? 0, Math.max(0, readingCompletions.length - 1)), dateFinished: date };
