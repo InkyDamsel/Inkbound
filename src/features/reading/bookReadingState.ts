@@ -95,14 +95,15 @@ export function getAverageBookProgress(books: UserBookRecord[]): number {
  */
 export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, date = localDateKey()): UserBookRecord {
   if (status === 'finished') {
-    return {
+    const finishedBook: UserBookRecord = {
       ...book,
       status,
       customReadingStatusId: undefined,
       progressPercentage: 100,
       dateStarted: book.dateStarted,
-      dateFinished: book.dateFinished ?? date,
+      dateFinished: date,
     };
+    return book.status === 'finished' ? finishedBook : appendReadingCompletion(finishedBook, date, 'manual');
   }
 
   if (status === 'tbr' || status === 'wishlist') {
