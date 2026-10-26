@@ -3,7 +3,7 @@ import { BarChart3, BookOpen, Clock3, Compass, Headphones, Lock, Moon, Repeat2, 
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
-import { getActiveEdition, getRereadCompletions } from '../features/reading/bookReadingState';
+import { getActiveEdition, getEffectiveRereadCount, getRereadCompletions } from '../features/reading/bookReadingState';
 import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
 import { getSessionDurationMinutes, getSessionPagesRead, isRecordedReadingActivity, localDateKey } from '../features/reading/sessionAnalytics';
 
@@ -68,6 +68,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     const trustworthyFinished = books.filter(hasTrustworthyFinishedHistory);
     const currentFinished = trustworthyFinished.filter((book) => range === 'all-time' || dateIsInCurrentRange(book.dateFinished));
     const previousFinished = range === 'all-time' ? [] : trustworthyFinished.filter((book) => dateIsInPreviousRange(book.dateFinished));
+    const lifetimeRereads = books.reduce((sum, book) => sum + getEffectiveRereadCount(book), 0);
     const allRereads = books.flatMap((book) => getRereadCompletions(book));
     const currentRereads = allRereads.filter((completion) => range === 'all-time' || dateIsInCurrentRange(completion.date));
     const previousRereads = range === 'all-time' ? [] : allRereads.filter((completion) => dateIsInPreviousRange(completion.date));
@@ -79,7 +80,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     } else {
       filteredSessions.forEach((session) => { const date = parseLocalDateKey(session.date); if (date) buckets[date.getMonth()] += getSessionDurationMinutes(session); });
     }
-    return { currentMinutes, previousMinutes, currentPages, previousPages, currentDays, previousDays, currentFinished, previousFinished, currentRereads, previousRereads, buckets };
+    return { currentMinutes, previousMinutes, currentPages, previousPages, currentDays, previousDays, currentFinished, previousFinished, lifetimeRereads, currentRereads, previousRereads, buckets };
   }, [books, filteredSessions, previousSessions, range, rangeWindow]);
 
   const insights = useMemo<InsightCard[]>(() => {
@@ -160,7 +161,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
           ['Books finished', analytics.currentFinished.length.toString(), range === 'all-time' ? 'Trustworthy history' : shortDelta(analytics.currentFinished.length, analytics.previousFinished.length)],
-          ['Rereads', analytics.currentRereads.length.toString(), range === 'all-time' ? 'Persisted history' : shortDelta(analytics.currentRereads.length, analytics.previousRereads.length)],
+          ['Rereads', (range === 'all-time' ? analytics.lifetimeRereads : analytics.currentRereads.length).toString(), range === 'all-time' ? 'Lifetime total' : analytics.lifetimeRereads > analytics.currentRereads.length ? `${analytics.lifetimeRereads} lifetime · ${analytics.currentRereads.length} dated here` : shortDelta(analytics.currentRereads.length, analytics.previousRereads.length)],
           ['Pages read', analytics.currentPages.toLocaleString(), range === 'all-time' ? 'Tracked sessions' : shortDelta(analytics.currentPages, analytics.previousPages)],
           ['Reading time', `${Math.floor(analytics.currentMinutes / 60)}h ${analytics.currentMinutes % 60}m`, range === 'all-time' ? 'Tracked sessions' : shortDelta(analytics.currentMinutes, analytics.previousMinutes)],
           ['Reading days', analytics.currentDays.toString(), range === 'all-time' ? 'Tracked activity' : shortDelta(analytics.currentDays, analytics.previousDays)],
