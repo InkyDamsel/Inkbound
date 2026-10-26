@@ -11,7 +11,7 @@ import {
   isRecordedReadingActivity,
   localDateKey,
 } from '../features/reading/sessionAnalytics';
-import { getActiveEdition } from '../features/reading/bookReadingState';
+import { getActiveEdition, getEffectiveRereadCount, getRereadCompletions } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { getAnnualReadingGoal } from '../features/reading/readingPreferences';
 import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
@@ -58,6 +58,9 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
     && book.dateFinished! >= reportStart
     && book.dateFinished! <= reportEnd
   ));
+  const reportRereads = filteredBooks.flatMap((book) => getRereadCompletions(book).filter((completion) => completion.date >= reportStart && completion.date <= reportEnd));
+  const rereadBooks = filteredBooks.filter((book) => getEffectiveRereadCount(book) > 0);
+  const totalRereads = filteredBooks.reduce((sum, book) => sum + getEffectiveRereadCount(book), 0);
   const tbrBooks = filteredBooks.filter((book) => book.status === 'tbr');
   const pausedBooks = filteredBooks.filter(
     (book) => book.status === 'paused' || book.status === 'dnf',
@@ -282,6 +285,8 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
               </h3>
               <dl className="space-y-2 text-xs">
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Finished in period</dt><dd className="font-bold text-emerald-400">{reportFinishedBooks.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Rereads in period</dt><dd className="font-bold text-[#e5c158]">{reportRereads.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Books reread / lifetime rereads</dt><dd className="font-bold text-[#f4efe6]">{rereadBooks.length} / {totalRereads}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Waiting in TBR now</dt><dd className="font-bold text-[#f4efe6]">{tbrBooks.length}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Paused or DNF now</dt><dd className="font-bold text-stone-300">{pausedBooks.length}</dd></div>
               </dl>
