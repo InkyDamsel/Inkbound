@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
-import { BarChart3, BookOpen, Clock3, Compass, Headphones, Lock, Moon, Sparkles, Target, TrendingUp } from 'lucide-react';
+import { BarChart3, BookOpen, Clock3, Compass, Headphones, Lock, Moon, Repeat2, Sparkles, Target, TrendingUp } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useUserPlan } from '../context/UserPlanContext';
-import { getActiveEdition } from '../features/reading/bookReadingState';
+import { getActiveEdition, getRereadCompletions } from '../features/reading/bookReadingState';
 import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
 import { getSessionDurationMinutes, getSessionPagesRead, isRecordedReadingActivity, localDateKey } from '../features/reading/sessionAnalytics';
 
@@ -68,6 +68,9 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     const trustworthyFinished = books.filter(hasTrustworthyFinishedHistory);
     const currentFinished = trustworthyFinished.filter((book) => range === 'all-time' || dateIsInCurrentRange(book.dateFinished));
     const previousFinished = range === 'all-time' ? [] : trustworthyFinished.filter((book) => dateIsInPreviousRange(book.dateFinished));
+    const allRereads = books.flatMap((book) => getRereadCompletions(book));
+    const currentRereads = allRereads.filter((completion) => range === 'all-time' || dateIsInCurrentRange(completion.date));
+    const previousRereads = range === 'all-time' ? [] : allRereads.filter((completion) => dateIsInPreviousRange(completion.date));
     const bucketCount = range === '30-days' ? 10 : range === '90-days' ? 12 : 12;
     const buckets = Array.from({ length: bucketCount }, () => 0);
     if (range !== 'all-time' && rangeWindow.cutoff) {
@@ -76,7 +79,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
     } else {
       filteredSessions.forEach((session) => { const date = parseLocalDateKey(session.date); if (date) buckets[date.getMonth()] += getSessionDurationMinutes(session); });
     }
-    return { currentMinutes, previousMinutes, currentPages, previousPages, currentDays, previousDays, currentFinished, previousFinished, buckets };
+    return { currentMinutes, previousMinutes, currentPages, previousPages, currentDays, previousDays, currentFinished, previousFinished, currentRereads, previousRereads, buckets };
   }, [books, filteredSessions, previousSessions, range, rangeWindow]);
 
   const insights = useMemo<InsightCard[]>(() => {
@@ -135,6 +138,7 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
       { id: 'genre-gravity', category: 'taste', eyebrow: 'Stories pulling you back', title: genre && genre[1] >= 2 ? `${genre[0]} keeps earning your attention` : 'Your dominant genre needs more evidence', body: genre && genre[1] >= 2 ? `${genre[0]} appears more often than any other genre among trustworthy finished-book records in ${rangeLabel}.` : 'Inkbound waits for repeated finished-book evidence before naming a dominant genre.', evidence: genre ? `${genre[1]} trustworthy finished books include ${genre[0]}.` : 'No reliable genre pattern is available yet.', icon: Compass },
       { id: 'genre-satisfaction', category: 'taste', eyebrow: 'Taste meets satisfaction', title: strongestRatedGenre ? `${strongestRatedGenre.name} is delivering your strongest ratings` : 'Your highest-satisfaction genre is still emerging', body: strongestRatedGenre ? 'This connects reliable finished-book history with the ratings you gave those books.' : 'Rate at least two trustworthy finished books in the same genre to form this signal.', evidence: strongestRatedGenre ? `${strongestRatedGenre.average.toFixed(1)} average across ${strongestRatedGenre.count} rated ${strongestRatedGenre.name} books.` : `${ratedBooks.length} reliable rated finishes are available.`, icon: Sparkles },
       { id: 'rating-pattern', category: 'taste', eyebrow: 'Overall satisfaction', title: ratedBooks.length < 3 ? 'Your satisfaction pattern needs more ratings' : avgRating >= 4.25 ? 'Your recent choices are landing exceptionally well' : avgRating >= 3.5 ? 'Your reading choices are mostly working for you' : 'Your ratings show more experimentation than certainty', body: 'Only rated books with trustworthy finished history are included.', evidence: ratedBooks.length ? `${avgRating.toFixed(1)} average rating across ${ratedBooks.length} reliable rated finishes.` : 'No reliable rated finishes in this range.', icon: Sparkles },
+      { id: 'reread-pattern', category: 'progress', eyebrow: 'Stories worth returning to', title: analytics.currentRereads.length ? `${analytics.currentRereads.length} reread${analytics.currentRereads.length === 1 ? '' : 's'} in ${rangeLabel}` : 'Your reread pattern is waiting', body: 'Rereads use persisted completion history only. Manual lifetime counts without dates are never placed into a time period.', evidence: allTime ? `${analytics.currentRereads.length} dated rereads are preserved in your reading history.` : comparisonText(analytics.currentRereads.length, analytics.previousRereads.length, 'rereads'), icon: Repeat2 },
       { id: 'completion-pattern', category: 'progress', eyebrow: 'Completion signal', title: lifecycleBooks.length < 3 ? 'Your completion pattern needs more active-reading history' : completedPercent >= 70 ? 'Finishing is a strong part of your reading pattern' : completedPercent >= 40 ? 'You balance finishing with exploration' : 'Your active shelf shows more exploration than completion', body: 'This ignores a giant unread import and only uses books represented by real sessions, native reading state, or trustworthy finish history.', evidence: lifecycleBooks.length ? `${finishedBooks.length} of ${lifecycleBooks.length} represented books are finished (${completedPercent}%).${!allTime ? ` Previous period: ${previousFinishedBooks.length} trustworthy finishes.` : ''}` : 'No reliable active-reading lifecycle books are represented.', icon: Target },
       { id: 'environment-signal', category: 'habits', eyebrow: 'Reading environment', title: location && location[1] >= 2 ? `${location[0]} is becoming a reliable reading setting` : 'Your reading-place pattern needs more evidence', body: 'Repeated locations come only from completed Inkbound sessions.', evidence: location ? `${location[1]} sessions were recorded at ${location[0]}${mood ? `; ${mood[0]} is the most logged mood` : ''}.` : 'No repeated session location is available.', icon: BookOpen },
       { id: 'format-signal', category: 'taste', eyebrow: 'Format mix', title: formatBooks.length < 3 ? 'Your format pattern needs more history' : audioShare >= 40 ? 'Audio is a major part of how you read' : audioShare >= 15 ? 'Audio gives your reading life a second lane' : 'Your reading is led by print and ebooks', body: 'This uses active editions only for books represented by tracked activity or trustworthy finished history; imported metadata marked for review is excluded.', evidence: formatBooks.length ? `${audiobookBooks.length} of ${formatBooks.length} reliable represented books are audiobooks (${audioShare}%).` : 'No reliable represented formats are available.', icon: Headphones },
@@ -153,9 +157,10 @@ export const ReadingInsightsScreen: React.FC<ReadingInsightsScreenProps> = ({ bo
 
       {!isPremium && <section className="inkbound-panel rounded-3xl p-6 md:p-8"><div className="mx-auto max-w-2xl text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ink-surface-soft)] text-[var(--ink-gold-bright)]"><Lock className="h-6 w-6" /></span><h3 className="mt-5 font-serif text-3xl text-[var(--ink-ivory)]">Unlock the patterns behind your reading</h3><p className="mt-3 text-sm leading-7 text-[var(--ink-muted)]">Premium compares reading periods, connects taste with ratings, tracks momentum, and only surfaces conclusions when your history has enough evidence.</p><button type="button" onClick={() => openUpgradeModal('Unlock Premium Reading Insights')} className="quiet-shelf-primary-action mx-auto mt-6 justify-center"><Sparkles /> Unlock Reading Insights</button></div></section>}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
           ['Books finished', analytics.currentFinished.length.toString(), range === 'all-time' ? 'Trustworthy history' : shortDelta(analytics.currentFinished.length, analytics.previousFinished.length)],
+          ['Rereads', analytics.currentRereads.length.toString(), range === 'all-time' ? 'Persisted history' : shortDelta(analytics.currentRereads.length, analytics.previousRereads.length)],
           ['Pages read', analytics.currentPages.toLocaleString(), range === 'all-time' ? 'Tracked sessions' : shortDelta(analytics.currentPages, analytics.previousPages)],
           ['Reading time', `${Math.floor(analytics.currentMinutes / 60)}h ${analytics.currentMinutes % 60}m`, range === 'all-time' ? 'Tracked sessions' : shortDelta(analytics.currentMinutes, analytics.previousMinutes)],
           ['Reading days', analytics.currentDays.toString(), range === 'all-time' ? 'Tracked activity' : shortDelta(analytics.currentDays, analytics.previousDays)],
