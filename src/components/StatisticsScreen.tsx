@@ -285,8 +285,9 @@ export const StatisticsScreen: React.FC<StatisticsScreenProps> = ({ books, sessi
               </h3>
               <dl className="space-y-2 text-xs">
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Finished in period</dt><dd className="font-bold text-emerald-400">{reportFinishedBooks.length}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Rereads in period</dt><dd className="font-bold text-[#e5c158]">{reportRereads.length}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-stone-400">Books reread / lifetime rereads</dt><dd className="font-bold text-[#f4efe6]">{rereadBooks.length} / {totalRereads}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Dated rereads in period</dt><dd className="font-bold text-[#e5c158]">{reportRereads.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Books reread</dt><dd className="font-bold text-[#f4efe6]">{rereadBooks.length}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-stone-400">Lifetime rereads</dt><dd className="font-bold text-[#f4efe6]">{totalRereads}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Waiting in TBR now</dt><dd className="font-bold text-[#f4efe6]">{tbrBooks.length}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-stone-400">Paused or DNF now</dt><dd className="font-bold text-stone-300">{pausedBooks.length}</dd></div>
               </dl>
