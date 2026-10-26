@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Share2, Sparkles } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { getReadingCompletions } from '../features/reading/bookReadingState';
+import { getEffectiveRereadCount } from '../features/reading/bookReadingState';
 import {
   canonicalReadingDateKey,
   getTrustworthyFinishedBooks,
@@ -110,9 +110,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     ? preferences.month
     : availableMonths[availableMonths.length - 1];
   const selectedIndex = Math.max(0, availableMonths.indexOf(selectedMonth));
-  const shelfEntries = books.flatMap((book) => getReadingCompletions(book).map((completion, index) => ({ book, completion, readNumber: index + 1 }))).filter((entry) => readingMonthKey(entry.completion.date) === selectedMonth);
-  const shelfBooks = shelfEntries.map((entry) => entry.book);
-  const readNumberByBookId = new Map(shelfEntries.map((entry) => [entry.book.id, entry.readNumber]));
+  const shelfBooks = finishedBooks.filter((book) => readingMonthKey(book.dateFinished) === selectedMonth);
   const booksFinishedThisMonth = shelfBooks;
   const shelfRowCount = Math.max(MINIMUM_SHELF_ROWS, Math.ceil(shelfBooks.length / BOOKS_PER_SHELF));
   const shelfPageCount = Math.max(1, Math.ceil(shelfRowCount / SHELVES_PER_PAGE));
@@ -283,8 +281,8 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
           context.fillRect(x + bookWidth - 48, shelfY - 25, 48, 25);
           context.fillStyle = '#f8d889';
           context.font = '700 14px Arial, sans-serif';
-          const readNumber = readNumberByBookId.get(book.id) ?? 1;
-          context.fillText(`★ ${book.rating}${readNumber > 1 ? ` ×${readNumber}` : ''}`, x + bookWidth - 43, shelfY - 8);
+          const totalReads = getEffectiveRereadCount(book) + 1;
+          context.fillText(`★ ${book.rating}${totalReads > 1 ? ` · Read ×${totalReads}` : ''}`, x + bookWidth - 43, shelfY - 8);
         }
       }
 
@@ -476,7 +474,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                             </span>
 
                             {preferences.showRatings && book.rating && (
-                              <span className="absolute -bottom-1 right-0 z-30 rounded-md border border-white/10 bg-black/75 px-1.5 py-0.5 text-[8px] font-bold text-amber-200 shadow">★ {book.rating}{(readNumberByBookId.get(book.id) ?? 1) > 1 ? ` ×${readNumberByBookId.get(book.id)}` : ''}</span>
+                              <span className="absolute -bottom-1 right-0 z-30 rounded-md border border-white/10 bg-black/75 px-1.5 py-0.5 text-[8px] font-bold text-amber-200 shadow">★ {book.rating}{getEffectiveRereadCount(book) > 0 ? ` · Read ×${getEffectiveRereadCount(book) + 1}` : ''}</span>
                             )}
                             {isNewThisMonth && highlightNew && (
                               <span className="absolute -top-2 right-0 z-30 inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/50 bg-[var(--ink-gold-bright)] text-[8px] font-black text-[#281b13] shadow-[0_0_12px_rgba(218,178,96,.55)]" title="Finished this month">+</span>
