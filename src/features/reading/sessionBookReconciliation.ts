@@ -1,5 +1,5 @@
 import type { ReadingSession, UserBookRecord } from '../../types';
-import { getActiveEdition } from './bookReadingState';
+import { appendReadingCompletion, getActiveEdition } from './bookReadingState';
 import { localDateKey } from './sessionAnalytics';
 
 export function sessionSortKey(session: ReadingSession): string {
@@ -50,22 +50,17 @@ export function applySessionProgressToBook(
       ? Math.min(100, Math.round((completed / total!) * 100))
       : book.progressPercentage;
 
-  return {
+  const updated: UserBookRecord = {
     ...book,
     progressPages: nextPages,
     progressMinutes: nextMinutes,
     progressPercentage,
     status: staysFinished ? 'finished' : 'currently-reading',
     dateStarted: book.dateStarted ?? session.date,
-    dateFinished: reachedEnd
-      ? book.dateFinished ?? session.date
-      : book.status === 'finished'
-        ? book.dateFinished
-        : undefined,
-    lastSessionDate: !book.lastSessionDate || session.date > book.lastSessionDate
-      ? session.date
-      : book.lastSessionDate,
+    dateFinished: reachedEnd ? session.date : book.status === 'finished' ? book.dateFinished : undefined,
+    lastSessionDate: !book.lastSessionDate || session.date > book.lastSessionDate ? session.date : book.lastSessionDate,
   };
+  return reachedEnd && book.status !== 'finished' ? appendReadingCompletion(updated, session.date, 'tracked') : updated;
 }
 
 /**
