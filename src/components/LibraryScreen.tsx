@@ -75,6 +75,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ownershipFilter, setOwnershipFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
+  const totalRereads = useMemo(() => books.reduce((sum, book) => sum + Math.max(0, book.rereadCount ?? 0), 0), [books]);
   const compareFinished = (a: UserBookRecord, b: UserBookRecord, oldestFirst: boolean) => {
     const time = (value?: string) => {
       if (!value?.trim()) return null;
@@ -203,7 +204,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(9,8,18,.88),rgba(9,8,18,.36))]" />
         <div className="relative z-10 flex min-h-[260px] flex-col justify-between gap-6 p-6 sm:p-8 xl:flex-row xl:items-end">
           <div className="max-w-2xl rounded-3xl border border-white/10 bg-black/25 p-5 backdrop-blur-[3px]"><span className="text-xs font-bold uppercase tracking-[0.22em] text-[#e0c77c]">Your personal collection</span><h1 className="mt-2 font-serif text-4xl text-white">My Library</h1><p className="mt-2 text-sm text-white/75">Browse everything you read, keep series in order, and organize personal collections.</p></div>
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-3"><div className="rounded-full border border-white/15 bg-black/25 px-4 py-2 text-xs text-white/75"><b className="text-white">{books.length}</b> items</div><div className="flex items-center gap-1.5 rounded-full border border-[#c5a059]/35 bg-black/25 px-4 py-2 text-xs font-bold text-[#e2bd66]"><Sparkles className="h-3.5 w-3.5" />Unlimited Library</div><button type="button" onClick={onOpenAddBook} className="quiet-shelf-primary-action"><Plus className="h-4 w-4" />Add Reading Material</button></div>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-3"><div className="rounded-full border border-white/15 bg-black/25 px-4 py-2 text-xs text-white/75"><b className="text-white">{books.length.toLocaleString()}</b> items</div>{totalRereads > 0 && <div className="rounded-full border border-white/15 bg-black/25 px-4 py-2 text-xs text-white/75"><b className="text-white">{totalRereads.toLocaleString()}</b> reread{totalRereads === 1 ? '' : 's'}</div>}<div className="flex items-center gap-1.5 rounded-full border border-[#c5a059]/35 bg-black/25 px-4 py-2 text-xs font-bold text-[#e2bd66]"><Sparkles className="h-3.5 w-3.5" />Unlimited Library</div><button type="button" onClick={onOpenAddBook} className="quiet-shelf-primary-action"><Plus className="h-4 w-4" />Add Reading Material</button></div>
         </div>
       </section>
 
