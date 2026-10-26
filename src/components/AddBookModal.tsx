@@ -617,25 +617,36 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // numbers and accidentally suppress all matches on retailer copyright pages.
       type PrintedIsbnEvidence = { isbn: string; label: string; priority: number };
       const printedIsbnEvidence: PrintedIsbnEvidence[] = [];
-      // ML Kit does not guarantee that "ISBN" and its digits stay on one OCR
-      // line. Inspect small neighboring-line windows so a clean copyright page
-      // remains useful even when the recognizer splits the label from the
-      // number. A checksum-valid ISBN is still mandatory.
-      for (let index = 0; index < lines.length; index += 1) {
-        const window = lines.slice(index, index + 3).join(' ');
-        if (!/isbn/i.test(window)) continue;
-        const compactCandidates = [...window.matchAll(/(?:97[89][\d\s-]{9,20}\d|\b\d[\d\s-]{8,18}[\dX]\b)/gi)]
+      const extractValidIsbns = (value: string) =>
+        [...value.matchAll(/(?:97[89][\d\s-]{9,20}\d|\b\d[\d\s-]{8,18}[\dX]\b)/gi)]
           .map((match) => normalizeIsbn(match[0]).slice(0, 13))
           .filter(isValidCatalogIsbn);
-        for (const isbn of compactCandidates) {
-          const isbnPosition = window.replace(/[^0-9XxA-Za-z]+/g, ' ').toUpperCase().indexOf(isbn);
-          const normalizedWindow = window.toLowerCase();
-          const retailerLabel = /(?:walmart|target|exclusive|special|limited|collector'?s)\s+(?:edition\s+)?isbn/i.test(window);
+
+      // First preserve line-level label association. This lets an explicitly
+      // printed retailer/special-edition ISBN outrank the generic ISBN on the
+      // same copyright page without guessing which number belongs to which.
+      for (const line of lines) {
+        if (!/isbn/i.test(line)) continue;
+        const directIsbns = extractValidIsbns(line);
+        const retailerLabel = /(?:walmart|target|exclusive|special|limited|collector'?s)\s+(?:edition\s+)?isbn/i.test(line);
+        for (const isbn of directIsbns) {
           printedIsbnEvidence.push({
             isbn,
-            label: window,
-            priority: retailerLabel ? 3 : isbnPosition >= 0 ? 2 : 1,
+            label: line,
+            priority: retailerLabel ? 3 : 2,
           });
+        }
+      }
+
+      // ML Kit can split "ISBN" and its digits across neighboring OCR lines.
+      // Recover those cases only as lower-priority evidence; never let a broad
+      // window steal the retailer label from a different ISBN on the page.
+      for (let index = 0; index < lines.length; index += 1) {
+        if (!/isbn/i.test(lines[index])) continue;
+        const window = lines.slice(index, index + 2).join(' ');
+        for (const isbn of extractValidIsbns(window)) {
+          if (printedIsbnEvidence.some((item) => item.isbn === isbn)) continue;
+          printedIsbnEvidence.push({ isbn, label: window, priority: 1 });
         }
       }
       const bestPrintedEvidence = [...new Map(
