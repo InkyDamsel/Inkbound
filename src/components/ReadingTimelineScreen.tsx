@@ -14,10 +14,12 @@ import {
   Trash2,
   Undo2,
   X,
+  Repeat2,
 } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { hasTrustworthyFinishedHistory, isImportedBook } from '../features/reading/inkboundActivity';
+import { getReadingCompletions } from '../features/reading/bookReadingState';
 import {
   getSessionDurationMinutes,
   getSessionListeningMinutes,
@@ -31,7 +33,7 @@ interface ReadingTimelineScreenProps {
   onSelectBook: (book: UserBookRecord) => void;
 }
 
-type TimelineFilter = 'all' | 'books' | 'sessions' | 'reviews' | 'quotes' | 'memories';
+type TimelineFilter = 'all' | 'books' | 'rereads' | 'sessions' | 'reviews' | 'quotes' | 'memories';
 type TimelineEventType = Exclude<TimelineFilter, 'all'>;
 
 interface ManualMemory {
@@ -66,6 +68,7 @@ const UNDO_DELETE_MS = 7000;
 const filterOptions: Array<{ id: TimelineFilter; label: string }> = [
   { id: 'all', label: 'Everything' },
   { id: 'books', label: 'Books' },
+  { id: 'rereads', label: 'Rereads' },
   { id: 'sessions', label: 'Sessions' },
   { id: 'reviews', label: 'Reviews' },
   { id: 'quotes', label: 'Quotes' },
@@ -74,6 +77,7 @@ const filterOptions: Array<{ id: TimelineFilter; label: string }> = [
 
 const eventIcon = {
   books: BookOpen,
+  rereads: Repeat2,
   sessions: Clock3,
   reviews: MessageSquareText,
   quotes: Quote,
@@ -189,6 +193,21 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
           meta: book.rating ? `${book.rating.toFixed(1)} stars` : 'Finished book',
         });
       }
+
+      const completions = getReadingCompletions(book);
+      completions.slice(1).forEach((completion, rereadIndex) => {
+        const rereadDate = normalizeDate(completion.date);
+        if (!rereadDate) return;
+        nextEvents.push({
+          id: `reread-${book.id}-${completion.id}`,
+          date: rereadDate.toISOString(),
+          type: 'rereads',
+          title: `Reread ${book.work.title}`,
+          description: `Completed read #${rereadIndex + 2} of ${book.work.title}.`,
+          bookId: book.id,
+          meta: `Read ×${rereadIndex + 2}`,
+        });
+      });
 
       // Imported reviews and quotes do not currently carry their own provenance
       // timestamps. Showing them on a finish/session/add date would manufacture a
