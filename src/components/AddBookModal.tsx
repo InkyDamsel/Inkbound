@@ -664,6 +664,36 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             ? preferred[0].isbn
             : detectedIsbns.length === 1 ? detectedIsbns[0] : null;
         if (selected) {
+          const selectedEvidence = bestPrintedEvidence.find((item) => item.isbn === selected);
+          // Retailer exclusives are often indexed later than the standard
+          // edition printed beside them on the same copyright page. Try the
+          // exact retailer ISBN first. If catalogs do not know it yet, use a
+          // companion ISBN from THIS photograph to identify the work while
+          // preserving the retailer ISBN as unresolved physical-edition data.
+          if (selectedEvidence?.priority === 3 && detectedIsbns.length > 1) {
+            const exactRetailer = await resolveCatalogIsbn(selected);
+            if (!exactRetailer) {
+              for (const companionIsbn of detectedIsbns.filter((isbn) => isbn !== selected)) {
+                const companion = await resolveCatalogIsbn(companionIsbn);
+                if (!companion) continue;
+                const companionWork = await recoverMissingScanAuthor(companion.work);
+                const hasVerifiedAuthor = companionWork.authors.some((author) => {
+                  const normalized = normalizeAuthorName(author);
+                  return Boolean(normalized) && normalized !== 'unknown author';
+                });
+                if (!companionWork.title.trim() || !hasVerifiedAuthor) continue;
+                setUnresolvedIsbn(selected);
+                setScannerRecoveryTitle(companionWork.title);
+                setScannerRecoveryAuthor(companionWork.authors.join(', '));
+                setScannerEditionOptions([companionWork]);
+                setScannerError(null);
+                setScannerMessage(
+                  `Identified “${companionWork.title}” from the companion ISBN printed on this edition. The retailer ISBN ${selected} is preserved but not yet verified by a catalog; review the matching edition below.`,
+                );
+                return;
+              }
+            }
+          }
           if (selected !== unresolvedIsbn) await lookupScannedIsbn(selected);
           else setScannerMessage('Printed ISBN matches the scanned ISBN. Scan the front cover to identify this uncatalogued edition.');
           return;
