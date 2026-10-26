@@ -617,10 +617,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // numbers and accidentally suppress all matches on retailer copyright pages.
       type PrintedIsbnEvidence = { isbn: string; label: string; priority: number };
       const printedIsbnEvidence: PrintedIsbnEvidence[] = [];
-      const extractValidIsbns = (value: string) =>
-        [...value.matchAll(/(?:97[89][\d\s-]{9,20}\d|\b\d[\d\s-]{8,18}[\dX]\b)/gi)]
-          .map((match) => normalizeIsbn(match[0]).slice(0, 13))
-          .filter(isValidCatalogIsbn);
+      const extractValidIsbns = (value: string) => {
+        // OCR frequently substitutes punctuation between otherwise-correct
+        // ISBN digits (for example 978.1-68281-641-7). Capture a bounded
+        // ISBN-shaped span, normalize separators away, and trust it only when
+        // the normalized ISBN passes its checksum.
+        const candidates = [
+          ...value.matchAll(/97[89](?:[^0-9A-Za-z]{0,3}\d){10}/gi),
+          ...value.matchAll(/\b\d(?:[^0-9A-Za-z]{0,3}\d){8}(?:[^0-9A-Za-z]{0,3}[\dX])\b/gi),
+        ];
+        return [...new Set(candidates
+          .map((match) => normalizeIsbn(match[0]))
+          .filter((isbn) => (isbn.length === 13 || isbn.length === 10) && isValidCatalogIsbn(isbn)))];
+      };
 
       // First preserve line-level label association. This lets an explicitly
       // printed retailer/special-edition ISBN outrank the generic ISBN on the
