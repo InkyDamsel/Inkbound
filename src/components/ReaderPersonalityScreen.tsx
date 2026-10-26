@@ -3,7 +3,7 @@ import { BookOpen, Clock3, Compass, Headphones, Moon, Sparkles, Sunrise, Layers3
 import { ReadingSession, UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getSessionDurationMinutes } from '../features/reading/sessionAnalytics';
-import { getActiveEdition } from '../features/reading/bookReadingState';
+import { getActiveEdition, getEffectiveRereadCount } from '../features/reading/bookReadingState';
 import { hasTrustworthyFinishedHistory, isImportedBook, isInkboundFinishedBook } from '../features/reading/inkboundActivity';
 
 type PersonalityView = 'overview' | 'traits' | 'evidence';
@@ -119,6 +119,9 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
     }, {});
     const repeatBooks = Object.values(repeatSessionBooks).filter((count) => count >= 3).length;
 
+    const rereadBooks = books.filter((book) => getEffectiveRereadCount(book) > 0);
+    const totalRereads = rereadBooks.reduce((sum, book) => sum + getEffectiveRereadCount(book), 0);
+
     const trustedImportedHistory = completionBooks.filter((book) =>
       isImportedBook(book) && hasTrustworthyFinishedHistory(book),
     ).length;
@@ -187,6 +190,13 @@ export const ReaderPersonalityScreen: React.FC<ReaderPersonalityScreenProps> = (
         score: Math.min(100, activeBooks * 25),
         evidence: `${activeBooks} ${activeBooks === 1 ? 'book is' : 'books are'} currently active in Inkbound reading behavior. Bulk-imported currently-reading statuses do not count until Inkbound sees activity.`,
         sampleSize: activeBooks, confidence: confidenceFor(activeBooks, 4, 7), source: 'Inkbound activity', icon: Repeat2,
+      },
+      {
+        id: 'rereader', name: 'Comfort Rereader',
+        description: 'Some stories are worth returning to again and again.',
+        score: finished.length ? Math.min(100, Math.round((rereadBooks.length / finished.length) * 100)) : 0,
+        evidence: rereadBooks.length ? `${rereadBooks.length} books have been reread ${totalRereads} total times. Only persisted reread history or explicit reread counts contribute.` : 'No persisted rereads are recorded yet.',
+        sampleSize: totalRereads, confidence: confidenceFor(totalRereads, 4, 10), source: 'Inkbound activity', icon: Repeat2,
       },
       {
         id: 'reading-rhythm', name: 'Reading Regular',
