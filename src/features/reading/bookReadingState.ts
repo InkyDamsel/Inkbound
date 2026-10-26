@@ -1,4 +1,4 @@
-import type { Edition, ReadingStatus, UserBookRecord } from '../../types';
+import type { Edition, ReadingCompletion, ReadingStatus, UserBookRecord } from '../../types';
 import { localDateKey } from './sessionAnalytics';
 
 export interface BookReadingState {
@@ -123,4 +123,29 @@ export function withReadingStatus(book: UserBookRecord, status: ReadingStatus, d
     dateStarted: status === 'currently-reading' ? book.dateStarted ?? date : book.dateStarted,
     dateFinished: undefined,
   };
+}
+
+
+export function getReadingCompletions(book: UserBookRecord): ReadingCompletion[] {
+  const explicit = (book.readingCompletions ?? []).filter((completion) => Boolean(completion.date));
+  if (explicit.length > 0) return [...explicit].sort((a, b) => a.date.localeCompare(b.date));
+  if (book.dateFinished) return [{ id: `legacy-${book.id}-${book.dateFinished}`, date: book.dateFinished, source: 'legacy-finish' }];
+  return [];
+}
+
+export function getRereadCompletions(book: UserBookRecord): ReadingCompletion[] {
+  return getReadingCompletions(book).slice(1);
+}
+
+export function getEffectiveRereadCount(book: UserBookRecord): number {
+  return Math.max(Math.max(0, book.rereadCount ?? 0), getRereadCompletions(book).length);
+}
+
+export function appendReadingCompletion(book: UserBookRecord, date = localDateKey(), source: ReadingCompletion['source'] = 'tracked'): UserBookRecord {
+  const existing = getReadingCompletions(book);
+  const sameDate = existing.some((completion) => completion.date === date);
+  if (sameDate && book.status === 'finished') return book;
+  const next: ReadingCompletion = { id: `completion-${book.id}-${date}-${existing.length + 1}`, date, source };
+  const readingCompletions = [...existing, next];
+  return { ...book, readingCompletions, rereadCount: Math.max(book.rereadCount ?? 0, Math.max(0, readingCompletions.length - 1)), dateFinished: date };
 }
