@@ -618,17 +618,39 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       type PrintedIsbnEvidence = { isbn: string; label: string; priority: number };
       const printedIsbnEvidence: PrintedIsbnEvidence[] = [];
       const extractValidIsbns = (value: string) => {
-        // OCR frequently substitutes punctuation between otherwise-correct
-        // ISBN digits (for example 978.1-68281-641-7). Capture a bounded
-        // ISBN-shaped span, normalize separators away, and trust it only when
-        // the normalized ISBN passes its checksum.
-        const candidates = [
-          ...value.matchAll(/97[89](?:[^0-9A-Za-z]{0,3}\d){10}/gi),
-          ...value.matchAll(/\b\d(?:[^0-9A-Za-z]{0,3}\d){8}(?:[^0-9A-Za-z]{0,3}[\dX])\b/gi),
-        ];
-        return [...new Set(candidates
-          .map((match) => normalizeIsbn(match[0]))
-          .filter((isbn) => (isbn.length === 13 || isbn.length === 10) && isValidCatalogIsbn(isbn)))];
+        // ISBN OCR has a tiny, well-known ambiguity alphabet. Repair only
+        // ISBN-labelled text, only inside a bounded ISBN-shaped token, and
+        // only accept the result when the real ISBN checksum validates it.
+        // This recovers reads such as 978L-68281-641-7 without turning prose
+        // into invented identifiers.
+        const repairDigit = (char: string): string | null => {
+          if (/\d/.test(char)) return char;
+          const upper = char.toUpperCase();
+          if (upper === 'I' || upper === 'L') return '1';
+          if (upper === 'O' || upper === 'Q' || upper === 'D') return '0';
+          if (upper === 'S') return '5';
+          if (upper === 'B') return '8';
+          if (upper === 'Z') return '2';
+          if (upper === 'G') return '6';
+          return null;
+        };
+        const isbnLabelIndex = value.search(/isbn/i);
+        const labelled = isbnLabelIndex >= 0 ? value.slice(isbnLabelIndex).replace(/^.*?isbn\s*/i, '') : value;
+        const rawTokens = labelled.match(/[0-9A-Za-z][0-9A-Za-z.\s-]{8,30}[0-9A-Za-z]/g) ?? [];
+        const repaired: string[] = [];
+        for (const token of rawTokens) {
+          const compact = token.replace(/[^0-9A-Za-z]/g, '');
+          if (compact.length < 10 || compact.length > 16) continue;
+          const mapped = [...compact].map(repairDigit);
+          if (mapped.some((char) => char === null)) continue;
+          const digits = mapped.join('');
+          for (const length of [13, 10]) {
+            if (digits.length !== length) continue;
+            if (length === 13 && !/^97[89]/.test(digits)) continue;
+            if (isValidCatalogIsbn(digits)) repaired.push(digits);
+          }
+        }
+        return [...new Set(repaired)];
       };
 
       // First preserve line-level label association. This lets an explicitly
