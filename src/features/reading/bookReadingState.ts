@@ -135,7 +135,9 @@ export function getReadingCompletions(book: UserBookRecord): ReadingCompletion[]
 }
 
 export function getRereadCompletions(book: UserBookRecord): ReadingCompletion[] {
-  return getReadingCompletions(book).slice(1);
+  const explicit = (book.readingCompletions ?? []).filter((completion) => Boolean(completion.date));
+  if (explicit.length === 0) return [];
+  return [...explicit].sort((a, b) => a.date.localeCompare(b.date)).slice(1);
 }
 
 export function getEffectiveRereadCount(book: UserBookRecord): number {
