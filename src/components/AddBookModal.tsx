@@ -17,7 +17,7 @@ import {
   searchScannerCoverCatalog,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { isValidCatalogIsbn, selectCatalogIsbnFromBarcodes } from '../features/book-search/isbnResolution';
+import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
@@ -615,85 +615,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Only accept checksum-valid values explicitly adjacent to an ISBN label.
       // Parse ISBNs per OCR line: joining lines used to consume adjacent edition
       // numbers and accidentally suppress all matches on retailer copyright pages.
-      type PrintedIsbnEvidence = { isbn: string; label: string; priority: number };
-      const printedIsbnEvidence: PrintedIsbnEvidence[] = [];
-      const extractValidIsbns = (value: string) => {
-        // ISBN OCR has a tiny, well-known ambiguity alphabet. Repair only
-        // ISBN-labelled text, only inside a bounded ISBN-shaped token, and
-        // only accept the result when the real ISBN checksum validates it.
-        // This recovers reads such as 978L-68281-641-7 without turning prose
-        // into invented identifiers.
-        const repairDigit = (char: string): string | null => {
-          if (/\d/.test(char)) return char;
-          const upper = char.toUpperCase();
-          if (upper === 'I' || upper === 'L') return '1';
-          if (upper === 'O' || upper === 'Q' || upper === 'D') return '0';
-          if (upper === 'S') return '5';
-          if (upper === 'B') return '8';
-          if (upper === 'Z') return '2';
-          if (upper === 'G') return '6';
-          return null;
-        };
-        const isbnLabelIndex = value.search(/isbn/i);
-        const labelled = isbnLabelIndex >= 0 ? value.slice(isbnLabelIndex).replace(/^.*?isbn\s*/i, '') : value;
-        const rawTokens = labelled.match(/[0-9A-Za-z][0-9A-Za-z.\s-]{8,30}[0-9A-Za-z]/g) ?? [];
-        const repaired: string[] = [];
-        for (const token of rawTokens) {
-          const compact = token.replace(/[^0-9A-Za-z]/g, '');
-          if (compact.length < 10 || compact.length > 16) continue;
-          const mapped = [...compact].map(repairDigit);
-          if (mapped.some((char) => char === null)) continue;
-          const digits = mapped.join('');
-          for (const length of [13, 10]) {
-            if (digits.length !== length) continue;
-            if (length === 13 && !/^97[89]/.test(digits)) continue;
-            if (isValidCatalogIsbn(digits)) repaired.push(digits);
-          }
-        }
-        return [...new Set(repaired)];
-      };
-
-      // First preserve line-level label association. This lets an explicitly
-      // printed retailer/special-edition ISBN outrank the generic ISBN on the
-      // same copyright page without guessing which number belongs to which.
-      for (const line of lines) {
-        if (!/isbn/i.test(line)) continue;
-        const directIsbns = extractValidIsbns(line);
-        const retailerLabel = /(?:walmart|target|exclusive|special|limited|collector'?s)\s+(?:edition\s+)?isbn/i.test(line);
-        for (const isbn of directIsbns) {
-          printedIsbnEvidence.push({
-            isbn,
-            label: line,
-            priority: retailerLabel ? 3 : 2,
-          });
-        }
-      }
-
-      // ML Kit can split "ISBN" and its digits across neighboring OCR lines.
-      // Recover those cases only as lower-priority evidence; never let a broad
-      // window steal the retailer label from a different ISBN on the page.
-      for (let index = 0; index < lines.length; index += 1) {
-        if (!/isbn/i.test(lines[index])) continue;
-        const window = lines.slice(index, index + 2).join(' ');
-        for (const isbn of extractValidIsbns(window)) {
-          if (printedIsbnEvidence.some((item) => item.isbn === isbn)) continue;
-          printedIsbnEvidence.push({ isbn, label: window, priority: 1 });
-        }
-      }
-      const bestPrintedEvidence = [...new Map(
-        printedIsbnEvidence
-          .sort((left, right) => right.priority - left.priority)
-          .map((item) => [item.isbn, item]),
-      ).values()];
+      const bestPrintedEvidence = collectPrintedIsbnEvidence(lines);
       const detectedIsbns = bestPrintedEvidence.map((item) => item.isbn);
       if (detectedIsbns.length > 0) {
-        const highestPriority = Math.max(...bestPrintedEvidence.map((item) => item.priority));
-        const preferred = bestPrintedEvidence.filter((item) => item.priority === highestPriority);
-        const selected = unresolvedIsbn && detectedIsbns.includes(unresolvedIsbn)
-          ? unresolvedIsbn
-          : preferred.length === 1 && highestPriority >= 3
-            ? preferred[0].isbn
-            : detectedIsbns.length === 1 ? detectedIsbns[0] : null;
+        const selected = selectPreferredPrintedIsbn(bestPrintedEvidence, unresolvedIsbn);
         if (selected) {
           const selectedEvidence = bestPrintedEvidence.find((item) => item.isbn === selected);
           // Retailer exclusives are often indexed later than the standard
