@@ -90,6 +90,12 @@ export interface LibraryLoan {
   dueDate?: string;
 }
 
+export interface ReadingCompletion {
+  id: string;
+  date: string;
+  source?: 'tracked' | 'manual' | 'import' | 'legacy-finish';
+}
+
 export interface UserBookRecord {
   id: string;
   work: BookWork;
@@ -137,6 +143,8 @@ export interface UserBookRecord {
    */
   lastProgressUpdatedAt?: string;
   rereadCount?: number;
+  /** Append-only completion history. First entry is the original read; later entries are rereads. */
+  readingCompletions?: ReadingCompletion[];
 }
 
 export type ReadingActivitySource = 'timer' | 'manual-session' | 'progress-confirmation';
