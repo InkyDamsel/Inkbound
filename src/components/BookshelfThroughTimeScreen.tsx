@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Share2, Sparkles } from 'lucide-react';
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Repeat2, Share2, Sparkles } from 'lucide-react';
 import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getEffectiveRereadCount } from '../features/reading/bookReadingState';
@@ -23,6 +23,7 @@ interface ShelfPreferences {
   month: string;
   theme: ShelfTheme;
   showRatings: boolean;
+  showRereads?: boolean;
   showStats: boolean;
   highlightNew?: boolean;
 }
@@ -100,6 +101,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     month: availableMonths[availableMonths.length - 1],
     theme: 'quiet-library',
     showRatings: true,
+    showRereads: true,
     showStats: true,
     highlightNew: true,
   });
@@ -126,6 +128,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length
     : 0;
   const highlightNew = preferences.highlightNew !== false;
+  const showRereads = preferences.showRereads !== false;
   const themeBackgroundImage = themeBackgroundImages[preferences.theme];
 
   useEffect(() => {
@@ -276,13 +279,17 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
         }
         context.restore();
 
-        if (preferences.showRatings && book.rating) {
+        const totalReads = getEffectiveRereadCount(book) + 1;
+        const ratingLabel = preferences.showRatings && book.rating ? `★ ${book.rating}` : '';
+        const rereadLabel = showRereads && totalReads > 1 ? `×${totalReads}` : '';
+        const bookBadgeLabel = [ratingLabel, rereadLabel].filter(Boolean).join(' · ');
+        if (bookBadgeLabel) {
           context.fillStyle = 'rgba(0,0,0,.82)';
-          context.fillRect(x + bookWidth - 48, shelfY - 25, 48, 25);
+          const badgeWidth = Math.max(48, context.measureText(bookBadgeLabel).width + 12);
+          context.fillRect(x + bookWidth - badgeWidth, shelfY - 25, badgeWidth, 25);
           context.fillStyle = '#f8d889';
           context.font = '700 14px Arial, sans-serif';
-          const totalReads = getEffectiveRereadCount(book) + 1;
-          context.fillText(`★ ${book.rating}${totalReads > 1 ? ` · Read ×${totalReads}` : ''}`, x + bookWidth - 43, shelfY - 8);
+          context.fillText(bookBadgeLabel, x + bookWidth - badgeWidth + 5, shelfY - 8);
         }
       }
 
@@ -473,8 +480,10 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
                               <span className="pointer-events-none absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/10 to-transparent" />
                             </span>
 
-                            {preferences.showRatings && book.rating && (
-                              <span className="absolute -bottom-1 right-0 z-30 rounded-md border border-white/10 bg-black/75 px-1.5 py-0.5 text-[8px] font-bold text-amber-200 shadow">★ {book.rating}{getEffectiveRereadCount(book) > 0 ? ` · Read ×${getEffectiveRereadCount(book) + 1}` : ''}</span>
+                            {((preferences.showRatings && book.rating) || (showRereads && getEffectiveRereadCount(book) > 0)) && (
+                              <span className="absolute -bottom-1 right-0 z-30 rounded-md border border-white/10 bg-black/75 px-1.5 py-0.5 text-[8px] font-bold text-amber-200 shadow">
+                                {preferences.showRatings && book.rating ? `★ ${book.rating}` : ''}{preferences.showRatings && book.rating && showRereads && getEffectiveRereadCount(book) > 0 ? ' · ' : ''}{showRereads && getEffectiveRereadCount(book) > 0 ? `×${getEffectiveRereadCount(book) + 1}` : ''}
+                              </span>
                             )}
                             {isNewThisMonth && highlightNew && (
                               <span className="absolute -top-2 right-0 z-30 inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/50 bg-[var(--ink-gold-bright)] text-[8px] font-black text-[#281b13] shadow-[0_0_12px_rgba(218,178,96,.55)]" title="Finished this month">+</span>
@@ -548,6 +557,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
           <section className="inkbound-panel rounded-3xl p-5">
             <span className="inkbound-eyebrow">Display</span>
             <label className="mt-4 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><Eye className="h-4 w-4 shrink-0" />Show ratings on books</span><input type="checkbox" checked={preferences.showRatings} onChange={(event) => updatePreference('showRatings', event.target.checked)} /></label>
+            <label className="mt-3 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><Repeat2 className="h-4 w-4 shrink-0" />Show reread counts</span><input type="checkbox" checked={showRereads} onChange={(event) => updatePreference('showRereads', event.target.checked)} /></label>
             <label className="mt-3 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><Sparkles className="h-4 w-4 shrink-0" />Highlight this month</span><input type="checkbox" checked={highlightNew} onChange={(event) => updatePreference('highlightNew', event.target.checked)} /></label>
             <label className="mt-3 flex min-h-11 items-center justify-between gap-4 text-sm text-[var(--ink-muted)]"><span className="inline-flex min-w-0 items-center gap-2"><BookOpen className="h-4 w-4 shrink-0" />Show shelf statistics</span><input type="checkbox" checked={preferences.showStats} onChange={(event) => updatePreference('showStats', event.target.checked)} /></label>
           </section>
