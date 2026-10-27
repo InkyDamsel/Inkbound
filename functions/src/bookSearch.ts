@@ -179,14 +179,35 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
   const token = HARDCOVER_API_TOKEN.value();
   if (!token) throw new HttpsError('failed-precondition', 'Hardcover search is not configured.');
 
-  const searchData = await hardcoverGraphql<{ search?: { results?: unknown } }>(
-    token,
-    `query SearchBooks($q: String!, $perPage: Int!) {
-      search(query: $q, query_type: "Book", per_page: $perPage, page: 1) { results }
-    }`,
-    { q: query, perPage: authorBibliography ? 100 : 15 },
-  );
-  const searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
+  const searchPage = async (page: number, perPage: number) =>
+    hardcoverGraphql<{ search?: { results?: unknown } }>(
+      token,
+      `query SearchBooks($q: String!, $perPage: Int!, $page: Int!) {
+        search(query: $q, query_type: "Book", per_page: $perPage, page: $page) { results }
+      }`,
+      { q: query, perPage, page },
+    );
+
+  // Hardcover's search service can cap a single response below the requested
+  // per_page value. Author catalogs therefore walk several result pages and
+  // merge them before exact-author filtering on the client. Ordinary Search
+  // remains a single page so its behavior/ranking is unchanged.
+  const searchResults: SearchResult[] = [];
+  const seenSearchIds = new Set<string>();
+  const pageCount = authorBibliography ? 8 : 1;
+  const perPage = 15;
+  for (let page = 1; page <= pageCount; page += 1) {
+    const searchData = await searchPage(page, perPage);
+    const pageResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
+    if (!pageResults.length) break;
+    for (const result of pageResults) {
+      const key = String(result.id ?? result.slug ?? `${result.title ?? ''}::${authorNames(result).join('|')}`);
+      if (seenSearchIds.has(key)) continue;
+      seenSearchIds.add(key);
+      searchResults.push(result);
+    }
+    if (!authorBibliography || pageResults.length < perPage) break;
+  }
   const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
 
   let editions: HardcoverEdition[] = [];
