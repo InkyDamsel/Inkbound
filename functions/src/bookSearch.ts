@@ -14,6 +14,7 @@ const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBoo
 
 interface SearchResult {
   id?: number | string;
+  name?: string;
   title?: string;
   subtitle?: string;
   author_names?: string[];
