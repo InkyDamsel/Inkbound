@@ -7,19 +7,20 @@ interface PrhSearchPayload {
   totalItems?: number;
 }
 
-export async function searchPenguinRandomHouse(query: string): Promise<BookSearchResponse> {
+export async function searchPenguinRandomHouse(query: string, authorBibliography = false, propagateErrors = false): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed || !functions) return { groups: [], totalItems: 0 };
 
   try {
     const callable = httpsCallable<
-      { query: string; expandSeries?: boolean },
+      { query: string; expandSeries?: boolean; authorBibliography?: boolean },
       PrhSearchPayload
     >(functions, 'searchSeriesDetectivePenguinRandomHouse');
 
     const response = await callable({
       query: trimmed,
       expandSeries: false,
+      authorBibliography,
     });
 
     const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
@@ -31,6 +32,7 @@ export async function searchPenguinRandomHouse(query: string): Promise<BookSearc
     };
   } catch (error) {
     console.warn('Penguin Random House catalog supplement unavailable.', error);
+    if (propagateErrors) throw error;
     return { groups: [], totalItems: 0 };
   }
 }
