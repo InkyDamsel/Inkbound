@@ -115,6 +115,17 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
       'Explicit Walmart Edition ISBN must outrank the generic ISBN on the same copyright page.');
   }
 
+  const splitWalmartEvidence = collectPrintedIsbnEvidence([
+    'ISBN',
+    '978-1-68281-641-7',
+    'Walmart Edition ISBN',
+    '978-1-68281-818-3',
+  ]);
+  assert.equal(selectPreferredPrintedIsbn(splitWalmartEvidence), '9781682818183',
+    'Split native OCR lines must carry the Walmart Edition ISBN label onto its adjacent number.');
+  assert.ok(splitWalmartEvidence.some((item) => item.isbn === '9781682816417' && item.priority === 2),
+    'Split native OCR lines must retain the standard companion ISBN.');
+
   assert.deepEqual(extractValidPrintedIsbns('ISBN 978L-68281-641-7'), ['9781682816417'],
     'Bounded OCR repair should recover a checksum-valid ISBN from a common 1/L confusion.');
   assert.deepEqual(extractValidPrintedIsbns('ISBN 978-1-68281-641-8'), [],
