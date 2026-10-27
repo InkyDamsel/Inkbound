@@ -16,6 +16,15 @@ const stripped=stripCoverPromoLines(neverLie);
 assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),false);
 assert.equal(coverMatchesWork(stripped,'Never Lie',['Freida McFadden']),true);
 
+const ropedPromo=['USA TODAY BESTSELLING AUTHOR OF BRANDED','SAFFRON A. KENT','ONCE HE HUNTS HER DOWN','HE\'S NEVER LETTING HER GO','ROPED'];
+const ropedClean=stripCoverPromoLines(ropedPromo);
+assert.equal(coverMatchesWork(ropedPromo,'Branded',['Saffron A. Kent']),true,
+  'Raw OCR demonstrates why promo text must never be used as identity proof.');
+assert.equal(coverMatchesWork(ropedClean,'Branded',['Saffron A. Kent']),false,
+  'A previous title named only in author promo copy must not verify as the photographed book.');
+assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
+  'Removing promo text must preserve the actual photographed title and author evidence.');
+
 const pages=[
   ['ISBN 978-0-06-346227-4','9 780063 462274'],
   ['ISBN 978-1-4967-5808-8','9 781496 758088'],
