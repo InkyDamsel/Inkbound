@@ -1500,7 +1500,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     {authorCatalogDiagnostics && (
                       <div className="mt-3 rounded-lg border border-[#c5a059]/20 bg-black/20 px-3 py-2 font-mono text-[10px] leading-5 text-[#b9a9ba]">
                         <div>Google {authorCatalogDiagnostics.googleRaw} raw / {authorCatalogDiagnostics.googleCredited} credited{authorCatalogDiagnostics.googleError ? ` / ERROR: ${authorCatalogDiagnostics.googleError}` : ''}</div>
-                        {authorCatalogDiagnostics.providers.map((provider) => <div key={provider.provider}>{provider.provider}: {provider.raw} raw / {provider.credited} credited / {provider.reportedTotal} reported{provider.error ? ` / ERROR: ${provider.error}` : ''}</div>)}
+                        {authorCatalogDiagnostics.providers.map((provider) => <div key={provider.provider}>{provider.provider}: {provider.raw} raw / {provider.credited} credited / {provider.reportedTotal} reported{provider.error ? ` / ERROR: ${provider.error}` : ''}{provider.debug ? ` / DEBUG: ${JSON.stringify(provider.debug)}` : ''}</div>)}
                         <div>Merge {authorCatalogDiagnostics.mergedBeforeHardening} → {authorCatalogDiagnostics.mergedAfterHardening} after hardening</div>
                       </div>
                     )}
