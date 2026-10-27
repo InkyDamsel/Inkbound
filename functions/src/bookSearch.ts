@@ -8,6 +8,39 @@ const GOOGLE_BOOKS_ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 const ENFORCE_APP_CHECK = process.env.FUNCTIONS_EMULATOR !== 'true';
 const GOOGLE_BOOKS_CACHE_TTL_MS = 5 * 60 * 1000;
 const GOOGLE_BOOKS_CACHE_MAX = 500;
+const HARDCOVER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const HARDCOVER_CACHE_MAX = 500;
+const HARDCOVER_RATE_LIMIT_COOLDOWN_MS = 15 * 60 * 1000;
+
+type HardcoverCatalogPayload = { groups: Array<Record<string, unknown>>; totalItems: number; providerDebug?: Record<string, unknown> };
+const hardcoverCatalogCache = new Map<string, { expiresAt: number; payload: HardcoverCatalogPayload }>();
+let hardcoverRateLimitUntil = 0;
+
+const hardcoverCacheKey = (query: string, authorBibliography: boolean) =>
+  `${authorBibliography ? 'author' : 'search'}::${query.trim().toLowerCase()}`;
+
+function readHardcoverCache(query: string, authorBibliography: boolean): HardcoverCatalogPayload | undefined {
+  const key = hardcoverCacheKey(query, authorBibliography);
+  const cached = hardcoverCatalogCache.get(key);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    hardcoverCatalogCache.delete(key);
+    return undefined;
+  }
+  hardcoverCatalogCache.delete(key);
+  hardcoverCatalogCache.set(key, cached);
+  return cached.payload;
+}
+
+function writeHardcoverCache(query: string, authorBibliography: boolean, payload: HardcoverCatalogPayload) {
+  const key = hardcoverCacheKey(query, authorBibliography);
+  hardcoverCatalogCache.set(key, { expiresAt: Date.now() + HARDCOVER_CACHE_TTL_MS, payload });
+  while (hardcoverCatalogCache.size > HARDCOVER_CACHE_MAX) {
+    const oldestKey = hardcoverCatalogCache.keys().next().value;
+    if (!oldestKey) break;
+    hardcoverCatalogCache.delete(oldestKey);
+  }
+}
 
 type GoogleBooksCatalogPayload = { totalItems: number; items: unknown[] };
 const googleBooksCache = new Map<string, { expiresAt: number; payload: GoogleBooksCatalogPayload }>();
@@ -108,7 +141,10 @@ async function hardcoverGraphql<T>(token: string, query: string, variables: Reco
     },
     body: JSON.stringify({ query, variables }),
   });
-  if (!response.ok) throw new Error(`Hardcover returned ${response.status}.`);
+  if (!response.ok) {
+    if (response.status === 429) hardcoverRateLimitUntil = Date.now() + HARDCOVER_RATE_LIMIT_COOLDOWN_MS;
+    throw new Error(`Hardcover returned ${response.status}.`);
+  }
   const payload = await response.json() as { data?: T; errors?: Array<{ message?: string }> };
   if (payload.errors?.length) throw new Error(payload.errors[0]?.message || 'Hardcover search failed.');
   if (!payload.data) throw new Error('Hardcover returned an empty response.');
@@ -182,7 +218,12 @@ async function googleBooksCatalog(
 }
 
 async function hardcoverCatalog(query: string, authorBibliography = false) {
-  const providerDebug: Record<string, unknown> = { mode: authorBibliography ? 'author-bibliography' : 'search' };
+  const cached = readHardcoverCache(query, authorBibliography);
+  if (cached) return { ...cached, providerDebug: { ...(cached.providerDebug ?? {}), cache: 'hit' } };
+  if (Date.now() < hardcoverRateLimitUntil) {
+    throw new Error('Hardcover cooling down after rate limit.');
+  }
+  const providerDebug: Record<string, unknown> = { mode: authorBibliography ? 'author-bibliography' : 'search', cache: 'miss' };
   const token = HARDCOVER_API_TOKEN.value();
   if (!token) throw new HttpsError('failed-precondition', 'Hardcover search is not configured.');
 
@@ -208,90 +249,74 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
     const authorQueries = Array.from(new Set([
       query.trim(),
       query.trim().replace(/\./g, ''),
-      query.trim().replace(/\s+/g, ' '),
     ].filter(Boolean)));
-    const authorSearchPages = await Promise.all(authorQueries.flatMap((authorQuery) =>
-      [1, 2, 3].map((page) => hardcoverGraphql<{ search?: { ids?: Array<number | string> } }>(
+    const rawAuthorIds: string[] = [];
+    for (const authorQuery of authorQueries) {
+      const result = await hardcoverGraphql<{ search?: { ids?: Array<number | string> } }>(
         token,
-        `query SearchAuthors($q: String!, $page: Int!) {
-          search(query: $q, query_type: "Author", per_page: 100, page: $page) { ids }
+        `query SearchAuthors($q: String!) {
+          search(query: $q, query_type: "Author", per_page: 100, page: 1) { ids }
         }`,
-        { q: authorQuery, page },
-      ))
-    ));
-    const rawAuthorIds = Array.from(new Set(
-      authorSearchPages.flatMap((result) => result.search?.ids ?? []).map(String),
-    ));
-    providerDebug.authorQueries = authorQueries;
-    providerDebug.authorSearchIdCount = rawAuthorIds.length;
-    providerDebug.authorSearchIds = rawAuthorIds.slice(0, 20);
-    const candidateAuthorIds = rawAuthorIds
-      .map((id) => Number(id))
-      .filter((id) => Number.isFinite(id));
-    providerDebug.numericAuthorIdCount = candidateAuthorIds.length;
-    const authorData = candidateAuthorIds.length
-      ? await hardcoverGraphql<{
-          authors?: Array<{ id?: number; name?: string; books_count?: number }>;
-        }>(
-          token,
-          `query ResolveAuthors($ids: [Int!]!) {
-            authors(where: { id: { _in: $ids } }, order_by: { books_count: desc }, limit: 500) {
-              id name books_count
-            }
-          }`,
-          { ids: candidateAuthorIds },
-        )
-      : { authors: [] };
-    const normalizeAuthorIdentity = (value: string) =>
-      value.toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
-    const normalizedRequestedAuthor = normalizeAuthorIdentity(query.trim());
-    const authorHit = (authorData.authors ?? []).find((candidate) =>
-      normalizeAuthorIdentity(String(candidate.name ?? '')) === normalizedRequestedAuthor
-    );
-    const authorId = Number(authorHit?.id);
-    providerDebug.hydratedAuthorCount = (authorData.authors ?? []).length;
-    providerDebug.hydratedAuthorNames = (authorData.authors ?? []).map((candidate) => candidate.name).filter(Boolean).slice(0, 30);
-    providerDebug.resolvedAuthorName = authorHit?.name ?? null;
-    providerDebug.resolvedAuthorId = Number.isFinite(authorId) ? authorId : null;
-    if (!Number.isFinite(authorId)) {
-      providerDebug.resolutionFailure = 'Hardcover author search returned candidates but none matched the requested author identity.';
-    }
-
-    if (Number.isFinite(authorId)) {
-      const bibliography = await hardcoverGraphql<{ books?: HardcoverBook[] }>(
+        { q: authorQuery },
+      );
+      rawAuthorIds.push(...(result.search?.ids ?? []).map(String));
+      // Do not fan out once an exact author is found; hydrate this page first.
+      const pageIds = Array.from(new Set(rawAuthorIds))
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id));
+      if (!pageIds.length) continue;
+      const pageAuthors = await hardcoverGraphql<{
+        authors?: Array<{ id?: number; name?: string; books_count?: number }>;
+      }>(
         token,
-        `query AuthorBooks($id: Int!) {
-          books(
-            where: {
-              contributions: { author: { id: { _eq: $id } } }
-              canonical_id: { _is_null: true }
-            }
-            limit: 500
-          ) {
-            id title subtitle description release_year image { url }
-            contributions(limit: 20) { author { id name } }
-            book_series { position series { id name } }
+        `query ResolveAuthors($ids: [Int!]!) {
+          authors(where: { id: { _in: $ids } }, order_by: { books_count: desc }, limit: 100) {
+            id name books_count
           }
         }`,
-        { id: authorId },
+        { ids: pageIds },
       );
-      providerDebug.bibliographyBookCount = (bibliography.books ?? []).length;
-      searchResults = (bibliography.books ?? []).flatMap((book) => {
-        if (!book?.id || !book.title) return [];
-        const names = book.contributions
-          ?.map((entry) => entry.author?.name?.trim())
-          .filter((name): name is string => Boolean(name)) ?? [];
-        return [{
-          id: book.id,
-          title: book.title,
-          subtitle: book.subtitle,
-          description: book.description,
-          release_year: book.release_year,
-          image: book.image,
-          author_names: names.length ? names : [query.trim()],
-        } satisfies SearchResult];
-      });
+      const normalizeAuthorIdentity = (value: string) =>
+        value.toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
+      const wanted = normalizeAuthorIdentity(query.trim());
+      const exact = (pageAuthors.authors ?? []).find((candidate) =>
+        normalizeAuthorIdentity(String(candidate.name ?? '')) === wanted
+      );
+      if (exact?.id != null) {
+        providerDebug.authorQueries = authorQueries;
+        providerDebug.authorSearchIdCount = pageIds.length;
+        providerDebug.hydratedAuthorCount = (pageAuthors.authors ?? []).length;
+        providerDebug.resolvedAuthorName = exact.name ?? null;
+        providerDebug.resolvedAuthorId = Number(exact.id);
+        const authorId = Number(exact.id);
+        if (Number.isFinite(authorId)) {
+          const bibliography = await hardcoverGraphql<{ books?: HardcoverBook[] }>(
+            token,
+            `query AuthorBooks($id: Int!) {
+              books(where: { contributions: { author: { id: { _eq: $id } } }, canonical_id: { _is_null: true } }, limit: 500) {
+                id title subtitle description release_year image { url }
+                contributions(limit: 20) { author { id name } }
+                book_series { position series { id name } }
+              }
+            }`,
+            { id: authorId },
+          );
+          providerDebug.bibliographyBookCount = (bibliography.books ?? []).length;
+          searchResults = (bibliography.books ?? []).flatMap((book) => {
+            if (!book?.id || !book.title) return [];
+            const names = book.contributions?.map((entry) => entry.author?.name?.trim()).filter((name): name is string => Boolean(name)) ?? [];
+            return [{ id: book.id, title: book.title, subtitle: book.subtitle, description: book.description, release_year: book.release_year, image: book.image, author_names: names.length ? names : [query.trim()] } satisfies SearchResult];
+          });
+        }
+        break;
+      }
     }
+    if (!searchResults.length) {
+      providerDebug.authorQueries = authorQueries;
+      providerDebug.authorSearchIdCount = Array.from(new Set(rawAuthorIds)).length;
+      providerDebug.resolutionFailure = 'No exact Hardcover author identity resolved within quota-safe candidate searches.';
+    }
+
   } else {
     const searchData = await searchPage(1, 15);
     searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
@@ -409,7 +434,9 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
     };
   });
 
-  return { groups, totalItems: groups.length, ...(authorBibliography ? { providerDebug } : {}) };
+  const payload = { groups, totalItems: groups.length, ...(authorBibliography ? { providerDebug } : {}) };
+  writeHardcoverCache(query, authorBibliography, payload as HardcoverCatalogPayload);
+  return payload;
 }
 
 /**
