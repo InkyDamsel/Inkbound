@@ -378,7 +378,7 @@ export async function searchGoogleBooksAuthorPage(
     ? await Promise.all([
         safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)),
         safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)),
-        safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor)),
+        safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor, true)),
         safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor)),
       ])
     : [];
@@ -484,10 +484,10 @@ async function searchHardcoverAuthorWithBackoff(authorName: string): Promise<Boo
   }
 }
 
-async function searchPrhWithBackoff(query: string): Promise<BookSearchResponse> {
+async function searchPrhWithBackoff(query: string, authorBibliography = false): Promise<BookSearchResponse> {
   if (Date.now() < prhBackoffUntil) return { groups: [], totalItems: 0 };
   try {
-    return await searchPenguinRandomHouse(query);
+    return await searchPenguinRandomHouse(query, authorBibliography, authorBibliography);
   } catch (error) {
     if (shouldBackOffCatalog(error)) {
       prhBackoffUntil = Math.max(prhBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
