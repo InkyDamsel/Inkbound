@@ -215,36 +215,30 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
     const authorId = Number(authorHit?.id);
     if (Number.isFinite(authorId)) {
       const authorData = await hardcoverGraphql<{
-        authors_by_pk?: {
-          contributions?: Array<{
-            book?: HardcoverBook & {
-              cached_contributors?: unknown;
-              contributions?: Array<{ author?: { id?: number | string; name?: string } }>;
-            };
-          }>;
-        };
+        books?: Array<HardcoverBook & {
+          cached_contributors?: unknown;
+          contributions?: Array<{ author?: { id?: number | string; name?: string } }>;
+        }>;
       }>(
         token,
         `query AuthorBibliography($id: Int!) {
-          authors_by_pk(id: $id) {
-            contributions(limit: 200) {
-              book {
-                id title subtitle description release_year image { url }
-                cached_contributors
-                contributions(limit: 20) { author { id name } }
-                book_series { position series { id name } }
-              }
+          books(
+            where: {
+              contributions: { author_id: { _eq: $id } }
+              canonical_id: { _is_null: true }
             }
+            limit: 200
+          ) {
+            id title subtitle description release_year image { url }
+            cached_contributors
+            contributions(limit: 20) { author { id name } }
+            book_series { position series { id name } }
           }
         }`,
         { id: authorId },
       );
-      const seen = new Set<string>();
-      searchResults = (authorData.authors_by_pk?.contributions ?? []).flatMap(({ book }) => {
+      searchResults = (authorData.books ?? []).flatMap((book) => {
         if (!book?.id || !book.title) return [];
-        const key = String(book.id);
-        if (seen.has(key)) return [];
-        seen.add(key);
         const names = (book.contributions ?? []).map((entry) => entry.author?.name ?? '').filter(Boolean);
         return [{
           id: book.id,
