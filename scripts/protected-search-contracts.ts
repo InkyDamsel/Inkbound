@@ -33,8 +33,8 @@ assert.match(provider, /searchHardcoverAuthorWithBackoff\(trimmedAuthor\)/, 'Aut
 assert.match(provider, /nextStartIndex = startIndex \+ rawItems\.length/, 'Author paging must advance by provider results, not filtered matches.');
 
 const hardcoverBibliography = section(serverCatalog, 'if (authorBibliography) {', '} else {');
-assert.match(hardcoverBibliography, /query_type: "author"/, 'Hardcover bibliography must resolve author candidates through supported search.');
-assert.match(hardcoverBibliography, /search\(query: \$q, query_type: "author".*\) \{ ids \}/s, 'Hardcover author search must consume typed ids instead of result JSON.');
+assert.match(hardcoverBibliography, /query_type: "Author"/, 'Hardcover bibliography must resolve author candidates through supported search.');
+assert.match(hardcoverBibliography, /search\(query: \$q, query_type: "Author".*\) \{ ids \}/s, 'Hardcover author search must consume typed ids instead of result JSON.');
 assert.match(hardcoverBibliography, /authors\(where: \{ id: \{ _in: \$ids \} \}/, 'Hardcover bibliography must hydrate candidate author ids.');
 assert.match(hardcoverBibliography, /books_count: desc/, 'Hardcover author resolution must prefer the populated author record.');
 assert.doesNotMatch(hardcoverBibliography, /_ilike/, 'Hardcover public API does not permit wildcard string operators.');
