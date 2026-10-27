@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import { shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
+import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
+import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
+
+assert.equal(coverMatchesWork(['IT','A NOVEL','STEPHEN','KING'], 'It', ['Stephen King']), true);
+assert.equal(coverMatchesWork(['SHIT HAPPENS','STEPHEN','KING'], 'It', ['Stephen King']), false);
+assert.ok(shortTitleQueries(['IT','STEPHEN','KING']).includes('IT STEPHEN KING'));
+
+assert.equal(coverApproximatelyMatchesWork(['AVA REID','TMINTERVEI'], 'Winterveil', ['Ava Reid']), true);
+assert.equal(coverApproximatelyMatchesWork(['AVA REED','TMINTERVEI'], 'Winterveil', ['Ava Reid']), false);
+assert.equal(coverMatchesWork(['BLACK','THORN','J.T.','GEISSINGER'], 'Blackthorn', ['J.T. Geissinger']), true);
+
+const neverLie=['#1 NEW YORK TIMES BESTSELLING AUTHOR OF','THE HOUSEMAID AND THE TEACHER','NEVER','LIE','FREIDA','McFADDEN'];
+const stripped=stripCoverPromoLines(neverLie);
+assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),false);
+assert.equal(coverMatchesWork(stripped,'Never Lie',['Freida McFadden']),true);
+
+const pages=[
+  ['ISBN 978-0-06-346227-4','9 780063 462274'],
+  ['ISBN 978-1-4967-5808-8','9 781496 758088'],
+  ['ISBN 978-1-250-34675-9','9 781250 346759'],
+  ['ISBN 978-1-6682-2748-0','9 781668 227480'],
+  ['ISBN 978-1-682-81817-6','9 781682 818176'],
+  ['ISBN-13: 978-1-7282-9616-6','9 781728 296166'],
+  ['ISBN 978-0-593-71805-6','9 780593 718056'],
+];
+for(const lines of pages){
+  const labeled=collectPrintedIsbnEvidence(lines);
+  const expected=labeled[0]?.isbn;
+  assert.ok(expected);
+  const unlabeled=collectPrintedIsbnEvidence(lines.filter(line=>!/isbn/i.test(line)));
+  assert.equal(selectPreferredPrintedIsbn(unlabeled),expected);
+}
+assert.deepEqual(collectPrintedIsbnEvidence(['51999','PRINTED IN CHINA']),[]);
+assert.deepEqual(collectPrintedIsbnEvidence(['9 781250 346758']),[]);
+
+console.log('Inkbound scanner cover regressions passed.');
