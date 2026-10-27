@@ -205,7 +205,7 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
     }>(
       token,
       `query SearchAuthors($q: String!) {
-        search(query: $q, query_type: "author", per_page: 20, page: 1) { ids }
+        search(query: $q, query_type: "Author", per_page: 20, page: 1) { ids }
       }`,
       { q: query.trim() },
     );
