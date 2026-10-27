@@ -783,7 +783,6 @@ export const searchSeriesDetectiveHardcover = onCall(
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Series Detective.');
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     const expandSeries = request.data?.expandSeries === true;
-    const authorBibliography = request.data?.authorBibliography === true;
     const exactTitle = typeof request.data?.exactTitle === 'string' ? request.data.exactTitle.trim() : '';
     const seriesName = typeof request.data?.seriesName === 'string' ? request.data.seriesName.trim() : '';
     const anchorTitles = Array.isArray(request.data?.anchorTitles)
@@ -1314,6 +1313,7 @@ export const searchSeriesDetectivePenguinRandomHouse = onCall(
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Series Detective.');
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     const expandSeries = request.data?.expandSeries === true;
+    const authorBibliography = request.data?.authorBibliography === true;
     const exactTitle = typeof request.data?.exactTitle === 'string' ? request.data.exactTitle.trim() : '';
     const seriesName = typeof request.data?.seriesName === 'string' ? request.data.seriesName.trim() : '';
     const anchorTitles = Array.isArray(request.data?.anchorTitles)
