@@ -654,8 +654,30 @@ export async function searchScannerAuthorCatalog(
   // handful of relevance-ranked works, which hides newer/less-indexed titles.
   // Ask providers explicitly for the author and retain only exact author
   // credits before OCR title verification sees these works.
-  const [openLibrary, hardcover, prh, trusted] = await Promise.all([
-    searchOpenLibraryAuthorBibliography(trimmed, signal).catch((error) => {
+  // Google is intentionally included here as a PAGINATED author bibliography,
+  // not a relevance-ranked text search. This path only runs during scanner
+  // recovery after cover OCR has already supplied author-shaped evidence.
+  // Walking a bounded bibliography prevents a newer/retailer title from being
+  // hidden simply because it was not in Google's first relevance page.
+  const googleAuthorBibliography = async (): Promise<BookSearchResponse> => {
+    const groups: BookSearchWorkGroup[] = [];
+    let startIndex = 0;
+    for (let page = 0; page < 8; page += 1) {
+      if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+      const response = await searchGoogleBooksAuthorPage(trimmed, startIndex, signal);
+      groups.push(...response.groups);
+      if (!response.hasMore || response.nextStartIndex <= startIndex) break;
+      startIndex = response.nextStartIndex;
+    }
+    return { groups, totalItems: groups.length };
+  };
+
+  const [google, openLibrary, hardcover, prh, trusted] = await Promise.all([
+    googleAuthorBibliography().catch((error) => {
+      console.warn('Google Books scanner author bibliography unavailable.', error);
+      return { groups: [], totalItems: 0 };
+    }),
+    searchOpenLibraryAuthorBibliography(trimmed, signal, 8).catch((error) => {
       console.warn('Open Library scanner author bibliography unavailable.', error);
       return { groups: [], totalItems: 0 };
     }),
@@ -683,6 +705,7 @@ export async function searchScannerAuthorCatalog(
     });
 
   const groups = hardenCatalogGroups([
+    ...google.groups,
     ...openLibrary.groups,
     ...hardcover.groups,
     ...prh.groups,
