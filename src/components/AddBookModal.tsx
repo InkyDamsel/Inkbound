@@ -15,6 +15,7 @@ import {
   searchGoogleBooksAuthorPage,
   searchScannerAuthorCatalog,
   searchScannerCoverCatalog,
+  type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
@@ -204,6 +205,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [authorHasMore, setAuthorHasMore] = useState(false);
   const [isLoadingAuthorMore, setIsLoadingAuthorMore] = useState(false);
   const [authorCatalogPage, setAuthorCatalogPage] = useState(1);
+  const [authorCatalogDiagnostics, setAuthorCatalogDiagnostics] = useState<AuthorCatalogDiagnostics | null>(null);
   const [customOwnershipCategories, setCustomOwnershipCategories] = useState<CustomOwnershipCategory[]>(() => readCustomOwnershipCategories());
   const [customReadingStatuses, setCustomReadingStatuses] = useState<CustomReadingStatus[]>(() => readCustomReadingStatuses());
   const [creatingCustomReadingStatus, setCreatingCustomReadingStatus] = useState(false);
@@ -1289,6 +1291,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setAuthorNextStartIndex(response.nextStartIndex);
       setAuthorProviderTotal(response.providerTotalItems || null);
       setAuthorHasMore(response.hasMore);
+      setAuthorCatalogDiagnostics(response.diagnostics ?? null);
     } catch (error) {
       setAuthorHasMore(false);
       if (knownAuthorBooks.length === 0) {
@@ -1331,6 +1334,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setAuthorHasMore(false);
     setIsLoadingAuthorMore(false);
     setAuthorCatalogPage(1);
+    setAuthorCatalogDiagnostics(null);
   };
 
   const chooseSearchEdition = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
@@ -1493,6 +1497,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                         ? 'Finding books…'
                         : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal && authorProviderTotal >= results.length ? ` of ${authorProviderTotal}` : ''}`}
                     </p>
+                    {authorCatalogDiagnostics && (
+                      <div className="mt-3 rounded-lg border border-[#c5a059]/20 bg-black/20 px-3 py-2 font-mono text-[10px] leading-5 text-[#b9a9ba]">
+                        <div>Google {authorCatalogDiagnostics.googleRaw} raw / {authorCatalogDiagnostics.googleCredited} credited</div>
+                        {authorCatalogDiagnostics.providers.map((provider) => <div key={provider.provider}>{provider.provider}: {provider.raw} raw / {provider.credited} credited / {provider.reportedTotal} reported</div>)}
+                        <div>Merge {authorCatalogDiagnostics.mergedBeforeHardening} → {authorCatalogDiagnostics.mergedAfterHardening} after hardening</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </section>
