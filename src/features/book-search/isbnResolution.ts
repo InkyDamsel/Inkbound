@@ -83,9 +83,10 @@ export const combineIsbnProviderGroups = (providers: BookSearchWorkGroup[][]): B
 
 export type PrintedIsbnEvidence = { isbn: string; label: string; priority: number };
 
-const repairPrintedIsbnDigit = (char: string): string | null => {
+const repairPrintedIsbnDigit = (char: string, allowIsbn10CheckX = false): string | null => {
   if (/\d/.test(char)) return char;
   const upper = char.toUpperCase();
+  if (upper === 'X' && allowIsbn10CheckX) return 'X';
   if (upper === 'I' || upper === 'L') return '1';
   if (upper === 'O' || upper === 'Q' || upper === 'D') return '0';
   if (upper === 'S') return '5';
@@ -97,12 +98,19 @@ const repairPrintedIsbnDigit = (char: string): string | null => {
 
 export const extractValidPrintedIsbns = (value: string): string[] => {
   const isbnLabelIndex = value.search(/isbn/i);
-  const source = isbnLabelIndex >= 0
-    ? value.slice(isbnLabelIndex).replace(/^.*?isbn\s*/i, '')
-    : value;
+  let source = isbnLabelIndex >= 0 ? value.slice(isbnLabelIndex) : value;
+  if (isbnLabelIndex >= 0) {
+    // Strip ISBN-10 / ISBN-13 as a label only when it is syntactically a
+    // format marker. Do not eat real digits from strings such as "ISBN 105-...".
+    source = source
+      .replace(/^isbn\s*-\s*(?:10|13)\s*[:#]?\s*/i, '')
+      .replace(/^isbn\s+(?:10|13)(?=\s+(?:97[89]|[0-9X][\s-]))\s*[:#]?\s*/i, '')
+      .replace(/^isbn\s*[:#]?\s*/i, '');
+  }
   const compact = source.replace(/[^0-9A-Za-z]/g, '');
   const repairCandidate = (candidate: string): string | null => {
-    const mapped = [...candidate].map(repairPrintedIsbnDigit);
+    const mapped = [...candidate].map((char, index) =>
+      repairPrintedIsbnDigit(char, candidate.length === 10 && index === 9));
     if (mapped.some((character) => character === null)) return null;
     return mapped.join('');
   };
