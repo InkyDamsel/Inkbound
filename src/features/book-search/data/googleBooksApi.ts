@@ -328,7 +328,10 @@ export async function searchGoogleBooksAuthorPage(
   const authorQuery = buildGoogleBooksAuthorQuery(trimmedAuthor);
   let payload: GoogleVolumesResponse = { totalItems: 0, items: [] };
   let googleError: string | undefined;
+  const googleCoolingDown = Date.now() < googleBackoffUntil;
+  if (googleCoolingDown) googleError = 'Provider cooling down after rate limit; alternate catalogs are still active.';
   try {
+    if (googleCoolingDown) throw new Error(googleError);
     payload = functions && auth?.currentUser
       ? await requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
       : await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
@@ -337,14 +340,17 @@ export async function searchGoogleBooksAuthorPage(
     }
   } catch (protectedError) {
     if (signal?.aborted) throw protectedError;
-    try {
+    if (shouldBackOffCatalog(protectedError)) {
+      googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+      googleError = protectedError instanceof Error ? protectedError.message : String(protectedError);
+    } else try {
       payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
     } catch (directError) {
       googleError = directError instanceof Error ? directError.message : String(directError);
+      if (shouldBackOffCatalog(directError)) {
+        googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+      }
       console.warn('Google Books author lookup unavailable; alternate author catalogs remain available.', protectedError, directError);
-      // Google is one supplement, not the owner of the author page. Do not
-      // recurse through normal Search here: that can fail the entire author
-      // catalog and erase diagnostics for otherwise healthy providers.
     }
   }
 
@@ -468,7 +474,7 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
 async function searchHardcoverAuthorWithBackoff(authorName: string): Promise<BookSearchResponse> {
   if (Date.now() < hardcoverBackoffUntil) return { groups: [], totalItems: 0 };
   try {
-    return await searchHardcoverAuthorBibliography(authorName);
+    return await searchHardcoverAuthorBibliography(authorName, true);
   } catch (error) {
     if (shouldBackOffCatalog(error)) {
       hardcoverBackoffUntil = Math.max(hardcoverBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
