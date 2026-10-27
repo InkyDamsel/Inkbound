@@ -57,7 +57,7 @@
     "verify:ios-ready": "node scripts/verify-ios-ready.mjs",
     "ios:branding:sync": "node scripts/sync-ios-branding.mjs",
     "ios:google-signin:configure": "node scripts/configure-ios-google-signin.mjs",
-    "test:critical:catalog": "tsx scripts/isbn-resolution-regressions.ts && tsx scripts/scanner-verification-regressions.ts && tsx scripts/catalog-metadata-regressions.ts && tsx scripts/protected-search-contracts.ts",
+    "test:critical:catalog": "tsx scripts/isbn-resolution-regressions.ts && tsx scripts/scanner-verification-regressions.ts && tsx scripts/scanner-cover-regressions.ts && tsx scripts/catalog-metadata-regressions.ts && tsx scripts/protected-search-contracts.ts",
     "verify:native-projects": "node scripts/verify-native-project-wiring.mjs"
   },
   "dependencies": {
