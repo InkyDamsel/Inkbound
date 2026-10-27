@@ -17,6 +17,7 @@ import {
   searchScannerCoverCatalog,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
+import { shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -609,13 +610,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       bitmap.close();
       const image = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
       setPhotoIsbnChoices([]);
-      const lines = await recognizeBookCover(image);
+      const rawLines = await recognizeBookCover(image);
+      // Promo copy can name OTHER books by the same author; exclude it from work identity.
+      // Printed ISBN extraction still uses the untouched OCR below.
+      const lines = stripCoverPromoLines(rawLines);
       // A photographed copyright page can identify the exact edition without a barcode.
       // OCR may split ISBN-13 and ISBN-10 across lines or include both on one line.
       // Only accept checksum-valid values explicitly adjacent to an ISBN label.
       // Parse ISBNs per OCR line: joining lines used to consume adjacent edition
       // numbers and accidentally suppress all matches on retailer copyright pages.
-      const bestPrintedEvidence = collectPrintedIsbnEvidence(lines);
+      const bestPrintedEvidence = collectPrintedIsbnEvidence(rawLines);
       const detectedIsbns = bestPrintedEvidence.map((item) => item.isbn);
       if (detectedIsbns.length > 0) {
         const selected = selectPreferredPrintedIsbn(bestPrintedEvidence, unresolvedIsbn);
@@ -1034,6 +1038,27 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             }
           } catch (error) {
             scannerDiagnostics.push(`cross-pass:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+
+      if (!best) {
+        // Titles such as IT cannot safely search alone. Pair them with author-shaped
+        // OCR evidence, then require strict coverMatchesWork verification.
+        for (const query of shortTitleQueries(cleanLines)) {
+          let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
+          try {
+            response = await searchScannerCoverCatalog(query);
+            recordScannerResponse(`short-title:${query}`, response.groups);
+          } catch (error) {
+            scannerDiagnostics.push(`short-title:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+            continue;
+          }
+          const recovered = response.groups.find((work) => coverMatchesWork(lines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.3 };
+            found = response.groups;
+            break;
           }
         }
       }
