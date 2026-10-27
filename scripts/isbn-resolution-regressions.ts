@@ -113,6 +113,8 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
       'Explicit Walmart Edition ISBN must be retained as retailer fallback evidence.');
     assert.equal(selectPreferredPrintedIsbn(evidence), fixture.standard,
       'Standard publisher ISBN must outrank the Walmart Edition ISBN on the same copyright page.');
+    assert.equal(selectPreferredPrintedIsbn(evidence, fixture.walmart), fixture.standard,
+      'A previously scanned Walmart barcode must not override the standard publisher ISBN printed on the copyright page.');
   }
 
   const splitWalmartEvidence = collectPrintedIsbnEvidence([
