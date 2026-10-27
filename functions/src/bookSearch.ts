@@ -92,6 +92,10 @@ const parseSearchResults = (value: unknown): SearchResult[] => {
       return [];
     }
   }
+  if (value && typeof value === 'object') {
+    const hits = (value as { hits?: unknown }).hits;
+    if (Array.isArray(hits)) return parseSearchResults(hits);
+  }
   return [];
 };
 
