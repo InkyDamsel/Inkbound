@@ -196,60 +196,79 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
   let searchResults: SearchResult[] = [];
 
   if (authorBibliography) {
-    // Hardcover book search is relevance-ranked and is not an author
-    // bibliography. Resolve the author first, then read the books attached to
-    // that author through Hardcover's contribution relationship.
-    const authorSearch = await hardcoverGraphql<{ search?: { results?: unknown } }>(
+    // Resolve authors through Hardcover's typed catalog tables instead of the
+    // free-text search result blob. Search result shapes can change and were
+    // silently leaving author bibliographies empty even with a healthy API key.
+    const authorData = await hardcoverGraphql<{
+      authors?: Array<{ id?: number; name?: string; books_count?: number; canonical_id?: number | null }>;
+    }>(
       token,
-      `query SearchAuthor($q: String!) {
-        search(query: $q, query_type: "Author", per_page: 10, page: 1) { results }
+      `query ResolveAuthor($name: String!) {
+        authors(
+          where: { name: { _eq: $name } }
+          order_by: { books_count: desc }
+          limit: 10
+        ) {
+          id name books_count canonical_id
+        }
       }`,
-      { q: query },
+      { name: query.trim() },
     );
     const normalizedRequestedAuthor = query.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const authorHits = parseSearchResults(authorSearch.search?.results);
-    const authorHit = authorHits.find((candidate) => {
-      const name = String(candidate.name ?? candidate.title ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-      return name === normalizedRequestedAuthor;
-    }) ?? authorHits[0];
+    const authorHit = (authorData.authors ?? []).find((candidate) =>
+      String(candidate.name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === normalizedRequestedAuthor
+    ) ?? authorData.authors?.[0];
     const authorId = Number(authorHit?.id);
+
     if (Number.isFinite(authorId)) {
-      const authorData = await hardcoverGraphql<{
-        books?: Array<HardcoverBook & {
-          cached_contributors?: unknown;
-          contributions?: Array<{ author?: { id?: number | string; name?: string } }>;
-        }>;
+      const contributionData = await hardcoverGraphql<{
+        contributions?: Array<{ contributable_id?: number; contributable_type?: string }>;
       }>(
         token,
-        `query AuthorBibliography($id: Int!) {
-          books(
+        `query AuthorBookIds($id: Int!) {
+          contributions(
             where: {
-              contributions: { author: { id: { _eq: $id } } }
-              canonical_id: { _is_null: true }
+              author_id: { _eq: $id }
+              contributable_type: { _eq: "Book" }
             }
-            limit: 200
+            limit: 500
           ) {
-            id title subtitle description release_year image { url }
-            cached_contributors
-            contributions(limit: 20) { author { id name } }
-            book_series { position series { id name } }
+            contributable_id
+            contributable_type
           }
         }`,
         { id: authorId },
       );
-      searchResults = (authorData.books ?? []).flatMap((book) => {
-        if (!book?.id || !book.title) return [];
-        const names = (book.contributions ?? []).map((entry) => entry.author?.name ?? '').filter(Boolean);
-        return [{
-          id: book.id,
-          title: book.title,
-          subtitle: book.subtitle,
-          description: book.description,
-          release_year: book.release_year,
-          image: book.image,
-          author_names: names.length ? names : [query],
-        } satisfies SearchResult];
-      });
+      const bookIds = Array.from(new Set(
+        (contributionData.contributions ?? [])
+          .map((entry) => Number(entry.contributable_id))
+          .filter((id) => Number.isFinite(id))
+      ));
+
+      if (bookIds.length > 0) {
+        const bibliography = await hardcoverGraphql<{ books?: HardcoverBook[] }>(
+          token,
+          `query AuthorBooks($ids: [Int!]!) {
+            books(where: { id: { _in: $ids } }, limit: 500) {
+              id title subtitle description release_year image { url }
+              book_series { position series { id name } }
+            }
+          }`,
+          { ids: bookIds },
+        );
+        searchResults = (bibliography.books ?? []).flatMap((book) => {
+          if (!book?.id || !book.title) return [];
+          return [{
+            id: book.id,
+            title: book.title,
+            subtitle: book.subtitle,
+            description: book.description,
+            release_year: book.release_year,
+            image: book.image,
+            author_names: [query.trim()],
+          } satisfies SearchResult];
+        });
+      }
     }
   } else {
     const searchData = await searchPage(1, 15);
