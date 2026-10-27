@@ -64,7 +64,8 @@ interface GoogleVolumesResponse {
 export interface AuthorCatalogDiagnostics {
   googleRaw: number;
   googleCredited: number;
-  providers: Array<{ provider: string; raw: number; credited: number; reportedTotal: number }>;
+  providers: Array<{ provider: string; raw: number; credited: number; reportedTotal: number; error?: string }>;
+  googleError?: string;
   mergedBeforeHardening: number;
   mergedAfterHardening: number;
 }
@@ -318,90 +319,64 @@ export async function searchGoogleBooksAuthorPage(
 ): Promise<GoogleBooksAuthorPage> {
   const trimmedAuthor = authorName.trim();
   if (!trimmedAuthor) {
-    return {
-      groups: [],
-      totalItems: 0,
-      providerTotalItems: 0,
-      nextStartIndex: startIndex,
-      hasMore: false,
-    };
+    return { groups: [], totalItems: 0, providerTotalItems: 0, nextStartIndex: startIndex, hasMore: false };
   }
   if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
 
   await waitUntilAdministrationInactive(signal);
 
   const authorQuery = buildGoogleBooksAuthorQuery(trimmedAuthor);
-  let payload: GoogleVolumesResponse;
+  let payload: GoogleVolumesResponse = { totalItems: 0, items: [] };
+  let googleError: string | undefined;
   try {
     payload = functions && auth?.currentUser
       ? await requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
       : await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
-
-    // A successful callable response with no Google items is not proof that the
-    // author has no catalog. Verify empty protected results against Google's
-    // public Books endpoint before accepting a provider-level zero.
     if (functions && auth?.currentUser && (payload.items ?? []).length === 0) {
       payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
     }
   } catch (protectedError) {
     if (signal?.aborted) throw protectedError;
-
     try {
-      // Author pages must remain usable even when the local/protected callable
-      // is stale or unavailable. This uses the same canonical Google mapper and
-      // query shape as normal Search; only the transport falls back to public.
-      payload = await requestDirectGoogleBooks(
-        authorQuery,
-        signal,
-        startIndex,
-        GOOGLE_BOOKS_PAGE_SIZE,
-      );
+      payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
     } catch (directError) {
-      console.warn(
-        'Google Books author lookup unavailable; falling back to canonical catalog search.',
-        protectedError,
-        directError,
-      );
-
-      const fallback = await searchGoogleBooks(authorQuery, signal);
-      return {
-        groups: fallback.groups,
-        totalItems: fallback.totalItems,
-        providerTotalItems: fallback.totalItems,
-        nextStartIndex: startIndex + fallback.groups.length,
-        hasMore: false,
-      };
+      googleError = directError instanceof Error ? directError.message : String(directError);
+      console.warn('Google Books author lookup unavailable; alternate author catalogs remain available.', protectedError, directError);
+      // Google is one supplement, not the owner of the author page. Do not
+      // recurse through normal Search here: that can fail the entire author
+      // catalog and erase diagnostics for otherwise healthy providers.
     }
   }
 
   const rawItems = payload.items ?? [];
-  const editions = rawItems
-    .map(mapGoogleVolume)
-    .filter((item): item is BookSearchEdition => Boolean(item));
-  const googleGroups = groupGoogleEditions(editions);
+  const googleGroups = groupGoogleEditions(
+    rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item)),
+  );
 
-  // Keep Google's existing author-page ordering/pagination intact, but on the
-  // first page fill catalog gaps from providers Inkbound already trusts. This
-  // does not alter normal Search ranking: it only expands the selected
-  // author's bibliography after the user has opened that author.
-  const supplements = startIndex === 0
+  type SupplementResult = BookSearchResponse & { error?: string };
+  const safeSupplement = async (
+    provider: string,
+    run: () => Promise<BookSearchResponse>,
+  ): Promise<SupplementResult> => {
+    try {
+      return await run();
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`${provider} author supplement unavailable.`, error);
+      return { groups: [], totalItems: 0, error: message };
+    }
+  };
+
+  const supplements: SupplementResult[] = startIndex === 0
     ? await Promise.all([
-        searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5).catch((error) => {
-          console.warn('Open Library author bibliography supplement unavailable.', error);
-          return { groups: [], totalItems: 0 };
-        }),
-        searchHardcoverAuthorWithBackoff(trimmedAuthor),
-        searchPrhWithBackoff(trimmedAuthor),
-        searchTrustedCatalogBaseline(trimmedAuthor).catch((error) => {
-          console.warn('Trusted catalog author supplement unavailable.', error);
-          return { groups: [], totalItems: 0 };
-        }),
+        safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)),
+        safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)),
+        safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor)),
+        safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor)),
       ])
     : [];
 
-  // Author pages must only contain works explicitly credited to the selected
-  // author. Broad provider text searches can match names in titles/descriptions,
-  // so supplements never enter the page unless their author credit is exact.
   const requestedAuthor = normalizeText(trimmedAuthor);
   const creditedToAuthor = (work: BookSearchWorkGroup) =>
     work.authors.some((author) => normalizeText(author) === requestedAuthor);
@@ -416,26 +391,25 @@ export async function searchGoogleBooksAuthorPage(
     ? {
         googleRaw: googleGroups.length,
         googleCredited: googleCredited.length,
+        ...(googleError ? { googleError } : {}),
         providers: supplements.map((response, index) => ({
           provider: ['open-library', 'hardcover', 'prh', 'trusted'][index] ?? `supplement-${index}`,
           raw: response.groups.length,
           credited: supplementCredited[index]?.length ?? 0,
           reportedTotal: response.totalItems,
+          ...(response.error ? { error: response.error } : {}),
         })),
         mergedBeforeHardening: googleCredited.length + supplementCredited.reduce((sum, items) => sum + items.length, 0),
         mergedAfterHardening: groups.length,
       }
     : undefined;
 
-  if (diagnostics) {
-    console.info('[Inkbound author catalog] provider merge', { author: trimmedAuthor, diagnostics });
-  }
+  if (diagnostics) console.info('[Inkbound author catalog] provider merge', { author: trimmedAuthor, diagnostics });
+
   const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
   const nextStartIndex = startIndex + rawItems.length;
   const hasMore = rawItems.length > 0 && (
-    providerTotalItems > 0
-      ? nextStartIndex < providerTotalItems
-      : rawItems.length === GOOGLE_BOOKS_PAGE_SIZE
+    providerTotalItems > 0 ? nextStartIndex < providerTotalItems : rawItems.length === GOOGLE_BOOKS_PAGE_SIZE
   );
 
   return {
