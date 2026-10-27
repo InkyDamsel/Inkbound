@@ -336,6 +336,13 @@ export async function searchGoogleBooksAuthorPage(
     payload = functions && auth?.currentUser
       ? await requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
       : await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+
+    // A successful callable response with no Google items is not proof that the
+    // author has no catalog. Verify empty protected results against Google's
+    // public Books endpoint before accepting a provider-level zero.
+    if (functions && auth?.currentUser && (payload.items ?? []).length === 0) {
+      payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    }
   } catch (protectedError) {
     if (signal?.aborted) throw protectedError;
 
