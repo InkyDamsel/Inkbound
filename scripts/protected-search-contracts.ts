@@ -33,8 +33,11 @@ assert.match(provider, /searchHardcoverAuthorWithBackoff\(trimmedAuthor\)/, 'Aut
 assert.match(provider, /nextStartIndex = startIndex \+ rawItems\.length/, 'Author paging must advance by provider results, not filtered matches.');
 
 const hardcoverBibliography = section(serverCatalog, 'if (authorBibliography) {', '} else {');
-assert.match(hardcoverBibliography, /contributions\(limit: 200\)/, 'Hardcover author bibliography must request a broad contribution set.');
-assert.match(hardcoverBibliography, /contributions\(limit: 20\)/, 'Hardcover bibliography books must retain enough contributor credits for exact-author filtering.');
+assert.match(hardcoverBibliography, /books\(/, 'Hardcover author bibliography must query books directly.');
+assert.match(hardcoverBibliography, /contributions: \{ author_id: \{ _eq: \$id \} \}/, 'Hardcover bibliography must select books credited to the resolved author.');
+assert.match(hardcoverBibliography, /canonical_id: \{ _is_null: true \}/, 'Hardcover bibliography must exclude duplicate non-canonical works.');
+assert.match(hardcoverBibliography, /limit: 200/, 'Hardcover author bibliography must request a broad work set.');
+assert.match(hardcoverBibliography, /contributions\(limit: 20\)/, 'Hardcover bibliography books must retain contributor credits for exact-author filtering.');
 const hardcoverDetails = section(serverCatalog, 'if (ids.length > 0) {', 'const booksById =');
 assert.match(hardcoverDetails, /books\(where: \{ id: \{ _in: \$ids \} \}, limit: 200\)/, 'Hardcover detail expansion must cover prolific-author bibliographies.');
 assert.match(hardcoverDetails, /editions\(where: \{ book_id: \{ _in: \$ids \} \}, limit: 400\)/, 'Hardcover edition expansion must not starve later bibliography works.');
