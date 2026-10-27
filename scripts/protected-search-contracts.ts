@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 // the production wiring so scanner changes cannot silently weaken it.
 const modal = readFileSync('src/components/AddBookModal.tsx', 'utf8');
 const catalog = readFileSync('src/features/book-search/data/googleBooksApi.ts', 'utf8');
+const serverCatalog = readFileSync('functions/src/bookSearch.ts', 'utf8');
 
 const section = (source: string, start: string, end: string) => {
   const from = source.indexOf(start);
@@ -30,6 +31,13 @@ assert.match(provider, /googleGroups\.filter\(creditedToAuthor\)/, 'Google autho
 assert.match(provider, /supplements\.flatMap\(\(response\) => response\.groups\.filter\(creditedToAuthor\)\)/, 'Every supplementary author provider must be filtered by credited author.');
 assert.match(provider, /searchHardcoverAuthorWithBackoff\(trimmedAuthor\)/, 'Author catalogs must use the expanded Hardcover bibliography feed.');
 assert.match(provider, /nextStartIndex = startIndex \+ rawItems\.length/, 'Author paging must advance by provider results, not filtered matches.');
+
+const hardcoverBibliography = section(serverCatalog, 'if (authorBibliography) {', '} else {');
+assert.match(hardcoverBibliography, /contributions\(limit: 200\)/, 'Hardcover author bibliography must request a broad contribution set.');
+assert.match(hardcoverBibliography, /contributions\(limit: 20\)/, 'Hardcover bibliography books must retain enough contributor credits for exact-author filtering.');
+const hardcoverDetails = section(serverCatalog, 'if (ids.length > 0) {', 'const booksById =');
+assert.match(hardcoverDetails, /books\(where: \{ id: \{ _in: \$ids \} \}, limit: 200\)/, 'Hardcover detail expansion must cover prolific-author bibliographies.');
+assert.match(hardcoverDetails, /editions\(where: \{ book_id: \{ _in: \$ids \} \}, limit: 400\)/, 'Hardcover edition expansion must not starve later bibliography works.');
 
 const scanner = section(modal, 'const lookupScannedIsbn = async', 'const recoverScannedBookByTitle = async');
 assert.match(scanner, /resolveCatalogIsbn\(isbn\)/, 'Scanner must use ISBN resolution.');
