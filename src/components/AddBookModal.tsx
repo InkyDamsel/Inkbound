@@ -760,7 +760,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           if (!meaningful.length || titleKey.length < 4) continue;
           const titleHits = meaningful.filter((word) => coverWords.has(word) || compactCover.includes(word)).length;
           if (titleHits !== meaningful.length) continue;
-          if (!coverMatchesWork(lines, work.title, work.authors)) continue;
+          if (!coverMatchesWork(cleanLines, work.title, work.authors)) continue;
           // Prefer exact, complete title evidence over partial OCR phrases.
           const score = 1 + titleHits / meaningful.length
             + (compactCover.includes(titleKey.replace(/\s+/g, '')) ? 0.5 : 0)
@@ -813,7 +813,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             if (!meaningful.length || titleKey.length < 4) continue;
             const titleHits = meaningful.filter((word) => coverWords.has(word) || compactCover.includes(word)).length;
             if (titleHits !== meaningful.length) continue;
-            if (!coverMatchesWork(lines, work.title, work.authors)) continue;
+            if (!coverMatchesWork(cleanLines, work.title, work.authors)) continue;
             const score = 1 + titleHits / meaningful.length
               + (compactCover.includes(titleKey.replace(/\s+/g, '')) ? 0.5 : 0)
               + Math.min(0.2, meaningful.length * 0.05);
@@ -884,7 +884,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               authorGroups.push(...response.groups);
               recordScannerResponse(`author-recovery:${authorQuery}:page-${page + 1}`, response.groups);
               const pageMatch = response.groups.find((work) =>
-                coverApproximatelyMatchesWork(lines, work.title, work.authors));
+                coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
               if (pageMatch || !response.hasMore || response.nextStartIndex <= startIndex) break;
               startIndex = response.nextStartIndex;
             }
@@ -893,7 +893,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             continue;
           }
           let recovered = authorGroups.find((work) =>
-            coverApproximatelyMatchesWork(lines, work.title, work.authors));
+            coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
 
           // Google can have an incomplete author bibliography even when other
           // scanner catalogs know the photographed work. Reuse the existing
@@ -904,7 +904,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               const response = await searchScannerAuthorCatalog(authorQuery);
               recordScannerResponse(`author-recovery-bibliography:${authorQuery}`, response.groups);
               const supplemental = response.groups.filter((work) =>
-                coverApproximatelyMatchesWork(lines, work.title, work.authors));
+                coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
               recovered = supplemental[0];
               if (recovered) authorGroups = response.groups;
             } catch (error) {
@@ -967,7 +967,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 `author-recovery-surname-scoped:${surnameHint} => ${authorScopedGroups.length} [${authorScopedGroups.slice(0, 20).map((work) => `${work.title} — ${work.authors.join(', ')}`).join(' | ') || 'no results'}]`,
               );
               const recovered = authorScopedGroups.find((work) =>
-                coverApproximatelyMatchesWork(lines, work.title, work.authors));
+                coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
               if (recovered) {
                 best = { work: recovered, score: 2.23 };
                 found = response.groups;
@@ -1002,7 +1002,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               const response = await searchScannerCoverCatalog(`${titleHint} ${authorHint}`);
               recordScannerResponse(`fuzzy-title-author:${titleHint} ${authorHint}`, response.groups);
               const recovered = response.groups.find((work) =>
-                coverApproximatelyMatchesWork(lines, work.title, work.authors));
+                coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
               if (recovered) {
                 best = { work: recovered, score: 2.24 };
                 found = response.groups;
@@ -1040,7 +1040,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             const response = await searchScannerCoverCatalog(query);
             recordScannerResponse(`cross-pass:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
-              coverApproximatelyMatchesWork(lines, work.title, work.authors));
+              coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
             if (recovered) {
               best = { work: recovered, score: 2.2 };
               found = response.groups;
@@ -1064,7 +1064,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             scannerDiagnostics.push(`short-title:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
             continue;
           }
-          const recovered = response.groups.find((work) => coverMatchesWork(lines, work.title, work.authors));
+          const recovered = response.groups.find((work) => coverMatchesWork(cleanLines, work.title, work.authors));
           if (recovered) {
             best = { work: recovered, score: 2.3 };
             found = response.groups;
