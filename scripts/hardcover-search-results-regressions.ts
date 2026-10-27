@@ -3,8 +3,9 @@ import fs from 'node:fs';
 
 const source = fs.readFileSync('functions/src/bookSearch.ts', 'utf8');
 const start = source.indexOf('const parseSearchResults');
-const end = source.indexOf('\n\nasync function hardcoverGraphql', start);
-assert.ok(start >= 0 && end > start, 'Hardcover result parser must exist.');
+const end = source.indexOf('async function hardcoverGraphql', start);
+assert.ok(start >= 0, 'Hardcover result parser must exist.');
+assert.ok(end > start, 'Hardcover GraphQL helper must follow the result parser.');
 const parser = source.slice(start, end);
 
 assert.match(parser, /hits\?: unknown/, 'Hardcover parser must recognize the Typesense hits object.');
