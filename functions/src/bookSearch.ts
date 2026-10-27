@@ -224,7 +224,7 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
         `query AuthorBibliography($id: Int!) {
           books(
             where: {
-              contributions: { author_id: { _eq: $id } }
+              contributions: { author: { id: { _eq: $id } } }
               canonical_id: { _is_null: true }
             }
             limit: 200
