@@ -61,10 +61,19 @@ interface GoogleVolumesResponse {
   items?: GoogleVolume[];
 }
 
-export interface GoogleBooksAuthorPage extends BookSearchResponse {
+export export interface AuthorCatalogDiagnostics {
+  googleRaw: number;
+  googleCredited: number;
+  providers: Array<{ provider: string; raw: number; credited: number; reportedTotal: number }>;
+  mergedBeforeHardening: number;
+  mergedAfterHardening: number;
+}
+
+interface GoogleBooksAuthorPage extends BookSearchResponse {
   providerTotalItems: number;
   nextStartIndex: number;
   hasMore: boolean;
+  diagnostics?: AuthorCatalogDiagnostics;
 }
 
 const GOOGLE_BOOKS_PAGE_SIZE = 40;
@@ -396,20 +405,23 @@ export async function searchGoogleBooksAuthorPage(
     ...supplementCredited.flat(),
   ]).filter(creditedToAuthor);
 
-  if (startIndex === 0) {
-    const providerNames = ['open-library', 'hardcover', 'prh', 'trusted'];
-    console.info('[Inkbound author catalog] provider merge', {
-      author: trimmedAuthor,
-      google: { raw: googleGroups.length, credited: googleCredited.length },
-      supplements: supplements.map((response, index) => ({
-        provider: providerNames[index] ?? `supplement-${index}`,
-        raw: response.groups.length,
-        credited: supplementCredited[index]?.length ?? 0,
-        reportedTotal: response.totalItems,
-      })),
-      mergedBeforeHardening: googleCredited.length + supplementCredited.reduce((sum, items) => sum + items.length, 0),
-      mergedAfterHardening: groups.length,
-    });
+  const diagnostics: AuthorCatalogDiagnostics | undefined = startIndex === 0
+    ? {
+        googleRaw: googleGroups.length,
+        googleCredited: googleCredited.length,
+        providers: supplements.map((response, index) => ({
+          provider: ['open-library', 'hardcover', 'prh', 'trusted'][index] ?? `supplement-${index}`,
+          raw: response.groups.length,
+          credited: supplementCredited[index]?.length ?? 0,
+          reportedTotal: response.totalItems,
+        })),
+        mergedBeforeHardening: googleCredited.length + supplementCredited.reduce((sum, items) => sum + items.length, 0),
+        mergedAfterHardening: groups.length,
+      }
+    : undefined;
+
+  if (diagnostics) {
+    console.info('[Inkbound author catalog] provider merge', { author: trimmedAuthor, diagnostics });
   }
   const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
   const nextStartIndex = startIndex + rawItems.length;
@@ -425,6 +437,7 @@ export async function searchGoogleBooksAuthorPage(
     providerTotalItems,
     nextStartIndex,
     hasMore,
+    diagnostics,
   };
 }
 
