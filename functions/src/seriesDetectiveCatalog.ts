@@ -1236,17 +1236,19 @@ async function detectivePrhCatalog(
 
 const prhExtractAuthorCandidates = (payload: unknown): Array<{ authorId: string; name: string }> =>
   prhRecordArrays(payload).flatMap((record) => {
-    const rawId = record.authorId ?? record.authorID ?? record.id;
-    const rawName = record.author ?? record.authorName ?? record.displayName ?? record.name;
+    const rawId = record.authorId ?? record.authorID ?? record.author_id ?? record.id ?? record.ID;
+    const rawName = record.author ?? record.authorName ?? record.authorDisplay ?? record.displayName
+      ?? record.name ?? record.Name ?? record.fullName ?? record.full_name;
     if ((typeof rawId !== 'string' && typeof rawId !== 'number') || typeof rawName !== 'string') return [];
     return [{ authorId: String(rawId), name: rawName.trim() }];
   });
 
 async function detectivePrhAuthorCatalog(authorName: string) {
-  const searchPayload = await prhFetchJson('/search/views/search-display', {
+  const searchPayload = await prhFetchJson('/search', {
     q: authorName,
     docType: 'author',
-    rows: 40,
+    rows: 100,
+    exactMatchWeighting: 20,
   });
   const wanted = prhNormalize(authorName);
   const author = prhExtractAuthorCandidates(searchPayload)
