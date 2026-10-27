@@ -156,6 +156,10 @@ export async function searchInkboundTrustedCatalog(input: { isbn?: string; asin?
     }
 
     const rawTitle = input.title?.trim() ?? '';
+    if (!rawTitle && input.author?.trim()) {
+      const response = await callable({ action: 'searchTrustedCatalog', author: input.author.trim() });
+      return response.data ?? { groups: [], totalItems: 0 };
+    }
     if (!rawTitle) return { groups: [], totalItems: 0 };
     const words = rawTitle.split(/\s+/).filter(Boolean);
     const variants = [...new Set(Array.from({ length: Math.min(5, words.length) }, (_, index) => words.slice(0, words.length - index).join(' ')).filter(Boolean))];
