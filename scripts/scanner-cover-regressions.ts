@@ -25,6 +25,17 @@ assert.equal(coverMatchesWork(ropedClean,'Branded',['Saffron A. Kent']),false,
 assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
   'Removing promo text must preserve the actual photographed title and author evidence.');
 
+
+const reignDamaged=['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME'];
+assert.equal(coverApproximatelyMatchesWork(reignDamaged,'Reign',['Bethan Crome']),true,
+  'Scanner must recover a one-glyph title substitution plus a fragmented author name.');
+
+const dawnWrongBook=['DAWN OF THE CURSED QUEEN','AMBER V. NICOLE'];
+assert.equal(coverMatchesWork(dawnWrongBook,'Gods and Monsters',['Amber V. Nicole']),false,
+  'Matching author evidence must never verify a different title.');
+assert.equal(coverMatchesWork(dawnWrongBook,'Dawn of the Cursed Queen',['Amber V. Nicole']),true,
+  'The complete photographed title plus author must verify the intended work.');
+
 const pages=[
   ['ISBN 978-0-06-346227-4','9 780063 462274'],
   ['ISBN 978-1-4967-5808-8','9 781496 758088'],
