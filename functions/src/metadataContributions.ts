@@ -289,6 +289,14 @@ async function searchTrustedCatalog(data: Record<string, unknown>) {
     snapshot.docs.forEach((doc) => matches.set(doc.id, doc));
   }
 
+  if (matches.size === 0 && author && !title) {
+    const snapshot = await db.collection('trustedCatalogEditions')
+      .where('normalizedAuthor', '==', author)
+      .limit(100)
+      .get();
+    snapshot.docs.forEach((doc) => matches.set(doc.id, doc));
+  }
+
   // Trusted titles are often longer than what a reader types (for example,
   // "The Black Oath: A Dark MM Bodyguard and Boss Mafia Romance"). Exact
   // equality made those records invisible unless the entire subtitle-style
