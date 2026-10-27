@@ -175,16 +175,16 @@ async function googleBooksCatalog(
   return payload;
 }
 
-async function hardcoverCatalog(query: string) {
+async function hardcoverCatalog(query: string, authorBibliography = false) {
   const token = HARDCOVER_API_TOKEN.value();
   if (!token) throw new HttpsError('failed-precondition', 'Hardcover search is not configured.');
 
   const searchData = await hardcoverGraphql<{ search?: { results?: unknown } }>(
     token,
-    `query SearchBooks($q: String!) {
-      search(query: $q, query_type: "Book", per_page: 15, page: 1) { results }
+    `query SearchBooks($q: String!, $perPage: Int!) {
+      search(query: $q, query_type: "Book", per_page: $perPage, page: 1) { results }
     }`,
-    { q: query },
+    { q: query, perPage: authorBibliography ? 100 : 15 },
   );
   const searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
   const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
@@ -319,6 +319,7 @@ export const searchHardcoverBooks = onCall(
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid book search is required.');
     const provider = request.data?.provider === 'google-books' ? 'google-books' : 'hardcover';
+    const authorBibliography = request.data?.authorBibliography === true;
     const requestedStartIndex = Number(request.data?.startIndex);
     const requestedMaxResults = Number(request.data?.maxResults);
     const startIndex = Number.isInteger(requestedStartIndex) && requestedStartIndex >= 0
@@ -331,7 +332,7 @@ export const searchHardcoverBooks = onCall(
     try {
       return provider === 'google-books'
         ? await googleBooksCatalog(query, startIndex, maxResults)
-        : await hardcoverCatalog(query);
+        : await hardcoverCatalog(query, authorBibliography);
     } catch (error) {
       if (provider === 'hardcover') {
         console.warn('Optional Hardcover catalog supplement unavailable.', error);
