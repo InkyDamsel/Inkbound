@@ -114,20 +114,44 @@ export const extractValidPrintedIsbns = (value: string): string[] => {
 export const collectPrintedIsbnEvidence = (lines: string[]): PrintedIsbnEvidence[] => {
   const evidence: PrintedIsbnEvidence[] = [];
   const retailerPattern = /(?:walmart|target|exclusive|special|limited|collector'?s)\s+(?:edition\s+)?isbn/i;
+  const isbnLabelPattern = /isbn/i;
+  const addEvidence = (isbn: string, label: string, priority: number) => {
+    const existing = evidence.find((item) => item.isbn === isbn);
+    if (!existing || priority > existing.priority) {
+      if (existing) evidence.splice(evidence.indexOf(existing), 1);
+      evidence.push({ isbn, label, priority });
+    }
+  };
+
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (!/isbn/i.test(line)) continue;
-    for (const isbn of extractValidPrintedIsbns(line)) {
-      evidence.push({ isbn, label: line, priority: retailerPattern.test(line) ? 3 : 2 });
-    }
-    const window = lines.slice(index, index + 2).join(' ');
-    for (const isbn of extractValidPrintedIsbns(window)) {
-      if (!evidence.some((item) => item.isbn === isbn)) evidence.push({ isbn, label: window, priority: 1 });
+    const next = lines[index + 1] ?? '';
+    const previous = lines[index - 1] ?? '';
+
+    if (isbnLabelPattern.test(line)) {
+      for (const isbn of extractValidPrintedIsbns(line)) {
+        addEvidence(isbn, line, retailerPattern.test(line) ? 3 : 2);
+      }
+
+      // Native ML Kit frequently returns the label and number as separate OCR
+      // lines. Carry the label onto the immediately following numeric line.
+      if (next && !isbnLabelPattern.test(next)) {
+        for (const isbn of extractValidPrintedIsbns(next)) {
+          addEvidence(isbn, `${line} ${next}`, retailerPattern.test(line) ? 3 : 2);
+        }
+      }
+
+      // Also tolerate OCR block ordering where the number is emitted just
+      // before its label, but never guess beyond the adjacent line.
+      if (previous && !isbnLabelPattern.test(previous)) {
+        for (const isbn of extractValidPrintedIsbns(previous)) {
+          addEvidence(isbn, `${previous} ${line}`, retailerPattern.test(line) ? 3 : 2);
+        }
+      }
     }
   }
-  return [...new Map(
-    evidence.sort((left, right) => right.priority - left.priority).map((item) => [item.isbn, item]),
-  ).values()];
+
+  return evidence.sort((left, right) => right.priority - left.priority);
 };
 
 export const selectPreferredPrintedIsbn = (evidence: PrintedIsbnEvidence[], unresolvedIsbn?: string | null): string | null => {
