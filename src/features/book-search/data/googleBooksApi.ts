@@ -64,7 +64,7 @@ interface GoogleVolumesResponse {
 export interface AuthorCatalogDiagnostics {
   googleRaw: number;
   googleCredited: number;
-  providers: Array<{ provider: string; raw: number; credited: number; reportedTotal: number; error?: string }>;
+  providers: Array<{ provider: string; raw: number; credited: number; reportedTotal: number; error?: string; debug?: Record<string, unknown> }>;
   googleError?: string;
   mergedBeforeHardening: number;
   mergedAfterHardening: number;
@@ -360,7 +360,7 @@ export async function searchGoogleBooksAuthorPage(
     rawItems.map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item)),
   );
 
-  type SupplementResult = BookSearchResponse & { error?: string };
+  type SupplementResult = BookSearchResponse & { error?: string; providerDebug?: Record<string, unknown> };
   const safeSupplement = async (
     provider: string,
     run: () => Promise<BookSearchResponse>,
@@ -405,6 +405,7 @@ export async function searchGoogleBooksAuthorPage(
           credited: supplementCredited[index]?.length ?? 0,
           reportedTotal: response.totalItems,
           ...(response.error ? { error: response.error } : {}),
+          ...(response.providerDebug ? { debug: response.providerDebug } : {}),
         })),
         mergedBeforeHardening: googleCredited.length + supplementCredited.reduce((sum, items) => sum + items.length, 0),
         mergedAfterHardening: groups.length,
