@@ -236,6 +236,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [scannerBusy, setScannerBusy] = useState(false);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
+  const [scannerDetails, setScannerDetails] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -459,6 +460,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerRecoveryTitle('');
     setScannerRecoveryAuthor('');
     setScannerError(null);
+    setScannerDetails(null);
     setScannerMessage(null);
     try {
       const resolved = await resolveCatalogIsbn(isbn);
@@ -469,9 +471,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         const appCheckError = await diagnoseNativeAppCheckFailure();
         if (appCheckError) {
           console.warn('Scanner catalog lookup could not obtain a native App Check token.', appCheckError);
+          setScannerDetails(`[Inkbound scanner] ISBN lookup blocked by Firebase App Check\nISBN: ${isbn}\nApp Check: ${appCheckError instanceof Error ? appCheckError.message : String(appCheckError)}`);
           setScannerError(`ISBN ${isbn} is valid, but Inkbound could not verify this test build with Firebase App Check, so protected catalog providers may be unavailable. If this is an Android debug build, register its App Check debug token in Firebase, then retry. Your scanned ISBN is retained.`);
           return;
         }
+        setScannerDetails(`[Inkbound scanner] ISBN lookup returned no verified edition\nISBN: ${isbn}\nApp Check diagnostic: no native App Check error detected\nThe ISBN is retained so cover/title recovery cannot overwrite the physical edition identity.`);
         setScannerError(`ISBN ${isbn} is valid, but no catalog returned a verified edition. Try Scan Cover Instead to identify the book, or enter its title below. Your scanned ISBN is retained.`);
         return;
       }
@@ -1079,7 +1083,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           ...scannerDiagnostics.slice(0, 30),
         ].join('\n');
         console.error(diagnostic);
-        throw new Error('Cover text was detected, but no verified title-and-author catalog match was found. Scanner diagnostics were written to the console.');
+        setScannerDetails(diagnostic);
+        throw new Error('Cover text was detected, but no verified title-and-author catalog match was found.');
       }
       // Cover OCR identifies a work, not the scanned edition. Offer the
       // matching catalog editions in Scanner, never silently substitute ISBNs.
@@ -1654,7 +1659,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   </div>)}
                 </div>
               </div>}
-              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
+              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{scannerDetails && <details className="mt-3 rounded-lg border border-rose-300/20 bg-black/20 p-3"><summary className="cursor-pointer font-semibold text-[#f4d9e2]">Scanner details</summary><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[#e6d6e2]">{scannerDetails}</pre></details>}{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
                 <p className="text-xs text-[#e6d6e2]">Enter a title and optionally an author. Inkbound will look up book details and available editions automatically, keeping scanned ISBN {unresolvedIsbn} separate.</p>
                 <input aria-label="Book title for scanner recovery" value={scannerRecoveryTitle} onChange={(event) => setScannerRecoveryTitle(event.target.value)} placeholder="Book title" enterKeyHint="next" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
                 <input aria-label="Author for scanner recovery" value={scannerRecoveryAuthor} onChange={(event) => setScannerRecoveryAuthor(event.target.value)} placeholder="Author (optional)" enterKeyHint="search" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
