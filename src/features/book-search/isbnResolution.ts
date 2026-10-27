@@ -155,7 +155,10 @@ export const collectPrintedIsbnEvidence = (lines: string[]): PrintedIsbnEvidence
     const previous = lines[index - 1] ?? '';
 
     if (isbnLabelPattern.test(line)) {
-      const priority = retailerPattern.test(line) ? 3 : 2;
+      // Prefer the publisher's standard ISBN over retailer/exclusive edition
+      // identifiers. Retailer ISBNs are useful only as a fallback when the
+      // copyright page does not expose a regular ISBN.
+      const priority = retailerPattern.test(line) ? 1 : 3;
       const inlineIsbns = extractValidPrintedIsbns(line);
       for (const isbn of inlineIsbns) {
         addEvidence(isbn, line, priority);
