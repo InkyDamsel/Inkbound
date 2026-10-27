@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
 
@@ -26,9 +26,17 @@ assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
   'Removing promo text must preserve the actual photographed title and author evidence.');
 
 
+assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME']).includes('bethan crome'),
+  'Fragmented given name plus next-line surname must produce a bounded author retrieval hint.');
+
 const reignDamaged=['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME'];
 assert.equal(coverApproximatelyMatchesWork(reignDamaged,'Reign',['Bethan Crome']),true,
   'Scanner must recover a one-glyph title substitution plus a fragmented author name.');
+
+const tillyPromoOnly=['A DARK MAFIA ROMANCE','THE ALLIANCE SERIES','NEW YORK TIMES BESTSELLING AUTHOR','S.J. TILLY'];
+const tillyClean=stripCoverPromoLines(tillyPromoOnly).filter((line) => !/(?:new york times|bestsell)/i.test(line));
+assert.equal(coverMatchesWork(tillyClean,'Hans',['S.J. Tilly']),false,
+  'Author, series, and genre promo text without photographed title evidence must not verify a work.');
 
 const dawnWrongBook=['DAWN OF THE CURSED QUEEN','AMBER V. NICOLE'];
 assert.equal(coverMatchesWork(dawnWrongBook,'Gods and Monsters',['Amber V. Nicole']),false,
