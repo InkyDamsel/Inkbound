@@ -107,12 +107,12 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
   ];
   for (const fixture of walmartPages) {
     const evidence = collectPrintedIsbnEvidence(fixture.lines);
-    assert.ok(evidence.some((item) => item.isbn === fixture.standard && item.priority === 2),
-      'Copyright-page scanner must retain the standard ISBN as companion evidence.');
-    assert.ok(evidence.some((item) => item.isbn === fixture.walmart && item.priority === 3),
-      'Explicit Walmart Edition ISBN must be recognized as retailer-edition evidence.');
-    assert.equal(selectPreferredPrintedIsbn(evidence), fixture.walmart,
-      'Explicit Walmart Edition ISBN must outrank the generic ISBN on the same copyright page.');
+    assert.ok(evidence.some((item) => item.isbn === fixture.standard && item.priority === 3),
+      'Copyright-page scanner must recognize the standard publisher ISBN as primary evidence.');
+    assert.ok(evidence.some((item) => item.isbn === fixture.walmart && item.priority === 1),
+      'Explicit Walmart Edition ISBN must be retained as retailer fallback evidence.');
+    assert.equal(selectPreferredPrintedIsbn(evidence), fixture.standard,
+      'Standard publisher ISBN must outrank the Walmart Edition ISBN on the same copyright page.');
   }
 
   const splitWalmartEvidence = collectPrintedIsbnEvidence([
@@ -121,10 +121,16 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
     'Walmart Edition ISBN',
     '978-1-68281-818-3',
   ]);
-  assert.equal(selectPreferredPrintedIsbn(splitWalmartEvidence), '9781682818183',
-    'Split native OCR lines must carry the Walmart Edition ISBN label onto its adjacent number.');
-  assert.ok(splitWalmartEvidence.some((item) => item.isbn === '9781682816417' && item.priority === 2),
-    'Split native OCR lines must retain the standard companion ISBN.');
+  assert.equal(selectPreferredPrintedIsbn(splitWalmartEvidence), '9781682816417',
+    'Split native OCR lines must prefer the standard publisher ISBN over the Walmart Edition ISBN.');
+  assert.ok(splitWalmartEvidence.some((item) => item.isbn === '9781682816417' && item.priority === 3),
+    'Split native OCR lines must retain the standard publisher ISBN as primary evidence.');
+  assert.ok(splitWalmartEvidence.some((item) => item.isbn === '9781682818183' && item.priority === 1),
+    'Split native OCR lines must retain the Walmart Edition ISBN only as fallback evidence.');
+
+  const walmartOnlyEvidence = collectPrintedIsbnEvidence(['Walmart Edition ISBN 978-1-68281-818-3']);
+  assert.equal(selectPreferredPrintedIsbn(walmartOnlyEvidence), '9781682818183',
+    'A retailer ISBN must remain usable when it is the only valid printed ISBN available.');
 
   assert.deepEqual(extractValidPrintedIsbns('ISBN 978L-68281-641-7'), ['9781682816417'],
     'Bounded OCR repair should recover a checksum-valid ISBN from a common 1/L confusion.');
