@@ -34,6 +34,7 @@ interface HardcoverBook {
   description?: string;
   release_year?: number;
   image?: { url?: string };
+  contributions?: Array<{ author?: { id?: number | string; name?: string } }>;
   book_series?: Array<{
     position?: number;
     series?: { id?: number | string; name?: string };
