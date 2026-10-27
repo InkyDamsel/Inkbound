@@ -205,18 +205,26 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
     // Hardcover disables wildcard string operators on the public API. Resolve
     // author candidates through search.ids, hydrate those typed author rows,
     // then exact-match locally before following the documented book relation.
-    const authorSearch = await hardcoverGraphql<{
-      search?: { ids?: Array<number | string> };
-    }>(
-      token,
-      `query SearchAuthors($q: String!) {
-        search(query: $q, query_type: "Author", per_page: 20, page: 1) { ids }
-      }`,
-      { q: query.trim() },
-    );
-    const rawAuthorIds = authorSearch.search?.ids ?? [];
+    const authorQueries = Array.from(new Set([
+      query.trim(),
+      query.trim().replace(/\./g, ''),
+      query.trim().replace(/\s+/g, ' '),
+    ].filter(Boolean)));
+    const authorSearchPages = await Promise.all(authorQueries.flatMap((authorQuery) =>
+      [1, 2, 3].map((page) => hardcoverGraphql<{ search?: { ids?: Array<number | string> } }>(
+        token,
+        `query SearchAuthors($q: String!, $page: Int!) {
+          search(query: $q, query_type: "Author", per_page: 100, page: $page) { ids }
+        }`,
+        { q: authorQuery, page },
+      ))
+    ));
+    const rawAuthorIds = Array.from(new Set(
+      authorSearchPages.flatMap((result) => result.search?.ids ?? []).map(String),
+    ));
+    providerDebug.authorQueries = authorQueries;
     providerDebug.authorSearchIdCount = rawAuthorIds.length;
-    providerDebug.authorSearchIds = rawAuthorIds.slice(0, 10);
+    providerDebug.authorSearchIds = rawAuthorIds.slice(0, 20);
     const candidateAuthorIds = rawAuthorIds
       .map((id) => Number(id))
       .filter((id) => Number.isFinite(id));
@@ -227,21 +235,27 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
         }>(
           token,
           `query ResolveAuthors($ids: [Int!]!) {
-            authors(where: { id: { _in: $ids } }, order_by: { books_count: desc }, limit: 20) {
+            authors(where: { id: { _in: $ids } }, order_by: { books_count: desc }, limit: 500) {
               id name books_count
             }
           }`,
           { ids: candidateAuthorIds },
         )
       : { authors: [] };
-    const normalizedRequestedAuthor = query.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const normalizeAuthorIdentity = (value: string) =>
+      value.toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
+    const normalizedRequestedAuthor = normalizeAuthorIdentity(query.trim());
     const authorHit = (authorData.authors ?? []).find((candidate) =>
-      String(candidate.name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === normalizedRequestedAuthor
+      normalizeAuthorIdentity(String(candidate.name ?? '')) === normalizedRequestedAuthor
     );
     const authorId = Number(authorHit?.id);
     providerDebug.hydratedAuthorCount = (authorData.authors ?? []).length;
-    providerDebug.hydratedAuthorNames = (authorData.authors ?? []).map((candidate) => candidate.name).filter(Boolean).slice(0, 10);
+    providerDebug.hydratedAuthorNames = (authorData.authors ?? []).map((candidate) => candidate.name).filter(Boolean).slice(0, 30);
+    providerDebug.resolvedAuthorName = authorHit?.name ?? null;
     providerDebug.resolvedAuthorId = Number.isFinite(authorId) ? authorId : null;
+    if (!Number.isFinite(authorId)) {
+      providerDebug.resolutionFailure = 'Hardcover author search returned candidates but none matched the requested author identity.';
+    }
 
     if (Number.isFinite(authorId)) {
       const bibliography = await hardcoverGraphql<{ books?: HardcoverBook[] }>(
