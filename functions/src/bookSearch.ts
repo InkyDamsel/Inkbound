@@ -182,6 +182,7 @@ async function googleBooksCatalog(
 }
 
 async function hardcoverCatalog(query: string, authorBibliography = false) {
+  const providerDebug: Record<string, unknown> = { mode: authorBibliography ? 'author-bibliography' : 'search' };
   const token = HARDCOVER_API_TOKEN.value();
   if (!token) throw new HttpsError('failed-precondition', 'Hardcover search is not configured.');
 
@@ -213,9 +214,13 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
       }`,
       { q: query.trim() },
     );
-    const candidateAuthorIds = (authorSearch.search?.ids ?? [])
+    const rawAuthorIds = authorSearch.search?.ids ?? [];
+    providerDebug.authorSearchIdCount = rawAuthorIds.length;
+    providerDebug.authorSearchIds = rawAuthorIds.slice(0, 10);
+    const candidateAuthorIds = rawAuthorIds
       .map((id) => Number(id))
       .filter((id) => Number.isFinite(id));
+    providerDebug.numericAuthorIdCount = candidateAuthorIds.length;
     const authorData = candidateAuthorIds.length
       ? await hardcoverGraphql<{
           authors?: Array<{ id?: number; name?: string; books_count?: number }>;
@@ -234,6 +239,9 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
       String(candidate.name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === normalizedRequestedAuthor
     );
     const authorId = Number(authorHit?.id);
+    providerDebug.hydratedAuthorCount = (authorData.authors ?? []).length;
+    providerDebug.hydratedAuthorNames = (authorData.authors ?? []).map((candidate) => candidate.name).filter(Boolean).slice(0, 10);
+    providerDebug.resolvedAuthorId = Number.isFinite(authorId) ? authorId : null;
 
     if (Number.isFinite(authorId)) {
       const bibliography = await hardcoverGraphql<{ books?: HardcoverBook[] }>(
@@ -253,6 +261,7 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
         }`,
         { id: authorId },
       );
+      providerDebug.bibliographyBookCount = (bibliography.books ?? []).length;
       searchResults = (bibliography.books ?? []).flatMap((book) => {
         if (!book?.id || !book.title) return [];
         const names = book.contributions
@@ -386,7 +395,7 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
     };
   });
 
-  return { groups, totalItems: groups.length };
+  return { groups, totalItems: groups.length, ...(authorBibliography ? { providerDebug } : {}) };
 }
 
 /**
