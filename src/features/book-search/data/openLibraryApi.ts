@@ -50,6 +50,19 @@ interface OpenLibraryWorkDetails {
   description?: string | { value?: string };
 }
 
+interface OpenLibraryAuthorSearchResponse {
+  numFound?: number;
+  docs?: Array<{ key?: string; name?: string; work_count?: number }>;
+}
+
+interface OpenLibraryAuthorWorksResponse {
+  size?: number;
+  entries?: Array<OpenLibraryWork & {
+    covers?: number[];
+    first_publish_date?: string;
+  }>;
+}
+
 const OPEN_LIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
 const FIELDS = [
   'key', 'title', 'subtitle', 'author_name', 'first_publish_year', 'publisher', 'subject', 'language', 'series',
@@ -250,35 +263,66 @@ export async function searchOpenLibrary(query: string, signal?: AbortSignal): Pr
 export async function searchOpenLibraryAuthorBibliography(
   authorName: string,
   signal?: AbortSignal,
-  maxPages = 5,
+  _maxPages = 5,
 ): Promise<BookSearchResponse> {
   const trimmed = authorName.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
 
-  const groups: BookSearchWorkGroup[] = [];
-  let totalItems = 0;
-  const pageSize = 40;
+  // Resolve the author once, then use Open Library's purpose-built author
+  // works endpoint. The old generic search path stopped after 200 results even
+  // when Open Library reported a much larger bibliography.
+  const authorParams = new URLSearchParams({ q: trimmed, limit: '20' });
+  const authorResponse = await fetch(`https://openlibrary.org/search/authors.json?${authorParams.toString()}`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!authorResponse.ok) throw new Error(`Open Library author lookup failed (${authorResponse.status}).`);
 
-  for (let page = 0; page < maxPages; page += 1) {
-    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-    const params = buildSearchParams(`inauthor:${trimmed}`, page * pageSize);
-    const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
-      signal,
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) throw new Error(`Open Library author bibliography failed (${response.status}).`);
+  const authorPayload = (await authorResponse.json()) as OpenLibraryAuthorSearchResponse;
+  const wanted = normalize(trimmed);
+  const author = (authorPayload.docs ?? []).find((candidate) => normalize(candidate.name) === wanted)
+    ?? authorPayload.docs?.[0];
+  const authorKey = author?.key?.replace(/^\/authors\//, '');
+  if (!authorKey) return { groups: [], totalItems: 0 };
 
-    const payload = (await response.json()) as OpenLibraryResponse;
-    totalItems = payload.numFound ?? payload.num_found ?? totalItems;
-    const pageGroups = (payload.docs ?? [])
-      .map(mapWork)
-      .filter((group): group is BookSearchWorkGroup => Boolean(group));
-    groups.push(...pageGroups);
+  const worksResponse = await fetch(
+    `https://openlibrary.org/authors/${encodeURIComponent(authorKey)}/works.json?limit=1000`,
+    { signal, headers: { Accept: 'application/json' } },
+  );
+  if (!worksResponse.ok) throw new Error(`Open Library author works lookup failed (${worksResponse.status}).`);
 
-    if ((payload.docs ?? []).length < pageSize || groups.length >= totalItems) break;
-  }
+  const worksPayload = (await worksResponse.json()) as OpenLibraryAuthorWorksResponse;
+  const groups = (worksPayload.entries ?? []).flatMap((entry): BookSearchWorkGroup[] => {
+    if (!entry.title) return [];
+    const coverId = entry.covers?.find((value) => Number.isFinite(value) && value > 0);
+    const publicationDate = entry.first_publish_date;
+    const edition: BookSearchEdition = {
+      source: 'open-library',
+      externalEditionId: entry.key ?? `${authorKey}:${normalize(entry.title)}`,
+      title: entry.title,
+      subtitle: entry.subtitle,
+      authors: [trimmed],
+      genres: (entry.subject ?? []).slice(0, 12),
+      publicationDate,
+      publicationYear: publicationYear(publicationDate, entry.first_publish_year),
+      format: 'hardcover',
+      coverUrl: coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : undefined,
+      specialFeatures: [],
+    };
+    return [{
+      key: `open-library:${entry.key ?? `${authorKey}:${normalize(entry.title)}`}`,
+      title: entry.title,
+      subtitle: entry.subtitle,
+      authors: [trimmed],
+      genres: (entry.subject ?? []).slice(0, 12),
+      editions: [edition],
+    }];
+  });
 
-  return { groups, totalItems: totalItems || groups.length };
+  return {
+    groups,
+    totalItems: worksPayload.size ?? author?.work_count ?? groups.length,
+  };
 }
 
 export async function fetchOpenLibrarySummary(title: string, author: string, signal?: AbortSignal): Promise<string | undefined> {
