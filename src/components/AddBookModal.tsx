@@ -709,12 +709,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const compactAdjacentTitles = adjacentTitlePairs
         .map((value) => value.replace(/\s+/g, ''))
         .filter((value) => value.length >= 6);
+      const rankedAdjacentTitles = adjacentTitlePairs
+        .filter(usableCandidate)
+        .sort((left, right) => candidateScore(right) - candidateScore(left));
+      // Reserve query budget for literal OCR lines. Synthetic pair/compact
+      // phrases are useful for decorative split titles, but they must never
+      // crowd the actual printed title out of the eight provider requests.
       const candidates = [...new Set([
-        ...adjacentTitlePairs.filter(usableCandidate).sort((left, right) => candidateScore(right) - candidateScore(left)),
+        ...rankedAdjacentTitles.slice(0, 3),
         // Decorative titles are often split across lines even when catalogs
         // store them as one word ("Black Thorn" -> "Blackthorn").
-        ...compactAdjacentTitles,
-        ...rankedSingleLines,
+        ...compactAdjacentTitles.slice(0, 2),
+        ...rankedSingleLines.slice(0, 3),
         ...rankedCombined,
       ])].slice(0, 8);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
