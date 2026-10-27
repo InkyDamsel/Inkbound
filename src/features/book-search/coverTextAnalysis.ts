@@ -64,3 +64,38 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
   }
   return [...new Set(queries)].slice(0, maxQueries);
 }
+
+
+/** Build bounded author retrieval hints from cover OCR. This only improves
+ * candidate retrieval; scanner verification still decides book identity. */
+export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string[] {
+  const queries: string[] = [];
+
+  for (let index = 0; index < cleanLines.length; index += 1) {
+    const tokens = wordsOf(cleanLines[index]);
+    const nextTokens = wordsOf(cleanLines[index + 1] ?? '');
+
+    // Decorative given names may be split inside one printed line while the
+    // surname remains on the next line: "BE THA N" / "CROME" -> "bethan crome".
+    // Keep this deliberately narrow so prose cannot be collapsed into a name.
+    if (tokens.length >= 2 && tokens.length <= 4
+      && tokens.every((token) => token.length <= 4)
+      && nextTokens.length === 1 && nextTokens[0].length >= 3) {
+      queries.push(`${tokens.join('')} ${nextTokens[0]}`);
+    }
+
+    if (tokens.length < 2 || tokens.length > 5) continue;
+    const shortTokenCount = tokens.filter((token) => token.length <= 2).length;
+    if (shortTokenCount >= 1 && tokens.length >= 3) {
+      const firstLong = tokens.findIndex((token) => token.length > 2);
+      const prefixCount = Math.min(2, firstLong < 0 ? 2 : firstLong);
+      const split = Math.max(1, prefixCount);
+      queries.push(`${tokens.slice(0, split).join(' ')} ${tokens.slice(split).join('')}`.trim());
+    } else if (tokens.length === 2) {
+      queries.push(cleanLines[index].trim());
+    }
+  }
+
+  return [...new Set(queries.map((query) => query.replace(/\s+/g, ' ').trim()).filter(Boolean))]
+    .slice(0, maxQueries);
+}
