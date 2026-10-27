@@ -101,19 +101,32 @@ export const extractValidPrintedIsbns = (value: string): string[] => {
     ? value.slice(isbnLabelIndex).replace(/^.*?isbn\s*/i, '')
     : value;
   const compact = source.replace(/[^0-9A-Za-z]/g, '');
-  const repaired: string[] = [];
+  const repairCandidate = (candidate: string): string | null => {
+    const mapped = [...candidate].map(repairPrintedIsbnDigit);
+    if (mapped.some((character) => character === null)) return null;
+    return mapped.join('');
+  };
 
-  for (const size of [13, 10]) {
-    for (let offset = 0; offset + size <= compact.length; offset += 1) {
-      const candidate = compact.slice(offset, offset + size);
-      const mapped = [...candidate].map(repairPrintedIsbnDigit);
-      if (mapped.some((character) => character === null)) continue;
-      const isbn = mapped.join('');
-      if (isValidCatalogIsbn(isbn)) repaired.push(isbn);
-    }
+  // ISBN-13 must win before ISBN-10 is even considered. A 13-digit ISBN can
+  // contain a coincidentally checksum-valid 10-digit window (for example
+  // 9781682818183 contains 8682818183). Returning that inner window invents
+  // an edition identity that was never printed on the page.
+  const isbn13s: string[] = [];
+  for (let offset = 0; offset + 13 <= compact.length; offset += 1) {
+    const isbn = repairCandidate(compact.slice(offset, offset + 13));
+    if (isbn && isValidCatalogIsbn(isbn)) isbn13s.push(isbn);
+  }
+  if (isbn13s.length > 0) return [...new Set(isbn13s)];
+
+  // Only accept ISBN-10 when the OCR evidence itself is ten characters long.
+  // Never mine a ten-character ISBN from inside a longer numeric/alphanumeric
+  // run after ISBN-13 validation failed.
+  if (compact.length === 10) {
+    const isbn = repairCandidate(compact);
+    if (isbn && isValidCatalogIsbn(isbn)) return [isbn];
   }
 
-  return [...new Set(repaired)];
+  return [];
 };
 
 export const collectPrintedIsbnEvidence = (lines: string[]): PrintedIsbnEvidence[] => {
