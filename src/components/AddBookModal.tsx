@@ -18,7 +18,7 @@ import {
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { coverAuthorQueries, shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -706,7 +706,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         .sort((left, right) => candidateScore(right) - candidateScore(left));
       const rankedSingleLines = [...new Set(cleanLines)]
         .filter(usableCandidate)
-        .sort((left, right) => candidateScore(right) - candidateScore(left));
+        .sort((left, right) => {
+          const roleDifference = Number(isDemotedCoverTitleLine(left)) - Number(isDemotedCoverTitleLine(right));
+          return roleDifference || candidateScore(right) - candidateScore(left);
+        });
       // Literal OCR lines are stronger evidence than synthetic 3-5 line
       // combinations. Keep adjacent pairs first for titles split across two
       // decorative lines, then literal single lines, and only then broader
@@ -717,7 +720,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         .filter((value) => value.length >= 6);
       const rankedAdjacentTitles = adjacentTitlePairs
         .filter(usableCandidate)
-        .sort((left, right) => candidateScore(right) - candidateScore(left));
+        .sort((left, right) => {
+          const roleDifference = Number(isDemotedCoverTitleLine(left)) - Number(isDemotedCoverTitleLine(right));
+          return roleDifference || candidateScore(right) - candidateScore(left);
+        });
       // Reserve query budget for literal OCR lines. Synthetic pair/compact
       // phrases are useful for decorative split titles, but they must never
       // crowd the actual printed title out of the eight provider requests.
