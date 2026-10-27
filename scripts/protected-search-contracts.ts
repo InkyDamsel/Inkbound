@@ -28,6 +28,7 @@ const provider = section(catalog, 'export async function searchGoogleBooksAuthor
 assert.match(provider, /buildGoogleBooksAuthorQuery\(trimmedAuthor\)/, 'Author catalog must use an author-qualified query.');
 assert.match(provider, /googleGroups\.filter\(creditedToAuthor\)/, 'Google author results must be credited to author.');
 assert.match(provider, /supplements\.flatMap\(\(response\) => response\.groups\.filter\(creditedToAuthor\)\)/, 'Every supplementary author provider must be filtered by credited author.');
+assert.match(provider, /searchHardcoverAuthorWithBackoff\(trimmedAuthor\)/, 'Author catalogs must use the expanded Hardcover bibliography feed.');
 assert.match(provider, /nextStartIndex = startIndex \+ rawItems\.length/, 'Author paging must advance by provider results, not filtered matches.');
 
 const scanner = section(modal, 'const lookupScannedIsbn = async', 'const recoverScannedBookByTitle = async');
