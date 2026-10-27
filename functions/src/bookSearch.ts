@@ -417,7 +417,11 @@ export const searchHardcoverBooks = onCall(
     } catch (error) {
       if (provider === 'hardcover') {
         console.warn('Optional Hardcover catalog supplement unavailable.', error);
-        return { groups: [], totalItems: 0 };
+        return {
+          groups: [],
+          totalItems: 0,
+          providerError: error instanceof Error ? error.message : 'Hardcover catalog request failed.',
+        };
       }
 
       console.error('google-books search failed', error);
