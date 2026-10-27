@@ -34,7 +34,7 @@ assert.match(provider, /nextStartIndex = startIndex \+ rawItems\.length/, 'Autho
 
 const hardcoverBibliography = section(serverCatalog, 'if (authorBibliography) {', '} else {');
 assert.match(hardcoverBibliography, /books\(/, 'Hardcover author bibliography must query books directly.');
-assert.match(hardcoverBibliography, /contributions: \{ author_id: \{ _eq: \$id \} \}/, 'Hardcover bibliography must select books credited to the resolved author.');
+assert.match(hardcoverBibliography, /contributions: \{ author: \{ id: \{ _eq: \$id \} \} \}/, 'Hardcover bibliography must select books through the nested author relationship.');
 assert.match(hardcoverBibliography, /canonical_id: \{ _is_null: true \}/, 'Hardcover bibliography must exclude duplicate non-canonical works.');
 assert.match(hardcoverBibliography, /limit: 200/, 'Hardcover author bibliography must request a broad work set.');
 assert.match(hardcoverBibliography, /contributions\(limit: 20\)/, 'Hardcover bibliography books must retain contributor credits for exact-author filtering.');
