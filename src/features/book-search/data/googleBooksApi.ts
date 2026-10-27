@@ -117,7 +117,7 @@ export const buildGoogleBooksQuery = (value: string): string => {
 
 const buildGoogleBooksAuthorQuery = (authorName: string): string => {
   const normalized = authorName.trim().replace(/"/g, '');
-  return `inauthor:"${normalized}"`;
+  return `inauthor:${normalized}`;
 };
 
 const publicationYear = (value?: string): number => {
