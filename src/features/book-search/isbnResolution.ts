@@ -97,25 +97,22 @@ const repairPrintedIsbnDigit = (char: string): string | null => {
 
 export const extractValidPrintedIsbns = (value: string): string[] => {
   const isbnLabelIndex = value.search(/isbn/i);
-  const labelled = isbnLabelIndex >= 0 ? value.slice(isbnLabelIndex).replace(/^.*?isbn\s*/i, '') : value;
-  // Work from bounded ISBN-sized windows instead of one greedy token.
-  // A clean hyphenated ISBN-13 contains 13 OCR characters after punctuation
-  // is removed; native OCR may also substitute a small set of digit-like
-  // letters that repairPrintedIsbnDigit handles below.
-  const rawTokens = labelled.match(/[0-9A-Za-z](?:[0-9A-Za-z.-]*[\s-]?){8,20}[0-9A-Za-z]/g) ?? [];
+  const source = isbnLabelIndex >= 0
+    ? value.slice(isbnLabelIndex).replace(/^.*?isbn\s*/i, '')
+    : value;
+  const compact = source.replace(/[^0-9A-Za-z]/g, '');
   const repaired: string[] = [];
-  for (const token of rawTokens) {
-    const compact = token.replace(/[^0-9A-Za-z]/g, '');
-    for (const size of [13, 10]) {
-      for (let offset = 0; offset + size <= compact.length; offset += 1) {
-        const candidate = compact.slice(offset, offset + size);
-        const mapped = [...candidate].map(repairPrintedIsbnDigit);
-        if (mapped.some((char) => char === null)) continue;
-        const digits = mapped.join('');
-        if (isValidCatalogIsbn(digits)) repaired.push(digits);
-      }
+
+  for (const size of [13, 10]) {
+    for (let offset = 0; offset + size <= compact.length; offset += 1) {
+      const candidate = compact.slice(offset, offset + size);
+      const mapped = [...candidate].map(repairPrintedIsbnDigit);
+      if (mapped.some((character) => character === null)) continue;
+      const isbn = mapped.join('');
+      if (isValidCatalogIsbn(isbn)) repaired.push(isbn);
     }
   }
+
   return [...new Set(repaired)];
 };
 
