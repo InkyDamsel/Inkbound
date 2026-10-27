@@ -32,6 +32,9 @@ assert.ok(provider.includes('const supplementCredited = supplements.map((respons
 assert.match(provider, /searchHardcoverAuthorWithBackoff\(trimmedAuthor\)/, 'Author catalogs must use the expanded Hardcover bibliography feed.');
 assert.match(provider, /nextStartIndex = startIndex \+ rawItems\.length/, 'Author paging must advance by provider results, not filtered matches.');
 
+assert.match(serverCatalog, /HARDCOVER_RATE_LIMIT_COOLDOWN_MS/, 'Hardcover must enforce a shared server cooldown after rate limits.');
+assert.match(serverCatalog, /readHardcoverCache\(query, authorBibliography\)/, 'Hardcover must reuse cached catalog responses before upstream calls.');
+assert.match(serverCatalog, /writeHardcoverCache\(query, authorBibliography/, 'Hardcover successful catalog responses must be cached.');
 const hardcoverBibliography = section(serverCatalog, 'if (authorBibliography) {', '} else {');
 assert.match(hardcoverBibliography, /query_type: "Author"/, 'Hardcover bibliography must resolve author candidates through supported search.');
 assert.match(hardcoverBibliography, /search\(query: \$q, query_type: "Author".*\) \{ ids \}/s, 'Hardcover author search must consume typed ids instead of result JSON.');
