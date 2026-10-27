@@ -7,12 +7,14 @@ interface HardcoverSearchPayload {
   totalItems?: number;
 }
 
+type HardcoverSearchRequest = { query: string; authorBibliography?: boolean };
+
 export async function searchHardcover(query: string): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed || !functions) return { groups: [], totalItems: 0 };
 
   try {
-    const callable = httpsCallable<{ query: string }, HardcoverSearchPayload>(functions, 'searchHardcoverBooks');
+    const callable = httpsCallable<HardcoverSearchRequest, HardcoverSearchPayload>(functions, 'searchHardcoverBooks');
     const response = await callable({ query: trimmed });
     const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
     return {
@@ -21,6 +23,28 @@ export async function searchHardcover(query: string): Promise<BookSearchResponse
     };
   } catch (error) {
     console.warn('Hardcover catalog supplement unavailable.', error);
+    return { groups: [], totalItems: 0 };
+  }
+}
+
+
+// Author pages need a broader Hardcover candidate pool than ordinary Search.
+// The server expands only this author-bibliography request; exact author-credit
+// filtering still happens in the author aggregation path before anything is shown.
+export async function searchHardcoverAuthorBibliography(authorName: string): Promise<BookSearchResponse> {
+  const trimmed = authorName.trim();
+  if (!trimmed || !functions) return { groups: [], totalItems: 0 };
+
+  try {
+    const callable = httpsCallable<HardcoverSearchRequest, HardcoverSearchPayload>(functions, 'searchHardcoverBooks');
+    const response = await callable({ query: trimmed, authorBibliography: true });
+    const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
+    return {
+      groups,
+      totalItems: typeof response.data.totalItems === 'number' ? response.data.totalItems : groups.length,
+    };
+  } catch (error) {
+    console.warn('Hardcover author bibliography supplement unavailable.', error);
     return { groups: [], totalItems: 0 };
   }
 }
