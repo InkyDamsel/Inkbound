@@ -205,7 +205,7 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
       token,
       `query ResolveAuthor($name: String!) {
         authors(
-          where: { name: { _eq: $name } }
+          where: { name: { _ilike: $name } }
           order_by: { books_count: desc }
           limit: 10
         ) {
