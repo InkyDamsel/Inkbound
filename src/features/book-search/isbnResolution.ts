@@ -170,6 +170,25 @@ export const collectPrintedIsbnEvidence = (lines: string[]): PrintedIsbnEvidence
     }
   }
 
+  // OCR often sees the ISBN-13 digits printed under a barcode but loses the
+  // ISBN label. Only use this fallback when no labeled ISBN was recovered.
+  // Prefix + checksum validation prevents prices/add-on codes becoming books.
+  if (evidence.length === 0) {
+    const unlabeledSources = [
+      ...lines,
+      ...lines.slice(0, -1).map((line, index) => `${line}${lines[index + 1]}`),
+    ];
+    for (const source of unlabeledSources) {
+      const digits = source.replace(/[\s-]/g, '');
+      for (let offset = 0; offset + 13 <= digits.length; offset += 1) {
+        const candidate = digits.slice(offset, offset + 13);
+        if (/^97[89]\d{10}$/.test(candidate) && isValidCatalogIsbn(candidate)) {
+          addEvidence(candidate, 'unlabeled printed digits', 1);
+        }
+      }
+    }
+  }
+
   return evidence.sort((left, right) => right.priority - left.priority);
 };
 
