@@ -61,7 +61,7 @@ interface GoogleVolumesResponse {
   items?: GoogleVolume[];
 }
 
-export export interface AuthorCatalogDiagnostics {
+export interface AuthorCatalogDiagnostics {
   googleRaw: number;
   googleCredited: number;
   providers: Array<{ provider: string; raw: number; credited: number; reportedTotal: number }>;
