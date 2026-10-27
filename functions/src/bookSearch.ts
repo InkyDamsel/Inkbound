@@ -227,11 +227,11 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
         token,
         `query AuthorBibliography($id: Int!) {
           authors_by_pk(id: $id) {
-            contributions {
+            contributions(limit: 200) {
               book {
                 id title subtitle description release_year image { url }
                 cached_contributors
-                contributions { author { id name } }
+                contributions(limit: 20) { author { id name } }
                 book_series { position series { id name } }
               }
             }
@@ -270,11 +270,11 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
       const detailData = await hardcoverGraphql<{ editions?: HardcoverEdition[]; books?: HardcoverBook[] }>(
         token,
         `query SearchBookDetails($ids: [Int!]!) {
-          books(where: { id: { _in: $ids } }, limit: 80) {
+          books(where: { id: { _in: $ids } }, limit: 200) {
             id title subtitle description release_year image { url }
             book_series { position series { id name } }
           }
-          editions(where: { book_id: { _in: $ids } }, limit: 80) {
+          editions(where: { book_id: { _in: $ids } }, limit: 400) {
             id book_id title pages isbn_10 isbn_13 release_date edition_format
             image { url }
             publisher { name }
