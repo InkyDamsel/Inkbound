@@ -389,10 +389,28 @@ export async function searchGoogleBooksAuthorPage(
   const requestedAuthor = normalizeText(trimmedAuthor);
   const creditedToAuthor = (work: BookSearchWorkGroup) =>
     work.authors.some((author) => normalizeText(author) === requestedAuthor);
+  const googleCredited = googleGroups.filter(creditedToAuthor);
+  const supplementCredited = supplements.map((response) => response.groups.filter(creditedToAuthor));
   const groups = hardenCatalogGroups([
-    ...googleGroups.filter(creditedToAuthor),
-    ...supplements.flatMap((response) => response.groups.filter(creditedToAuthor)),
+    ...googleCredited,
+    ...supplementCredited.flat(),
   ]).filter(creditedToAuthor);
+
+  if (startIndex === 0) {
+    const providerNames = ['open-library', 'hardcover', 'prh', 'trusted'];
+    console.info('[Inkbound author catalog] provider merge', {
+      author: trimmedAuthor,
+      google: { raw: googleGroups.length, credited: googleCredited.length },
+      supplements: supplements.map((response, index) => ({
+        provider: providerNames[index] ?? `supplement-${index}`,
+        raw: response.groups.length,
+        credited: supplementCredited[index]?.length ?? 0,
+        reportedTotal: response.totalItems,
+      })),
+      mergedBeforeHardening: googleCredited.length + supplementCredited.reduce((sum, items) => sum + items.length, 0),
+      mergedAfterHardening: groups.length,
+    });
+  }
   const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
   const nextStartIndex = startIndex + rawItems.length;
   const hasMore = rawItems.length > 0 && (
