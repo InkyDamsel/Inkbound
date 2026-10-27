@@ -5,6 +5,7 @@ import type { BookSearchResponse } from '../model/bookSearch';
 interface HardcoverSearchPayload {
   groups?: BookSearchResponse['groups'];
   totalItems?: number;
+  providerError?: string;
 }
 
 type HardcoverSearchRequest = { query: string; authorBibliography?: boolean };
@@ -38,6 +39,7 @@ export async function searchHardcoverAuthorBibliography(authorName: string, prop
   try {
     const callable = httpsCallable<HardcoverSearchRequest, HardcoverSearchPayload>(functions, 'searchHardcoverBooks');
     const response = await callable({ query: trimmed, authorBibliography: true });
+    if (response.data.providerError) throw new Error(response.data.providerError);
     const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
     return {
       groups,
