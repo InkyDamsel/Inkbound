@@ -363,18 +363,35 @@ export async function searchGoogleBooksAuthorPage(
     .map(mapGoogleVolume)
     .filter((item): item is BookSearchEdition => Boolean(item));
   const googleGroups = groupGoogleEditions(editions);
-  const prh = startIndex === 0
-    ? await searchPrhWithBackoff(trimmedAuthor)
-    : { groups: [], totalItems: 0 };
-  // Author pages must only contain works credited to the selected author.
-  // PRH's broad text lookup can return books mentioning the name in a title
-  // or description; do not let those pollute an otherwise accurate catalog.
+
+  // Keep Google's existing author-page ordering/pagination intact, but on the
+  // first page fill catalog gaps from providers Inkbound already trusts. This
+  // does not alter normal Search ranking: it only expands the selected
+  // author's bibliography after the user has opened that author.
+  const supplements = startIndex === 0
+    ? await Promise.all([
+        searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5).catch((error) => {
+          console.warn('Open Library author bibliography supplement unavailable.', error);
+          return { groups: [], totalItems: 0 };
+        }),
+        searchHardcoverWithBackoff(trimmedAuthor),
+        searchPrhWithBackoff(trimmedAuthor),
+        searchTrustedCatalogBaseline(trimmedAuthor).catch((error) => {
+          console.warn('Trusted catalog author supplement unavailable.', error);
+          return { groups: [], totalItems: 0 };
+        }),
+      ])
+    : [];
+
+  // Author pages must only contain works explicitly credited to the selected
+  // author. Broad provider text searches can match names in titles/descriptions,
+  // so supplements never enter the page unless their author credit is exact.
   const requestedAuthor = normalizeText(trimmedAuthor);
   const creditedToAuthor = (work: BookSearchWorkGroup) =>
     work.authors.some((author) => normalizeText(author) === requestedAuthor);
   const groups = hardenCatalogGroups([
     ...googleGroups.filter(creditedToAuthor),
-    ...prh.groups.filter(creditedToAuthor),
+    ...supplements.flatMap((response) => response.groups.filter(creditedToAuthor)),
   ]).filter(creditedToAuthor);
   const providerTotalItems = Math.max(0, payload.totalItems ?? 0);
   const nextStartIndex = startIndex + rawItems.length;
