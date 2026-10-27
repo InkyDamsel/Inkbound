@@ -192,21 +192,73 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
   // per_page value. Author catalogs therefore walk several result pages and
   // merge them before exact-author filtering on the client. Ordinary Search
   // remains a single page so its behavior/ranking is unchanged.
-  const searchResults: SearchResult[] = [];
-  const seenSearchIds = new Set<string>();
-  const pageCount = authorBibliography ? 8 : 1;
-  const perPage = 15;
-  for (let page = 1; page <= pageCount; page += 1) {
-    const searchData = await searchPage(page, perPage);
-    const pageResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
-    if (!pageResults.length) break;
-    for (const result of pageResults) {
-      const key = String(result.id ?? result.slug ?? `${result.title ?? ''}::${authorNames(result).join('|')}`);
-      if (seenSearchIds.has(key)) continue;
-      seenSearchIds.add(key);
-      searchResults.push(result);
+  let searchResults: SearchResult[] = [];
+
+  if (authorBibliography) {
+    // Hardcover book search is relevance-ranked and is not an author
+    // bibliography. Resolve the author first, then read the books attached to
+    // that author through Hardcover's contribution relationship.
+    const authorSearch = await hardcoverGraphql<{ search?: { results?: unknown } }>(
+      token,
+      `query SearchAuthor($q: String!) {
+        search(query: $q, query_type: "Author", per_page: 10, page: 1) { results }
+      }`,
+      { q: query },
+    );
+    const normalizedRequestedAuthor = query.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const authorHits = parseSearchResults(authorSearch.search?.results);
+    const authorHit = authorHits.find((candidate) => {
+      const name = String(candidate.name ?? candidate.title ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      return name === normalizedRequestedAuthor;
+    }) ?? authorHits[0];
+    const authorId = Number(authorHit?.id);
+    if (Number.isFinite(authorId)) {
+      const authorData = await hardcoverGraphql<{
+        authors_by_pk?: {
+          contributions?: Array<{
+            book?: HardcoverBook & {
+              cached_contributors?: unknown;
+              contributions?: Array<{ author?: { id?: number | string; name?: string } }>;
+            };
+          }>;
+        };
+      }>(
+        token,
+        `query AuthorBibliography($id: Int!) {
+          authors_by_pk(id: $id) {
+            contributions {
+              book {
+                id title subtitle description release_year image { url }
+                cached_contributors
+                contributions { author { id name } }
+                book_series { position series { id name } }
+              }
+            }
+          }
+        }`,
+        { id: authorId },
+      );
+      const seen = new Set<string>();
+      searchResults = (authorData.authors_by_pk?.contributions ?? []).flatMap(({ book }) => {
+        if (!book?.id || !book.title) return [];
+        const key = String(book.id);
+        if (seen.has(key)) return [];
+        seen.add(key);
+        const names = (book.contributions ?? []).map((entry) => entry.author?.name ?? '').filter(Boolean);
+        return [{
+          id: book.id,
+          title: book.title,
+          subtitle: book.subtitle,
+          description: book.description,
+          release_year: book.release_year,
+          image: book.image,
+          author_names: names.length ? names : [query],
+        } satisfies SearchResult];
+      });
     }
-    if (!authorBibliography || pageResults.length < perPage) break;
+  } else {
+    const searchData = await searchPage(1, 15);
+    searchResults = parseSearchResults(searchData.search?.results).filter((result) => result.title);
   }
   const ids = searchResults.map((result) => Number(result.id)).filter((id) => Number.isFinite(id));
 
