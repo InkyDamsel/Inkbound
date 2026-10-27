@@ -18,7 +18,7 @@ import {
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -830,41 +830,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Shared by both author-catalog recovery and cross-pass title recovery.
       // Keep this outside the recovery blocks so a failed author-catalog pass
       // can safely reuse the same bounded author evidence.
-      const authorRecoveryQueries = [...new Set(cleanLines
-          .map((line) => {
-            const tokens = line.split(/\s+/).filter(Boolean);
-            if (tokens.length < 2 || tokens.length > 5) return null;
-            // OCR often fragments stylized surnames into pieces ("GE ssING ER").
-            // Rejoin everything after 1-2 initial/given-name tokens so the
-            // catalog can receive a useful author query without knowing any
-            // particular author in advance.
-            const leadingInitials = tokens.filter((token) => token.length <= 2).length;
-            if (leadingInitials >= 1 && tokens.length >= 3) {
-              const prefixCount = Math.min(2, tokens.findIndex((token) => token.length > 2) < 0
-                ? 2 : tokens.findIndex((token) => token.length > 2));
-              const prefix = tokens.slice(0, Math.max(1, prefixCount)).join(' ');
-              const surname = tokens.slice(Math.max(1, prefixCount)).join('');
-              return `${prefix} ${surname}`.trim();
-            }
-            return line;
-          })
-          .filter((line): line is string => Boolean(line))
-          .filter((line) => {
-            const normalized = normalizeCatalogText(line);
-            if (normalized.length < 5 || isNoise(line)) return false;
-            // Prefer name-shaped lines over prose/UI text. Initials and short
-            // leading tokens are strong author evidence on book covers.
-            const tokens = line.split(/\s+/).filter(Boolean);
-            return tokens.some((token) => token.length <= 2) || tokens.length === 2;
-          })
-          .sort((left, right) => {
-            const authorShape = (value: string) => {
-              const tokens = value.split(/\s+/).filter(Boolean);
-              return tokens.filter((token) => token.length <= 2).length * 4
-                - Math.abs(2 - tokens.length);
-            };
-            return authorShape(right) - authorShape(left);
-          }))].slice(0, 3);
+      const authorRecoveryQueries = coverAuthorQueries(cleanLines);
 
       if (!best) {
         // If OCR damaged the title but preserved a credible author line, use
