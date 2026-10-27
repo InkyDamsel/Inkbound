@@ -128,6 +128,10 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
 
   assert.deepEqual(extractValidPrintedIsbns('ISBN 978L-68281-641-7'), ['9781682816417'],
     'Bounded OCR repair should recover a checksum-valid ISBN from a common 1/L confusion.');
+  assert.deepEqual(extractValidPrintedIsbns('Walmart Edition ISBN 978-1-68281-818-3'), ['9781682818183'],
+    'A Walmart ISBN-13 must remain the full printed ISBN and never collapse to an inner ISBN-10.');
+  assert.ok(!extractValidPrintedIsbns('Walmart Edition ISBN 978-1-68281-818-3').includes('8682818183'),
+    'Scanner must never manufacture checksum-valid ISBN-10 8682818183 from inside 9781682818183.');
   assert.deepEqual(extractValidPrintedIsbns('ISBN 978-1-68281-641-8'), [],
     'Copyright OCR must reject a plausible-looking ISBN when its checksum is invalid.');
 }
