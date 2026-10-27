@@ -133,8 +133,18 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // surname, so compare the complete catalog surname against OCR tokens and
   // adjacent token joins with a tightly bounded edit distance.
   const rawWords = words(lines.join(' '));
+  const rawLineWords = lines.map(words);
+  const fragmentedLineCandidates = rawLineWords.flatMap((lineWords) => {
+    if (lineWords.length < 2 || lineWords.length > 4) return [];
+    // Decorative names are often segmented inside a single printed line
+    // ("BE THA N"). Rejoin only short fragments from that same OCR line so
+    // unrelated title/tagline words cannot manufacture an author identity.
+    const shortFragments = lineWords.every((word) => word.length <= 4);
+    return shortFragments ? [lineWords.join('')] : [];
+  });
   const authorCandidates = [
     ...rawWords,
+    ...fragmentedLineCandidates,
     ...rawWords.slice(0, -1).map((word, index) => `${word}${rawWords[index + 1]}`),
     ...rawWords.slice(0, -2).map((word, index) => `${word}${rawWords[index + 1]}${rawWords[index + 2]}`),
   ];
