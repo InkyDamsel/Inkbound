@@ -33,11 +33,13 @@ assert.match(provider, /searchHardcoverAuthorWithBackoff\(trimmedAuthor\)/, 'Aut
 assert.match(provider, /nextStartIndex = startIndex \+ rawItems\.length/, 'Author paging must advance by provider results, not filtered matches.');
 
 const hardcoverBibliography = section(serverCatalog, 'if (authorBibliography) {', '} else {');
-assert.match(hardcoverBibliography, /authors\(/, 'Hardcover bibliography must resolve authors through the typed catalog.');
+assert.match(hardcoverBibliography, /query_type: "author"/, 'Hardcover bibliography must resolve author candidates through supported search.');
+assert.match(hardcoverBibliography, /search\(query: \$q, query_type: "author".*\) \{ ids \}/s, 'Hardcover author search must consume typed ids instead of result JSON.');
+assert.match(hardcoverBibliography, /authors\(where: \{ id: \{ _in: \$ids \} \}/, 'Hardcover bibliography must hydrate candidate author ids.');
 assert.match(hardcoverBibliography, /books_count: desc/, 'Hardcover author resolution must prefer the populated author record.');
-assert.match(hardcoverBibliography, /contributions\(/, 'Hardcover bibliography must read the author contribution table.');
-assert.match(hardcoverBibliography, /author_id: \{ _eq: \$id \}/, 'Hardcover bibliography must select contributions for the resolved author.');
-assert.match(hardcoverBibliography, /contributable_type: \{ _eq: "Book" \}/, 'Hardcover bibliography must restrict author contributions to books.');
+assert.doesNotMatch(hardcoverBibliography, /_ilike/, 'Hardcover public API does not permit wildcard string operators.');
+assert.match(hardcoverBibliography, /contributions: \{ author: \{ id: \{ _eq: \$id \} \} \}/, 'Hardcover bibliography must follow the documented book-author relationship.');
+assert.match(hardcoverBibliography, /canonical_id: \{ _is_null: true \}/, 'Hardcover bibliography must exclude duplicate canonical children.');
 assert.match(hardcoverBibliography, /limit: 500/, 'Hardcover author bibliography must request a broad work set.');
 const hardcoverDetails = section(serverCatalog, 'if (ids.length > 0) {', 'const booksById =');
 assert.match(hardcoverDetails, /books\(where: \{ id: \{ _in: \$ids \} \}, limit: 500\)/, 'Hardcover detail expansion must cover prolific-author bibliographies.');
