@@ -204,10 +204,18 @@ export const collectPrintedIsbnEvidence = (lines: string[]): PrintedIsbnEvidence
 };
 
 export const selectPreferredPrintedIsbn = (evidence: PrintedIsbnEvidence[], unresolvedIsbn?: string | null): string | null => {
-  if (unresolvedIsbn && evidence.some((item) => item.isbn === unresolvedIsbn)) return unresolvedIsbn;
   if (evidence.length === 0) return null;
+
+  // Copyright-page evidence can correct a retailer barcode identity. When the
+  // page prints both a standard publisher ISBN and a retailer/exclusive ISBN,
+  // the standard ISBN is the canonical lookup identity even if the barcode
+  // scan previously populated unresolvedIsbn with the retailer ISBN.
   const highestPriority = Math.max(...evidence.map((item) => item.priority));
   const preferred = evidence.filter((item) => item.priority === highestPriority);
   if (preferred.length === 1 && highestPriority >= 3) return preferred[0].isbn;
+
+  // Preserve an already scanned ISBN only when the page did not provide one
+  // unambiguous higher-priority standard ISBN.
+  if (unresolvedIsbn && evidence.some((item) => item.isbn === unresolvedIsbn)) return unresolvedIsbn;
   return evidence.length === 1 ? evidence[0].isbn : null;
 };
