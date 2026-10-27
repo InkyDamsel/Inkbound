@@ -283,9 +283,18 @@ async function requestDirectGoogleBooks(
 }
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  const payload = functions && auth?.currentUser
-    ? await requestProtectedGoogleBooks(query, signal)
-    : await requestDirectGoogleBooks(query, signal);
+  let payload: GoogleVolumesResponse;
+  if (functions && auth?.currentUser) {
+    try {
+      payload = await requestProtectedGoogleBooks(query, signal);
+    } catch (protectedError) {
+      if (signal?.aborted) throw protectedError;
+      console.warn('Protected Google Books lookup unavailable; retrying public Google Books.', protectedError);
+      payload = await requestDirectGoogleBooks(query, signal);
+    }
+  } else {
+    payload = await requestDirectGoogleBooks(query, signal);
+  }
 
   const editions = (payload.items ?? []).map(mapGoogleVolume).filter((item): item is BookSearchEdition => Boolean(item));
   const groups = groupGoogleEditions(editions);
@@ -739,7 +748,10 @@ export async function searchGoogleBooks(query: string, signal?: AbortSignal): Pr
     // identifier itself rather than provider-specific query syntax.
     const exactIsbn = compactIsbn(trimmed.replace(/^isbn:\s*/i, ''));
     const [trusted, google, openLibrary, hardcover, prh] = await Promise.all([
-      searchTrustedCatalogBaseline(exactIsbn),
+      searchTrustedCatalogBaseline(exactIsbn).catch((error) => {
+        console.warn('Trusted catalog ISBN lookup failed; alternate catalogs remain available.', error);
+        return { groups: [], totalItems: 0 };
+      }),
       searchGoogleBaseline(`isbn:${exactIsbn}`, signal),
       searchOpenLibraryWithAuthorFallback(`isbn:${exactIsbn}`, signal),
       searchHardcoverWithBackoff(exactIsbn),
