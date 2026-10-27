@@ -283,11 +283,11 @@ async function hardcoverCatalog(query: string, authorBibliography = false) {
       const detailData = await hardcoverGraphql<{ editions?: HardcoverEdition[]; books?: HardcoverBook[] }>(
         token,
         `query SearchBookDetails($ids: [Int!]!) {
-          books(where: { id: { _in: $ids } }, limit: 200) {
+          books(where: { id: { _in: $ids } }, limit: 500) {
             id title subtitle description release_year image { url }
             book_series { position series { id name } }
           }
-          editions(where: { book_id: { _in: $ids } }, limit: 400) {
+          editions(where: { book_id: { _in: $ids } }, limit: 1000) {
             id book_id title pages isbn_10 isbn_13 release_date edition_format
             image { url }
             publisher { name }
