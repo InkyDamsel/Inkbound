@@ -37,6 +37,32 @@ export function stripCoverPromoLines(lines: string[]): string[] {
   return kept;
 }
 
+const COVER_PROMO_LINE = /(?:new york times|usa today|wall street journal|bestsell|best-sell|award[- ]winning|award winner|international bestseller|acclaimed author|critically acclaimed)/i;
+const COVER_SERIES_LINE = /\b(?:series|saga|trilogy|duology|chronicles|cycle|books?)\s*(?:#|no\.?\s*)?\d*\s*$/i;
+const COVER_GENRE_LINE = /^\s*(?:an?\s+)?(?:dark\s+)?(?:mafia|paranormal|contemporary|historical|fantasy|romantic|gothic|sports|holiday|monster|vampire|werewolf|billionaire|small[- ]town|romantic suspense)\s+(?:romance|novel|thriller|fantasy|mystery)\s*$/i;
+const COVER_TAGLINE_START = /^(?:her|his|their|she|he|they|when|once|if|every|nothing|no one|one)\b/i;
+
+/** Lines safe to demote from scanner title retrieval. This is deliberately
+ * conservative: classification changes query priority only, never identity
+ * verification, and ambiguous text remains available as OCR evidence. */
+export function isDemotedCoverTitleLine(value: string): boolean {
+  const line = value.trim();
+  const tokens = wordsOf(line);
+  if (!tokens.length) return true;
+  if (COVER_PROMO_LINE.test(line)) return true;
+  if (COVER_SERIES_LINE.test(line)) return true;
+  if (COVER_GENRE_LINE.test(line)) return true;
+  // Taglines are normally sentence-like clauses. Do not demote short phrases
+  // merely because they begin with a pronoun; real titles can do that too.
+  return tokens.length >= 5 && COVER_TAGLINE_START.test(line);
+}
+
+export function prioritizeCoverTitleLines(lines: string[]): string[] {
+  const strong = lines.filter((line) => !isDemotedCoverTitleLine(line));
+  const demoted = lines.filter((line) => isDemotedCoverTitleLine(line));
+  return [...strong, ...demoted];
+}
+
 const SHORT_TITLE_STOPWORDS = new Set(['the','and','for','of','by','an','to','in','on','at','or','as','a']);
 
 export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[] {
