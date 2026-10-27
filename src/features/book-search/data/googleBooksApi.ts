@@ -711,7 +711,7 @@ export async function searchScannerAuthorCatalog(
       console.warn('Open Library scanner author bibliography unavailable.', error);
       return { groups: [], totalItems: 0 };
     }),
-    searchHardcoverWithBackoff(trimmed),
+    searchHardcoverAuthorWithBackoff(trimmed),
     searchPrhWithBackoff(trimmed),
     searchTrustedCatalogBaseline(trimmed).catch((error) => {
       console.warn('Trusted catalog scanner author supplement failed.', error);
