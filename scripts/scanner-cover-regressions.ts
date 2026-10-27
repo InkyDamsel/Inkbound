@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { coverAuthorQueries, shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
 
@@ -32,6 +32,19 @@ assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N'
 const reignDamaged=['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME'];
 assert.equal(coverApproximatelyMatchesWork(reignDamaged,'Reign',['Bethan Crome']),true,
   'Scanner must recover a one-glyph title substitution plus a fragmented author name.');
+
+assert.equal(isDemotedCoverTitleLine('A DARK MAFIA ROMANCE'),true);
+assert.equal(isDemotedCoverTitleLine('THE ALLIANCE SERIES'),true);
+assert.equal(isDemotedCoverTitleLine('NEW YORK TIMES BESTSELLING AUTHOR'),true);
+assert.equal(isDemotedCoverTitleLine('HER MAGIC IS A DEATH SENTENCE'),true);
+assert.equal(isDemotedCoverTitleLine('NEVER LIE'),false);
+assert.equal(isDemotedCoverTitleLine('ROPED'),false);
+assert.equal(isDemotedCoverTitleLine('DAWN OF THE CURSED QUEEN'),false);
+assert.deepEqual(
+  prioritizeCoverTitleLines(['A DARK MAFIA ROMANCE','THE ALLIANCE SERIES','HANS','S.J. TILLY']).slice(0,2),
+  ['HANS','S.J. TILLY'],
+  'Title-like and author-shaped OCR must stay ahead of genre and series labels.',
+);
 
 const tillyPromoOnly=['A DARK MAFIA ROMANCE','THE ALLIANCE SERIES','NEW YORK TIMES BESTSELLING AUTHOR','S.J. TILLY'];
 const tillyClean=stripCoverPromoLines(tillyPromoOnly).filter((line) => !/(?:new york times|bestsell)/i.test(line));
