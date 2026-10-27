@@ -31,7 +31,7 @@ export async function searchHardcover(query: string): Promise<BookSearchResponse
 // Author pages need a broader Hardcover candidate pool than ordinary Search.
 // The server expands only this author-bibliography request; exact author-credit
 // filtering still happens in the author aggregation path before anything is shown.
-export async function searchHardcoverAuthorBibliography(authorName: string): Promise<BookSearchResponse> {
+export async function searchHardcoverAuthorBibliography(authorName: string, propagateErrors = false): Promise<BookSearchResponse> {
   const trimmed = authorName.trim();
   if (!trimmed || !functions) return { groups: [], totalItems: 0 };
 
@@ -45,6 +45,7 @@ export async function searchHardcoverAuthorBibliography(authorName: string): Pro
     };
   } catch (error) {
     console.warn('Hardcover author bibliography supplement unavailable.', error);
+    if (propagateErrors) throw error;
     return { groups: [], totalItems: 0 };
   }
 }
