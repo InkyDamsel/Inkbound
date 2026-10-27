@@ -134,23 +134,24 @@ export const collectPrintedIsbnEvidence = (lines: string[]): PrintedIsbnEvidence
     const previous = lines[index - 1] ?? '';
 
     if (isbnLabelPattern.test(line)) {
-      for (const isbn of extractValidPrintedIsbns(line)) {
-        addEvidence(isbn, line, retailerPattern.test(line) ? 3 : 2);
+      const priority = retailerPattern.test(line) ? 3 : 2;
+      const inlineIsbns = extractValidPrintedIsbns(line);
+      for (const isbn of inlineIsbns) {
+        addEvidence(isbn, line, priority);
       }
 
-      // Native ML Kit frequently returns the label and number as separate OCR
-      // lines. Carry the label onto the immediately following numeric line.
-      if (next && !isbnLabelPattern.test(next)) {
-        for (const isbn of extractValidPrintedIsbns(next)) {
-          addEvidence(isbn, `${line} ${next}`, retailerPattern.test(line) ? 3 : 2);
-        }
-      }
-
-      // Also tolerate OCR block ordering where the number is emitted just
-      // before its label, but never guess beyond the adjacent line.
-      if (previous && !isbnLabelPattern.test(previous)) {
-        for (const isbn of extractValidPrintedIsbns(previous)) {
-          addEvidence(isbn, `${previous} ${line}`, retailerPattern.test(line) ? 3 : 2);
+      // Only borrow an adjacent OCR line when the label itself contains no
+      // ISBN. Otherwise an inline ISBN such as "Walmart Edition ISBN 978..."
+      // must not accidentally claim the previous standard ISBN too.
+      if (inlineIsbns.length === 0) {
+        if (next && !isbnLabelPattern.test(next)) {
+          for (const isbn of extractValidPrintedIsbns(next)) {
+            addEvidence(isbn, `${line} ${next}`, priority);
+          }
+        } else if (previous && !isbnLabelPattern.test(previous)) {
+          for (const isbn of extractValidPrintedIsbns(previous)) {
+            addEvidence(isbn, `${previous} ${line}`, priority);
+          }
         }
       }
     }
