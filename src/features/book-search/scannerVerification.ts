@@ -14,6 +14,24 @@ export function scannerCoverTitle(title: string): string {
   return normalized;
 }
 
+/** Short titles carry too little evidence for loose token matching. Require the
+ * complete title as a whole printed line plus the complete author identity. */
+function shortTitleMatchesWork(lines: string[], titleWords: string[], authors: string[]): boolean {
+  const compactTitle = titleWords.join('');
+  if (compactTitle.length < 2 || titleWords.length > 3 || compactTitle.length > 9) return false;
+  if (!lines.some((line) => words(line).join('') === compactTitle)) return false;
+  const text = words(lines.join(' '));
+  const tokens = new Set(text);
+  const joined = text.join('');
+  return authors.some((author) => {
+    const authorWords = words(author);
+    const surname = authorWords[authorWords.length - 1] ?? '';
+    if (surname.length < 3 || !(tokens.has(surname) || joined.includes(surname))) return false;
+    return authorWords.slice(0, -1).filter((word) => word.length >= 3)
+      .every((word) => tokens.has(word) || joined.includes(word));
+  });
+}
+
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const text = words(lines.join(' '));
   const tokens = new Set(text);
@@ -22,7 +40,7 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   if (!titleWords.length) return false;
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
-  if (!significant.length) return false;
+  if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
   const titleVerified = significant.every((word) => tokens.has(word) || joined.includes(word));
   if (!titleVerified) return false;
   return authors.some((author) => {
@@ -123,8 +141,9 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   const authorVerified = authors.some((author) => {
     const authorWords = words(author);
     const surname = authorWords[authorWords.length - 1] ?? '';
-    if (surname.length < 5) return false;
-    const allowance = surname.length >= 9 ? 2 : 1;
+    if (surname.length < 3) return false;
+    // REID/KING/LAKE must be allowed, but short surnames must match exactly.
+    const allowance = surname.length >= 9 ? 2 : surname.length >= 5 ? 1 : 0;
     return authorCandidates.some((candidate) =>
       Math.abs(candidate.length - surname.length) <= allowance
       && editDistance(candidate, surname) <= allowance);
