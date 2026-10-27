@@ -240,7 +240,8 @@ const mergeGroups = (
   return result.slice(0, 50);
 };
 
-async function searchTrustedCatalogBaseline(query: string): Promise<BookSearchResponse> {
+async function searchTrustedCatalogBaseline(query: string, authorOnly = false): Promise<BookSearchResponse> {
+  if (authorOnly) return searchInkboundTrustedCatalog({ author: query.trim() });
   const isbnQuery = query.trim().replace(/^isbn:\s*/i, '');
   const compact = compactIsbn(isbnQuery);
   if (/^(?:97[89])?\d{9}[\dX]$/i.test(compact)) {
@@ -379,7 +380,7 @@ export async function searchGoogleBooksAuthorPage(
         safeSupplement('Open Library', () => searchOpenLibraryAuthorBibliography(trimmedAuthor, signal, 5)),
         safeSupplement('Hardcover', () => searchHardcoverAuthorWithBackoff(trimmedAuthor)),
         safeSupplement('Penguin Random House', () => searchPrhWithBackoff(trimmedAuthor, true)),
-        safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor)),
+        safeSupplement('Trusted catalog', () => searchTrustedCatalogBaseline(trimmedAuthor, true)),
       ])
     : [];
 
