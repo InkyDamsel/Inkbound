@@ -3,7 +3,7 @@ import { Format } from '../../../types';
 import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
-import { searchHardcover } from './hardcoverApi';
+import { searchHardcover, searchHardcoverAuthorBibliography } from './hardcoverApi';
 import { searchOpenLibrary, searchOpenLibraryAuthorBibliography } from './openLibraryApi';
 import { searchPenguinRandomHouse } from './penguinRandomHouseApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
@@ -374,7 +374,7 @@ export async function searchGoogleBooksAuthorPage(
           console.warn('Open Library author bibliography supplement unavailable.', error);
           return { groups: [], totalItems: 0 };
         }),
-        searchHardcoverWithBackoff(trimmedAuthor),
+        searchHardcoverAuthorWithBackoff(trimmedAuthor),
         searchPrhWithBackoff(trimmedAuthor),
         searchTrustedCatalogBaseline(trimmedAuthor).catch((error) => {
           console.warn('Trusted catalog author supplement unavailable.', error);
@@ -449,6 +449,19 @@ async function searchHardcoverWithBackoff(query: string): Promise<BookSearchResp
       hardcoverBackoffUntil = Math.max(hardcoverBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
     }
     console.warn('Hardcover supplement failed.', error);
+    return { groups: [], totalItems: 0 };
+  }
+}
+
+async function searchHardcoverAuthorWithBackoff(authorName: string): Promise<BookSearchResponse> {
+  if (Date.now() < hardcoverBackoffUntil) return { groups: [], totalItems: 0 };
+  try {
+    return await searchHardcoverAuthorBibliography(authorName);
+  } catch (error) {
+    if (shouldBackOffCatalog(error)) {
+      hardcoverBackoffUntil = Math.max(hardcoverBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+    }
+    console.warn('Hardcover author bibliography supplement failed.', error);
     return { groups: [], totalItems: 0 };
   }
 }
