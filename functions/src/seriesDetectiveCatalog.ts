@@ -783,6 +783,7 @@ export const searchSeriesDetectiveHardcover = onCall(
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use Series Detective.');
     const query = typeof request.data?.query === 'string' ? request.data.query.trim() : '';
     const expandSeries = request.data?.expandSeries === true;
+    const authorBibliography = request.data?.authorBibliography === true;
     const exactTitle = typeof request.data?.exactTitle === 'string' ? request.data.exactTitle.trim() : '';
     const seriesName = typeof request.data?.seriesName === 'string' ? request.data.seriesName.trim() : '';
     const anchorTitles = Array.isArray(request.data?.anchorTitles)
@@ -1233,6 +1234,80 @@ async function detectivePrhCatalog(
   return { groups, totalItems: groups.length };
 }
 
+
+const prhExtractAuthorCandidates = (payload: unknown): Array<{ authorId: string; name: string }> =>
+  prhRecordArrays(payload).flatMap((record) => {
+    const rawId = record.authorId ?? record.authorID ?? record.id;
+    const rawName = record.author ?? record.authorName ?? record.displayName ?? record.name;
+    if ((typeof rawId !== 'string' && typeof rawId !== 'number') || typeof rawName !== 'string') return [];
+    return [{ authorId: String(rawId), name: rawName.trim() }];
+  });
+
+async function detectivePrhAuthorCatalog(authorName: string) {
+  const searchPayload = await prhFetchJson('/search/views/search-display', {
+    q: authorName,
+    docType: 'author',
+    rows: 40,
+  });
+  const wanted = prhNormalize(authorName);
+  const author = prhExtractAuthorCandidates(searchPayload)
+    .find((candidate) => prhNormalize(candidate.name) === wanted);
+  if (!author) return { groups: [], totalItems: 0 };
+
+  const titlesPayload = await prhFetchJson(
+    `/authors/${encodeURIComponent(author.authorId)}/titles`,
+    { rows: 0, returnEmptyLists: true },
+  );
+  const titles = prhExtractTitles(titlesPayload);
+  const byWork = new Map<string, PrhTitleRecord[]>();
+  titles.forEach((title, index) => {
+    const key = String(title.workId ?? title.title ?? title.isbn ?? index);
+    byWork.set(key, [...(byWork.get(key) ?? []), title]);
+  });
+
+  const groups = [...byWork.entries()].flatMap(([workKey, workTitles]) => {
+    const first = workTitles[0];
+    if (!first?.title) return [];
+    const editions = workTitles.map((title, index) => {
+      const isbn = String(title.isbn ?? '').replace(/[^0-9X]/gi, '');
+      const publicationYear = Number(title.onsale?.slice(0, 4));
+      const imprint = typeof title.imprint === 'string' ? title.imprint : title.imprint?.name;
+      return {
+        source: 'penguin-random-house' as const,
+        externalEditionId: String(title.isbn ?? `${workKey}-${index}`),
+        title: title.title ?? first.title!,
+        subtitle: title.subtitle,
+        authors: [author.name],
+        genres: [] as string[],
+        publisher: title.publisher ?? imprint,
+        publicationDate: title.onsale,
+        publicationYear: Number.isFinite(publicationYear) && publicationYear > 0 ? publicationYear : new Date().getFullYear(),
+        language: title.language,
+        format: prhFormat(title.format?.description ?? title.format?.code),
+        isbn10: isbn.length === 10 ? isbn : undefined,
+        isbn13: isbn.length === 13 ? isbn : undefined,
+        pageCount: title.pageCount ?? title.pages,
+        coverUrl: title.coverUrl ?? (isbn ? `https://images.randomhouse.com/cover/${isbn}` : undefined),
+        editionName: title.format?.description,
+        binding: title.format?.description,
+        specialFeatures: [] as string[],
+        seriesName: title.seriesName?.trim(),
+        seriesOrder: prhSeriesPosition(title.seriesNumber),
+      };
+    });
+    return [{
+      key: `penguin-random-house:author:${workKey}`,
+      title: first.title,
+      subtitle: first.subtitle,
+      authors: [author.name],
+      genres: [] as string[],
+      editions,
+    }];
+  });
+
+  return { groups, totalItems: groups.length };
+}
+
 export const searchSeriesDetectivePenguinRandomHouse = onCall(
   { secrets: [PENGUIN_RANDOM_HOUSE_API_KEY], enforceAppCheck: ENFORCE_APP_CHECK },
   async (request) => {
@@ -1251,6 +1326,7 @@ export const searchSeriesDetectivePenguinRandomHouse = onCall(
     if (!query || query.length > 300) throw new HttpsError('invalid-argument', 'A valid Series Detective query is required.');
 
     try {
+      if (authorBibliography) return await detectivePrhAuthorCatalog(query);
       return await detectivePrhCatalog(query, expandSeries, {
         exactTitle: exactTitle || undefined,
         seriesName: seriesName || undefined,
