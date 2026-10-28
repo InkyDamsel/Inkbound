@@ -41,7 +41,22 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
   if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
-  const titleVerified = significant.every((word) => tokens.has(word) || joined.includes(word));
+  const allSignificantPresent = significant.every((word) => tokens.has(word) || joined.includes(word));
+  if (!allSignificantPresent) return false;
+
+  // Multi-word titles must be printed together, not assembled from unrelated
+  // cover copy. Author bibliography retrieval can surface sibling works whose
+  // title words happen to appear separately in blurbs, series copy, or promo.
+  // Require the catalog title to survive as one OCR line or a bounded join of
+  // adjacent short title lines. Single significant-word titles retain the
+  // existing exact-token behavior.
+  const compactTitle = titleWords.join('');
+  const compactLineTitles = lines.map((line) => words(line).join(''));
+  const adjacentCompactTitles = compactLineTitles.slice(0, -1)
+    .map((line, index) => `${line}${compactLineTitles[index + 1]}`);
+  const titleVerified = significant.length === 1
+    ? allSignificantPresent
+    : [...compactLineTitles, ...adjacentCompactTitles].some((line) => line.includes(compactTitle));
   if (!titleVerified) return false;
   return authors.some((author) => {
     const authorWords = words(author);
