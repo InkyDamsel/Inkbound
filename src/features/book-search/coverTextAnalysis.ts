@@ -141,7 +141,14 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     // surname ("s jtilly"), which poisons surname-based catalog retrieval.
     const leadingInitials = tokens.slice(0, -1).every((token) => token.length <= 2);
     const surname = tokens.at(-1) ?? '';
-    if (tokens.length >= 3 && leadingInitials && surname.length >= 3) {
+    // Native OCR can detach the first glyph of a printed given name while
+    // leaving the surname intact: "A MBERN NICOLE" -> "ambern nicole".
+    // Preserve that surname as a retrieval anchor instead of collapsing the
+    // middle fragment into it. Candidate identity still requires verification.
+    if (tokens.length === 3 && tokens[0].length <= 2
+      && tokens[1].length >= 3 && surname.length >= 3) {
+      strongQueries.push(`${tokens[0]}${tokens[1]} ${surname}`);
+    } else if (tokens.length >= 3 && leadingInitials && surname.length >= 3) {
       // Initials + surname is much stronger author structure than a generic
       // 2-4 word OCR line. Keep it ahead of noisy prose within the bounded
       // retrieval budget instead of letting earlier cover noise crowd it out.
