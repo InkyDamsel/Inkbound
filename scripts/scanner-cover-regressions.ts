@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { coverAuthorQueries, damagedTitleFragments, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
 
@@ -73,6 +73,10 @@ assert.equal(coverMatchesWork(siblingTitleWordsScattered,'Gods and Monsters',['A
   'A sibling title must not be manufactured from words scattered across unrelated cover lines.');
 assert.equal(coverApproximatelyMatchesWork(['DAWN OF THE CURSED QUEEN','AMBER V. NICOLE'],'Gods and Monsters',['Amber V. Nicole']),false,
   'Author identity alone must never make an unrelated sibling title pass approximate verification.');
+
+const dawnWalmartSplit=['DAWN','CURSED','OF','THE','QUEEN','GODS MONSTERS BOK THREE','A MBER V','NICOLE'];
+assert.ok(splitTitleRunQueries(dawnWalmartSplit).includes('dawn cursed of the queen'),
+  'Walmart OCR split across one-word decorative lines must reconstruct the full Dawn title for retrieval.');
 
 const dawnWrongBook=['DAWN OF THE CURSED QUEEN','AMBER V. NICOLE'];
 assert.equal(coverMatchesWork(dawnWrongBook,'Gods and Monsters',['Amber V. Nicole']),false,
