@@ -131,7 +131,10 @@ const editDistance = (left: string, right: string): number => {
 export function coverApproximatelyMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const rawCompactLines = lines.map((line) => words(line).join(''));
   const compactLines = [
-    ...rawCompactLines.filter((line) => line.length >= 5),
+    // Keep exact four-character OCR lines for distinctive short titles such
+    // as NERO. Four-character titles receive zero edit-distance allowance
+    // below, so this does not broaden fuzzy recovery.
+    ...rawCompactLines.filter((line) => line.length >= 4),
     // Decorative cover titles are frequently split across lines. Native OCR
     // merges evidence from several image treatments, so two title fragments
     // from different passes may no longer be adjacent in the merged list.
