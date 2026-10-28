@@ -52,11 +52,13 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   // existing exact-token behavior.
   const compactTitle = titleWords.join('');
   const compactLineTitles = lines.map((line) => words(line).join(''));
-  const adjacentCompactTitles = compactLineTitles.slice(0, -1)
-    .map((line, index) => `${line}${compactLineTitles[index + 1]}`);
+  const coherentTitleRuns = compactLineTitles.flatMap((line, index) => [1, 2, 3]
+    .map((count) => compactLineTitles.slice(index, index + count))
+    .filter((parts) => parts.length > 0 && parts.length <= 3)
+    .map((parts) => parts.join('')));
   const titleVerified = significant.length === 1
     ? allSignificantPresent
-    : [...compactLineTitles, ...adjacentCompactTitles].some((line) => line.includes(compactTitle));
+    : coherentTitleRuns.some((line) => line.includes(compactTitle));
   if (!titleVerified) return false;
   return authors.some((author) => {
     const authorWords = words(author);
