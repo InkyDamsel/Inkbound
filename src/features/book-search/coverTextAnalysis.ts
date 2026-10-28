@@ -123,7 +123,15 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
 
     if (tokens.length < 2 || tokens.length > 5) continue;
     const shortTokenCount = tokens.filter((token) => token.length <= 2).length;
-    if (shortTokenCount >= 1 && tokens.length >= 3) {
+    // Initialed author names are already structurally complete after
+    // punctuation normalization: "S.J. Tilly" -> ["s","j","tilly"].
+    // Preserve the initials instead of collapsing the final initial into the
+    // surname ("s jtilly"), which poisons surname-based catalog retrieval.
+    const leadingInitials = tokens.slice(0, -1).every((token) => token.length <= 2);
+    const surname = tokens.at(-1) ?? '';
+    if (tokens.length >= 3 && leadingInitials && surname.length >= 3) {
+      queries.push(tokens.join(' '));
+    } else if (shortTokenCount >= 1 && tokens.length >= 3) {
       const firstLong = tokens.findIndex((token) => token.length > 2);
       const prefixCount = Math.min(2, firstLong < 0 ? 2 : firstLong);
       const split = Math.max(1, prefixCount);
