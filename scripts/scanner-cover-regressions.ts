@@ -58,6 +58,17 @@ const tillyClean=stripCoverPromoLines(tillyPromoOnly).filter((line) => !/(?:new 
 assert.equal(coverMatchesWork(tillyClean,'Hans',['S.J. Tilly']),false,
   'Author, series, and genre promo text without photographed title evidence must not verify a work.');
 
+const siblingTitleWordsScattered=[
+  'GODS',
+  'DAWN OF THE CURSED QUEEN',
+  'AND MONSTERS',
+  'AMBER V. NICOLE',
+];
+assert.equal(coverMatchesWork(siblingTitleWordsScattered,'Gods and Monsters',['Amber V. Nicole']),false,
+  'A sibling title must not be manufactured from words scattered across unrelated cover lines.');
+assert.equal(coverApproximatelyMatchesWork(['DAWN OF THE CURSED QUEEN','AMBER V. NICOLE'],'Gods and Monsters',['Amber V. Nicole']),false,
+  'Author identity alone must never make an unrelated sibling title pass approximate verification.');
+
 const dawnWrongBook=['DAWN OF THE CURSED QUEEN','AMBER V. NICOLE'];
 assert.equal(coverMatchesWork(dawnWrongBook,'Gods and Monsters',['Amber V. Nicole']),false,
   'Matching author evidence must never verify a different title.');
