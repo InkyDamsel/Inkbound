@@ -186,3 +186,45 @@ export function splitTitleRunQueries(cleanLines: string[], maxQueries = 3): stri
   }
   return [...new Set(queries)].sort((left, right) => wordsOf(right).length - wordsOf(left).length).slice(0, maxQueries);
 }
+
+
+/** Build a few retrieval-only anchors from distinctive OCR title words plus
+ * an author surname. This is a last-resort candidate lookup for covers where
+ * native OCR captured the important words across separate passes/lines but
+ * damaged glue words or the author's given name. Identity is never accepted
+ * here; scanner verification must still prove the returned title + author. */
+export function titleSurnameRecoveryQueries(
+  cleanLines: string[],
+  authorQueries: string[],
+  maxQueries = 4,
+): string[] {
+  const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
+  const authorWords = new Set(authorQueries.flatMap(wordsOf));
+  const titleWords: string[] = [];
+
+  for (const line of cleanLines) {
+    if (isDemotedCoverTitleLine(line)) continue;
+    const tokens = wordsOf(line);
+    // Long prose/name-shaped lines are poor title anchors. The useful case is
+    // one or two distinctive words surviving independently across OCR passes.
+    if (tokens.length > 2) continue;
+    for (const token of tokens) {
+      if (token.length < 4 || weak.has(token) || authorWords.has(token)) continue;
+      titleWords.push(token);
+    }
+  }
+
+  const distinctive = [...new Set(titleWords)].slice(0, 5);
+  const surnames = [...new Set(authorQueries
+    .map((query) => wordsOf(query).at(-1) ?? '')
+    .filter((surname) => surname.length >= 4))].slice(0, 2);
+  if (!distinctive.length || !surnames.length) return [];
+
+  const anchors = [
+    distinctive.slice(0, 3).join(' '),
+    distinctive.slice(0, 2).join(' '),
+    distinctive[0],
+  ].filter((value) => value.length >= 4);
+  return [...new Set(anchors.flatMap((title) => surnames.map((surname) => `${title} ${surname}`)))]
+    .slice(0, maxQueries);
+}
