@@ -73,6 +73,12 @@ assert.equal(coverApproximatelyMatchesWork(devouredWalmart,'Devoured',['Jordan S
 assert.equal(coverApproximatelyMatchesWork(devouredWalmart,'Bitten',['Jordan Stephanie Gray']),false,
   'A title mentioned only in promotional cover copy must not replace the photographed title.');
 
+const reignLiveFragmented=['REIGN','BETH AN','CRO ME','REIGN!','BETHAN','CRO ME','t:i','BETH AN t','L1','OM','BETH AN'];
+assert.ok(coverAuthorQueries(reignLiveFragmented).includes('bethan crome'),
+  'Two adjacent internally fragmented author words must reconstruct into a bounded author retrieval hint.');
+assert.ok(titleSurnameRecoveryQueries(reignLiveFragmented,coverAuthorQueries(reignLiveFragmented)).some((query) => query === 'reign crome'),
+  'Live fragmented Reign OCR must retain the exact title-surname retrieval connection.');
+
 const reignDamaged=['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME'];
 assert.equal(coverApproximatelyMatchesWork(reignDamaged,'Reign',['Bethan Crome']),true,
   'Scanner must recover a one-glyph title substitution plus a fragmented author name.');
