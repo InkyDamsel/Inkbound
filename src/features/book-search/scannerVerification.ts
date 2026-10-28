@@ -195,6 +195,19 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // distinctive words, approximate proof must come from one photographed OCR
   // line. Longer titles may use the bounded cross-line reconstruction because
   // they carry enough independent title evidence.
+  const strongerPhotographedTitleExists = significantTitleWords.length < 3
+    && rawLineWords.some((lineWords) => {
+      const distinctive = lineWords.filter((word) =>
+        word.length >= 4 && !weakTitleWords.has(word));
+      return distinctive.length >= 3;
+    });
+  // If the candidate itself has fewer than three distinctive words while the
+  // same photograph contains a different, stronger 3+ word title line, treat
+  // the short candidate line as secondary cover copy (series/sibling/promo)
+  // rather than primary work identity. This prevents a perfectly OCR'd promo
+  // title from outranking the actual photographed title.
+  if (strongerPhotographedTitleExists) return false;
+
   const approximateTitleLines = significantTitleWords.length >= 3
     ? compactLines
     : rawCompactLines.filter((line) => line.length >= 4);
