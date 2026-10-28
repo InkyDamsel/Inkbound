@@ -72,6 +72,43 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
         return enhanced;
     }
 
+
+    private android.graphics.Bitmap cropAndScaleCoverRegion(
+        android.graphics.Bitmap source,
+        float topFraction,
+        float bottomFraction
+    ) {
+        int top = Math.max(0, Math.round(source.getHeight() * topFraction));
+        int bottom = Math.min(source.getHeight(), Math.round(source.getHeight() * bottomFraction));
+        int height = Math.max(1, bottom - top);
+        android.graphics.Bitmap crop = android.graphics.Bitmap.createBitmap(source, 0, top, source.getWidth(), height);
+        int targetWidth = Math.min(2400, Math.max(source.getWidth(), source.getWidth() * 2));
+        int targetHeight = Math.max(1, Math.round(height * (targetWidth / (float) source.getWidth())));
+        android.graphics.Bitmap scaled = android.graphics.Bitmap.createScaledBitmap(crop, targetWidth, targetHeight, true);
+        if (scaled != crop) crop.recycle();
+        return scaled;
+    }
+
+    private android.graphics.Bitmap thresholdCoverForText(android.graphics.Bitmap source, int threshold) {
+        android.graphics.Bitmap thresholded = android.graphics.Bitmap.createBitmap(
+            source.getWidth(), source.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+        int width = source.getWidth();
+        int height = source.getHeight();
+        int[] pixels = new int[width * height];
+        source.getPixels(pixels, 0, width, 0, 0, width, height);
+        for (int index = 0; index < pixels.length; index++) {
+            int color = pixels[index];
+            int gray = Math.round(
+                android.graphics.Color.red(color) * 0.299f
+                + android.graphics.Color.green(color) * 0.587f
+                + android.graphics.Color.blue(color) * 0.114f);
+            int value = gray >= threshold ? 255 : 0;
+            pixels[index] = android.graphics.Color.rgb(value, value, value);
+        }
+        thresholded.setPixels(pixels, 0, width, 0, 0, width, height);
+        return thresholded;
+    }
+
     private android.graphics.Bitmap thresholdCoverForText(android.graphics.Bitmap source) {
         android.graphics.Bitmap thresholded = android.graphics.Bitmap.createBitmap(
             source.getWidth(), source.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
@@ -120,6 +157,10 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
 
             android.graphics.Bitmap enhanced = enhanceCoverForText(bitmap);
             android.graphics.Bitmap thresholded = thresholdCoverForText(bitmap);
+            android.graphics.Bitmap titleRegion = cropAndScaleCoverRegion(bitmap, 0.12f, 0.88f);
+            android.graphics.Bitmap titleRegionEnhanced = enhanceCoverForText(titleRegion);
+            android.graphics.Bitmap titleRegionDark = thresholdCoverForText(titleRegion, 105);
+            android.graphics.Bitmap titleRegionLight = thresholdCoverForText(titleRegion, 185);
             com.google.mlkit.vision.text.TextRecognizer recognizer =
                 com.google.mlkit.vision.text.TextRecognition.getClient(
                     com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS);
@@ -144,6 +185,22 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
                         com.google.mlkit.vision.common.InputImage.fromBitmap(thresholded, 0);
                     return recognizer.process(thresholdedImage);
                 })
+                .continueWithTask(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) appendRecognizedLines(task.getResult(), merged);
+                    return recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(titleRegion, 0));
+                })
+                .continueWithTask(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) appendRecognizedLines(task.getResult(), merged);
+                    return recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(titleRegionEnhanced, 0));
+                })
+                .continueWithTask(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) appendRecognizedLines(task.getResult(), merged);
+                    return recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(titleRegionDark, 0));
+                })
+                .continueWithTask(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) appendRecognizedLines(task.getResult(), merged);
+                    return recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(titleRegionLight, 0));
+                })
                 .addOnSuccessListener(result -> {
                     appendRecognizedLines(result, merged);
                     com.getcapacitor.JSArray lines = new com.getcapacitor.JSArray();
@@ -154,6 +211,10 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
                     recognizer.close();
                     enhanced.recycle();
                     thresholded.recycle();
+                    titleRegion.recycle();
+                    titleRegionEnhanced.recycle();
+                    titleRegionDark.recycle();
+                    titleRegionLight.recycle();
                     bitmap.recycle();
                 })
                 .addOnFailureListener(error -> {
