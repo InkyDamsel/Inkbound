@@ -221,6 +221,10 @@ public class InkboundBarcodeScannerPlugin extends Plugin {
                     recognizer.close();
                     enhanced.recycle();
                     thresholded.recycle();
+                    titleRegion.recycle();
+                    titleRegionEnhanced.recycle();
+                    titleRegionDark.recycle();
+                    titleRegionLight.recycle();
                     bitmap.recycle();
                     call.reject("Cover text recognition failed.", error);
                 });
