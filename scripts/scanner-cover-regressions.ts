@@ -40,6 +40,11 @@ const neroAllianceCover=['THE ALLIANCE SERIES','ER','ADARK MAFVA ROMANCE','S.J. 
 assert.equal(coverApproximatelyMatchesWork(neroAllianceCover,'Nero',['S.J. Tilly']),true,
   'Nero plus independently captured S.J. Tilly cover evidence must verify when normal search retrieves the work.');
 assert.equal(coverApproximatelyMatchesWork(
+  ['THE ALLIANCE SERIES','S.J. TILLY','NER0'],
+  'Nero',
+  ['S.J. Tilly'],
+),false,'Four-character titles must require an exact OCR title match; fuzzy recovery is not allowed.');
+assert.equal(coverApproximatelyMatchesWork(
   ['THE ALLIANCE SERIES','A DARK MAFIA ROMANCE','S.J. TILLY'],
   'Nero',
   ['S.J. Tilly'],
