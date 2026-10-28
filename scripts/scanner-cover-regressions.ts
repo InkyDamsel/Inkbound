@@ -108,6 +108,11 @@ const dawnWalmartSplit=['DAWN','CURSED','OF','THE','QUEEN','GODS MONSTERS BOK TH
 assert.ok(splitTitleRunQueries(dawnWalmartSplit).includes('dawn cursed of the queen'),
   'Walmart OCR split across one-word decorative lines must reconstruct the full Dawn title for retrieval.');
 
+const dawnShreddedGlue=['OF','TUE','DAWN','CURSED','TIIE','QUEEN','GODS & MONSTERS','BOK TIHREE','A MB RN. NICOLE'];
+assert.equal(coverApproximatelyMatchesWork(dawnShreddedGlue,'Dawn of the Cursed Queen',['Amber V. Nicole']),true,
+  'Three distinctive photographed title words plus independent surname must survive shredded glue-word OCR.');
+assert.equal(coverApproximatelyMatchesWork(dawnShreddedGlue,'Gods and Monsters',['Amber V. Nicole']),false,
+  'A two-word sibling title must not use distinctive-word fallback even when the same author is visible.');
 const dawnWrongBook=['DAWN OF THE CURSED QUEEN','AMBER V. NICOLE'];
 assert.equal(coverMatchesWork(dawnWrongBook,'Gods and Monsters',['Amber V. Nicole']),false,
   'Matching author evidence must never verify a different title.');
