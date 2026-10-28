@@ -15,6 +15,7 @@ import {
   searchGoogleBooksAuthorPage,
   searchScannerAuthorCatalog,
   searchScannerCoverCatalog,
+  searchScannerCoverTitleCatalog,
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
@@ -1096,6 +1097,50 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             }
           } catch (error) {
             scannerDiagnostics.push(`cross-pass:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+
+      if (!best) {
+        // When OCR has a clean title-shaped line but relevance search buries
+        // the work, use the scanner-only exact-title catalog path before
+        // combining title and author into broad text queries. Author evidence
+        // is still independent: every returned work must pass the same strict
+        // cover verifier against the photographed title + author.
+        const exactTitleHints = [...new Set(cleanLines
+          .filter((line) => {
+            const normalized = normalizeCatalogText(line);
+            const tokens = normalized.split(/\s+/).filter(Boolean);
+            return normalized.length >= 4
+              && normalized.length <= 80
+              && tokens.length >= 1
+              && tokens.length <= 6
+              && !isNoise(line)
+              && !isDemotedCoverTitleLine(line)
+              && !authorRecoveryQueries.some((author) => normalizeCatalogText(author) === normalized);
+          })
+          .sort((left, right) => {
+            const leftTokens = normalizeCatalogText(left).split(/\s+/).filter(Boolean);
+            const rightTokens = normalizeCatalogText(right).split(/\s+/).filter(Boolean);
+            const leftShortBonus = leftTokens.length <= 3 ? 1 : 0;
+            const rightShortBonus = rightTokens.length <= 3 ? 1 : 0;
+            return rightShortBonus - leftShortBonus || left.length - right.length;
+          }))].slice(0, 4);
+
+        for (const titleHint of exactTitleHints) {
+          try {
+            const response = await searchScannerCoverTitleCatalog(titleHint);
+            recordScannerResponse(`exact-title:${titleHint}`, response.groups);
+            const recovered = response.groups.find((work) =>
+              coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)
+              || coverMatchesWork(cleanLines, work.title, work.authors));
+            if (recovered) {
+              best = { work: recovered, score: 2.23 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`exact-title:${titleHint} => ERROR ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       }
