@@ -36,6 +36,15 @@ assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
 assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME']).includes('bethan crome'),
   'Fragmented given name plus next-line surname must produce a bounded author retrieval hint.');
 
+const neroAllianceCover=['THE ALLIANCE SERIES','ER','ADARK MAFVA ROMANCE','S.J. TIL','TILLY','NERO'];
+assert.equal(coverApproximatelyMatchesWork(neroAllianceCover,'Nero',['S.J. Tilly']),true,
+  'Nero plus independently captured S.J. Tilly cover evidence must verify when normal search retrieves the work.');
+assert.equal(coverApproximatelyMatchesWork(
+  ['THE ALLIANCE SERIES','A DARK MAFIA ROMANCE','S.J. TILLY'],
+  'Nero',
+  ['S.J. Tilly'],
+),false,'Alliance series and author evidence without the photographed Nero title must not verify Nero.');
+
 const devouredWalmart=['JORDAN STEPHANIE GRAY','DEYOURED','Luminous and','exhilarating','Bitten is a romance','that sizzles','REBECCA ROSS','of Divine Rivals'];
 assert.ok(coverAuthorQueries(devouredWalmart).includes('jordan stephanie gray'),
   'A complete three-word author line must survive noisy Walmart cover copy as a retrieval hint.');
