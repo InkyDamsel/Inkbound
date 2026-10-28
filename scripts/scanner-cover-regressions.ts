@@ -49,6 +49,8 @@ assert.ok(titleSurnameRecoveryQueries(['THE ALLIANCE SERIES','DARK MAFVA ROMANCE
 
 const dawnRecoveryLines=['OF','TIIE','DAWN','CURSEID','TUE','QUEEN','GODS & MONSTERS','BOK HREE','A MBERN. NICOLE'];
 const dawnRecoveryAuthors=coverAuthorQueries(dawnRecoveryLines);
+assert.ok(dawnRecoveryAuthors.some((query) => query.endsWith(' nicole')),
+  'A detached first-name glyph must not destroy an otherwise intact author surname retrieval hint.');
 assert.ok(titleSurnameRecoveryQueries(dawnRecoveryLines,dawnRecoveryAuthors).some((query) => query.includes('dawn') && query.includes('curseid') && query.includes('queen') && query.includes('nicole')),
   'Complementary Dawn title words plus recovered surname must produce a bounded retrieval anchor.');
 const neroAllianceCover=['THE ALLIANCE SERIES','ER','ADARK MAFVA ROMANCE','S.J. TIL','TILLY','NERO'];
