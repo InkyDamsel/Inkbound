@@ -149,3 +149,29 @@ export function damagedTitleFragments(value: string, maxFragments = 3): string[]
     .filter((fragment) => fragment.length >= 6))]
     .slice(0, maxFragments);
 }
+
+
+/** Reconstruct title-shaped runs when native OCR splits a decorative title
+ * into one-token lines. Stop at lines that look like series/promo/author copy.
+ * Retrieval only: catalog candidates must still pass scanner verification. */
+export function splitTitleRunQueries(cleanLines: string[], maxQueries = 3): string[] {
+  const stop = new Set(['a','an','by']);
+  const queries: string[] = [];
+  for (let start = 0; start < cleanLines.length; start += 1) {
+    const parts: string[] = [];
+    for (let index = start; index < cleanLines.length && index < start + 6; index += 1) {
+      const line = cleanLines[index];
+      const tokens = wordsOf(line);
+      if (tokens.length !== 1 || isDemotedCoverTitleLine(line)) break;
+      const token = tokens[0];
+      if (stop.has(token)) break;
+      parts.push(token);
+      if (parts.length >= 3) {
+        const phrase = parts.join(' ');
+        const meaningful = parts.filter((word) => word.length >= 4);
+        if (meaningful.length >= 2 && phrase.length >= 8) queries.push(phrase);
+      }
+    }
+  }
+  return [...new Set(queries)].sort((left, right) => wordsOf(right).length - wordsOf(left).length).slice(0, maxQueries);
+}
