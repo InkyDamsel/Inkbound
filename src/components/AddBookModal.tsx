@@ -18,7 +18,7 @@ import {
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { coverAuthorQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, damagedTitleFragments, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -987,6 +987,36 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             }
           }
           if (best) break;
+        }
+      }
+      if (!best) {
+        // A provider may not fuzzy-match a heavily damaged full title even
+        // when an interior character run survived OCR. Query only a few stable
+        // fragments with a full author hint. These calls retrieve candidates;
+        // coverApproximatelyMatchesWork still requires the photographed full
+        // title and author evidence before accepting any work.
+        const fullAuthorHints = authorRecoveryQueries
+          .filter((value) => value.split(/\s+/).filter(Boolean).length === 2)
+          .slice(0, 2);
+        const fragmentQueries = [...new Set(cleanLines
+          .filter((line) => !isDemotedCoverTitleLine(line))
+          .flatMap((line) => damagedTitleFragments(line))
+          .flatMap((fragment) => fullAuthorHints.map((author) => `${fragment} ${author}`)))].slice(0, 4);
+
+        for (const query of fragmentQueries) {
+          try {
+            const response = await searchScannerCoverCatalog(query);
+            recordScannerResponse(`damaged-title-fragment:${query}`, response.groups);
+            const recovered = response.groups.find((work) =>
+              coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+            if (recovered) {
+              best = { work: recovered, score: 2.22 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`damaged-title-fragment:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
         }
       }
       if (!best) {
