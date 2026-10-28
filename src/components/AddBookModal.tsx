@@ -841,6 +841,48 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const authorRecoveryQueries = coverAuthorQueries(cleanLines);
 
       if (!best) {
+        // When OCR already captured a compact title and a credible full author,
+        // reuse the same established search path the Search tab uses before
+        // broadening into an author bibliography. This can reuse warm search
+        // cache data and avoids asking providers for an entire bibliography
+        // when the photographed work itself is already retrievable.
+        // Retrieval never proves identity: strict cover verification remains
+        // mandatory for every returned work.
+        const directTitleHints = cleanLines
+          .filter((line) => {
+            const tokens = line.split(/\s+/).filter(Boolean);
+            const normalized = normalizeCatalogText(line);
+            return tokens.length >= 1 && tokens.length <= 5
+              && normalized.length >= 4
+              && !isNoise(line)
+              && !isDemotedCoverTitleLine(line)
+              && !authorRecoveryQueries.some((author) => normalizeCatalogText(author) === normalized);
+          })
+          .slice(0, 4);
+        const directAuthorHints = authorRecoveryQueries
+          .filter((value) => value.split(/\s+/).filter(Boolean).length >= 2)
+          .slice(0, 2);
+        const directQueries = [...new Set(directTitleHints.flatMap((title) =>
+          directAuthorHints.map((author) => `${title} ${author}`)))].slice(0, 4);
+
+        for (const query of directQueries) {
+          try {
+            const response = await searchGoogleBooks(query);
+            recordScannerResponse(`normal-search-reuse:${query}`, response.groups);
+            const recovered = response.groups.find((work) =>
+              coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+            if (recovered) {
+              best = { work: recovered, score: 2.4 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`normal-search-reuse:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+
+      if (!best) {
         // If OCR damaged the title but preserved a credible author line, use
         // that author's catalog as a bounded recovery source. A result is only
         // accepted when the author surname is independently visible and the
