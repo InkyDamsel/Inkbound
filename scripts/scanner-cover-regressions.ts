@@ -58,6 +58,11 @@ const tillyClean=stripCoverPromoLines(tillyPromoOnly).filter((line) => !/(?:new 
 assert.equal(coverMatchesWork(tillyClean,'Hans',['S.J. Tilly']),false,
   'Author, series, and genre promo text without photographed title evidence must not verify a work.');
 
+assert.equal(coverMatchesWork(['THE CIRCLE OF','STONE','A. J. LAKE'],'The Circle of Stone',['A. J. Lake']),true,
+  'A legitimate title split across adjacent decorative lines must still verify.');
+assert.equal(coverMatchesWork(['ADVERSARY','TO THE','VILLAIN','HANNAH NICOLE MAEHRER'],'Adversary to the Villain',['Hannah Nicole Maehrer']),true,
+  'A legitimate three-line decorative title must still verify.');
+
 const siblingTitleWordsScattered=[
   'GODS',
   'DAWN OF THE CURSED QUEEN',
