@@ -183,9 +183,28 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   });
   if (!authorVerified) return false;
 
-  return compactLines.some((line) => {
+  const compactMatch = compactLines.some((line) => {
     const distance = editDistance(line, compactTitle);
     const allowance = compactTitle.length >= 10 ? 3 : compactTitle.length >= 7 ? 2 : compactTitle.length >= 5 ? 1 : 0;
     return distance <= allowance;
+  });
+  if (compactMatch) return true;
+
+  // OCR often drops tiny glue words from large decorative multi-line titles.
+  // When a catalog title has at least three distinctive words, allow those
+  // identity-bearing words to prove the title independently of "of/the/to".
+  // Author proof above remains mandatory, and two-word sibling titles do not
+  // qualify for this fallback.
+  const weakTitleWords = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
+  const significantTitleWords = words(scannerCoverTitle(title))
+    .filter((word) => word.length >= 4 && !weakTitleWords.has(word));
+  if (significantTitleWords.length < 3) return false;
+  const ocrTokens = new Set(rawWords);
+  return significantTitleWords.every((word) => {
+    if (ocrTokens.has(word)) return true;
+    const allowance = word.length >= 8 ? 2 : word.length >= 5 ? 1 : 0;
+    return rawWords.some((candidate) =>
+      Math.abs(candidate.length - word.length) <= allowance
+      && editDistance(candidate, word) <= allowance);
   });
 }
