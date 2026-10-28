@@ -125,3 +125,27 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
   return [...new Set(queries.map((query) => query.replace(/\s+/g, ' ').trim()).filter(Boolean))]
     .slice(0, maxQueries);
 }
+
+
+/** Build a few conservative retrieval fragments from a long, damaged,
+ * single-token title OCR line. Providers can often recover a catalog work from
+ * an intact interior run even when decorative first/last glyphs are wrong.
+ * These are retrieval hints only; full cover verification remains mandatory. */
+export function damagedTitleFragments(value: string, maxFragments = 3): string[] {
+  const tokens = wordsOf(value);
+  if (tokens.length !== 1) return [];
+  const compact = tokens[0];
+  if (compact.length < 8 || compact.length > 16) return [];
+
+  const fragmentLength = Math.min(8, compact.length - 2);
+  if (fragmentLength < 6) return [];
+  const starts = [
+    1,
+    Math.max(1, Math.floor((compact.length - fragmentLength) / 2)),
+    Math.max(1, compact.length - fragmentLength - 1),
+  ];
+  return [...new Set(starts
+    .map((start) => compact.slice(start, start + fragmentLength))
+    .filter((fragment) => fragment.length >= 6))]
+    .slice(0, maxFragments);
+}
