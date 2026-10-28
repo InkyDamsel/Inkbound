@@ -95,6 +95,7 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
 /** Build bounded author retrieval hints from cover OCR. This only improves
  * candidate retrieval; scanner verification still decides book identity. */
 export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string[] {
+  const strongQueries: string[] = [];
   const queries: string[] = [];
 
   // A complete 2-4 word cover line is often the strongest author hint.
@@ -130,7 +131,10 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     const leadingInitials = tokens.slice(0, -1).every((token) => token.length <= 2);
     const surname = tokens.at(-1) ?? '';
     if (tokens.length >= 3 && leadingInitials && surname.length >= 3) {
-      queries.push(tokens.join(' '));
+      // Initials + surname is much stronger author structure than a generic
+      // 2-4 word OCR line. Keep it ahead of noisy prose within the bounded
+      // retrieval budget instead of letting earlier cover noise crowd it out.
+      strongQueries.push(tokens.join(' '));
     } else if (shortTokenCount >= 1 && tokens.length >= 3) {
       const firstLong = tokens.findIndex((token) => token.length > 2);
       const prefixCount = Math.min(2, firstLong < 0 ? 2 : firstLong);
@@ -141,7 +145,9 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     }
   }
 
-  return [...new Set(queries.map((query) => query.replace(/\s+/g, ' ').trim()).filter(Boolean))]
+  return [...new Set([...strongQueries, ...queries]
+    .map((query) => query.replace(/\s+/g, ' ').trim())
+    .filter(Boolean))]
     .slice(0, maxQueries);
 }
 
