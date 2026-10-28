@@ -1123,6 +1123,32 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         }
       }
       if (!best) {
+        // Give Google its native field operators for the strongest recovered
+        // title/surname anchors. Generic provider text ranking can bury the
+        // exact photographed work even when both identities are visible.
+        // This only retrieves candidates; cover verification still decides.
+        for (const anchor of titleSurnameRecoveryQueries(cleanLines, authorRecoveryQueries)) {
+          const parts = anchor.split(/\s+/).filter(Boolean);
+          if (parts.length < 2) continue;
+          const surname = parts.at(-1) ?? '';
+          const titleParts = parts.slice(0, -1);
+          const query = `${titleParts.map((word) => `intitle:${word}`).join(' ')} inauthor:${surname}`;
+          try {
+            const response = await searchGoogleBooks(query);
+            recordScannerResponse(`fielded-title-author:${query}`, response.groups);
+            const recovered = response.groups.find((work) =>
+              coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+            if (recovered) {
+              best = { work: recovered, score: 2.22 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`fielded-title-author:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+      if (!best) {
         // Titles such as IT cannot safely search alone. Pair them with author-shaped
         // OCR evidence, then require strict coverMatchesWork verification.
         for (const query of shortTitleQueries(cleanLines)) {
