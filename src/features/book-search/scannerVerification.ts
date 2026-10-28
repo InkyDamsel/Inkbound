@@ -143,7 +143,10 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
       .filter((line) => line.length >= 5),
   ];
   const compactTitle = words(scannerCoverTitle(title)).join('');
-  if (compactTitle.length < 5) return false;
+  // Four-character titles can still be distinctive, but they are too short
+  // for fuzzy title recovery. Allow them only when OCR captured the complete
+  // title exactly; author evidence below remains independently mandatory.
+  if (compactTitle.length < 4) return false;
 
   // Approximate recovery requires independent author evidence as well as the
   // fuzzy title. OCR may substitute/drop one or two glyphs in a decorative
@@ -179,7 +182,7 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
 
   return compactLines.some((line) => {
     const distance = editDistance(line, compactTitle);
-    const allowance = compactTitle.length >= 10 ? 3 : compactTitle.length >= 7 ? 2 : 1;
+    const allowance = compactTitle.length >= 10 ? 3 : compactTitle.length >= 7 ? 2 : compactTitle.length >= 5 ? 1 : 0;
     return distance <= allowance;
   });
 }
