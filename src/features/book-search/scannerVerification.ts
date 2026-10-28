@@ -183,7 +183,22 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   });
   if (!authorVerified) return false;
 
-  const compactMatch = compactLines.some((line) => {
+  const catalogTitleWords = words(scannerCoverTitle(title));
+  const weakTitleWords = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
+  const significantTitleWords = catalogTitleWords
+    .filter((word) => word.length >= 4 && !weakTitleWords.has(word));
+
+  // Joining non-adjacent OCR lines is useful for decorative titles split by
+  // native OCR, but it is unsafe for short sibling titles: unrelated cover
+  // copy can manufacture the whole title (for example one word from series
+  // copy and another from a blurb). For titles with fewer than three
+  // distinctive words, approximate proof must come from one photographed OCR
+  // line. Longer titles may use the bounded cross-line reconstruction because
+  // they carry enough independent title evidence.
+  const approximateTitleLines = significantTitleWords.length >= 3
+    ? compactLines
+    : rawCompactLines.filter((line) => line.length >= 4);
+  const compactMatch = approximateTitleLines.some((line) => {
     const distance = editDistance(line, compactTitle);
     const allowance = compactTitle.length >= 10 ? 3 : compactTitle.length >= 7 ? 2 : compactTitle.length >= 5 ? 1 : 0;
     return distance <= allowance;
@@ -195,9 +210,6 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // identity-bearing words to prove the title independently of "of/the/to".
   // Author proof above remains mandatory, and two-word sibling titles do not
   // qualify for this fallback.
-  const weakTitleWords = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
-  const significantTitleWords = words(scannerCoverTitle(title))
-    .filter((word) => word.length >= 4 && !weakTitleWords.has(word));
   if (significantTitleWords.length < 3) return false;
   const ocrTokens = new Set(rawWords);
   return significantTitleWords.every((word) => {
