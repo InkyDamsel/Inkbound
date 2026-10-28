@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { coverAuthorQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, damagedTitleFragments, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
 
@@ -7,6 +7,13 @@ assert.equal(coverMatchesWork(['IT','A NOVEL','STEPHEN','KING'], 'It', ['Stephen
 assert.equal(coverMatchesWork(['SHIT HAPPENS','STEPHEN','KING'], 'It', ['Stephen King']), false);
 assert.ok(shortTitleQueries(['IT','STEPHEN','KING']).includes('IT STEPHEN KING'));
 
+const winterveilFragments=damagedTitleFragments('TMINTERVEI');
+assert.ok(winterveilFragments.some((fragment) => fragment.includes('interve')),
+  'Damaged long title OCR must expose a stable interior retrieval fragment.');
+assert.deepEqual(damagedTitleFragments('ROPED'),[],
+  'Short titles must not be broadened into fragment retrieval.');
+assert.deepEqual(damagedTitleFragments('DAWN OF THE CURSED QUEEN'),[],
+  'Multi-word titles must stay on the stronger normal title paths.');
 assert.equal(coverApproximatelyMatchesWork(['AVA REID','TMINTERVEI'], 'Winterveil', ['Ava Reid']), true);
 assert.equal(coverApproximatelyMatchesWork(['AVA REED','TMINTERVEI'], 'Winterveil', ['Ava Reid']), false);
 assert.equal(coverMatchesWork(['BLACK','THORN','J.T.','GEISSINGER'], 'Blackthorn', ['J.T. Geissinger']), true);
