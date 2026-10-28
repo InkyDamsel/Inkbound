@@ -36,6 +36,14 @@ assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
 assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME']).includes('bethan crome'),
   'Fragmented given name plus next-line surname must produce a bounded author retrieval hint.');
 
+const devouredWalmart=['JORDAN STEPHANIE GRAY','DEYOURED','Luminous and','exhilarating','Bitten is a romance','that sizzles','REBECCA ROSS','of Divine Rivals'];
+assert.ok(coverAuthorQueries(devouredWalmart).includes('jordan stephanie gray'),
+  'A complete three-word author line must survive noisy Walmart cover copy as a retrieval hint.');
+assert.equal(coverApproximatelyMatchesWork(devouredWalmart,'Devoured',['Jordan Stephanie Gray']),true,
+  'Damaged one-word title plus independently captured full author must verify approximately.');
+assert.equal(coverApproximatelyMatchesWork(devouredWalmart,'Bitten',['Jordan Stephanie Gray']),false,
+  'A title mentioned only in promotional cover copy must not replace the photographed title.');
+
 const reignDamaged=['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME'];
 assert.equal(coverApproximatelyMatchesWork(reignDamaged,'Reign',['Bethan Crome']),true,
   'Scanner must recover a one-glyph title substitution plus a fragmented author name.');
