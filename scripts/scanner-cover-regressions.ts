@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { coverAuthorQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines } from '../src/features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
 
@@ -36,6 +36,14 @@ assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
 assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME']).includes('bethan crome'),
   'Fragmented given name plus next-line surname must produce a bounded author retrieval hint.');
 
+const neroRecoveryAuthors=coverAuthorQueries(['THE ALLIANCE SERIES','DARK MAFVA ROMANCE','S.J.TILLY','NERO']);
+assert.ok(titleSurnameRecoveryQueries(['THE ALLIANCE SERIES','DARK MAFVA ROMANCE','S.J.TILLY','NERO'],neroRecoveryAuthors).some((query) => query === 'nero tilly'),
+  'Exact short title plus recovered surname must produce a bounded Nero retrieval anchor.');
+
+const dawnRecoveryLines=['OF','TIIE','DAWN','CURSEID','TUE','QUEEN','GODS & MONSTERS','BOK HREE','A MBERN. NICOLE'];
+const dawnRecoveryAuthors=coverAuthorQueries(dawnRecoveryLines);
+assert.ok(titleSurnameRecoveryQueries(dawnRecoveryLines,dawnRecoveryAuthors).some((query) => query.includes('dawn') && query.includes('curseid') && query.includes('queen') && query.includes('nicole')),
+  'Complementary Dawn title words plus recovered surname must produce a bounded retrieval anchor.');
 const neroAllianceCover=['THE ALLIANCE SERIES','ER','ADARK MAFVA ROMANCE','S.J. TIL','TILLY','NERO'];
 assert.equal(coverApproximatelyMatchesWork(neroAllianceCover,'Nero',['S.J. Tilly']),true,
   'Nero plus independently captured S.J. Tilly cover evidence must verify when normal search retrieves the work.');
