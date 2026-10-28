@@ -36,6 +36,13 @@ assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
 assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME']).includes('bethan crome'),
   'Fragmented given name plus next-line surname must produce a bounded author retrieval hint.');
 
+const neroLiveNoisyLines=['THE ALLIANCE SERIES','NERO','ADARK MAFIA ROMA NCE','S.J.TILLY','THEALLIANCE SERIES','NER','A DAR K MAF VA ROMANCE','S.J.TILL','A DARK MAFIA ROM A N CE','S.J.','TILLY','A DARK MAFVA ROMANC E'];
+const neroLiveAuthors=coverAuthorQueries(neroLiveNoisyLines);
+assert.ok(neroLiveAuthors.includes('s j tilly'),
+  'Strong initials plus surname must survive the bounded author-query budget even after noisy cover lines.');
+assert.ok(titleSurnameRecoveryQueries(neroLiveNoisyLines,neroLiveAuthors).some((query) => query === 'nero tilly'),
+  'Live noisy Nero OCR must retain the exact title-surname retrieval connection.');
+
 const neroRecoveryAuthors=coverAuthorQueries(['THE ALLIANCE SERIES','DARK MAFVA ROMANCE','S.J.TILLY','NERO']);
 assert.ok(titleSurnameRecoveryQueries(['THE ALLIANCE SERIES','DARK MAFVA ROMANCE','S.J.TILLY','NERO'],neroRecoveryAuthors).some((query) => query === 'nero tilly'),
   'Exact short title plus recovered surname must produce a bounded Nero retrieval anchor.');
