@@ -245,7 +245,13 @@ export function titleSurnameRecoveryQueries(
     .filter((surname) => surname.length >= 4))].slice(0, 2);
   if (!distinctive.length || !surnames.length) return [];
 
+  // Keep the widest bounded anchor first. Decorative covers often split a
+  // multi-word title into separate OCR lines; four independently surviving
+  // title words are still a safer retrieval query than dropping one of them.
+  // This remains retrieval-only: the returned work must pass full cover
+  // title + author verification before Scanner can accept it.
   const anchors = [
+    distinctive.slice(0, 4).join(' '),
     distinctive.slice(0, 3).join(' '),
     distinctive.slice(0, 2).join(' '),
     distinctive[0],
