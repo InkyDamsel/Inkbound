@@ -97,6 +97,17 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
 export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string[] {
   const queries: string[] = [];
 
+  // A complete 2-4 word cover line is often the strongest author hint.
+  // Keep it available even when no initials or OCR fragmentation are present.
+  for (const line of cleanLines) {
+    const tokens = wordsOf(line);
+    if (tokens.length >= 2 && tokens.length <= 4
+      && tokens.every((token) => token.length >= 2)
+      && !isDemotedCoverTitleLine(line)) {
+      queries.push(tokens.join(' '));
+    }
+  }
+
   for (let index = 0; index < cleanLines.length; index += 1) {
     const tokens = wordsOf(cleanLines[index]);
     const nextTokens = wordsOf(cleanLines[index + 1] ?? '');
