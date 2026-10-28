@@ -1171,12 +1171,26 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
       if (!best) {
         setScannerEditionOptions([]);
+        const titleSurnameAnchors = titleSurnameRecoveryQueries(cleanLines, authorRecoveryQueries);
+        // Preserve both ends of the bounded retrieval trace. Early entries
+        // explain the initial OCR queries; late entries contain the recovery
+        // calls (author catalog, title-surname, fielded title/author) that are
+        // usually decisive when a clear cover still fails.
+        const diagnosticResponses = scannerDiagnostics.length <= 30
+          ? scannerDiagnostics
+          : [
+              ...scannerDiagnostics.slice(0, 12),
+              `... ${scannerDiagnostics.length - 24} retrieval responses omitted ...`,
+              ...scannerDiagnostics.slice(-12),
+            ];
         const diagnostic = [
           '[Inkbound scanner] Cover identification failed',
           `OCR: ${lines.join(' || ')}`,
           `Clean: ${cleanLines.join(' || ')}`,
           `Candidates: ${candidates.slice(0, 20).join(' || ')}`,
-          ...scannerDiagnostics.slice(0, 30),
+          `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
+          `Title-surname anchors: ${titleSurnameAnchors.join(' || ') || 'none'}`,
+          ...diagnosticResponses,
         ].join('\n');
         console.error(diagnostic);
         setScannerDetails(diagnostic);
