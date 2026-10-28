@@ -122,6 +122,17 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
       queries.push(`${tokens.join('')} ${nextTokens[0]}`);
     }
 
+    // Native OCR can split BOTH printed name words internally on adjacent
+    // lines: "BETH AN" / "CRO ME" -> "bethan crome". Restrict this to two
+    // short fragments per line so ordinary cover prose cannot manufacture a
+    // person name. This is retrieval-only; catalog identity still has to pass
+    // the scanner verifier.
+    if (tokens.length === 2 && nextTokens.length === 2
+      && tokens.every((token) => token.length >= 2 && token.length <= 4)
+      && nextTokens.every((token) => token.length >= 2 && token.length <= 4)) {
+      strongQueries.push(`${tokens.join('')} ${nextTokens.join('')}`);
+    }
+
     if (tokens.length < 2 || tokens.length > 5) continue;
     const shortTokenCount = tokens.filter((token) => token.length <= 2).length;
     // Initialed author names are already structurally complete after
