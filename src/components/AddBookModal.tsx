@@ -18,7 +18,7 @@ import {
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { coverAuthorQueries, damagedTitleFragments, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -727,7 +727,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Reserve query budget for literal OCR lines. Synthetic pair/compact
       // phrases are useful for decorative split titles, but they must never
       // crowd the actual printed title out of the eight provider requests.
+      const splitTitleRuns = splitTitleRunQueries(cleanLines);
       const candidates = [...new Set([
+        ...splitTitleRuns,
         ...rankedAdjacentTitles.slice(0, 3),
         // Decorative titles are often split across lines even when catalogs
         // store them as one word ("Black Thorn" -> "Blackthorn").
