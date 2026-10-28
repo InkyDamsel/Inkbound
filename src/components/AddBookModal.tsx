@@ -18,7 +18,7 @@ import {
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { coverAuthorQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines } from '../features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -1100,6 +1100,28 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         }
       }
 
+      if (!best) {
+        // Last retrieval fallback for complementary OCR passes: combine a few
+        // distinctive title words with an author surname. This is deliberately
+        // retrieval-only. A catalog result is accepted only if the existing
+        // approximate cover verifier independently proves title + surname from
+        // the photographed OCR evidence.
+        for (const query of titleSurnameRecoveryQueries(cleanLines, authorRecoveryQueries)) {
+          try {
+            const response = await searchScannerCoverCatalog(query);
+            recordScannerResponse(`title-surname:${query}`, response.groups);
+            const recovered = response.groups.find((work) =>
+              coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+            if (recovered) {
+              best = { work: recovered, score: 2.21 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`title-surname:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
       if (!best) {
         // Titles such as IT cannot safely search alone. Pair them with author-shaped
         // OCR evidence, then require strict coverMatchesWork verification.
