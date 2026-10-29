@@ -23,6 +23,24 @@ const stripped=stripCoverPromoLines(neverLie);
 assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),false);
 assert.equal(coverMatchesWork(stripped,'Never Lie',['Freida McFadden']),true);
 
+const witchWithHousemaidPromo = [
+  '#1 New York Times Bestselling Author of THE HOUSEMAID',
+  'FREIDA',
+  'MCFADDEN',
+  'THE',
+  'WITCH',
+];
+assert.equal(
+  coverApproximatelyMatchesWork(witchWithHousemaidPromo,'The Housemaid',['Freida McFadden']),
+  false,
+  'A sibling title printed only inside author-of promo copy must never verify the photographed work.',
+);
+assert.equal(
+  coverApproximatelyMatchesWork(witchWithHousemaidPromo,'The Witch',['Freida McFadden']),
+  true,
+  'The photographed single-word title must still verify from primary cover text.',
+);
+
 const ropedPromo=['USA TODAY BESTSELLING AUTHOR OF BRANDED','SAFFRON A. KENT','ONCE HE HUNTS HER DOWN','HE\'S NEVER LETTING HER GO','ROPED'];
 const ropedClean=stripCoverPromoLines(ropedPromo);
 assert.equal(coverMatchesWork(ropedPromo,'Branded',['Saffron A. Kent']),true,
