@@ -122,6 +122,20 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
       queries.push(`${tokens.join('')} ${nextTokens[0]}`);
     }
 
+    // A later OCR pass may recover the given name completely while leaving
+    // only the surname fragmented nearby: "BETHAN" / "CRO ME" ->
+    // "bethan crome". Keep the window tiny and require a single substantial
+    // given-name token plus exactly two short surname fragments. Retrieval
+    // only; the photographed work still has to pass full title+author proof.
+    if (tokens.length === 1 && tokens[0].length >= 4 && tokens[0].length <= 12) {
+      for (let offset = 1; offset <= 3; offset += 1) {
+        const nearbyTokens = wordsOf(cleanLines[index + offset] ?? '');
+        if (nearbyTokens.length !== 2
+          || !nearbyTokens.every((token) => token.length >= 2 && token.length <= 4)) continue;
+        strongQueries.push(`${tokens[0]} ${nearbyTokens.join('')}`);
+      }
+    }
+
     // Native OCR can split BOTH printed name words internally. Multiple OCR
     // passes may interleave another damaged reading between the two useful
     // lines, so inspect only a tiny forward window rather than requiring exact
