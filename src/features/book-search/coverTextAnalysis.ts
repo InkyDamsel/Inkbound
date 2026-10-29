@@ -331,7 +331,13 @@ export function titleSurnameRecoveryQueries(
   maxQueries = 4,
 ): string[] {
   const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
-  const authorWords = new Set(authorQueries.flatMap(wordsOf));
+  // Only surnames are safe to exclude from title anchors. OCR recovery hints
+  // can contain noisy given-name/title-word combinations; excluding every word
+  // from those hints can erase real photographed title evidence such as
+  // DAWN / CURSEID / QUEEN before the surname anchor is built.
+  const authorSurnames = new Set(authorQueries
+    .map((query) => wordsOf(query).at(-1) ?? '')
+    .filter(Boolean));
   const titleWords: string[] = [];
 
   for (const line of cleanLines) {
@@ -341,7 +347,7 @@ export function titleSurnameRecoveryQueries(
     // one or two distinctive words surviving independently across OCR passes.
     if (tokens.length > 2) continue;
     for (const token of tokens) {
-      if (token.length < 4 || weak.has(token) || authorWords.has(token)) continue;
+      if (token.length < 4 || weak.has(token) || authorSurnames.has(token)) continue;
       titleWords.push(token);
     }
   }
