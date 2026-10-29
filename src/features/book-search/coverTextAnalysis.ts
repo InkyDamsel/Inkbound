@@ -380,7 +380,7 @@ export function titleSurnameRecoveryQueries(
   authorQueries: string[],
   maxQueries = 4,
 ): string[] {
-  const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
+  const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to','tiie','tue']);
   // Only surnames are safe to exclude from title anchors. OCR recovery hints
   // can contain noisy given-name/title-word combinations; excluding every word
   // from those hints can erase real photographed title evidence such as
