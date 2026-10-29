@@ -144,6 +144,21 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     }
   }
 
+  // Native OCR also splits ordinary two-word names across adjacent one-word
+  // lines ("SUZANNE" / "COLLINS"). Preserve those pairs before heuristic
+  // cross-pass combinations can consume the bounded author-query budget.
+  // This is retrieval-only: title + author verification still decides identity.
+  for (let index = 0; index < cleanLines.length - 1; index += 1) {
+    const current = wordsOf(cleanLines[index]);
+    const next = wordsOf(cleanLines[index + 1]);
+    if (current.length !== 1 || next.length !== 1) continue;
+    const first = current[0];
+    const second = next[0];
+    if (first.length < 4 || second.length < 4 || first.length > 12 || second.length > 12) continue;
+    if (isDemotedCoverTitleLine(cleanLines[index]) || isDemotedCoverTitleLine(cleanLines[index + 1])) continue;
+    structuralQueries.push(`${first} ${second}`);
+  }
+
   // A complete 2-4 word cover line is often the strongest author hint.
   // Keep it available even when no initials or OCR fragmentation are present.
   for (const line of cleanLines) {
