@@ -388,21 +388,34 @@ export function titleSurnameRecoveryQueries(
   const authorSurnames = new Set(authorQueries
     .map((query) => wordsOf(query).at(-1) ?? '')
     .filter(Boolean));
-  const titleWords: string[] = [];
+  const authorWords = new Set(authorQueries.flatMap((query) => wordsOf(query)));
+  const titleWordCounts = new Map<string, { count: number; firstIndex: number }>();
 
-  for (const line of cleanLines) {
-    if (isDemotedCoverTitleLine(line)) continue;
+  cleanLines.forEach((line, lineIndex) => {
+    if (isDemotedCoverTitleLine(line)) return;
     const tokens = wordsOf(line);
     // Long prose/name-shaped lines are poor title anchors. The useful case is
     // one or two distinctive words surviving independently across OCR passes.
-    if (tokens.length > 2) continue;
+    if (tokens.length > 2) return;
     for (const token of tokens) {
-      if (token.length < 4 || weak.has(token) || authorSurnames.has(token)) continue;
-      titleWords.push(token);
+      if (token.length < 4 || weak.has(token) || authorSurnames.has(token) || authorWords.has(token)) continue;
+      const current = titleWordCounts.get(token);
+      titleWordCounts.set(token, {
+        count: (current?.count ?? 0) + 1,
+        firstIndex: current?.firstIndex ?? lineIndex,
+      });
     }
-  }
+  });
 
-  const distinctive = [...new Set(titleWords)].slice(0, 5);
+  // Native OCR gives us several passes. A real title word that survives more
+  // than once is stronger retrieval evidence than a one-off fragment that
+  // happened to appear earlier in OCR order. Rank by repeated evidence first,
+  // then retain cover order for equally supported words. This prevents noisy
+  // early fragments from consuming every bounded title+surname query.
+  const distinctive = [...titleWordCounts.entries()]
+    .sort((left, right) => right[1].count - left[1].count || left[1].firstIndex - right[1].firstIndex)
+    .map(([word]) => word)
+    .slice(0, 5);
   const surnames = [...new Set(authorQueries
     .map((query) => wordsOf(query).at(-1) ?? '')
     .filter((surname) => surname.length >= 4))].slice(0, 2);
