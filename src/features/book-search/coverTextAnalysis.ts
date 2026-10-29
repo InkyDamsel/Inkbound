@@ -388,7 +388,19 @@ export function titleSurnameRecoveryQueries(
   const authorSurnames = new Set(authorQueries
     .map((query) => wordsOf(query).at(-1) ?? '')
     .filter(Boolean));
-  const authorWords = new Set(authorQueries.flatMap((query) => wordsOf(query)));
+  // Only exclude words that are stable across recovered author hints.
+  // Individual noisy author reconstructions can accidentally absorb real title
+  // words (for example DAWN/CURSEID/QUEEN); excluding the union would erase the
+  // photographed title before a surname anchor can be built.
+  const authorWordFrequency = new Map<string, number>();
+  authorQueries.forEach((query) => {
+    for (const word of new Set(wordsOf(query))) {
+      authorWordFrequency.set(word, (authorWordFrequency.get(word) ?? 0) + 1);
+    }
+  });
+  const stableAuthorWords = new Set([...authorWordFrequency.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([word]) => word));
   const titleWordCounts = new Map<string, { count: number; firstIndex: number }>();
 
   cleanLines.forEach((line, lineIndex) => {
@@ -398,7 +410,7 @@ export function titleSurnameRecoveryQueries(
     // one or two distinctive words surviving independently across OCR passes.
     if (tokens.length > 2) return;
     for (const token of tokens) {
-      if (token.length < 4 || weak.has(token) || authorSurnames.has(token) || authorWords.has(token)) continue;
+      if (token.length < 4 || weak.has(token) || authorSurnames.has(token) || stableAuthorWords.has(token)) continue;
       const current = titleWordCounts.get(token);
       titleWordCounts.set(token, {
         count: (current?.count ?? 0) + 1,
