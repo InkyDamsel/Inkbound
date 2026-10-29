@@ -85,6 +85,8 @@ const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const CATALOG_BACKOFF_MS = 5 * 60 * 1000;
 const ACTIVE_TAB_STORAGE_KEY = 'inkbound_active_tab';
 const searchCache = new Map<string, { expiresAt: number; response: BookSearchResponse }>();
+const googleAuthorPageCache = new Map<string, { expiresAt: number; payload: GoogleVolumesResponse }>();
+const googleAuthorPageInFlight = new Map<string, Promise<GoogleVolumesResponse>>();
 let googleBackoffUntil = 0;
 let hardcoverBackoffUntil = 0;
 let prhBackoffUntil = 0;
@@ -293,6 +295,37 @@ async function requestDirectGoogleBooks(
   return response.json() as Promise<GoogleVolumesResponse>;
 }
 
+const googleAuthorPageKey = (authorQuery: string, startIndex: number) =>
+  `${authorQuery.trim().toLowerCase()}::${startIndex}::${GOOGLE_BOOKS_PAGE_SIZE}`;
+
+async function requestGoogleAuthorPage(
+  authorQuery: string,
+  startIndex: number,
+  signal?: AbortSignal,
+): Promise<GoogleVolumesResponse> {
+  const key = googleAuthorPageKey(authorQuery, startIndex);
+  const cached = googleAuthorPageCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.payload;
+  if (cached) googleAuthorPageCache.delete(key);
+
+  const existing = googleAuthorPageInFlight.get(key);
+  if (existing) return existing;
+
+  const request = (functions && auth?.currentUser
+    ? requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
+    : requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE))
+    .then((payload) => {
+      googleAuthorPageCache.set(key, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, payload });
+      return payload;
+    })
+    .finally(() => {
+      googleAuthorPageInFlight.delete(key);
+    });
+
+  googleAuthorPageInFlight.set(key, request);
+  return request;
+}
+
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   let payload: GoogleVolumesResponse;
   if (functions && auth?.currentUser) {
@@ -333,12 +366,12 @@ export async function searchGoogleBooksAuthorPage(
   if (googleCoolingDown) googleError = 'Provider cooling down after rate limit; alternate catalogs are still active.';
   try {
     if (googleCoolingDown) throw new Error(googleError);
-    payload = functions && auth?.currentUser
-      ? await requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-      : await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
-    if (functions && auth?.currentUser && (payload.items ?? []).length === 0) {
-      payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
-    }
+    // Author pages are reused by normal author-shaped Search, the author
+    // catalog view and scanner recovery. Deduplicate identical in-flight calls
+    // and keep the page briefly so those paths do not repeatedly spend Google
+    // quota for the same author/page. A legitimate empty protected response is
+    // authoritative; do not immediately repeat it against the public endpoint.
+    payload = await requestGoogleAuthorPage(authorQuery, startIndex, signal);
   } catch (protectedError) {
     if (signal?.aborted) throw protectedError;
     if (shouldBackOffCatalog(protectedError)) {
