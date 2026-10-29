@@ -86,17 +86,17 @@ const reignCompleteGivenFragmentedSurname=['RETGN','BETHAN R','CRO ME','BETHAN',
 const reignCompleteGivenAuthors=coverAuthorQueries(reignCompleteGivenFragmentedSurname);
 assert.ok(reignCompleteGivenAuthors.includes('bethan crome'),
   'A complete recovered given name plus a nearby fragmented surname must reconstruct into a strong author hint.');
-assert.ok(titleSurnameRecoveryQueries(reignCompleteGivenFragmentedSurname,reignCompleteGivenAuthors).some((query) => query.includes('reign') && query.includes('crome')),
-  'Complete-given fragmented-surname recovery must retain a Reign plus surname retrieval anchor.');
+assert.ok(coverApproximatelyMatchesWork(reignCompleteGivenFragmentedSurname,'Reign',['Bethan Croome']),
+  'A complete given name plus one-character-damaged fragmented surname must verify the real catalog author after title proof.');
 
 const reignLiveFragmented=['REIGN','BETH AN','CRO ME','REIGN!','BETHAN','CRO ME','t:i','BETH AN t','L1','OM','BETH AN'];
 assert.ok(coverAuthorQueries(reignLiveFragmented).includes('bethan crome'),
   'Two adjacent internally fragmented author words must reconstruct into a bounded author retrieval hint.');
-assert.ok(titleSurnameRecoveryQueries(reignLiveFragmented,coverAuthorQueries(reignLiveFragmented)).some((query) => query === 'reign crome'),
-  'Live fragmented Reign OCR must retain the exact title-surname retrieval connection.');
+assert.ok(coverApproximatelyMatchesWork(reignLiveFragmented,'Reign',['Bethan Croome']),
+  'Live fragmented Reign OCR must verify the real Croome surname with one missing OCR glyph.');
 
 const reignDamaged=['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME'];
-assert.equal(coverApproximatelyMatchesWork(reignDamaged,'Reign',['Bethan Crome']),true,
+assert.equal(coverApproximatelyMatchesWork(reignDamaged,'Reign',['Bethan Croome']),true,
   'Scanner must recover a one-glyph title substitution plus a fragmented author name.');
 
 assert.equal(isDemotedCoverTitleLine('A DARK MAFIA ROMANCE'),true);
