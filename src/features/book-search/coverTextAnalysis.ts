@@ -74,6 +74,30 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
   if (!shortLines.length) return [];
 
   const nameLike: string[] = [];
+  for (let index = 0; index < cleanLines.length; index += 1) {
+    const tokens = wordsOf(cleanLines[index]);
+    const nextTokens = wordsOf(cleanLines[index + 1] ?? '');
+    if (tokens.length >= 2 && tokens.length <= 3) nameLike.push(cleanLines[index]);
+    if (tokens.length === 1 && tokens[0].length >= 3 && nextTokens.length === 1 && nextTokens[0].length >= 3) {
+      nameLike.push(`${cleanLines[index]} ${cleanLines[index + 1]}`);
+    }
+  }
+
+  const queries: string[] = [];
+  for (const short of shortLines) for (const name of nameLike) {
+    if (wordsOf(name).join(' ') === wordsOf(short).join(' ')) continue;
+    queries.push(`${short} ${name}`.replace(/\s+/g, ' ').trim());
+  }
+  return [...new Set(queries)].slice(0, maxQueries);
+}
+
+
+/** Build bounded author retrieval hints from cover OCR. This only improves
+ * candidate retrieval; scanner verification still decides book identity. */
+export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string[] {
+  const strongQueries: string[] = [];
+  const queries: string[] = [];
+
   // Native OCR repeats the same printed name across image treatments. Use
   // those repeated passes to reconstruct internally spaced name words before
   // pairing them. A complete token such as BETHAN is stronger than BETH AN;
@@ -117,30 +141,6 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
       strongQueries.push(`${given} ${surname}`);
     }
   }
-
-  for (let index = 0; index < cleanLines.length; index += 1) {
-    const tokens = wordsOf(cleanLines[index]);
-    const nextTokens = wordsOf(cleanLines[index + 1] ?? '');
-    if (tokens.length >= 2 && tokens.length <= 3) nameLike.push(cleanLines[index]);
-    if (tokens.length === 1 && tokens[0].length >= 3 && nextTokens.length === 1 && nextTokens[0].length >= 3) {
-      nameLike.push(`${cleanLines[index]} ${cleanLines[index + 1]}`);
-    }
-  }
-
-  const queries: string[] = [];
-  for (const short of shortLines) for (const name of nameLike) {
-    if (wordsOf(name).join(' ') === wordsOf(short).join(' ')) continue;
-    queries.push(`${short} ${name}`.replace(/\s+/g, ' ').trim());
-  }
-  return [...new Set(queries)].slice(0, maxQueries);
-}
-
-
-/** Build bounded author retrieval hints from cover OCR. This only improves
- * candidate retrieval; scanner verification still decides book identity. */
-export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string[] {
-  const strongQueries: string[] = [];
-  const queries: string[] = [];
 
   // A complete 2-4 word cover line is often the strongest author hint.
   // Keep it available even when no initials or OCR fragmentation are present.
