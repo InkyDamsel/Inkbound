@@ -233,6 +233,32 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 12): strin
       structuralQueries.push(`${tokens.join('')} ${nextTokens.join('')}`);
     }
 
+    // A printed given name is often split into a long head and a short tail
+    // ("KATHLE EN") directly above an equally split surname ("GLAS GOW").
+    // Allow one head up to six characters when the final fragment is short and
+    // each recombined word stays a plausible name length. Structural pairs
+    // only; title + author verification still decides identity.
+    const fragmentedNameWord = (parts: string[]): boolean =>
+      parts.length >= 2 && parts.length <= 3
+      && parts.every((part) => part.length >= 1 && part.length <= 6)
+      && parts.at(-1)!.length <= 4
+      && parts.join('').length >= 5 && parts.join('').length <= 12;
+    if (fragmentedNameWord(tokens) && fragmentedNameWord(nextTokens)
+      && !isDemotedCoverTitleLine(cleanLines[index])
+      && !isDemotedCoverTitleLine(cleanLines[index + 1] ?? '')) {
+      for (let offset = 1; offset <= 3; offset += 1) {
+        const partner = wordsOf(cleanLines[index + offset] ?? '');
+        if (!fragmentedNameWord(partner)) continue;
+        if (tokens.join('') === partner.join('')) continue;
+        structuralQueries.push(`${tokens.join('')} ${partner.join('')}`);
+        // A complete given name followed by one stray glyph ("BETHAN R")
+        // keeps the name usable: retrieve with the name alone as well.
+        if (tokens.length === 2 && tokens[0].length >= 5 && tokens[1].length === 1) {
+          structuralQueries.push(`${tokens[0]} ${partner.join('')}`);
+        }
+      }
+    }
+
     // Initials are frequently captured on one pass while the surname lands on
     // a nearby pass: "S J" ... "TILLY" -> "s j tilly". This is stronger than
     // treating nearby genre/series copy as an author and gives the fast
@@ -328,6 +354,13 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 12): strin
     // ordinary multi-word prose cannot masquerade as a name word.
     if (tokens.length >= 2 && tokens.length <= 4
       && tokens.every((token) => token.length >= 1 && token.length <= 4)) {
+      values.push(tokens.join(''));
+    } else if (tokens.length >= 2 && tokens.length <= 3
+      && tokens.every((token) => token.length >= 1 && token.length <= 6)
+      && tokens.at(-1)!.length <= 4
+      && tokens.join('').length >= 5 && tokens.join('').length <= 12) {
+      // Long head + short tail ("KATHLE EN") is the same single printed
+      // word split by decorative typography.
       values.push(tokens.join(''));
     }
     return values;
@@ -457,12 +490,26 @@ export function titleSurnameRecoveryQueries(
   maxQueries = 4,
 ): string[] {
   const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
+  // Words that appear as standalone title-shaped OCR (<=2 tokens, not promo)
+  // are ambiguous: they may be title words that merely landed in an author
+  // query. A surname seen only inside longer author-shaped lines is stronger
+  // author evidence, so it must not be crowded out of the bounded candidate
+  // list by title words that were paired into speculative author queries.
+  const titlePool = new Set<string>();
+  for (const line of cleanLines) {
+    if (isDemotedCoverTitleLine(line)) continue;
+    const lineTokens = wordsOf(line);
+    if (lineTokens.length > 2) continue;
+    for (const token of lineTokens) titlePool.add(token);
+  }
   const surnameCandidates = [...new Set(authorQueries
     .map((query) => wordsOf(query).at(-1) ?? '')
     .filter((surname) => surname.length >= 4))]
-    // Recovery queries are retrieval hints, not identity proof. Preserve all
-    // reconstructed surnames here; the caller/verifier remains responsible
-    // for accepting a catalog work.
+    .map((surname, index) => ({ surname, index, authorOnly: titlePool.has(surname) ? 0 : 1 }))
+    .sort((left, right) => right.authorOnly - left.authorOnly || left.index - right.index)
+    // Recovery queries are retrieval hints, not identity proof. The
+    // caller/verifier remains responsible for accepting a catalog work.
+    .map(({ surname }) => surname)
     .slice(0, maxQueries);
   if (!surnameCandidates.length) return [];
 
@@ -479,6 +526,11 @@ export function titleSurnameRecoveryQueries(
       if (isDemotedCoverTitleLine(line)) return;
       const tokens = wordsOf(line);
       if (tokens.length > 2) return;
+      // A two-token line ending in a 1-3 character tail ("GLAS GOW",
+      // "KATHLE EN") is one printed word split by OCR. Its pieces are debris,
+      // not distinctive title words, and repeated passes would otherwise
+      // outrank whole title words such as PIECES.
+      if (tokens.length === 2 && tokens[1].length <= 3) return;
       for (const token of tokens) {
         if (token.length < 4 || weak.has(token) || token === surname) continue;
         const current = counts.get(token);
@@ -489,12 +541,47 @@ export function titleSurnameRecoveryQueries(
       }
     });
 
-    const authorWordsForSurname = new Set(authorQueries
-      .filter((query) => wordsOf(query).at(-1) === surname)
-      .flatMap((query) => wordsOf(query))
-      .filter((word) => word !== surname));
+    // Words consumed by this reconstructed author identity are poor title
+    // evidence. A word that is ALSO standalone title-shaped OCR and was paired
+    // with the surname in only one speculative author query (e.g. "pieces
+    // glasgow") is more likely a title word than a given name, so keep it.
+    const surnameQueries = authorQueries.filter((query) => wordsOf(query).at(-1) === surname);
+    const authorWordUse = new Map<string, number>();
+    for (const query of surnameQueries) {
+      for (const word of new Set(wordsOf(query))) {
+        if (word !== surname) authorWordUse.set(word, (authorWordUse.get(word) ?? 0) + 1);
+      }
+    }
+    const authorWordsForSurname = new Set([...authorWordUse.entries()]
+      .filter(([word, uses]) => uses >= 2 || !titlePool.has(word))
+      .map(([word]) => word));
+
+    // OCR damage variants of the author's own words ("GEASGOW", "ATALEEN")
+    // are not title evidence either; drop near-duplicates of the surname and
+    // of the reconstructed author words so real title words can surface.
+    const nearWord = (author: string, word: string): boolean => {
+      if (author === word) return true;
+      if (Math.min(author.length, word.length) >= 5
+        && (author.endsWith(word) || word.endsWith(author)
+          || author.startsWith(word) || word.startsWith(author))) return true;
+      if (Math.abs(author.length - word.length) > 1 || Math.min(author.length, word.length) < 5) return false;
+      let edits = 0;
+      let a = 0; let b = 0;
+      while (a < author.length && b < word.length) {
+        if (author[a] === word[b]) { a += 1; b += 1; continue; }
+        edits += 1;
+        if (edits > 1) return false;
+        if (author.length > word.length) a += 1;
+        else if (author.length < word.length) b += 1;
+        else { a += 1; b += 1; }
+      }
+      return edits + (author.length - a) + (word.length - b) <= 1;
+    };
+    const nearAuthorWord = (word: string): boolean =>
+      [surname, ...authorWordsForSurname].some((author) => nearWord(author, word));
 
     const distinctive = [...counts.entries()]
+      .filter(([word]) => !nearAuthorWord(word))
       // Words already consumed as part of this reconstructed author identity
       // are poor title evidence. Keep title reconstruction independent without
       // globally subtracting words used by OTHER speculative author hints.
@@ -503,6 +590,10 @@ export function titleSurnameRecoveryQueries(
         right[1].count - left[1].count
         || left[1].firstIndex - right[1].firstIndex)
       .map(([word]) => word)
+      // A one-glyph OCR variant of an already-ranked title word ("REIEN"
+      // beside "REIGN") is the same evidence, not a second title word.
+      .reduce<string[]>((kept, word) =>
+        kept.some((existing) => nearWord(existing, word)) ? kept : [...kept, word], [])
       .slice(0, 5);
     if (!distinctive.length) continue;
 
