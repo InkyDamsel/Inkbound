@@ -37,6 +37,13 @@ assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N'
   'Fragmented given name plus next-line surname must produce a bounded author retrieval hint.');
 
 const neroLiveNoisyLines=['THE ALLIANCE SERIES','NERO','ADARK MAFIA ROMA NCE','S.J.TILLY','THEALLIANCE SERIES','NER','A DAR K MAF VA ROMANCE','S.J.TILL','A DARK MAFIA ROM A N CE','S.J.','TILLY','A DARK MAFVA ROMANC E'];
+const neroFragmentedSurname=['THE ALLIANCE SERIES','ERO','ADARK M AFIA ROMANCE','S J TIL LY','THEALLIANCE SERIES','S J','LLY','TILLY','NER','NERO'];
+const neroFragmentedSurnameAuthors=coverAuthorQueries(neroFragmentedSurname);
+assert.ok(neroFragmentedSurnameAuthors.includes('s j tilly'),
+  'Initialed author OCR with an internally fragmented surname must reconstruct before noisy cover copy consumes the author-query budget.');
+assert.ok(titleSurnameRecoveryQueries(neroFragmentedSurname,neroFragmentedSurnameAuthors).some((query) => query === 'nero tilly'),
+  'Fragmented initials-plus-surname recovery must retain the exact short-title surname anchor.');
+
 const neroLiveAuthors=coverAuthorQueries(neroLiveNoisyLines);
 assert.ok(neroLiveAuthors.includes('s j tilly'),
   'Strong initials plus surname must survive the bounded author-query budget even after noisy cover lines.');
