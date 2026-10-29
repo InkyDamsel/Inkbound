@@ -1102,6 +1102,50 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       }
 
       if (!best) {
+        // Intersect strong photographed title evidence with the federated
+        // scanner-only author bibliography. This avoids relevance ranking
+        // entirely: providers are asked for the credited author's works, then
+        // the photographed title + author verifier decides identity.
+        const bibliographyTitleHints = [...new Set(cleanLines
+          .filter((line) => {
+            const normalized = normalizeCatalogText(line);
+            const tokens = normalized.split(/\s+/).filter(Boolean);
+            return normalized.length >= 4
+              && normalized.length <= 80
+              && tokens.length >= 1
+              && tokens.length <= 6
+              && !isNoise(line)
+              && !isDemotedCoverTitleLine(line)
+              && !authorRecoveryQueries.some((author) => normalizeCatalogText(author) === normalized);
+          }))].slice(0, 8);
+
+        for (const authorQuery of authorRecoveryQueries.slice(0, 2)) {
+          try {
+            const response = await searchScannerAuthorCatalog(authorQuery);
+            recordScannerResponse(`bibliography-title:${authorQuery}`, response.groups);
+            const recovered = response.groups.find((work) => {
+              const workTitle = normalizeCatalogText(scannerCoverTitle(work.title));
+              const photographedTitle = bibliographyTitleHints.some((hint) => {
+                const hintTitle = normalizeCatalogText(scannerCoverTitle(hint));
+                return hintTitle === workTitle
+                  || workTitle.startsWith(`${hintTitle} `)
+                  || hintTitle.startsWith(`${workTitle} `);
+              });
+              return photographedTitle
+                && coverApproximatelyMatchesWork(cleanLines, work.title, work.authors);
+            });
+            if (recovered) {
+              best = { work: recovered, score: 2.24 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`bibliography-title:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+
+      if (!best) {
         // When OCR has a clean title-shaped line but relevance search buries
         // the work, use the scanner-only exact-title catalog path before
         // combining title and author into broad text queries. Author evidence
