@@ -363,6 +363,11 @@ export function titleSurnameRecoveryQueries(
     distinctive.slice(0, 2).join(' '),
     distinctive[0],
   ].filter((value) => value.length >= 4);
-  return [...new Set(anchors.flatMap((title) => surnames.map((surname) => `${title} ${surname}`)))]
+  // Give every recovered surname the strongest title anchor before spending
+  // the bounded query budget on weaker title variants. OCR can produce one
+  // damaged author reconstruction ahead of the intact surname; title-first
+  // expansion could otherwise consume the whole budget before the valid
+  // title+surname pair is attempted.
+  return [...new Set(surnames.flatMap((surname) => anchors.map((title) => `${title} ${surname}`)))]
     .slice(0, maxQueries);
 }
