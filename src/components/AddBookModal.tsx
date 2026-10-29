@@ -750,12 +750,56 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           `${work.title} — ${work.authors.join(', ') || 'Unknown author'}`).join(' | ');
         scannerDiagnostics.push(`${query} => ${groups.length} [${sample || 'no results'}]`);
       };
+      // Fast lane: when OCR independently gives us title-shaped text AND a
+      // strong reconstructed author, ask the full scanner federation for that
+      // identity before spending requests on title-only/noisy recovery.
+      // This is retrieval only. A candidate is accepted only if the existing
+      // photographed-cover verifier proves both title and author.
+      const authorRecoveryQueries = coverAuthorQueries(cleanLines);
+      const strongAuthorHints = authorRecoveryQueries
+        .filter((value) => {
+          const tokens = value.split(/\s+/).filter(Boolean);
+          return tokens.length >= 2 && tokens.length <= 4
+            && tokens.at(-1)!.length >= 4;
+        })
+        .slice(0, 3);
+      const strongTitleHints = [...new Set(cleanLines
+        .filter((line) => {
+          const normalized = normalizeCatalogText(line);
+          const tokens = normalized.split(/\s+/).filter(Boolean);
+          return normalized.length >= 4
+            && normalized.length <= 80
+            && tokens.length >= 1
+            && tokens.length <= 6
+            && !isNoise(line)
+            && !isDemotedCoverTitleLine(line)
+            && !strongAuthorHints.some((author) => normalizeCatalogText(author) === normalized);
+        })
+        .sort((left, right) => candidateScore(right) - candidateScore(left)))].slice(0, 5);
+      const strongIdentityQueries = [...new Set(strongTitleHints.flatMap((title) =>
+        strongAuthorHints.map((author) => `${title} ${author}`)))].slice(0, 6);
+
+      for (const query of strongIdentityQueries) {
+        try {
+          const response = await searchScannerCoverCatalog(query);
+          recordScannerResponse(`strong-identity:${query}`, response.groups);
+          const recovered = response.groups.find((work) =>
+            coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.6 };
+            found = response.groups;
+            break;
+          }
+        } catch (error) {
+          scannerDiagnostics.push(`strong-identity:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
       // Keep cover recovery inside a small request budget. The previous path
       // could make dozens of direct Google requests in one failed scan and hit
       // HTTP 429 before the correct OCR phrase was reached. Use the scanner's
       // multi-provider catalog union for each of the strongest OCR candidates;
       // identity is still accepted only after full title + author verification.
-      for (const candidate of candidates) {
+      if (!best) for (const candidate of candidates) {
         let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
         try {
           response = await searchScannerCoverCatalog(candidate);
@@ -839,8 +883,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Shared by both author-catalog recovery and cross-pass title recovery.
       // Keep this outside the recovery blocks so a failed author-catalog pass
       // can safely reuse the same bounded author evidence.
-      const authorRecoveryQueries = coverAuthorQueries(cleanLines);
-
       if (!best) {
         // When OCR already captured a compact title and a credible full author,
         // reuse the same established search path the Search tab uses before
