@@ -368,6 +368,6 @@ export function titleSurnameRecoveryQueries(
   // damaged author reconstruction ahead of the intact surname; title-first
   // expansion could otherwise consume the whole budget before the valid
   // title+surname pair is attempted.
-  return [...new Set(surnames.flatMap((surname) => anchors.map((title) => `${title} ${surname}`)))]
+  return [...new Set(anchors.flatMap((title) => surnames.map((surname) => `${title} ${surname}`)))]
     .slice(0, maxQueries);
 }
