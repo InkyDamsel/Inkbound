@@ -375,11 +375,11 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 12): strin
   // space for structurally recovered surname identities before truncating so a
   // noisy cover cannot erase an intact surname merely because unrelated OCR
   // combinations scored ahead of its full author query.
-  const structuralSurnameQueries = ranked
-    .filter((candidate) => candidate.structural >= 2)
+  const evidenceBacked = ranked
+    .filter((candidate) => candidate.support > 0 && candidate.complete > 0)
     .map(({ query }) => query);
   const ordered = [
-    ...structuralSurnameQueries,
+    ...evidenceBacked,
     ...ranked.map(({ query }) => query),
   ];
   return [...new Set(ordered)].slice(0, Math.max(1, maxQueries));
