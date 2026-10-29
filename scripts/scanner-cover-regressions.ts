@@ -109,6 +109,13 @@ assert.equal(coverApproximatelyMatchesWork(reignWalmartLatest,'Reign',['Bethan C
 assert.ok(coverApproximatelyMatchesWork(reignLiveFragmented,'Reign',['Bethan Croome']),
   'Live fragmented Reign OCR must verify the real Croome surname with one missing OCR glyph.');
 
+const reignPhotoSpacedAuthor=['REIGN','BETH AN','GR O ME','REIEN','BET HAN','CRO ME','BETH A','GRO ME','GR O ME','BETH AT K','CRO ME'];
+const reignPhotoSpacedAuthors=coverAuthorQueries(reignPhotoSpacedAuthor);
+assert.ok(reignPhotoSpacedAuthors.includes('bethan crome'),
+  'Repeated OCR passes must prefer BETH AN + CRO ME -> bethan crome over damaged GROME variants.');
+assert.ok(titleSurnameRecoveryQueries(reignPhotoSpacedAuthor,reignPhotoSpacedAuthors).some((query) => query === 'reign crome'),
+  'Reign photo OCR must preserve the exact title-surname retrieval anchor after author reconstruction.');
+
 const reignDamaged=['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME'];
 assert.equal(coverApproximatelyMatchesWork(reignDamaged,'Reign',['Bethan Croome']),true,
   'Scanner must recover a one-glyph title substitution plus a fragmented author name.');
