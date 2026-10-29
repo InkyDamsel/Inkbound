@@ -147,6 +147,16 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     // surname ("s jtilly"), which poisons surname-based catalog retrieval.
     const leadingInitials = tokens.slice(0, -1).every((token) => token.length <= 2);
     const surname = tokens.at(-1) ?? '';
+    // Initialed names can also have the surname split internally by native OCR:
+    // "S J TIL LY" -> "s j tilly". Require at least two leading initial
+    // fragments plus exactly two short surname fragments so ordinary prose
+    // cannot consume the bounded strong-author budget.
+    if (tokens.length === 4
+      && tokens[0].length <= 2 && tokens[1].length <= 2
+      && tokens[2].length >= 2 && tokens[2].length <= 4
+      && tokens[3].length >= 2 && tokens[3].length <= 4) {
+      strongQueries.push(`${tokens[0]} ${tokens[1]} ${tokens[2]}${tokens[3]}`);
+    }
     // Native OCR can detach the first glyph of a printed given name while
     // leaving the surname intact: "A MBERN NICOLE" -> "ambern nicole".
     // Preserve that surname as a retrieval anchor instead of collapsing the
