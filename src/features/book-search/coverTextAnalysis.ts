@@ -364,14 +364,25 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 12): strin
     }
   }
 
-  return [...bestByQuery.values()]
+  const ranked = [...bestByQuery.values()]
     .sort((left, right) =>
       right.support - left.support
       || right.complete - left.complete
       || right.structural - left.structural
-      || wordsOf(right.query).length - wordsOf(left.query).length)
-    .map(({ query }) => query)
-    .slice(0, Math.max(1, maxQueries));
+      || wordsOf(right.query).length - wordsOf(left.query).length);
+
+  // Reconstruction output is also consumed by title+surname recovery. Reserve
+  // space for structurally recovered surname identities before truncating so a
+  // noisy cover cannot erase an intact surname merely because unrelated OCR
+  // combinations scored ahead of its full author query.
+  const structuralSurnameQueries = ranked
+    .filter((candidate) => candidate.structural >= 2)
+    .map(({ query }) => query);
+  const ordered = [
+    ...structuralSurnameQueries,
+    ...ranked.map(({ query }) => query),
+  ];
+  return [...new Set(ordered)].slice(0, Math.max(1, maxQueries));
 }
 
 
