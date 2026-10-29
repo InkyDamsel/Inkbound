@@ -47,6 +47,13 @@ assert.ok(titleSurnameRecoveryQueries(neroFragmentedSurname,neroFragmentedSurnam
 const neroLiveAuthors=coverAuthorQueries(neroLiveNoisyLines);
 assert.ok(neroLiveAuthors.includes('s j tilly'),
   'Strong initials plus surname must survive the bounded author-query budget even after noisy cover lines.');
+
+const neroWalmartLatest=['THE ALLIANCE SERIES','ERO','ADARK MAFTA ROMA NCE','S J','J TILLY','ADARK MAFIA ROMANCE','J T LLY','IHE ALLIANCE SERIES','A D ARK MAFIA ROMANCE','TILLY','NERO','A DARK MAFTA ROMANCE'];
+const neroWalmartLatestAuthors=coverAuthorQueries(neroWalmartLatest);
+assert.ok(neroWalmartLatestAuthors.some((query) => /(?:^| )tilly$/.test(query)),
+  'Latest Walmart Nero OCR must retain Tilly as strong author evidence.');
+assert.equal(coverApproximatelyMatchesWork(neroWalmartLatest,'Nero',['S.J. Tilly']),true,
+  'Latest Walmart Nero OCR must verify the photographed work from exact title plus independent Tilly evidence.');
 assert.ok(titleSurnameRecoveryQueries(neroLiveNoisyLines,neroLiveAuthors).some((query) => query === 'nero tilly'),
   'Live noisy Nero OCR must retain the exact title-surname retrieval connection.');
 
@@ -92,6 +99,13 @@ assert.ok(coverApproximatelyMatchesWork(reignCompleteGivenFragmentedSurname,'Rei
 const reignLiveFragmented=['REIGN','BETH AN','CRO ME','REIGN!','BETHAN','CRO ME','t:i','BETH AN t','L1','OM','BETH AN'];
 assert.ok(coverAuthorQueries(reignLiveFragmented).includes('bethan crome'),
   'Two adjacent internally fragmented author words must reconstruct into a bounded author retrieval hint.');
+
+const reignWalmartLatest=['REIGN','BETH AN','GR O ME','BET H AN','CR O ME','BET HAN','GRO ME','BETHAN'];
+const reignWalmartLatestAuthors=coverAuthorQueries(reignWalmartLatest);
+assert.ok(reignWalmartLatestAuthors.includes('bethan crome') || reignWalmartLatestAuthors.includes('bethan grome'),
+  'Latest Walmart Reign OCR must reconstruct a bounded Bethan surname retrieval hint.');
+assert.equal(coverApproximatelyMatchesWork(reignWalmartLatest,'Reign',['Bethan Croome']),true,
+  'Latest Walmart Reign OCR must verify the real catalog identity despite one damaged surname glyph.');
 assert.ok(coverApproximatelyMatchesWork(reignLiveFragmented,'Reign',['Bethan Croome']),
   'Live fragmented Reign OCR must verify the real Croome surname with one missing OCR glyph.');
 
