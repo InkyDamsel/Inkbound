@@ -306,17 +306,62 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
   // OCR author structure before filling remaining slots. This keeps Dawn's
   // detached-glyph "... nicole" evidence while retaining adjacent split names
   // such as Suzanne Collins and Kathleen Glasgow.
-  const prioritized: string[] = [];
-  const add = (value?: string) => {
-    if (value && !prioritized.includes(value)) prioritized.push(value);
-  };
-  add(structural[0]);
-  add(strong[0]);
-  for (const value of [...structural.slice(1), ...strong.slice(1), ...heuristic, ...generic]) {
-    add(value);
-    if (prioritized.length >= maxQueries) break;
+  // Rank evidence before applying the tiny network-query budget. Native OCR
+  // produces several passes, so the same printed author often appears in
+  // multiple structural forms. First-come-first-served ordering lets an early
+  // accidental pair crowd out a later, independently repeated author name.
+  const normalizedEvidenceWords = cleanLines.flatMap((line) => {
+    const tokens = wordsOf(line);
+    const values = [...tokens];
+    if (tokens.length >= 2 && tokens.length <= 4
+      && tokens.every((token) => token.length >= 1 && token.length <= 4)) {
+      values.push(tokens.join(''));
+    }
+    return values;
+  });
+  const evidenceCounts = new Map<string, number>();
+  for (const value of normalizedEvidenceWords) {
+    evidenceCounts.set(value, (evidenceCounts.get(value) ?? 0) + 1);
   }
-  return prioritized.slice(0, maxQueries);
+
+  const families = [
+    ...structural.map((query) => ({ query, structural: 3 })),
+    ...strong.map((query) => ({ query, structural: 2 })),
+    ...heuristic.map((query) => ({ query, structural: 1 })),
+    ...generic.map((query) => ({ query, structural: 0 })),
+  ];
+  const bestByQuery = new Map<string, { query: string; structural: number; support: number; complete: number }>();
+  for (const candidate of families) {
+    const queryWords = wordsOf(candidate.query);
+    if (queryWords.length < 2) continue;
+    const meaningful = queryWords.filter((word) => word.length >= 3);
+    const support = meaningful.reduce((total, word) => {
+      const direct = evidenceCounts.get(word) ?? 0;
+      const near = [...evidenceCounts.entries()].some(([evidence, count]) =>
+        count >= 2 && Math.min(evidence.length, word.length) >= 4
+        && (evidence.startsWith(word) || word.startsWith(evidence)));
+      return total + direct + (near && direct === 0 ? 1 : 0);
+    }, 0);
+    const complete = meaningful.filter((word) => (evidenceCounts.get(word) ?? 0) > 0).length;
+    const current = bestByQuery.get(candidate.query);
+    const scored = { ...candidate, support, complete };
+    if (!current
+      || scored.support > current.support
+      || (scored.support === current.support && scored.complete > current.complete)
+      || (scored.support === current.support && scored.complete === current.complete
+        && scored.structural > current.structural)) {
+      bestByQuery.set(candidate.query, scored);
+    }
+  }
+
+  return [...bestByQuery.values()]
+    .sort((left, right) =>
+      right.support - left.support
+      || right.complete - left.complete
+      || right.structural - left.structural
+      || wordsOf(right.query).length - wordsOf(left.query).length)
+    .map(({ query }) => query)
+    .slice(0, maxQueries);
 }
 
 
@@ -380,63 +425,38 @@ export function titleSurnameRecoveryQueries(
   authorQueries: string[],
   maxQueries = 4,
 ): string[] {
-  const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to','tiie','tue','bok','hree']);
-  const surnames = [...new Set(authorQueries
+  const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
+  const surnameCandidates = [...new Set(authorQueries
     .map((query) => wordsOf(query).at(-1) ?? '')
-    .filter((surname) => surname.length >= 4))].slice(0, 2);
-  if (!surnames.length) return [];
+    .filter((surname) => surname.length >= 4))];
+  if (!surnameCandidates.length) return [];
 
-  // Author recovery is intentionally speculative, so a surname from one noisy
-  // hint must never erase title evidence needed by another hint. Build title
-  // evidence separately for each candidate surname and exclude only that
-  // surname from its own anchor. Example: a noisy "tiie dawn" author hint may
-  // coexist with the valid "... nicole" hint; DAWN must remain available when
-  // constructing the Nicole retrieval anchor.
-  const queries: string[] = [];
-  const editDistance = (left: string, right: string): number => {
-    const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-      const current = [leftIndex];
-      for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-        current[rightIndex] = Math.min(
-          current[rightIndex - 1] + 1,
-          previous[rightIndex] + 1,
-          previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
-        );
-      }
-      previous.splice(0, previous.length, ...current);
-    }
-    return previous[right.length];
-  };
-  const authorTokenForSurname = (token: string, surname: string): boolean => {
-    const authorWords = authorQueries
-      .filter((query) => wordsOf(query).at(-1) === surname)
-      .flatMap((query) => wordsOf(query));
-    return authorWords.some((word) =>
-      token === word
-      || (Math.min(token.length, word.length) >= 4 && (token.startsWith(word) || word.startsWith(token)))
-      || (Math.min(token.length, word.length) >= 5 && editDistance(token, word) <= 2));
-  };
-  for (const surname of surnames) {
-    const titleWordCounts = new Map<string, { count: number; firstIndex: number; standalone: boolean }>();
+  // Keep title and author evidence independent. A speculative author query may
+  // contain a real title word, so author hints must never globally subtract
+  // words from title evidence. For each surname candidate, exclude only that
+  // surname while building its retrieval anchor.
+  const strongest: string[] = [];
+  const weaker: string[] = [];
+
+  for (const surname of surnameCandidates) {
+    const counts = new Map<string, { count: number; firstIndex: number }>();
     cleanLines.forEach((line, lineIndex) => {
       if (isDemotedCoverTitleLine(line)) return;
       const tokens = wordsOf(line);
       if (tokens.length > 2) return;
       for (const token of tokens) {
-        if (token.length < 4 || weak.has(token) || token === surname || authorTokenForSurname(token, surname)) continue;
-        const current = titleWordCounts.get(token);
-        titleWordCounts.set(token, {
+        if (token.length < 4 || weak.has(token) || token === surname) continue;
+        const current = counts.get(token);
+        counts.set(token, {
           count: (current?.count ?? 0) + 1,
           firstIndex: current?.firstIndex ?? lineIndex,
-          standalone: (current?.standalone ?? false) || tokens.length === 1,
         });
       }
     });
 
-    const distinctive = [...titleWordCounts.entries()]
-      .sort((left, right) => Number(right[1].standalone) - Number(left[1].standalone)
-        || right[1].count - left[1].count
+    const distinctive = [...counts.entries()]
+      .sort((left, right) =>
+        right[1].count - left[1].count
         || left[1].firstIndex - right[1].firstIndex)
       .map(([word]) => word)
       .slice(0, 5);
@@ -448,41 +468,11 @@ export function titleSurnameRecoveryQueries(
       distinctive.slice(0, 2).join(' '),
       distinctive[0],
     ].filter((value) => value.length >= 4);
-
-    // Give each possible surname its strongest anchor before weaker variants
-    // consume the bounded query budget.
-    if (anchors[0]) queries.push(`${anchors[0]} ${surname}`);
+    if (anchors[0]) strongest.push(`${anchors[0]} ${surname}`);
+    for (const anchor of anchors.slice(1)) weaker.push(`${anchor} ${surname}`);
   }
 
-  for (const surname of surnames) {
-    const titleWordCounts = new Map<string, { count: number; firstIndex: number; standalone: boolean }>();
-    cleanLines.forEach((line, lineIndex) => {
-      if (isDemotedCoverTitleLine(line)) return;
-      const tokens = wordsOf(line);
-      if (tokens.length > 2) return;
-      for (const token of tokens) {
-        if (token.length < 4 || weak.has(token) || token === surname || authorTokenForSurname(token, surname)) continue;
-        const current = titleWordCounts.get(token);
-        titleWordCounts.set(token, {
-          count: (current?.count ?? 0) + 1,
-          firstIndex: current?.firstIndex ?? lineIndex,
-          standalone: (current?.standalone ?? false) || tokens.length === 1,
-        });
-      }
-    });
-    const distinctive = [...titleWordCounts.entries()]
-      .sort((left, right) => Number(right[1].standalone) - Number(left[1].standalone)
-        || right[1].count - left[1].count
-        || left[1].firstIndex - right[1].firstIndex)
-      .map(([word]) => word)
-      .slice(0, 5);
-    const weaker = [
-      distinctive.slice(0, 3).join(' '),
-      distinctive.slice(0, 2).join(' '),
-      distinctive[0],
-    ].filter((value) => value.length >= 4);
-    for (const title of weaker) queries.push(`${title} ${surname}`);
-  }
-
-  return [...new Set(queries)].slice(0, maxQueries);
+  // Every recovered surname gets one strongest title anchor before the bounded
+  // budget is spent on weaker variants.
+  return [...new Set([...strongest, ...weaker])].slice(0, maxQueries);
 }
