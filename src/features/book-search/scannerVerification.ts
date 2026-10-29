@@ -234,13 +234,26 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // identity-bearing words to prove the title independently of "of/the/to".
   // Author proof above remains mandatory, and two-word sibling titles do not
   // qualify for this fallback.
-  if (significantTitleWords.length < 3) return false;
   const ocrTokens = new Set(rawWords);
-  return significantTitleWords.every((word) => {
+  const significantWordVerified = (word: string): boolean => {
     if (ocrTokens.has(word)) return true;
     const allowance = word.length >= 8 ? 2 : word.length >= 5 ? 1 : 0;
     return rawWords.some((candidate) =>
       Math.abs(candidate.length - word.length) <= allowance
       && editDistance(candidate, word) <= allowance);
-  });
+  };
+
+  if (significantTitleWords.length < 3) {
+    // A two-word title split across OCR lines can still be strong identity
+    // evidence when native OCR independently captures every title word more
+    // than once. Require repetition for EACH distinctive word; this keeps
+    // sibling/promo words that appear only once from manufacturing a title.
+    if (significantTitleWords.length !== 2) return false;
+    return significantTitleWords.every((word) => {
+      const exactHits = rawWords.filter((candidate) => candidate === word).length;
+      return exactHits >= 2;
+    });
+  }
+
+  return significantTitleWords.every(significantWordVerified);
 }
