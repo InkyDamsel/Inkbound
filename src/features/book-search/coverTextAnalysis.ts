@@ -208,6 +208,21 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
       }
     }
 
+    // OCR may split initials across adjacent lines while keeping the surname
+    // attached to the final initial: "S J" / "J TILLY". Reuse the shared
+    // initial and preserve the surname as strong author evidence.
+    if (tokens.length === 2 && tokens.every((token) => token.length <= 2)) {
+      for (let offset = 1; offset <= 3; offset += 1) {
+        const nearbyTokens = wordsOf(cleanLines[index + offset] ?? '');
+        if (nearbyTokens.length === 2
+          && nearbyTokens[0].length <= 2
+          && nearbyTokens[1].length >= 4
+          && (nearbyTokens[0] === tokens[1] || nearbyTokens[0] === tokens[0])) {
+          strongQueries.push(`${tokens.join(' ')} ${nearbyTokens[1]}`);
+        }
+      }
+    }
+
     if (tokens.length < 2 || tokens.length > 5) continue;
     const shortTokenCount = tokens.filter((token) => token.length <= 2).length;
     // Initialed author names are already structurally complete after
