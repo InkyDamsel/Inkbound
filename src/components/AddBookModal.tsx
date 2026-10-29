@@ -756,11 +756,24 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // This is retrieval only. A candidate is accepted only if the existing
       // photographed-cover verifier proves both title and author.
       const authorRecoveryQueries = coverAuthorQueries(cleanLines);
+      const independentTitleKeys = new Set(cleanLines
+        .filter((line) => {
+          const normalized = normalizeCatalogText(line);
+          const tokens = normalized.split(/\s+/).filter(Boolean);
+          return normalized.length >= 4 && tokens.length <= 6
+            && !isNoise(line) && !isDemotedCoverTitleLine(line);
+        })
+        .map((line) => normalizeCatalogText(line)));
       const strongAuthorHints = authorRecoveryQueries
         .filter((value) => {
-          const tokens = value.split(/\s+/).filter(Boolean);
-          return tokens.length >= 2 && tokens.length <= 4
-            && tokens.at(-1)!.length >= 4;
+          const tokens = normalizeCatalogText(value).split(/\s+/).filter(Boolean);
+          if (tokens.length < 2 || tokens.length > 4 || tokens.at(-1)!.length < 4) return false;
+          // An author hint must not consume a separately observed title line.
+          // Example: REIGN + BETH AN must never become author "reign bethan".
+          return ![...independentTitleKeys].some((title) => {
+            const titleTokens = title.split(/\s+/).filter(Boolean);
+            return titleTokens.length === 1 && tokens.includes(titleTokens[0]);
+          });
         })
         .slice(0, 3);
       const strongTitleHints = [...new Set(cleanLines
