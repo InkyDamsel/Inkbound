@@ -868,8 +868,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         for (const query of directQueries) {
           try {
-            const response = await searchGoogleBooks(query);
-            recordScannerResponse(`normal-search-reuse:${query}`, response.groups);
+            // Normal Search is federated across the established catalogs.
+            // Scanner must not silently narrow the same strong title+author
+            // evidence to Google-only retrieval, or a work visible in Search
+            // (for example a Hardcover result) becomes unreachable here.
+            // Retrieval still proves nothing: the strict photographed-cover
+            // verifier below remains mandatory.
+            const response = await searchScannerCoverCatalog(query);
+            recordScannerResponse(`federated-search-reuse:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
             if (recovered) {
