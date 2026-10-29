@@ -74,6 +74,50 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
   if (!shortLines.length) return [];
 
   const nameLike: string[] = [];
+  // Native OCR repeats the same printed name across image treatments. Use
+  // those repeated passes to reconstruct internally spaced name words before
+  // pairing them. A complete token such as BETHAN is stronger than BETH AN;
+  // for a surname, CRO ME -> CROME is stronger than a one-glyph-damaged
+  // alternative such as GR O ME -> GROME. This only creates retrieval hints;
+  // photographed title + author verification still decides the work.
+  const compactNameWords = cleanLines.flatMap((line) => {
+    const tokens = wordsOf(line);
+    if (tokens.length === 1 && tokens[0].length >= 4 && tokens[0].length <= 12) {
+      return [tokens[0]];
+    }
+    if (tokens.length >= 2 && tokens.length <= 3
+      && tokens.every((token) => token.length >= 1 && token.length <= 4)) {
+      const joined = tokens.join('');
+      return joined.length >= 4 && joined.length <= 12 ? [joined] : [];
+    }
+    return [];
+  });
+  const nameWordCounts = new Map<string, number>();
+  for (const value of compactNameWords) {
+    nameWordCounts.set(value, (nameWordCounts.get(value) ?? 0) + 1);
+  }
+  const repeatedNameWords = [...nameWordCounts.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([value]) => value);
+  const completeNameWords = cleanLines
+    .map((line) => wordsOf(line))
+    .filter((tokens) => tokens.length === 1 && tokens[0].length >= 4 && tokens[0].length <= 12)
+    .map((tokens) => tokens[0]);
+  const preferredGivenNames = [...new Set([...completeNameWords, ...repeatedNameWords])];
+  const preferredSurnames = [...new Set(repeatedNameWords
+    .filter((value) => !preferredGivenNames.slice(0, 1).includes(value)))];
+
+  for (const given of preferredGivenNames.slice(0, 3)) {
+    for (const surname of preferredSurnames.slice(0, 5)) {
+      if (given === surname) continue;
+      // Require the pair to be independently represented by at least two OCR
+      // observations overall; this prevents arbitrary one-off cover words from
+      // being promoted into strong author identity.
+      if ((nameWordCounts.get(given) ?? 0) + (nameWordCounts.get(surname) ?? 0) < 3) continue;
+      strongQueries.push(`${given} ${surname}`);
+    }
+  }
+
   for (let index = 0; index < cleanLines.length; index += 1) {
     const tokens = wordsOf(cleanLines[index]);
     const nextTokens = wordsOf(cleanLines[index + 1] ?? '');
