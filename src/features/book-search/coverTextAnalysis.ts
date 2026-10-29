@@ -291,10 +291,32 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     }
   }
 
-  return [...new Set([...structuralQueries, ...strongQueries, ...heuristicQueries, ...queries]
+  const normalizeQueries = (values: string[]) => [...new Set(values
     .map((query) => query.replace(/\s+/g, ' ').trim())
-    .filter(Boolean))]
-    .slice(0, maxQueries);
+    .filter(Boolean))];
+
+  const structural = normalizeQueries(structuralQueries);
+  const strong = normalizeQueries(strongQueries);
+  const heuristic = normalizeQueries(heuristicQueries);
+  const generic = normalizeQueries(queries);
+
+  // The scanner intentionally keeps a tiny author-query budget, but one noisy
+  // structural family must not monopolize all three slots. Preserve the
+  // strongest direct structural identity first, then reserve space for strong
+  // OCR author structure before filling remaining slots. This keeps Dawn's
+  // detached-glyph "... nicole" evidence while retaining adjacent split names
+  // such as Suzanne Collins and Kathleen Glasgow.
+  const prioritized: string[] = [];
+  const add = (value?: string) => {
+    if (value && !prioritized.includes(value)) prioritized.push(value);
+  };
+  add(structural[0]);
+  add(strong[0]);
+  for (const value of [...structural.slice(1), ...strong.slice(1), ...heuristic, ...generic]) {
+    add(value);
+    if (prioritized.length >= maxQueries) break;
+  }
+  return prioritized.slice(0, maxQueries);
 }
 
 
