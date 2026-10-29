@@ -136,20 +136,31 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
       }
     }
 
-    // Native OCR can split BOTH printed name words internally. Multiple OCR
-    // passes may interleave another damaged reading between the two useful
-    // lines, so inspect only a tiny forward window rather than requiring exact
-    // adjacency: "BETH AN" / "CR O ME" / "CRO ME" -> "bethan crome".
-    // Both source lines must still be exactly two short fragments, which keeps
-    // prose from being collapsed into a manufactured person name. Retrieval
-    // only: catalog identity still has to pass the scanner verifier.
-    if (tokens.length === 2
-      && tokens.every((token) => token.length >= 2 && token.length <= 4)) {
+    // Native OCR can split BOTH printed name words internally. Allow two or
+    // three short fragments per printed word because mobile OCR commonly sees
+    // "BETH AN" / "CR O ME". Keep the window tiny; verification still proves
+    // the catalog identity and prevents these retrieval hints from accepting a
+    // wrong work.
+    if (tokens.length >= 2 && tokens.length <= 3
+      && tokens.every((token) => token.length >= 1 && token.length <= 4)) {
       for (let offset = 1; offset <= 3; offset += 1) {
         const nearbyTokens = wordsOf(cleanLines[index + offset] ?? '');
-        if (nearbyTokens.length !== 2
-          || !nearbyTokens.every((token) => token.length >= 2 && token.length <= 4)) continue;
+        if (nearbyTokens.length < 2 || nearbyTokens.length > 3
+          || !nearbyTokens.every((token) => token.length >= 1 && token.length <= 4)) continue;
         strongQueries.push(`${tokens.join('')} ${nearbyTokens.join('')}`);
+      }
+    }
+
+    // Initials are frequently captured on one pass while the surname lands on
+    // a nearby pass: "S J" ... "TILLY" -> "s j tilly". This is stronger than
+    // treating nearby genre/series copy as an author and gives the fast
+    // title+author federation the identity humans can plainly read.
+    if (tokens.length === 2 && tokens.every((token) => token.length <= 2)) {
+      for (let offset = 1; offset <= 3; offset += 1) {
+        const nearbyTokens = wordsOf(cleanLines[index + offset] ?? '');
+        if (nearbyTokens.length === 1 && nearbyTokens[0].length >= 4) {
+          strongQueries.push(`${tokens.join(' ')} ${nearbyTokens[0]}`);
+        }
       }
     }
 
