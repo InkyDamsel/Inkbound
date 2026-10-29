@@ -82,6 +82,13 @@ assert.equal(coverApproximatelyMatchesWork(devouredWalmart,'Devoured',['Jordan S
 assert.equal(coverApproximatelyMatchesWork(devouredWalmart,'Bitten',['Jordan Stephanie Gray']),false,
   'A title mentioned only in promotional cover copy must not replace the photographed title.');
 
+const reignCompleteGivenFragmentedSurname=['RETGN','BETHAN R','CRO ME','BETHAN','REIGN','BETHAN','BET HAN','BETH AN','GRO ME','R OM E'];
+const reignCompleteGivenAuthors=coverAuthorQueries(reignCompleteGivenFragmentedSurname);
+assert.ok(reignCompleteGivenAuthors.includes('bethan crome'),
+  'A complete recovered given name plus a nearby fragmented surname must reconstruct into a strong author hint.');
+assert.ok(titleSurnameRecoveryQueries(reignCompleteGivenFragmentedSurname,reignCompleteGivenAuthors).some((query) => query.includes('reign') && query.includes('crome')),
+  'Complete-given fragmented-surname recovery must retain a Reign plus surname retrieval anchor.');
+
 const reignLiveFragmented=['REIGN','BETH AN','CRO ME','REIGN!','BETHAN','CRO ME','t:i','BETH AN t','L1','OM','BETH AN'];
 assert.ok(coverAuthorQueries(reignLiveFragmented).includes('bethan crome'),
   'Two adjacent internally fragmented author words must reconstruct into a bounded author retrieval hint.');
