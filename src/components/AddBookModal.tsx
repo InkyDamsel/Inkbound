@@ -792,7 +792,33 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const strongIdentityQueries = [...new Set(strongTitleHints.flatMap((title) =>
         strongAuthorHints.map((author) => `${title} ${author}`)))].slice(0, 6);
 
-      for (const query of strongIdentityQueries) {
+      // When the photograph gives us a credible full author identity, let the
+      // same multi-provider federation used by Search retrieve that author's
+      // likely works before asking providers to understand damaged title OCR.
+      // This is deliberately author-only retrieval: the author NEVER proves
+      // the book. Every returned work must still independently match the
+      // photographed title + author through coverApproximatelyMatchesWork.
+      //
+      // This closes the gap where normal Search can find a work by its author
+      // (including Hardcover/Open Library/PRH supplements) while Scanner fails
+      // because a title lost one glyph, e.g. DEVOUED -> Devoured.
+      for (const authorHint of strongAuthorHints) {
+        try {
+          const response = await searchScannerCoverCatalog(authorHint);
+          recordScannerResponse(`federated-author-identity:${authorHint}`, response.groups);
+          const recovered = response.groups.find((work) =>
+            coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.65 };
+            found = response.groups;
+            break;
+          }
+        } catch (error) {
+          scannerDiagnostics.push(`federated-author-identity:${authorHint} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      if (!best) for (const query of strongIdentityQueries) {
         try {
           const response = await searchScannerCoverCatalog(query);
           recordScannerResponse(`strong-identity:${query}`, response.groups);
