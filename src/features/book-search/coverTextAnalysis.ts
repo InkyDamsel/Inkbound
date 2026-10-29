@@ -95,6 +95,7 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
 /** Build bounded author retrieval hints from cover OCR. This only improves
  * candidate retrieval; scanner verification still decides book identity. */
 export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string[] {
+  const structuralQueries: string[] = [];
   const strongQueries: string[] = [];
   const heuristicQueries: string[] = [];
   const queries: string[] = [];
@@ -177,7 +178,7 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
         const nearbyTokens = wordsOf(cleanLines[index + offset] ?? '');
         if (nearbyTokens.length !== 2
           || !nearbyTokens.every((token) => token.length >= 2 && token.length <= 4)) continue;
-        strongQueries.push(`${tokens[0]} ${nearbyTokens.join('')}`);
+        structuralQueries.push(`${tokens[0]} ${nearbyTokens.join('')}`);
       }
     }
 
@@ -264,7 +265,7 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     }
   }
 
-  return [...new Set([...strongQueries, ...heuristicQueries, ...queries]
+  return [...new Set([...structuralQueries, ...strongQueries, ...heuristicQueries, ...queries]
     .map((query) => query.replace(/\s+/g, ' ').trim())
     .filter(Boolean))]
     .slice(0, maxQueries);
