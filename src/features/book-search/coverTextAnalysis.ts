@@ -438,7 +438,11 @@ export function titleSurnameRecoveryQueries(
   const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
   const surnameCandidates = [...new Set(authorQueries
     .map((query) => wordsOf(query).at(-1) ?? '')
-    .filter((surname) => surname.length >= 4))];
+    .filter((surname) => surname.length >= 4))]
+    // Recovery queries are retrieval hints, not identity proof. Preserve all
+    // reconstructed surnames here; the caller/verifier remains responsible
+    // for accepting a catalog work.
+    .slice(0, maxQueries);
   if (!surnameCandidates.length) return [];
 
   // Keep title and author evidence independent. A speculative author query may
@@ -464,7 +468,16 @@ export function titleSurnameRecoveryQueries(
       }
     });
 
+    const authorWordsForSurname = new Set(authorQueries
+      .filter((query) => wordsOf(query).at(-1) === surname)
+      .flatMap((query) => wordsOf(query))
+      .filter((word) => word !== surname));
+
     const distinctive = [...counts.entries()]
+      // Words already consumed as part of this reconstructed author identity
+      // are poor title evidence. Keep title reconstruction independent without
+      // globally subtracting words used by OTHER speculative author hints.
+      .filter(([word]) => !authorWordsForSurname.has(word))
       .sort((left, right) =>
         right[1].count - left[1].count
         || left[1].firstIndex - right[1].firstIndex)
