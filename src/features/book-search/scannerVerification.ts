@@ -130,8 +130,29 @@ const editDistance = (left: string, right: string): number => {
   return previous[right.length];
 };
 
+const BOOK_NUMBER_WORDS = ['one','two','three','four','five','six','seven','eight','nine','ten'];
+
+/** "BOOK THREE" including common OCR damage ("BOK TIHREE", "BOK HREE").
+ * Requires a book token within one edit of "book" and a number word within
+ * one edit, so ordinary title words cannot be mistaken for a volume label. */
+function isBookNumberLine(line: string): boolean {
+  const tokens = words(line);
+  if (tokens.length !== 2) return false;
+  const [book, number] = tokens;
+  if (editDistance(book, 'book') > 1) return false;
+  return BOOK_NUMBER_WORDS.some((word) => editDistance(number, word) <= (word.length >= 5 ? 2 : 1)
+    && number.length >= 3);
+}
+
 export function coverApproximatelyMatchesWork(lines: string[], title: string, authors: string[]): boolean {
-  const rawCompactLines = lines.map((line) => words(line).join(''));
+  // A line printed directly above a volume label is series copy
+  // ("GODS & MONSTERS" / "BOOK THREE"), not the photographed work title.
+  // Blank it for TITLE evidence only (indexes stay aligned); author evidence
+  // below still reads every OCR line.
+  const rawCompactLines = lines.map((line, index) =>
+    index + 1 < lines.length && isBookNumberLine(lines[index + 1]) && !isBookNumberLine(line)
+      ? ''
+      : words(line).join(''));
   const compactLines = [
     // Keep exact four-character OCR lines for distinctive short titles such
     // as NERO. Four-character titles receive zero edit-distance allowance
