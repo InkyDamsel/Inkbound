@@ -1,3 +1,5 @@
+import { isDemotedCoverTitleLine } from './coverTextAnalysis';
+
 /** Scanner-only, deterministic OCR verification. Do not alter Search ranking. */
 const words = (value: string): string[] =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
@@ -199,8 +201,9 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     && rawCompactLines.some((line) => line === compactTitle);
   const strongerPhotographedTitleExists = significantTitleWords.length < 3
     && !exactShortTitleLine
-    && rawLineWords.some((lineWords) => {
-      const distinctive = lineWords.filter((word) =>
+    && lines.some((line, index) => {
+      if (isDemotedCoverTitleLine(line)) return false;
+      const distinctive = rawLineWords[index].filter((word) =>
         word.length >= 4 && !weakTitleWords.has(word));
       return distinctive.length >= 3;
     });
