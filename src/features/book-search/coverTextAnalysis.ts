@@ -393,16 +393,32 @@ export function titleSurnameRecoveryQueries(
   // coexist with the valid "... nicole" hint; DAWN must remain available when
   // constructing the Nicole retrieval anchor.
   const queries: string[] = [];
+  const editDistance = (left: string, right: string): number => {
+    const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+      const current = [leftIndex];
+      for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+        current[rightIndex] = Math.min(
+          current[rightIndex - 1] + 1,
+          previous[rightIndex] + 1,
+          previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+        );
+      }
+      previous.splice(0, previous.length, ...current);
+    }
+    return previous[right.length];
+  };
   const authorTokenForSurname = (token: string, surname: string): boolean => {
     const authorWords = authorQueries
       .filter((query) => wordsOf(query).at(-1) === surname)
       .flatMap((query) => wordsOf(query));
     return authorWords.some((word) =>
       token === word
-      || (Math.min(token.length, word.length) >= 4 && (token.startsWith(word) || word.startsWith(token))));
+      || (Math.min(token.length, word.length) >= 4 && (token.startsWith(word) || word.startsWith(token)))
+      || (Math.min(token.length, word.length) >= 5 && editDistance(token, word) <= 2));
   };
   for (const surname of surnames) {
-    const titleWordCounts = new Map<string, { count: number; firstIndex: number }>();
+    const titleWordCounts = new Map<string, { count: number; firstIndex: number; standalone: boolean }>();
     cleanLines.forEach((line, lineIndex) => {
       if (isDemotedCoverTitleLine(line)) return;
       const tokens = wordsOf(line);
@@ -413,12 +429,15 @@ export function titleSurnameRecoveryQueries(
         titleWordCounts.set(token, {
           count: (current?.count ?? 0) + 1,
           firstIndex: current?.firstIndex ?? lineIndex,
+          standalone: (current?.standalone ?? false) || tokens.length === 1,
         });
       }
     });
 
     const distinctive = [...titleWordCounts.entries()]
-      .sort((left, right) => right[1].count - left[1].count || left[1].firstIndex - right[1].firstIndex)
+      .sort((left, right) => Number(right[1].standalone) - Number(left[1].standalone)
+        || right[1].count - left[1].count
+        || left[1].firstIndex - right[1].firstIndex)
       .map(([word]) => word)
       .slice(0, 5);
     if (!distinctive.length) continue;
@@ -436,7 +455,7 @@ export function titleSurnameRecoveryQueries(
   }
 
   for (const surname of surnames) {
-    const titleWordCounts = new Map<string, { count: number; firstIndex: number }>();
+    const titleWordCounts = new Map<string, { count: number; firstIndex: number; standalone: boolean }>();
     cleanLines.forEach((line, lineIndex) => {
       if (isDemotedCoverTitleLine(line)) return;
       const tokens = wordsOf(line);
@@ -447,11 +466,14 @@ export function titleSurnameRecoveryQueries(
         titleWordCounts.set(token, {
           count: (current?.count ?? 0) + 1,
           firstIndex: current?.firstIndex ?? lineIndex,
+          standalone: (current?.standalone ?? false) || tokens.length === 1,
         });
       }
     });
     const distinctive = [...titleWordCounts.entries()]
-      .sort((left, right) => right[1].count - left[1].count || left[1].firstIndex - right[1].firstIndex)
+      .sort((left, right) => Number(right[1].standalone) - Number(left[1].standalone)
+        || right[1].count - left[1].count
+        || left[1].firstIndex - right[1].firstIndex)
       .map(([word]) => word)
       .slice(0, 5);
     const weaker = [
