@@ -313,6 +313,9 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
   const normalizedEvidenceWords = cleanLines.flatMap((line) => {
     const tokens = wordsOf(line);
     const values = [...tokens];
+    // A printed word split by decorative typography is still one OCR
+    // observation. Compact only lines made entirely of short fragments so
+    // ordinary multi-word prose cannot masquerade as a name word.
     if (tokens.length >= 2 && tokens.length <= 4
       && tokens.every((token) => token.length >= 1 && token.length <= 4)) {
       values.push(tokens.join(''));
@@ -323,6 +326,19 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
   for (const value of normalizedEvidenceWords) {
     evidenceCounts.set(value, (evidenceCounts.get(value) ?? 0) + 1);
   }
+
+  const supportForWord = (word: string): number => {
+    const exact = evidenceCounts.get(word) ?? 0;
+    if (exact > 0) return exact;
+    // Repeated OCR passes can differ by a trailing/missing glyph. Prefix
+    // agreement is useful only when the evidence itself repeated.
+    return [...evidenceCounts.entries()].some(([evidence, count]) =>
+      count >= 2
+      && Math.min(evidence.length, word.length) >= 4
+      && (evidence.startsWith(word) || word.startsWith(evidence)))
+      ? 1
+      : 0;
+  };
 
   const families = [
     ...structural.map((query) => ({ query, structural: 3 })),
@@ -335,14 +351,8 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     const queryWords = wordsOf(candidate.query);
     if (queryWords.length < 2) continue;
     const meaningful = queryWords.filter((word) => word.length >= 3);
-    const support = meaningful.reduce((total, word) => {
-      const direct = evidenceCounts.get(word) ?? 0;
-      const near = [...evidenceCounts.entries()].some(([evidence, count]) =>
-        count >= 2 && Math.min(evidence.length, word.length) >= 4
-        && (evidence.startsWith(word) || word.startsWith(evidence)));
-      return total + direct + (near && direct === 0 ? 1 : 0);
-    }, 0);
-    const complete = meaningful.filter((word) => (evidenceCounts.get(word) ?? 0) > 0).length;
+    const support = meaningful.reduce((total, word) => total + supportForWord(word), 0);
+    const complete = meaningful.filter((word) => supportForWord(word) > 0).length;
     const current = bestByQuery.get(candidate.query);
     const scored = { ...candidate, support, complete };
     if (!current
