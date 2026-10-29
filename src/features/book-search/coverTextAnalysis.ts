@@ -381,61 +381,78 @@ export function titleSurnameRecoveryQueries(
   maxQueries = 4,
 ): string[] {
   const weak = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to','tiie','tue','bok','hree']);
-  // Only surnames are safe to exclude from title anchors. OCR recovery hints
-  // can contain noisy given-name/title-word combinations; excluding every word
-  // from those hints can erase real photographed title evidence such as
-  // DAWN / CURSEID / QUEEN before the surname anchor is built.
-  const authorSurnames = new Set(authorQueries
-    .map((query) => wordsOf(query).at(-1) ?? '')
-    .filter(Boolean));
-  const titleWordCounts = new Map<string, { count: number; firstIndex: number }>();
-
-  cleanLines.forEach((line, lineIndex) => {
-    if (isDemotedCoverTitleLine(line)) return;
-    const tokens = wordsOf(line);
-    // Long prose/name-shaped lines are poor title anchors. The useful case is
-    // one or two distinctive words surviving independently across OCR passes.
-    if (tokens.length > 2) return;
-    for (const token of tokens) {
-      if (token.length < 4 || weak.has(token) || authorSurnames.has(token)) continue;
-      const current = titleWordCounts.get(token);
-      titleWordCounts.set(token, {
-        count: (current?.count ?? 0) + 1,
-        firstIndex: current?.firstIndex ?? lineIndex,
-      });
-    }
-  });
-
-  // Native OCR gives us several passes. A real title word that survives more
-  // than once is stronger retrieval evidence than a one-off fragment that
-  // happened to appear earlier in OCR order. Rank by repeated evidence first,
-  // then retain cover order for equally supported words. This prevents noisy
-  // early fragments from consuming every bounded title+surname query.
-  const distinctive = [...titleWordCounts.entries()]
-    .sort((left, right) => right[1].count - left[1].count || left[1].firstIndex - right[1].firstIndex)
-    .map(([word]) => word)
-    .slice(0, 5);
   const surnames = [...new Set(authorQueries
     .map((query) => wordsOf(query).at(-1) ?? '')
     .filter((surname) => surname.length >= 4))].slice(0, 2);
-  if (!distinctive.length || !surnames.length) return [];
+  if (!surnames.length) return [];
 
-  // Keep the widest bounded anchor first. Decorative covers often split a
-  // multi-word title into separate OCR lines; four independently surviving
-  // title words are still a safer retrieval query than dropping one of them.
-  // This remains retrieval-only: the returned work must pass full cover
-  // title + author verification before Scanner can accept it.
-  const anchors = [
-    distinctive.slice(0, 4).join(' '),
-    distinctive.slice(0, 3).join(' '),
-    distinctive.slice(0, 2).join(' '),
-    distinctive[0],
-  ].filter((value) => value.length >= 4);
-  // Give every recovered surname the strongest title anchor before spending
-  // the bounded query budget on weaker title variants. OCR can produce one
-  // damaged author reconstruction ahead of the intact surname; title-first
-  // expansion could otherwise consume the whole budget before the valid
-  // title+surname pair is attempted.
-  return [...new Set(anchors.flatMap((title) => surnames.map((surname) => `${title} ${surname}`)))]
-    .slice(0, maxQueries);
+  // Author recovery is intentionally speculative, so a surname from one noisy
+  // hint must never erase title evidence needed by another hint. Build title
+  // evidence separately for each candidate surname and exclude only that
+  // surname from its own anchor. Example: a noisy "tiie dawn" author hint may
+  // coexist with the valid "... nicole" hint; DAWN must remain available when
+  // constructing the Nicole retrieval anchor.
+  const queries: string[] = [];
+  for (const surname of surnames) {
+    const titleWordCounts = new Map<string, { count: number; firstIndex: number }>();
+    cleanLines.forEach((line, lineIndex) => {
+      if (isDemotedCoverTitleLine(line)) return;
+      const tokens = wordsOf(line);
+      if (tokens.length > 2) return;
+      for (const token of tokens) {
+        if (token.length < 4 || weak.has(token) || token === surname) continue;
+        const current = titleWordCounts.get(token);
+        titleWordCounts.set(token, {
+          count: (current?.count ?? 0) + 1,
+          firstIndex: current?.firstIndex ?? lineIndex,
+        });
+      }
+    });
+
+    const distinctive = [...titleWordCounts.entries()]
+      .sort((left, right) => right[1].count - left[1].count || left[1].firstIndex - right[1].firstIndex)
+      .map(([word]) => word)
+      .slice(0, 5);
+    if (!distinctive.length) continue;
+
+    const anchors = [
+      distinctive.slice(0, 4).join(' '),
+      distinctive.slice(0, 3).join(' '),
+      distinctive.slice(0, 2).join(' '),
+      distinctive[0],
+    ].filter((value) => value.length >= 4);
+
+    // Give each possible surname its strongest anchor before weaker variants
+    // consume the bounded query budget.
+    if (anchors[0]) queries.push(`${anchors[0]} ${surname}`);
+  }
+
+  for (const surname of surnames) {
+    const titleWordCounts = new Map<string, { count: number; firstIndex: number }>();
+    cleanLines.forEach((line, lineIndex) => {
+      if (isDemotedCoverTitleLine(line)) return;
+      const tokens = wordsOf(line);
+      if (tokens.length > 2) return;
+      for (const token of tokens) {
+        if (token.length < 4 || weak.has(token) || token === surname) continue;
+        const current = titleWordCounts.get(token);
+        titleWordCounts.set(token, {
+          count: (current?.count ?? 0) + 1,
+          firstIndex: current?.firstIndex ?? lineIndex,
+        });
+      }
+    });
+    const distinctive = [...titleWordCounts.entries()]
+      .sort((left, right) => right[1].count - left[1].count || left[1].firstIndex - right[1].firstIndex)
+      .map(([word]) => word)
+      .slice(0, 5);
+    const weaker = [
+      distinctive.slice(0, 3).join(' '),
+      distinctive.slice(0, 2).join(' '),
+      distinctive[0],
+    ].filter((value) => value.length >= 4);
+    for (const title of weaker) queries.push(`${title} ${surname}`);
+  }
+
+  return [...new Set(queries)].slice(0, maxQueries);
 }
