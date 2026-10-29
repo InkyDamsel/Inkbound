@@ -264,6 +264,26 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
       && editDistance(candidate, word) <= allowance);
   };
 
+  // A catalog title with only one distinctive word is especially vulnerable
+  // to sibling-book promo copy: covers routinely print "author of THE
+  // HOUSEMAID" while photographing a completely different Freida McFadden
+  // title. Approximate recovery must therefore see that title on primary
+  // (non-demoted) cover text, never merely somewhere in the raw OCR stream.
+  if (significantTitleWords.length === 1) {
+    const titleWord = significantTitleWords[0];
+    const allowance = titleWord.length >= 8 ? 2 : titleWord.length >= 5 ? 1 : 0;
+    return lines.some((line) => {
+      if (isDemotedCoverTitleLine(line)) return false;
+      const lineWords = words(line);
+      // Single-word candidates must be presented as title-shaped evidence.
+      // Do not let prose, author lines, or unrelated cover copy donate a word.
+      if (lineWords.length !== 1) return false;
+      const candidate = lineWords[0];
+      return Math.abs(candidate.length - titleWord.length) <= allowance
+        && editDistance(candidate, titleWord) <= allowance;
+    });
+  }
+
   if (significantTitleWords.length < 3) {
     // A two-word title split across OCR lines can still be strong identity
     // evidence when native OCR independently captures every title word more
