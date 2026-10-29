@@ -199,10 +199,15 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // they carry enough independent title evidence.
   const exactShortTitleLine = compactTitle.length >= 4 && compactTitle.length <= 9
     && rawCompactLines.some((line) => line === compactTitle);
+  const catalogAuthorLines = new Set(authors
+    .map((author) => words(author).join(''))
+    .filter((author) => author.length >= 4));
   const strongerPhotographedTitleExists = significantTitleWords.length < 3
     && !exactShortTitleLine
     && lines.some((line, index) => {
       if (isDemotedCoverTitleLine(line)) return false;
+      const compactLine = rawCompactLines[index];
+      if (catalogAuthorLines.has(compactLine)) return false;
       const distinctive = rawLineWords[index].filter((word) =>
         word.length >= 4 && !weakTitleWords.has(word));
       return distinctive.length >= 3;
