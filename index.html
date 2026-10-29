@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="Inkbound is a private personal reading journal and library tracker for books, reading sessions, imports, collections, goals, memories, and reading insights." />
+    <meta name="description" content="Inkbound — Reading & Library Tracker by Inky Dame Interactive. Track your personal library, reading progress, sessions, collections, goals, imports, memories, and reading insights." />
     <meta name="robots" content="index,follow,max-image-preview:large" />
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#120817" media="(prefers-color-scheme: dark)" />
@@ -16,15 +16,15 @@
     <meta name="format-detection" content="telephone=no" />
     <link rel="canonical" href="https://inkbound.inkydameinteractive.com/" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Inkbound" />
+    <meta property="og:site_name" content="Inkbound — Reading & Library Tracker by Inky Dame Interactive" />
     <meta property="og:url" content="https://inkbound.inkydameinteractive.com/" />
-    <meta property="og:title" content="Inkbound — Your Personal Reading Journal" />
-    <meta property="og:description" content="Keep your library, reading sessions, progress, collections, goals, memories, and insights together in one private reading home." />
-    <meta property="og:image" content="/assets/branding/pwa/icon-512.png" />
+    <meta property="og:title" content="Inkbound — Reading & Library Tracker by Inky Dame Interactive" />
+    <meta property="og:description" content="Track your personal library, reading progress, sessions, collections, goals, imports, memories, and reading insights with Inkbound by Inky Dame Interactive." />
+    <meta property="og:image" content="https://inkbound.inkydameinteractive.com/assets/branding/pwa/icon-512.png" />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Inkbound — Your Personal Reading Journal" />
-    <meta name="twitter:description" content="A private reading journal and library tracker built for the books you actually live with." />
-    <meta name="twitter:image" content="/assets/branding/pwa/icon-512.png" />
+    <meta name="twitter:title" content="Inkbound — Reading & Library Tracker by Inky Dame Interactive" />
+    <meta name="twitter:description" content="Track your personal library, reading progress, sessions, collections, goals, imports, memories, and reading insights." />
+    <meta name="twitter:image" content="https://inkbound.inkydameinteractive.com/assets/branding/pwa/icon-512.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/branding/favicons/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/branding/favicons/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/branding/pwa/apple-touch-icon-180.png" />
@@ -77,13 +77,65 @@
         });
       })();
     </script>
-    <title>Inkbound — Your Personal Reading Journal</title>
+    <title>Inkbound — Reading & Library Tracker by Inky Dame Interactive</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://inkbound.inkydameinteractive.com/#software",
+            "name": "Inkbound — Reading & Library Tracker by Inky Dame Interactive",
+            "alternateName": "Inkbound",
+            "url": "https://inkbound.inkydameinteractive.com/",
+            "applicationCategory": "LifestyleApplication",
+            "applicationSubCategory": "Reading and library tracker",
+            "operatingSystem": "Web, Android, iOS",
+            "description": "Inkbound is a reading and library tracker by Inky Dame Interactive for personal libraries, reading progress, sessions, collections, goals, imports, memories, and reading insights.",
+            "image": "https://inkbound.inkydameinteractive.com/assets/branding/pwa/icon-512.png",
+            "downloadUrl": "https://play.google.com/store/apps/details?id=com.inkydameinteractive.inkbound",
+            "publisher": {"@id": "https://inkydameinteractive.com/#organization"},
+            "creator": {"@id": "https://inkydameinteractive.com/#organization"},
+            "isPartOf": {"@id": "https://inkbound.inkydameinteractive.com/#website"}
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://inkydameinteractive.com/#organization",
+            "name": "Inky Dame Interactive",
+            "url": "https://inkydameinteractive.com/",
+            "brand": {"@id": "https://inkbound.inkydameinteractive.com/#software"}
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://inkbound.inkydameinteractive.com/#website",
+            "name": "Inkbound — Reading & Library Tracker by Inky Dame Interactive",
+            "alternateName": "Inkbound",
+            "url": "https://inkbound.inkydameinteractive.com/",
+            "publisher": {"@id": "https://inkydameinteractive.com/#organization"},
+            "about": {"@id": "https://inkbound.inkydameinteractive.com/#software"}
+          }
+        ]
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Lora:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
   </head>
   <body class="bg-[#120817] text-[#f4efe6] antialiased selection:bg-[#76566d]/30 selection:text-[#f4efe6]">
-    <div id="root"></div>
+    <div id="root">
+      <main>
+        <h1>Inkbound — Reading &amp; Library Tracker by Inky Dame Interactive</h1>
+        <p>Inkbound is a personal reading and library tracker created and published by Inky Dame Interactive.</p>
+        <p>Keep your library, reading progress, reading sessions, collections, goals, imports, memories, and reading insights together in one reading home.</p>
+        <p><a href="https://play.google.com/store/apps/details?id=com.inkydameinteractive.inkbound">Get Inkbound on Google Play</a></p>
+        <p><a href="https://inkydameinteractive.com/">Visit Inky Dame Interactive</a></p>
+        <nav aria-label="Inkbound information">
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/support">Support</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
