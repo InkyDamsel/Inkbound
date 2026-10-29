@@ -94,7 +94,7 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
 
 /** Build bounded author retrieval hints from cover OCR. This only improves
  * candidate retrieval; scanner verification still decides book identity. */
-export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string[] {
+export function coverAuthorQueries(cleanLines: string[], maxQueries = 12): string[] {
   const structuralQueries: string[] = [];
   const strongQueries: string[] = [];
   const heuristicQueries: string[] = [];
@@ -371,7 +371,7 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
       || right.structural - left.structural
       || wordsOf(right.query).length - wordsOf(left.query).length)
     .map(({ query }) => query)
-    .slice(0, maxQueries);
+    .slice(0, Math.max(1, maxQueries));
 }
 
 
