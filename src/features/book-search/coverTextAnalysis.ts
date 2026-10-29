@@ -96,6 +96,7 @@ export function shortTitleQueries(cleanLines: string[], maxQueries = 3): string[
  * candidate retrieval; scanner verification still decides book identity. */
 export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string[] {
   const strongQueries: string[] = [];
+  const heuristicQueries: string[] = [];
   const queries: string[] = [];
 
   // Native OCR repeats the same printed name across image treatments. Use
@@ -138,7 +139,7 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
       // observations overall; this prevents arbitrary one-off cover words from
       // being promoted into strong author identity.
       if ((nameWordCounts.get(given) ?? 0) + (nameWordCounts.get(surname) ?? 0) < 3) continue;
-      strongQueries.push(`${given} ${surname}`);
+      heuristicQueries.push(`${given} ${surname}`);
     }
   }
 
@@ -263,7 +264,7 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
     }
   }
 
-  return [...new Set([...strongQueries, ...queries]
+  return [...new Set([...strongQueries, ...heuristicQueries, ...queries]
     .map((query) => query.replace(/\s+/g, ' ').trim())
     .filter(Boolean))]
     .slice(0, maxQueries);
