@@ -1,7 +1,7 @@
 {
-  "name": "Inkbound — Personal Reading Journal",
+  "name": "Inkbound — Reading & Library Tracker by Inky Dame Interactive",
   "short_name": "Inkbound",
-  "description": "A private personal reading journal for books, sessions, memories, collections, and reading insights.",
+  "description": "Inkbound is a reading and library tracker by Inky Dame Interactive for personal libraries, reading progress, sessions, collections, goals, imports, memories, and reading insights.",
   "id": "/app",
   "start_url": "/app",
   "scope": "/",
