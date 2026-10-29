@@ -195,7 +195,10 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // distinctive words, approximate proof must come from one photographed OCR
   // line. Longer titles may use the bounded cross-line reconstruction because
   // they carry enough independent title evidence.
+  const exactShortTitleLine = compactTitle.length >= 4 && compactTitle.length <= 9
+    && rawCompactLines.some((line) => line === compactTitle);
   const strongerPhotographedTitleExists = significantTitleWords.length < 3
+    && !exactShortTitleLine
     && rawLineWords.some((lineWords) => {
       const distinctive = lineWords.filter((word) =>
         word.length >= 4 && !weakTitleWords.has(word));
