@@ -393,6 +393,14 @@ export function titleSurnameRecoveryQueries(
   // coexist with the valid "... nicole" hint; DAWN must remain available when
   // constructing the Nicole retrieval anchor.
   const queries: string[] = [];
+  const authorTokenForSurname = (token: string, surname: string): boolean => {
+    const authorWords = authorQueries
+      .filter((query) => wordsOf(query).at(-1) === surname)
+      .flatMap((query) => wordsOf(query));
+    return authorWords.some((word) =>
+      token === word
+      || (Math.min(token.length, word.length) >= 4 && (token.startsWith(word) || word.startsWith(token))));
+  };
   for (const surname of surnames) {
     const titleWordCounts = new Map<string, { count: number; firstIndex: number }>();
     cleanLines.forEach((line, lineIndex) => {
@@ -400,7 +408,7 @@ export function titleSurnameRecoveryQueries(
       const tokens = wordsOf(line);
       if (tokens.length > 2) return;
       for (const token of tokens) {
-        if (token.length < 4 || weak.has(token) || token === surname) continue;
+        if (token.length < 4 || weak.has(token) || token === surname || authorTokenForSurname(token, surname)) continue;
         const current = titleWordCounts.get(token);
         titleWordCounts.set(token, {
           count: (current?.count ?? 0) + 1,
@@ -434,7 +442,7 @@ export function titleSurnameRecoveryQueries(
       const tokens = wordsOf(line);
       if (tokens.length > 2) return;
       for (const token of tokens) {
-        if (token.length < 4 || weak.has(token) || token === surname) continue;
+        if (token.length < 4 || weak.has(token) || token === surname || authorTokenForSurname(token, surname)) continue;
         const current = titleWordCounts.get(token);
         titleWordCounts.set(token, {
           count: (current?.count ?? 0) + 1,
