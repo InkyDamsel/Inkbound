@@ -2,6 +2,7 @@
   "hosting": {
     "public": "dist",
     "cleanUrls": true,
+    "trailingSlash": false,
     "predeploy": [
       "npm run build"
     ],
