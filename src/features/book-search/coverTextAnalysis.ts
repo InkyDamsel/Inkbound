@@ -129,18 +129,28 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 12): strin
     .map((line) => wordsOf(line))
     .filter((tokens) => tokens.length === 1 && tokens[0].length >= 4 && tokens[0].length <= 12)
     .map((tokens) => tokens[0]);
-  const preferredGivenNames = [...new Set([...completeNameWords, ...repeatedNameWords])];
-  const preferredSurnames = [...new Set(repeatedNameWords
-    .filter((value) => !preferredGivenNames.slice(0, 1).includes(value)))];
+  // Repeated compact words are useful only when OCR observed them in a
+  // plausible local name structure. Do not manufacture a global cross-product
+  // of every repeated cover word: that makes unrelated title/promo fragments
+  // compete with real author identities and turns query ordering into
+  // fixture-by-fixture whack-a-mole.
+  for (let index = 0; index < cleanLines.length; index += 1) {
+    const currentTokens = wordsOf(cleanLines[index]);
+    const currentCompact = currentTokens.length >= 2 && currentTokens.length <= 3
+      && currentTokens.every((token) => token.length >= 1 && token.length <= 4)
+      ? currentTokens.join('')
+      : currentTokens.length === 1 ? currentTokens[0] : '';
+    if (!currentCompact || (nameWordCounts.get(currentCompact) ?? 0) < 2) continue;
 
-  for (const given of preferredGivenNames.slice(0, 3)) {
-    for (const surname of preferredSurnames.slice(0, 5)) {
-      if (given === surname) continue;
-      // Require the pair to be independently represented by at least two OCR
-      // observations overall; this prevents arbitrary one-off cover words from
-      // being promoted into strong author identity.
-      if ((nameWordCounts.get(given) ?? 0) + (nameWordCounts.get(surname) ?? 0) < 3) continue;
-      heuristicQueries.push(`${given} ${surname}`);
+    for (let offset = 1; offset <= 3; offset += 1) {
+      const nearbyTokens = wordsOf(cleanLines[index + offset] ?? '');
+      const nearbyCompact = nearbyTokens.length >= 2 && nearbyTokens.length <= 3
+        && nearbyTokens.every((token) => token.length >= 1 && token.length <= 4)
+        ? nearbyTokens.join('')
+        : nearbyTokens.length === 1 ? nearbyTokens[0] : '';
+      if (!nearbyCompact || nearbyCompact === currentCompact) continue;
+      if ((nameWordCounts.get(nearbyCompact) ?? 0) < 2) continue;
+      heuristicQueries.push(`${currentCompact} ${nearbyCompact}`);
     }
   }
 
