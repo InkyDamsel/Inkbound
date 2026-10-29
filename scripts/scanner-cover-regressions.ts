@@ -81,6 +81,24 @@ assert.equal(coverApproximatelyMatchesWork(
   ['S.J. Tilly'],
 ),false,'Alliance series and author evidence without the photographed Nero title must not verify Nero.');
 
+const hungerGamesWalmart=['THE','HUNGER','GAMES','New York Times Bestselling Author','SUZANNE','COLLINS','HUNGER','GAMES'];
+const hungerGamesAuthors=coverAuthorQueries(hungerGamesWalmart);
+assert.ok(hungerGamesAuthors.includes('suzanne collins'),
+  'Adjacent one-word author lines must survive title-shaped cover text within the bounded author-query budget.');
+assert.ok(titleSurnameRecoveryQueries(hungerGamesWalmart,hungerGamesAuthors).some((query) =>
+  query.includes('hunger') && query.includes('games') && query.endsWith('collins')),
+  'The Hunger Games cover evidence must produce a title plus Collins retrieval anchor.');
+assert.equal(coverApproximatelyMatchesWork(hungerGamesWalmart,'The Hunger Games',['Suzanne Collins']),true,
+  'The Hunger Games plus independently photographed Suzanne Collins evidence must verify.');
+
+const girlInPiecesWalmart=['G RL','PHEEES','ATALEEN','GLAS GOW','GIKL','KATHLE EN','GLAS GOW','GR','KATALE N','GEASGOW','GLAS GOW','KATALE EN','GLAS GOW','PIECES','GLASGOW'];
+const girlInPiecesAuthors=coverAuthorQueries(girlInPiecesWalmart);
+assert.ok(girlInPiecesAuthors.includes('kathleen glasgow'),
+  'Complementary fragmented Kathleen Glasgow OCR passes must reconstruct a bounded author hint.');
+assert.ok(titleSurnameRecoveryQueries(girlInPiecesWalmart,girlInPiecesAuthors).some((query) =>
+  query.includes('pieces') && query.endsWith('glasgow')),
+  'Girl in Pieces OCR must retain a Pieces plus Glasgow retrieval anchor.');
+
 const devouredWalmart=['JORDAN STEPHANIE GRAY','DEYOURED','Luminous and','exhilarating','Bitten is a romance','that sizzles','REBECCA ROSS','of Divine Rivals'];
 assert.ok(coverAuthorQueries(devouredWalmart).includes('jordan stephanie gray'),
   'A complete three-word author line must survive noisy Walmart cover copy as a retrieval hint.');
