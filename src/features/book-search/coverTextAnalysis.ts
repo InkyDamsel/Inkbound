@@ -212,6 +212,17 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 3): string
       }
     }
 
+    // Both printed author words can be internally fragmented on adjacent
+    // lines ("KATHLE EN" / "GLAS GOW"). Treat that direct structural pair as
+    // stronger than wider-window combinations, which can pair title debris
+    // with a surname and exhaust the bounded author-query budget first.
+    if (tokens.length >= 2 && tokens.length <= 3
+      && tokens.every((token) => token.length >= 1 && token.length <= 4)
+      && nextTokens.length >= 2 && nextTokens.length <= 3
+      && nextTokens.every((token) => token.length >= 1 && token.length <= 4)) {
+      structuralQueries.push(`${tokens.join('')} ${nextTokens.join('')}`);
+    }
+
     // Initials are frequently captured on one pass while the surname lands on
     // a nearby pass: "S J" ... "TILLY" -> "s j tilly". This is stronger than
     // treating nearby genre/series copy as an author and gives the fast
