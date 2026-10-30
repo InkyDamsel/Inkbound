@@ -46,8 +46,10 @@ export function coverPromoContextIndexes(lines: string[]): Set<number> {
 
 export function stripCoverPromoLines(lines: string[]): string[] {
   const kept: string[] = [];
+  const contextualPromo = coverPromoContextIndexes(lines);
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    if (contextualPromo.has(index)) continue;
     if (STANDALONE_PROMO.test(line)) continue;
     const match = AUTHOR_OF.exec(line);
     if (!match) { kept.push(line); continue; }
