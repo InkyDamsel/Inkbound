@@ -221,6 +221,26 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
       && editDistance(candidate, surname) <= allowance);
   });
   if (!authorVerified) return false;
+  // Very short one-word titles are especially vulnerable to OCR fragments
+  // masquerading as a different book. Require independent given-name evidence,
+  // not merely a surname that resembles a damaged title/author fragment.
+  const catalogTitleTokens = words(scannerCoverTitle(title));
+  if (catalogTitleTokens.length === 1 && compactTitle.length <= 5) {
+    const observed = new Set(rawWords);
+    const fullOCR = rawWords.join('');
+    const givenNameObserved = authors.some((author) => {
+      const name = words(author);
+      if (name.length < 2) return false;
+      const given = name.slice(0, -1);
+      return given.every((part) => {
+        if (part.length >= 3) return observed.has(part) || fullOCR.includes(part);
+        // Initials must be explicitly printed as initials, not inferred from
+        // arbitrary single letters elsewhere in the photograph.
+        return lines.some((line) => words(line).some((token) => token === part));
+      });
+    });
+    if (!givenNameObserved) return false;
+  }
 
   const catalogTitleWords = words(scannerCoverTitle(title));
   const weakTitleWords = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
