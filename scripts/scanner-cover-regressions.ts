@@ -42,6 +42,28 @@ assert.equal(
   'The photographed single-word title must still verify from primary cover text.',
 );
 
+const witchClean = stripCoverPromoLines(witchWithHousemaidPromo);
+assert.equal(
+  witchClean.some((line) => /housemaid/i.test(line)),
+  false,
+  'Detached sibling title after an author-of line must be removed before scanner retrieval.',
+);
+assert.equal(
+  witchClean.some((line) => /witch/i.test(line)),
+  true,
+  'Removing detached promo identity must preserve the photographed title.',
+);
+assert.equal(
+  coverApproximatelyMatchesWork(witchClean,'The Housemaid',['Freida McFadden']),
+  false,
+  'The actual scanner clean-line path must reject the detached sibling work.',
+);
+assert.equal(
+  coverApproximatelyMatchesWork(witchClean,'The Witch',['Freida McFadden']),
+  true,
+  'The actual scanner clean-line path must retain the photographed work.',
+);
+
 const ropedPromo=['USA TODAY BESTSELLING AUTHOR OF BRANDED','SAFFRON A. KENT','ONCE HE HUNTS HER DOWN','HE\'S NEVER LETTING HER GO','ROPED'];
 const ropedClean=stripCoverPromoLines(ropedPromo);
 assert.equal(coverMatchesWork(ropedPromo,'Branded',['Saffron A. Kent']),true,
