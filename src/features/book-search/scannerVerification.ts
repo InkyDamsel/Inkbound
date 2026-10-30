@@ -277,7 +277,7 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   if (significantTitleWords.length === 1) {
     const titleWord = significantTitleWords[0];
     const allowance = titleWord.length >= 8 ? 2 : titleWord.length >= 5 ? 1 : 0;
-    return lines.some((line) => {
+    return lines.some((line, index) => {
       if (titleLineDemoted(line, index)) return false;
       const lineWords = words(line);
       // Single-word candidates must be presented as title-shaped evidence.
