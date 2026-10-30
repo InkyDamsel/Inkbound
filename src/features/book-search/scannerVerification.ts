@@ -43,6 +43,25 @@ function isAuthorBiographyTitle(title: string, authors: string[]): boolean {
   });
 }
 
+/** True when the OCR line carrying the catalog surname ALSO prints a different
+ * given name (e.g. "JORDAN STEPHANIE GRAY" vs catalog "Lucia Jordan": the
+ * surname token "jordan" is really the printed FIRST name). Only consulted
+ * when the catalog given name is not found anywhere on the cover, so a mangled
+ * given name on its own line is still tolerated. */
+function surnameLineContradictsGiven(lines: string[], surname: string, given: string[], allowance = 0): boolean {
+  const needed = given.filter((word) => word.length >= 3);
+  if (!needed.length) return false;
+  return lines.some((line) => {
+    const tokens = words(line);
+    if (!tokens.some((token) => token === surname
+      || (allowance > 0 && Math.abs(token.length - surname.length) <= allowance
+        && editDistance(token, surname) <= allowance))) return false;
+    const others = tokens.filter((token) => token.length >= 3
+      && !(token === surname || (allowance > 0 && editDistance(token, surname) <= allowance)));
+    return others.length > 0;
+  });
+}
+
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const text = words(lines.join(' '));
   const tokens = new Set(text);
@@ -53,17 +72,13 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
   if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
-  // A single-word catalog title must be a complete OCR title token, not a
-  // substring of a different title (DEVOUR inside DEVOURED). Also avoid
-  // finding a title inside an author's name or promotional prose.
-  if (titleWords.length === 1 && significant.length === 1
-    && !lines.some((line, index) =>
-      !coverPromoContextIndexes(lines).has(index)
-      && !isDemotedCoverTitleLine(line)
-      && words(line).length === 1
-      && words(line)[0] === titleWords[0])) return false;
   const allSignificantPresent = significant.every((word) => tokens.has(word) || joined.includes(word));
   if (!allSignificantPresent) return false;
+  // A catalog title that is merely the START of a longer printed word is a
+  // different book (DEVOUR vs the photographed DEVOURED).
+  if (significant.length === 1 && !tokens.has(significant[0])
+    && text.some((token) => token.startsWith(significant[0])
+      && token.length - significant[0].length >= 2 && token.length - significant[0].length <= 4)) return false;
 
   // Multi-word titles must be printed together, not assembled from unrelated
   // cover copy. Author bibliography retrieval can surface sibling works whose
@@ -106,6 +121,9 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
       // short/stylized given name. The surname alone is never sufficient:
       // titleVerified above must already prove the complete distinctive title.
       // This keeps verification generic instead of special-casing authors.
+      // ...unless the surname line prints a DIFFERENT given name, which means
+      // this is another person (Lucia Jordan vs JORDAN STEPHANIE GRAY).
+      if (surnameLineContradictsGiven(lines, surname, given)) return false;
       return significant.length >= 1 && titleVerified;
     }
 
@@ -225,9 +243,19 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     if (surname.length < 3) return false;
     // REID/KING/LAKE must be allowed, but short surnames must match exactly.
     const allowance = surname.length >= 9 ? 2 : surname.length >= 5 ? 1 : 0;
-    return authorCandidates.some((candidate) =>
+    const surnameSeen = authorCandidates.some((candidate) =>
       Math.abs(candidate.length - surname.length) <= allowance
       && editDistance(candidate, surname) <= allowance);
+    if (!surnameSeen) return false;
+    // Surname alone is not an identity: when the catalog given name is absent
+    // and the surname line prints someone else's given name, reject.
+    const given = authorWords.slice(0, -1).filter((word) => word.length >= 3);
+    if (!given.length) return true;
+    const givenSeen = given.some((name) => authorCandidates.some((candidate) =>
+      Math.abs(candidate.length - name.length) <= 1
+      && editDistance(candidate, name) <= (name.length >= 5 ? 1 : 0))
+      || rawWords.join('').includes(name));
+    return givenSeen || !surnameLineContradictsGiven(lines, surname, given, allowance);
   });
   if (!authorVerified) return false;
   // Very short one-word titles are especially vulnerable to OCR fragments
