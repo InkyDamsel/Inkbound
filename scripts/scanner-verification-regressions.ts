@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { coverMatchesWork, isScannerBatchIdentityConsistent, scannerEditionKey } from '../src/features/book-search/scannerVerification';
+import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerEditionKey } from '../src/features/book-search/scannerVerification';
 
 const circle = ['DARKEST AGE', 'THE CIRCLE OF', 'STONE', 'A. J. LAKE'];
 assert.equal(coverMatchesWork(circle, 'The Circle of Stone', ['A. J. Lake']), true);
@@ -18,4 +18,10 @@ assert.equal(isScannerBatchIdentityConsistent('9781599900797', [{ isbn13: '97815
 assert.equal(isScannerBatchIdentityConsistent('catalog:open-library:circle', [
   { externalSource: 'open-library', externalEditionId: 'circle' },
 ]), true);
+// Walmart: author-name biography must not be accepted as the photographed novel.
+const picassoHeistCover = ['JAMES', 'PATTERSON', 'HOWARD ROUGHAN', 'THE PICASSO HEIST', 'A THRILLER'];
+assert.equal(coverApproximatelyMatchesWork(picassoHeistCover, 'James Patterson by James Patterson', ['James Patterson']), false);
+assert.equal(coverApproximatelyMatchesWork(picassoHeistCover, 'The Picasso Heist', ['James Patterson', 'Howard Roughan']), true);
+// A valid title and independently printed author must remain eligible.
+assert.equal(coverApproximatelyMatchesWork(['KING', 'OF', 'GLUTTONY', 'ANA HUANG'], 'King of Gluttony', ['Ana Huang']), true);
 console.log('Inkbound scanner verification regressions passed.');
