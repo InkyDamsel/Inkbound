@@ -148,6 +148,14 @@ assert.equal(coverApproximatelyMatchesWork(devouredWalmart,'Devoured',['Jordan S
 assert.equal(coverApproximatelyMatchesWork(devouredWalmart,'Bitten',['Jordan Stephanie Gray']),false,
   'A title mentioned only in promotional cover copy must not replace the photographed title.');
 
+const reignWrongGromCandidates = ['REIGN', 'BETH AN', 'GR O ME', 'BET HAN', 'CRO ME', 'BETHAN'];
+assert.equal(coverApproximatelyMatchesWork(reignWrongGromCandidates, 'Grom', ['Federico Grom']), false,
+  'A damaged Reign author fragment must not verify an unrelated Grom author.');
+assert.equal(coverApproximatelyMatchesWork(reignWrongGromCandidates, 'Grom', ['A. V. Selivanov']), false,
+  'A short-title candidate must have independently photographed author evidence.');
+assert.equal(coverApproximatelyMatchesWork(reignWrongGromCandidates, 'Reign', ['Bethan Croome']), true,
+  'Rejecting Grom must not prevent the actual Reign cover from verifying.');
+
 const reignCompleteGivenFragmentedSurname=['RETGN','BETHAN R','CRO ME','BETHAN','REIGN','BETHAN','BET HAN','BETH AN','GRO ME','R OM E'];
 const reignCompleteGivenAuthors=coverAuthorQueries(reignCompleteGivenFragmentedSurname);
 assert.ok(reignCompleteGivenAuthors.includes('bethan crome'),
