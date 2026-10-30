@@ -1,4 +1,4 @@
-import { isDemotedCoverTitleLine } from './coverTextAnalysis';
+import { coverPromoContextIndexes, isDemotedCoverTitleLine } from './coverTextAnalysis';
 
 /** Scanner-only, deterministic OCR verification. Do not alter Search ranking. */
 const words = (value: string): string[] =>
@@ -145,12 +145,17 @@ function isBookNumberLine(line: string): boolean {
 }
 
 export function coverApproximatelyMatchesWork(lines: string[], title: string, authors: string[]): boolean {
+  const promoContext = coverPromoContextIndexes(lines);
+  const titleLineDemoted = (line: string, index: number): boolean =>
+    promoContext.has(index) || isDemotedCoverTitleLine(line);
+
   // A line printed directly above a volume label is series copy
   // ("GODS & MONSTERS" / "BOOK THREE"), not the photographed work title.
   // Blank it for TITLE evidence only (indexes stay aligned); author evidence
   // below still reads every OCR line.
   const rawCompactLines = lines.map((line, index) =>
-    index + 1 < lines.length && isBookNumberLine(lines[index + 1]) && !isBookNumberLine(line)
+    titleLineDemoted(line, index)
+      || (index + 1 < lines.length && isBookNumberLine(lines[index + 1]) && !isBookNumberLine(line))
       ? ''
       : words(line).join(''));
   const compactLines = [
@@ -226,7 +231,7 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   const strongerPhotographedTitleExists = significantTitleWords.length < 3
     && !exactShortTitleLine
     && lines.some((line, index) => {
-      if (isDemotedCoverTitleLine(line)) return false;
+      if (titleLineDemoted(line, index)) return false;
       const compactLine = rawCompactLines[index];
       if (catalogAuthorLines.has(compactLine)) return false;
       const distinctive = rawLineWords[index].filter((word) =>
@@ -273,7 +278,7 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     const titleWord = significantTitleWords[0];
     const allowance = titleWord.length >= 8 ? 2 : titleWord.length >= 5 ? 1 : 0;
     return lines.some((line) => {
-      if (isDemotedCoverTitleLine(line)) return false;
+      if (titleLineDemoted(line, index)) return false;
       const lineWords = words(line);
       // Single-word candidates must be presented as title-shaped evidence.
       // Do not let prose, author lines, or unrelated cover copy donate a word.
