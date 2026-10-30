@@ -10,6 +10,40 @@ const CONTINUES_LIST = /(?:\band|&|,)\s*$/i;
 const STARTS_LIST_ITEM = /^\s*(?:and|&)\b/i;
 const STANDALONE_PROMO = /^\s*(?:now an?\b|soon to be an?\b|as seen on\b|an instant\b|a #\s*1\b)/i;
 
+/** Marks OCR lines that belong to an "author of <other title>" promo block,
+ * including the common OCR layout where the referenced sibling title is
+ * detached onto the next line. This is scanner-only contextual classification:
+ * the text remains available for diagnostics, but cannot prove work identity. */
+export function coverPromoContextIndexes(lines: string[]): Set<number> {
+  const demoted = new Set<number>();
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const match = AUTHOR_OF.exec(line);
+    if (!match) continue;
+    demoted.add(index);
+
+    const tail = line.slice(match.index + match[0].length).trim();
+    // "Author of" with no inline title means OCR split the referenced work
+    // onto following line(s). Demote only a tight, title-shaped continuation;
+    // never consume the actual photographed title farther down the cover.
+    if (!tail) {
+      for (let offset = 1; offset <= 2 && index + offset < lines.length; offset += 1) {
+        const nextIndex = index + offset;
+        const next = lines[nextIndex];
+        const tokens = wordsOf(next);
+        if (!tokens.length || tokens.length > 5) break;
+        if (PROMO_WORDS.test(next) || STANDALONE_PROMO.test(next)) {
+          demoted.add(nextIndex);
+          continue;
+        }
+        demoted.add(nextIndex);
+        break;
+      }
+    }
+  }
+  return demoted;
+}
+
 export function stripCoverPromoLines(lines: string[]): string[] {
   const kept: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
