@@ -300,6 +300,24 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     });
   }
 
+  if (significantTitleWords.length === 2) {
+    // A photographed multi-line title can contain a short connector (e.g.
+    // KING / OF / GLUTTONY). Require the ENTIRE catalog title, including
+    // connector words, in one contiguous OCR run. This is stronger than
+    // matching two title words scattered through blurbs or promo copy.
+    const compactTitleWords = catalogTitleWords.join('');
+    for (let start = 0; start < rawCompactLines.length; start += 1) {
+      if (!rawCompactLines[start]) continue;
+      let run = '';
+      for (let end = start; end < Math.min(rawCompactLines.length, start + 5); end += 1) {
+        if (!rawCompactLines[end]) break;
+        run += rawCompactLines[end];
+        if (run === compactTitleWords) return true;
+        if (run.length >= compactTitleWords.length) break;
+      }
+    }
+  }
+
   if (significantTitleWords.length < 3) {
     // A two-word title split across OCR lines can still be strong identity
     // evidence when native OCR independently captures every title word more
