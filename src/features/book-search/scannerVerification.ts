@@ -53,6 +53,15 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
   if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
+  // A single-word catalog title must be a complete OCR title token, not a
+  // substring of a different title (DEVOUR inside DEVOURED). Also avoid
+  // finding a title inside an author's name or promotional prose.
+  if (titleWords.length === 1 && significant.length === 1
+    && !lines.some((line, index) =>
+      !coverPromoContextIndexes(lines).has(index)
+      && !isDemotedCoverTitleLine(line)
+      && words(line).length === 1
+      && words(line)[0] === titleWords[0])) return false;
   const allSignificantPresent = significant.every((word) => tokens.has(word) || joined.includes(word));
   if (!allSignificantPresent) return false;
 
