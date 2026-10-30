@@ -39,7 +39,7 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   const tokens = new Set(text);
   const joined = text.join('');
   const titleWords = words(scannerCoverTitle(title));
-  if (!titleWords.length) return false;
+  // An author-name biography is not evidence of the photographed novel.\n  if (authors.some((author) => words(author).join('') === titleWords.join(''))) return false;\n  if (!titleWords.length) return false;
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
   if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
