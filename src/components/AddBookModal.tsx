@@ -829,6 +829,34 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         }
       }
 
+      // Google field operators with ONE correctly read name word. A catalog
+      // title/author is found by intitle + inauthor:<given or surname> even when
+      // the other half of the printed name is damaged ("crome" vs "Croome").
+      if (!best) {
+        const fieldedIdentityQueries = [...new Set(rankedTitleEvidence.slice(0, 2).flatMap((title) =>
+          authorRecoveryQueries.slice(0, 2).flatMap((author) => {
+            const nameWords = normalizeCatalogText(author).split(/\s+/).filter((word) => word.length >= 4);
+            return [...new Set([nameWords[0], nameWords.at(-1)].filter((word): word is string => Boolean(word)))]
+              .map((word) => `intitle:"${title}" inauthor:${word}`);
+          })))].slice(0, 6);
+        for (const query of fieldedIdentityQueries) {
+          try {
+            const response = await searchGoogleBooks(query);
+            recordScannerResponse(`ranked-fielded:${query}`, response.groups);
+            const recovered = response.groups.find((work) =>
+              coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)
+              || coverMatchesWork(cleanLines, work.title, work.authors));
+            if (recovered) {
+              best = { work: recovered, score: 2.68 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`ranked-fielded:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+
       if (!best) for (const authorHint of strongAuthorHints) {
         try {
           const response = await searchScannerCoverCatalog(authorHint);
@@ -969,8 +997,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           })
           .slice(0, 4);
         const directAuthorHints = authorRecoveryQueries
-          .filter((value) => value.split(/\s+/).filter(Boolean).length >= 2)
-          .slice(0, 2);
+          .filter((value) => value.split(/\s+/).filter(Boolean).length >= 2)          .slice(0, 2);
         const directQueries = [...new Set(directTitleHints.flatMap((title) =>
           directAuthorHints.map((author) => `${title} ${author}`)))].slice(0, 4);
 
@@ -1396,21 +1423,29 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         // explain the initial OCR queries; late entries contain the recovery
         // calls (author catalog, title-surname, fielded title/author) that are
         // usually decisive when a clear cover still fails.
-        const diagnosticResponses = scannerDiagnostics.length <= 30
-          ? scannerDiagnostics
+        // The ranked lanes decide most scans, so their responses are always
+        // kept in full at the TOP of the report; the rest is trimmed as before.
+        const rankedDiagnostics = scannerDiagnostics.filter((entry) => entry.startsWith('ranked-'));
+        const otherDiagnostics = scannerDiagnostics.filter((entry) => !entry.startsWith('ranked-'));
+        const trimmedOtherDiagnostics = otherDiagnostics.length <= 30
+          ? otherDiagnostics
           : [
-              ...scannerDiagnostics.slice(0, 12),
-              `... ${scannerDiagnostics.length - 24} retrieval responses omitted ...`,
-              ...scannerDiagnostics.slice(-12),
+              ...otherDiagnostics.slice(0, 12),
+              `... ${otherDiagnostics.length - 24} retrieval responses omitted ...`,
+              ...otherDiagnostics.slice(-12),
             ];
+        // Lead with what decided the scan (ranked hints + their catalog
+        // responses) so it is visible without scrolling the details box.
         const diagnostic = [
           '[Inkbound scanner] Cover identification failed',
+          `Ranked title evidence: ${rankedTitleEvidence.join(' || ') || 'none'}`,
+          `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
+          ...rankedDiagnostics,
           `OCR: ${lines.join(' || ')}`,
           `Clean: ${cleanLines.join(' || ')}`,
           `Candidates: ${candidates.slice(0, 20).join(' || ')}`,
-          `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
           `Title-surname anchors: ${titleSurnameAnchors.join(' || ') || 'none'}`,
-          ...diagnosticResponses,
+          ...trimmedOtherDiagnostics,
         ].join('\n');
         console.error(diagnostic);
         setScannerDetails(diagnostic);
@@ -1961,8 +1996,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="inkbound-kicker">Stack scanner</p>
-                  <h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Review the stack first, then choose the reading list for the whole batch.</p>
+                  <h3 className="mt-1 font-serif text-2xl text-[#f4efe6]">Scan as many as you want</h3>                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#ad9fac]">Nothing is added to your Inkbound library while you scan. Review the stack first, then choose the reading list for the whole batch.</p>
                 </div>
                 <div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div>
               </div>
@@ -2124,4 +2158,4 @@ const Field: React.FC<{ label: string; children: React.ReactElement<FieldChildPr
       className: `min-h-11 w-full rounded-xl border border-[#c5a059]/18 bg-[#0d0910] px-3 py-2 text-sm text-[#f4efe6] outline-none placeholder:text-[#6f6370] ${children.props.className ?? ''}`,
     })}
   </label>
-);
+););
