@@ -285,4 +285,19 @@ assert.equal(liveNero.authors[0], 's j tilly', 'Nero: initials + surname must ou
 assert.deepEqual(liveNero.titles, ['nero'], 'Nero: the printed title must not be excluded by a title-word author hint.');
 assert.ok(titleAuthorPartQueries(liveNero.titles, liveNero.authors).includes('nero s j tilly'));
 
+// Live false positive (Oct 30 2026): "Devour" by Lucia Jordan was accepted for the
+// DEVOURED / JORDAN STEPHANIE GRAY cover because "Jordan" is that author's FIRST name.
+const devouredCover = liveClean(['JORDAN STEPHANIE GRAY','DEVOURO','"Luminous and','exhilarating...','DEVOURED','REBECCA ROSS']);
+assert.equal(coverMatchesWork(devouredCover, 'Devour', ['Lucia Jordan']), false,
+  'A surname that is really another author\'s printed first name must not verify a work.');
+assert.equal(coverApproximatelyMatchesWork(devouredCover, 'Devour', ['Lucia Jordan']), false);
+assert.equal(coverApproximatelyMatchesWork(devouredCover, 'Devoured', ['Jordan Stephanie Gray']), true,
+  'The real Devoured by Jordan Stephanie Gray must still verify.');
+assert.equal(coverMatchesWork(['DEVOURED','JORDAN STEPHANIE GRAY'], 'Devour', ['Jordan Stephanie Gray']), false,
+  'A catalog title that is only the start of the longer printed word is a different book.');
+
+const liveReign2 = liveRank(['HER MAGIC S A DEATH SENT','REIGN','BET H AN','CRO ME','HER MAGIC IS A DEATH','R REIGN','BETH AN','GRO) ME','HER','BETH A N','CR O ME','BETHAN','CROME']);
+assert.deepEqual(liveReign2.titles, ['reign'], 'Reign: "R REIGN" must collapse to the printed title.');
+assert.equal(coverApproximatelyMatchesWork(liveReign2.lines, 'Reign', ['Bethan Croome']), true);
+
 console.log('Inkbound scanner cover regressions passed.');
