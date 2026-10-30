@@ -24,7 +24,8 @@ assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),fals
 assert.equal(coverMatchesWork(stripped,'Never Lie',['Freida McFadden']),true);
 
 const witchWithHousemaidPromo = [
-  '#1 New York Times Bestselling Author of THE HOUSEMAID',
+  '#1 New York Times Bestselling Author of',
+  'THE HOUSEMAID',
   'FREIDA',
   'MCFADDEN',
   'THE',
