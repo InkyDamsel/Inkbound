@@ -174,6 +174,10 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
       .filter((line) => line.length >= 5),
   ];
   const compactTitle = words(scannerCoverTitle(title)).join('');
+  // A catalog author biography can have the author's own name as its title.
+  // On a photographed novel, that name is author evidence, not book-title
+  // evidence. Never accept a name-only catalog work as the photographed book.
+  if (authors.some((author) => words(author).join('') === compactTitle)) return false;
   // Four-character titles can still be distinctive, but they are too short
   // for fuzzy title recovery. Allow them only when OCR captured the complete
   // title exactly; author evidence below remains independently mandatory.
