@@ -34,12 +34,22 @@ function shortTitleMatchesWork(lines: string[], titleWords: string[], authors: s
   });
 }
 
+/** Reject catalog biographies masquerading as the photographed author's novel. */
+function isAuthorBiographyTitle(title: string, authors: string[]): boolean {
+  const normalizedTitle = words(scannerCoverTitle(title)).join(' ');
+  return authors.some((author) => {
+    const name = words(author).join(' ');
+    return name.length > 0 && (normalizedTitle === name || normalizedTitle === name + ' by ' + name);
+  });
+}
+
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const text = words(lines.join(' '));
   const tokens = new Set(text);
   const joined = text.join('');
   const titleWords = words(scannerCoverTitle(title));
-  // An author-name biography is not evidence of the photographed novel.\n  if (authors.some((author) => words(author).join('') === titleWords.join(''))) return false;\n  if (!titleWords.length) return false;
+  if (isAuthorBiographyTitle(title, authors)) return false;
+  if (!titleWords.length) return false;
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
   if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
@@ -174,10 +184,7 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
       .filter((line) => line.length >= 5),
   ];
   const compactTitle = words(scannerCoverTitle(title)).join('');
-  // A catalog author biography can have the author's own name as its title.
-  // On a photographed novel, that name is author evidence, not book-title
-  // evidence. Never accept a name-only catalog work as the photographed book.
-  if (authors.some((author) => words(author).join('') === compactTitle)) return false;
+  if (isAuthorBiographyTitle(title, authors)) return false;
   // Four-character titles can still be distinctive, but they are too short
   // for fuzzy title recovery. Allow them only when OCR captured the complete
   // title exactly; author evidence below remains independently mandatory.
