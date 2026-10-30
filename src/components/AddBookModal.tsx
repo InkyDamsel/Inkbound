@@ -1375,10 +1375,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Cover OCR identifies a work, not the scanned edition. Offer the
       // matching catalog editions in Scanner, never silently substitute ISBNs.
       const titleKey = normalizeCatalogText(best.work.title);
+      const verifiedAuthorKeys = new Set(best.work.authors.map(normalizeAuthorName).filter(Boolean));
       const matches = found.filter((work) =>
         !isPlaceholderCatalogTitle(work.title)
         && normalizeCatalogText(work.title) === titleKey
-        && work.authors.some((name) => normalizeAuthorName(name) !== 'unknown author'));
+        && work.authors.some((name) => verifiedAuthorKeys.has(normalizeAuthorName(name)))
+        && (coverMatchesWork(cleanLines, work.title, work.authors)
+          || coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)));
       if (!matches.length) throw new Error('The cover title was found, but no edition with a known author is available.');
       if (!unresolvedIsbn) {
         setScannerRecoveryTitle(best.work.title);
