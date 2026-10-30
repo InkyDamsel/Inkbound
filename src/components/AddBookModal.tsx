@@ -19,7 +19,7 @@ import {
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { coverAuthorQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, coverTitleEvidenceHints, damagedTitleFragments, rankAuthorHints, splitTitleRunQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines, titleAuthorPartQueries, titleSurnameRecoveryQueries } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -755,7 +755,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // identity before spending requests on title-only/noisy recovery.
       // This is retrieval only. A candidate is accepted only if the existing
       // photographed-cover verifier proves both title and author.
-      const authorRecoveryQueries = coverAuthorQueries(cleanLines);
+      // coverAuthorQueries over-generates from noisy OCR and its own order put
+      // blurb/genre lines ("new york tim", "adark mafia romance") ahead of the
+      // real printed author, so the small request budget never reached it.
+      // Generate a wider pool, then rank by cover typography (all-caps name
+      // lines, initials + surname, no copy words). Ordering only.
+      const authorRecoveryQueries = rankAuthorHints(cleanLines, coverAuthorQueries(cleanLines, 24)).slice(0, 12);
+      const rankedTitleEvidence = coverTitleEvidenceHints(cleanLines, authorRecoveryQueries);
       const independentTitleKeys = new Set(cleanLines
         .filter((line) => {
           const normalized = normalizeCatalogText(line);
@@ -776,7 +782,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           });
         })
         .slice(0, 3);
-      const strongTitleHints = [...new Set(cleanLines
+      const strongTitleHints = [...new Set([...rankedTitleEvidence, ...cleanLines
         .filter((line) => {
           const normalized = normalizeCatalogText(line);
           const tokens = normalized.split(/\s+/).filter(Boolean);
@@ -788,7 +794,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             && !isDemotedCoverTitleLine(line)
             && !strongAuthorHints.some((author) => normalizeCatalogText(author) === normalized);
         })
-        .sort((left, right) => candidateScore(right) - candidateScore(left)))].slice(0, 5);
+        .sort((left, right) => candidateScore(right) - candidateScore(left))])].slice(0, 5);
       const strongIdentityQueries = [...new Set(strongTitleHints.flatMap((title) =>
         strongAuthorHints.map((author) => `${title} ${author}`)))].slice(0, 6);
 
@@ -802,7 +808,28 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // This closes the gap where normal Search can find a work by its author
       // (including Hardcover/Open Library/PRH supplements) while Scanner fails
       // because a title lost one glyph, e.g. DEVOUED -> Devoured.
-      for (const authorHint of strongAuthorHints) {
+      // Ranked identity lane: the printed title (clustered across OCR passes,
+      // so DEVOURO/DEVOURED collapse) paired with the printed author, then with
+      // just ONE name word. A damaged surname or given name no longer sinks the
+      // whole query. Retrieval only; the photographed-cover verifier decides.
+      for (const query of titleAuthorPartQueries(rankedTitleEvidence, authorRecoveryQueries, 8)) {
+        try {
+          const response = await searchScannerCoverCatalog(query);
+          recordScannerResponse(`ranked-identity:${query}`, response.groups);
+          const recovered = response.groups.find((work) =>
+            coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)
+            || coverMatchesWork(cleanLines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.7 };
+            found = response.groups;
+            break;
+          }
+        } catch (error) {
+          scannerDiagnostics.push(`ranked-identity:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      if (!best) for (const authorHint of strongAuthorHints) {
         try {
           const response = await searchScannerCoverCatalog(authorHint);
           recordScannerResponse(`federated-author-identity:${authorHint}`, response.groups);
@@ -975,7 +1002,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         // that author's catalog as a bounded recovery source. A result is only
         // accepted when the author surname is independently visible and the
         // catalog title closely matches one OCR line.
-        for (const authorQuery of authorRecoveryQueries) {
+        for (const authorQuery of authorRecoveryQueries.slice(0, 4)) {
           let authorGroups: BookSearchWorkGroup[];
           try {
             // This recovery has author-shaped evidence, so use the existing
@@ -1308,14 +1335,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         // into intitle:, and random OCR fragments become inauthor:.
         // Pair independently observed one-line title evidence with complete
         // reconstructed author hints. All results still require cover proof.
-        const fieldedTitles = [...new Set(cleanLines
+        const fieldedTitles = [...new Set([...rankedTitleEvidence.filter((title) => !title.includes(' ')), ...cleanLines
           .filter((line) => {
             const tokens = normalizeCatalogText(line).split(/\s+/).filter(Boolean);
             return tokens.length === 1 && tokens[0].length >= 4
               && !isDemotedCoverTitleLine(line)
               && !strongAuthorHints.some((author) => normalizeCatalogText(author).split(/\s+/).includes(tokens[0]));
           })
-          .map((line) => normalizeCatalogText(line)))].slice(0, 3);
+          .map((line) => normalizeCatalogText(line))])].slice(0, 3);
         const fieldedAuthors = [...new Set(authorRecoveryQueries
           .filter((author) => {
             const tokens = normalizeCatalogText(author).split(/\s+/).filter(Boolean);
