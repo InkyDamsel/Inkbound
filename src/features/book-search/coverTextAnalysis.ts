@@ -671,6 +671,15 @@ const isCoverCopyWord = (word: string): boolean =>
 
 /** True for printed all-caps typography (titles and author names). Blurbs,
  * taglines and review quotes are normally sentence case. */
+/** Tokens with the unambiguous "lone glyph + whole word" shape ("R REIGN")
+ * reduced to the word, so OCR debris does not make a title look multi-word. */
+const coreTokens = (line: string): string[] => {
+  const tokens = wordsOf(line);
+  if (tokens.length === 2 && tokens[0].length === 1 && tokens[1].length >= 4) return [tokens[1]];
+  if (tokens.length === 2 && tokens[1].length === 1 && tokens[0].length >= 4) return [tokens[0]];
+  return tokens;
+};
+
 const isAllCapsLine = (line: string): boolean =>
   /[A-Z]{2}/.test(line) && !/[a-z]/.test(line);
 
@@ -714,12 +723,12 @@ export function rankAuthorHints(
   // multi-word line is title evidence. A word that also sits beside initials or
   // a given name (S.J. TILLY) is author evidence even when it repeats alone.
   const standaloneWords = new Set(cleanLines
-    .filter((line) => isAllCapsLine(line) && wordsOf(line).length === 1)
-    .flatMap((line) => wordsOf(line))
+    .filter((line) => isAllCapsLine(line) && coreTokens(line).length === 1)
+    .flatMap((line) => coreTokens(line))
     .filter((word) => word.length >= 4));
   const multiWords = new Set(cleanLines
-    .filter((line) => wordsOf(line).length >= 2)
-    .flatMap((line) => { const tokens = wordsOf(line); return [...tokens, tokens.join('')]; }));
+    .filter((line) => coreTokens(line).length >= 2)
+    .flatMap((line) => { const tokens = coreTokens(line); return [...tokens, tokens.join('')]; }));
   const titleSet = new Set([
     ...titleWords,
     ...[...standaloneWords].filter((word) => !multiWords.has(word)),
@@ -764,11 +773,11 @@ export function coverTitleEvidenceHints(
   // line ("s j nero") is not trustworthy author evidence and must not exclude
   // that word from the title candidates.
   const standaloneOnly = new Set(cleanLines
-    .filter((line) => isAllCapsLine(line) && wordsOf(line).length === 1)
-    .flatMap((line) => wordsOf(line))
+    .filter((line) => isAllCapsLine(line) && coreTokens(line).length === 1)
+    .flatMap((line) => coreTokens(line))
     .filter((word) => word.length >= 4
-      && !cleanLines.some((other) => wordsOf(other).length >= 2
-        && [...wordsOf(other), wordsOf(other).join('')].includes(word))));
+      && !cleanLines.some((other) => coreTokens(other).length >= 2
+        && [...coreTokens(other), coreTokens(other).join('')].includes(word))));
   const trustedAuthorHints = authorHints.slice(0, 4)
     .filter((hint) => !wordsOf(hint).some((word) => standaloneOnly.has(word)));
   const authorWords = new Set(trustedAuthorHints.flatMap((hint) => wordsOf(hint)));
@@ -778,7 +787,12 @@ export function coverTitleEvidenceHints(
 
   for (const line of cleanLines) {
     if (!isAllCapsLine(line) || isDemotedCoverTitleLine(line)) continue;
-    const tokens = wordsOf(line);
+    let tokens = wordsOf(line);
+    // Stray single glyphs at the edges ("R REIGN") are OCR debris.
+    // Only the unambiguous two-token shape: a lone glyph beside a whole word.
+    // Longer fragment chains ("BETH A N") are damaged names, not titles.
+    if (tokens.length === 2 && tokens[0].length === 1 && tokens[1].length >= 4) tokens = [tokens[1]];
+    else if (tokens.length === 2 && tokens[1].length === 1 && tokens[0].length >= 4) tokens = [tokens[0]];
     if (tokens.length < 1 || tokens.length > 5) continue;
     const compact = tokens.join('');
     if (compact.length < 4 || compact.length > 32) continue;
