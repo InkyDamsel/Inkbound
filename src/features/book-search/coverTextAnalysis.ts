@@ -647,3 +647,198 @@ export function titleSurnameRecoveryQueries(
   // budget is spent on weaker variants.
   return [...new Set([...strongest, ...weaker])].slice(0, maxQueries);
 }
+
+// ---------------------------------------------------------------------------
+// Evidence ranking for scanner retrieval.
+//
+// coverAuthorQueries() deliberately over-generates author-shaped hints from
+// noisy OCR. Live scans showed the REAL author buried behind blurb/genre lines
+// ("new york tim", "adark mafia romance"), so the small request budget was
+// spent on junk. These helpers only ORDER retrieval hints; catalog results are
+// still accepted solely by the photographed title + author verifier.
+
+const COVER_COPY_WORDS = new Set([
+  'the','a','an','and','of','that','is','to','in','for','with','from','by','on','at',
+  'new','york','times','tim','timee','book','books','author','authors','exclusive','edition',
+  'dark','adark','mafia','romance','novel','series','saga','trilogy','duology','thriller','fantasy','mystery',
+  'bestselling','bestseller','bestsellers','luminous','exhilarating','sizzles',
+]);
+const COVER_COPY_COMPACT_END = /(?:romance|series|eries|novel|thriller|fantasy|mystery|saga|trilogy|duology)$/;
+const COVER_COPY_PREFIX = /^(?:bestsel|bestsal|bestsol|bastsel|exhilar|exhilir|tim(?:e|es)?$)/;
+
+const isCoverCopyWord = (word: string): boolean =>
+  COVER_COPY_WORDS.has(word) || COVER_COPY_PREFIX.test(word);
+
+/** True for printed all-caps typography (titles and author names). Blurbs,
+ * taglines and review quotes are normally sentence case. */
+const isAllCapsLine = (line: string): boolean =>
+  /[A-Z]{2}/.test(line) && !/[a-z]/.test(line);
+
+const lightEditDistance = (left: string, right: string): number => {
+  if (left === right) return 0;
+  if (Math.abs(left.length - right.length) > 3) return 4;
+  const row = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const saved = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (left[i - 1] === right[j - 1] ? 0 : 1));
+      previous = saved;
+    }
+  }
+  return row[right.length];
+};
+
+/** Collapse OCR spelling variants of one printed name/title. */
+const sameOcrWord = (left: string, right: string): boolean => {
+  if (left === right) return true;
+  const shortest = Math.min(left.length, right.length);
+  if (shortest < 4) return false;
+  return lightEditDistance(left, right) <= (shortest >= 7 ? 2 : 1);
+};
+
+/** Order author hints so the real printed author is tried first. Pure ordering:
+ * nothing is removed except exact duplicates, so retrieval can still fall
+ * through to weaker hints. `titleWords` are words already claimed as title
+ * evidence; a hint that merely pairs a title word with a name fragment is
+ * ranked below one that does not. */
+export function rankAuthorHints(
+  cleanLines: string[],
+  hints: string[],
+  titleWords: string[] = [],
+): string[] {
+  const capsTokens = cleanLines.filter(isAllCapsLine).map(wordsOf);
+  const capsWords = new Set(capsTokens.flatMap((tokens) => [...tokens, tokens.join('')]));
+  // A word printed ONLY as its own large line (NERO, REIGN) and never inside a
+  // multi-word line is title evidence. A word that also sits beside initials or
+  // a given name (S.J. TILLY) is author evidence even when it repeats alone.
+  const standaloneWords = new Set(cleanLines
+    .filter((line) => isAllCapsLine(line) && wordsOf(line).length === 1)
+    .flatMap((line) => wordsOf(line))
+    .filter((word) => word.length >= 4));
+  const multiWords = new Set(cleanLines
+    .filter((line) => wordsOf(line).length >= 2)
+    .flatMap((line) => { const tokens = wordsOf(line); return [...tokens, tokens.join('')]; }));
+  const titleSet = new Set([
+    ...titleWords,
+    ...[...standaloneWords].filter((word) => !multiWords.has(word)),
+  ]);
+  const seen = new Set<string>();
+  const scored = hints.flatMap((hint, index) => {
+    const words = wordsOf(hint);
+    const key = words.join(' ');
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    let score = 0;
+    if (words.length < 2) score -= 20;
+    if (new Set(words).size < words.length) score -= 20;
+    if (words.some(isCoverCopyWord)) score -= 12;
+    if (COVER_COPY_COMPACT_END.test(words.join(''))) score -= 12;
+    if (words.some((word) => titleSet.has(word))) score -= 8;
+    score += words.filter((word) => word.length >= 3 && capsWords.has(word)).length * 2;
+    if (capsTokens.some((tokens) => tokens.join(' ') === key)) score += 4;
+    if (words.length >= 3 && words.slice(0, -1).every((word) => word.length <= 2)
+      && words.at(-1)!.length >= 4) score += 3;
+    // A whole name is rarely shorter than ~7 letters; a lone surname fragment
+    // pair ("CRO ME") is weaker than a recovered given name + surname.
+    if (words.join('').length < 7) score -= 6;
+    return [{ hint, index, score }];
+  });
+  return scored
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map(({ hint }) => hint);
+}
+
+/** Rank the printed TITLE evidence on a cover. Titles are set in large
+ * all-caps type and repeat across OCR passes with small spelling damage
+ * (DEVOURED / DEVOURO), while blurbs are sentence case and series/genre lines
+ * are demoted. Returns retrieval strings, strongest first, with OCR spelling
+ * variants of the strongest cluster following it. */
+export function coverTitleEvidenceHints(
+  cleanLines: string[],
+  authorHints: string[] = [],
+  maxHints = 4,
+): string[] {
+  // A hint that pairs a name fragment with a word printed ONLY as its own big
+  // line ("s j nero") is not trustworthy author evidence and must not exclude
+  // that word from the title candidates.
+  const standaloneOnly = new Set(cleanLines
+    .filter((line) => isAllCapsLine(line) && wordsOf(line).length === 1)
+    .flatMap((line) => wordsOf(line))
+    .filter((word) => word.length >= 4
+      && !cleanLines.some((other) => wordsOf(other).length >= 2
+        && [...wordsOf(other), wordsOf(other).join('')].includes(word))));
+  const trustedAuthorHints = authorHints.slice(0, 4)
+    .filter((hint) => !wordsOf(hint).some((word) => standaloneOnly.has(word)));
+  const authorWords = new Set(trustedAuthorHints.flatMap((hint) => wordsOf(hint)));
+  const authorCompacts = new Set(trustedAuthorHints.map((hint) => wordsOf(hint).join('')));
+  type Cluster = { variants: Map<string, number>; count: number; base: number };
+  const clusters: Cluster[] = [];
+
+  for (const line of cleanLines) {
+    if (!isAllCapsLine(line) || isDemotedCoverTitleLine(line)) continue;
+    const tokens = wordsOf(line);
+    if (tokens.length < 1 || tokens.length > 5) continue;
+    const compact = tokens.join('');
+    if (compact.length < 4 || compact.length > 32) continue;
+    if (COVER_COPY_COMPACT_END.test(compact)) continue;
+    if (tokens.some((token) => isCoverCopyWord(token) && !['the', 'a', 'an', 'of', 'and', 'in', 'to', 'on', 'at', 'for', 'with', 'from', 'is', 'that', 'by'].includes(token))
+      && tokens.length > 1) continue;
+    if (authorCompacts.has(compact)) continue;
+    if (tokens.every((token) => authorWords.has(token) || token.length <= 2)) continue;
+    // A fragmented author surname ("CRO ME") must not become title evidence.
+    if ([...authorWords].some((word) => word.length >= 4 && sameOcrWord(word, compact))) continue;
+
+    const text = tokens.join(' ');
+    const base = tokens.length === 1 ? 3 : tokens.length <= 3 ? 2 : 0;
+    const home = clusters.find((cluster) =>
+      [...cluster.variants.keys()].some((variant) => sameOcrWord(variant.replace(/\s+/g, ''), compact)));
+    if (home) {
+      home.variants.set(text, (home.variants.get(text) ?? 0) + 1);
+      home.count += 1;
+      home.base = Math.max(home.base, base);
+    } else {
+      clusters.push({ variants: new Map([[text, 1]]), count: 1, base });
+    }
+  }
+
+  const ranked = clusters
+    .map((cluster) => {
+      const variants = [...cluster.variants.entries()]
+        .sort((left, right) => right[1] - left[1] || right[0].length - left[0].length)
+        .map(([text]) => text);
+      // Prefer the LONGER spelling on ties: OCR drops glyphs far more often
+      // than it invents them (DEVOURED beats DEVOUR).
+      const longest = [...variants].sort((left, right) => right.length - left.length)[0];
+      const top = cluster.variants.get(variants[0])! > (cluster.variants.get(longest) ?? 0) ? variants[0] : longest;
+      return {
+        score: cluster.count * 2 + cluster.base,
+        ordered: [top, ...variants.filter((variant) => variant !== top)],
+      };
+    })
+    .sort((left, right) => right.score - left.score);
+
+  const firsts = ranked.map((entry) => entry.ordered[0]);
+  const seconds = ranked.flatMap((entry) => entry.ordered.slice(1, 2));
+  return [...new Set([...firsts, ...seconds])].slice(0, Math.max(1, maxHints));
+}
+
+/** Queries that survive a damaged surname or given name: provider relevance
+ * search copes far better with a title plus ONE correctly read name word than
+ * with a title plus a misspelled full name. Retrieval only. */
+export function titleAuthorPartQueries(titles: string[], authorHints: string[], maxQueries = 6): string[] {
+  const out: string[] = [];
+  for (const author of authorHints.slice(0, 2)) {
+    const words = wordsOf(author);
+    if (words.length < 2) continue;
+    const surname = words.at(-1)!;
+    const given = words[0];
+    for (const title of titles.slice(0, 2)) {
+      out.push(`${title} ${words.join(' ')}`);
+      if (surname.length >= 4) out.push(`${title} ${surname}`);
+      if (given.length >= 4) out.push(`${title} ${given}`);
+    }
+  }
+  return [...new Set(out)].slice(0, maxQueries);
+}
