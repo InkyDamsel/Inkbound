@@ -1303,12 +1303,29 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         // title/surname anchors. Generic provider text ranking can bury the
         // exact photographed work even when both identities are visible.
         // This only retrieves candidates; cover verification still decides.
-        for (const anchor of titleSurnameRecoveryQueries(cleanLines, authorRecoveryQueries)) {
-          const parts = anchor.split(/\s+/).filter(Boolean);
-          if (parts.length < 2) continue;
-          const surname = parts.at(-1) ?? '';
-          const titleParts = parts.slice(0, -1);
-          const query = `${titleParts.map((word) => `intitle:${word}`).join(' ')} inauthor:${surname}`;
+        // Never infer title/author boundaries by splitting a combined OCR
+        // recovery string at its last word: fragmented author names then leak
+        // into intitle:, and random OCR fragments become inauthor:.
+        // Pair independently observed one-line title evidence with complete
+        // reconstructed author hints. All results still require cover proof.
+        const fieldedTitles = [...new Set(cleanLines
+          .filter((line) => {
+            const tokens = normalizeCatalogText(line).split(/\s+/).filter(Boolean);
+            return tokens.length === 1 && tokens[0].length >= 4
+              && !isDemotedCoverTitleLine(line)
+              && !strongAuthorHints.some((author) => normalizeCatalogText(author).split(/\s+/).includes(tokens[0]));
+          })
+          .map((line) => normalizeCatalogText(line)))].slice(0, 3);
+        const fieldedAuthors = [...new Set(authorRecoveryQueries
+          .filter((author) => {
+            const tokens = normalizeCatalogText(author).split(/\s+/).filter(Boolean);
+            return tokens.length >= 2 && tokens.length <= 3
+              && tokens.every((token) => token.length >= 4)
+              && !fieldedTitles.some((title) => tokens.includes(title));
+          }))].slice(0, 4);
+        const fieldedQueries = [...new Set(fieldedTitles.flatMap((title) =>
+          fieldedAuthors.map((author) => `intitle:${title} inauthor:${author.replace(/\s+/g, ' ')}`)))].slice(0, 8);
+        for (const query of fieldedQueries) {
           try {
             const response = await searchGoogleBooks(query);
             recordScannerResponse(`fielded-title-author:${query}`, response.groups);
