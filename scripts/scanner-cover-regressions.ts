@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { coverAuthorQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../src/features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, coverTitleEvidenceHints, rankAuthorHints, titleAuthorPartQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
 
@@ -254,5 +254,35 @@ for(const lines of pages){
 }
 assert.deepEqual(collectPrintedIsbnEvidence(['51999','PRINTED IN CHINA']),[]);
 assert.deepEqual(collectPrintedIsbnEvidence(['9 781250 346758']),[]);
+
+// Live on-device OCR (Oct 30 2026). The scanner's request budget is tiny, so the
+// REAL printed author and title must be ranked first or they are never queried.
+const liveClean = (raw: string[]) => raw
+  .map((line) => line.replace(/[^a-zA-Z\s'-]/g, ' ').replace(/\s+/g, ' ').trim())
+  .filter(Boolean)
+  .filter((line) => !/(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\s*[:#]|book club edition|^a novel$)/i.test(line));
+const liveRank = (raw: string[]) => {
+  const lines = liveClean(raw);
+  const authors = rankAuthorHints(lines, coverAuthorQueries(lines, 24)).slice(0, 12);
+  return { lines, authors, titles: coverTitleEvidenceHints(lines, authors) };
+};
+
+const liveDevoured = liveRank(['JORDAN STEPHANIE GRAY','DEVOURO','"Luminous and','exhilarating...','[Bitten is] a romance','that sizzles."','EBECCA ROSS,','1 New York Tim','bastselling suthor','of Divin Rivals','DEKORE','exhilarating....','[Bitten is) a romance','#1 New York TimeE','bestsoling suthor','of Divina Rivals','DEVOURED','"LuminoUS and','that sizzles,"','-REBECCA']);
+assert.equal(liveDevoured.authors[0], 'jordan stephanie gray',
+  'Devoured: the printed all-caps author must outrank blurb lines such as "new york tim".');
+assert.ok(liveDevoured.titles.includes('devoured'), 'Devoured: OCR variants DEVOURO/DEVOURED must collapse to a title hint.');
+assert.ok(titleAuthorPartQueries(liveDevoured.titles, liveDevoured.authors).includes('devoured jordan stephanie gray'));
+
+const liveReign = liveRank(['REIGN',"AB ETH A'N",'CR O ME','BETH AN','GR O ME','BETH A"N','CRO ME','E.','BET H AN','ruti:','1:','3CR OD ME']);
+assert.ok(liveReign.authors.slice(0, 3).includes('bethan crome'),
+  'Reign: reconstructed Bethan + surname must be inside the first three author hints.');
+assert.deepEqual(liveReign.titles, ['reign'], 'Reign: fragmented given-name lines must not become title evidence.');
+assert.ok(titleAuthorPartQueries(liveReign.titles, liveReign.authors).includes('reign bethan'),
+  'Reign: a title + given-name query must survive a misspelled surname.');
+
+const liveNero = liveRank(['THE ALLIANCE SERIEs','ERO','A DARK MAFVA ROMA NCE','S.J. TILLY','THE ALLIANCE S ERIES','ADARK MAFVA ROMA NCE','THE ALLIA NCE SERIES','S.J.','TILLY','THE ALLIANCESERIES','NERO','ADARK MAF VA ROMANCE','S ERIES','ADARK MAFIAI ROM ANCE','ADARK MAFIA RoMANCE']);
+assert.equal(liveNero.authors[0], 's j tilly', 'Nero: initials + surname must outrank genre/series lines.');
+assert.deepEqual(liveNero.titles, ['nero'], 'Nero: the printed title must not be excluded by a title-word author hint.');
+assert.ok(titleAuthorPartQueries(liveNero.titles, liveNero.authors).includes('nero s j tilly'));
 
 console.log('Inkbound scanner cover regressions passed.');
