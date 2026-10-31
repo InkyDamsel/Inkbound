@@ -3,6 +3,8 @@ import { BookOpen, CheckSquare, ChevronDown, SlidersHorizontal, LayoutGrid, List
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, READING_STATUS_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
+import { customLibraryContext, moveLibraryBook, orderLibraryIds, type CustomLibraryOrders } from '../features/library/customLibraryOrder';
+import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { compareRecentlyAddedBooks } from '../features/library/libraryRecentSort';
 import { bookMatchesLibrarySearch } from '../features/library/librarySearch';
 import { DEFAULT_LIBRARY_SECTION, LIBRARY_SECTION_STORAGE_KEY, type LibrarySection } from '../features/library/libraryNavigation';
@@ -43,7 +45,7 @@ interface LibraryScreenProps {
 }
 
 type ViewMode = 'grid' | 'list';
-type SortMode = 'recent' | 'finished-newest' | 'finished-oldest' | 'title' | 'author' | 'rating' | 'progress' | 'rereads';
+type SortMode = 'custom' | 'recent' | 'finished-newest' | 'finished-oldest' | 'title' | 'author' | 'rating' | 'progress' | 'rereads';
 
 const LIBRARY_BANNER_ASSET = '/assets/library/cozy-library-background.png';
 const LIBRARY_PAGE_SIZE = 24;
@@ -75,6 +77,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ownershipFilter, setOwnershipFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
+  const [customOrderExpanded, setCustomOrderExpanded] = useState(false);
+  const [customOrders, setCustomOrders] = usePersistentState<CustomLibraryOrders>(ACCOUNT_DATA_STORAGE_KEYS.customLibraryOrders, {});
+  const orderingContext = customLibraryContext(section, tagFilter);
   const rereadBooks = useMemo(() => books.filter((book) => (getEffectiveRereadCount(book)) > 0), [books]);
   const totalRereads = useMemo(() => rereadBooks.reduce((sum, book) => sum + Math.max(0, getEffectiveRereadCount(book)), 0), [rereadBooks]);
   const mostReread = useMemo(() => rereadBooks.reduce<UserBookRecord | null>((best, book) => !best || (getEffectiveRereadCount(book)) > (getEffectiveRereadCount(best)) ? book : best, null), [rereadBooks]);
@@ -160,7 +165,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
     } else if (ownershipFilter !== 'all' && book.ownership !== ownershipFilter) return false;
     if (ratingFilter !== 'all' && (book.rating || 0) < Number(ratingFilter)) return false;
     return true;
-  }).sort((a, b) => sortBy === 'finished-newest'
+  }).sort((a, b) => sortBy === 'custom'
+    ? 0
+    : sortBy === 'finished-newest'
     ? compareFinished(a, b, false)
     : sortBy === 'finished-oldest'
       ? compareFinished(a, b, true)
@@ -176,11 +183,31 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             ? (getEffectiveRereadCount(b)) - (getEffectiveRereadCount(a))
             : compareRecentlyAddedBooks(a, b)), [books, rereadBooks, section, activeCategory, searchFilter, tagFilter, materialFilter, formatFilter, genreFilter, ownershipFilter, ratingFilter, sortBy]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredBooks.length / LIBRARY_PAGE_SIZE));
+  const orderedBooks = useMemo(() => sortBy === 'custom'
+    ? orderLibraryIds(filteredBooks, customOrders[orderingContext] ?? [])
+    : filteredBooks, [filteredBooks, sortBy, customOrders, orderingContext]);
+  const moveCustomBook = (id: string, direction: -1 | 1) => {
+    const currentIndex = orderedBooks.findIndex(book => book.id === id);
+    const target = orderedBooks[currentIndex + direction];
+    if (!target) return;
+    const contextBooks = (section === 'rereads' ? rereadBooks : books)
+      .filter(book => tagFilter === 'all' || (book.privateTags ?? []).some(tag => normalizeTag(tag) === tagFilter));
+    setCustomOrders(previous => ({
+      ...previous,
+      [orderingContext]: moveLibraryBook(
+        previous[orderingContext] ?? [],
+        contextBooks.map(book => book.id),
+        orderedBooks.map(book => book.id),
+        id,
+        target.id,
+      ),
+    }));
+  };
+  const totalPages = Math.max(1, Math.ceil(orderedBooks.length / LIBRARY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const paginatedBooks = useMemo(
-    () => filteredBooks.slice((safePage - 1) * LIBRARY_PAGE_SIZE, safePage * LIBRARY_PAGE_SIZE),
-    [filteredBooks, safePage],
+    () => orderedBooks.slice((safePage - 1) * LIBRARY_PAGE_SIZE, safePage * LIBRARY_PAGE_SIZE),
+    [orderedBooks, safePage],
   );
 
   useEffect(() => {
@@ -242,7 +269,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)} className="inkbound-select"><option value="all">All genres</option>{allGenres.map((genre) => <option key={genre}>{genre}</option>)}</select>
             <select value={ownershipFilter} onChange={(event) => setOwnershipFilter(event.target.value)} className="inkbound-select"><option value="all">Any ownership</option><optgroup label="Ownership">{OWNERSHIP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>{customOwnershipCategories.length > 0 && <optgroup label="Custom ownership">{customOwnershipCategories.map((category) => <option key={category.id} value={`custom:${category.id}`}>{category.name}</option>)}</optgroup>}</select>
             <select value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)} className="inkbound-select"><option value="all">Any rating</option><option value="5">5 stars</option><option value="4">4+ stars</option><option value="3">3+ stars</option></select>
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select w-auto max-w-full min-w-0 sm:max-w-[260px]" aria-label="Sort library books"><option value="recent">Recently added</option><option value="finished-newest">Date finished (newest first)</option><option value="finished-oldest">Date finished (oldest first)</option><option value="title">Title</option><option value="author">Author</option><option value="rating">Rating</option><option value="progress">Progress</option>{section === 'rereads' && <option value="rereads">Most reread</option>}</select>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortMode)} className="inkbound-select w-auto max-w-full min-w-0 sm:max-w-[260px]" aria-label="Sort library books"><option value="recent">Recently added</option><option value="custom">Custom order</option><option value="finished-newest">Date finished (newest first)</option><option value="finished-oldest">Date finished (oldest first)</option><option value="title">Title</option><option value="author">Author</option><option value="rating">Rating</option><option value="progress">Progress</option>{section === 'rereads' && <option value="rereads">Most reread</option>}</select>
           </div>
 
           <div className="mt-4 flex justify-between border-t border-white/5 pt-4">
@@ -254,6 +281,25 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
         <div className="text-xs text-[#807482]">{filteredBooks.length.toLocaleString()} matching items · {(section === 'rereads' ? rereadBooks.length : books.length).toLocaleString()} total</div>
 
+        {sortBy === 'custom' && filteredBooks.length > 0 && (
+          <section className="inkbound-panel p-3 sm:p-4" aria-label="Custom book ordering">
+            <button type="button" aria-expanded={customOrderExpanded} aria-controls="library-custom-order-controls" onClick={() => setCustomOrderExpanded(expanded => !expanded)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left text-sm font-semibold text-[#e2bd66]">
+              <span>Custom order <span className="font-normal text-[#ad9fac]">— {customOrderExpanded ? 'Use the arrows to arrange books. Changes save automatically.' : 'Expand to rearrange books.'}</span></span>
+              <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${customOrderExpanded ? 'rotate-180' : ''}`} />
+            </button>
+            {customOrderExpanded && <div id="library-custom-order-controls" className="mt-3 grid gap-2 sm:grid-cols-2">
+              {paginatedBooks.map((book, index) => {
+                const absoluteIndex = (safePage - 1) * LIBRARY_PAGE_SIZE + index;
+                return <div key={book.id} className="flex min-w-0 items-center gap-2 rounded-xl border border-[#c5a059]/20 bg-[#0d0910] px-3 py-2">
+                  <span className="w-7 shrink-0 text-xs text-[#e2bd66]">{absoluteIndex + 1}.</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-[#f4efe6]" title={book.work.title}>{book.work.title}</span>
+                  <button type="button" disabled={absoluteIndex === 0} onClick={() => moveCustomBook(book.id, -1)} className="quiet-shelf-secondary-action min-h-10 min-w-10 justify-center disabled:opacity-30" aria-label={`Move ${book.work.title} up`}>↑</button>
+                  <button type="button" disabled={absoluteIndex === orderedBooks.length - 1} onClick={() => moveCustomBook(book.id, 1)} className="quiet-shelf-secondary-action min-h-10 min-w-10 justify-center disabled:opacity-30" aria-label={`Move ${book.work.title} down`}>↓</button>
+                </div>;
+              })}
+            </div>}
+          </section>
+        )}
         {filteredBooks.length === 0 ? (
           <div className="inkbound-panel p-12 text-center"><BookOpen className="mx-auto h-10 w-10 text-[#c5a059]/60" /><h3 className="mt-4 font-serif text-xl text-[#f4efe6]">Nothing matches these filters</h3><p className="mt-2 text-sm text-[#ad9fac]">Try another status, tag, reading type, format, ownership, or search.</p></div>
         ) : viewMode === 'grid' ? (
