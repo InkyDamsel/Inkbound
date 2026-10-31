@@ -1429,7 +1429,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       )
     : results;
 
-  const handleManualAdd = () => {
+  const handleManualAdd = (keepOpen = false) => {
     if (!title.trim() || !author.trim()) return;
     if (unresolvedIsbn && !isValidCatalogIsbn(unresolvedIsbn)) return;
     const workId = uniqueId('work');
@@ -1482,6 +1482,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     };
 
     onAddBook(applyReadingStatusSelection(baseBook, statusSelection, addedOn));
+    if (keepOpen) {
+      setTitle('');
+      setAuthor('');
+      setSummary('');
+      setGenres('');
+      setPageCount('');
+      setManualIsbn('');
+      setUnresolvedIsbn(null);
+      return;
+    }
     onClose();
   };
 
@@ -1778,7 +1788,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>{PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
             </div>
             <Field label="Summary"><textarea rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Optional description or notes" /></Field>
-            <button type="button" onClick={handleManualAdd} disabled={!title.trim() || !author.trim()} className="quiet-shelf-primary-action min-h-12 w-full disabled:opacity-50">Add to Library</button>
+            <div className="grid gap-3 sm:grid-cols-2">
+                <button type="button" onClick={() => handleManualAdd(true)} disabled={!title.trim() || !author.trim()} className="quiet-shelf-secondary-action min-h-12 w-full justify-center disabled:opacity-50">+ Add &amp; add another</button>
+                <button type="button" onClick={() => handleManualAdd(false)} disabled={!title.trim() || !author.trim()} className="quiet-shelf-primary-action min-h-12 w-full justify-center disabled:opacity-50">Add to Library</button>
+              </div>
           </div>
         )}
 
