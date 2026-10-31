@@ -26,6 +26,7 @@ export const READING_MEMORIES_ACCOUNT_KEY = ACCOUNT_DATA_STORAGE_KEYS.readingMem
  */
 export const AUXILIARY_ACCOUNT_KEYS = {
   collectionDefinitions: ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions,
+  customLibraryOrders: ACCOUNT_DATA_STORAGE_KEYS.customLibraryOrders,
   seriesOverrides: ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides,
   customOwnershipCategories: ACCOUNT_DATA_STORAGE_KEYS.customOwnershipCategories,
   customReadingStatuses: ACCOUNT_DATA_STORAGE_KEYS.customReadingStatuses,
