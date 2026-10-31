@@ -20,6 +20,7 @@ export const DEVICE_STORAGE_KEYS = {
 
 export const ACCOUNT_DATA_STORAGE_KEYS = {
   collectionDefinitions: 'inkbound_collection_definitions',
+  customLibraryOrders: 'inkbound_custom_library_orders_v1',
   seriesOverrides: 'inkbound_series_overrides_v1',
   customOwnershipCategories: 'inkbound_custom_ownership_categories_v1',
   customReadingStatuses: 'inkbound_custom_reading_statuses_v1',
@@ -76,6 +77,7 @@ export const CANONICAL_SYNC_COLLECTION_KEYS = [
   SYNC_STORAGE_KEYS.sessions,
   SYNC_STORAGE_KEYS.profile,
   ACCOUNT_DATA_STORAGE_KEYS.collectionDefinitions,
+  ACCOUNT_DATA_STORAGE_KEYS.customLibraryOrders,
   ACCOUNT_DATA_STORAGE_KEYS.seriesOverrides,
   ACCOUNT_DATA_STORAGE_KEYS.customOwnershipCategories,
   ACCOUNT_DATA_STORAGE_KEYS.customReadingStatuses,
