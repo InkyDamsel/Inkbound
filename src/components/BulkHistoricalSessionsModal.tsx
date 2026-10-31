@@ -181,7 +181,7 @@ export const BulkHistoricalSessionsModal: React.FC<BulkHistoricalSessionsModalPr
 
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-4" onClick={onClose}>
-      <section className="inkbound-modal-surface min-h-0 max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl overflow-y-auto overscroll-contain rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-panel)] px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-2xl sm:max-h-[92dvh] sm:rounded-3xl sm:p-6" role="dialog" aria-modal="true" aria-labelledby="bulk-historical-sessions-title" onClick={(event) => event.stopPropagation()}>
+      <section className="inkbound-modal-surface mx-auto min-h-0 max-h-[calc(100dvh-1.5rem)] w-full max-w-[960px] overflow-y-auto overscroll-contain rounded-t-3xl border border-[var(--ink-border)] bg-[var(--ink-panel)] px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-2xl sm:!max-h-[88dvh] sm:!max-w-[960px] sm:rounded-3xl sm:p-6" style={{ maxWidth: "min(960px, calc(100vw - 24px))" }} role="dialog" aria-modal="true" aria-labelledby="bulk-historical-sessions-title" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="inkbound-kicker">Reading journal</p>
