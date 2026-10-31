@@ -2158,4 +2158,4 @@ const Field: React.FC<{ label: string; children: React.ReactElement<FieldChildPr
       className: `min-h-11 w-full rounded-xl border border-[#c5a059]/18 bg-[#0d0910] px-3 py-2 text-sm text-[#f4efe6] outline-none placeholder:text-[#6f6370] ${children.props.className ?? ''}`,
     })}
   </label>
-););
+);
