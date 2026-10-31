@@ -77,6 +77,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [ownershipFilter, setOwnershipFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
   const [sortBy, setSortBy] = useState<SortMode>('recent');
+  const [customOrderExpanded, setCustomOrderExpanded] = useState(false);
   const [customOrders, setCustomOrders] = usePersistentState<CustomLibraryOrders>(ACCOUNT_DATA_STORAGE_KEYS.customLibraryOrders, {});
   const orderingContext = customLibraryContext(section, tagFilter);
   const rereadBooks = useMemo(() => books.filter((book) => (getEffectiveRereadCount(book)) > 0), [books]);
@@ -282,8 +283,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
         {sortBy === 'custom' && filteredBooks.length > 0 && (
           <section className="inkbound-panel p-3 sm:p-4" aria-label="Custom book ordering">
-            <p className="mb-3 text-sm text-[#e2bd66]">Custom order — Use the arrows to arrange books. Changes save automatically.</p>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" aria-expanded={customOrderExpanded} aria-controls="library-custom-order-controls" onClick={() => setCustomOrderExpanded(expanded => !expanded)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg text-left text-sm font-semibold text-[#e2bd66]">
+              <span>Custom order <span className="font-normal text-[#ad9fac]">— {customOrderExpanded ? 'Use the arrows to arrange books. Changes save automatically.' : 'Expand to rearrange books.'}</span></span>
+              <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${customOrderExpanded ? 'rotate-180' : ''}`} />
+            </button>
+            {customOrderExpanded && <div id="library-custom-order-controls" className="mt-3 grid gap-2 sm:grid-cols-2">
               {paginatedBooks.map((book, index) => {
                 const absoluteIndex = (safePage - 1) * LIBRARY_PAGE_SIZE + index;
                 return <div key={book.id} className="flex min-w-0 items-center gap-2 rounded-xl border border-[#c5a059]/20 bg-[#0d0910] px-3 py-2">
@@ -293,7 +297,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   <button type="button" disabled={absoluteIndex === orderedBooks.length - 1} onClick={() => moveCustomBook(book.id, 1)} className="quiet-shelf-secondary-action min-h-10 min-w-10 justify-center disabled:opacity-30" aria-label={`Move ${book.work.title} down`}>↓</button>
                 </div>;
               })}
-            </div>
+            </div>}
           </section>
         )}
         {filteredBooks.length === 0 ? (
