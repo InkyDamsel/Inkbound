@@ -13,9 +13,9 @@ const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const formatMinutes = (n: number) => `${Math.floor(n / 60)}h ${String(n % 60).padStart(2, '0')}m`;
 const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date + 'T12:00:00'));
 const coverImage = async (url: string): Promise<HTMLImageElement | null> => {
-  if (!/^https?:\/\//i.test(url)) return null;
+  if (!/^(https?:\/\/|data:image\/|blob:|\/)/i.test(url)) return null;
   const image = new Image();
-  image.crossOrigin = 'anonymous';
+  if (!url.startsWith('data:') && !url.startsWith('blob:')) image.crossOrigin = 'anonymous';
   image.referrerPolicy = 'no-referrer';
   return new Promise((resolve) => {
     image.onload = () => resolve(image);
@@ -40,6 +40,12 @@ const makePng = async (month: string, books: UserBookRecord[], sessions: Reading
     glow.addColorStop(0, '#3c263d'); glow.addColorStop(1, '#140f1c'); ctx.fillStyle = glow; ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = '#b99b68'; ctx.lineWidth = 2; ctx.strokeRect(28, 28, width - 56, height - 56);
     ctx.strokeStyle = '#6e5268'; ctx.strokeRect(38, 38, width - 76, height - 76);
+    ctx.save(); ctx.strokeStyle = '#c4a06d'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(width / 2, 175, 118, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+    for (const [x, y] of [[76, 76], [width - 76, 76], [76, height - 76], [width - 76, height - 76]]) {
+      ctx.beginPath(); ctx.moveTo(x - 14, y); ctx.lineTo(x + 14, y); ctx.moveTo(x, y - 14); ctx.lineTo(x, y + 14); ctx.stroke();
+    }
+    ctx.restore();
   }
   const [year, monthNumber] = month.split('-').map(Number);
   const label = new Date(year, monthNumber - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -90,8 +96,20 @@ const makePng = async (month: string, books: UserBookRecord[], sessions: Reading
         const scale = Math.max(coverWidth / image.width, bh / image.height);
         ctx.drawImage(image, bx + (coverWidth - image.width * scale) / 2, coverTop + (bh - image.height * scale) / 2, image.width * scale, image.height * scale);
       } else {
-        ctx.fillStyle = '#68465d'; ctx.fillRect(bx, coverTop, coverWidth, bh);
-        ctx.textAlign = 'center'; write(ctx, 'BOOK', bx + coverWidth / 2, coverTop + bh / 2, 11, '#f8eae0', 'Arial, sans-serif');
+        const title = bookMap.get(id)?.work.title ?? 'Untitled';
+        const gradient = ctx.createLinearGradient(bx, coverTop, bx + coverWidth, coverTop + bh);
+        gradient.addColorStop(0, '#704a67'); gradient.addColorStop(1, '#271b32');
+        ctx.fillStyle = gradient; ctx.fillRect(bx, coverTop, coverWidth, bh);
+        ctx.textAlign = 'center';
+        const words = title.split(/\s+/);
+        const lines: string[] = [];
+        let line = '';
+        for (const word of words) {
+          if ((line + ' ' + word).length > 11 && line) { lines.push(line); line = word; }
+          else line = line ? line + ' ' + word : word;
+        }
+        if (line) lines.push(line);
+        lines.slice(0, 4).forEach((text, index) => write(ctx, text, bx + coverWidth / 2, coverTop + bh / 2 + (index - 1) * 14, Math.min(12, coverWidth / 7), '#f8eae0', 'Georgia, serif'));
       }
       ctx.restore();
     });
@@ -103,11 +121,13 @@ const makePng = async (month: string, books: UserBookRecord[], sessions: Reading
   const minutes = monthSessions.reduce((n, s) => n + getSessionDurationMinutes(s), 0);
   const pages = monthSessions.reduce((n, s) => n + getSessionPagesRead(s), 0);
   const readingDays = grouped.size;
-  const statsY = Math.max(cellsTop + rows * (cellHeight + gap) + 65, format === 'story' ? 1550 : format === 'feed' ? 1230 : 1070);
+  const statsY = Math.max(cellsTop + rows * (cellHeight + gap) + 65, format === 'story' ? 1550 : format === 'feed' ? 1230 : 1050);
   const stats = [`${readingDays} reading days`, `${pages.toLocaleString()} session pages`, formatMinutes(minutes)];
   ctx.textAlign = 'center'; write(ctx, stats.join('   •   '), width / 2, statsY, format === 'story' ? 24 : 22, '#f4e9ef', 'Arial, sans-serif');
-  if (collectible) write(ctx, 'Every page is part of your story', width / 2, statsY + 48, 23, '#c9a97a');
-  ctx.textAlign = 'center'; write(ctx, 'Created with Inkbound', width / 2, height - 66, 18, '#bca4b7', 'Arial, sans-serif');
+  if (collectible) write(ctx, 'Every page is part of your story', width / 2, statsY + 40, 23, '#c9a97a');
+  ctx.textAlign = 'center'; write(ctx, 'Created with Inkbound', width / 2, height - 48, 18, '#bca4b7', 'Arial, sans-serif');
+  const missingCovers = [...covers.values()].filter(image => !image).length;
+  if (missingCovers) throw new Error(`${missingCovers} covers could not be embedded. Export cancelled rather than saving incomplete artwork.`);
   return new Promise<Blob>((resolve, reject) => {
     try { canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create calendar PNG.')), 'image/png'); }
     catch (error) { reject(error); }
