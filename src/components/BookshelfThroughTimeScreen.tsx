@@ -147,26 +147,6 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
     updatePreference('month', availableMonths[nextIndex]);
   };
 
-  const loadShelfCoverForExport = async (coverUrl?: string) => {
-    if (!coverUrl) return '';
-    const runtimeData = await fetchRuntimeMediaDataUrl(coverUrl);
-    if (runtimeData) return runtimeData;
-    if (typeof window === 'undefined') return '';
-    try {
-      const response = await fetch(coverUrl, { mode: 'cors', referrerPolicy: 'no-referrer' });
-      if (!response.ok) return '';
-      const blob = await response.blob();
-      return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result ?? ''));
-        reader.onerror = () => reject(reader.error ?? new Error('Could not read cover image.'));
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      return '';
-    }
-  };
-
   const createShelfPng = async () => {
     const width = 1600;
     const rowHeight = 225;
@@ -229,7 +209,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
 
     const coverData = await Promise.all(shelfBooks.map(async (book) => {
       const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-      const dataUrl = await loadShelfCoverForExport(edition?.coverUrl);
+      const dataUrl = edition?.coverUrl ? await fetchRuntimeMediaDataUrl(edition.coverUrl) : '';
       return { book, dataUrl };
     }));
 
