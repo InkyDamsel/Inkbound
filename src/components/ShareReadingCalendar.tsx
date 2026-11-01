@@ -4,6 +4,7 @@ import type { ReadingSession, UserBookRecord } from '../types';
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getSessionDurationMinutes, getSessionPagesRead, isRecordedReadingActivity } from '../features/reading/sessionAnalytics';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
+import { fetchRuntimeMediaDataUrl } from '../platform/runtimeMedia';
 
 type Style = 'classic' | 'collectible';
 type Format = 'square' | 'feed' | 'story';
@@ -14,22 +15,16 @@ const formatMinutes = (n: number) => `${Math.floor(n / 60)}h ${String(n % 60).pa
 const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date + 'T12:00:00'));
 const loadCanvasImage = (url: string): Promise<HTMLImageElement | null> => new Promise(resolve => {
   const image = new Image();
-  image.crossOrigin = 'anonymous';
   image.onload = () => resolve(image.naturalWidth && image.naturalHeight ? image : null);
   image.onerror = () => resolve(null);
   image.src = url;
 });
 const coverImage = async (url: string): Promise<HTMLImageElement | null> => {
   if (!/^(https?:\/\/|data:image\/|blob:|\/)/i.test(url)) return null;
-  const normalized = url.replace(/^http:\/\//i, 'https://');
-  const direct = await loadCanvasImage(normalized);
-  if (direct) return direct;
-  // The reading calendar can display cross-origin images that canvas cannot export.
-  // Request an optimized, CORS-enabled image only when the original host rejects canvas access.
-  // Never substitute another book's cover or change stored edition metadata.
-  if (!/^https:\/\//i.test(normalized)) return null;
-  const proxy = 'https://wsrv.nl/?url=' + encodeURIComponent(normalized) + '&output=png';
-  return loadCanvasImage(proxy);
+  // Use the same signed-in, App Check-protected media path as Bookshelf Through Time.
+  // It fetches CORS-safe bytes directly or through Inkbound's fetchShareImage function.
+  const dataUrl = await fetchRuntimeMediaDataUrl(url.replace(/^http:\/\//i, 'https://'));
+  return dataUrl ? loadCanvasImage(dataUrl) : null;
 };
 const rounded = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number) => {
   ctx.beginPath(); ctx.roundRect(x, y, w, h, radius);
