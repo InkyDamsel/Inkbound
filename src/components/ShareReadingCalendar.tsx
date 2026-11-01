@@ -44,7 +44,7 @@ const makePng = async (month: string, books: UserBookRecord[], sessions: Reading
     ctx.strokeStyle = '#b99b68'; ctx.lineWidth = 2; ctx.strokeRect(28, 28, width - 56, height - 56);
     ctx.strokeStyle = '#6e5268'; ctx.strokeRect(38, 38, width - 76, height - 76);
     ctx.save(); ctx.strokeStyle = '#c4a06d'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(width / 2, 175, 118, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+
     for (const [x, y] of [[76, 76], [width - 76, 76], [76, height - 76], [width - 76, height - 76]]) {
       ctx.beginPath(); ctx.moveTo(x - 14, y); ctx.lineTo(x + 14, y); ctx.moveTo(x, y - 14); ctx.lineTo(x, y + 14); ctx.stroke();
     }
