@@ -6,7 +6,7 @@ import { getSessionDurationMinutes, isRecordedReadingActivity } from '../feature
 import { getActiveEdition } from '../features/reading/bookReadingState';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
 import { getPreferredSavedQuote } from '../features/reading/bookQuotes';
-import { hasTrustworthyFinishedHistory } from '../features/reading/inkboundActivity';
+import { hasTrustworthyFinishedHistory, readingMonthKey } from '../features/reading/inkboundActivity';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
 
 interface MonthlyWrappedScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; }
@@ -49,8 +49,8 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
   const priorRange = monthRange(priorMonthKey);
   const monthSessions = sessions.filter((session) => session.date.startsWith(preferences.monthKey) && isValidSessionDate(session.date) && isRecordedReadingActivity(session));
   const priorSessions = sessions.filter((session) => session.date.startsWith(priorMonthKey) && isValidSessionDate(session.date) && isRecordedReadingActivity(session));
-  const finishedBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && book.dateFinished?.startsWith(preferences.monthKey));
-  const priorFinishedBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && book.dateFinished?.startsWith(priorMonthKey));
+  const finishedBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && readingMonthKey(book.dateFinished) === preferences.monthKey);
+  const priorFinishedBooks = books.filter((book) => hasTrustworthyFinishedHistory(book) && readingMonthKey(book.dateFinished) === priorMonthKey);
   const activeBookIds = new Set(monthSessions.map((session) => session.bookId));
   const activeBooks = books.filter((book) => activeBookIds.has(book.id));
 
