@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Repeat2, Share2, Sparkles } from 'lucide-react';
 import { ReadingSession, UserBookRecord } from '../types';
 import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
+import { getAverageBookRating } from '../features/reading/readingReportStats';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getEffectiveRereadCount } from '../features/reading/bookReadingState';
 import {
@@ -128,10 +129,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
   // Match Reading Wrapped: report pages read during this calendar month using
   // the canonical session/history calculation, not full edition page counts.
   const totalPages = getEffectivePagesReadForPeriod(books, sessions, monthStart, monthEnd);
-  const ratedBooks = shelfBooks.filter((book) => typeof book.rating === 'number' && book.rating > 0);
-  const averageRating = ratedBooks.length
-    ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length
-    : 0;
+  const averageRating = getAverageBookRating(shelfBooks) ?? 0;
   const highlightNew = preferences.highlightNew !== false;
   const showRereads = preferences.showRereads !== false;
   const themeBackgroundImage = themeBackgroundImages[preferences.theme];
