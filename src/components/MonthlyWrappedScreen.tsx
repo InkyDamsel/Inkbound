@@ -8,6 +8,7 @@ import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageT
 import { getPreferredSavedQuote } from '../features/reading/bookQuotes';
 import { hasTrustworthyFinishedHistory, readingMonthKey } from '../features/reading/inkboundActivity';
 import { exportRuntimeBinaryFile, shareRuntimeBinaryFile } from '../platform/runtimeExport';
+import { createPngZip } from '../features/export/createPngZip';
 
 interface MonthlyWrappedScreenProps { books: UserBookRecord[]; sessions: ReadingSession[]; }
 type WrappedTheme = 'quiet-library' | 'cozy-autumn' | 'celestial';
@@ -43,6 +44,7 @@ const formatMinutes = (minutes: number) => `${Math.floor(minutes / 60)}h ${Math.
 export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ books, sessions }) => {
   const [preferences, setPreferences] = usePersistentState<WrappedPreferences>(STORAGE_KEY, { monthKey: monthChoices[0].key, theme: 'quiet-library', format: 'portrait', currentCard: 0 });
   const [message, setMessage] = useState('');
+  const [exportingAll, setExportingAll] = useState(false);
   const selectedMonth = monthChoices.find((month) => month.key === preferences.monthKey) ?? monthChoices[0];
   const priorMonthKey = previousMonthKey(preferences.monthKey);
   const selectedRange = monthRange(preferences.monthKey);
@@ -146,7 +148,9 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     `<text x="${x}" y="${y + (index * lineHeight)}" ${attributes} font-size="${fontSize}">${escapeXml(line)}</text>`,
   ).join('');
 
-  const buildSvg = (backgroundDataUrl: string) => {
+  const buildSvg = (backgroundDataUrl: string, exportIndex = cardIndex) => {
+    const currentCard = cards[exportIndex];
+    const titleLength = currentCard.title.length;
     const width = format.width;
     const height = format.height;
     const centerX = width / 2;
@@ -212,7 +216,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
       <rect x="${centerX - contentWidth * 0.46}" y="${footerBoxY}" width="${contentWidth * 0.92}" height="${footerBoxHeight}" rx="${isSquare ? 18 : 22}" fill="#0f0e14" fill-opacity=".22" stroke="#ffffff" stroke-opacity=".11"/>
       ${svgTextLines(footerLines, centerX, footerTextY, footerSize, footerLineHeight, `text-anchor="middle" fill="${theme.text}" fill-opacity=".88" font-family="Arial, sans-serif"`)}
 
-      <text x="${centerX}" y="${bottomY}" text-anchor="middle" fill="${theme.accent}" font-family="Arial, sans-serif" font-size="${isSquare ? 16 : isStory ? 23 : 19}" font-weight="700">${cardIndex + 1} / ${cards.length} · Created with Inkbound</text>
+      <text x="${centerX}" y="${bottomY}" text-anchor="middle" fill="${theme.accent}" font-family="Arial, sans-serif" font-size="${isSquare ? 16 : isStory ? 23 : 19}" font-weight="700">${exportIndex + 1} / ${cards.length} · Created with Inkbound</text>
     </svg>`;
   };
 
@@ -231,9 +235,9 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     return blobToDataUrl(await response.blob());
   };
 
-  const createPngFile = async () => {
-    const backgroundDataUrl = await loadWrappedBackground();
-    const svgBlob = new Blob([buildSvg(backgroundDataUrl)], { type: 'image/svg+xml;charset=utf-8' });
+  const createPngFile = async (exportIndex = cardIndex, cachedBackground?: string) => {
+    const backgroundDataUrl = cachedBackground ?? await loadWrappedBackground();
+    const svgBlob = new Blob([buildSvg(backgroundDataUrl, exportIndex)], { type: 'image/svg+xml;charset=utf-8' });
     const svgUrl = URL.createObjectURL(svgBlob);
     try {
       const image = new window.Image();
@@ -261,7 +265,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
 
       return new File(
         [pngBlob],
-        `inkbound-${preferences.monthKey}-wrapped-${cardIndex + 1}.png`,
+        `inkbound-${preferences.monthKey}-wrapped-${exportIndex + 1}.png`,
         { type: 'image/png' },
       );
     } finally {
@@ -269,6 +273,20 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
     }
   };
   const downloadCurrent = async () => { try { const file = await createPngFile(); await exportRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file }); setMessage('Wrapped card saved.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Save failed.'); } };
+  const downloadAll = async () => {
+    if (exportingAll) return;
+    setExportingAll(true);
+    setMessage('Preparing all 7 Wrapped cards…');
+    try {
+      const background = await loadWrappedBackground();
+      const files: File[] = [];
+      for (let index = 0; index < cards.length; index++) files.push(await createPngFile(index, background));
+      const zip = await createPngZip(files);
+      await exportRuntimeBinaryFile({ filename: `inkbound-${preferences.monthKey}-wrapped-all-cards.zip`, mimeType: 'application/zip', contents: zip });
+      setMessage('All 7 Wrapped cards saved in one ZIP.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not export all cards.'); }
+    finally { setExportingAll(false); }
+  };
   const shareCurrent = async () => { try { const file = await createPngFile(); const result = await shareRuntimeBinaryFile({ filename: file.name, mimeType: 'image/png', contents: file, title: `${selectedMonth.label} Reading Wrapped`, text: 'Made with Inkbound' }); setMessage(result === 'shared' ? 'Share sheet opened.' : 'Sharing is unavailable here, so the card was saved instead.'); } catch (error) { setMessage(error instanceof Error ? error.message : 'Sharing was cancelled.'); } };
   const dayChange = stats.changes.days;
 
@@ -280,7 +298,7 @@ export const MonthlyWrappedScreen: React.FC<MonthlyWrappedScreenProps> = ({ book
       <div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Theme</p><div className="mt-2 grid gap-2">{(Object.entries(themeOptions) as [WrappedTheme, (typeof themeOptions)[WrappedTheme]][]).map(([id, option]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, theme: id }))} className={`inkbound-themed-preview-swatch min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.theme === id ? 'border-[var(--ink-gold)]' : 'border-[var(--ink-border)]'}`} style={{ '--preview-theme-background': option.background, '--preview-theme-text': option.text, '--preview-theme-accent': option.accent } as React.CSSProperties}>{option.label}</button>)}</div></div>
       <div><p className="text-sm font-semibold text-[var(--ink-ivory)]">Export size</p><div className="mt-2 grid gap-2">{(Object.entries(formatOptions) as [WrappedFormat, (typeof formatOptions)[WrappedFormat]][]).map(([id, option]) => <button key={id} type="button" onClick={() => setPreferences((current) => ({ ...current, format: id }))} className={`min-h-11 rounded-xl border px-4 text-left text-sm font-semibold ${preferences.format === id ? 'border-[var(--ink-gold)] bg-[var(--ink-surface-soft)] text-[var(--ink-ivory)]' : 'border-[var(--ink-border)] text-[var(--ink-muted)]'}`}>{option.label}</button>)}</div></div>
       <div className="rounded-2xl border border-[var(--ink-border-subtle)] p-4"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">This Wrapped contains</p><p className="mt-2 text-sm leading-6 text-[var(--ink-ivory)]">7 personalized cards covering totals, momentum, rhythm, taste, standout read, format mix and a saved reading memory.</p></div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"><button type="button" onClick={() => void shareCurrent()} className="quiet-shelf-primary-action min-h-12 justify-center"><Share2 className="h-4 w-4" /> Share</button><button type="button" onClick={() => void downloadCurrent()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Save PNG</button></div>{message && <p role="status" className="text-sm text-[var(--ink-muted)]">{message}</p>}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"><button type="button" onClick={() => void shareCurrent()} className="quiet-shelf-primary-action min-h-12 justify-center"><Share2 className="h-4 w-4" /> Share</button><button type="button" onClick={() => void downloadCurrent()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> Save This Card</button><button type="button" disabled={exportingAll} onClick={() => void downloadAll()} className="quiet-shelf-secondary-action min-h-12 justify-center"><Download className="h-4 w-4" /> {exportingAll ? "Preparing ZIP…" : "Save All 7 Cards (ZIP)"}</button></div>{message && <p role="status" className="text-sm text-[var(--ink-muted)]">{message}</p>}
     </section>
     <section className="inkbound-panel flex min-h-[620px] flex-col items-center justify-center rounded-3xl p-4 sm:p-8"><div className="mb-4 flex w-full max-w-[620px] items-center justify-between"><button type="button" onClick={() => changeCard(cardIndex - 1)} className="quiet-shelf-icon-button h-11 w-11" aria-label="Previous Wrapped card"><ChevronLeft /></button><span className="text-xs font-semibold text-[var(--ink-muted)]">Card {cardIndex + 1} of {cards.length}</span><button type="button" onClick={() => changeCard(cardIndex + 1)} className="quiet-shelf-icon-button h-11 w-11" aria-label="Next Wrapped card"><ChevronRight /></button></div>
       <div className={`inkbound-themed-preview relative flex w-full max-w-[620px] flex-col justify-between overflow-hidden rounded-[32px] border border-white/20 text-center shadow-2xl ${previewCardPadding}`} style={{ aspectRatio: `${format.width} / ${format.height}`, background: previewBackground, color: theme.text, '--preview-theme-text': theme.text, boxShadow: '0 30px 80px rgba(0,0,0,.42), inset 0 0 80px rgba(0,0,0,.18)' } as React.CSSProperties}><div><p className="text-[10px] font-bold uppercase tracking-[0.35em] sm:text-xs sm:tracking-[0.4em]" style={{ color: theme.accent }}>Inkbound</p><p className={`${isSquare ? 'mt-2' : isStory ? 'mt-4' : 'mt-3'} text-[10px] font-bold uppercase tracking-[0.18em] opacity-80 sm:text-xs sm:tracking-[0.23em]`}>{currentCard.eyebrow}</p></div><div className="flex flex-1 flex-col items-center justify-center py-3 sm:py-5"><Sparkles className={`${isSquare ? 'mb-3 h-6 w-6' : isStory ? 'mb-8 h-10 w-10' : 'mb-4 h-7 w-7'} mx-auto drop-shadow`} style={{ color: theme.accent }} /><h2 className={`font-serif font-bold leading-[1.08] drop-shadow-lg ${previewTitleClass}`}>{currentCard.title}</h2><p className={`mx-auto max-w-xl opacity-90 drop-shadow ${previewBodyClass}`}>{currentCard.body}</p><div className={`mx-auto max-w-xl rounded-2xl border border-white/10 bg-black/[0.12] px-4 py-3 backdrop-blur-[2px] shadow-[0_8px_24px_rgba(0,0,0,0.12)] ${previewFooterClass}`}>{currentCard.footer}</div></div><p className={`${isSquare ? 'text-[10px]' : 'text-xs'} font-semibold drop-shadow`} style={{ color: theme.accent }}>{cardIndex + 1} / {cards.length} · Created with Inkbound</p></div>
