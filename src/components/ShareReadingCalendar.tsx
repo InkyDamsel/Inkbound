@@ -12,16 +12,24 @@ const formats: Record<Format, [number, number]> = { square: [1200, 1200], feed: 
 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const formatMinutes = (n: number) => `${Math.floor(n / 60)}h ${String(n % 60).padStart(2, '0')}m`;
 const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date + 'T12:00:00'));
+const loadCanvasImage = (url: string): Promise<HTMLImageElement | null> => new Promise(resolve => {
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => resolve(image.naturalWidth && image.naturalHeight ? image : null);
+  image.onerror = () => resolve(null);
+  image.src = url;
+});
 const coverImage = async (url: string): Promise<HTMLImageElement | null> => {
   if (!/^(https?:\/\/|data:image\/|blob:|\/)/i.test(url)) return null;
-  const image = new Image();
-  if (!url.startsWith('data:') && !url.startsWith('blob:')) image.crossOrigin = 'anonymous';
-  image.referrerPolicy = 'no-referrer';
-  return new Promise((resolve) => {
-    image.onload = () => resolve(image);
-    image.onerror = () => resolve(null);
-    image.src = url.replace(/^http:\/\//i, 'https://');
-  });
+  const normalized = url.replace(/^http:\/\//i, 'https://');
+  const direct = await loadCanvasImage(normalized);
+  if (direct) return direct;
+  // The reading calendar can display cross-origin images that canvas cannot export.
+  // Request an optimized, CORS-enabled image only when the original host rejects canvas access.
+  // Never substitute another book's cover or change stored edition metadata.
+  if (!/^https:\/\//i.test(normalized)) return null;
+  const proxy = 'https://wsrv.nl/?url=' + encodeURIComponent(normalized) + '&output=png';
+  return loadCanvasImage(proxy);
 };
 const rounded = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number) => {
   ctx.beginPath(); ctx.roundRect(x, y, w, h, radius);
