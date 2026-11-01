@@ -16,7 +16,8 @@ export async function createPngZip(files: readonly File[]): Promise<Blob> {
   };
   for (const file of files) {
     const name = encoder.encode(file.name);
-    const data = new Uint8Array(await file.arrayBuffer());
+    const fileBuffer = await file.arrayBuffer();
+    const data = new Uint8Array(fileBuffer);
     const checksum = crc32(data);
     const local = new ArrayBuffer(30 + name.length);
     const lh = new DataView(local);
@@ -24,7 +25,7 @@ export async function createPngZip(files: readonly File[]): Promise<Blob> {
     u32(lh, 14, checksum); u32(lh, 18, data.length); u32(lh, 22, data.length);
     u16(lh, 26, name.length);
     new Uint8Array(local, 30).set(name);
-    parts.push(local, data);
+    parts.push(local, fileBuffer);
     const central = new ArrayBuffer(46 + name.length);
     const ch = new DataView(central);
     u32(ch, 0, 0x02014b50); u16(ch, 4, 20); u16(ch, 6, 20); u16(ch, 8, 0x0800);
