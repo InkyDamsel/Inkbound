@@ -66,8 +66,8 @@ assert.equal(
 
 const ropedPromo=['USA TODAY BESTSELLING AUTHOR OF BRANDED','SAFFRON A. KENT','ONCE HE HUNTS HER DOWN','HE\'S NEVER LETTING HER GO','ROPED'];
 const ropedClean=stripCoverPromoLines(ropedPromo);
-assert.equal(coverMatchesWork(ropedPromo,'Branded',['Saffron A. Kent']),true,
-  'Raw OCR demonstrates why promo text must never be used as identity proof.');
+assert.equal(coverMatchesWork(ropedPromo,'Branded',['Saffron A. Kent']),false,
+  'Defense in depth: even UNSTRIPPED promo copy ("AUTHOR OF BRANDED") is not title-shaped evidence.');
 assert.equal(coverMatchesWork(ropedClean,'Branded',['Saffron A. Kent']),false,
   'A previous title named only in author promo copy must not verify as the photographed book.');
 assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
@@ -299,5 +299,24 @@ assert.equal(coverMatchesWork(['DEVOURED','JORDAN STEPHANIE GRAY'], 'Devour', ['
 const liveReign2 = liveRank(['HER MAGIC S A DEATH SENT','REIGN','BET H AN','CRO ME','HER MAGIC IS A DEATH','R REIGN','BETH AN','GRO) ME','HER','BETH A N','CR O ME','BETHAN','CROME']);
 assert.deepEqual(liveReign2.titles, ['reign'], 'Reign: "R REIGN" must collapse to the printed title.');
 assert.equal(coverApproximatelyMatchesWork(liveReign2.lines, 'Reign', ['Bethan Croome']), true);
+
+
+// Audit 2026-11: title evidence must be title-shaped. Review blurbs, series lines and
+// taglines that merely CONTAIN a catalog title must not verify that sibling work.
+const devouredAudit = stripCoverPromoLines([
+  'NEW YORK TIMES BESTSELLING AUTHOR OF BITTEN', 'JORDAN STEPHANIE GRAY', 'DEVOURED',
+  '"Luminous and', 'exhilarating....', '[Bitten is] a romance', 'that sizzles."',
+  '\u2014REBECCA ROSS,', '#1 New York Times', 'bestselling author', 'of Divine Rivals',
+]).map((line) => line.replace(/[^a-zA-Z\s\'-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+assert.equal(coverMatchesWork(devouredAudit, 'Bitten', ['Jordan Stephanie Gray']), false,
+  'A sibling named only inside a review blurb must not verify as the photographed book.');
+assert.equal(coverMatchesWork(devouredAudit, 'Devoured', ['Jordan Stephanie Gray']), true,
+  'The photographed Devoured must still verify.');
+const neroAudit = ['THE ALLIANCE SERIES', 'A DARK MAFIA ROMANCE', 'S J TILLY', 'NERO'];
+assert.equal(coverMatchesWork(neroAudit, 'The Alliance', ['S.J. Tilly']), false,
+  'A series banner is not the photographed title.');
+assert.equal(coverMatchesWork(neroAudit, 'Nero', ['S.J. Tilly']), true);
+assert.equal(coverMatchesWork(['FOURTH WING', 'REBECCA YARROS', 'THE EMPYREAN SERIES'], 'The Empyrean', ['Rebecca Yarros']), false,
+  'Series copy must not verify a work titled after the series.');
 
 console.log('Inkbound scanner cover regressions passed.');
