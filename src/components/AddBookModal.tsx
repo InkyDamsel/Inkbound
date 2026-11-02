@@ -1,8 +1,5 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
 
-// Vite production builds run inside Android debug APKs too. Scanner diagnostics
-// are opt-in for test bundles, and the release verifier rejects their strings.
-const SCANNER_DEBUG_ENABLED = import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { ArrowLeft, BookOpen, Camera, Check, Loader2, ScanLine, Search, Trash2, UserRound, X } from 'lucide-react';
@@ -46,6 +43,10 @@ import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingSta
 import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 import { diagnoseNativeAppCheckFailure } from '../platform/runtimeNativeAppCheck';
+
+// Vite production builds run inside Android debug APKs too. Scanner diagnostics
+// are opt-in for test bundles, and the release verifier rejects their strings.
+const SCANNER_DEBUG_ENABLED = import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug';
 
 interface AddBookModalProps {
   currentBookCount: number;
