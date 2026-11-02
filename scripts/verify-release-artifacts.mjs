@@ -123,6 +123,25 @@ checks.push({
     && addBookSource.includes('import.meta.env.DEV && scannerDetails && <details'),
   message: 'scanner and catalog diagnostic panels must be dev-only',
 });
+// Release firewall (bundle level): source-text checks above cannot prove what actually
+// shipped. Scan the BUILT JavaScript for strings that only exist in development
+// diagnostics or development builds. A dev-flag regression, a stray ungated
+// console.error(diagnostic), or a build made with NODE_ENV=development fails here.
+const productionForbiddenStrings = [
+  '[Inkbound scanner] ISBN lookup',
+  '[Inkbound scanner] Cover identification failed',
+  'Scanner details',
+  'native App Check token',
+  'App Check debug token',
+  'Download the React DevTools for a better development experience',
+];
+const leakedDiagnostics = productionForbiddenStrings.filter((value) => builtJavaScript.includes(value));
+checks.push({
+  ok: builtJavaScript.length > 0 && leakedDiagnostics.length === 0,
+  message: builtJavaScript.length === 0
+    ? 'production bundle JavaScript was not found in dist/assets; build before verifying artifacts'
+    : `production bundle contains development-only diagnostics or a development build: ${leakedDiagnostics.join(' | ')}`,
+});
 const failures = checks.filter((check) => !check.ok).map((check) => check.message);
 if (failures.length > 0) {
   console.error('Inkbound release artifact verification failed:');
