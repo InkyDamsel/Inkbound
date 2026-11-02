@@ -1,3 +1,4 @@
+import { tagIdentity, uniquePrivateTags } from '../../features/library/privateTags';
 import React, { useMemo, useState } from 'react';
 import { Pencil, Tag, Trash2, X } from 'lucide-react';
 import { replaceCanonicalLibrary } from '../../features/library/libraryMutations';
@@ -15,7 +16,7 @@ interface TagSummary {
   count: number;
 }
 
-const normalizeTag = (value: string) => value.trim().toLocaleLowerCase();
+const normalizeTag = tagIdentity;
 // Read the canonical working copy at click time, not a possibly stale React prop.
 const currentLibrary = (fallback: UserBookRecord[]): UserBookRecord[] =>
   readRuntimeJson<UserBookRecord[]>(SYNC_STORAGE_KEYS.books, fallback);
@@ -55,7 +56,7 @@ export const TagManager: React.FC<TagManagerProps> = ({ books }) => {
       const currentTags = book.privateTags ?? [];
       if (!currentTags.some((tag) => normalizeTag(tag) === oldNormalized)) return book;
       const renamed = currentTags.map((tag) => normalizeTag(tag) === oldNormalized ? nextName : tag);
-      const deduped = renamed.filter((tag, index, all) => all.findIndex((candidate) => normalizeTag(candidate) === normalizeTag(tag)) === index);
+      const deduped = uniquePrivateTags(renamed);
       return { ...book, privateTags: deduped };
     });
 
