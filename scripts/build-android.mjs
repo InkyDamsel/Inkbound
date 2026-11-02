@@ -19,7 +19,13 @@ const env = {
   VITE_RUNTIME_TARGET: 'android',
 };
 
-const result = spawnSync('npm', ['run', 'build'], {
+// A native debug APK still embeds a Vite production bundle by default.
+// The explicit scanner test path uses its own Vite mode; standard builds remain clean.
+const scannerDebug = process.argv.includes('--scanner-debug');
+const buildArgs = scannerDebug
+  ? ['run', 'build:scanner-debug']
+  : ['run', 'build'];
+const result = spawnSync('npm', buildArgs, {
   stdio: 'inherit',
   shell: process.platform === 'win32',
   env,
@@ -41,4 +47,6 @@ if (browserGoogleBooksKey) {
   }
 }
 
-console.log('Inkbound Android web bundle built without the web-only Google Books API key.');
+console.log(scannerDebug
+  ? 'Inkbound Android scanner-debug bundle built without the web-only Google Books API key (testing only).'
+  : 'Inkbound Android web bundle built without the web-only Google Books API key.');
