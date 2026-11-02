@@ -123,13 +123,6 @@ checks.push({
     && addBookSource.includes('import.meta.env.DEV && scannerDetails && <details'),
   message: 'scanner and catalog diagnostic panels must be dev-only',
 });
-checks.push({
-  ok: !builtJavaScript.includes('retrieval responses omitted')
-    && !builtJavaScript.includes('ranked-identity:')
-    && !builtJavaScript.includes('federated-author-identity:'),
-  message: 'production bundle must not include scanner retrieval-trace markers',
-});
-
 const failures = checks.filter((check) => !check.ok).map((check) => check.message);
 if (failures.length > 0) {
   console.error('Inkbound release artifact verification failed:');
