@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { ShareReadingCalendar } from './ShareReadingCalendar';
 import {
   BookOpen,
   CalendarDays,
@@ -193,6 +194,8 @@ export const ReadingActivityOverview: React.FC<ReadingActivityOverviewProps> = (
         </div>
         {monthlyStats.longestSession > 0 && <p className="mt-4 text-xs text-[var(--ink-muted)]">Longest session this month: <strong className="text-[var(--ink-ivory)]">{formatMinutes(monthlyStats.longestSession)}</strong></p>}
       </section>
+
+      <ShareReadingCalendar month={visibleMonth} books={books} sessions={trackerSessions} />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="inkbound-panel rounded-3xl p-3 sm:p-6">
