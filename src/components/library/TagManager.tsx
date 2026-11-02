@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Pencil, Tag, Trash2, X } from 'lucide-react';
 import { replaceCanonicalLibrary } from '../../features/library/libraryMutations';
+import { readRuntimeJson } from '../../platform/runtimeStorage';
+import { SYNC_STORAGE_KEYS } from '../../features/sync/storageKeys';
 import type { UserBookRecord } from '../../types';
 
 interface TagManagerProps {
@@ -14,6 +16,9 @@ interface TagSummary {
 }
 
 const normalizeTag = (value: string) => value.trim().toLocaleLowerCase();
+// Read the canonical working copy at click time, not a possibly stale React prop.
+const currentLibrary = (fallback: UserBookRecord[]): UserBookRecord[] =>
+  readRuntimeJson<UserBookRecord[]>(SYNC_STORAGE_KEYS.books, fallback);
 
 export const TagManager: React.FC<TagManagerProps> = ({ books }) => {
   const [editingTag, setEditingTag] = useState<string | null>(null);
@@ -46,7 +51,7 @@ export const TagManager: React.FC<TagManagerProps> = ({ books }) => {
       return;
     }
 
-    const nextBooks = books.map((book) => {
+    const nextBooks = currentLibrary(books).map((book) => {
       const currentTags = book.privateTags ?? [];
       if (!currentTags.some((tag) => normalizeTag(tag) === oldNormalized)) return book;
       const renamed = currentTags.map((tag) => normalizeTag(tag) === oldNormalized ? nextName : tag);
@@ -54,7 +59,10 @@ export const TagManager: React.FC<TagManagerProps> = ({ books }) => {
       return { ...book, privateTags: deduped };
     });
 
-    replaceCanonicalLibrary(nextBooks);
+    if (!replaceCanonicalLibrary(nextBooks)) {
+      setMessage('Could not save the tag rename. No changes were confirmed. Please retry.');
+      return;
+    }
     setEditingTag(null);
     setEditingName('');
     setMessage(nextNormalized === oldNormalized ? `Updated tag capitalization to “${nextName}”.` : `Renamed tag to “${nextName}” everywhere.`);
@@ -63,11 +71,14 @@ export const TagManager: React.FC<TagManagerProps> = ({ books }) => {
   const confirmDelete = () => {
     if (!deletingTag) return;
     const summary = tags.find((tag) => tag.normalized === deletingTag);
-    const nextBooks = books.map((book) => ({
+    const nextBooks = currentLibrary(books).map((book) => ({
       ...book,
       privateTags: (book.privateTags ?? []).filter((tag) => normalizeTag(tag) !== deletingTag),
     }));
-    replaceCanonicalLibrary(nextBooks);
+    if (!replaceCanonicalLibrary(nextBooks)) {
+      setMessage('Could not save tag removal. No changes were confirmed. Please retry.');
+      return;
+    }
     setDeletingTag(null);
     setMessage(`Removed “${summary?.name ?? 'tag'}” from ${summary?.count ?? 0} ${(summary?.count ?? 0) === 1 ? 'book' : 'books'}.`);
   };
