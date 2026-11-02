@@ -479,7 +479,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           }
           // Customer-facing copy: no build/debug-token instructions in production.
           setScannerError(import.meta.env.DEV
-            ? `ISBN ${isbn} is valid, but Inkbound could not verify this test build with Firebase App Check, so protected catalog providers may be unavailable. If this is an Android debug build, register its App Check debug token in Firebase, then retry. Your scanned ISBN is retained.`
+            ? `ISBN ${isbn} is valid, but Inkbound could not verify this test build with Firebase App Check, so protected catalog providers may be unavailable. In development, check the App Check diagnostic panel and Firebase configuration before retrying. Your scanned ISBN is retained.`
             : `ISBN ${isbn} is valid, but Inkbound could not reach its book catalogs right now. Please try again in a moment, or use Scan Cover Instead. Your scanned ISBN is retained.`);
           return;
         }
