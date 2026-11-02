@@ -7,7 +7,6 @@ import {
   Clock3,
   MessageSquareText,
   NotebookPen,
-  Plus,
   Quote,
   Search,
   Sparkles,
@@ -363,9 +362,6 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
             A living journal generated from your books and sessions, with space for the memories only you can tell.
           </p>
         </div>
-        <button type="button" onClick={() => setIsMemoryOpen(true)} className="quiet-shelf-primary-action w-full justify-center px-5 sm:w-auto">
-          <Plus className="h-4 w-4" /> Add Memory
-        </button>
       </header>
 
       <section className="inkbound-panel rounded-3xl p-4 sm:p-5">
