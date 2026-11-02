@@ -1,3 +1,4 @@
+import { uniquePrivateTags } from '../library/privateTags';
 import type { ImportRecordItem, ReadingStatus, UserBookRecord } from '../../types';
 import { readSeriesOverrides, SERIES_OVERRIDES_STORAGE_KEY, makeSeriesOverrideId, type SeriesOverrides } from '../series/seriesOverrides';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
@@ -176,7 +177,7 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
     rating: existing.rating ?? item.rating,
     spiceLevel: existing.spiceLevel ?? item.spiceLevel,
     review: existing.review?.trim() ? existing.review : item.review,
-    privateTags: mergeUnique(existing.privateTags, importedTags),
+    privateTags: uniquePrivateTags(mergeUnique(existing.privateTags, importedTags)),
     collections: mergeUnique(existing.collections, [...sourceCollections, ...optionalShelfCollections]),
     dateFinished: existing.dateFinished || (status === 'finished' ? incomingDateFinished : undefined),
     importFinishedDateProvided: existing.importFinishedDateProvided || Boolean(existing.dateFinished || incomingDateFinished),
@@ -196,7 +197,7 @@ export function applyImportExtrasToNewBook(book: UserBookRecord, item: ImportRec
       seriesOrder: book.work.seriesOrder ?? item.seriesOrder,
     },
     spiceLevel: book.spiceLevel ?? item.spiceLevel,
-    privateTags: mergeUnique(book.privateTags, importedTags),
+    privateTags: uniquePrivateTags(mergeUnique(book.privateTags, importedTags)),
     collections: mergeUnique(book.collections, [...sourceCollections, ...optionalShelfCollections]),
   };
 }
