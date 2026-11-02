@@ -159,7 +159,6 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
   }
 
   const shelfTags = splitImportedList(item.sourceShelves);
-  const importedTags = mergeUnique(splitImportedList(item.tags), shelfTags);
   const sourceCollections = splitImportedList(item.sourceCollections);
   const optionalShelfCollections = item.importShelvesAsCollections ? shelfTags : [];
 
@@ -177,7 +176,9 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
     rating: existing.rating ?? item.rating,
     spiceLevel: existing.spiceLevel ?? item.spiceLevel,
     review: existing.review?.trim() ? existing.review : item.review,
-    privateTags: uniquePrivateTags(mergeUnique(existing.privateTags, importedTags)),
+    // A re-import cannot distinguish an intentionally deleted tag from a missing one.
+    // Preserve the reader's current tags; do not resurrect source tags or shelves.
+    privateTags: uniquePrivateTags(existing.privateTags ?? []),
     collections: mergeUnique(existing.collections, [...sourceCollections, ...optionalShelfCollections]),
     dateFinished: existing.dateFinished || (status === 'finished' ? incomingDateFinished : undefined),
     importFinishedDateProvided: existing.importFinishedDateProvided || Boolean(existing.dateFinished || incomingDateFinished),
