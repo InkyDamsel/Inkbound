@@ -75,6 +75,16 @@ export const equivalentCatalogIsbns = (value: string): string[] => {
   return [...results];
 };
 
+/** True when two batch keys identify the same printed ISBN. An ISBN-10 and its
+ * 978 ISBN-13 are one identity; non-ISBN keys ("catalog:...") compare exactly. */
+export const sameCatalogIsbn = (left: string, right: string): boolean => {
+  if (left === right) return true;
+  const leftFamily = equivalentCatalogIsbns(left);
+  if (leftFamily.length === 0) return false;
+  const rightFamily = new Set(equivalentCatalogIsbns(right));
+  return leftFamily.some((isbn) => rightFamily.has(isbn));
+};
+
 /** ISBN lookup must retain exact editions from every provider, even when an
  * earlier provider returned an unrelated or incomplete work. */
 export const combineIsbnProviderGroups = (providers: BookSearchWorkGroup[][]): BookSearchWorkGroup[] =>
