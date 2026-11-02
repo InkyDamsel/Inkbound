@@ -1,3 +1,4 @@
+import { tagIdentity, uniquePrivateTags } from '../features/library/privateTags';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BookOpen } from 'lucide-react';
@@ -65,7 +66,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
   );
   const availableTags = useMemo(() => {
     const books = readRuntimeJson<UserBookRecord[]>(SYNC_STORAGE_KEYS.books, []);
-    return [...new Set(books.flatMap((item) => item.privateTags ?? []).map((tag) => tag.trim()).filter(Boolean))]
+    return uniquePrivateTags(books.flatMap((item) => item.privateTags ?? []))
       .sort((a, b) => a.localeCompare(b));
   }, [normalizedBook?.id, normalizedBook?.privateTags?.join('|')]);
 
@@ -151,7 +152,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
 
   const addExistingTag = (tag: string) => {
     if (!normalizedBook || !tag) return;
-    const nextTags = [...new Set([...(normalizedBook.privateTags ?? []), tag])];
+    const nextTags = uniquePrivateTags([...(normalizedBook.privateTags ?? []), tag]);
     handleUpdateBook({ ...normalizedBook, privateTags: nextTags });
   };
 
@@ -197,7 +198,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = (props) => {
         >
           <option value="">Add an existing tag…</option>
           {availableTags
-            .filter((tag) => !(normalizedBook.privateTags ?? []).includes(tag))
+            .filter((tag) => !(normalizedBook.privateTags ?? []).some((existing) => tagIdentity(existing) === tagIdentity(tag)))
             .map((tag) => <option key={tag} value={tag}>{tag}</option>)}
         </select>,
         tagPickerTarget,
