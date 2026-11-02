@@ -263,7 +263,7 @@ const liveClean = (raw: string[]) => raw
   .filter((line) => !/(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\s*[:#]|book club edition|^a novel$)/i.test(line));
 const liveRank = (raw: string[]) => {
   const lines = liveClean(raw);
-  const authors = rankAuthorHints(lines, [...lines.filter((line) => { const words = line.trim().split(/\s+/); return words.length >= 2 && words.length <= 4 && !isDemotedCoverTitleLine(line); }), ...coverAuthorQueries(lines, 24)]).slice(0, 12);
+  const authors = rankAuthorHints(lines, [...lines.filter((line) => { const words = line.trim().split(/\s+/); return words.length >= 2 && words.length <= 4 && !isDemotedCoverTitleLine(line); }), ...coverAuthorQueries(lines, 24)]).map((hint) => hint.toLowerCase()).slice(0, 12);
   return { lines, authors, titles: coverTitleEvidenceHints(lines, authors) };
 };
 
