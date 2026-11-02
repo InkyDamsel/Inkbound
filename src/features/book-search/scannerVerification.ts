@@ -92,6 +92,25 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
     .map((count) => compactLineTitles.slice(index, index + count))
     .filter((parts) => parts.length > 0 && parts.length <= 3)
     .map((parts) => parts.join('')));
+  // Title evidence must be TITLE-SHAPED. A catalog title that merely appears
+  // inside review copy, a tagline, series/genre text, or a promo line is not
+  // the photographed title (the DEVOURED cover prints "[Bitten is] a romance
+  // that sizzles", which previously verified the unrelated sibling "Bitten").
+  // A line is title-shaped when it is not demoted cover copy and is no more
+  // than two tokens longer than the catalog title; split decorative titles may
+  // span up to three adjacent title-shaped lines.
+  const titleShapedLine = (line: string): boolean => {
+    const count = words(line).length;
+    return count > 0 && count <= titleWords.length + 2 && !isDemotedCoverTitleLine(line);
+  };
+  const titleShapedRuns = lines.flatMap((_line, index) => [1, 2, 3]
+    .map((count) => lines.slice(index, index + count))
+    .filter((parts) => parts.every(titleShapedLine)
+      && parts.reduce((total, part) => total + words(part).length, 0) <= titleWords.length + 3)
+    .map((parts) => parts.map((part) => words(part).join('')).join('')));
+  if (!titleShapedRuns.some((run) => run.includes(compactTitle) || (significant.length === 1 && run.includes(significant[0])))) {
+    return false;
+  }
   const titleVerified = significant.length === 1
     ? allSignificantPresent
     : coherentTitleRuns.some((line) => line.includes(compactTitle));
