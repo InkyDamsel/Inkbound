@@ -20,7 +20,7 @@ import {
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
 import { coverAuthorQueries, coverTitleEvidenceHints, damagedTitleFragments, rankAuthorHints, splitTitleRunQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines, titleAuthorPartQueries, titleSurnameRecoveryQueries } from '../features/book-search/coverTextAnalysis';
-import { collectPrintedIsbnEvidence, isValidCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
+import { collectPrintedIsbnEvidence, isValidCatalogIsbn, sameCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
 import type { BookSearchEdition, BookSearchWorkGroup } from '../features/book-search/model/bookSearch';
@@ -451,7 +451,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       if (isbn) setScannerError('This barcode is not a valid ISBN-10 or ISBN-13. Check for a separate ISBN barcode; UPC product codes cannot identify a book edition.');
       return;
     }
-    if (scannedBooks.some((item) => item.isbn === isbn)) {
+    if (scannedBooks.some((item) => sameCatalogIsbn(item.isbn, isbn))) {
       setScannerMessage('That ISBN is already in this scan batch.');
       setScannerError(null);
       return;
@@ -473,12 +473,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setScannerRecoveryAuthor('');
         const appCheckError = await diagnoseNativeAppCheckFailure();
         if (appCheckError) {
-          console.warn('Scanner catalog lookup could not obtain a native App Check token.', appCheckError);
-          setScannerDetails(`[Inkbound scanner] ISBN lookup blocked by Firebase App Check\nISBN: ${isbn}\nApp Check: ${appCheckError instanceof Error ? appCheckError.message : String(appCheckError)}`);
-          setScannerError(`ISBN ${isbn} is valid, but Inkbound could not verify this test build with Firebase App Check, so protected catalog providers may be unavailable. If this is an Android debug build, register its App Check debug token in Firebase, then retry. Your scanned ISBN is retained.`);
+          if (import.meta.env.DEV) {
+            console.warn('Scanner catalog lookup could not obtain a native App Check token.', appCheckError);
+            setScannerDetails(`[Inkbound scanner] ISBN lookup blocked by Firebase App Check\nISBN: ${isbn}\nApp Check: ${appCheckError instanceof Error ? appCheckError.message : String(appCheckError)}`);
+          }
+          // Customer-facing copy: no build/debug-token instructions in production.
+          setScannerError(import.meta.env.DEV
+            ? `ISBN ${isbn} is valid, but Inkbound could not verify this test build with Firebase App Check, so protected catalog providers may be unavailable. If this is an Android debug build, register its App Check debug token in Firebase, then retry. Your scanned ISBN is retained.`
+            : `ISBN ${isbn} is valid, but Inkbound could not reach its book catalogs right now. Please try again in a moment, or use Scan Cover Instead. Your scanned ISBN is retained.`);
           return;
         }
-        setScannerDetails(`[Inkbound scanner] ISBN lookup returned no verified edition\nISBN: ${isbn}\nApp Check diagnostic: no native App Check error detected\nThe ISBN is retained so cover/title recovery cannot overwrite the physical edition identity.`);
+        if (import.meta.env.DEV) setScannerDetails(`[Inkbound scanner] ISBN lookup returned no verified edition\nISBN: ${isbn}\nApp Check diagnostic: no native App Check error detected\nThe ISBN is retained so cover/title recovery cannot overwrite the physical edition identity.`);
         setScannerError(`ISBN ${isbn} is valid, but no catalog returned a verified edition. Try Scan Cover Instead to identify the book, or enter its title below. Your scanned ISBN is retained.`);
         return;
       }
@@ -533,14 +538,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
   const chooseScannerAlternative = (work: BookSearchWorkGroup, edition: BookSearchEdition) => {
     const chosenIsbn = scannerEditionKey(edition);
-    if (scannedBooks.some((item) => item.isbn === chosenIsbn)) return;
+    if (scannedBooks.some((item) => sameCatalogIsbn(item.isbn, chosenIsbn))) return;
     const book = createBookFromSearchEdition({ work, edition, status: 'tbr' });
     if (!hasIdentifiedBook(book)) return;
     const persistedKey = book.editions.find((item) => item.id === book.activeEditionId);
     const batchKey = persistedKey?.isbn13 ?? persistedKey?.isbn10 ?? persistedKey?.isbn
       ?? (persistedKey?.externalSource && persistedKey.externalEditionId
         ? `catalog:${persistedKey.externalSource}:${persistedKey.externalEditionId}` : chosenIsbn);
-    if (scannedBooks.some((item) => item.isbn === batchKey)) return;
+    if (scannedBooks.some((item) => sameCatalogIsbn(item.isbn, batchKey))) return;
     const nextBatch = [...scannedBooks, { isbn: batchKey, book }];
     if (!writeScannerDraft(nextBatch)) {
       setScannerError('Device storage is unavailable. This selection was not added to the batch.');
@@ -739,6 +744,27 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         ...rankedCombined,
       ])].slice(0, 8);
       if (!candidates.length) throw new Error('No readable title found. Try a clearer, straight-on photo in good light.');
+      // One scan, one request per distinct query. Several recovery lanes build the
+      // SAME title+author query (for example the ranked-identity lane and the
+      // strong-identity lane), and each scanner-catalog call fans out to five
+      // providers with no cache. Memoizing within this scan cannot change any
+      // result; it only removes repeated provider traffic that feeds HTTP 429
+      // back-off (which silently empties Google results for five minutes).
+      // A rejected request is evicted so a later lane may still retry it.
+      const memoizeCatalog = <T,>(run: (query: string) => Promise<T>) => {
+        const memo = new Map<string, Promise<T>>();
+        return (query: string): Promise<T> => {
+          const key = normalizeCatalogText(query);
+          const existing = memo.get(key);
+          if (existing) return existing;
+          const pending = run(query);
+          memo.set(key, pending);
+          pending.catch(() => { memo.delete(key); });
+          return pending;
+        };
+      };
+      const searchCoverCatalogOnce = memoizeCatalog((query) => searchScannerCoverCatalog(query));
+      const searchAuthorCatalogOnce = memoizeCatalog((query) => searchScannerAuthorCatalog(query));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       const compactCover = recognized.replace(/\s+/g, '');
@@ -746,6 +772,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       let found: BookSearchWorkGroup[] = [];
       const scannerDiagnostics: string[] = [];
       const recordScannerResponse = (query: string, groups: BookSearchWorkGroup[]) => {
+        if (!import.meta.env.DEV) return;
         const sample = groups.slice(0, 5).map((work) =>
           `${work.title} — ${work.authors.join(', ') || 'Unknown author'}`).join(' | ');
         scannerDiagnostics.push(`${query} => ${groups.length} [${sample || 'no results'}]`);
@@ -814,7 +841,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // whole query. Retrieval only; the photographed-cover verifier decides.
       for (const query of titleAuthorPartQueries(rankedTitleEvidence, authorRecoveryQueries, 8)) {
         try {
-          const response = await searchScannerCoverCatalog(query);
+          const response = await searchCoverCatalogOnce(query);
           recordScannerResponse(`ranked-identity:${query}`, response.groups);
           const recovered = response.groups.find((work) =>
             coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)
@@ -859,7 +886,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
       if (!best) for (const authorHint of strongAuthorHints) {
         try {
-          const response = await searchScannerCoverCatalog(authorHint);
+          const response = await searchCoverCatalogOnce(authorHint);
           recordScannerResponse(`federated-author-identity:${authorHint}`, response.groups);
           const recovered = response.groups.find((work) =>
             coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -875,7 +902,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
       if (!best) for (const query of strongIdentityQueries) {
         try {
-          const response = await searchScannerCoverCatalog(query);
+          const response = await searchCoverCatalogOnce(query);
           recordScannerResponse(`strong-identity:${query}`, response.groups);
           const recovered = response.groups.find((work) =>
             coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -896,7 +923,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       if (!best) for (const candidate of candidates) {
         let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
         try {
-          response = await searchScannerCoverCatalog(candidate);
+          response = await searchCoverCatalogOnce(candidate);
           recordScannerResponse(candidate, response.groups);
         } catch (error) {
           scannerDiagnostics.push(`${candidate} => ERROR ${error instanceof Error ? error.message : String(error)}`);
@@ -949,7 +976,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         for (const query of targetedQueries) {
           let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
           try {
-            response = await searchScannerCoverCatalog(query);
+            response = await searchCoverCatalogOnce(query);
             recordScannerResponse(query, response.groups);
           } catch (error) {
             scannerDiagnostics.push(`${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
@@ -1009,7 +1036,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             // (for example a Hardcover result) becomes unreachable here.
             // Retrieval still proves nothing: the strict photographed-cover
             // verifier below remains mandatory.
-            const response = await searchScannerCoverCatalog(query);
+            const response = await searchCoverCatalogOnce(query);
             recordScannerResponse(`federated-search-reuse:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -1061,7 +1088,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           // the same strict author + approximate-full-title acceptance gate.
           if (!recovered) {
             try {
-              const response = await searchScannerAuthorCatalog(authorQuery);
+              const response = await searchAuthorCatalogOnce(authorQuery);
               recordScannerResponse(`author-recovery-bibliography:${authorQuery}`, response.groups);
               const supplemental = response.groups.filter((work) =>
                 coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -1097,7 +1124,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         if (titleLikeEvidence.length && surnameHints.length) {
           for (const surnameHint of surnameHints) {
             try {
-              const response = await searchScannerAuthorCatalog(surnameHint);
+              const response = await searchAuthorCatalogOnce(surnameHint);
               recordScannerResponse(`author-recovery-surname:${surnameHint}`, response.groups);
               const exactAuthorEvidence = authorRecoveryQueries
                 .map((value) => normalizeCatalogText(value))
@@ -1159,7 +1186,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         for (const titleHint of strongTitleHints) {
           for (const authorHint of fullAuthorHints) {
             try {
-              const response = await searchScannerCoverCatalog(`${titleHint} ${authorHint}`);
+              const response = await searchCoverCatalogOnce(`${titleHint} ${authorHint}`);
               recordScannerResponse(`fuzzy-title-author:${titleHint} ${authorHint}`, response.groups);
               const recovered = response.groups.find((work) =>
                 coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -1191,7 +1218,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         for (const query of fragmentQueries) {
           try {
-            const response = await searchScannerCoverCatalog(query);
+            const response = await searchCoverCatalogOnce(query);
             recordScannerResponse(`damaged-title-fragment:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -1227,7 +1254,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         for (const query of recoveryQueries) {
           try {
-            const response = await searchScannerCoverCatalog(query);
+            const response = await searchCoverCatalogOnce(query);
             recordScannerResponse(`cross-pass:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -1262,7 +1289,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         for (const authorQuery of authorRecoveryQueries.slice(0, 2)) {
           try {
-            const response = await searchScannerAuthorCatalog(authorQuery);
+            const response = await searchAuthorCatalogOnce(authorQuery);
             recordScannerResponse(`bibliography-title:${authorQuery}`, response.groups);
             const recovered = response.groups.find((work) => {
               const workTitle = normalizeCatalogText(scannerCoverTitle(work.title));
@@ -1338,7 +1365,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         // the photographed OCR evidence.
         for (const query of titleSurnameRecoveryQueries(cleanLines, authorRecoveryQueries)) {
           try {
-            const response = await searchScannerCoverCatalog(query);
+            const response = await searchCoverCatalogOnce(query);
             recordScannerResponse(`title-surname:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -1401,7 +1428,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         for (const query of shortTitleQueries(cleanLines)) {
           let response: Awaited<ReturnType<typeof searchGoogleBooks>>;
           try {
-            response = await searchScannerCoverCatalog(query);
+            response = await searchCoverCatalogOnce(query);
             recordScannerResponse(`short-title:${query}`, response.groups);
           } catch (error) {
             scannerDiagnostics.push(`short-title:${query} => ERROR ${error instanceof Error ? error.message : String(error)}`);
@@ -1423,32 +1450,38 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         // explain the initial OCR queries; late entries contain the recovery
         // calls (author catalog, title-surname, fielded title/author) that are
         // usually decisive when a clear cover still fails.
-        // The ranked lanes decide most scans, so their responses are always
-        // kept in full at the TOP of the report; the rest is trimmed as before.
-        const rankedDiagnostics = scannerDiagnostics.filter((entry) => entry.startsWith('ranked-'));
-        const otherDiagnostics = scannerDiagnostics.filter((entry) => !entry.startsWith('ranked-'));
-        const trimmedOtherDiagnostics = otherDiagnostics.length <= 30
-          ? otherDiagnostics
-          : [
-              ...otherDiagnostics.slice(0, 12),
-              `... ${otherDiagnostics.length - 24} retrieval responses omitted ...`,
-              ...otherDiagnostics.slice(-12),
-            ];
-        // Lead with what decided the scan (ranked hints + their catalog
-        // responses) so it is visible without scrolling the details box.
-        const diagnostic = [
-          '[Inkbound scanner] Cover identification failed',
-          `Ranked title evidence: ${rankedTitleEvidence.join(' || ') || 'none'}`,
-          `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
-          ...rankedDiagnostics,
-          `OCR: ${lines.join(' || ')}`,
-          `Clean: ${cleanLines.join(' || ')}`,
-          `Candidates: ${candidates.slice(0, 20).join(' || ')}`,
-          `Title-surname anchors: ${titleSurnameAnchors.join(' || ') || 'none'}`,
-          ...trimmedOtherDiagnostics,
-        ].join('\n');
-        console.error(diagnostic);
-        setScannerDetails(diagnostic);
+        // Development-only: OCR text and raw provider responses must never be
+        // assembled, logged, or shipped in a production bundle. Vite replaces
+        // import.meta.env.DEV with a constant, so this whole block (and its
+        // strings) is removed from production builds.
+        if (import.meta.env.DEV) {
+          // The ranked lanes decide most scans, so their responses are always
+          // kept in full at the TOP of the report; the rest is trimmed as before.
+          const rankedDiagnostics = scannerDiagnostics.filter((entry) => entry.startsWith('ranked-'));
+          const otherDiagnostics = scannerDiagnostics.filter((entry) => !entry.startsWith('ranked-'));
+          const trimmedOtherDiagnostics = otherDiagnostics.length <= 30
+            ? otherDiagnostics
+            : [
+                ...otherDiagnostics.slice(0, 12),
+                `... ${otherDiagnostics.length - 24} retrieval responses omitted ...`,
+                ...otherDiagnostics.slice(-12),
+              ];
+          // Lead with what decided the scan (ranked hints + their catalog
+          // responses) so it is visible without scrolling the details box.
+          const diagnostic = [
+            '[Inkbound scanner] Cover identification failed',
+            `Ranked title evidence: ${rankedTitleEvidence.join(' || ') || 'none'}`,
+            `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
+            ...rankedDiagnostics,
+            `OCR: ${lines.join(' || ')}`,
+            `Clean: ${cleanLines.join(' || ')}`,
+            `Candidates: ${candidates.slice(0, 20).join(' || ')}`,
+            `Title-surname anchors: ${titleSurnameAnchors.join(' || ') || 'none'}`,
+            ...trimmedOtherDiagnostics,
+          ].join('\n');
+          console.error(diagnostic);
+          setScannerDetails(diagnostic);
+        }
         throw new Error('Cover text was detected, but no verified title-and-author catalog match was found.');
       }
       // Cover OCR identifies a work, not the scanned edition. Offer the
