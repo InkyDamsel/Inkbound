@@ -119,8 +119,9 @@ checks.push({
 // This runs on every verified web release, regardless of the source branch.
 const addBookSource = fs.readFileSync(path.join(root, 'src', 'components', 'AddBookModal.tsx'), 'utf8');
 checks.push({
-  ok: addBookSource.includes('import.meta.env.DEV && authorCatalogDiagnostics && (')
-    && addBookSource.includes('import.meta.env.DEV && scannerDetails && <details'),
+  ok: addBookSource.includes('SCANNER_DEBUG_ENABLED && authorCatalogDiagnostics && (')
+    && addBookSource.includes('SCANNER_DEBUG_ENABLED && scannerDetails && <details')
+    && addBookSource.includes("import.meta.env.MODE === 'scanner-debug'"),
   message: 'scanner and catalog diagnostic panels must be dev-only',
 });
 // Release firewall (bundle level): source-text checks above cannot prove what actually
