@@ -6,6 +6,13 @@ import { writeRuntimeJson } from '../../platform/runtimeStorage';
 
 const compactIsbn = (value?: string) => value?.replace(/[^0-9X]/gi, '').toUpperCase() ?? '';
 const normalizeText = (value?: string) => value?.trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
+// Imported titles often carry a series/format suffix absent from an existing
+// library record. Only strip explicit, structured suffixes; never fuzzy-match
+// unrelated books or use an author alone as identity evidence.
+const normalizeImportWorkTitle = (value?: string): string => normalizeText((value ?? '')
+  .replace(/\s*[([][^\])]*(?:series|book\s*#?\s*\d+|vol(?:ume)?\s*\d+|kindle|ebook|audiobook|edition)[^\])]*[\])]\s*$/gi, '')
+  .replace(/\s*[:–—]\s*(?:book|volume|vol\.?|part)\s*#?\s*\d+\s*$/gi, ''));
+
 
 function normalizedDate(value?: string): string | undefined {
   const trimmed = value?.trim();
@@ -25,9 +32,9 @@ function bookIsbns(book: UserBookRecord): string[] {
 }
 
 function sameTitleAuthor(item: ImportRecordItem, book: UserBookRecord): boolean {
-  const incomingTitle = normalizeText(item.title);
+  const incomingTitle = normalizeImportWorkTitle(item.title);
   const incomingAuthor = normalizeText(item.author);
-  const existingTitle = normalizeText(book.work.title);
+  const existingTitle = normalizeImportWorkTitle(book.work.title);
   const existingAuthor = normalizeText(book.work.author);
   return Boolean(incomingTitle && incomingAuthor && incomingTitle === existingTitle && incomingAuthor === existingAuthor);
 }
