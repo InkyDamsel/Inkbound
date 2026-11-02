@@ -220,13 +220,12 @@ function reconcileHistoryWithPendingVerification(entries: ImportHistoryEntry[]):
 }
 
 export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): ImportHistoryEntry[] {
-  if (books.length === 0) return [];
+  if (books.length === 0) return readImportHistory();
 
-  const bookIds = new Set(books.map((book) => book.id));
   const storedHistory = reconcileHistoryWithPendingVerification(readImportHistory());
-  const existing = storedHistory.filter((entry) =>
-    entry.items.some((item) => bookIds.has(item.targetBookId)),
-  );
+  // Import history is an audit log, not a list of currently owned books.
+  // Never discard zero-new-book batches or records whose books changed later.
+  const existing = storedHistory;
   if (existing.length > 0) return existing;
 
   const importedBooks = books.filter((book) => {
