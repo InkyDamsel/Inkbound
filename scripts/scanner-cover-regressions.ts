@@ -263,7 +263,7 @@ const liveClean = (raw: string[]) => raw
   .filter((line) => !/(?:new york times|bestsell|walmart exclusive|exclusive edition|isbn(?:-1[03])?\s*[:#]|book club edition|^a novel$)/i.test(line));
 const liveRank = (raw: string[]) => {
   const lines = liveClean(raw);
-  const authors = rankAuthorHints(lines, coverAuthorQueries(lines, 24)).slice(0, 12);
+  const authors = rankAuthorHints(lines, [...lines.filter((line) => { const words = line.trim().split(/\s+/); return words.length >= 2 && words.length <= 4 && !isDemotedCoverTitleLine(line); }), ...coverAuthorQueries(lines, 24)]).slice(0, 12);
   return { lines, authors, titles: coverTitleEvidenceHints(lines, authors) };
 };
 
@@ -272,6 +272,16 @@ assert.equal(liveDevoured.authors[0], 'jordan stephanie gray',
   'Devoured: the printed all-caps author must outrank blurb lines such as "new york tim".');
 assert.ok(liveDevoured.titles.includes('devoured'), 'Devoured: OCR variants DEVOURO/DEVOURED must collapse to a title hint.');
 assert.ok(titleAuthorPartQueries(liveDevoured.titles, liveDevoured.authors).includes('devoured jordan stephanie gray'));
+
+// Nov 2 device trace: the full printed author was recognized, but was crowded
+// out by a fixed cap of heuristic blurb identities before ranking.
+const devouredCrowded = liveRank(['DEVOURED', 'JORDAN STEPHANIE GRAY', 'REBECCA ROSS', 'BITTEN ROMANCE',
+  'LUMINOUS AND', 'EXHILARATING THAT SIZZLES', 'BESTSELLING AUTHOR',
+  ...Array.from({ length: 30 }, (_, index) => `BLURB PERSON${index} NAME`)]);
+assert.ok(devouredCrowded.authors.slice(0, 3).includes('jordan stephanie gray'),
+  'Complete printed author names must survive capped heuristic candidate generation.');
+assert.ok(devouredCrowded.titles.includes('devoured'),
+  'Prioritizing printed author names must preserve the visible title.');
 
 const liveReign = liveRank(['REIGN',"AB ETH A'N",'CR O ME','BETH AN','GR O ME','BETH A"N','CRO ME','E.','BET H AN','ruti:','1:','3CR OD ME']);
 assert.ok(liveReign.authors.slice(0, 3).includes('bethan crome'),
