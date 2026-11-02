@@ -43,6 +43,14 @@ interface ManualMemory {
   bookId?: string;
 }
 
+interface SavedReadingMemory {
+  feeling?: string;
+  lifeMoment?: string;
+  futureSelfLetter?: string;
+  favoriteMoment?: string;
+  updatedAt?: string;
+}
+
 interface DeletedManualMemory {
   memory: ManualMemory;
   index: number;
@@ -110,6 +118,10 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
   const [search, setSearch] = usePersistentState(SEARCH_KEY, '');
   const [collapsedMonths, setCollapsedMonths] = usePersistentState<string[]>(COLLAPSED_KEY, []);
   const [memories, setMemories] = usePersistentState<ManualMemory[]>(MEMORIES_KEY, []);
+  // Read the canonical Reading Memories records without copying or mutating them.
+  const [readingMemories] = usePersistentState<Record<string, SavedReadingMemory>>(
+    ACCOUNT_DATA_STORAGE_KEYS.readingMemories, {},
+  );
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [memoryTitle, setMemoryTitle] = useState('');
   const [memoryBody, setMemoryBody] = useState('');
@@ -268,6 +280,30 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
       });
     });
 
+    // Reading Memories owns these records. Timeline is only a chronological view.
+    // updatedAt describes the last edit, not the original moment of reading.
+    Object.entries(readingMemories).forEach(([bookId, memory]) => {
+      const date = normalizeDate(memory.updatedAt);
+      if (!date) return;
+      const book = books.find((item) => item.id === bookId);
+      const sections = [
+        ['How it felt', memory.feeling],
+        ['Life around the book', memory.lifeMoment],
+        ['Favorite moment', memory.favoriteMoment],
+        ['Letter to future self', memory.futureSelfLetter],
+      ].filter((entry): entry is [string, string] => typeof entry[1] === 'string' && Boolean(entry[1].trim()));
+      if (!sections.length) return;
+      nextEvents.push({
+        id: `reading-memory-${bookId}`,
+        date: date.toISOString(),
+        type: 'memories',
+        title: book ? `Remembered ${book.work.title}` : 'Reading memory',
+        description: sections.map(([label, body]) => `${label}: ${body.trim()}`).join(' · '),
+        bookId: book?.id,
+        meta: 'Reading Memories · last updated',
+      });
+    });
+
     memories.forEach((memory) => {
       const date = normalizeDate(memory.date);
       if (!date) return;
@@ -283,7 +319,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
     });
 
     return nextEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [books, memories, sessions]);
+  }, [books, memories, readingMemories, sessions]);
 
   const filteredEvents = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -435,7 +471,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
                                 Open {book.work.title}
                               </button>
                             )}
-                            {event.type === 'memories' && (
+                            {event.type === 'memories' && event.id.startsWith('memory-') && (
                               <button type="button" onClick={() => deleteManualMemory(event.id)} className="inline-flex min-h-11 items-center gap-2 py-2 text-xs font-bold text-[var(--ink-muted)] hover:text-red-300">
                                 <Trash2 className="h-4 w-4" /> Delete memory
                               </button>
