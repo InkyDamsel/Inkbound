@@ -67,6 +67,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
   const [location, setLocation] = useState('');
   const [date, setDate] = useState(localDateKey);
   const [bookId, setBookId] = useState('');
+  const [relatedBookSearch, setRelatedBookSearch] = useState('');
   const [error, setError] = useState('');
   const [deletedMemory, setDeletedMemory] = useState<DeletedPhotoMemory | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,6 +86,13 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedMemory]);
+
+  const matchingRelatedBooks = useMemo(() => {
+    const normalize = (value: string) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+    const query = normalize(relatedBookSearch);
+    return books.filter(book => !query || [book.work.title, book.work.author, book.work.seriesName ?? ''].some(value => normalize(value).includes(query)))
+      .sort((a, b) => a.work.title.localeCompare(b.work.title, undefined, { sensitivity: 'base', numeric: true }));
+  }, [books, relatedBookSearch]);
 
   const bookById = useMemo(() => new Map(books.map((book) => [book.id, book])), [books]);
   const normalizedSearch = search.trim().toLowerCase();
@@ -105,6 +113,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
     setLocation('');
     setDate(localDateKey());
     setBookId('');
+    setRelatedBookSearch('');
     setError('');
     setIsComposerOpen(false);
   };
@@ -251,7 +260,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
               <label className="sm:col-span-2"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Caption</span><textarea value={caption} onChange={(event) => setCaption(event.target.value)} rows={3} placeholder="What do you want to remember?" className="w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
               <label><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Date</span><input type="date" max={localDateKey()} value={date} onChange={(event) => setDate(event.target.value)} className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]" /></label>
               <label><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Location</span><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Home, library, vacation..." className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none" /></label>
-              <label className="sm:col-span-2"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Related book (optional)</span><select value={bookId} onChange={(event) => setBookId(event.target.value)} className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="">Not linked to a book</option>{books.map((book) => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}</select></label>
+              <div className="sm:col-span-2"><label htmlFor="photo-memory-book-search" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">Related book (optional)</label><input id="photo-memory-book-search" type="search" value={relatedBookSearch} onChange={event => setRelatedBookSearch(event.target.value)} placeholder="Search title, author, or series..." className="mb-2 min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)] outline-none placeholder:text-[var(--ink-muted)] focus:border-[var(--ink-gold)]" /><select aria-label="Related book" value={bookId} onChange={event => { setBookId(event.target.value); setRelatedBookSearch(''); }} className="min-h-11 w-full rounded-xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] px-3 text-sm text-[var(--ink-ivory)]"><option value="">Not linked to a book</option>{bookId && !matchingRelatedBooks.some(book => book.id === bookId) && books.filter(book => book.id === bookId).map(book => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}{matchingRelatedBooks.slice(0, relatedBookSearch.trim() ? 100 : 30).map(book => <option key={book.id} value={book.id}>{book.work.title} — {book.work.author}</option>)}</select><p className="mt-1 text-xs text-[var(--ink-muted)]">{relatedBookSearch.trim() ? `${matchingRelatedBooks.length.toLocaleString()} matching books` : 'Type to search your library; showing the first 30 books.'}</p></div>
             </div>
             {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={resetComposer} className="quiet-shelf-secondary-action w-full justify-center sm:w-auto">Cancel</button><button type="button" onClick={saveMemory} className="quiet-shelf-primary-action w-full justify-center sm:w-auto"><Camera />Save Memory</button></div>
