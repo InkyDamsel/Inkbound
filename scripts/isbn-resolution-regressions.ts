@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { collectPrintedIsbnEvidence, combineIsbnProviderGroups, equivalentCatalogIsbns, extractValidPrintedIsbns, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
+import { sameCatalogIsbn, collectPrintedIsbnEvidence, combineIsbnProviderGroups, equivalentCatalogIsbns, extractValidPrintedIsbns, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { selectExactIsbnEdition } from '../src/features/book-search/catalogHardening';
 import type { BookSearchWorkGroup } from '../src/features/book-search/model/bookSearch';
 
@@ -143,5 +143,15 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
   assert.deepEqual(extractValidPrintedIsbns('ISBN 978-1-68281-641-8'), [],
     'Copyright OCR must reject a plausible-looking ISBN when its checksum is invalid.');
 }
+
+
+// Audit 2026-11: a scan batch must treat ISBN-10 and its ISBN-13 as ONE edition identity.
+assert.equal(sameCatalogIsbn('0306406152', '9780306406157'), true, 'ISBN-10 and ISBN-13 of one edition are the same identity');
+assert.equal(sameCatalogIsbn('9780306406157', '0306406152'), true);
+assert.equal(sameCatalogIsbn('9780306406157', '9780306406157'), true);
+assert.equal(sameCatalogIsbn('0306406152', '9781682818183'), false, 'unrelated editions stay distinct');
+assert.equal(sameCatalogIsbn('catalog:google-books:abc', 'catalog:google-books:abc'), true);
+assert.equal(sameCatalogIsbn('catalog:google-books:abc', 'catalog:google-books:abd'), false);
+assert.equal(sameCatalogIsbn('9791234567896', '9791234567896'), true, '979 values compare exactly');
 
 console.log('Inkbound ISBN resolution regressions passed.');
