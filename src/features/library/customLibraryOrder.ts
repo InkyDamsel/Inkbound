@@ -21,11 +21,15 @@ export function moveLibraryBook(saved: string[], contextIds: string[], visibleId
   // Preserve hidden slots without letting them silently undo the requested move.
   const all = [...new Set([...saved, ...contextIds])];
   const visibleSet = new Set(visibleIds);
-  const visible = visibleIds.filter((id, index) => visibleSet.has(id) && visibleIds.indexOf(id) === index);
+  const visible = [...visibleSet];
   const from = visible.indexOf(movedId), to = visible.indexOf(targetId);
   if (from < 0 || to < 0) return saved;
   visible.splice(from, 1);
   visible.splice(to, 0, movedId);
   let cursor = 0;
-  return all.map(id => visibleIds.includes(id) ? visible[cursor++] : id);
+  // Reconcile the slots with what the user actually saw. Otherwise a stale
+  // saved sequence can instantly reverse the requested movement on rerender.
+  const visibleSlots = new Set(visibleSet);
+  const next = all.map(id => visibleSlots.has(id) ? visible[cursor++] : id);
+  return next;
 }
