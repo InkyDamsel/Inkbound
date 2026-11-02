@@ -145,7 +145,7 @@ const leakedDiagnostics = productionForbiddenStrings.flatMap((value) => {
     const index = content.indexOf(value);
     if (index !== -1) {
       const surrounding = content.slice(Math.max(0, index - 55), Math.min(content.length, index + value.length + 55))
-        .replace(/\\s+/g, ' ');
+        .replace(/\s+/g, ' ');
       matches.push(`${value} in ${filename}: …${surrounding}…`);
     }
   }
