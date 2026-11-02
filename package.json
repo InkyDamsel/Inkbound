@@ -59,7 +59,8 @@
     "ios:branding:sync": "node scripts/sync-ios-branding.mjs",
     "ios:google-signin:configure": "node scripts/configure-ios-google-signin.mjs",
     "test:critical:catalog": "tsx scripts/isbn-resolution-regressions.ts && tsx scripts/scanner-verification-regressions.ts && tsx scripts/hardcover-search-results-regressions.ts && tsx scripts/scanner-cover-regressions.ts && tsx scripts/catalog-metadata-regressions.ts && tsx scripts/protected-search-contracts.ts",
-    "verify:native-projects": "node scripts/verify-native-project-wiring.mjs"
+    "verify:native-projects": "node scripts/verify-native-project-wiring.mjs",
+    "build:scanner-debug": "vite build --mode scanner-debug"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
