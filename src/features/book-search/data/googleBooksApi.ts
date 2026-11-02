@@ -798,9 +798,17 @@ export async function searchScannerAuthorCatalog(
   return { groups, totalItems: groups.length };
 }
 
+export type ScannerCatalogProviderTrace = {
+  query: string;
+  providers: Array<{ name: string; count: number; status: 'ok' | 'empty' | 'cooldown' | 'error'; detail?: string }>;
+  beforeHardening: number;
+  afterHardening: number;
+};
+
 export async function searchScannerCoverCatalog(
   query: string,
   signal?: AbortSignal,
+  onTrace?: (trace: ScannerCatalogProviderTrace) => void,
 ): Promise<BookSearchResponse> {
   const trimmed = query.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
@@ -819,13 +827,30 @@ export async function searchScannerCoverCatalog(
     }),
   ]);
 
-  const groups = hardenCatalogGroups([
+  const originalGroups = [
     ...google.groups,
     ...openLibrary.groups,
     ...hardcover.groups,
     ...prh.groups,
     ...trusted.groups,
-  ]);
+  ];
+  const groups = hardenCatalogGroups(originalGroups);
+  if (onTrace) {
+    const providerEntries = [
+      { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil },
+      { name: 'Open Library', response: openLibrary, cooling: false },
+      { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil },
+      { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil },
+      { name: 'Trusted', response: trusted, cooling: false },
+    ];
+    onTrace({ query: trimmed,
+      providers: providerEntries.map(({ name, response, cooling }) => ({
+        name, count: response.groups.length,
+        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : 'empty' as const,
+      })),
+      beforeHardening: originalGroups.length, afterHardening: groups.length,
+    });
+  }
   return { groups, totalItems: groups.length };
 }
 
