@@ -525,7 +525,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       void playScannerSuccessFeedback();
     } catch (error) {
       setUnresolvedIsbn(isbn);
-      setScannerError(`ISBN ${isbn} is valid, but catalog lookup failed. Retry or complete the details manually. ${error instanceof Error ? error.message : ''}`);
+      setScannerError(`ISBN ${isbn} is valid, but catalog lookup failed. Retry or complete the details manually.`);
     } finally {
       setScannerBusy(false);
     }
@@ -1863,7 +1863,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                         ? 'Finding books…'
                         : `${results.length} title${results.length === 1 ? '' : 's'} loaded${authorProviderTotal && authorProviderTotal >= results.length ? ` of ${authorProviderTotal}` : ''}`}
                     </p>
-                    {authorCatalogDiagnostics && (
+                    {import.meta.env.DEV && authorCatalogDiagnostics && (
                       <div className="mt-3 rounded-lg border border-[#c5a059]/20 bg-black/20 px-3 py-2 font-mono text-[10px] leading-5 text-[#b9a9ba]">
                         <div>Google {authorCatalogDiagnostics.googleRaw} raw / {authorCatalogDiagnostics.googleCredited} credited{authorCatalogDiagnostics.googleError ? ` / ERROR: ${authorCatalogDiagnostics.googleError}` : ''}</div>
                         {authorCatalogDiagnostics.providers.map((provider) => <div key={provider.provider}>{provider.provider}: {provider.raw} raw / {provider.credited} credited / {provider.reportedTotal} reported{provider.error ? ` / ERROR: ${provider.error}` : ''}{provider.debug ? ` / DEBUG: ${JSON.stringify(provider.debug)}` : ''}</div>)}
@@ -2045,7 +2045,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   </div>)}
                 </div>
               </div>}
-              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{scannerDetails && <details className="mt-3 rounded-lg border border-rose-300/20 bg-black/20 p-3"><summary className="cursor-pointer font-semibold text-[#f4d9e2]">Scanner details</summary><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[#e6d6e2]">{scannerDetails}</pre></details>}{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
+              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{import.meta.env.DEV && scannerDetails && <details className="mt-3 rounded-lg border border-rose-300/20 bg-black/20 p-3"><summary className="cursor-pointer font-semibold text-[#f4d9e2]">Scanner details</summary><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[#e6d6e2]">{scannerDetails}</pre></details>}{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
                 <p className="text-xs text-[#e6d6e2]">Enter a title and optionally an author. Inkbound will look up book details and available editions automatically, keeping scanned ISBN {unresolvedIsbn} separate.</p>
                 <input aria-label="Book title for scanner recovery" value={scannerRecoveryTitle} onChange={(event) => setScannerRecoveryTitle(event.target.value)} placeholder="Book title" enterKeyHint="next" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
                 <input aria-label="Author for scanner recovery" value={scannerRecoveryAuthor} onChange={(event) => setScannerRecoveryAuthor(event.target.value)} placeholder="Author (optional)" enterKeyHint="search" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
