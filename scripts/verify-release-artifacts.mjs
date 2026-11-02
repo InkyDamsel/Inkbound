@@ -132,10 +132,25 @@ const productionForbiddenStrings = [
   '[Inkbound scanner] Cover identification failed',
   'Scanner details',
   'native App Check token',
-  'App Check debug token',
+  // The old scanner error instructed readers to register a development token.
+  // Match that specific unsafe instruction, not generic App Check terminology
+  // that may legitimately appear elsewhere in application code.
+  'register its App Check debug token',
   'Download the React DevTools for a better development experience',
 ];
-const leakedDiagnostics = productionForbiddenStrings.filter((value) => builtJavaScript.includes(value));
+const leakedDiagnostics = productionForbiddenStrings.flatMap((value) => {
+  const matches = [];
+  for (const filename of fs.readdirSync(path.join(root, 'dist', 'assets')).filter((name) => name.endsWith('.js'))) {
+    const content = fs.readFileSync(path.join(root, 'dist', 'assets', filename), 'utf8');
+    const index = content.indexOf(value);
+    if (index !== -1) {
+      const surrounding = content.slice(Math.max(0, index - 55), Math.min(content.length, index + value.length + 55))
+        .replace(/\\s+/g, ' ');
+      matches.push(`${value} in ${filename}: …${surrounding}…`);
+    }
+  }
+  return matches;
+});
 checks.push({
   ok: builtJavaScript.length > 0 && leakedDiagnostics.length === 0,
   message: builtJavaScript.length === 0
