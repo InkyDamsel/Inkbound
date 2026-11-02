@@ -16,8 +16,12 @@ export function orderLibraryIds<T extends { id: string }>(books: T[], saved: str
 /** Move only visible IDs; excluded IDs keep their saved slots. */
 export function moveLibraryBook(saved: string[], contextIds: string[], visibleIds: string[], movedId: string, targetId: string): string[] {
   if (movedId === targetId || !visibleIds.includes(movedId) || !visibleIds.includes(targetId)) return saved;
+  // The visible sequence is the order the reader actually saw before tapping.
+  // A stale saved list may omit newer IDs or contain a different filtered order.
+  // Preserve hidden slots without letting them silently undo the requested move.
   const all = [...new Set([...saved, ...contextIds])];
-  const visible = all.filter(id => visibleIds.includes(id));
+  const visibleSet = new Set(visibleIds);
+  const visible = visibleIds.filter((id, index) => visibleSet.has(id) && visibleIds.indexOf(id) === index);
   const from = visible.indexOf(movedId), to = visible.indexOf(targetId);
   if (from < 0 || to < 0) return saved;
   visible.splice(from, 1);
