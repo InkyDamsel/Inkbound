@@ -37,6 +37,9 @@ export interface ImportHistoryEntry {
   sourceName: string;
   importedCount: number;
   duplicateCount: number;
+  totalCount?: number;
+  enrichedCount?: number;
+  unchangedCount?: number;
   items: ImportHistoryItem[];
 }
 
@@ -149,7 +152,46 @@ export function appendImportHistory(items: ImportRecordItem[], duplicateCount: n
       importMetadataVerified: item.importMetadataVerified === true,
     })),
   };
-  writeImportHistory([entry, ...readImportHistory()].slice(0, 50));
+  writeImportHistory([entry, ...readImportHistory()]);
+}
+
+/** Append an immutable audit of a completed import, including zero-new-book imports.
+ * Existing imported-book history remains readable; never truncate prior entries.
+ */
+export function appendCompletedImportAudit(args: {
+  submitted: ImportRecordItem[];
+  added: ImportRecordItem[];
+  enriched: ImportRecordItem[];
+  skipped: ImportRecordItem[];
+  sourceName?: string;
+}): void {
+  const toItem = (item: ImportRecordItem): ImportHistoryItem => ({
+    recordId: item.id,
+    targetBookId: makeTargetBookId(item.id),
+    title: item.title,
+    author: item.author,
+    isbn: item.isbn,
+    format: item.format,
+    status: item.status,
+    rating: item.rating,
+    dateRead: item.dateRead,
+    dateAdded: item.dateAdded,
+    review: item.review,
+    coverGradient: item.coverGradient,
+    importMetadataVerified: item.importMetadataVerified === true,
+  });
+  const entry: ImportHistoryEntry = {
+    id: `import-audit-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    createdAt: new Date().toISOString(),
+    sourceName: args.sourceName ?? 'Library Import',
+    importedCount: args.added.length,
+    duplicateCount: args.skipped.length,
+    totalCount: args.submitted.length + args.skipped.length,
+    enrichedCount: args.enriched.length,
+    unchangedCount: 0,
+    items: args.added.map(toItem),
+  };
+  writeImportHistory([entry, ...readImportHistory()]);
 }
 
 function reconcileHistoryWithPendingVerification(entries: ImportHistoryEntry[]): ImportHistoryEntry[] {
