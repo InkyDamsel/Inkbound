@@ -4,6 +4,7 @@ import { UserBookRecord } from '../types';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { localDateKey } from '../features/reading/sessionAnalytics';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { BookPicker } from './BookPicker';
 
 type CapsuleStatus = 'sealed' | 'ready' | 'opened';
 
@@ -204,9 +205,7 @@ export const ReadingTimeCapsulesScreen: React.FC<ReadingTimeCapsulesScreenProps>
             <h3 id="time-capsule-title" className="font-serif text-2xl text-[var(--ink-ivory)]">Seal a reading memory</h3>
             <div className="mt-5 space-y-4">
               <label className="block text-sm font-semibold text-[var(--ink-muted)]">Book
-                <select value={bookId} onChange={(event) => setBookId(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)]">
-                  {books.map((book) => <option key={book.id} value={book.id}>{book.work.title}</option>)}
-                </select>
+                <BookPicker books={books} value={bookId} onChange={setBookId} label="Book for time capsule" className="mt-2" />
               </label>
               <label className="block text-sm font-semibold text-[var(--ink-muted)]">Reveal date
                 <input type="date" value={revealAt} min={localDateKey()} onChange={(event) => setRevealAt(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-[var(--ink-border)] bg-[var(--ink-surface-soft)] px-3 text-[var(--ink-ivory)]" />
