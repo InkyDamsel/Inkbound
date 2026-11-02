@@ -297,10 +297,10 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
         id: `reading-memory-${bookId}`,
         date: date.toISOString(),
         type: 'memories',
-        title: book ? `Remembered ${book.work.title}` : 'Reading memory',
-        description: sections.map(([label, body]) => `${label}: ${body.trim()}`).join(' · '),
+        title: book ? `Added a reading memory for ${book.work.title}` : 'Added a reading memory',
+        description: 'A personal reading reflection was saved in Reading Memories.',
         bookId: book?.id,
-        meta: 'Reading Memories · last updated',
+        meta: 'Reading memory · last updated',
       });
     });
 
