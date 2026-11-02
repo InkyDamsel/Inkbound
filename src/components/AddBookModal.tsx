@@ -792,7 +792,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // real printed author, so the small request budget never reached it.
       // Generate a wider pool, then rank by cover typography (all-caps name
       // lines, initials + surname, no copy words). Ordering only.
-      const authorRecoveryQueries = rankAuthorHints(cleanLines, coverAuthorQueries(cleanLines, 24)).slice(0, 12);
+      const authorRecoveryQueries = rankAuthorHints(cleanLines, [...cleanLines.filter((line) => { const words = line.trim().split(/\s+/); return words.length >= 2 && words.length <= 4 && !isDemotedCoverTitleLine(line); }), ...coverAuthorQueries(cleanLines, 24)]).slice(0, 12);
       const rankedTitleEvidence = coverTitleEvidenceHints(cleanLines, authorRecoveryQueries);
       const independentTitleKeys = new Set(cleanLines
         .filter((line) => {
