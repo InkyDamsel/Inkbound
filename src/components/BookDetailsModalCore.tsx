@@ -1,3 +1,4 @@
+import { uniquePrivateTags } from '../features/library/privateTags';
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ImagePlus, Loader2, Pencil, Play, Plus, RefreshCw, Save, Search, Star, Trash2, Upload, X } from 'lucide-react';
 import { FORMAT_OPTIONS, PRIORITY_OPTIONS, READING_STATUS_OPTIONS } from '../domain/libraryTaxonomy';
@@ -58,6 +59,7 @@ const MATCH_STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'book', 'books', 
 const normalize = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ?? '';
 const tokens = (value?: string) => [...new Set(normalize(value).split(' ').filter((token) => token.length >= 3 && !MATCH_STOP_WORDS.has(token)))];
 const csvList = (value: string) => [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
+const tagList = (value: string) => uniquePrivateTags(value.split(','));
 
 const candidateMatchesBookIdentity = (book: UserBookRecord, work: BookSearchWorkGroup) => {
   const wantedTitle = tokens(book.work.title);
@@ -236,7 +238,7 @@ export const BookDetailsModal: React.FC<BookDetailsModalProps> = ({ book, sessio
           ? Math.max(0, Number(seriesOrder))
           : undefined,
       },
-      privateTags: csvList(tags),
+      privateTags: tagList(tags),
       collections: csvList(collections),
     });
   };
