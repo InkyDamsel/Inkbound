@@ -20,6 +20,10 @@ export function moveLibraryBook(saved: string[], contextIds: string[], visibleId
   // A stale saved list may omit newer IDs or contain a different filtered order.
   // Preserve hidden slots without letting them silently undo the requested move.
   const all = [...new Set([...saved, ...contextIds])];
+  // When the whole context is visible, its rendered sequence is authoritative.
+  // Otherwise preserve hidden IDs in their existing slots.
+  const completeVisibleContext = all.length === visibleIds.length && all.every(id => visibleIds.includes(id));
+  const slots = completeVisibleContext ? [...visibleIds] : all;
   const visibleSet = new Set(visibleIds);
   const visible = [...visibleSet];
   const from = visible.indexOf(movedId), to = visible.indexOf(targetId);
@@ -30,6 +34,6 @@ export function moveLibraryBook(saved: string[], contextIds: string[], visibleId
   // Reconcile the slots with what the user actually saw. Otherwise a stale
   // saved sequence can instantly reverse the requested movement on rerender.
   const visibleSlots = new Set(visibleSet);
-  const next = all.map(id => visibleSlots.has(id) ? visible[cursor++] : id);
+  const next = slots.map(id => visibleSlots.has(id) ? visible[cursor++] : id);
   return next;
 }
