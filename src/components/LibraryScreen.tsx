@@ -3,6 +3,7 @@ import { BookOpen, CheckSquare, ChevronDown, SlidersHorizontal, LayoutGrid, List
 import { useUserPlan } from '../context/UserPlanContext';
 import { FORMAT_OPTIONS, MATERIAL_TYPE_OPTIONS, OWNERSHIP_OPTIONS, READING_STATUS_OPTIONS, materialTypeLabel } from '../domain/libraryTaxonomy';
 import { replaceCanonicalBook } from '../features/library/libraryMutations';
+import { tagIdentity } from '../features/library/privateTags';
 import { customLibraryContext, moveLibraryBook, orderLibraryIds, type CustomLibraryOrders } from '../features/library/customLibraryOrder';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
 import { compareRecentlyAddedBooks } from '../features/library/libraryRecentSort';
@@ -49,7 +50,8 @@ type SortMode = 'custom' | 'recent' | 'finished-newest' | 'finished-oldest' | 't
 
 const LIBRARY_BANNER_ASSET = '/assets/library/cozy-library-background.png';
 const LIBRARY_PAGE_SIZE = 24;
-const normalizeTag = (value: string) => value.trim().toLocaleLowerCase();
+// Law 1: tag identity has ONE implementation (shared with Tag Manager, import and book editing).
+const normalizeTag = tagIdentity;
 
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   books,
