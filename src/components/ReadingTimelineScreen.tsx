@@ -25,6 +25,7 @@ import {
   getSessionPagesRead,
 } from '../features/reading/sessionAnalytics';
 import { ACCOUNT_DATA_STORAGE_KEYS } from '../features/sync/storageKeys';
+import { usePhotoMemories } from '../features/memories/usePhotoMemories';
 
 interface ReadingTimelineScreenProps {
   books: UserBookRecord[];
@@ -119,6 +120,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
   const [collapsedMonths, setCollapsedMonths] = usePersistentState<string[]>(COLLAPSED_KEY, []);
   const [memories, setMemories] = usePersistentState<ManualMemory[]>(MEMORIES_KEY, []);
   // Read the canonical Reading Memories records without copying or mutating them.
+  const [photoMemories] = usePhotoMemories();
   const [readingMemories] = usePersistentState<Record<string, SavedReadingMemory>>(
     ACCOUNT_DATA_STORAGE_KEYS.readingMemories, {},
   );
@@ -280,6 +282,24 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
       });
     });
 
+    // Photo Memories is the only owner of photo metadata and images. Timeline
+    // projects one activity event per saved photo without copying the caption
+    // or image into a second persistence store.
+    photoMemories.forEach((memory) => {
+      const created = normalizeDate(memory.createdAt);
+      if (!created) return;
+      const book = memory.bookId ? books.find((item) => item.id === memory.bookId) : undefined;
+      nextEvents.push({
+        id: `photo-memory-${memory.id}`,
+        date: created.toISOString(),
+        type: 'memories',
+        title: book ? `Added a photo memory for ${book.work.title}` : 'Added a photo memory',
+        description: 'A photo memory was saved in Photo Memories.',
+        bookId: book?.id,
+        meta: 'Photo memory',
+      });
+    });
+
     // Reading Memories owns these records. Timeline is only a chronological view.
     // updatedAt describes the last edit, not the original moment of reading.
     Object.entries(readingMemories).forEach(([bookId, memory]) => {
@@ -319,7 +339,7 @@ export const ReadingTimelineScreen: React.FC<ReadingTimelineScreenProps> = ({
     });
 
     return nextEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [books, memories, readingMemories, sessions]);
+  }, [books, memories, photoMemories, readingMemories, sessions]);
 
   const filteredEvents = useMemo(() => {
     const query = search.trim().toLowerCase();
