@@ -109,11 +109,6 @@ export const BookCover: React.FC<BookCoverProps> = ({
                   <span className="hidden sm:inline">{format}</span>
                 </span>
               )}
-              {typeof work.seriesOrder === 'number' && Number.isFinite(work.seriesOrder) && work.seriesOrder > 0 && (
-                <span className="ml-auto rounded bg-amber-900/60 px-1.5 py-0.5 text-[9px] font-bold text-amber-200">
-                  #{work.seriesOrder}
-                </span>
-              )}
             </div>
 
             <div className="my-auto px-1 py-1 text-center">
