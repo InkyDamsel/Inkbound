@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import type { ReadingSession, UserBookRecord } from '../src/types';
 import { getEffectivePagesReadForPeriod } from '../src/features/reading/readingPageTotals';
 import { hasTrustworthyFinishedHistory } from '../src/features/reading/inkboundActivity';
+import { getAverageBookRating } from '../src/features/reading/readingReportStats';
 
 const book = (overrides: Partial<UserBookRecord> = {}): UserBookRecord => ({
   id: 'book-1',
@@ -134,6 +135,38 @@ const pageSession = (
     getEffectivePagesReadForPeriod([imported], reread, '2026-09-01', '2026-09-30'),
     40,
   );
+}
+
+
+// Monthly reports use the same canonical period total, including tracked pages
+// from books that were active during the month as well as books finished then.
+{
+  const active = book({ status: 'currently-reading', dateFinished: undefined, progressPages: 45 });
+  const finished = book({ id: 'book-2', dateFinished: '2026-10-31', progressPages: 0 });
+  const sessions = [
+    pageSession('active-october-pages', '2026-10-12', 10, 35),
+    { ...pageSession('finished-october-pages', '2026-10-31', 0, 25), bookId: 'book-2' },
+  ];
+
+  assert.equal(
+    getEffectivePagesReadForPeriod([active, finished], sessions, '2026-10-01', '2026-10-31'),
+    50,
+  );
+}
+
+// Shelf averages only explicit, finite, positive ratings. Half-stars remain
+// fractional and unrated/zero/invalid values do not inflate the denominator.
+{
+  const rated = [
+    book({ id: 'rated-5', rating: 5 }),
+    book({ id: 'rated-45', rating: 4.5 }),
+    book({ id: 'unrated', rating: undefined }),
+    book({ id: 'zero-rating', rating: 0 }),
+    book({ id: 'invalid-rating', rating: Number.POSITIVE_INFINITY }),
+  ];
+
+  assert.equal(getAverageBookRating(rated), 4.75);
+  assert.equal(getAverageBookRating([book({ rating: undefined })]), null);
 }
 
 console.log('Inkbound reporting math regressions passed.');

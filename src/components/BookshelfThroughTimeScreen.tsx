@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Repeat2, Share2, Sparkles } from 'lucide-react';
-import { UserBookRecord } from '../types';
+import { ReadingSession, UserBookRecord } from '../types';
+import { getEffectivePagesReadForPeriod } from '../features/reading/readingPageTotals';
+import { getAverageBookRating } from '../features/reading/readingReportStats';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { getEffectiveRereadCount } from '../features/reading/bookReadingState';
 import {
@@ -14,6 +16,7 @@ import { fetchRuntimeMediaDataUrl } from '../platform/runtimeMedia';
 
 interface BookshelfThroughTimeScreenProps {
   books: UserBookRecord[];
+  sessions: ReadingSession[];
   onSelectBook: (book: UserBookRecord) => void;
 }
 
@@ -76,6 +79,7 @@ function getShelfBookDimensions(book: UserBookRecord, index: number) {
 
 export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProps> = ({
   books,
+  sessions,
   onSelectBook,
 }) => {
   const finishedBooks = useMemo(
@@ -119,14 +123,13 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
   const safeShelfPage = Math.min(shelfPage, shelfPageCount - 1);
   const pageStartShelf = safeShelfPage * SHELVES_PER_PAGE;
   const visibleShelfCount = Math.min(SHELVES_PER_PAGE, shelfRowCount - pageStartShelf);
-  const totalPages = shelfBooks.reduce((sum, book) => {
-    const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-    return sum + (edition?.pageCount ?? 0);
-  }, 0);
-  const ratedBooks = shelfBooks.filter((book) => typeof book.rating === 'number' && book.rating > 0);
-  const averageRating = ratedBooks.length
-    ? ratedBooks.reduce((sum, book) => sum + (book.rating ?? 0), 0) / ratedBooks.length
-    : 0;
+  const [selectedYear, selectedMonthNumber] = selectedMonth.split('-').map(Number);
+  const monthStart = `${selectedMonth}-01`;
+  const monthEnd = `${selectedMonth}-${String(new Date(selectedYear, selectedMonthNumber, 0).getDate()).padStart(2, '0')}`;
+  // Match Reading Wrapped: report pages read during this calendar month using
+  // the canonical session/history calculation, not full edition page counts.
+  const totalPages = getEffectivePagesReadForPeriod(books, sessions, monthStart, monthEnd);
+  const averageRating = getAverageBookRating(shelfBooks) ?? 0;
   const highlightNew = preferences.highlightNew !== false;
   const showRereads = preferences.showRereads !== false;
   const themeBackgroundImage = themeBackgroundImages[preferences.theme];
@@ -142,26 +145,6 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
   const moveMonth = (direction: -1 | 1) => {
     const nextIndex = Math.min(availableMonths.length - 1, Math.max(0, selectedIndex + direction));
     updatePreference('month', availableMonths[nextIndex]);
-  };
-
-  const loadShelfCoverForExport = async (coverUrl?: string) => {
-    if (!coverUrl) return '';
-    const runtimeData = await fetchRuntimeMediaDataUrl(coverUrl);
-    if (runtimeData) return runtimeData;
-    if (typeof window === 'undefined') return '';
-    try {
-      const response = await fetch(coverUrl, { mode: 'cors', referrerPolicy: 'no-referrer' });
-      if (!response.ok) return '';
-      const blob = await response.blob();
-      return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result ?? ''));
-        reader.onerror = () => reject(reader.error ?? new Error('Could not read cover image.'));
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      return '';
-    }
   };
 
   const createShelfPng = async () => {
@@ -226,7 +209,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
 
     const coverData = await Promise.all(shelfBooks.map(async (book) => {
       const edition = book.editions.find((item) => item.id === book.activeEditionId) ?? book.editions[0];
-      const dataUrl = await loadShelfCoverForExport(edition?.coverUrl);
+      const dataUrl = edition?.coverUrl ? await fetchRuntimeMediaDataUrl(edition.coverUrl) : '';
       return { book, dataUrl };
     }));
 
@@ -306,7 +289,7 @@ export const BookshelfThroughTimeScreen: React.FC<BookshelfThroughTimeScreenProp
       const stats = [
         [String(shelfBooks.length), 'Books this month'],
         [String(booksFinishedThisMonth.length), 'Finished this month'],
-        [totalPages.toLocaleString(), 'Pages represented'],
+        [totalPages.toLocaleString(), 'Pages read'],
         [averageRating ? averageRating.toFixed(1) : '—', 'Average rating'],
       ];
       stats.forEach(([value, label], index) => {
