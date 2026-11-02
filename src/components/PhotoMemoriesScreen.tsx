@@ -242,7 +242,7 @@ export const PhotoMemoriesScreen: React.FC<PhotoMemoriesScreenProps> = ({ books,
 
       {selectedMemory && (
         <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/90 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label={selectedMemory.caption || 'Photo memory'} onClick={() => setSelectedMemory(null)}>
-          <button type="button" onClick={() => setSelectedMemory(null)} className="quiet-shelf-icon-button absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-10 h-11 w-11 bg-black/55 text-white" aria-label="Close full photo"><X /></button>
+          <button type="button" onClick={() => setSelectedMemory(null)} className="quiet-shelf-icon-button fixed right-[max(1rem,env(safe-area-inset-right))] top-[calc(5.75rem+env(safe-area-inset-top))] z-[300] h-11 w-11 border border-white/30 bg-black/85 text-white shadow-xl hover:bg-black sm:right-6 sm:top-24" aria-label="Close full photo"><X /></button>
           <div className="flex max-h-[calc(100dvh-2rem)] max-w-[min(96vw,1200px)] flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
             <img src={selectedMemory.imageData} alt={selectedMemory.caption || 'Reading memory'} className="max-h-[calc(100dvh-7rem)] max-w-full rounded-2xl object-contain shadow-2xl" />
             {(selectedMemory.caption || selectedMemory.location) && <div className="max-w-3xl rounded-2xl bg-black/55 px-4 py-3 text-center backdrop-blur-sm">{selectedMemory.caption && <p className="font-serif text-base text-white sm:text-lg">{selectedMemory.caption}</p>}{selectedMemory.location && <p className="mt-1 text-xs text-white/70">{selectedMemory.location}</p>}</div>}
