@@ -16,6 +16,10 @@ assert.deepEqual(orderLibraryIds(books.filter(book => book.id !== 'a'), saved).m
 assert.deepEqual(orderLibraryIds([...books, {id:'e',title:'e',dateAdded:'unchanged'}], saved).map(book => book.id), ['c','a','b','d','e']);
 saved = moveLibraryBook(saved, ['a','b','c','d','e'], ['c','b','d','e'], 'd', 'c');
 assert.deepEqual(orderLibraryIds(books, saved).map(book => book.id), ['d','a','c','b']);
+// A stale account order must not reverse a move made against the rendered list.
+const stale = ['b', 'a', 'c', 'd'];
+const repaired = moveLibraryBook(stale, ['a', 'b', 'c', 'd'], ['a', 'b', 'c', 'd'], 'c', 'b');
+assert.deepEqual(orderLibraryIds(books, repaired).map(book => book.id), ['a', 'c', 'b', 'd']);
 assert.equal(JSON.stringify(books), snapshot, 'no metadata mutations');
 assert.equal(saved.includes('a'), true, 'temporarily excluded IDs remain');
 console.log('Custom library ordering regressions passed.');
