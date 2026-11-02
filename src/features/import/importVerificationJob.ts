@@ -3,6 +3,7 @@ import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
+import { appendCompletedImportAudit } from './importHistory';
 import { findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
@@ -213,6 +214,12 @@ export function startImportVerificationJob(
       persistMetadataPending(importedRecords);
       const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
       writeRejected.forEach((record) => duplicateMap.set(record.id, record));
+      appendCompletedImportAudit({
+        submitted: normalizedItems,
+        added: importedRecords,
+        enriched: mergeResult.merged,
+        skipped: [...duplicateMap.values()],
+      });
       emit({ status: 'complete', completed: normalizedItems.length, total: normalizedItems.length, importedCount: importedRecords.length, matchedCount: mergeResult.merged.length, metadataPendingCount: importedRecords.length, duplicates: [...duplicateMap.values()], unmatched: [] });
     } catch (error) {
       emit({ ...snapshot, status: 'error', error: error instanceof Error ? error.message : 'The import could not be completed. Books already written to your library were left intact.' });
