@@ -40,6 +40,17 @@ for (const file of sourceFiles) {
   }
 }
 
+// Law 1: private-tag identity has exactly one implementation (features/library/privateTags.ts).
+// Components must import tagIdentity instead of re-deriving it with trim()/toLowerCase().
+for (const file of sourceFiles) {
+  const relative = path.relative(root, file).replaceAll('\\', '/');
+  if (relative === 'src/features/library/privateTags.ts') continue;
+  const source = fs.readFileSync(file, 'utf8');
+  if (/const\s+(?:normalizeTag|tagKey|canonicalTag)\s*=\s*\(\s*\w+\s*:\s*string\s*\)[^=]*=>\s*\w+\.trim\(\)\.toLocale(?:Lower|Upper)Case\(\)/.test(source)) {
+    violations.push(`${relative}: defines a private tag identity; import tagIdentity from features/library/privateTags`);
+  }
+}
+
 const crossDeviceSync = read('src/features/sync/CrossDeviceDeltaSyncBridge.tsx');
 const firstHydrationSync = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
 const oneShotHydration = read('src/features/sync/OneShotCloudHydrationBridge.tsx');
