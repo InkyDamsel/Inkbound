@@ -91,6 +91,25 @@ assert.equal((scannerUiSource.match(/>Scanner details<\/summary>/g) ?? []).lengt
 assert.ok(scannerUiSource.includes('early-exact-title:'),
   'Try exact title evidence before exhausting the broad query budget.');
 
+// Scanner exact-title recovery must not depend on Google alone. This
+// structural regression keeps the independent catalog lanes and one-scan
+// memoization from being accidentally removed in future scanner refactors.
+const scannerCatalogSource = readFileSync('src/features/book-search/data/googleBooksApi.ts', 'utf8');
+const exactTitleSource = scannerCatalogSource.split('export async function searchScannerCoverTitleCatalog(')[1]
+  ?.split('export async function searchScannerAuthorCatalog(')[0] ?? '';
+assert.ok(exactTitleSource.includes('searchOpenLibraryWithAuthorFallback(trimmed, signal)'),
+  'Exact-title recovery must query Open Library even when Google has no results.');
+assert.ok(exactTitleSource.includes('searchHardcoverWithBackoff(trimmed)'),
+  'Exact-title recovery must query Hardcover independently.');
+assert.ok(exactTitleSource.includes('searchPrhWithBackoff(trimmed)'),
+  'Exact-title recovery must query Penguin Random House independently.');
+assert.ok(exactTitleSource.includes('searchTrustedCatalogBaseline(trimmed)'),
+  'Exact-title recovery must query the trusted catalog independently.');
+assert.ok(exactTitleSource.includes('workTitle === titleKey || workTitle.startsWith'),
+  'Exact-title recovery must reject unrelated catalog titles before OCR author verification.');
+assert.ok(scannerUiSource.includes('searchExactTitleOnce(titleHint)'),
+  'Repeated exact-title lanes must reuse one catalog request per scan.');
+
 const picassoCover = [
   'JAMES PATTERSON',
   'AND HOWARD ROUGHAN',
