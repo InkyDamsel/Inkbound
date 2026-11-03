@@ -299,6 +299,22 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   }
 
   const catalogTitleWords = words(scannerCoverTitle(title));
+  // A one-word catalog title may also be a genre subtitle on a different
+  // photographed book ("A THRILLER" on THE PICASSO HEIST). Do not accept the
+  // genre word as the identity when a distinct multi-word title is visibly
+  // printed on the same cover. Exclude printed author lines from this check.
+  if (catalogTitleWords.length === 1) {
+    const candidate = catalogTitleWords[0];
+    const creditedNameTokens = new Set(authors.flatMap(words));
+    const strongerTitleLine = lines.some((line, index) => {
+      if (titleLineDemoted(line, index)) return false;
+      const lineTokens = words(line).filter((token) => token.length >= 4);
+      if (lineTokens.length < 2 || lineTokens.includes(candidate)) return false;
+      if (lineTokens.some((token) => creditedNameTokens.has(token))) return false;
+      return true;
+    });
+    if (strongerTitleLine) return false;
+  }
   const weakTitleWords = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
   const significantTitleWords = catalogTitleWords
     .filter((word) => word.length >= 4 && !weakTitleWords.has(word));
