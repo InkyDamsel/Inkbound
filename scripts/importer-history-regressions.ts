@@ -43,6 +43,14 @@ assert.equal(initial[0].unchangedCount, 1);
 assert.equal(initial[0].totalCount, 1, 'A one-row merge-only import must not double count.');
 assert.equal(initial[0].outcomes?.[0]?.outcome, 'unchanged');
 assert.equal(initial[0].outcomes?.[0]?.targetBookId, undefined);
+appendCompletedImportAudit({
+  submitted: [row], added: [], enriched: [],
+  unchanged: [{ ...row, matchedBookId: 'unchanged-existing-book' }],
+  skipped: [], sourceName: 'unchanged-with-match.csv',
+});
+assert.equal(readImportHistory()[0].outcomes?.[0]?.targetBookId, 'unchanged-existing-book',
+  'An unchanged merge must retain the canonical matched ID, not the unresolved CSV row.');
+
 
 appendCompletedImportAudit({
   submitted: [record('added'), record('updated')],
