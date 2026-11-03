@@ -54,6 +54,7 @@ import {
   type ImportEnrichmentQueueItem,
 } from './features/import/libraryEnrichment';
 import { findPreviouslyRemovedImportRows } from './features/import/deletedImportGuard';
+import type { ImportExecutionResult } from './features/import/importVerificationJob';
 import {
   isImportEnrichmentPaused,
   setImportEnrichmentPaused,
@@ -689,13 +690,13 @@ export default function App() {
   const handleUpdateSession = (session: ReadingSession) => { const previous = sessions.find((item) => item.id === session.id); const nextSessions = sessions.map((item) => item.id === session.id ? session : item); if (commitCanonicalSessions(nextSessions) !== nextSessions) return; if (previous && previous.bookId !== session.bookId) { reconcileBookProgressFromSessions(previous.bookId, nextSessions, previous); reconcileBookProgressFromSessions(session.bookId, nextSessions); } else reconcileBookProgressFromSessions(session.bookId, nextSessions, previous); showToast('Updated reading session and reconciled book progress.'); };
   const handleDeleteSession = (sessionId: string) => { const removed = sessions.find((session) => session.id === sessionId); const nextSessions = sessions.filter((session) => session.id !== sessionId); if (commitCanonicalSessions(nextSessions, { deletedSessionIds: [sessionId] }) !== nextSessions) return; if (removed) reconcileBookProgressFromSessions(removed.bookId, nextSessions, removed); showToast('Deleted reading session and reconciled book progress.'); };
 
-  const handleExecuteImport = async (importedItems: ImportRecordItem[]): Promise<ImportRecordItem[]> => {
+  const handleExecuteImport = async (importedItems: ImportRecordItem[]): Promise<ImportExecutionResult> => {
     const currentLibrary = booksRef.current; const { unique: acceptedItems, duplicates: writeDuplicates } = analyzeImportDuplicates(importedItems, currentLibrary);
-    if (acceptedItems.length === 0) { showToast('No books were added because they already exist in your library.'); return []; }
+    if (acceptedItems.length === 0) { showToast('No books were added because they already exist in your library.'); return { added: [], skipped: writeDuplicates, failed: [] }; }
     const previouslyRemoved = findPreviouslyRemovedImportRows(acceptedItems, currentLibrary);
     if (previouslyRemoved.length) {
       showToast(`Import blocked: ${previouslyRemoved.length} previously imported book(s) are absent from your library. No records were changed; explicit restore requires review.`);
-      return [];
+      return { added: [], skipped: writeDuplicates, failed: acceptedItems };
     }
     const immediateBooks = acceptedItems.map(createFallbackImportedBook);
     const existingIds = new Set(currentLibrary.map((book) => book.id));
@@ -708,13 +709,13 @@ export default function App() {
       return false;
     })) {
       showToast('Import blocked: a book ID already exists. Your current library was not changed.');
-      return [];
+      return { added: [], skipped: writeDuplicates, failed: acceptedItems };
     }
     setPreviousBooksState(currentLibrary); setPreviousSessionsState(null);
     const nextLibrary = [...currentLibrary, ...immediateBooks];
-    if (commitCanonicalBooks(nextLibrary) !== nextLibrary) return [];
+    if (commitCanonicalBooks(nextLibrary) !== nextLibrary) return { added: [], skipped: writeDuplicates, failed: acceptedItems };
     const existingQueue = readImportEnrichmentQueue(); const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item])); queueImportedItems(acceptedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item)); writeImportEnrichmentQueue([...queuedByBookId.values()]);
- const skippedAtWrite = importedItems.length - acceptedItems.length; showToast(navigator.onLine ? `Added ${immediateBooks.length} books${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will update when Inkbound is online.`); void processImportEnrichmentQueue(); return acceptedItems;
+ const skippedAtWrite = importedItems.length - acceptedItems.length; showToast(navigator.onLine ? `Added ${immediateBooks.length} books${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will update when Inkbound is online.`); void processImportEnrichmentQueue(); return { added: acceptedItems, skipped: writeDuplicates, failed: [] };
   };
 
   const handleResetData = () => { const emptyBooks: UserBookRecord[] = []; const emptySessions: ReadingSession[] = []; if (commitCanonicalBooks(emptyBooks, { deletedBookIds: booksRef.current.map((book) => book.id) }) !== emptyBooks) return; if (commitCanonicalSessions(emptySessions, { deletedSessionIds: sessionsRef.current.map((session) => session.id) }) !== emptySessions) return; setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY); removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY); removeRuntimeValue(DAYTIME_MAINTENANCE_KEY); writeImportEnrichmentQueue([]); writeImportHistory([]); writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared all Inkbound books and reading sessions.'); };
