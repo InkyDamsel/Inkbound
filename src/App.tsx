@@ -53,6 +53,7 @@ import {
   writeImportEnrichmentQueue,
   type ImportEnrichmentQueueItem,
 } from './features/import/libraryEnrichment';
+import { findPreviouslyRemovedImportRows } from './features/import/deletedImportGuard';
 import {
   isImportEnrichmentPaused,
   setImportEnrichmentPaused,
@@ -691,6 +692,11 @@ export default function App() {
   const handleExecuteImport = async (importedItems: ImportRecordItem[]): Promise<ImportRecordItem[]> => {
     const currentLibrary = booksRef.current; const { unique: acceptedItems, duplicates: writeDuplicates } = analyzeImportDuplicates(importedItems, currentLibrary);
     if (acceptedItems.length === 0) { showToast('No books were added because they already exist in your library.'); return []; }
+    const previouslyRemoved = findPreviouslyRemovedImportRows(acceptedItems, currentLibrary);
+    if (previouslyRemoved.length) {
+      showToast(`Import blocked: ${previouslyRemoved.length} previously imported book(s) are absent from your library. No records were changed; explicit restore requires review.`);
+      return [];
+    }
     const immediateBooks = acceptedItems.map(createFallbackImportedBook);
     const existingIds = new Set(currentLibrary.map((book) => book.id));
     const incomingIds = new Set<string>();
