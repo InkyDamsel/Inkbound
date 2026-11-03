@@ -59,7 +59,6 @@ import {
   isImportEnrichmentPaused,
   setImportEnrichmentPaused,
   writeImportEnrichmentRetryProgress,
-  writeImportHistory,
 } from './features/import/importHistory';
 import { withBookOwnership } from './features/ownership/bookOwnership';
 import { syncNativeLibraryLoanReminders } from './features/loans/nativeLibraryLoanReminders';
@@ -718,7 +717,7 @@ export default function App() {
  const skippedAtWrite = importedItems.length - acceptedItems.length; showToast(navigator.onLine ? `Added ${immediateBooks.length} books${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will update when Inkbound is online.`); void processImportEnrichmentQueue(); return { added: acceptedItems, skipped: writeDuplicates, failed: [] };
   };
 
-  const handleResetData = () => { const emptyBooks: UserBookRecord[] = []; const emptySessions: ReadingSession[] = []; if (commitCanonicalBooks(emptyBooks, { deletedBookIds: booksRef.current.map((book) => book.id) }) !== emptyBooks) return; if (commitCanonicalSessions(emptySessions, { deletedSessionIds: sessionsRef.current.map((session) => session.id) }) !== emptySessions) return; setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY); removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY); removeRuntimeValue(DAYTIME_MAINTENANCE_KEY); writeImportEnrichmentQueue([]); writeImportHistory([]); writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared all Inkbound books and reading sessions.'); };
+  const handleResetData = () => { const emptyBooks: UserBookRecord[] = []; const emptySessions: ReadingSession[] = []; if (commitCanonicalBooks(emptyBooks, { deletedBookIds: booksRef.current.map((book) => book.id) }) !== emptyBooks) return; if (commitCanonicalSessions(emptySessions, { deletedSessionIds: sessionsRef.current.map((session) => session.id) }) !== emptySessions) return; setPreviousBooksState(null); setPreviousSessionsState(null); setSelectedBookForDetails(null); setSelectedBookIds([]); removeRuntimeValue(LEGACY_BOOKS_STORAGE_KEY); removeRuntimeValue(LEGACY_SESSIONS_STORAGE_KEY); removeRuntimeValue(DAYTIME_MAINTENANCE_KEY); writeImportEnrichmentQueue([]); /* Import audit remains durable across library resets. */ writeImportEnrichmentRetryProgress(null); setImportEnrichmentPaused(false); showToast('Cleared books and reading sessions. Your import audit history was preserved.'); };
   const currentSelectedBook = selectedBookForDetails ? books.find((book) => book.id === selectedBookForDetails.id) ?? selectedBookForDetails : null;
 
   return (
