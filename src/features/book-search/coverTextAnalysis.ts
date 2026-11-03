@@ -843,13 +843,19 @@ export function coverTitleEvidenceHints(
  * with a title plus a misspelled full name. Retrieval only. */
 export function titleAuthorPartQueries(titles: string[], authorHints: string[], maxQueries = 6): string[] {
   const out: string[] = [];
-  for (const author of authorHints.slice(0, 2)) {
-    const words = wordsOf(author);
-    if (words.length < 2) continue;
-    const surname = words.at(-1)!;
-    const given = words[0];
-    for (const title of titles.slice(0, 2)) {
-      out.push(`${title} ${words.join(' ')}`);
+  // First try full identities for several independently observed title lines.
+  // Otherwise one or two damaged OCR variants consume the entire query cap,
+  // even when a correctly recognized title appears later in the same scan.
+  const fullAuthors = authorHints.slice(0, 2).map(wordsOf).filter((words) => words.length >= 2);
+  for (const title of titles.slice(0, 3)) {
+    for (const words of fullAuthors) out.push(`${title} ${words.join(' ')}`);
+  }
+  // Only then broaden to single-name-word retrieval; acceptance still requires
+  // the independently verified photographed title AND author.
+  for (const title of titles.slice(0, 3)) {
+    for (const words of fullAuthors) {
+      const surname = words.at(-1)!;
+      const given = words[0];
       if (surname.length >= 4) out.push(`${title} ${surname}`);
       if (given.length >= 4) out.push(`${title} ${given}`);
     }
