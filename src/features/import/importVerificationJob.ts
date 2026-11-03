@@ -142,7 +142,10 @@ function applySourceFieldsToBooks(items: ImportRecordItem[], library: UserBookRe
   let nextLibrary = library;
   let matched = 0;
   for (const item of items) {
-    const match = findExistingImportMatch(item, nextLibrary);
+    // Initial source-field enrichment is allowed only for the fallback ID
+    // created for this exact import row. Title/author similarity alone must
+    // never promote existing-reader data into the "initial import" path.
+    const match = nextLibrary.find((book) => book.id === `book-import-${item.id}`);
     if (!match) continue;
     const updated = mergeImportIntoExistingBook(match, { ...item, matchedBookId: match.id, duplicateAction: 'merge' }, true);
     nextLibrary = nextLibrary.map((book) => book.id === match.id ? updated : book);
