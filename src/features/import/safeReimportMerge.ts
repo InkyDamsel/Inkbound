@@ -142,7 +142,7 @@ export function restoreManualSeriesOverridesFromImport(items: ImportRecordItem[]
   return restored;
 }
 
-export function mergeImportIntoExistingBook(existing: UserBookRecord, item: ImportRecordItem): UserBookRecord {
+export function mergeImportIntoExistingBook(existing: UserBookRecord, item: ImportRecordItem, initialImport = false): UserBookRecord {
   const incomingDateFinished = normalizedDate(item.dateRead);
   const hasProgress = existing.progressPages > 0 || existing.progressMinutes > 0 || existing.progressPercentage > 0 || Boolean(existing.dateStarted || existing.lastSessionDate);
   const status = cautiousStatus(existing.status, item, hasProgress);
@@ -150,10 +150,19 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
   const activeIndex = activeEditionIndex(existing);
   const activeEdition = editions[activeIndex];
 
-  if (activeEdition) {
+  // An existing work may have multiple physical editions. Never copy one
+  // edition's ISBN/pages/cover onto a different format or known ISBN. For a
+  // reader-owned record, only enrich when edition identity is independently
+  // compatible; an initial fallback record is allowed to receive its own data.
+  const incomingIsbn = compactIsbn(item.isbn);
+  const editionIsbns = activeEdition ? [activeEdition.isbn, activeEdition.isbn10, activeEdition.isbn13]
+    .map(compactIsbn).filter(Boolean) : [];
+  const editionCompatible = activeEdition && activeEdition.format === item.format
+    && (!incomingIsbn || editionIsbns.length === 0 || editionIsbns.includes(incomingIsbn));
+  if (activeEdition && (initialImport || editionCompatible)) {
     if (!activeEdition.isbn && item.isbn) activeEdition.isbn = item.isbn;
-    if (!activeEdition.isbn10 && compactIsbn(item.isbn).length === 10) activeEdition.isbn10 = compactIsbn(item.isbn);
-    if (!activeEdition.isbn13 && compactIsbn(item.isbn).length === 13) activeEdition.isbn13 = compactIsbn(item.isbn);
+    if (!activeEdition.isbn10 && incomingIsbn.length === 10) activeEdition.isbn10 = incomingIsbn;
+    if (!activeEdition.isbn13 && incomingIsbn.length === 13) activeEdition.isbn13 = incomingIsbn;
     if (!activeEdition.pageCount && item.pageCount) activeEdition.pageCount = item.pageCount;
     if (!activeEdition.coverUrl && item.coverUrl && !hasManualCover(existing)) activeEdition.coverUrl = item.coverUrl;
   }
@@ -172,16 +181,19 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
       seriesOrder: existing.work.seriesOrder ?? item.seriesOrder,
     },
     editions,
-    status,
-    rating: existing.rating ?? item.rating,
-    spiceLevel: existing.spiceLevel ?? item.spiceLevel,
-    review: existing.review?.trim() ? existing.review : item.review,
+    status: initialImport ? status : existing.status,
+    rating: initialImport ? (existing.rating ?? item.rating) : existing.rating,
+    spiceLevel: initialImport ? (existing.spiceLevel ?? item.spiceLevel) : existing.spiceLevel,
+    review: initialImport ? (existing.review?.trim() ? existing.review : item.review) : existing.review,
     // A re-import cannot distinguish an intentionally deleted tag from a missing one.
     // Preserve the reader's current tags; do not resurrect source tags or shelves.
     privateTags: uniquePrivateTags(existing.privateTags ?? []),
-    collections: mergeUnique(existing.collections, [...sourceCollections, ...optionalShelfCollections]),
-    dateFinished: existing.dateFinished || (status === 'finished' ? incomingDateFinished : undefined),
-    importFinishedDateProvided: existing.importFinishedDateProvided || Boolean(existing.dateFinished || incomingDateFinished),
+    // Do not resurrect a collection removed by the reader on reimport.
+    collections: initialImport ? mergeUnique(existing.collections, [...sourceCollections, ...optionalShelfCollections]) : existing.collections,
+    dateFinished: initialImport ? (existing.dateFinished || (status === 'finished' ? incomingDateFinished : undefined)) : existing.dateFinished,
+    importFinishedDateProvided: initialImport
+      ? (existing.importFinishedDateProvided || Boolean(existing.dateFinished || incomingDateFinished))
+      : existing.importFinishedDateProvided,
   };
 }
 
