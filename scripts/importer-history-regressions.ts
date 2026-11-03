@@ -96,6 +96,15 @@ Object.defineProperty(globalThis, 'window', { configurable: true, value: {
 }});
 const { startImportVerificationJob } = await import('../src/features/import/importVerificationJob');
 writeImportHistory([]);
+await startImportVerificationJob([], [row], async () => {
+  throw new Error('Skip-only imports must not call the writer.');
+}, []);
+assert.equal(readImportHistory()[0]?.status, 'completed');
+assert.equal(readImportHistory()[0]?.duplicateCount, 1);
+assert.equal(readImportHistory()[0]?.totalCount, 1);
+assert.equal(readImportHistory()[0]?.outcomes?.[0]?.outcome, 'skipped');
+
+writeImportHistory([]);
 await startImportVerificationJob([row], [], async () => ({
   added: [], skipped: [row], failed: [],
 }), []);
