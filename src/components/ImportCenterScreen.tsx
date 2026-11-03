@@ -32,6 +32,7 @@ import {
   readImportMetadataPending,
   resetImportVerificationJob,
   startImportVerificationJob,
+  type ImportExecutionResult,
   subscribeToImportVerification,
 } from '../features/import/importVerificationJob';
 import { ImportAnalysisSummaryGrid } from './import/ImportAnalysisSummaryGrid';
@@ -41,7 +42,7 @@ import { ImportHistoryScreen } from './ImportHistoryScreen';
 
 interface ImportCenterScreenProps {
   books: UserBookRecord[];
-  onExecuteImport: (importedItems: ImportRecordItem[]) => Promise<ImportRecordItem[] | void> | ImportRecordItem[] | void;
+  onExecuteImport: (importedItems: ImportRecordItem[]) => Promise<ImportExecutionResult> | ImportExecutionResult;
   onUndoLastImport?: () => void;
   onRetryEnrichment: (targetBookIds: string[]) => Promise<void>;
 }
