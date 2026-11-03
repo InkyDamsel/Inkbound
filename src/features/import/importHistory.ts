@@ -259,7 +259,7 @@ export function appendCompletedImportAudit(args: {
         : unchanged.has(item.id) ? 'unchanged' : 'skipped';
     return {
       recordId: item.id,
-      targetBookId: item.matchedBookId || (added.has(item.id) ? makeTargetBookId(item.id) : undefined),
+      targetBookId: (updated.get(item.id) ?? unchanged.get(item.id) ?? skipped.get(item.id) ?? item).matchedBookId || (added.has(item.id) ? makeTargetBookId(item.id) : undefined),
       title: item.title,
       author: item.author,
       outcome,
