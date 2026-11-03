@@ -39,6 +39,12 @@ import type { BookSearchWorkGroup } from '../src/features/book-search/model/book
 
 {
   // Actual physical-book ISBNs that previously failed in scanner lookup.
+  // Nov 3 physical Walmart scans. These passed native barcode decoding
+  // but did not all receive catalog results. Never misclassify them as UPCs.
+  for (const isbn of ['9781538758458', '9780316608312', '9781649379825']) {
+    assert.deepEqual(equivalentCatalogIsbns(isbn).includes(isbn), true,
+      `Walmart ISBN ${isbn} must be retained unchanged as a valid physical identifier.`);
+  }
   const fixtures = [
     { isbn: '9781250379139', isbn10: '125037913X', title: 'Blackthorn', author: 'J.T. Geissinger' },
     { isbn: '9781496758088', isbn10: '1496758080', title: 'Dawn of the Cursed Queen', author: 'Amber V. Nicole' },
