@@ -694,20 +694,44 @@ export async function searchScannerCoverTitleCatalog(
 
   await waitUntilAdministrationInactive(signal);
 
+  // This scanner-only lookup must NOT depend on Google alone. In real stores
+  // Google can be unavailable/rate-limited even when the photographed title
+  // was OCR'd exactly. Ask independent catalogs concurrently and retain only
+  // works whose primary title matches the photograph. The caller still verifies
+  // the photographed author; this is retrieval, never identity acceptance.
   const escaped = trimmed.replace(/"/g, '');
-  let payload: GoogleVolumesResponse;
-  try {
-    payload = await requestDirectGoogleBooks(`intitle:"${escaped}"`, signal);
-  } catch (error) {
-    console.warn('Scanner exact-title Google Books recovery unavailable.', error);
-    return { groups: [], totalItems: 0 };
-  }
+  const googleExact = async (): Promise<BookSearchResponse> => {
+    if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
+    try {
+      const payload = await requestDirectGoogleBooks(`intitle:"${escaped}"`, signal);
+      const groups = groupGoogleEditions((payload.items ?? []).map(mapGoogleVolume)
+        .filter((item): item is BookSearchEdition => Boolean(item)));
+      return { groups, totalItems: groups.length };
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      if (shouldBackOffCatalog(error)) {
+        googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
+      }
+      console.warn('Scanner exact-title Google Books retrieval unavailable; using independent catalogs.', error);
+      return { groups: [], totalItems: 0 };
+    }
+  };
+  const [google, openLibrary, hardcover, prh, trusted] = await Promise.all([
+    googleExact(),
+    searchOpenLibraryWithAuthorFallback(trimmed, signal),
+    searchHardcoverWithBackoff(trimmed),
+    searchPrhWithBackoff(trimmed),
+    searchTrustedCatalogBaseline(trimmed).catch((error) => {
+      console.warn('Scanner exact-title trusted catalog unavailable.', error);
+      return { groups: [], totalItems: 0 };
+    }),
+  ]);
 
   const titleKey = normalizeText(trimmed);
-  const groups = hardenCatalogGroups(groupGoogleEditions(
-    (payload.items ?? []).map(mapGoogleVolume)
-      .filter((item): item is BookSearchEdition => Boolean(item)),
-  )).filter((work) => {
+  const groups = hardenCatalogGroups([
+    ...google.groups, ...openLibrary.groups, ...hardcover.groups,
+    ...prh.groups, ...trusted.groups,
+  ]).filter((work) => {
     const workTitle = normalizeText(work.title);
     return workTitle === titleKey || workTitle.startsWith(`${titleKey} `);
   });
