@@ -246,7 +246,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [scannerDetails, setScannerDetails] = useState<string | null>(null);
   const [scannerAppCheckStatus, setScannerAppCheckStatus] = useState<'unchecked' | 'checking' | 'ready' | 'blocked'>('unchecked');
-  const [scannerAppCheckDiagnostic, setScannerAppCheckDiagnostic] = useState('Not checked yet. Use Check App Check before testing the catalogs.');
+  const [scannerAppCheckDiagnostic, setScannerAppCheckDiagnostic] = useState('');
   const [scannerDiagnosticCopied, setScannerDiagnosticCopied] = useState(false);
   const scannerDiagnosticReport = [
     'Inkbound scanner test diagnostics',
