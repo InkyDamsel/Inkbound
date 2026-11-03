@@ -3,6 +3,10 @@ import path from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 
 const cwd = process.cwd();
+// Native build wrappers intentionally set this in the child environment.
+// Preserve that explicit choice when loading .env files so iOS is not
+// accidentally validated as a web build (which requires a browser-only key).
+const explicitRuntimeTarget = String(process.env.VITE_RUNTIME_TARGET ?? '').trim();
 
 // Match Vite's production env precedence without requiring developers to export
 // secrets into their shell before running a Firebase deploy command.
@@ -11,7 +15,7 @@ for (const filename of ['.env', '.env.local', '.env.production', '.env.productio
   if (fs.existsSync(filepath)) loadDotenv({ path: filepath, override: true });
 }
 
-const runtimeTarget = String(process.env.VITE_RUNTIME_TARGET ?? 'web').trim().toLowerCase();
+const runtimeTarget = (explicitRuntimeTarget || String(process.env.VITE_RUNTIME_TARGET ?? 'web')).trim().toLowerCase();
 const required = [
   'VITE_FIREBASE_API_KEY',
   'VITE_FIREBASE_AUTH_DOMAIN',
