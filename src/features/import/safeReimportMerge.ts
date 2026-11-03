@@ -158,7 +158,7 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
   const editionIsbns = activeEdition ? [activeEdition.isbn, activeEdition.isbn10, activeEdition.isbn13]
     .map(compactIsbn).filter(Boolean) : [];
   const editionCompatible = activeEdition && activeEdition.format === item.format
-    && (!incomingIsbn || editionIsbns.length === 0 || editionIsbns.includes(incomingIsbn));
+    && Boolean(incomingIsbn) && editionIsbns.includes(incomingIsbn);
   if (activeEdition && (initialImport || editionCompatible)) {
     if (!activeEdition.isbn && item.isbn) activeEdition.isbn = item.isbn;
     if (!activeEdition.isbn10 && incomingIsbn.length === 10) activeEdition.isbn10 = incomingIsbn;
@@ -177,8 +177,9 @@ export function mergeImportIntoExistingBook(existing: UserBookRecord, item: Impo
       ...existing.work,
       title: existing.work.title?.trim() ? existing.work.title : item.title,
       author: existing.work.author?.trim() && normalizeText(existing.work.author) !== 'unknown author' ? existing.work.author : item.author,
-      seriesName: existing.work.seriesName?.trim() ? existing.work.seriesName : item.seriesName,
-      seriesOrder: existing.work.seriesOrder ?? item.seriesOrder,
+      // Absence on an existing record may be an intentional reader correction.
+      seriesName: initialImport ? (existing.work.seriesName?.trim() ? existing.work.seriesName : item.seriesName) : existing.work.seriesName,
+      seriesOrder: initialImport ? (existing.work.seriesOrder ?? item.seriesOrder) : existing.work.seriesOrder,
     },
     editions,
     status: initialImport ? status : existing.status,
