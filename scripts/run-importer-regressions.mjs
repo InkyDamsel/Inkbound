@@ -21,7 +21,7 @@ try {
       format: 'esm',
       target: 'node20',
       packages: 'external',
-      define: { 'import.meta.env': '{ DEV: false, MODE: "test" }' },
+      define: { 'import.meta.env': '{ "DEV": false, "MODE": "test" }' },
       logLevel: 'warning',
     });
     const execution = spawnSync(process.execPath, [outfile], {
