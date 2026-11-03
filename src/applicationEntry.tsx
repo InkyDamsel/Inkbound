@@ -10,6 +10,7 @@ import { purgeUnverifiedLegacyImportMetadata } from './features/import/purgeLega
 import { CanonicalLibraryNormalizationBridge } from './features/library/CanonicalLibraryNormalizationBridge.tsx';
 import { PhotoMemoryAutoSyncBridge } from './features/memories/PhotoMemoryAutoSyncBridge.tsx';
 import { ReadingMemoryCloudSyncBridge } from './features/memories/ReadingMemoryCloudSyncBridge.tsx';
+import { ImportHistoryCloudSyncBridge } from './features/import/ImportHistoryCloudSyncBridge.tsx';
 import { RecoverySafetyBridge } from './features/recovery/RecoverySafetyBridge.tsx';
 import { AdaptiveCloudPersistenceBridge } from './features/sync/AdaptiveCloudPersistenceBridge.tsx';
 import { AuxiliaryAccountSyncBridge } from './features/sync/AuxiliaryAccountSyncBridge.tsx';
@@ -192,6 +193,7 @@ const InkboundApplication = () => (
               <ProtectedBookDetailsLedgerBridge />
               <AuxiliaryAccountSyncBridge />
               <ReadingMemoryCloudSyncBridge />
+              <ImportHistoryCloudSyncBridge />
               <ReadOnlyCloudHydrationBridge />
               <PhotoMemoryAutoSyncBridge />
               <LegacyBookCoverMigrationBridge />
