@@ -7,7 +7,7 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
   setItem: (key: string, value: string) => { values.set(key, value); },
   removeItem: (key: string) => { values.delete(key); },
 }});
-const { appendCompletedImportAudit, readImportHistory, writeImportHistory,
+const { appendCompletedImportAudit, beginImportAudit, failImportAudit, readImportHistory, writeImportHistory,
   ensureImportHistoryForExistingLibrary, IMPORT_HISTORY_STORAGE_KEY } = await import('../src/features/import/importHistory');
 const { reconcileRepeatedImportHistory } = await import('../src/features/import/reconcileImportHistory');
 
@@ -17,6 +17,19 @@ const record = (id: string): ImportRecordItem => ({
 } as ImportRecordItem);
 
 const row = record('row-1');
+beginImportAudit('import-session-failure', [row], [], 'interrupted.csv');
+assert.equal(readImportHistory()[0].status, 'running', 'Import must be recorded before mutation.');
+failImportAudit('import-session-failure', 'Synthetic storage failure');
+assert.equal(readImportHistory()[0].status, 'failed', 'Interrupted import must retain an audit record.');
+writeImportHistory([]);
+beginImportAudit('import-session-success', [row], [], 'finished.csv');
+appendCompletedImportAudit({
+  sessionId: 'import-session-success',
+  submitted: [row], added: [row], enriched: [], skipped: [], sourceName: 'finished.csv',
+});
+assert.equal(readImportHistory().length, 1, 'Completing a started import must update its event, not append a second.');
+assert.equal(readImportHistory()[0].status, 'completed');
+writeImportHistory([]);
 // Two completed imports with ZERO new books are separate sessions forever.
 appendCompletedImportAudit({ submitted: [row], added: [], enriched: [], unchanged: [row], skipped: [], sourceName: 'one.csv' });
 appendCompletedImportAudit({ submitted: [row], added: [], enriched: [], unchanged: [row], skipped: [], sourceName: 'two.csv' });
