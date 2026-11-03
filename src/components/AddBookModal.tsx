@@ -245,6 +245,51 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [scannerDetails, setScannerDetails] = useState<string | null>(null);
+  const [scannerAppCheckStatus, setScannerAppCheckStatus] = useState<'unchecked' | 'checking' | 'ready' | 'blocked'>('unchecked');
+  const [scannerAppCheckDiagnostic, setScannerAppCheckDiagnostic] = useState('Not checked yet. Use Check App Check before testing the catalogs.');
+  const [scannerDiagnosticCopied, setScannerDiagnosticCopied] = useState(false);
+  const scannerDiagnosticReport = [
+    'Inkbound scanner test diagnostics',
+    'Build: scanner-debug / development',
+    `App Check status: ${scannerAppCheckStatus}`,
+    `App Check diagnostic: ${scannerAppCheckDiagnostic}`,
+    scannerDetails ?? 'Scanner trace: no failed scan has been recorded in this session.',
+  ].join('\n\n');
+  const checkScannerAppCheck = async () => {
+    if (!SCANNER_DEBUG_ENABLED || scannerAppCheckStatus === 'checking') return;
+    setScannerAppCheckStatus('checking');
+    setScannerAppCheckDiagnostic('Checking native App Check provider...');
+    try {
+      const error = await diagnoseNativeAppCheckFailure();
+      if (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // Keep diagnostics safe for screenshots, chat and clipboard. Do not
+        // display debug tokens, credentials, or request URLs with API keys.
+        const failure = /403|attestation/i.test(message)
+          ? 'HTTP 403: Firebase rejected the native App Check attestation. Protected catalog services may be unavailable.'
+          : /not initialized/i.test(message)
+            ? 'Native App Check adapter has not initialized.'
+            : 'Native App Check token request failed. See native logs for implementation-specific details.';
+        setScannerAppCheckStatus('blocked');
+        setScannerAppCheckDiagnostic(failure);
+      } else {
+        setScannerAppCheckStatus('ready');
+        setScannerAppCheckDiagnostic('Native App Check token request succeeded. This does not guarantee every catalog provider will respond.');
+      }
+    } catch {
+      setScannerAppCheckStatus('blocked');
+      setScannerAppCheckDiagnostic('Native App Check diagnostic could not complete.');
+    }
+  };
+  const copyScannerDiagnostics = async () => {
+    try {
+      await navigator.clipboard.writeText(scannerDiagnosticReport);
+      setScannerDiagnosticCopied(true);
+    } catch {
+      setScannerDiagnosticCopied(false);
+    }
+  };
+
   const [cameraActive, setCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -2043,6 +2088,26 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 </div>
                 <div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div>
               </div>
+
+              {SCANNER_DEBUG_ENABLED && (
+                <details className="mt-4 rounded-xl border border-[#c5a059]/50 bg-[#211625] p-3" aria-label="Scanner test diagnostics">
+                  <summary className="cursor-pointer text-sm font-bold text-[#f0d387]">Test diagnostics — App Check: {scannerAppCheckStatus}</summary>
+                  <p className="mt-2 text-xs leading-5 text-[#cbbacb]">Scanner-debug build only. Check Firebase access before scanning at Walmart; catalog provider results and OCR traces appear here after a failed scan.</p>
+                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#f0c5ce]" role="status">{scannerAppCheckDiagnostic}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" disabled={scannerAppCheckStatus === 'checking'} onClick={() => void checkScannerAppCheck()} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">
+                      {scannerAppCheckStatus === 'checking' ? 'Checking…' : 'Check App Check'}
+                    </button>
+                    <button type="button" onClick={() => void copyScannerDiagnostics()} className="quiet-shelf-secondary-action min-h-11">
+                      {scannerDiagnosticCopied ? 'Report copied' : 'Copy diagnostic report'}
+                    </button>
+                  </div>
+                  <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/25 p-3 text-[11px] leading-5 text-[#e4d4e5]">{scannerDetails ?? 'No scanner failure recorded in this session.'}</pre>
+                  {scannerAppCheckStatus === 'blocked' && (
+                    <p className="mt-2 text-xs text-[#f0c5ce]">Firebase App Check rejected or could not obtain a debug token. Diagnostics cannot bypass Firebase enforcement; the token must still be accepted by Firebase for protected catalog services to work.</p>
+                  )}
+                </details>
+              )}
 
               <div className="relative mt-5 aspect-[4/3] max-h-[300px] overflow-hidden rounded-2xl border border-white/10 bg-black">
                 <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
