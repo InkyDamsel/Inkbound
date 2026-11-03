@@ -1556,6 +1556,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerError(null);
       // Keep the original scanned ISBN until the reader selects an edition.
     } catch (error) {
+      if (SCANNER_DEBUG_ENABLED) {
+        const appCheckError = await diagnoseNativeAppCheckFailure();
+        const reason = appCheckError instanceof Error ? appCheckError.message : String(appCheckError ?? '');
+        const appCheckLine = !appCheckError
+          ? 'App Check: native token probe returned no error'
+          : /403|attestation/i.test(reason)
+            ? 'App Check: HTTP 403 / attestation rejected; protected providers may be unavailable'
+            : 'App Check: native token probe failed (details withheld to protect credentials)';
+        setScannerDetails((previous) => [previous ?? '[Inkbound scanner] Cover lookup did not resolve', appCheckLine].join('\n'));
+      }
       setScannerMessage(null);
       setScannerError(error instanceof Error ? error.message : 'Cover recognition failed. Try another photo.');
     } finally {
