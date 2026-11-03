@@ -3,7 +3,7 @@ import { getRuntimeStorage } from '../../platform/runtimeStorage';
 import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
-import { appendCompletedImportAudit } from './importHistory';
+import { appendCompletedImportAudit, beginImportAudit, failImportAudit } from './importHistory';
 import { findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
@@ -195,11 +195,14 @@ export function startImportVerificationJob(
   if (activePromise) return activePromise;
   const normalizedItems = items.map(normalizeImportRecord);
   const normalizedPreDetectedDuplicates = preDetectedDuplicates.map(normalizeImportRecord);
+  const sessionId = `import-session-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
   emit({ status: 'running', completed: 0, total: normalizedItems.length, importedCount: 0, matchedCount: 0, metadataPendingCount: 0, duplicates: normalizedPreDetectedDuplicates, unmatched: [] });
   window.addEventListener('beforeunload', warnBeforeUnload);
 
   activePromise = (async () => {
     try {
+      // A persisted session is required before any book can be changed.
+      beginImportAudit(sessionId, normalizedItems, normalizedPreDetectedDuplicates, sourceName);
       const startingLibrary = librarySnapshot ?? [];
       const mergeResult = mergeExistingRecords(normalizedItems, startingLibrary);
       let workingLibrary = mergeResult.library;
@@ -232,10 +235,16 @@ export function startImportVerificationJob(
         unchanged: mergeResult.unchanged,
         skipped: [...duplicateMap.values()],
         sourceName,
+        sessionId,
       });
       emit({ status: 'complete', completed: normalizedItems.length, total: normalizedItems.length, importedCount: importedRecords.length, matchedCount: mergeResult.merged.length + mergeResult.unchanged.length, metadataPendingCount: importedRecords.length, duplicates: [...duplicateMap.values()], unmatched: [] });
     } catch (error) {
-      emit({ ...snapshot, status: 'error', error: error instanceof Error ? error.message : 'The import could not be completed. Books already written to your library were left intact.' });
+      const message = error instanceof Error ? error.message : 'The import could not be completed. Previously saved books remain intact.';
+      try { failImportAudit(sessionId, message); }
+      catch (historyError) {
+        console.error('[Inkbound importer] Import failure could not be recorded.', historyError);
+      }
+      emit({ ...snapshot, status: 'error', error: message });
     } finally {
       activePromise = null;
       window.removeEventListener('beforeunload', warnBeforeUnload);
