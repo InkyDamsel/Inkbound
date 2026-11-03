@@ -53,6 +53,8 @@ export interface ImportHistoryEntry {
   items: ImportHistoryItem[];
   /** Immutable per-row log. Older history entries may not have this field. */
   outcomes?: ImportRowOutcome[];
+  /** Provisional identities survive a crash before the outcome is known. */
+  attemptedRows?: ImportRowOutcome[];
   status?: 'running' | 'completed' | 'failed';
   failureReason?: string;
 }
@@ -187,6 +189,16 @@ export function beginImportAudit(sessionId: string, submitted: ImportRecordItem[
     enrichedCount: 0,
     items: [],
     outcomes: [],
+    attemptedRows: [...new Map([...submitted, ...skipped].map((row) => [row.id, row])).values()].map((row) => ({
+      recordId: row.id,
+      targetBookId: row.matchedBookId,
+      title: row.title,
+      author: row.author,
+      outcome: skipped.some((item) => item.id === row.id) ? 'skipped' as const : 'failed' as const,
+      reason: skipped.some((item) => item.id === row.id)
+        ? 'Already present or skipped in preview'
+        : 'Not yet confirmed; may have been partly saved if interrupted',
+    })),
     status: 'running',
   };
   if (!writeImportHistory([entry, ...previous])) {
@@ -202,6 +214,7 @@ export function failImportAudit(sessionId: string, reason: string): void {
     ...item,
     status: 'failed' as const,
     failureReason: reason,
+    outcomes: item.attemptedRows ?? [],
   } : item);
   if (!writeImportHistory(updated)) {
     throw new Error('Import failed, and its failure record could not be persisted.');
