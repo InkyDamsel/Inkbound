@@ -62,6 +62,21 @@ function surnameLineContradictsGiven(lines: string[], surname: string, given: st
   });
 }
 
+/** A short catalog title printed as a genre/subtitle must not override a
+ * distinctly different full cover title (e.g. THE PICASSO HEIST / A THRILLER).
+ * Do not treat series, marketing, or the credited author's name as the title. */
+function competingCoverTitle(lines: string[], title: string, authors: string[]): boolean {
+  const candidate = words(scannerCoverTitle(title));
+  if (candidate.length !== 1) return false;
+  const credited = new Set(authors.flatMap(words));
+  return lines.some((line) => {
+    if (isDemotedCoverTitleLine(line)) return false;
+    const tokens = words(line).filter((token) => token.length >= 4);
+    return tokens.length >= 2 && !tokens.includes(candidate[0])
+      && !tokens.some((token) => credited.has(token));
+  });
+}
+
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const text = words(lines.join(' '));
   const tokens = new Set(text);
@@ -69,6 +84,7 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   const titleWords = words(scannerCoverTitle(title));
   if (isAuthorBiographyTitle(title, authors)) return false;
   if (!titleWords.length) return false;
+  if (competingCoverTitle(lines, title, authors)) return false;
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
   if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
@@ -299,22 +315,7 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   }
 
   const catalogTitleWords = words(scannerCoverTitle(title));
-  // A one-word catalog title may also be a genre subtitle on a different
-  // photographed book ("A THRILLER" on THE PICASSO HEIST). Do not accept the
-  // genre word as the identity when a distinct multi-word title is visibly
-  // printed on the same cover. Exclude printed author lines from this check.
-  if (catalogTitleWords.length === 1) {
-    const candidate = catalogTitleWords[0];
-    const creditedNameTokens = new Set(authors.flatMap(words));
-    const strongerTitleLine = lines.some((line, index) => {
-      if (titleLineDemoted(line, index)) return false;
-      const lineTokens = words(line).filter((token) => token.length >= 4);
-      if (lineTokens.length < 2 || lineTokens.includes(candidate)) return false;
-      if (lineTokens.some((token) => creditedNameTokens.has(token))) return false;
-      return true;
-    });
-    if (strongerTitleLine) return false;
-  }
+  if (competingCoverTitle(lines, title, authors)) return false;
   const weakTitleWords = new Set(['a','an','and','as','at','by','for','from','in','of','on','or','the','to']);
   const significantTitleWords = catalogTitleWords
     .filter((word) => word.length >= 4 && !weakTitleWords.has(word));
