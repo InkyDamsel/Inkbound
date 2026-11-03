@@ -20,7 +20,12 @@ export interface ImportVerificationJobSnapshot {
   error?: string;
 }
 
-type ImportExecutor = (items: ImportRecordItem[]) => Promise<ImportRecordItem[] | void> | ImportRecordItem[] | void;
+export interface ImportExecutionResult {
+  added: ImportRecordItem[];
+  skipped: ImportRecordItem[];
+  failed: ImportRecordItem[];
+}
+type ImportExecutor = (items: ImportRecordItem[]) => Promise<ImportExecutionResult> | ImportExecutionResult;
 type Listener = (snapshot: ImportVerificationJobSnapshot) => void;
 
 const SNAPSHOT_STORAGE_KEY = 'inkbound_import_verification_result_v2';
@@ -220,20 +225,24 @@ export function startImportVerificationJob(
         notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
       }
 
-      const executionResult = mergeResult.remaining.length > 0 ? await executeImport(mergeResult.remaining) : [];
-      const importedRecords = Array.isArray(executionResult) ? executionResult.map(normalizeImportRecord) : mergeResult.remaining;
-      const importedIds = new Set(importedRecords.map((record) => record.id));
-      const writeRejected = mergeResult.remaining.filter((record) => !importedIds.has(record.id));
-      // A write failure is not a duplicate. Do not claim completion or append
-      // an inaccurate "skipped" audit when the library write was rejected.
-      if (writeRejected.length > 0) {
-        throw new Error(`Import could not persist ${writeRejected.length} book(s). Previously saved books were preserved; no complete import was recorded.`);
+      const executionResult: ImportExecutionResult = mergeResult.remaining.length
+        ? await executeImport(mergeResult.remaining)
+        : { added: [], skipped: [], failed: [] };
+      const importedRecords = executionResult.added.map(normalizeImportRecord);
+      const lateSkipped = executionResult.skipped.map(normalizeImportRecord);
+      const explicitlyFailed = executionResult.failed.map(normalizeImportRecord);
+      const accountedFor = new Set([...importedRecords, ...lateSkipped, ...explicitlyFailed].map((record) => record.id));
+      const unreported = mergeResult.remaining.filter((record) => !accountedFor.has(record.id));
+      const failedCount = explicitlyFailed.length + unreported.length;
+      if (failedCount > 0) {
+        throw new Error(`Import could not persist ${failedCount} book(s). Previously saved books were preserved; this operation is recorded as failed.`);
       }
 
       workingLibrary = await applySourceFieldsToNewBooks(importedRecords, workingLibrary);
       if (importedRecords.length > 0) restoreManualSeriesOverridesFromImport(importedRecords, workingLibrary);
       persistMetadataPending(importedRecords);
-      const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
+      const duplicateMap = new Map([...normalizedPreDetectedDuplicates, ...lateSkipped]
+        .map((record) => [record.id, record]));
       appendCompletedImportAudit({
         submitted: normalizedItems,
         added: importedRecords,
