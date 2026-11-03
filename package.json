@@ -53,7 +53,7 @@
     "test:critical:sync": "tsx scripts/account-library-migration-regressions.ts && tsx scripts/cross-device-sync-regressions.ts && tsx scripts/cross-device-scenario-matrix.ts && tsx scripts/library-loan-reminder-regressions.ts",
     "build:ios": "node scripts/build-ios.mjs",
     "ios:bootstrap": "node scripts/bootstrap-ios.mjs",
-    "ios:sync": "npm run build:ios && npx cap sync ios && npm run ios:branding:sync && npm run ios:google-signin:configure",
+    "ios:sync": "npm run build:ios && npx cap sync ios && npm run ios:branding:sync && npm run ios:google-signin:configure && npm run verify:ios-ready",
     "ios:open": "npx cap open ios",
     "verify:ios-ready": "node scripts/verify-ios-ready.mjs",
     "ios:branding:sync": "node scripts/sync-ios-branding.mjs",
@@ -63,7 +63,8 @@
     "build:scanner-debug": "vite build --mode scanner-debug",
     "android:scanner-debug:sync": "node scripts/build-android.mjs --scanner-debug && npx cap sync android && npm run android:branding:sync && npm run android:version:sync",
     "test:critical:importer": "node scripts/run-importer-regressions.mjs",
-    "android:release:sync": "npm run build:android && npx cap sync android && npm run android:branding:sync && npm run android:version:sync && npm run verify:android-config && npm run verify:android-gradle && npm run verify:android-branding"
+    "android:release:sync": "npm run build:android && npx cap sync android && npm run android:branding:sync && npm run android:version:sync && npm run verify:android-config && npm run verify:android-gradle && npm run verify:android-branding",
+    "verify:ios-clean": "node scripts/verify-ios-clean.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
