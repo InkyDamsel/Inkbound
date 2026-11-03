@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { coverAuthorQueries, coverTitleEvidenceHints, rankAuthorHints, titleAuthorPartQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
@@ -80,6 +81,16 @@ assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N'
 // Walmart Nov 3: the photographed book is THE PICASSO HEIST.
 // "A THRILLER" is a genre subtitle, not James Patterson's unrelated THRILLER.
 // Both exact and approximate gates must reject the false positive.
+// The diagnostic surface must appear only alongside a failed scan, not
+// above the camera. Android sync uses this same compiled component.
+const scannerUiSource = readFileSync('src/components/AddBookModal.tsx', 'utf8');
+assert.equal((scannerUiSource.match(/aria-label="Scanner test diagnostics"/g) ?? []).length, 0,
+  'Do not reintroduce a second diagnostics panel above the camera.');
+assert.equal((scannerUiSource.match(/>Scanner details<\/summary>/g) ?? []).length, 1,
+  'Keep exactly one Scanner details expander in the error section.');
+assert.ok(scannerUiSource.includes('early-exact-title:'),
+  'Try exact title evidence before exhausting the broad query budget.');
+
 const picassoCover = [
   'JAMES PATTERSON',
   'AND HOWARD ROUGHAN',
