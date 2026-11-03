@@ -120,7 +120,9 @@ checks.push({
 const addBookSource = fs.readFileSync(path.join(root, 'src', 'components', 'AddBookModal.tsx'), 'utf8');
 checks.push({
   ok: addBookSource.includes('SCANNER_DEBUG_ENABLED && authorCatalogDiagnostics && (')
-    && addBookSource.includes('SCANNER_DEBUG_ENABLED && scannerDetails && <details')
+    && addBookSource.includes('{SCANNER_DEBUG_ENABLED && <details')
+    && addBookSource.includes('>Scanner details</summary>')
+    && !addBookSource.includes('aria-label="Scanner test diagnostics"')
     && addBookSource.includes("import.meta.env.MODE === 'scanner-debug'"),
   message: 'scanner and catalog diagnostic panels must be dev-only',
 });
@@ -132,6 +134,9 @@ const productionForbiddenStrings = [
   '[Inkbound scanner] ISBN lookup',
   '[Inkbound scanner] Cover identification failed',
   'Scanner details',
+  'Copy diagnostic report',
+  'Check App Check',
+  'No scan trace captured yet.',
   'native App Check token',
   // The old scanner error instructed readers to register a development token.
   // Match that specific unsafe instruction, not generic App Check terminology
