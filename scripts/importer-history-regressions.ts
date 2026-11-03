@@ -121,4 +121,13 @@ const failedAudit = readImportHistory()[0];
 assert.equal(failedAudit.status, 'failed', 'Rejected writes cannot be counted as skipped duplicates.');
 assert.equal(failedAudit.importedCount, 0);
 
+const { mergeImportHistoryEvents } = await import('../src/features/import/importHistoryReconciliation');
+const runningEvent = { ...failedAudit, id: 'session-shared', status: 'running' as const, outcomes: [] };
+const completeEvent = { ...runningEvent, status: 'completed' as const,
+  outcomes: [{ recordId: 'row-1', title: 'An Existing Book', author: 'Test Author', outcome: 'added' as const }] };
+const crossDevice = mergeImportHistoryEvents([runningEvent], [completeEvent]);
+assert.equal(crossDevice[0].status, 'completed', 'Stale local running state must not replace cloud completion.');
+assert.equal(mergeImportHistoryEvents([], [completeEvent]).length, 1, 'New device must restore remote event.');
+assert.equal(mergeImportHistoryEvents([runningEvent], []).length, 1, 'Remote absence never deletes local event.');
+
 console.log('Inkbound importer history regressions passed.');
