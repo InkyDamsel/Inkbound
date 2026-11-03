@@ -116,15 +116,17 @@ export function readImportHistory(): ImportHistoryEntry[] {
   }
 }
 
-export function writeImportHistory(entries: ImportHistoryEntry[]) {
+export function writeImportHistory(entries: ImportHistoryEntry[]): boolean {
   try {
     if (entries.length === 0) {
       localStorage.removeItem(IMPORT_HISTORY_STORAGE_KEY);
-      return;
+      return true;
     }
     localStorage.setItem(IMPORT_HISTORY_STORAGE_KEY, JSON.stringify(entries));
+    return true;
   } catch (error) {
     console.warn('Inkbound could not save import history on this device.', error);
+    return false;
   }
 }
 
@@ -186,12 +188,14 @@ export function appendCompletedImportAudit(args: {
     sourceName: args.sourceName ?? 'Library Import',
     importedCount: args.added.length,
     duplicateCount: args.skipped.length,
-    totalCount: args.submitted.length + args.skipped.length,
+    totalCount: new Set([...args.submitted, ...args.skipped].map((item) => item.id)).size,
     enrichedCount: args.enriched.length,
     unchangedCount: 0,
     items: args.added.map(toItem),
   };
-  writeImportHistory([entry, ...readImportHistory()]);
+  if (!writeImportHistory([entry, ...readImportHistory()])) {
+    throw new Error('Import books may have saved, but the import audit could not be persisted. Please do not repeat the import until history storage is available.');
+  }
 }
 
 function reconcileHistoryWithPendingVerification(entries: ImportHistoryEntry[]): ImportHistoryEntry[] {
@@ -270,7 +274,8 @@ export function ensureImportHistoryForExistingLibrary(books: UserBookRecord[]): 
     duplicateCount: 0,
     items,
   };
-  writeImportHistory([entry]);
+  // Legacy reconstruction is display-only. It is not a real import event
+  // and must never enter the durable audit ledger or trigger recovery.
   return [entry];
 }
 
