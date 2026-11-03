@@ -117,19 +117,25 @@ function readCurrentBooks(fallback: UserBookRecord[]): UserBookRecord[] {
   } catch { return fallback; }
 }
 
-function mergeExistingRecords(items: ImportRecordItem[], library: UserBookRecord[]): { library: UserBookRecord[]; merged: ImportRecordItem[]; remaining: ImportRecordItem[] } {
+function mergeExistingRecords(items: ImportRecordItem[], library: UserBookRecord[]): { library: UserBookRecord[]; merged: ImportRecordItem[]; unchanged: ImportRecordItem[]; remaining: ImportRecordItem[] } {
   let nextLibrary = library.map((book) => ({ ...book }));
   const merged: ImportRecordItem[] = [];
+  const unchanged: ImportRecordItem[] = [];
   const remaining: ImportRecordItem[] = [];
   for (const item of items) {
     const requestedMatch = item.matchedBookId ? nextLibrary.find((book) => book.id === item.matchedBookId) : undefined;
     const match = requestedMatch ?? findExistingImportMatch(item, nextLibrary);
     if (!match || item.duplicateAction !== 'merge') { remaining.push(item); continue; }
     const updated = mergeImportIntoExistingBook(match, item);
+    const outcomeItem = { ...item, matchedBookId: match.id, duplicateAction: 'merge' as const };
+    if (JSON.stringify(updated) === JSON.stringify(match)) {
+      unchanged.push(outcomeItem);
+      continue;
+    }
     nextLibrary = nextLibrary.map((book) => book.id === match.id ? updated : book);
-    merged.push({ ...item, matchedBookId: match.id, duplicateAction: 'merge' });
+    merged.push(outcomeItem);
   }
-  return { library: nextLibrary, merged, remaining };
+  return { library: nextLibrary, merged, unchanged, remaining };
 }
 
 function applySourceFieldsToBooks(items: ImportRecordItem[], library: UserBookRecord[]): { library: UserBookRecord[]; matched: number } {
@@ -223,10 +229,11 @@ export function startImportVerificationJob(
         submitted: normalizedItems,
         added: importedRecords,
         enriched: mergeResult.merged,
+        unchanged: mergeResult.unchanged,
         skipped: [...duplicateMap.values()],
         sourceName,
       });
-      emit({ status: 'complete', completed: normalizedItems.length, total: normalizedItems.length, importedCount: importedRecords.length, matchedCount: mergeResult.merged.length, metadataPendingCount: importedRecords.length, duplicates: [...duplicateMap.values()], unmatched: [] });
+      emit({ status: 'complete', completed: normalizedItems.length, total: normalizedItems.length, importedCount: importedRecords.length, matchedCount: mergeResult.merged.length + mergeResult.unchanged.length, metadataPendingCount: importedRecords.length, duplicates: [...duplicateMap.values()], unmatched: [] });
     } catch (error) {
       emit({ ...snapshot, status: 'error', error: error instanceof Error ? error.message : 'The import could not be completed. Books already written to your library were left intact.' });
     } finally {
