@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import type { ImportRecordItem, UserBookRecord } from '../src/types';
 import { applyImportExtrasToNewBook, mergeImportIntoExistingBook } from '../src/features/import/safeReimportMerge';
 import { recoverIncompleteLatestImport } from '../src/features/import/recoverPendingImportBooks';
+import { mergeEnrichedImportedBook } from '../src/features/import/libraryEnrichment';
 
 const book = {
   id: 'paperback-owned',
@@ -49,6 +50,18 @@ assert.ok(newWithExtras.privateTags.includes('VIP TBR'), 'New imports preserve s
 assert.ok(newWithExtras.privateTags.includes('My Shelf'), 'New imports preserve source shelves.');
 assert.equal(newWithExtras.privateTags.filter((tag) => tag.toLowerCase() === 'vip tbr').length, 1,
   'Canonical tag identity prevents import casing duplicates.');
+
+const catalogEnrichment = mergeEnrichedImportedBook(book, {
+  ...book,
+  dateStarted: '2026-09-01',
+  dateFinished: '2026-10-01',
+  importFinishedDateProvided: true,
+  editions: [{ ...book.editions[0], format: 'hardcover', isbn: '9781234567897', pageCount: 900 }],
+});
+assert.equal(catalogEnrichment.dateStarted, undefined, 'Catalog enrichment must not restore a cleared start date.');
+assert.equal(catalogEnrichment.dateFinished, undefined, 'Catalog enrichment must not restore a cleared finish date.');
+assert.equal(catalogEnrichment.editions[0].isbn, undefined, 'Catalog enrichment must not cross edition formats.');
+assert.equal(catalogEnrichment.editions[0].pageCount, undefined, 'Catalog pages must not cross edition formats.');
 
 assert.equal(recoverIncompleteLatestImport(), 0, 'Retired recovery must never modify library data.');
 const boundary = fs.readFileSync('src/features/sync/CloudDataRefreshBoundary.tsx', 'utf8');
