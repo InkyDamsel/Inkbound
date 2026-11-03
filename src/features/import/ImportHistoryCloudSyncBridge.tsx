@@ -9,6 +9,7 @@ import {
   type ImportHistoryEntry,
 } from './importHistory';
 import { INKBOUND_BEFORE_SIGN_OUT_EVENT, type BeforeSignOutDetail } from '../sync/cloudSyncEvents';
+import { mergeImportHistoryEvents } from './importHistoryReconciliation';
 
 const CHUNK_CHARACTERS = 100_000;
 const RETRY_MS = 30_000;
@@ -23,25 +24,6 @@ function validEntry(value: unknown): value is ImportHistoryEntry {
     && typeof entry.importedCount === 'number' && typeof entry.duplicateCount === 'number';
 }
 
-function unionEntries(local: ImportHistoryEntry[], remote: ImportHistoryEntry[]): ImportHistoryEntry[] {
-  // Remote absence is NEVER deletion. Existing local edits (such as metadata
-  // verification progress) retain their own values; events not on this device
-  // are restored by ID without collapsing independent import sessions.
-  const rank = (entry: ImportHistoryEntry) => entry.status === 'completed' ? 3
-    : entry.status === 'failed' ? 2 : entry.status === 'running' ? 1 : 0;
-  const merged = new Map(remote.map((entry) => [entry.id, entry]));
-  local.forEach((entry) => {
-    const cloud = merged.get(entry.id);
-    if (!cloud || rank(entry) > rank(cloud)) { merged.set(entry.id, entry); return; }
-    if (rank(entry) < rank(cloud)) return;
-    // Same lifecycle state: retain whichever version carries fuller audit
-    // evidence; never roll completed sessions back to partial/empty details.
-    const weight = (item: ImportHistoryEntry) =>
-      (item.outcomes?.length ?? 0) * 1000 + item.items.length;
-    if (weight(entry) >= weight(cloud)) merged.set(entry.id, entry);
-  });
-  return [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
 
 export const ImportHistoryCloudSyncBridge = () => {
   const { user } = useAccountSync();
@@ -87,7 +69,7 @@ export const ImportHistoryCloudSyncBridge = () => {
       const pending = readPending();
       if (!pending.length) return;
       const local = readImportHistory();
-      const merged = unionEntries(local, pending);
+      const merged = mergeImportHistoryEvents(local, pending);
       if (JSON.stringify(local) !== JSON.stringify(merged)) writeImportHistory(merged);
     };
 
@@ -144,7 +126,7 @@ export const ImportHistoryCloudSyncBridge = () => {
     const incorporate = (incoming: ImportHistoryEntry[]) => {
       if (disposed || incoming.length === 0) return;
       const before = readImportHistory();
-      const merged = unionEntries(before, incoming);
+      const merged = mergeImportHistoryEvents(before, incoming);
       incoming.forEach((entry) => { uploaded.current[entry.id] = JSON.stringify(entry); });
       if (JSON.stringify(before) !== JSON.stringify(merged)) writeImportHistory(merged);
       savePending(readPending().filter((entry) =>
