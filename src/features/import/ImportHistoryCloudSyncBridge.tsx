@@ -136,6 +136,8 @@ export const ImportHistoryCloudSyncBridge = () => {
       const merged = unionEntries(before, incoming);
       incoming.forEach((entry) => { uploaded.current[entry.id] = JSON.stringify(entry); });
       if (JSON.stringify(before) !== JSON.stringify(merged)) writeImportHistory(merged);
+      savePending(readPending().filter((entry) =>
+        uploaded.current[entry.id] !== JSON.stringify(entry)));
     };
 
     const initialize = async () => {
