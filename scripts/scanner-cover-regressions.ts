@@ -283,6 +283,18 @@ assert.ok(devouredCrowded.authors.slice(0, 3).includes('jordan stephanie gray'),
 assert.ok(devouredCrowded.titles.includes('devoured'),
   'Prioritizing printed author names must preserve the visible title.');
 
+// A later, clean OCR title must receive a full-author request before
+// damaged earlier variants spend the bounded query budget.
+const noisyTitleQueries = titleAuthorPartQueries(
+  ['denoured', 'deyoue', 'devoured'],
+  ['jordan stephanie gray', 'jordan stephanie jra'],
+  8,
+);
+assert.ok(noisyTitleQueries.includes('devoured jordan stephanie gray'),
+  'A correctly recognized third title must not be starved by earlier OCR variants.');
+assert.ok(noisyTitleQueries.indexOf('devoured jordan stephanie gray') < 8,
+  'Correct title and full author must be retrieved inside the existing query cap.');
+
 const liveReign = liveRank(['REIGN',"AB ETH A'N",'CR O ME','BETH AN','GR O ME','BETH A"N','CRO ME','E.','BET H AN','ruti:','1:','3CR OD ME']);
 assert.ok(liveReign.authors.slice(0, 3).includes('bethan crome'),
   'Reign: reconstructed Bethan + surname must be inside the first three author hints.');
