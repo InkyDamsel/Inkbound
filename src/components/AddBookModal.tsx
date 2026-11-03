@@ -816,6 +816,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
         } : undefined));
       const searchAuthorCatalogOnce = memoizeCatalog((query) => searchScannerAuthorCatalog(query));
+      const searchExactTitleOnce = memoizeCatalog((title) => searchScannerCoverTitleCatalog(title));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       const compactCover = recognized.replace(/\s+/g, '');
@@ -883,7 +884,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       for (const titleHint of rankedTitleEvidence.slice(0, 2)) {
         if (best) break;
         try {
-          const response = await searchScannerCoverTitleCatalog(titleHint);
+          const response = await searchExactTitleOnce(titleHint);
           recordScannerResponse(`early-exact-title:${titleHint}`, response.groups);
           const recovered = response.groups.find((work) =>
             coverMatchesWork(cleanLines, work.title, work.authors)
@@ -1413,7 +1414,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         for (const titleHint of exactTitleHints) {
           try {
-            const response = await searchScannerCoverTitleCatalog(titleHint);
+            const response = await searchExactTitleOnce(titleHint);
             recordScannerResponse(`exact-title:${titleHint}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)
