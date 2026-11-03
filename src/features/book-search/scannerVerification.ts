@@ -68,6 +68,18 @@ function surnameLineContradictsGiven(lines: string[], surname: string, given: st
 function competingCoverTitle(lines: string[], title: string, authors: string[]): boolean {
   const candidate = words(scannerCoverTitle(title));
   if (candidate.length !== 1) return false;
+  // A standalone word can be a legitimate title. Intervene only when the
+  // photo explicitly labels that word as a genre ("A THRILLER", "A NOVEL"),
+  // not merely because other multiword lines exist on the cover.
+  const genreLabel = new Set(['thriller', 'mystery', 'romance', 'fantasy', 'novel', 'memoir', 'suspense']);
+  if (!genreLabel.has(candidate[0])) return false;
+  const printedAsGenre = lines.some((line) => {
+    const tokens = words(line);
+    return tokens.length >= 2 && tokens.length <= 4
+      && tokens.includes(candidate[0])
+      && tokens.some((token) => ['a', 'an', 'novel', 'romance', 'story'].includes(token));
+  });
+  if (!printedAsGenre) return false;
   const credited = new Set(authors.flatMap(words));
   return lines.some((line) => {
     if (isDemotedCoverTitleLine(line)) return false;
