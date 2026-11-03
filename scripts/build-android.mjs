@@ -45,7 +45,6 @@ if (scannerDebug) {
     return content.includes('[Inkbound scanner] Cover identification failed')
       && content.includes('Scanner details')
       && content.includes('Provider trace:')
-      && content.includes('Test diagnostics')
       && content.includes('Check App Check')
       && content.includes('Copy diagnostic report');
   });
@@ -53,7 +52,7 @@ if (scannerDebug) {
     console.error('Scanner DEBUG build blocked: diagnostic UI/provider traces are absent from dist. Do not sync this APK.');
     process.exit(1);
   }
-  console.log('Scanner DEBUG bundle verified: in-app Test diagnostics, App Check probe, copy report and provider traces present.');
+  console.log('Scanner DEBUG bundle verified: original Scanner details contains App Check probe, copy report and provider traces.');
 }
 
 if (browserGoogleBooksKey) {
