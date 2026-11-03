@@ -42,7 +42,7 @@ import {
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
-import { diagnoseNativeAppCheckFailure } from '../platform/runtimeNativeAppCheck';
+import { diagnoseNativeAppCheckFailure, getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
 
 // Vite production builds run inside Android debug APKs too. Scanner diagnostics
 // are opt-in for test bundles, and the release verifier rejects their strings.
@@ -260,9 +260,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerAppCheckStatus('checking');
     setScannerAppCheckDiagnostic('Checking native App Check provider...');
     try {
-      const error = await diagnoseNativeAppCheckFailure();
-      if (error) {
-        const message = error instanceof Error ? error.message : String(error);
+      await getNativeAppCheckToken(true);
+      setScannerAppCheckStatus('ready');
+      setScannerAppCheckDiagnostic('Native App Check token request succeeded. This does not guarantee every catalog provider will respond.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
         // Keep diagnostics safe for screenshots, chat and clipboard. Do not
         // display debug tokens, credentials, or request URLs with API keys.
         const failure = /403|attestation/i.test(message)
@@ -270,15 +272,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           : /not initialized/i.test(message)
             ? 'Native App Check adapter has not initialized.'
             : 'Native App Check token request failed. See native logs for implementation-specific details.';
-        setScannerAppCheckStatus('blocked');
-        setScannerAppCheckDiagnostic(failure);
-      } else {
-        setScannerAppCheckStatus('ready');
-        setScannerAppCheckDiagnostic('Native App Check token request succeeded. This does not guarantee every catalog provider will respond.');
-      }
-    } catch {
       setScannerAppCheckStatus('blocked');
-      setScannerAppCheckDiagnostic('Native App Check diagnostic could not complete.');
+      setScannerAppCheckDiagnostic(failure);
     }
   };
   const copyScannerDiagnostics = async () => {
