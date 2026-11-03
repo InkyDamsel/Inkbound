@@ -668,18 +668,9 @@ export async function resolveCatalogIsbn(
     }
   }
 
-  // Some catalogs can identify a work from the raw barcode text even when the
-  // exact edition record is missing or the provider attached incomplete ISBN
-  // metadata. Treat this as a work-level fallback, never as a verified edition.
-  for (const candidate of candidates) {
-    if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
-    const response = await searchGoogleBooks(candidate, signal);
-    const fallbackWork = response.groups[0];
-    const fallbackEdition = fallbackWork?.editions[0];
-    if (fallbackWork && fallbackEdition) {
-      return enrichIsbnLookupAuthor({ work: fallbackWork, edition: fallbackEdition, exactIsbn: false });
-    }
-  }
+  // No catalog has proved this ISBN. Do not promote an unrelated first
+  // relevance result into a physical-edition suggestion. Keep the scanned
+  // identifier for explicit title/cover/manual recovery instead.
 
   return null;
 }
