@@ -874,6 +874,27 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const strongIdentityQueries = [...new Set(strongTitleHints.flatMap((title) =>
         strongAuthorHints.map((author) => `${title} ${author}`)))].slice(0, 6);
 
+      // A verified, title-shaped OCR line can be more reliable than a large
+      // multi-provider relevance query, particularly when Google is cooling
+      // down from repeated searches. Try this public exact-title lookup first;
+      // acceptance STILL requires independent photographed title + author.
+      for (const titleHint of rankedTitleEvidence.slice(0, 2)) {
+        if (best) break;
+        try {
+          const response = await searchScannerCoverTitleCatalog(titleHint);
+          recordScannerResponse(`early-exact-title:${titleHint}`, response.groups);
+          const recovered = response.groups.find((work) =>
+            coverMatchesWork(cleanLines, work.title, work.authors)
+            || coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.75 };
+            found = response.groups;
+          }
+        } catch (error) {
+          scannerDiagnostics.push(`early-exact-title:${titleHint} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
       // When the photograph gives us a credible full author identity, let the
       // same multi-provider federation used by Search retrieve that author's
       // likely works before asking providers to understand damaged title OCR.
@@ -888,7 +909,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // so DEVOURO/DEVOURED collapse) paired with the printed author, then with
       // just ONE name word. A damaged surname or given name no longer sinks the
       // whole query. Retrieval only; the photographed-cover verifier decides.
-      for (const query of titleAuthorPartQueries(rankedTitleEvidence, authorRecoveryQueries, 8)) {
+      if (!best) for (const query of titleAuthorPartQueries(rankedTitleEvidence, authorRecoveryQueries, 8)) {
         try {
           const response = await searchCoverCatalogOnce(query);
           recordScannerResponse(`ranked-identity:${query}`, response.groups);
