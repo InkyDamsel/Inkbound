@@ -86,4 +86,30 @@ assert.equal(findPreviouslyRemovedImportRows([deletedRow], [{ id: 'book-import-r
 assert.equal(findPreviouslyRemovedImportRows([{ ...deletedRow, isbn: '9780316584586' }], [], deletedHistory).length, 0,
   'A different known ISBN must remain a distinct edition identity.');
 
+// Exercise the actual import job's explicit writer result contract. A late
+// duplicate is SKIPPED; a failed canonical write is FAILED, never equivalent.
+Object.defineProperty(globalThis, 'window', { configurable: true, value: {
+  addEventListener: () => undefined,
+  removeEventListener: () => undefined,
+  dispatchEvent: () => true,
+  setTimeout,
+}});
+const { startImportVerificationJob } = await import('../src/features/import/importVerificationJob');
+writeImportHistory([]);
+await startImportVerificationJob([row], [], async () => ({
+  added: [], skipped: [row], failed: [],
+}), []);
+const skippedAudit = readImportHistory()[0];
+assert.equal(skippedAudit.status, 'completed');
+assert.equal(skippedAudit.duplicateCount, 1);
+assert.equal(skippedAudit.outcomes?.[0]?.outcome, 'skipped');
+
+writeImportHistory([]);
+await startImportVerificationJob([row], [], async () => ({
+  added: [], skipped: [], failed: [row],
+}), []);
+const failedAudit = readImportHistory()[0];
+assert.equal(failedAudit.status, 'failed', 'Rejected writes cannot be counted as skipped duplicates.');
+assert.equal(failedAudit.importedCount, 0);
+
 console.log('Inkbound importer history regressions passed.');
