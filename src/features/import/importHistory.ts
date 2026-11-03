@@ -8,6 +8,7 @@ import { readImportMetadataPending } from './importVerificationJob';
 import { LEGACY_SYNC_STORAGE_KEYS, SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 
 export const IMPORT_HISTORY_STORAGE_KEY = 'inkbound_import_history_v1';
+export const IMPORT_HISTORY_CHANGED_EVENT = 'inkbound:import-history-changed';
 export const IMPORT_ENRICHMENT_PAUSED_KEY = SYNC_STORAGE_KEYS.importEnrichmentPaused;
 // Kept only so older recovery snapshots containing this retired key can still
 // be restored/cleared safely. Foreground retries no longer use this handoff.
@@ -134,6 +135,7 @@ export function writeImportHistory(entries: ImportHistoryEntry[]): boolean {
       return true;
     }
     localStorage.setItem(IMPORT_HISTORY_STORAGE_KEY, JSON.stringify(entries));
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(IMPORT_HISTORY_CHANGED_EVENT));
     return true;
   } catch (error) {
     console.warn('Inkbound could not save import history on this device.', error);
