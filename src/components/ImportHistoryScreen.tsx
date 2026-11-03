@@ -232,6 +232,16 @@ export const ImportHistoryScreen: React.FC<ImportHistoryScreenProps> = ({ books,
                 const unresolvedIds = selectedEntry.items.filter((item) => !isImportHistoryItemMatched(item, byId.get(item.targetBookId))).map((item) => item.targetBookId);
                 return <section className="inkbound-panel min-w-0 rounded-3xl p-4 sm:p-7">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0"><p className="inkbound-kicker">Import Details</p><h2 className="font-serif text-2xl font-bold text-[var(--ink-ivory)]">{selectedEntry.sourceName} · {new Date(selectedEntry.createdAt).toLocaleDateString()}</h2><p className="mt-2 text-sm text-[var(--ink-muted)]">{selectedEntry.totalCount !== undefined ? `${selectedEntry.totalCount.toLocaleString()} records processed: ${selectedEntry.importedCount.toLocaleString()} new, ${(selectedEntry.enrichedCount ?? 0).toLocaleString()} existing matched, ${selectedEntry.duplicateCount.toLocaleString()} skipped.` : `${selectedEntry.importedCount.toLocaleString()} books are already in your Inkbound library. Optional details can be added separately and never block access to your books.`}</p></div><button type="button" onClick={() => void exportUnresolved(selectedEntry, books)} disabled={!unresolvedIds.length} className="quiet-shelf-secondary-action w-full justify-center disabled:opacity-40 sm:w-auto"><Download className="h-4 w-4" /> Save Missing List</button></div>
+                  {selectedEntry.status === 'failed' && (
+                    <p role="alert" className="mt-4 rounded-xl border border-rose-500/35 bg-rose-950/20 p-3 text-sm text-rose-200">
+                      Import interrupted. {selectedEntry.failureReason || 'Some records may need review before retrying.'}
+                    </p>
+                  )}
+                  {selectedEntry.status === 'running' && (
+                    <p role="status" className="mt-4 rounded-xl border border-amber-500/35 p-3 text-sm text-amber-200">
+                      This import started but has not recorded completion. Verify the library before retrying.
+                    </p>
+                  )}
                   {selectedEntry.outcomes && selectedEntry.outcomes.length > 0 && (
                     <section className="mt-5 rounded-xl border border-[var(--ink-border)] p-4" aria-label="Import outcome ledger">
                       <h3 className="font-serif text-lg text-[var(--ink-ivory)]">Every processed book</h3>
