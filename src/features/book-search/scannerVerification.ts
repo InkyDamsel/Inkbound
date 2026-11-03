@@ -81,12 +81,16 @@ function competingCoverTitle(lines: string[], title: string, authors: string[]):
   });
   if (!printedAsGenre) return false;
   const credited = new Set(authors.flatMap(words));
-  return lines.some((line) => {
-    if (isDemotedCoverTitleLine(line)) return false;
+  const titleEvidence = lines.map((line) => {
+    if (isDemotedCoverTitleLine(line)) return [];
     const tokens = words(line).filter((token) => token.length >= 4);
-    return tokens.length >= 2 && !tokens.includes(candidate[0])
-      && !tokens.some((token) => credited.has(token));
+    if (tokens.includes(candidate[0]) || tokens.some((token) => credited.has(token))) return [];
+    return tokens;
   });
+  // Whole title on one OCR line, or two adjacent distinctive fragments
+  // (PICASSO / HEIST). Never combine non-adjacent review/author lines.
+  return titleEvidence.some((tokens, index) => tokens.length >= 2
+    || (tokens.length === 1 && (titleEvidence[index + 1]?.length ?? 0) === 1));
 }
 
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
