@@ -4,7 +4,7 @@ import { replaceCanonicalLibrary } from '../library/libraryMutations';
 import { notifyCloudDataUpdated } from '../sync/cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from '../sync/storageKeys';
 import { appendCompletedImportAudit, beginImportAudit, failImportAudit } from './importHistory';
-import { findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
+import { applyImportExtrasToNewBook, findExistingImportMatch, mergeImportIntoExistingBook, restoreManualSeriesOverridesFromImport } from './safeReimportMerge';
 
 export type ImportVerificationJobStatus = 'idle' | 'running' | 'complete' | 'error';
 
@@ -147,7 +147,10 @@ function applySourceFieldsToBooks(items: ImportRecordItem[], library: UserBookRe
     // never promote existing-reader data into the "initial import" path.
     const match = nextLibrary.find((book) => book.id === `book-import-${item.id}`);
     if (!match) continue;
-    const updated = mergeImportIntoExistingBook(match, { ...item, matchedBookId: match.id, duplicateAction: 'merge' }, true);
+    const updated = applyImportExtrasToNewBook(
+      mergeImportIntoExistingBook(match, { ...item, matchedBookId: match.id, duplicateAction: 'merge' }, true),
+      item,
+    );
     nextLibrary = nextLibrary.map((book) => book.id === match.id ? updated : book);
     matched += 1;
   }
