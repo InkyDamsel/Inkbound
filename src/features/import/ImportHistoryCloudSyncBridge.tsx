@@ -61,6 +61,7 @@ export const ImportHistoryCloudSyncBridge = () => {
     const queuePending = () => {
       const pending = new Map(readPending().map((entry) => [entry.id, entry]));
       readImportHistory().forEach((entry) => {
+        if (entry.id === 'import-history-existing-library') return;
         if (uploaded.current[entry.id] !== JSON.stringify(entry)) pending.set(entry.id, entry);
       });
       savePending([...pending.values()]);
@@ -116,6 +117,7 @@ export const ImportHistoryCloudSyncBridge = () => {
         // Never replace an account-wide history document. Each session is its
         // own Firestore record; concurrent imports from different devices union.
         for (const entry of readImportHistory()) {
+          if (entry.id === 'import-history-existing-library') continue;
           const serialized = JSON.stringify(entry);
           if (uploaded.current[entry.id] === serialized) continue;
           await writeEvent(entry);
