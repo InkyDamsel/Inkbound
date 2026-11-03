@@ -90,6 +90,18 @@ assert.equal(coverMatchesWork(picassoCover, 'Thriller', ['James Patterson']), fa
   'A secondary genre subtitle must never establish the book title.');
 assert.equal(coverApproximatelyMatchesWork(picassoCover, 'Thriller', ['James Patterson']), false,
   'Approximate recovery must not offer Thriller for The Picasso Heist.');
+const picassoSplitCover = [
+  'JAMES PATTERSON',
+  'AND HOWARD ROUGHAN',
+  'A THRILLER',
+  'THE',
+  'PICASSO',
+  'HEIST',
+];
+assert.equal(coverMatchesWork(picassoSplitCover, 'Thriller', ['James Patterson']), false,
+  'Split multi-line cover title still disqualifies unrelated genre-name work.');
+assert.equal(coverApproximatelyMatchesWork(picassoSplitCover, 'Thriller', ['James Patterson']), false,
+  'Split PICASSO / HEIST must not suggest Thriller.');
 assert.equal(coverApproximatelyMatchesWork(picassoCover, 'The Picasso Heist', ['James Patterson', 'Howard Roughan']), true,
   'Rejecting a genre subtitle must not reject the actual photographed work.');
 
