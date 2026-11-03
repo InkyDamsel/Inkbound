@@ -1,10 +1,9 @@
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const dir = mkdtempSync(join(tmpdir(), 'inkbound-import-regressions-'));
+const dir = mkdtempSync(join(process.cwd(), '.inkbound-import-regressions-'));
 const checks = [
   'scripts/importer-safety-regressions.ts',
   'scripts/importer-history-regressions.ts',
