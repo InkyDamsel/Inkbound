@@ -69,4 +69,21 @@ const legacy = { id: 'book-import-legacy', sourceOfImport: 'Goodreads',
 } as unknown as UserBookRecord;
 assert.equal(ensureImportHistoryForExistingLibrary([legacy])[0]?.id, 'import-history-existing-library');
 assert.equal(values.has(IMPORT_HISTORY_STORAGE_KEY), false, 'Synthetic display entries must not be persisted.');
+// A deliberately removed imported book must not be silently resurrected.
+const { findPreviouslyRemovedImportRows } = await import('../src/features/import/deletedImportGuard');
+const deletedRow = { ...record('removed'), isbn: '9780316584579' };
+const deletedHistory = [{
+  id: 'old-import', createdAt: '2026-10-01T00:00:00Z', sourceName: 'old.csv',
+  importedCount: 1, duplicateCount: 0,
+  items: [{ recordId: deletedRow.id, targetBookId: 'book-import-removed', title: deletedRow.title,
+    author: deletedRow.author, isbn: deletedRow.isbn, format: deletedRow.format,
+    status: deletedRow.status, dateAdded: deletedRow.dateAdded, coverGradient: deletedRow.coverGradient }],
+}];
+assert.equal(findPreviouslyRemovedImportRows([deletedRow], [], deletedHistory).length, 1,
+  'Reimport must not resurrect an imported book missing from the canonical library.');
+assert.equal(findPreviouslyRemovedImportRows([deletedRow], [{ id: 'book-import-removed' } as UserBookRecord], deletedHistory).length, 0,
+  'A book still owned is not a previously removed record.');
+assert.equal(findPreviouslyRemovedImportRows([{ ...deletedRow, isbn: '9780316584586' }], [], deletedHistory).length, 0,
+  'A different known ISBN must remain a distinct edition identity.');
+
 console.log('Inkbound importer history regressions passed.');
