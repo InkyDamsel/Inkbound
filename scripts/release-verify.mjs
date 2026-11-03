@@ -10,6 +10,7 @@ const checks = [
   { id: 'reporting-math', label: 'Reporting math regressions', script: 'test:critical:reporting' },
   { id: 'catalog', label: 'Catalog / ISBN regressions', script: 'test:critical:catalog' },
   { id: 'critical-sync', label: 'Critical sync / persistence regressions', script: 'test:critical:sync' },
+  { id: 'critical-importer', label: 'Importer safety regressions', script: 'test:critical:importer' },
   { id: 'source-boundary', label: 'Source-of-truth boundary', script: 'verify:source-boundary' },
   { id: 'domain-taxonomy', label: 'Domain taxonomy', script: 'verify:domain-taxonomy' },
   { id: 'parity', label: 'Web / Android parity', script: 'verify:parity' },
