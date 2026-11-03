@@ -21,6 +21,7 @@ beginImportAudit('import-session-failure', [row], [], 'interrupted.csv');
 assert.equal(readImportHistory()[0].status, 'running', 'Import must be recorded before mutation.');
 failImportAudit('import-session-failure', 'Synthetic storage failure');
 assert.equal(readImportHistory()[0].status, 'failed', 'Interrupted import must retain an audit record.');
+assert.equal(readImportHistory()[0].outcomes?.[0]?.recordId, row.id, 'Failed history retains the attempted book.');
 writeImportHistory([]);
 beginImportAudit('import-session-success', [row], [], 'finished.csv');
 appendCompletedImportAudit({
