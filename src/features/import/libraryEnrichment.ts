@@ -636,8 +636,17 @@ const isPlaceholderSummary = (value?: string): boolean => {
 export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: UserBookRecord): UserBookRecord {
   const activeEdition = current.editions.find((edition) => edition.id === current.activeEditionId) ?? current.editions[0];
   const enrichedEdition = enriched.editions[0];
+  const normalizedEditionIsbns = (edition: typeof activeEdition) => new Set(
+    [edition?.isbn, edition?.isbn10, edition?.isbn13].map(compactIsbn).filter(Boolean),
+  );
+  const currentIsbns = normalizedEditionIsbns(activeEdition);
+  const incomingIsbns = normalizedEditionIsbns(enrichedEdition);
+  const compatibleEdition = Boolean(activeEdition && enrichedEdition
+    && activeEdition.format === enrichedEdition.format
+    && (currentIsbns.size === 0 || incomingIsbns.size === 0
+      || [...currentIsbns].some((isbn) => incomingIsbns.has(isbn))));
 
-  const mergedActiveEdition = activeEdition && enrichedEdition
+  const mergedActiveEdition = compatibleEdition && activeEdition && enrichedEdition
     ? {
         ...enrichedEdition,
         ...activeEdition,
@@ -680,11 +689,11 @@ export function mergeEnrichedImportedBook(current: UserBookRecord, enriched: Use
     editions: mergedActiveEdition
       ? current.editions.map((edition) => edition.id === current.activeEditionId ? mergedActiveEdition : edition)
       : current.editions,
-    // Keep current reading progress/status authoritative. Enrichment supplies
-    // metadata only and may fill missing historical dates, never page endpoints.
-    dateStarted: current.dateStarted || enriched.dateStarted,
-    dateFinished: current.dateFinished || enriched.dateFinished,
-    importFinishedDateProvided: current.importFinishedDateProvided ?? enriched.importFinishedDateProvided,
+    // Catalog enrichment owns catalog fields, never reader reading history.
+    // An empty date may be a deliberate correction; never refill it.
+    dateStarted: current.dateStarted,
+    dateFinished: current.dateFinished,
+    importFinishedDateProvided: current.importFinishedDateProvided,
     sourceOfImport: 'Library import + verified metadata',
     importMetadataVerified: true,
     importMetadataReviewNeeded: false,
