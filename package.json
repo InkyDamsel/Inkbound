@@ -13,7 +13,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:custom-library-order": "tsx scripts/custom-library-order-regressions.ts",
-    "test:critical": "npm run test:custom-library-order && npm run test:critical:reading && npm run test:critical:reporting && npm run test:critical:catalog && npm run test:critical:sync",
+    "test:critical": "npm run test:custom-library-order && npm run test:critical:reading && npm run test:critical:reporting && npm run test:critical:catalog && npm run test:critical:sync && npm run test:critical:importer",
     "verify:source-of-truth": "npm run verify:source-boundary && npm run verify:domain-taxonomy",
     "verify:parity": "node scripts/verify-cross-platform-parity.mjs",
     "verify:production-env": "node scripts/verify-production-env.mjs",
@@ -61,7 +61,8 @@
     "test:critical:catalog": "tsx scripts/isbn-resolution-regressions.ts && tsx scripts/scanner-verification-regressions.ts && tsx scripts/hardcover-search-results-regressions.ts && tsx scripts/scanner-cover-regressions.ts && tsx scripts/catalog-metadata-regressions.ts && tsx scripts/protected-search-contracts.ts",
     "verify:native-projects": "node scripts/verify-native-project-wiring.mjs",
     "build:scanner-debug": "vite build --mode scanner-debug",
-    "android:scanner-debug:sync": "node scripts/build-android.mjs --scanner-debug && npx cap sync android && npm run android:branding:sync && npm run android:version:sync"
+    "android:scanner-debug:sync": "node scripts/build-android.mjs --scanner-debug && npx cap sync android && npm run android:branding:sync && npm run android:version:sync",
+    "test:critical:importer": "tsx scripts/importer-safety-regressions.ts"
   },
   "dependencies": {
     "@capacitor-firebase/app-check": "8.3.0",
