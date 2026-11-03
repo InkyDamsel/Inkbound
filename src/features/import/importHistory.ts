@@ -53,6 +53,8 @@ export interface ImportHistoryEntry {
   items: ImportHistoryItem[];
   /** Immutable per-row log. Older history entries may not have this field. */
   outcomes?: ImportRowOutcome[];
+  status?: 'running' | 'completed' | 'failed';
+  failureReason?: string;
 }
 
 export interface ImportEnrichmentRetryProgress {
@@ -170,6 +172,42 @@ export function appendImportHistory(items: ImportRecordItem[], duplicateCount: n
   writeImportHistory([entry, ...readImportHistory()]);
 }
 
+/** Persist a durable operation ID before any library mutations begin. */
+export function beginImportAudit(sessionId: string, submitted: ImportRecordItem[], skipped: ImportRecordItem[], sourceName?: string): void {
+  const previous = readImportHistory();
+  if (previous.some((entry) => entry.id === sessionId)) throw new Error('Import session ID already exists.');
+  const entry: ImportHistoryEntry = {
+    id: sessionId,
+    createdAt: new Date().toISOString(),
+    sourceName: sourceName || 'Library Import',
+    importedCount: 0,
+    duplicateCount: skipped.length,
+    totalCount: new Set([...submitted, ...skipped].map((item) => item.id)).size,
+    unchangedCount: 0,
+    enrichedCount: 0,
+    items: [],
+    outcomes: [],
+    status: 'running',
+  };
+  if (!writeImportHistory([entry, ...previous])) {
+    throw new Error('Import history could not be saved. No books were changed.');
+  }
+}
+
+export function failImportAudit(sessionId: string, reason: string): void {
+  const history = readImportHistory();
+  const entry = history.find((item) => item.id === sessionId);
+  if (!entry || entry.status === 'completed') return;
+  const updated = history.map((item) => item.id === sessionId ? {
+    ...item,
+    status: 'failed' as const,
+    failureReason: reason,
+  } : item);
+  if (!writeImportHistory(updated)) {
+    throw new Error('Import failed, and its failure record could not be persisted.');
+  }
+}
+
 /** Append an immutable audit of a completed import, including zero-new-book imports.
  * Existing imported-book history remains readable; never truncate prior entries.
  */
@@ -180,6 +218,7 @@ export function appendCompletedImportAudit(args: {
   unchanged?: ImportRecordItem[];
   skipped: ImportRecordItem[];
   sourceName?: string;
+  sessionId?: string;
 }): void {
   const toItem = (item: ImportRecordItem): ImportHistoryItem => ({
     recordId: item.id,
@@ -214,10 +253,13 @@ export function appendCompletedImportAudit(args: {
       ...(outcome === 'skipped' ? { reason: skipped.has(item.id) ? 'Already present or skipped in preview' : 'Not selected' } : {}),
     };
   });
+  const existingHistory = readImportHistory();
+  const started = args.sessionId ? existingHistory.find((item) => item.id === args.sessionId) : undefined;
+  if (args.sessionId && !started) throw new Error('Import session was not persisted before completion.');
   const entry: ImportHistoryEntry = {
-    id: `import-audit-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    createdAt: new Date().toISOString(),
-    sourceName: args.sourceName ?? 'Library Import',
+    id: args.sessionId ?? `import-audit-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    createdAt: started?.createdAt ?? new Date().toISOString(),
+    sourceName: args.sourceName ?? started?.sourceName ?? 'Library Import',
     importedCount: args.added.length,
     duplicateCount: outcomes.filter((item) => item.outcome === 'skipped').length,
     totalCount: outcomes.length,
@@ -225,8 +267,12 @@ export function appendCompletedImportAudit(args: {
     unchangedCount: unchanged.size,
     items: args.added.map(toItem),
     outcomes,
+    status: 'completed',
   };
-  if (!writeImportHistory([entry, ...readImportHistory()])) {
+  const updatedHistory = started
+    ? existingHistory.map((item) => item.id === started.id ? entry : item)
+    : [entry, ...existingHistory];
+  if (!writeImportHistory(updatedHistory)) {
     throw new Error('Import books may have saved, but the import audit could not be persisted. Please do not repeat the import until history storage is available.');
   }
 }
