@@ -184,6 +184,7 @@ export function startImportVerificationJob(
   preDetectedDuplicates: ImportRecordItem[],
   executeImport: ImportExecutor,
   librarySnapshot?: UserBookRecord[],
+  sourceName?: string,
 ): Promise<void> {
   if (activePromise) return activePromise;
   const normalizedItems = items.map(normalizeImportRecord);
@@ -207,18 +208,23 @@ export function startImportVerificationJob(
       const executionResult = mergeResult.remaining.length > 0 ? await executeImport(mergeResult.remaining) : [];
       const importedRecords = Array.isArray(executionResult) ? executionResult.map(normalizeImportRecord) : mergeResult.remaining;
       const importedIds = new Set(importedRecords.map((record) => record.id));
-      const writeRejected = mergeResult.remaining.filter((record) => !importedIds.has(record.id)).map((record) => ({ ...record, duplicateAction: 'skip' as const }));
+      const writeRejected = mergeResult.remaining.filter((record) => !importedIds.has(record.id));
+      // A write failure is not a duplicate. Do not claim completion or append
+      // an inaccurate "skipped" audit when the library write was rejected.
+      if (writeRejected.length > 0) {
+        throw new Error(`Import could not persist ${writeRejected.length} book(s). Previously saved books were preserved; no complete import was recorded.`);
+      }
 
       workingLibrary = await applySourceFieldsToNewBooks(importedRecords, workingLibrary);
       if (importedRecords.length > 0) restoreManualSeriesOverridesFromImport(importedRecords, workingLibrary);
       persistMetadataPending(importedRecords);
       const duplicateMap = new Map(normalizedPreDetectedDuplicates.map((record) => [record.id, record]));
-      writeRejected.forEach((record) => duplicateMap.set(record.id, record));
       appendCompletedImportAudit({
         submitted: normalizedItems,
         added: importedRecords,
         enriched: mergeResult.merged,
         skipped: [...duplicateMap.values()],
+        sourceName,
       });
       emit({ status: 'complete', completed: normalizedItems.length, total: normalizedItems.length, importedCount: importedRecords.length, matchedCount: mergeResult.merged.length, metadataPendingCount: importedRecords.length, duplicates: [...duplicateMap.values()], unmatched: [] });
     } catch (error) {
