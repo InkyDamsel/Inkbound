@@ -324,7 +324,7 @@ export const ImportCenterScreen: React.FC<ImportCenterScreenProps> = ({ books, o
     const recordsToCheck = [...selectedRecords];
     setImportError(null);
     setVerificationProgress({ completed: 0, total: recordsToCheck.length });
-    void startImportVerificationJob(recordsToCheck, duplicateRecords, onExecuteImport, books);
+    void startImportVerificationJob(recordsToCheck, duplicateRecords, onExecuteImport, books, selectedFileName || undefined);
   };
   const undoImport = () => { onUndoLastImport?.(); setHasUndone(true); };
 
