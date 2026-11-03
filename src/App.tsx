@@ -691,7 +691,22 @@ export default function App() {
   const handleExecuteImport = async (importedItems: ImportRecordItem[]): Promise<ImportRecordItem[]> => {
     const currentLibrary = booksRef.current; const { unique: acceptedItems, duplicates: writeDuplicates } = analyzeImportDuplicates(importedItems, currentLibrary);
     if (acceptedItems.length === 0) { showToast('No books were added because they already exist in your library.'); return []; }
-    setPreviousBooksState(currentLibrary); setPreviousSessionsState(null); const immediateBooks = acceptedItems.map(createFallbackImportedBook); const nextLibrary = [...currentLibrary, ...immediateBooks]; if (commitCanonicalBooks(nextLibrary) !== nextLibrary) return [];
+    const immediateBooks = acceptedItems.map(createFallbackImportedBook);
+    const existingIds = new Set(currentLibrary.map((book) => book.id));
+    const incomingIds = new Set<string>();
+    // Import row IDs are derived from row index/title and can collide after a
+    // reader corrects metadata. Abort rather than overwrite a canonical book.
+    if (immediateBooks.some((book) => {
+      if (existingIds.has(book.id) || incomingIds.has(book.id)) return true;
+      incomingIds.add(book.id);
+      return false;
+    })) {
+      showToast('Import blocked: a book ID already exists. Your current library was not changed.');
+      return [];
+    }
+    setPreviousBooksState(currentLibrary); setPreviousSessionsState(null);
+    const nextLibrary = [...currentLibrary, ...immediateBooks];
+    if (commitCanonicalBooks(nextLibrary) !== nextLibrary) return [];
     const existingQueue = readImportEnrichmentQueue(); const queuedByBookId = new Map(existingQueue.map((item) => [item.targetBookId, item])); queueImportedItems(acceptedItems).forEach((item) => queuedByBookId.set(item.targetBookId, item)); writeImportEnrichmentQueue([...queuedByBookId.values()]);
  const skippedAtWrite = importedItems.length - acceptedItems.length; showToast(navigator.onLine ? `Added ${immediateBooks.length} books${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will continue updating automatically.` : `Added ${immediateBooks.length} books offline${skippedAtWrite > 0 ? ` and skipped ${skippedAtWrite} late duplicate${skippedAtWrite === 1 ? '' : 's'}` : ''}. Covers and publisher summaries will update when Inkbound is online.`); void processImportEnrichmentQueue(); return acceptedItems;
   };
