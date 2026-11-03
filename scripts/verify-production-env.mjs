@@ -21,10 +21,10 @@ const required = [
   'VITE_FIREBASE_APP_ID',
   'VITE_FIREBASE_APP_CHECK_SITE_KEY',
   // The browser build calls Google Books directly, so it requires the browser
-  // key. Android deliberately clears that key and routes book search through the
-  // protected backend instead; requiring it there would force a web credential
-  // into the native bundle and contradict the Android security boundary.
-  ...(runtimeTarget === 'android' ? [] : ['VITE_GOOGLE_BOOKS_API_KEY']),
+  // key. Android and iOS deliberately clear that key and route book search through
+  // native-safe catalogs/protected backend; requiring it for either native
+  // bundle would force a browser credential into the app.
+  ...(runtimeTarget === 'android' || runtimeTarget === 'ios' ? [] : ['VITE_GOOGLE_BOOKS_API_KEY']),
 ];
 
 const missing = required.filter((name) => !String(process.env[name] ?? '').trim());
