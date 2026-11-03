@@ -77,6 +77,22 @@ assert.equal(coverMatchesWork(ropedClean,'Roped',['Saffron A. Kent']),true,
 assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N','CROME']).includes('bethan crome'),
   'Fragmented given name plus next-line surname must produce a bounded author retrieval hint.');
 
+// Walmart Nov 3: the photographed book is THE PICASSO HEIST.
+// "A THRILLER" is a genre subtitle, not James Patterson's unrelated THRILLER.
+// Both exact and approximate gates must reject the false positive.
+const picassoCover = [
+  'JAMES PATTERSON',
+  'AND HOWARD ROUGHAN',
+  'A THRILLER',
+  'THE PICASSO HEIST',
+];
+assert.equal(coverMatchesWork(picassoCover, 'Thriller', ['James Patterson']), false,
+  'A secondary genre subtitle must never establish the book title.');
+assert.equal(coverApproximatelyMatchesWork(picassoCover, 'Thriller', ['James Patterson']), false,
+  'Approximate recovery must not offer Thriller for The Picasso Heist.');
+assert.equal(coverApproximatelyMatchesWork(picassoCover, 'The Picasso Heist', ['James Patterson', 'Howard Roughan']), true,
+  'Rejecting a genre subtitle must not reject the actual photographed work.');
+
 const neroLiveNoisyLines=['THE ALLIANCE SERIES','NERO','ADARK MAFIA ROMA NCE','S.J.TILLY','THEALLIANCE SERIES','NER','A DAR K MAF VA ROMANCE','S.J.TILL','A DARK MAFIA ROM A N CE','S.J.','TILLY','A DARK MAFVA ROMANC E'];
 const neroFragmentedSurname=['THE ALLIANCE SERIES','ERO','ADARK M AFIA ROMANCE','S J TIL LY','THEALLIANCE SERIES','S J','LLY','TILLY','NER','NERO'];
 const neroFragmentedSurnameAuthors=coverAuthorQueries(neroFragmentedSurname);
