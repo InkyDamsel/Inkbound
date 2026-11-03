@@ -31,6 +31,15 @@ export interface ImportHistoryItem {
   importMetadataVerified?: boolean;
 }
 
+export interface ImportRowOutcome {
+  recordId: string;
+  targetBookId?: string;
+  title: string;
+  author: string;
+  outcome: 'added' | 'updated' | 'unchanged' | 'skipped' | 'failed';
+  reason?: string;
+}
+
 export interface ImportHistoryEntry {
   id: string;
   createdAt: string;
@@ -41,6 +50,8 @@ export interface ImportHistoryEntry {
   enrichedCount?: number;
   unchangedCount?: number;
   items: ImportHistoryItem[];
+  /** Immutable per-row log. Older history entries may not have this field. */
+  outcomes?: ImportRowOutcome[];
 }
 
 export interface ImportEnrichmentRetryProgress {
@@ -164,6 +175,7 @@ export function appendCompletedImportAudit(args: {
   submitted: ImportRecordItem[];
   added: ImportRecordItem[];
   enriched: ImportRecordItem[];
+  unchanged?: ImportRecordItem[];
   skipped: ImportRecordItem[];
   sourceName?: string;
 }): void {
@@ -182,16 +194,35 @@ export function appendCompletedImportAudit(args: {
     coverGradient: item.coverGradient,
     importMetadataVerified: item.importMetadataVerified === true,
   });
+  const added = new Map(args.added.map((item) => [item.id, item]));
+  const updated = new Map(args.enriched.map((item) => [item.id, item]));
+  const unchanged = new Map((args.unchanged ?? []).map((item) => [item.id, item]));
+  const skipped = new Map(args.skipped.map((item) => [item.id, item]));
+  const all = new Map([...args.submitted, ...args.skipped].map((item) => [item.id, item]));
+  const outcomes: ImportRowOutcome[] = [...all.values()].map((item) => {
+    const outcome: ImportRowOutcome['outcome'] = added.has(item.id) ? 'added'
+      : updated.has(item.id) ? 'updated'
+        : unchanged.has(item.id) ? 'unchanged' : 'skipped';
+    return {
+      recordId: item.id,
+      targetBookId: item.matchedBookId || (added.has(item.id) ? makeTargetBookId(item.id) : undefined),
+      title: item.title,
+      author: item.author,
+      outcome,
+      ...(outcome === 'skipped' ? { reason: skipped.has(item.id) ? 'Already present or skipped in preview' : 'Not selected' } : {}),
+    };
+  });
   const entry: ImportHistoryEntry = {
     id: `import-audit-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     createdAt: new Date().toISOString(),
     sourceName: args.sourceName ?? 'Library Import',
     importedCount: args.added.length,
-    duplicateCount: args.skipped.length,
-    totalCount: new Set([...args.submitted, ...args.skipped].map((item) => item.id)).size,
+    duplicateCount: outcomes.filter((item) => item.outcome === 'skipped').length,
+    totalCount: outcomes.length,
     enrichedCount: args.enriched.length,
-    unchangedCount: 0,
+    unchangedCount: unchanged.size,
     items: args.added.map(toItem),
+    outcomes,
   };
   if (!writeImportHistory([entry, ...readImportHistory()])) {
     throw new Error('Import books may have saved, but the import audit could not be persisted. Please do not repeat the import until history storage is available.');
