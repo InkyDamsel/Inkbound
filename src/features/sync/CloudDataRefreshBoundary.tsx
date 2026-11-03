@@ -1,11 +1,7 @@
 import React, { PropsWithChildren, useEffect, useState } from 'react';
-import type { UserBookRecord } from '../../types';
 import { useAccountSync } from '../../context/AccountSyncContext';
 import { db } from '../../lib/firebase';
 import { subscribeToRuntimeResume } from '../../platform/runtimeLifecycle';
-import { readRuntimeJson } from '../../platform/runtimeStorage';
-import { recoverIncompleteLatestImport } from '../import/recoverPendingImportBooks';
-import { reconcileRepeatedImportHistory } from '../import/reconcileImportHistory';
 import { synchronizeProfileMedia } from '../profile/profileMediaCloudSync';
 import { INKBOUND_CLOUD_DATA_EVENT, notifyCloudDataUpdated } from './cloudSyncEvents';
 import { SYNC_STORAGE_KEYS } from './storageKeys';
@@ -14,11 +10,6 @@ import { hasEstablishedLocalWorkingCopy } from './syncReadiness';
 const BOOKS_STORAGE_KEY = SYNC_STORAGE_KEYS.books;
 const SESSIONS_STORAGE_KEY = SYNC_STORAGE_KEYS.sessions;
 const PROFILE_STORAGE_KEY = SYNC_STORAGE_KEYS.profile;
-
-function readStoredBooks(): UserBookRecord[] {
-  return readRuntimeJson<UserBookRecord[]>(BOOKS_STORAGE_KEY, []);
-}
-
 
 export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children }) => {
   const { user } = useAccountSync();
@@ -47,8 +38,9 @@ export const CloudDataRefreshBoundary: React.FC<PropsWithChildren> = ({ children
     // hydration finishes, so readiness always comes from the canonical owner +
     // hydration marker state.
     const refresh = () => {
-      recoverIncompleteLatestImport();
-      reconcileRepeatedImportHistory(readStoredBooks());
+      // Import history is an immutable audit trail; refresh must never rewrite it.
+      // The retired recovery routine could remove legitimate editions or revive
+      // explicitly deleted books. No import repairs run on cloud events/resume.
 
       if (localOnlyDevelopment || hasEstablishedLocalWorkingCopy(uid)) setReadyUid(uid);
 
