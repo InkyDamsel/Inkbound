@@ -25,6 +25,16 @@ const result = spawnSync('npm', ['run', 'build'], {
 
 if (result.status !== 0) process.exit(result.status ?? 1);
 
+// Check the exact production files that Capacitor will embed, not just source
+// flags. The scanner must be present and all debug-only UI must be absent.
+for (const verifier of ['scripts/verify-release-artifacts.mjs', 'scripts/verify-ios-clean.mjs']) {
+  const checked = spawnSync(process.execPath, [verifier], { cwd, stdio: 'inherit', env });
+  if (checked.status !== 0) {
+    console.error(`Inkbound iOS archive blocked: ${verifier} failed.`);
+    process.exit(checked.status ?? 1);
+  }
+}
+
 if (browserGoogleBooksKey) {
   const assetsDir = path.join(cwd, 'dist', 'assets');
   const bundledFiles = fs.existsSync(assetsDir)
