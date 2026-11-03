@@ -47,6 +47,39 @@ export const ImportHistoryCloudSyncBridge = () => {
     const uid = user.uid;
     let disposed = false;
     const events = collection(db, 'users', uid, 'importHistoryEvents');
+    // This per-UID queue is intentionally outside signed-out account keys.
+    // It holds only not-yet-uploaded events, not a second active history store.
+    // Offline sign-out must not destroy unsent audit events.
+    const pendingKey = `inkbound_import_history_pending_${uid}_v1`;
+    const readPending = (): ImportHistoryEntry[] => {
+      try {
+        const parsed: unknown = JSON.parse(localStorage.getItem(pendingKey) || '[]');
+        return Array.isArray(parsed) ? parsed.filter(validEntry) : [];
+      } catch { return []; }
+    };
+    const savePending = (entries: ImportHistoryEntry[]) => {
+      try {
+        if (entries.length) localStorage.setItem(pendingKey, JSON.stringify(entries));
+        else localStorage.removeItem(pendingKey);
+      } catch (error) {
+        console.error('Inkbound could not preserve unsynced import history locally.', error);
+      }
+    };
+    const queuePending = () => {
+      const pending = new Map(readPending().map((entry) => [entry.id, entry]));
+      readImportHistory().forEach((entry) => {
+        if (uploaded.current[entry.id] !== JSON.stringify(entry)) pending.set(entry.id, entry);
+      });
+      savePending([...pending.values()]);
+    };
+    const restorePending = () => {
+      const pending = readPending();
+      if (!pending.length) return;
+      const local = readImportHistory();
+      const merged = unionEntries(local, pending);
+      if (JSON.stringify(local) !== JSON.stringify(merged)) writeImportHistory(merged);
+    };
+
 
     const downloadEvent = async (eventId: string, manifest: EventManifest): Promise<ImportHistoryEntry | null> => {
       const count = manifest.parts;
@@ -79,6 +112,8 @@ export const ImportHistoryCloudSyncBridge = () => {
         { parts: parts.length, createdAt: entry.createdAt, updatedAt: serverTimestamp() },
         { merge: true });
       uploaded.current[entry.id] = serialized;
+      savePending(readPending().filter((candidate) =>
+        candidate.id !== entry.id || JSON.stringify(candidate) !== serialized));
     };
 
     const flush = async () => {
@@ -104,6 +139,8 @@ export const ImportHistoryCloudSyncBridge = () => {
     };
 
     const initialize = async () => {
+      restorePending();
+      queuePending();
       try {
         const snapshot = await getDocs(events);
         const remote = (await Promise.all(snapshot.docs.map(async (item) =>
@@ -129,10 +166,10 @@ export const ImportHistoryCloudSyncBridge = () => {
       })().catch(() => undefined);
     }, () => undefined);
 
-    const localChange = () => { void flush().catch(() => undefined); };
+    const localChange = () => { queuePending(); void flush().catch(() => undefined); };
     const beforeSignOut = (event: Event) => {
       const detail = (event as CustomEvent<BeforeSignOutDetail>).detail;
-      if (detail?.uid === uid) detail.waitUntil(flush());
+      if (detail?.uid === uid) { queuePending(); detail.waitUntil(flush()); }
     };
     window.addEventListener(IMPORT_HISTORY_CHANGED_EVENT, localChange);
     window.addEventListener('online', localChange);
