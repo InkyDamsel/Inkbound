@@ -27,8 +27,19 @@ function unionEntries(local: ImportHistoryEntry[], remote: ImportHistoryEntry[])
   // Remote absence is NEVER deletion. Existing local edits (such as metadata
   // verification progress) retain their own values; events not on this device
   // are restored by ID without collapsing independent import sessions.
+  const rank = (entry: ImportHistoryEntry) => entry.status === 'completed' ? 3
+    : entry.status === 'failed' ? 2 : entry.status === 'running' ? 1 : 0;
   const merged = new Map(remote.map((entry) => [entry.id, entry]));
-  local.forEach((entry) => merged.set(entry.id, entry));
+  local.forEach((entry) => {
+    const cloud = merged.get(entry.id);
+    if (!cloud || rank(entry) > rank(cloud)) { merged.set(entry.id, entry); return; }
+    if (rank(entry) < rank(cloud)) return;
+    // Same lifecycle state: retain whichever version carries fuller audit
+    // evidence; never roll completed sessions back to partial/empty details.
+    const weight = (item: ImportHistoryEntry) =>
+      (item.outcomes?.length ?? 0) * 1000 + item.items.length;
+    if (weight(entry) >= weight(cloud)) merged.set(entry.id, entry);
+  });
   return [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
