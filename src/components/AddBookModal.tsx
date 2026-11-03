@@ -2094,25 +2094,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                 <div className="rounded-full border border-[#c5a059]/25 px-3 py-2 text-sm font-bold text-[#e5c158]">{scannedBooks.length} ready</div>
               </div>
 
-              {SCANNER_DEBUG_ENABLED && (
-                <details className="mt-4 rounded-xl border border-[#c5a059]/50 bg-[#211625] p-3" aria-label="Scanner test diagnostics">
-                  <summary className="cursor-pointer text-sm font-bold text-[#f0d387]">Test diagnostics — App Check: {scannerAppCheckStatus}</summary>
-                  <p className="mt-2 text-xs leading-5 text-[#cbbacb]">Scanner-debug build only. Check Firebase access before scanning at Walmart; catalog provider results and OCR traces appear here after a failed scan.</p>
-                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#f0c5ce]" role="status">{scannerAppCheckDiagnostic}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" disabled={scannerAppCheckStatus === 'checking'} onClick={() => void checkScannerAppCheck()} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">
-                      {scannerAppCheckStatus === 'checking' ? 'Checking…' : 'Check App Check'}
-                    </button>
-                    <button type="button" onClick={() => void copyScannerDiagnostics()} className="quiet-shelf-secondary-action min-h-11">
-                      {scannerDiagnosticCopied ? 'Report copied' : 'Copy diagnostic report'}
-                    </button>
-                  </div>
-                  <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/25 p-3 text-[11px] leading-5 text-[#e4d4e5]">{scannerDetails ?? 'No scanner failure recorded in this session.'}</pre>
-                  {scannerAppCheckStatus === 'blocked' && (
-                    <p className="mt-2 text-xs text-[#f0c5ce]">Firebase App Check rejected or could not obtain a debug token. Diagnostics cannot bypass Firebase enforcement; the token must still be accepted by Firebase for protected catalog services to work.</p>
-                  )}
-                </details>
-              )}
 
               <div className="relative mt-5 aspect-[4/3] max-h-[300px] overflow-hidden rounded-2xl border border-white/10 bg-black">
                 <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
@@ -2158,7 +2139,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   </div>)}
                 </div>
               </div>}
-              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{SCANNER_DEBUG_ENABLED && scannerDetails && <details className="mt-3 rounded-lg border border-rose-300/20 bg-black/20 p-3"><summary className="cursor-pointer font-semibold text-[#f4d9e2]">Scanner details</summary><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[#e6d6e2]">{scannerDetails}</pre></details>}{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
+              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{SCANNER_DEBUG_ENABLED && <details className="mt-3 rounded-lg border border-rose-300/20 bg-black/20 p-3"><summary className="cursor-pointer font-semibold text-[#f4d9e2]">Scanner details</summary><p className="mt-2 text-xs" role="status">App Check: {scannerAppCheckStatus} — {scannerAppCheckDiagnostic}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={scannerAppCheckStatus === 'checking'} onClick={() => void checkScannerAppCheck()} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">{scannerAppCheckStatus === 'checking' ? 'Checking…' : 'Check App Check'}</button><button type="button" onClick={() => void copyScannerDiagnostics()} className="quiet-shelf-secondary-action min-h-11">{scannerDiagnosticCopied ? 'Report copied' : 'Copy diagnostic report'}</button></div><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[#e6d6e2]">{scannerDetails ?? 'No scan trace captured yet.'}</pre></details>}{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
                 <p className="text-xs text-[#e6d6e2]">Enter a title and optionally an author. Inkbound will look up book details and available editions automatically, keeping scanned ISBN {unresolvedIsbn} separate.</p>
                 <input aria-label="Book title for scanner recovery" value={scannerRecoveryTitle} onChange={(event) => setScannerRecoveryTitle(event.target.value)} placeholder="Book title" enterKeyHint="next" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
                 <input aria-label="Author for scanner recovery" value={scannerRecoveryAuthor} onChange={(event) => setScannerRecoveryAuthor(event.target.value)} placeholder="Author (optional)" enterKeyHint="search" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
