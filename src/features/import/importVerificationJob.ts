@@ -138,7 +138,7 @@ function applySourceFieldsToBooks(items: ImportRecordItem[], library: UserBookRe
   for (const item of items) {
     const match = findExistingImportMatch(item, nextLibrary);
     if (!match) continue;
-    const updated = mergeImportIntoExistingBook(match, { ...item, matchedBookId: match.id, duplicateAction: 'merge' });
+    const updated = mergeImportIntoExistingBook(match, { ...item, matchedBookId: match.id, duplicateAction: 'merge' }, true);
     nextLibrary = nextLibrary.map((book) => book.id === match.id ? updated : book);
     matched += 1;
   }
@@ -200,7 +200,7 @@ export function startImportVerificationJob(
         if (!replaceCanonicalLibrary(workingLibrary)) {
           throw new Error('Imported book updates could not be saved.');
         }
-        restoreManualSeriesOverridesFromImport(mergeResult.merged, workingLibrary);
+        // Reimport must not recreate a manual series membership the reader removed.
         notifyCloudDataUpdated([SYNC_STORAGE_KEYS.books]);
       }
 
