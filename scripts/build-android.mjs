@@ -33,6 +33,26 @@ const result = spawnSync('npm', buildArgs, {
 
 if (result.status !== 0) process.exit(result.status ?? 1);
 
+// Refuse to sync a scanner-debug APK if Vite stripped its diagnostics.
+// Native Android Debug variant alone does not imply a Vite debug web bundle.
+if (scannerDebug) {
+  const assetsDir = path.join(cwd, 'dist', 'assets');
+  const jsFiles = fs.existsSync(assetsDir)
+    ? fs.readdirSync(assetsDir).filter((name) => name.endsWith('.js'))
+    : [];
+  const hasScannerDiagnostics = jsFiles.some((name) => {
+    const content = fs.readFileSync(path.join(assetsDir, name), 'utf8');
+    return content.includes('[Inkbound scanner] Cover identification failed')
+      && content.includes('Scanner details')
+      && content.includes('Provider trace:');
+  });
+  if (!hasScannerDiagnostics) {
+    console.error('Scanner DEBUG build blocked: diagnostic UI/provider traces are absent from dist. Do not sync this APK.');
+    process.exit(1);
+  }
+  console.log('Scanner DEBUG bundle verified: diagnostic panel and provider traces present.');
+}
+
 if (browserGoogleBooksKey) {
   const assetsDir = path.join(cwd, 'dist', 'assets');
   const bundledFiles = fs.existsSync(assetsDir)
