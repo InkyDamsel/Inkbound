@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import type { ImportRecordItem, UserBookRecord } from '../src/types';
-import { mergeImportIntoExistingBook } from '../src/features/import/safeReimportMerge';
+import { applyImportExtrasToNewBook, mergeImportIntoExistingBook } from '../src/features/import/safeReimportMerge';
 import { recoverIncompleteLatestImport } from '../src/features/import/recoverPendingImportBooks';
 
 const book = {
@@ -41,6 +41,14 @@ assert.equal(initialBook.status, 'finished', 'Initial imported record must still
 assert.equal(initialBook.dateFinished, '2026-10-01', 'Initial imported record must receive its source finished date.');
 assert.ok(initialBook.collections.includes('Favorites'), 'Initial import should preserve source collections.');
 assert.equal(initialBook.editions[0].pageCount, 900, 'Initial import can enrich its own edition.');
+
+const newWithExtras = applyImportExtrasToNewBook(initialBook, {
+  ...incoming, tags: ['VIP TBR', 'vip tbr'], sourceShelves: ['My Shelf'],
+});
+assert.ok(newWithExtras.privateTags.includes('VIP TBR'), 'New imports preserve source tags.');
+assert.ok(newWithExtras.privateTags.includes('My Shelf'), 'New imports preserve source shelves.');
+assert.equal(newWithExtras.privateTags.filter((tag) => tag.toLowerCase() === 'vip tbr').length, 1,
+  'Canonical tag identity prevents import casing duplicates.');
 
 assert.equal(recoverIncompleteLatestImport(), 0, 'Retired recovery must never modify library data.');
 const boundary = fs.readFileSync('src/features/sync/CloudDataRefreshBoundary.tsx', 'utf8');
