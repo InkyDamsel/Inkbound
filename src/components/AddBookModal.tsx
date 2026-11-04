@@ -1468,11 +1468,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         // each other. Only adjacent, independently observed title-shaped lines
         // are eligible, and never reuse a printed author line as title evidence.
         const authorTokens = new Set(authorRecoveryQueries.flatMap((hint) =>
-          normalizeCatalogText(hint).split(/\\s+/).filter(Boolean)));
+          normalizeCatalogText(hint).split(/\s+/).filter(Boolean)));
         const titleFragments = shortTitleFragments.filter((line) => {
           const normalized = normalizeCatalogText(line);
           return !authorRecoveryQueries.some((author) => normalizeCatalogText(author) === normalized)
-            && !normalized.split(/\\s+/).some((token) => authorTokens.has(token))
+            && !normalized.split(/\s+/).some((token) => authorTokens.has(token))
             && !isDemotedCoverTitleLine(line);
         });
         const crossPassTitles = [...new Set(titleFragments.flatMap((left) => {
