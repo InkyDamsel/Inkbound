@@ -343,10 +343,16 @@ async function requestGoogleAuthorPage(
         payload = await requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
       } catch (error) {
         if (signal?.aborted) throw error;
+        if (Date.now() < googleBackoffUntil) {
+          throw new Error('Public Google Books fallback cooling down (429); protected author-page lookup failed.');
+        }
         console.warn('Protected author-page catalog lookup unavailable; retrying public Google Books.', error);
         payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
       }
     } else {
+      if (Date.now() < googleBackoffUntil) {
+        throw new Error('Public Google Books fallback cooling down (429).');
+      }
       payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
     }
     googleAuthorPageCache.set(key, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, payload });
@@ -366,10 +372,16 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
       payload = await requestProtectedGoogleBooks(query, signal);
     } catch (protectedError) {
       if (signal?.aborted) throw protectedError;
+      if (Date.now() < googleBackoffUntil) {
+        throw new Error('Public Google Books fallback cooling down (429); protected lookup failed.');
+      }
       console.warn('Protected Google Books lookup unavailable; retrying public Google Books.', protectedError);
       payload = await requestDirectGoogleBooks(query, signal);
     }
   } else {
+    if (Date.now() < googleBackoffUntil) {
+      throw new Error('Public Google Books fallback cooling down (429).');
+    }
     payload = await requestDirectGoogleBooks(query, signal);
   }
 
@@ -415,6 +427,9 @@ export async function searchGoogleBooksAuthorPage(
       googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
       googleError = protectedError instanceof Error ? protectedError.message : String(protectedError);
     } else try {
+      if (Date.now() < googleBackoffUntil) {
+        throw new Error('Public Google Books fallback cooling down (429).');
+      }
       payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
     } catch (directError) {
       googleError = directError instanceof Error ? directError.message : String(directError);
