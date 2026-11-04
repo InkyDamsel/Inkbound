@@ -11,7 +11,13 @@ export function isUsableScannerCoverQuery(query: string): boolean {
   const tokens = wordsOf(query);
   if (!tokens.length || tokens.length > 8) return false;
   const glue = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'i', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'to', 'us']);
-  if (tokens.some((token) => token.length <= 2 && !glue.has(token))) return false;
+  // True punctuated initials ("J.T. Geissinger") are legitimate names;
+  // isolated glyph noise ("lij l bethan") is not.
+  const punctuatedInitials = new Set([...query.matchAll(/\\b([A-Za-z])\\./g)]
+    .map((match) => match[1].toLowerCase()));
+  if (tokens.some((token) => token.length <= 2
+    && !glue.has(token)
+    && !(token.length === 1 && punctuatedInitials.has(token)))) return false;
   const significant = tokens.filter((token) => token.length >= 3 && !glue.has(token));
   if (!significant.length) return false;
   if (new Set(significant).size !== significant.length) return false;
