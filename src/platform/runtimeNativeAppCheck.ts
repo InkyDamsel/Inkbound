@@ -58,7 +58,10 @@ export function classifyNativeAppCheckFailure(error: unknown): string {
 export async function diagnoseNativeAppCheckFailure(): Promise<unknown | null> {
   if (!activeNativeAppCheckAdapter) return null;
   try {
-    await getNativeAppCheckToken(true);
+    // A forced refresh on every unrelated scanner miss can itself fail or
+    // hit attestation limits even when a valid cached token exists. Probe the
+    // same cached/auto-refreshed path used by actual Firebase requests.
+    await getNativeAppCheckToken(false);
     return null;
   } catch (error) {
     return error;
