@@ -1463,10 +1463,25 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               && !isNoise(line) && !/(?:first|forget|author|times|york|plan|upgrade)/i.test(line);
           })
           .slice(0, 8);
-        const crossPassTitles = [...new Set(shortTitleFragments.flatMap((left, index) =>
-          shortTitleFragments.slice(index + 1).map((right) => `${left} ${right}`)))].slice(0, 8);
-        const recoveryQueries = [...new Set(crossPassTitles.slice(0, 4).flatMap((titleHint) =>
-          authorRecoveryQueries.slice(0, 2).map((authorHint) => `${titleHint} ${authorHint}`)))].slice(0, 6);
+        // Never combine arbitrary nonadjacent OCR fragments: multi-pass text
+        // merges can put review blurbs, other authors, and title glyphs beside
+        // each other. Only adjacent, independently observed title-shaped lines
+        // are eligible, and never reuse a printed author line as title evidence.
+        const authorTokens = new Set(authorRecoveryQueries.flatMap((hint) =>
+          normalizeCatalogText(hint).split(/\\s+/).filter(Boolean)));
+        const titleFragments = shortTitleFragments.filter((line) => {
+          const normalized = normalizeCatalogText(line);
+          return !authorRecoveryQueries.some((author) => normalizeCatalogText(author) === normalized)
+            && !normalized.split(/\\s+/).some((token) => authorTokens.has(token))
+            && !isDemotedCoverTitleLine(line);
+        });
+        const crossPassTitles = [...new Set(titleFragments.flatMap((left) => {
+          const position = cleanLines.indexOf(left);
+          const next = cleanLines[position + 1];
+          return next && titleFragments.includes(next) ? [`${left} ${next}`] : [];
+        }))].slice(0, 2);
+        const recoveryQueries = [...new Set(crossPassTitles.flatMap((titleHint) =>
+          authorRecoveryQueries.slice(0, 1).map((authorHint) => `${titleHint} ${authorHint}`)))].slice(0, 2);
 
         for (const query of recoveryQueries) {
           try {
