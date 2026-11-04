@@ -175,19 +175,36 @@ const mapWork = (work: OpenLibraryWork): BookSearchWorkGroup | null => {
 
 function buildSearchParams(query: string, offset = 0): URLSearchParams {
   const trimmed = query.trim();
-  const operator = trimmed.match(/^(inauthor|intitle|isbn):\s*(.+)$/i);
   const params = new URLSearchParams({ limit: '40', fields: FIELDS });
   if (offset > 0) params.set('offset', String(offset));
-  if (!operator) {
-    params.set('q', trimmed);
+
+  // A scanner query can carry two independent field operators. Previously
+  // intitle:"reign" inauthor:bethan was parsed as one malformed title.
+  const operators = [...trimmed.matchAll(/\b(inauthor|intitle|isbn):\s*("[^"]*"|[^\s"]+)/gi)];
+  const remainder = operators.reduce((text, match) => text.replace(match[0], ' '), trimmed).trim();
+  if (operators.length && !remainder) {
+    for (const match of operators) {
+      const value = stripQuotes(match[2]);
+      const kind = match[1].toLowerCase();
+      if (kind === 'inauthor') params.set('author', value);
+      else if (kind === 'intitle') params.set('title', value);
+      else params.set('isbn', compactIsbn(value));
+    }
     return params;
   }
 
-  const [, kind, rawValue] = operator;
-  const value = stripQuotes(rawValue);
-  if (kind.toLowerCase() === 'inauthor') params.set('author', value);
-  else if (kind.toLowerCase() === 'intitle') params.set('title', value);
-  else params.set('isbn', compactIsbn(value));
+  // Preserve the existing single-operator behavior with unquoted spaces,
+  // e.g. inauthor:Bethan Croome.
+  const single = trimmed.match(/^(inauthor|intitle|isbn):\s*(.+)$/i);
+  if (single) {
+    const value = stripQuotes(single[2]);
+    const kind = single[1].toLowerCase();
+    if (kind === 'inauthor') params.set('author', value);
+    else if (kind === 'intitle') params.set('title', value);
+    else params.set('isbn', compactIsbn(value));
+  } else {
+    params.set('q', trimmed);
+  }
   return params;
 }
 
