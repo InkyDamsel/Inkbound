@@ -885,7 +885,31 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // real printed author, so the small request budget never reached it.
       // Generate a wider pool, then rank by cover typography (all-caps name
       // lines, initials + surname, no copy words). Ordering only.
-      const authorRecoveryQueries = rankAuthorHints(cleanLines, [...cleanLines.filter((line) => { const words = line.trim().split(/\s+/); return words.length >= 2 && words.length <= 4 && !isDemotedCoverTitleLine(line); }), ...coverAuthorQueries(cleanLines, 24)]).slice(0, 12);
+      // The full author credit is normally a clean standalone name near the
+      // title; review attributions (e.g. "- REBECCA ROSS") are NOT authors.
+      // Prefer independently printed, all-caps 2-4 word names. This is
+      // retrieval ordering only: the scanned cover must still verify identity.
+      const primaryPrintedAuthorHints = cleanLines.filter((line) => {
+        const tokens = line.trim().split(/\s+/).filter(Boolean);
+        return /^[A-Z][A-Z.' -]+$/.test(line)
+          && !/^[-–—]/.test(line)
+          && tokens.length >= 2 && tokens.length <= 4
+          && tokens.every((token) => token.replace(/[.'-]/g, '').length >= 3)
+          && !isDemotedCoverTitleLine(line)
+          && !/(?:BESTSELL|AUTHOR|NEW YORK|USA TODAY|ROMANCE|NOVEL|REVIEW)/i.test(line);
+      }).slice(0, 2);
+      const authorRecoveryQueries = [...new Set([
+        ...primaryPrintedAuthorHints,
+        ...rankAuthorHints(cleanLines, [
+          ...cleanLines.filter((line) => {
+            const words = line.trim().split(/\s+/);
+            return words.length >= 2 && words.length <= 4
+              && !/^[-–—]/.test(line)
+              && !isDemotedCoverTitleLine(line);
+          }),
+          ...coverAuthorQueries(cleanLines, 24),
+        ]),
+      ])].slice(0, 12);
       const rankedTitleEvidence = coverTitleEvidenceHints(cleanLines, authorRecoveryQueries);
       const independentTitleKeys = new Set(cleanLines
         .filter((line) => {
@@ -958,7 +982,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // so DEVOURO/DEVOURED collapse) paired with the printed author, then with
       // just ONE name word. A damaged surname or given name no longer sinks the
       // whole query. Retrieval only; the photographed-cover verifier decides.
-      if (!best) for (const query of titleAuthorPartQueries(rankedTitleEvidence, authorRecoveryQueries, 8)) {
+      if (!best) for (const query of titleAuthorPartQueries(rankedTitleEvidence.slice(0, 1), authorRecoveryQueries.slice(0, 1), 3)) {
         try {
           const response = await searchCoverCatalogOnce(query);
           recordScannerResponse(`ranked-identity:${query}`, response.groups);
@@ -980,11 +1004,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // the other half of the printed name is damaged ("crome" vs "Croome").
       if (!best) {
         const fieldedIdentityQueries = [...new Set(rankedTitleEvidence.slice(0, 2).flatMap((title) =>
-          authorRecoveryQueries.slice(0, 2).flatMap((author) => {
+          authorRecoveryQueries.slice(0, 1).flatMap((author) => {
             const nameWords = normalizeCatalogText(author).split(/\s+/).filter((word) => word.length >= 4);
             return [...new Set([nameWords[0], nameWords.at(-1)].filter((word): word is string => Boolean(word)))]
               .map((word) => `intitle:"${title}" inauthor:${word}`);
-          })))].slice(0, 6);
+          })))].slice(0, 2);
         for (const query of fieldedIdentityQueries) {
           try {
             const response = await directCatalogOnce(query);
@@ -1591,6 +1615,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             '[Inkbound scanner] Cover identification failed',
             `Ranked title evidence: ${rankedTitleEvidence.join(' || ') || 'none'}`,
             `Cover request budget: ${coverLookupsUsed}/${MAX_COVER_LOOKUPS} (general ${generalLookupsUsed}/${MAX_GENERAL_LOOKUPS}); OCR queries rejected: ${rejectedOcrQueries}; skipped after limit: ${exhaustedOcrQueries}`,
+            `Printed author candidates: ${primaryPrintedAuthorHints.join(' || ') || 'none'}`,
             `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
             ...rankedDiagnostics,
             `OCR: ${lines.join(' || ')}`,
