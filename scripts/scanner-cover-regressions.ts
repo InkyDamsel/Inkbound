@@ -138,6 +138,19 @@ assert.equal(isUsableScannerCoverQuery('BLACKTHORN J.T. GEISSINGER'), true,
 assert.equal(isUsableScannerCoverQuery('A J LAKE'), false,
   'Single-letter OCR fragments should be paired with a real title before querying.');
 
+// Search can retrieve Devoured/Jordan Stephanie Gray, Nero/S. J. Tilly
+// and Reign/Bethan Croome by author. Scanner must reuse the SAME Search
+// author-page retrieval early, before the noisy title recovery spends budget.
+const earlySearchReuse = scannerUiSource.indexOf('search-author-page:');
+const earlyTitleOnly = scannerUiSource.indexOf('early-exact-title:');
+assert.ok(earlySearchReuse >= 0 && earlyTitleOnly >= 0 && earlySearchReuse < earlyTitleOnly,
+  'Scanner must try normal Search author bibliography before title-only recovery.');
+assert.ok(scannerUiSource.includes('await authorPageOnce(printedAuthor, 0)'),
+  'Scanner must retrieve first author page through the shared capped Search path.');
+assert.ok(scannerUiSource.includes('search-author-page:')
+  && scannerUiSource.includes('coverMatchesWork(cleanLines, work.title, work.authors)'),
+  'Author results must still pass independent photographed cover verification.');
+
 // The scanned Devoured cover had correct title + author, but broad Open
 // Library title search returned only other authors. Fielded retrieval must
 // run before the noisy general lanes, and result acceptance stays gated.
