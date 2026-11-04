@@ -4,6 +4,20 @@
 const wordsOf = (value: string): string[] =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 
+/** A bounded scanner catalog query may contain genuine short book words
+ * (IT, OF, THE), but must not be synthetic OCR debris or repeated names.
+ * This determines retrieval eligibility only; it never verifies a work. */
+export function isUsableScannerCoverQuery(query: string): boolean {
+  const tokens = wordsOf(query);
+  if (!tokens.length || tokens.length > 8) return false;
+  const glue = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'i', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'to', 'us']);
+  if (tokens.some((token) => token.length <= 2 && !glue.has(token))) return false;
+  const significant = tokens.filter((token) => token.length >= 3 && !glue.has(token));
+  if (!significant.length) return false;
+  if (new Set(significant).size !== significant.length) return false;
+  return true;
+}
+
 const AUTHOR_OF = /\b(?:author|authors|creator)\s+of\b/i;
 const PROMO_WORDS = /(?:bestsell|best-sell|new york times|usa today|wall street journal|award|winner|international|acclaimed|critically|number one|#\s*\d)/i;
 const CONTINUES_LIST = /(?:\band|&|,)\s*$/i;
