@@ -43,7 +43,7 @@ import {
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
 import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
-import { diagnoseNativeAppCheckFailure, getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
+import { classifyNativeAppCheckFailure, diagnoseNativeAppCheckFailure, getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
 
 // Vite production builds run inside Android debug APKs too. Scanner diagnostics
 // are opt-in for test bundles, and the release verifier rejects their strings.
@@ -251,7 +251,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [scannerDiagnosticCopied, setScannerDiagnosticCopied] = useState(false);
   const scannerDiagnosticReport = [
     'Inkbound scanner test diagnostics',
-    'Build: scanner-debug / development',
+    'Build: scanner inspection (normal Android app) / development',
     `App Check status: ${scannerAppCheckStatus}`,
     `App Check diagnostic: ${scannerAppCheckDiagnostic}`,
     scannerDetails ?? 'Scanner trace: no failed scan has been recorded in this session.',
@@ -265,14 +265,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerAppCheckStatus('ready');
       setScannerAppCheckDiagnostic('Native App Check token request succeeded. This does not guarantee every catalog provider will respond.');
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-        // Keep diagnostics safe for screenshots, chat and clipboard. Do not
-        // display debug tokens, credentials, or request URLs with API keys.
-        const failure = /403|attestation/i.test(message)
-          ? 'HTTP 403: Firebase rejected the native App Check attestation. Protected catalog services may be unavailable.'
-          : /not initialized/i.test(message)
-            ? 'Native App Check adapter has not initialized.'
-            : 'Native App Check token request failed. See native logs for implementation-specific details.';
+      // Safe category only: no raw native error, API key or token in reports.
+      const failure = `Native App Check probe failed: ${classifyNativeAppCheckFailure(error)}. Protected catalog services may be unavailable; public catalogs can still respond.`;
       setScannerAppCheckStatus('blocked');
       setScannerAppCheckDiagnostic(failure);
     }
@@ -1742,12 +1736,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     } catch (error) {
       if (SCANNER_DEBUG_ENABLED) {
         const appCheckError = await diagnoseNativeAppCheckFailure();
-        const reason = appCheckError instanceof Error ? appCheckError.message : String(appCheckError ?? '');
         const appCheckLine = !appCheckError
-          ? 'App Check: native token probe returned no error'
-          : /403|attestation/i.test(reason)
-            ? 'App Check: HTTP 403 / attestation rejected; protected providers may be unavailable'
-            : 'App Check: native token probe failed (details withheld to protect credentials)';
+          ? 'App Check: native token probe succeeded'
+          : `App Check: native token probe failed (${classifyNativeAppCheckFailure(appCheckError)}); protected catalogs may be unavailable, public catalogs can still respond`;
         setScannerAppCheckStatus(appCheckError ? 'blocked' : 'ready');
         setScannerAppCheckDiagnostic(appCheckLine);
         setScannerDetails((previous) => [previous ?? '[Inkbound scanner] Cover lookup did not resolve', appCheckLine].join('\n'));
