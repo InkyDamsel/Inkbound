@@ -260,6 +260,39 @@ export async function searchOpenLibrary(query: string, signal?: AbortSignal): Pr
   return { groups, totalItems: payload.numFound ?? payload.num_found ?? groups.length };
 }
 
+/**
+ * Scanner-only, fielded title+author retrieval. A broad title-only query
+ * contains many unrelated editions (e.g. novels all called "Devoured")
+ * and search.json's first page can omit the photographed author. Using
+ * independent title/author fields narrows retrieval without asserting identity.
+ * The caller must still verify both words against OCR before acceptance.
+ */
+export async function searchOpenLibraryTitleAuthor(
+  title: string,
+  author: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  const cleanTitle = title.trim();
+  const cleanAuthor = author.trim();
+  if (!cleanTitle || !cleanAuthor) return { groups: [], totalItems: 0 };
+  const params = new URLSearchParams({
+    title: cleanTitle,
+    author: cleanAuthor,
+    limit: '40',
+    fields: FIELDS,
+  });
+  const response = await fetch(`${OPEN_LIBRARY_ENDPOINT}?${params.toString()}`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) throw new Error(`Open Library title-author search failed (${response.status}).`);
+  const payload = (await response.json()) as OpenLibraryResponse;
+  const groups = (payload.docs ?? [])
+    .map(mapWork)
+    .filter((work): work is BookSearchWorkGroup => Boolean(work));
+  return { groups, totalItems: payload.numFound ?? payload.num_found ?? groups.length };
+}
+
 export async function searchOpenLibraryAuthorBibliography(
   authorName: string,
   signal?: AbortSignal,
