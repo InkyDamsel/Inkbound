@@ -285,6 +285,10 @@ assert.ok(androidPackage.scripts['android:release:sync'].includes('build:android
   'The Google Play store release must remain a clean production build.');
 assert.ok(scannerUiSource.includes("import.meta.env.MODE === 'scanner-inspection'"),
   'Scanner details must be available in regular Android inspection builds.');
+assert.ok(!scannerUiSource.includes('diagnoseNativeAppCheckFailure')
+  && !scannerUiSource.includes('getNativeAppCheckToken(true)')
+  && !scannerUiSource.includes('Check App Check'),
+  'Scanner must not trigger post-launch App Check token probes or falsely label an unrelated catalog miss as an attestation failure.');
 assert.ok(androidRuntimeSource.includes('FirebaseAppCheck.initialize({')
   && !androidRuntimeSource.includes('debugToken:')
   && !androidRuntimeSource.includes('isNativeDebugBuild'),
