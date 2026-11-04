@@ -840,7 +840,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // the provider trace formatter rather than retain its inert text.
       const searchCoverCatalogOnce = memoizeCatalog(budgetedCoverLookup((query) => searchScannerCoverCatalog(query, undefined,
         import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' ? (trace) => {
-          providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
+          providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status}${provider.detail ? `/${provider.detail}` : ''})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
         } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverCatalog>>));
       const searchAuthorCatalogOnce = memoizeCatalog(budgetedCoverLookup(
         (query) => searchScannerAuthorCatalog(query),
@@ -848,7 +848,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       ));
       const searchExactTitleOnce = memoizeCatalog(budgetedCoverLookup((title) => searchScannerCoverTitleCatalog(title, undefined,
         import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' ? (trace) => {
-          providerTraces.push(`Exact-title providers: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} exact-title=${trace.afterHardening}`);
+          providerTraces.push(`Exact-title providers: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status}${provider.detail ? `/${provider.detail}` : ''})`).join(' | ')}; raw=${trace.beforeHardening} exact-title=${trace.afterHardening}`);
         } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverTitleCatalog>>));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
