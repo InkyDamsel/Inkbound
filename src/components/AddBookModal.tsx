@@ -818,7 +818,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       let exhaustedOcrQueries = 0;
       const canSearchCoverQuery = (query: string): boolean => {
         const normalized = normalizeCatalogText(query);
-        const tokens = normalized.split(/\\s+/).filter(Boolean);
+        const tokens = normalized.split(/\s+/).filter(Boolean);
         if (!normalized || tokens.length > 8 || tokens.length === 0) return false;
         // Do not spend catalog requests on isolated OCR glyphs or obvious
         // duplicate fragments. Keep legitimate short glue words in book titles.
@@ -836,6 +836,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           coverLookupsUsed += 1;
           return run(query);
         };
+      const directCatalogOnce = memoizeCatalog(budgetedCoverLookup(
+        (query) => searchGoogleBooks(query),
+        { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchGoogleBooks>>,
+      ));
+      const authorPageOnce = async (author: string, startIndex: number) => {
+        if (!canSearchCoverQuery(author) || coverLookupsUsed >= MAX_COVER_LOOKUPS) {
+          exhaustedOcrQueries += 1;
+          return { groups: [] as BookSearchWorkGroup[], hasMore: false, nextStartIndex: startIndex };
+        }
+        coverLookupsUsed += 1;
+        return searchGoogleBooksAuthorPage(author, startIndex);
+      };
       const providerTraces: string[] = [];
       // Use compile-time Vite conditions directly so production can remove
       // the provider trace formatter rather than retain its inert text.
@@ -975,7 +987,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           })))].slice(0, 6);
         for (const query of fieldedIdentityQueries) {
           try {
-            const response = await searchGoogleBooks(query);
+            const response = await directCatalogOnce(query);
             recordScannerResponse(`ranked-fielded:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)
@@ -1174,7 +1186,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             let startIndex = 0;
             authorGroups = [];
             for (let page = 0; page < 3; page += 1) {
-              const response = await searchGoogleBooksAuthorPage(authorQuery, startIndex);
+              const response = await authorPageOnce(authorQuery, startIndex);
               authorGroups.push(...response.groups);
               recordScannerResponse(`author-recovery:${authorQuery}:page-${page + 1}`, response.groups);
               const pageMatch = response.groups.find((work) =>
@@ -1515,7 +1527,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           fieldedAuthors.map((author) => `intitle:${title} inauthor:${author.replace(/\s+/g, ' ')}`)))].slice(0, 8);
         for (const query of fieldedQueries) {
           try {
-            const response = await searchGoogleBooks(query);
+            const response = await directCatalogOnce(query);
             recordScannerResponse(`fielded-title-author:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
