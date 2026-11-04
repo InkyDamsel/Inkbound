@@ -277,7 +277,7 @@ const androidRuntimeSource = readFileSync('src/platform/initializeAndroidRuntime
 const androidPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> };
 assert.ok(androidPackage.scripts['android:sync'].includes('--scanner-inspection')
   && !androidPackage.scripts['android:sync'].includes('--scanner-debug'),
-  'Regular android:sync must include scanner inspection without opting into the debug-token build.');
+  'Regular android:sync must keep scanner details without requiring a separate web debug mode.');
 assert.ok(androidPackage.scripts['build:scanner-inspection'].includes('--mode scanner-inspection'),
   'Scanner inspection must have an explicit production Vite build mode.');
 assert.ok(androidPackage.scripts['android:release:sync'].includes('build:android')
@@ -285,9 +285,9 @@ assert.ok(androidPackage.scripts['android:release:sync'].includes('build:android
   'The Google Play store release must remain a clean production build.');
 assert.ok(scannerUiSource.includes("import.meta.env.MODE === 'scanner-inspection'"),
   'Scanner details must be available in regular Android inspection builds.');
-assert.ok(androidRuntimeSource.includes("import.meta.env.MODE === 'scanner-debug'")
-  && androidRuntimeSource.includes('scannerDiagnosticsBuild && nativeDebugBuild'),
-  'Firebase App Check debug provider must require explicit diagnostic mode.');
+assert.ok(androidRuntimeSource.includes('...(nativeDebugBuild ? { debugToken: true } : {})')
+  && !androidRuntimeSource.includes('scannerDiagnosticsBuild && nativeDebugBuild'),
+  'Firebase App Check must select debug attestation by native APK type, not scanner UI mode.');
 assert.ok(scannerCatalogSource.includes('classifyGoogleScannerFailure'),
   'Scanner must distinguish provider access, quota and rate-limit errors.');
 
