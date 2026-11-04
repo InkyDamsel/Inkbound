@@ -291,6 +291,14 @@ assert.ok(androidRuntimeSource.includes("import.meta.env.MODE === 'scanner-debug
 assert.ok(scannerCatalogSource.includes('classifyGoogleScannerFailure'),
   'Scanner must distinguish provider access, quota and rate-limit errors.');
 
+// Search's author pagination must recover from an unavailable protected
+// Firebase endpoint exactly as its general Google Books catalog path does.
+// The public fallback does not bypass Firebase App Check enforcement.
+assert.ok(scannerCatalogSource.includes("Protected author-page catalog lookup unavailable; retrying public Google Books."),
+  'Author pagination must have the same public fallback as general Search.');
+assert.ok(scannerCatalogSource.includes('payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)'),
+  'An author-page Firebase failure must retry the public Google Books endpoint.');
+
 const picassoCover = [
   'JAMES PATTERSON',
   'AND HOWARD ROUGHAN',
