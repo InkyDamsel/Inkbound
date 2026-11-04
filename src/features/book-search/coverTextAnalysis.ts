@@ -134,7 +134,14 @@ export function stripCoverEndorsementLines(lines: string[]): string[] {
       if (!sawQuote) break;
       dropped.add(j);
       if (isAttribution(line)) {
-        if (j + 1 < lines.length && isReviewCredential(lines[j + 1])) dropped.add(j + 1);
+        if (j + 1 < lines.length && isReviewCredential(lines[j + 1])) {
+          dropped.add(j + 1);
+          // "— Reviewer, bestselling author / of Other Book" is a
+          // continuation of the same endorsement, not a second title.
+          if (j + 2 < lines.length && /^\s*of\s+/i.test(lines[j + 2])) {
+            dropped.add(j + 2);
+          }
+        }
         break;
       }
       if (j > i && isReviewCredential(line)) break;
