@@ -821,7 +821,7 @@ export async function searchScannerCoverTitleCatalog(
       providers: sources.map(({ name, response, cooling, detail }) => ({
         name,
         count: response.groups.length,
-        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : detail ? 'error' as const : 'empty' as const,
+        status: response.groups.length ? 'ok' as const : cooling ? 'cooldown' as const : detail ? 'error' as const : 'empty' as const,
         ...(detail ? { detail } : {}),
       })),
       beforeHardening: sources.reduce((sum, source) => sum + source.response.groups.length, 0),
@@ -974,7 +974,7 @@ export async function searchScannerCoverCatalog(
     onTrace({ query: trimmed,
       providers: providerEntries.map(({ name, response, cooling, detail }) => ({
         name, count: response.groups.length,
-        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : detail ? 'error' as const : 'empty' as const,
+        status: response.groups.length ? 'ok' as const : cooling ? 'cooldown' as const : detail ? 'error' as const : 'empty' as const,
         ...(detail ? { detail } : {}),
       })),
       beforeHardening: originalGroups.length, afterHardening: groups.length,
