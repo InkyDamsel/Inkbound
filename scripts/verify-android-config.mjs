@@ -150,11 +150,29 @@ for (const requiredSnippet of [
 ]) {
   if (!androidRuntimeSource.includes(requiredSnippet)) fail(`Android runtime adapter is missing required Build 26 native integration: ${requiredSnippet}`);
 }
-if (!androidRuntimeSource.includes('const nativeDebugBuild = await isNativeDebugBuild()')) fail('Android App Check debug mode must be gated by the native APK build type.');
-if (!androidRuntimeSource.includes("...(nativeDebugBuild ? { debugToken: true } : {})")) fail('Android debug APKs must use the App Check debug provider without enabling it for release APKs.');
-if (/FirebaseAppCheck\.initialize\(\{[\s\S]*?debugToken:\s*true[\s\S]*?\}\)/.test(androidRuntimeSource)
-  && !androidRuntimeSource.includes('nativeDebugBuild ? { debugToken: true }')) {
-  fail('Firebase App Check debug provider must never be enabled unconditionally in Android release builds.');
+// The standard Android app must not use Firebase's debug-token provider
+// simply because Android Studio installed a debuggable APK. Only the explicit
+// scanner-diagnostics Vite mode AND a native debug APK may opt in.
+if (!androidRuntimeSource.includes('const nativeDebugBuild = await isNativeDebugBuild()')) {
+  fail('Android App Check must still detect native debug builds.');
+}
+if (!androidRuntimeSource.includes("const scannerDiagnosticsBuild = import.meta.env.MODE === 'scanner-debug';")) {
+  fail('Firebase App Check debug provider must require explicit scanner-diagnostics mode.');
+}
+if (!androidRuntimeSource.includes('const enableNativeAppCheckDebug = scannerDiagnosticsBuild && nativeDebugBuild;')) {
+  fail('Firebase App Check debug provider must require BOTH diagnostic mode and a native debug APK.');
+}
+if (!androidRuntimeSource.includes('...(enableNativeAppCheckDebug ? { debugToken: true } : {})')) {
+  fail('Firebase App Check debug token must be guarded by the combined diagnostic and native-build gate.');
+}
+if (androidRuntimeSource.includes('...(nativeDebugBuild ? { debugToken: true } : {})')
+  || /(?:^|\\n)\\s*debugToken:\\s*true\\s*[,}]/m.test(androidRuntimeSource)) {
+  fail('Normal Android bundles must never enable Firebase debug-token mode unconditionally.');
+}
+const packageScripts = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')).scripts ?? {};
+if (packageScripts['android:sync']?.includes('scanner-debug')
+  || !packageScripts['android:sync']?.includes('build:android')) {
+  fail('android:sync must build the regular Android app, never force scanner-debug mode.');
 }
 
 for (const forbiddenSnippet of [
