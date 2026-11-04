@@ -773,10 +773,10 @@ export async function searchScannerCoverTitleCatalog(
   if (onTrace) {
     const sources = [
       { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil, detail: googleScannerFailure },
-      { name: 'Open Library', response: openLibrary, cooling: false },
-      { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil },
-      { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil },
-      { name: 'Trusted', response: trusted, cooling: false },
+      { name: 'Open Library', response: openLibrary, cooling: false, detail: null },
+      { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil, detail: null },
+      { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil, detail: null },
+      { name: 'Trusted', response: trusted, cooling: false, detail: null },
     ];
     onTrace({
       query: trimmed,
@@ -908,10 +908,10 @@ export async function searchScannerCoverCatalog(
   if (onTrace) {
     const providerEntries = [
       { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil, detail: googleScannerFailure },
-      { name: 'Open Library', response: openLibrary, cooling: false },
-      { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil },
-      { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil },
-      { name: 'Trusted', response: trusted, cooling: false },
+      { name: 'Open Library', response: openLibrary, cooling: false, detail: null },
+      { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil, detail: null },
+      { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil, detail: null },
+      { name: 'Trusted', response: trusted, cooling: false, detail: null },
     ];
     onTrace({ query: trimmed,
       providers: providerEntries.map(({ name, response, cooling, detail }) => ({
