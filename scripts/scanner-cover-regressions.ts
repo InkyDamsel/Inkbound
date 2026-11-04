@@ -97,8 +97,10 @@ assert.ok(scannerUiSource.includes('early-exact-title:'),
 const scannerCatalogSource = readFileSync('src/features/book-search/data/googleBooksApi.ts', 'utf8');
 const exactTitleSource = scannerCatalogSource.split('export async function searchScannerCoverTitleCatalog(')[1]
   ?.split('export async function searchScannerAuthorCatalog(')[0] ?? '';
-assert.ok(exactTitleSource.includes('searchOpenLibraryWithAuthorFallback(trimmed, signal)'),
-  'Exact-title recovery must query Open Library even when Google has no results.');
+assert.ok(exactTitleSource.includes('searchOpenLibrary(`intitle:"${escaped}"`, signal)'),
+  'Exact-title recovery must query Open Library by title, never as a fallback author.');
+assert.ok(!exactTitleSource.includes('searchOpenLibraryWithAuthorFallback(trimmed, signal)'),
+  'A missing title must not trigger an unrelated Open Library author search.');
 assert.ok(exactTitleSource.includes('searchHardcoverWithBackoff(trimmed)'),
   'Exact-title recovery must query Hardcover independently.');
 assert.ok(exactTitleSource.includes('searchPrhWithBackoff(trimmed)'),
@@ -109,6 +111,10 @@ assert.ok(exactTitleSource.includes('workTitle === titleKey || workTitle.startsW
   'Exact-title recovery must reject unrelated catalog titles before OCR author verification.');
 assert.ok(scannerUiSource.includes('searchExactTitleOnce(titleHint)'),
   'Repeated exact-title lanes must reuse one catalog request per scan.');
+assert.ok(scannerUiSource.includes('Exact-title providers:'),
+  'Failed scans must show per-provider exact-title counts in the existing diagnostic surface.');
+assert.ok(exactTitleSource.includes('onTrace({'),
+  'Exact-title catalog recovery must report pre/post exact-title filtering counts.');
 
 const picassoCover = [
   'JAMES PATTERSON',
