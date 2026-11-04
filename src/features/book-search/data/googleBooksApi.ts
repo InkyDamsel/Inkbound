@@ -687,6 +687,7 @@ export async function resolveCatalogIsbn(
 export async function searchScannerCoverTitleCatalog(
   title: string,
   signal?: AbortSignal,
+  onTrace?: (trace: ScannerCatalogProviderTrace) => void,
 ): Promise<BookSearchResponse> {
   const trimmed = title.trim();
   if (!trimmed) return { groups: [], totalItems: 0 };
@@ -718,10 +719,17 @@ export async function searchScannerCoverTitleCatalog(
   };
   const [google, openLibrary, hardcover, prh, trusted] = await Promise.all([
     googleExact(),
-    searchOpenLibraryWithAuthorFallback(trimmed, signal),
+    // Explicit title operator prevents a failed title lookup from issuing an
+    // unrelated author search for the same string.
+    searchOpenLibrary(`intitle:"${escaped}"`, signal).catch((error) => {
+      if (signal?.aborted) throw error;
+      console.warn('Scanner exact-title Open Library retrieval unavailable.', error);
+      return { groups: [], totalItems: 0 };
+    }),
     searchHardcoverWithBackoff(trimmed),
     searchPrhWithBackoff(trimmed),
     searchTrustedCatalogBaseline(trimmed).catch((error) => {
+      if (signal?.aborted) throw error;
       console.warn('Scanner exact-title trusted catalog unavailable.', error);
       return { groups: [], totalItems: 0 };
     }),
@@ -735,6 +743,25 @@ export async function searchScannerCoverTitleCatalog(
     const workTitle = normalizeText(work.title);
     return workTitle === titleKey || workTitle.startsWith(`${titleKey} `);
   });
+  if (onTrace) {
+    const sources = [
+      { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil },
+      { name: 'Open Library', response: openLibrary, cooling: false },
+      { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil },
+      { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil },
+      { name: 'Trusted', response: trusted, cooling: false },
+    ];
+    onTrace({
+      query: trimmed,
+      providers: sources.map(({ name, response, cooling }) => ({
+        name,
+        count: response.groups.length,
+        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : 'empty' as const,
+      })),
+      beforeHardening: sources.reduce((sum, source) => sum + source.response.groups.length, 0),
+      afterHardening: groups.length,
+    });
+  }
   return { groups, totalItems: groups.length };
 }
 
