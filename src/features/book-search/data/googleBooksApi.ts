@@ -396,9 +396,13 @@ export async function searchGoogleBooksAuthorPage(
   let payload: GoogleVolumesResponse = { totalItems: 0, items: [] };
   let googleError: string | undefined;
   const googleCoolingDown = Date.now() < googleBackoffUntil;
-  if (googleCoolingDown) googleError = 'Provider cooling down after rate limit; alternate catalogs are still active.';
+  // Public API cooldown does not block the independent protected catalog.
+  // Preserve accurate diagnostics instead of reporting zero without trying.
+  if (googleCoolingDown) googleError = 'Public Google Books fallback cooling down; protected catalog may still respond.';
   try {
-    if (googleCoolingDown) throw new Error(googleError);
+    if (googleCoolingDown && !(functions && auth?.currentUser)) {
+      throw new Error('Public Google Books provider cooling down (429).');
+    }
     // Author pages are reused by normal author-shaped Search, the author
     // catalog view and scanner recovery. Deduplicate identical in-flight calls
     // and keep the page briefly so those paths do not repeatedly spend Google
@@ -497,7 +501,13 @@ export async function searchGoogleBooksAuthorPage(
 }
 
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
+  // Public Google Books throttling must NOT disable a healthy signed-in
+  // Firebase catalog request. Android does not bundle the browser API key,
+  // so its public fallback has a different quota and may cool down while
+  // the protected backend is still able to return a result.
+  if (Date.now() < googleBackoffUntil && !(functions && auth?.currentUser)) {
+    return { groups: [], totalItems: 0 };
+  }
   try {
     const response = await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
     googleScannerFailure = null;
@@ -738,13 +748,16 @@ export async function searchScannerCoverTitleCatalog(
   // the photographed author; this is retrieval, never identity acceptance.
   const escaped = trimmed.replace(/"/g, '');
   const googleExact = async (): Promise<BookSearchResponse> => {
-    if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
+    if (Date.now() < googleBackoffUntil && !(functions && auth?.currentUser)) {
+      return { groups: [], totalItems: 0 };
+    }
     try {
-      const payload = await requestDirectGoogleBooks(`intitle:"${escaped}"`, signal);
-      const groups = groupGoogleEditions((payload.items ?? []).map(mapGoogleVolume)
-        .filter((item): item is BookSearchEdition => Boolean(item)));
+      // Use Search's canonical protected-first transport, not a scanner-only
+      // unkeyed public Google request. The latter was rate-limited on Android.
+      const response = await requestGoogleBooks(`intitle:"${escaped}"`, signal);
+      return response;
       googleScannerFailure = null;
-      return { groups, totalItems: groups.length };
+      return response;
     } catch (error) {
       if (signal?.aborted) throw error;
       googleScannerFailure = classifyGoogleScannerFailure(error);
