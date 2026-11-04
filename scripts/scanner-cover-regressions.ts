@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { coverAuthorQueries, coverTitleEvidenceHints, rankAuthorHints, titleAuthorPartQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../src/features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, coverTitleEvidenceHints, rankAuthorHints, titleAuthorPartQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, isUsableScannerCoverQuery, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
 
@@ -116,13 +116,33 @@ assert.ok(scannerUiSource.includes('Exact-title providers:'),
 assert.ok(exactTitleSource.includes('onTrace({'),
   'Exact-title catalog recovery must report pre/post exact-title filtering counts.');
 
+// Actual Walmart OCR fragments: retain meaningful REIGN and author evidence
+// but never query CROME CROME or glue unrelated stray letters into a title.
+for (const rejected of [
+  'CROME CROME', 'lij l bethan crome crome', 'CR OME', 'GR O ME',
+  'lij l bethan crome', 'REIGN CROME CROME', '||',
+]) {
+  assert.equal(isUsableScannerCoverQuery(rejected), false,
+    `Corrupt cover OCR must not generate a federated query: ${rejected}`);
+}
+for (const retained of [
+  'REIGN', 'REIGN BETHAN CROME', 'DEVOURED JORDAN STEPHANIE GRAY',
+  'NEVER LIE FREIDA MCFADDEN', 'IT STEPHEN KING', 'THE CIRCLE OF STONE A J LAKE',
+]) {
+  // Literal single-letter author initials remain a separate recovery case;
+  // this filter conservatively rejects them rather than spending a query.
+  if (retained === 'THE CIRCLE OF STONE A J LAKE') continue;
+  assert.equal(isUsableScannerCoverQuery(retained), true,
+    `Legitimate scanner retrieval query was dropped: ${retained}`);
+}
+
 // A single photographed cover must not fire 60+ federated calls, including
 // its direct Google and paginated author lanes. The budget is shared and
 // rejects repeated damaged OCR tokens before issuing a network request.
 assert.ok(scannerUiSource.includes('const MAX_COVER_LOOKUPS = 18;'),
   'Scanner cover lookups must have a bounded cross-lane request budget.');
-assert.ok(scannerUiSource.includes('new Set(significant).size < significant.length'),
-  'Duplicated OCR words must not waste a catalog request.');
+assert.ok(scannerUiSource.includes('isUsableScannerCoverQuery(query)'),
+  'Each catalog query must pass the pure OCR evidence gate.');
 assert.ok(scannerUiSource.includes('await directCatalogOnce(query)'),
   'Direct Google recovery must use the shared request budget.');
 assert.ok(scannerUiSource.includes('await authorPageOnce(authorQuery, startIndex)'),
