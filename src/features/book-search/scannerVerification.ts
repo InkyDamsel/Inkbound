@@ -134,7 +134,19 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
   if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
-  const allSignificantPresent = significant.every((word) => tokens.has(word) || inOneLine(word));
+  // Decorative titles can split a SINGLE printed word across adjacent OCR
+  // lines (BLACK / THORN). Only join contiguous single-word title lines,
+  // never unrelated words spread across the photograph. This restores
+  // Blackthorn without reinstating cross-line AUTHOR-name matching.
+  const adjacentTitleWord = (word: string): boolean =>
+    lines.some((_line, index) => [2, 3].some((count) => {
+      const run = lines.slice(index, index + count);
+      return run.length === count
+        && run.every((part) => words(part).length === 1 && !isDemotedCoverTitleLine(part))
+        && run.map((part) => words(part).join('')).join('') === word;
+    }));
+  const allSignificantPresent = significant.every((word) =>
+    tokens.has(word) || inOneLine(word) || adjacentTitleWord(word));
   if (!allSignificantPresent) return false;
   // A catalog title that is merely the START of a longer printed word is a
   // different book (DEVOUR vs the photographed DEVOURED).
