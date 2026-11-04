@@ -24,4 +24,16 @@ assert.equal(coverApproximatelyMatchesWork(picassoHeistCover, 'James Patterson b
 assert.equal(coverApproximatelyMatchesWork(picassoHeistCover, 'The Picasso Heist', ['James Patterson', 'Howard Roughan']), true);
 // A valid title and independently printed author must remain eligible.
 assert.equal(coverApproximatelyMatchesWork(['KING', 'OF', 'GLUTTONY', 'ANA HUANG'], 'King of Gluttony', ['Ana Huang']), true);
+// Real-world Walmart: DEV OURED is correctly printed with JORDAN
+// STEPHANIE GRAY. A same-title ebook by a different author is NOT this book.
+// Reject it in both strict and approximate cover verification lanes.
+const devouredCover = ['DEVOURED', 'JORDAN STEPHANIE GRAY', 'A ROMANCE THAT SIZZLES'];
+assert.equal(coverMatchesWork(devouredCover, 'Devoured', ['Emily Snow']), false,
+  'An unrelated Devoured edition must not pass strict author verification.');
+assert.equal(coverApproximatelyMatchesWork(devouredCover, 'Devoured', ['Emily Snow']), false,
+  'An unrelated Devoured edition must not pass approximate author verification.');
+assert.equal(coverMatchesWork(devouredCover, 'Devoured', ['Jordan Stephanie Gray']), true,
+  'The actual printed author must continue to verify.');
+assert.equal(coverApproximatelyMatchesWork(devouredCover, 'Devoured', ['Jordan Stephanie Gray']), true,
+  'The actual printed author must survive approximate verification.');
 console.log('Inkbound scanner verification regressions passed.');
