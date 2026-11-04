@@ -128,12 +128,18 @@ export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
   const nativeDebugBuild = await isNativeDebugBuild();
+  // A normal Android app built with android:sync must not switch Firebase
+  // to its debug-token provider merely because Android Studio installed a
+  // debuggable native variant. Only explicit scanner-diagnostics builds opt in.
+  // App Check enforcement remains enabled in both configurations.
+  const scannerDiagnosticsBuild = import.meta.env.MODE === 'scanner-debug';
+  const enableNativeAppCheckDebug = scannerDiagnosticsBuild && nativeDebugBuild;
   const nativeAppCheckReady = FirebaseAppCheck.initialize({
     isTokenAutoRefreshEnabled: true,
-    ...(nativeDebugBuild ? { debugToken: true } : {}),
+    ...(enableNativeAppCheckDebug ? { debugToken: true } : {}),
   });
-  if (nativeDebugBuild) {
-    console.info('Inkbound Android debug build: Firebase App Check debug provider enabled. Register the generated debug token in Firebase before testing protected catalog services.');
+  if (enableNativeAppCheckDebug) {
+    console.info('Inkbound scanner diagnostic build: Firebase App Check debug provider enabled. This test build requires a registered Firebase debug token.');
   }
 
   configureRuntimeAuthentication({
