@@ -166,7 +166,7 @@ if (!androidRuntimeSource.includes('...(enableNativeAppCheckDebug ? { debugToken
   fail('Firebase App Check debug token must be guarded by the combined diagnostic and native-build gate.');
 }
 if (androidRuntimeSource.includes('...(nativeDebugBuild ? { debugToken: true } : {})')
-  || /(?:^|\\n)\\s*debugToken:\\s*true\\s*[,}]/m.test(androidRuntimeSource)) {
+  || /^\s*debugToken:\s*true\s*[,}]/m.test(androidRuntimeSource)) {
   fail('Normal Android bundles must never enable Firebase debug-token mode unconditionally.');
 }
 const packageScripts = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')).scripts ?? {};
