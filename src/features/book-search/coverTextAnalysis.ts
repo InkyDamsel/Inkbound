@@ -147,6 +147,35 @@ export function stripCoverEndorsementLines(lines: string[]): string[] {
       if (j > i && isReviewCredential(line)) break;
     }
   }
+  // OCR frequently captures the REVIEWER CREDIT but misses the quote entirely.
+  // In that case the quote-start rule above cannot run. Recognize a separate
+  // two-word credited name followed shortly by publishing credentials instead.
+  // Never discard a three-word standalone author's name on this evidence.
+  const credential = (line: string): boolean =>
+    /(?:best.?sell|bostsell|btsiling|bestsel|new\\s*york|nw\\s*york|now\\s*york|author\\s*of)/i.test(line);
+  const continuation = (line: string): boolean =>
+    /^\\s*of\\s*\\p{L}/iu.test(line) || /^\\s*of\\p{L}{3,}/iu.test(line);
+  const reviewerName = (line: string): boolean => {
+    const text = line.trim().replace(/^[-–—]\\s*/, '').replace(/[,.;]+$/, '');
+    const parts = wordsOf(text);
+    return parts.length === 2 && parts.every((part) => part.length >= 3 && part.length <= 15)
+      && text === text.toUpperCase()
+      && !/(?:best.?sell|author|new york|romance|novel)/i.test(text);
+  };
+  for (let index = 0; index < lines.length; index += 1) {
+    if (dropped.has(index) || !reviewerName(lines[index])) continue;
+    // A credit can be followed by "New York Times", "bestselling author",
+    // then "of Other Title"; allow a short bounded gap between those lines.
+    const credentialAt = [index + 1, index + 2, index + 3]
+      .find((candidate) => candidate < lines.length && credential(lines[candidate]));
+    if (credentialAt === undefined) continue;
+    dropped.add(index);
+    for (let cursor = index + 1; cursor <= Math.min(index + 4, lines.length - 1); cursor += 1) {
+      if (cursor > credentialAt && !credential(lines[cursor]) && !continuation(lines[cursor])) break;
+      if (isPrimaryIdentity(lines[cursor]) && !credential(lines[cursor])) break;
+      dropped.add(cursor);
+    }
+  }
   return lines.filter((_, index) => !dropped.has(index));
 }
 
