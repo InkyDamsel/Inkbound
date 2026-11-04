@@ -139,10 +139,13 @@ assert.equal(isUsableScannerCoverQuery('A J LAKE'), false,
 // A single photographed cover must not fire 60+ federated calls, including
 // its direct Google and paginated author lanes. The budget is shared and
 // rejects repeated damaged OCR tokens before issuing a network request.
-assert.ok(scannerUiSource.includes('const MAX_COVER_LOOKUPS = 18;'),
+assert.ok(scannerUiSource.includes('const MAX_COVER_LOOKUPS = 22;'),
   'Scanner cover lookups must have a bounded cross-lane request budget.');
 assert.ok(scannerUiSource.includes('isUsableScannerCoverQuery(query)'),
   'Each catalog query must pass the pure OCR evidence gate.');
+assert.ok(scannerUiSource.includes('const MAX_GENERAL_LOOKUPS = 14;')
+  && scannerUiSource.includes('generalLookupsUsed >= MAX_GENERAL_LOOKUPS'),
+  'Low-confidence generic queries must not spend the author/exact-title reserve.');
 assert.ok(scannerUiSource.includes('await directCatalogOnce(query)'),
   'Direct Google recovery must use the shared request budget.');
 assert.ok(scannerUiSource.includes('await authorPageOnce(authorQuery, startIndex)'),
