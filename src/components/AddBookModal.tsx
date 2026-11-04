@@ -1591,6 +1591,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           : /403|attestation/i.test(reason)
             ? 'App Check: HTTP 403 / attestation rejected; protected providers may be unavailable'
             : 'App Check: native token probe failed (details withheld to protect credentials)';
+        setScannerAppCheckStatus(appCheckError ? 'blocked' : 'ready');
+        setScannerAppCheckDiagnostic(appCheckLine);
         setScannerDetails((previous) => [previous ?? '[Inkbound scanner] Cover lookup did not resolve', appCheckLine].join('\n'));
       }
       setScannerMessage(null);
