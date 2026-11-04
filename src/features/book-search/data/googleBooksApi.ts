@@ -755,7 +755,6 @@ export async function searchScannerCoverTitleCatalog(
       // Use Search's canonical protected-first transport, not a scanner-only
       // unkeyed public Google request. The latter was rate-limited on Android.
       const response = await requestGoogleBooks(`intitle:"${escaped}"`, signal);
-      return response;
       googleScannerFailure = null;
       return response;
     } catch (error) {
