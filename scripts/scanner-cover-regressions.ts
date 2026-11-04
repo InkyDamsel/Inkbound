@@ -116,6 +116,20 @@ assert.ok(scannerUiSource.includes('Exact-title providers:'),
 assert.ok(exactTitleSource.includes('onTrace({'),
   'Exact-title catalog recovery must report pre/post exact-title filtering counts.');
 
+// A single photographed cover must not fire 60+ federated calls, including
+// its direct Google and paginated author lanes. The budget is shared and
+// rejects repeated damaged OCR tokens before issuing a network request.
+assert.ok(scannerUiSource.includes('const MAX_COVER_LOOKUPS = 18;'),
+  'Scanner cover lookups must have a bounded cross-lane request budget.');
+assert.ok(scannerUiSource.includes('new Set(significant).size < significant.length'),
+  'Duplicated OCR words must not waste a catalog request.');
+assert.ok(scannerUiSource.includes('await directCatalogOnce(query)'),
+  'Direct Google recovery must use the shared request budget.');
+assert.ok(scannerUiSource.includes('await authorPageOnce(authorQuery, startIndex)'),
+  'Paginated Google author recovery must use the shared request budget.');
+assert.ok(scannerUiSource.includes('Cover request budget:'),
+  'Failed scan diagnostics must report consumed, rejected and skipped requests.');
+
 const picassoCover = [
   'JAMES PATTERSON',
   'AND HOWARD ROUGHAN',
