@@ -271,8 +271,9 @@ assert.ok(scannerUiSource.includes('await authorPageOnce(authorQuery, startIndex
 assert.ok(scannerUiSource.includes('Cover request budget:'),
   'Failed scan diagnostics must report consumed, rejected and skipped requests.');
 
-// Regular Android testing must preserve Scanner details without using the
-// native debug-token provider. Only the actual store-release sync strips the UI.
+// Regular Android testing preserves Scanner details in the same app. Native
+// App Check follows APK signing: Android Studio debug -> Firebase debug token,
+// signed store release -> Play Integrity, regardless of Vite UI mode.
 const androidRuntimeSource = readFileSync('src/platform/initializeAndroidRuntime.ts', 'utf8');
 const androidPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> };
 assert.ok(androidPackage.scripts['android:sync'].includes('--scanner-inspection')
