@@ -127,19 +127,18 @@ const verifyPlayPurchase = async (purchase: PlayPurchaseResult) => {
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
+  // Native App Check depends on the installed APK's signing variant, NOT on
+  // Vite's scanner-inspection mode. Android Studio's normal Run action installs
+  // a debug-signed APK; Play Integrity is for the release-signed app. Restore
+  // the prior behavior so regular Android testing can use Firebase's registered
+  // debug provider, while release APKs keep Play Integrity.
   const nativeDebugBuild = await isNativeDebugBuild();
-  // A normal Android app built with android:sync must not switch Firebase
-  // to its debug-token provider merely because Android Studio installed a
-  // debuggable native variant. Only explicit scanner-diagnostics builds opt in.
-  // App Check enforcement remains enabled in both configurations.
-  const scannerDiagnosticsBuild = import.meta.env.MODE === 'scanner-debug';
-  const enableNativeAppCheckDebug = scannerDiagnosticsBuild && nativeDebugBuild;
   const nativeAppCheckReady = FirebaseAppCheck.initialize({
     isTokenAutoRefreshEnabled: true,
-    ...(enableNativeAppCheckDebug ? { debugToken: true } : {}),
+    ...(nativeDebugBuild ? { debugToken: true } : {}),
   });
-  if (enableNativeAppCheckDebug) {
-    console.info('Inkbound scanner diagnostic build: Firebase App Check debug provider enabled. This test build requires a registered Firebase debug token.');
+  if (nativeDebugBuild) {
+    console.info('Inkbound Android debug-signed APK: Firebase App Check debug provider active. Its debug token must be registered with Firebase for protected services.');
   }
 
   configureRuntimeAuthentication({
