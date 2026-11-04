@@ -34,6 +34,17 @@ assert.equal(coverMatchesWork(devouredFiltered, 'Devoured', ['Jordan Stephanie G
   'After removing endorsements, the correct photographed work must still verify.');
 assert.equal(coverMatchesWork(devouredFiltered, 'Divine Rivals', ['Rebecca Ross']), false,
   'An endorsement cannot verify the review author\'s separate book.');
+const damagedReviewerCover = [
+  'JORDAN STEPHANIE GRAY', 'DEVOURED', '"Luminous and',
+  'that sizzles."', 'EEECCA OSS', 'bestselling author of Divine Rivals',
+];
+const damagedReviewerFiltered = stripCoverEndorsementLines(damagedReviewerCover);
+assert.ok(damagedReviewerFiltered.includes('JORDAN STEPHANIE GRAY')
+  && damagedReviewerFiltered.includes('DEVOURED'),
+  'An OCR-damaged endorsement must not erase a printed full author or main title.');
+assert.ok(!damagedReviewerFiltered.some((line) => /EEECCA|sizzles|divine rivals/i.test(line)),
+  'An OCR-damaged review byline cannot become a competing author identity.');
+
 const neverLie=['#1 NEW YORK TIMES BESTSELLING AUTHOR OF','THE HOUSEMAID AND THE TEACHER','NEVER','LIE','FREIDA','McFADDEN'];
 const stripped=stripCoverPromoLines(neverLie);
 assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),false);
