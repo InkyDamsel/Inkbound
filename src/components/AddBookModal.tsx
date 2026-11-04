@@ -46,7 +46,7 @@ import { diagnoseNativeAppCheckFailure, getNativeAppCheckToken } from '../platfo
 
 // Vite production builds run inside Android debug APKs too. Scanner diagnostics
 // are opt-in for test bundles, and the release verifier rejects their strings.
-const SCANNER_DEBUG_ENABLED = import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug';
+const SCANNER_DEBUG_ENABLED = import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' || import.meta.env.MODE === 'scanner-inspection';
 
 interface AddBookModalProps {
   currentBookCount: number;
@@ -851,7 +851,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Use compile-time Vite conditions directly so production can remove
       // the provider trace formatter rather than retain its inert text.
       const searchCoverCatalogOnce = memoizeCatalog(budgetedCoverLookup((query) => searchScannerCoverCatalog(query, undefined,
-        import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' ? (trace) => {
+        import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' || import.meta.env.MODE === 'scanner-inspection' ? (trace) => {
           providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status}${provider.detail ? `/${provider.detail}` : ''})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
         } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverCatalog>>));
       const searchAuthorCatalogOnce = memoizeCatalog(budgetedCoverLookup(
@@ -860,7 +860,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         true,
       ));
       const searchExactTitleOnce = memoizeCatalog(budgetedCoverLookup((title) => searchScannerCoverTitleCatalog(title, undefined,
-        import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' ? (trace) => {
+        import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' || import.meta.env.MODE === 'scanner-inspection' ? (trace) => {
           providerTraces.push(`Exact-title providers: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status}${provider.detail ? `/${provider.detail}` : ''})`).join(' | ')}; raw=${trace.beforeHardening} exact-title=${trace.afterHardening}`);
         } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverTitleCatalog>>, true));
       const recognized = normalizeCatalogText(lines.join(' '));
