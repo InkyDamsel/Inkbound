@@ -176,6 +176,19 @@ export function stripCoverEndorsementLines(lines: string[]): string[] {
       dropped.add(cursor);
     }
   }
+  // Multi-pass OCR may repeat only the marketing credential later, without
+  // its reviewer name. Once a genuine reviewer-byline + credential pairing
+  // exists, these detached credentials cannot establish book identity.
+  if (lines.some((line, index) => dropped.has(index) && reviewerName(line))) {
+    for (let index = 0; index < lines.length; index += 1) {
+      if (credential(lines[index]) && !isPrimaryIdentity(lines[index])) {
+        dropped.add(index);
+        if (index + 1 < lines.length && continuation(lines[index + 1])) {
+          dropped.add(index + 1);
+        }
+      }
+    }
+  }
   return lines.filter((_, index) => !dropped.has(index));
 }
 
