@@ -1006,6 +1006,29 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         }
       }
 
+      // Canonical Search parity: a strong printed title must run through the
+      // EXACT same general catalog entrypoint as typing it into Search.
+      // Scanner's older path only searched by author and then switched to a
+      // scanner-specific intitle lookup. That is not equivalent to Search.
+      // Retrieval never proves identity: both printed title and author must
+      // pass independent verification before a work is offered.
+      if (!best && rankedTitleEvidence.length && primaryPrintedAuthorHints.length) {
+        const printedTitle = rankedTitleEvidence[0];
+        try {
+          const response = await searchPriorityCatalogOnce(printedTitle);
+          recordScannerResponse(`search-title-general:${printedTitle}`, response.groups);
+          const recovered = response.groups.find((work) =>
+            coverMatchesWork(cleanLines, work.title, work.authors)
+            || coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.85 };
+            found = response.groups;
+          }
+        } catch (error) {
+          scannerDiagnostics.push(`search-title-general:${printedTitle} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
       // A verified, title-shaped OCR line can be more reliable than a large
       // multi-provider relevance query, particularly when Google is cooling
       // down from repeated searches. Try this public exact-title lookup first;
