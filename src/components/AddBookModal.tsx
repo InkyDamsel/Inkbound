@@ -17,6 +17,7 @@ import {
   searchScannerAuthorCatalog,
   searchScannerCoverCatalog,
   searchScannerCoverTitleCatalog,
+  searchScannerCoverTitleAuthorCatalog,
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
@@ -863,6 +864,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' || import.meta.env.MODE === 'scanner-inspection' ? (trace) => {
           providerTraces.push(`Exact-title providers: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status}${provider.detail ? `/${provider.detail}` : ''})`).join(' | ')}; raw=${trace.beforeHardening} exact-title=${trace.afterHardening}`);
         } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverTitleCatalog>>, true));
+      const searchOpenLibraryTitleAuthorOnce = memoizeCatalog(budgetedCoverLookup(
+        (pair) => {
+          const separator = pair.indexOf('|||');
+          const title = pair.slice(0, separator).trim();
+          const author = pair.slice(separator + 3).trim();
+          return searchScannerCoverTitleAuthorCatalog(title, author);
+        },
+        { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverTitleAuthorCatalog>>,
+        true,
+      ));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       const compactCover = recognized.replace(/\s+/g, '');
@@ -965,6 +976,28 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           }
         } catch (error) {
           scannerDiagnostics.push(`early-exact-title:${titleHint} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      // Ask Open Library with INDEPENDENT title and author fields before
+      // spending the general-query budget. Its broad title result page can be
+      // full of homonymous works while the photographed author is omitted.
+      // Never accept the catalog hit unless both title and author verify.
+      if (!best && rankedTitleEvidence.length && primaryPrintedAuthorHints.length) {
+        const title = rankedTitleEvidence[0];
+        const author = primaryPrintedAuthorHints[0];
+        try {
+          const response = await searchOpenLibraryTitleAuthorOnce(`${title}||| ${author}`);
+          recordScannerResponse(`fielded-open-library:${title} + ${author}`, response.groups);
+          const recovered = response.groups.find((work) =>
+            coverMatchesWork(cleanLines, work.title, work.authors)
+            || coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.74 };
+            found = response.groups;
+          }
+        } catch (error) {
+          scannerDiagnostics.push(`fielded-open-library:${title} => ERROR ${error instanceof Error ? error.message : String(error)}`);
         }
       }
 
