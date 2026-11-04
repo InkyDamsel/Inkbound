@@ -141,12 +141,14 @@ assert.equal(isUsableScannerCoverQuery('A J LAKE'), false,
 // Search can retrieve Devoured/Jordan Stephanie Gray, Nero/S. J. Tilly
 // and Reign/Bethan Croome by author. Scanner must reuse the SAME Search
 // author-page retrieval early, before the noisy title recovery spends budget.
+const earlyGeneralSearch = scannerUiSource.indexOf('search-author-general:');
 const earlySearchReuse = scannerUiSource.indexOf('search-author-page:');
 const earlyTitleOnly = scannerUiSource.indexOf('early-exact-title:');
-assert.ok(earlySearchReuse >= 0 && earlyTitleOnly >= 0 && earlySearchReuse < earlyTitleOnly,
-  'Scanner must try normal Search author bibliography before title-only recovery.');
-assert.ok(scannerUiSource.includes('await authorPageOnce(printedAuthor, 0)'),
-  'Scanner must retrieve first author page through the shared capped Search path.');
+assert.ok(earlyGeneralSearch >= 0 && earlySearchReuse > earlyGeneralSearch && earlyTitleOnly > earlySearchReuse,
+  'Scanner must reuse Search general author query, then the paginated author results, before title-only fallback.');
+assert.ok(scannerUiSource.includes('await searchPriorityCatalogOnce(printedAuthor)')
+  && scannerUiSource.includes('await authorPageOnce(printedAuthor, 0)'),
+  'Scanner must use both normal Search retrieval paths with the shared lookup budget.');
 assert.ok(scannerUiSource.includes('search-author-page:')
   && scannerUiSource.includes('coverMatchesWork(cleanLines, work.title, work.authors)'),
   'Author results must still pass independent photographed cover verification.');
