@@ -133,6 +133,8 @@ for (const retained of [
     `Legitimate scanner retrieval query was dropped: ${retained}`);
 }
 
+assert.equal(isUsableScannerCoverQuery('BLACKTHORN J.T. GEISSINGER'), true,
+  'Initialed authors with printed periods must survive the OCR query filter.');
 assert.equal(isUsableScannerCoverQuery('A J LAKE'), false,
   'Single-letter OCR fragments should be paired with a real title before querying.');
 
