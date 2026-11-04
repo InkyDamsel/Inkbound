@@ -24,13 +24,14 @@ function shortTitleMatchesWork(lines: string[], titleWords: string[], authors: s
   if (!lines.some((line) => words(line).join('') === compactTitle)) return false;
   const text = words(lines.join(' '));
   const tokens = new Set(text);
-  const joined = text.join('');
+  const lineCompacts = lines.map((line) => words(line).join(''));
+  const inOneLine = (part: string) => part.length >= 4 && lineCompacts.some((line) => line.includes(part));
   return authors.some((author) => {
     const authorWords = words(author);
     const surname = authorWords[authorWords.length - 1] ?? '';
-    if (surname.length < 3 || !(tokens.has(surname) || joined.includes(surname))) return false;
+    if (surname.length < 3 || !(tokens.has(surname) || inOneLine(surname))) return false;
     return authorWords.slice(0, -1).filter((word) => word.length >= 3)
-      .every((word) => tokens.has(word) || joined.includes(word));
+      .every((word) => tokens.has(word) || inOneLine(word));
   });
 }
 
@@ -123,7 +124,8 @@ function competingCoverTitle(lines: string[], title: string, authors: string[]):
 export function coverMatchesWork(lines: string[], title: string, authors: string[]): boolean {
   const text = words(lines.join(' '));
   const tokens = new Set(text);
-  const joined = text.join('');
+  const lineCompacts = lines.map((line) => words(line).join(''));
+  const inOneLine = (word: string) => word.length >= 4 && lineCompacts.some((line) => line.includes(word));
   const titleWords = words(scannerCoverTitle(title));
   if (isAuthorBiographyTitle(title, authors)) return false;
   if (conflictsWithPrintedAuthor(lines, authors)) return false;
@@ -132,7 +134,7 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   // A short/generic word is not enough to identify a work.
   const significant = titleWords.filter((word) => word.length >= 4);
   if (!significant.length) return shortTitleMatchesWork(lines, titleWords, authors);
-  const allSignificantPresent = significant.every((word) => tokens.has(word) || joined.includes(word));
+  const allSignificantPresent = significant.every((word) => tokens.has(word) || inOneLine(word));
   if (!allSignificantPresent) return false;
   // A catalog title that is merely the START of a longer printed word is a
   // different book (DEVOUR vs the photographed DEVOURED).
@@ -187,12 +189,12 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
     // verification must do the same or a correct catalog work is rejected.
     // We still require the complete surname plus the meaningful given name,
     // so compact matching cannot turn a title-only hit into a verified book.
-    const surnameVerified = tokens.has(surname) || joined.includes(surname);
+    const surnameVerified = tokens.has(surname) || inOneLine(surname);
     if (!surnameVerified) return false;
 
     const given = authorWords.slice(0, -1).filter((word) => word.length >= 3);
     if (given.length) {
-      const givenHits = given.filter((word) => tokens.has(word) || joined.includes(word)).length;
+      const givenHits = given.filter((word) => tokens.has(word) || inOneLine(word)).length;
       if (givenHits > 0) return true;
 
       // A cover can identify a work safely when every significant title word
@@ -203,6 +205,8 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
       // ...unless the surname line prints a DIFFERENT given name, which means
       // this is another person (Lucia Jordan vs JORDAN STEPHANIE GRAY).
       if (surnameLineContradictsGiven(lines, surname, given)) return false;
+      // Short common surnames alone cannot prove an author identity.
+      if (surname.length < 6) return false;
       return significant.length >= 1 && titleVerified;
     }
 
@@ -314,8 +318,8 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   const authorCandidates = [
     ...rawWords,
     ...fragmentedLineCandidates,
-    ...rawWords.slice(0, -1).map((word, index) => `${word}${rawWords[index + 1]}`),
-    ...rawWords.slice(0, -2).map((word, index) => `${word}${rawWords[index + 1]}${rawWords[index + 2]}`),
+    ...rawLineWords.flatMap((lineWords) => lineWords.slice(0, -1).map((word, index) => `${word}${lineWords[index + 1]}`)),
+    ...rawLineWords.flatMap((lineWords) => lineWords.slice(0, -2).map((word, index) => `${word}${lineWords[index + 1]}${lineWords[index + 2]}`)),
   ];
   const authorVerified = authors.some((author) => {
     const authorWords = words(author);
@@ -334,8 +338,8 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
     const givenSeen = given.some((name) => authorCandidates.some((candidate) =>
       Math.abs(candidate.length - name.length) <= 1
       && editDistance(candidate, name) <= (name.length >= 5 ? 1 : 0))
-      || rawWords.join('').includes(name));
-    return givenSeen || !surnameLineContradictsGiven(lines, surname, given, allowance);
+      || (name.length >= 4 && rawLineWords.some((lineWords) => lineWords.join('').includes(name))));
+    return givenSeen || (surname.length >= 6 && !surnameLineContradictsGiven(lines, surname, given, allowance));
   });
   if (!authorVerified) return false;
   // Very short one-word titles are especially vulnerable to OCR fragments
