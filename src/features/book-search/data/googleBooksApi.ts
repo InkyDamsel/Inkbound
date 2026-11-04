@@ -92,9 +92,9 @@ let googleScannerFailure: 'rate-limit' | 'quota' | 'access-denied' | 'unavailabl
 const classifyGoogleScannerFailure = (error: unknown): typeof googleScannerFailure => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   if (/dailyLimitExceeded|quotaExceeded|daily quota/i.test(message)) return 'quota';
-  if (/\\b429\\b|rateLimitExceeded|resource-exhausted/i.test(message)) return 'rate-limit';
-  if (/\\b40[13]\\b|permission-denied|attestation/i.test(message)) return 'access-denied';
-  if (/\\b503\\b|unavailable|timeout/i.test(message)) return 'unavailable';
+  if (/\b429\b|rateLimitExceeded|resource-exhausted/i.test(message)) return 'rate-limit';
+  if (/\b40[13]\b|permission-denied|attestation/i.test(message)) return 'access-denied';
+  if (/\b503\b|unavailable|timeout/i.test(message)) return 'unavailable';
   return 'unknown';
 };
 
