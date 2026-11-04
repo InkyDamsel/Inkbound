@@ -72,6 +72,24 @@ assert.deepEqual(stripCoverEndorsementLines(['JORDAN STEPHANIE GRAY', 'DEVOURED'
   ['JORDAN STEPHANIE GRAY', 'DEVOURED'],
   'Clean titles and author names must remain untouched.');
 
+// Nov 4 field scan: the main author survived, while an OCR-damaged review
+// credit "RERECCA ROS" and "REBECCA RGSS" polluted author hints. The
+// cover's actual title is partially read as DEVOURE.
+const partialDevouredCover = [
+  'JORDAN STEPHANIE GRAY', 'Luminous', 'and', 'exnlaratihg',
+  'Biten is a romance', 'thhat sizzer', 'DEVOURE)',
+  'RERECCA ROS5', 'bsteing atho', 'vine vals',
+  'REBECCA RGSS', 'bsteing ho', 'DEVORE)',
+];
+const partialDevouredFiltered = stripCoverEndorsementLines(partialDevouredCover);
+assert.ok(partialDevouredFiltered.includes('JORDAN STEPHANIE GRAY'),
+  'A complete photographed main author must survive OCR endorsement filtering.');
+assert.ok(partialDevouredFiltered.includes('DEVOURE)'),
+  'A partially read primary title must remain available for approximate matching.');
+assert.ok(!partialDevouredFiltered.includes('RERECCA ROS5')
+  && !partialDevouredFiltered.includes('REBECCA RGSS'),
+  'Damaged reviewer bylines followed by publishing credentials must not become catalog authors.');
+
 const neverLie=['#1 NEW YORK TIMES BESTSELLING AUTHOR OF','THE HOUSEMAID AND THE TEACHER','NEVER','LIE','FREIDA','McFADDEN'];
 const stripped=stripCoverPromoLines(neverLie);
 assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),false);
