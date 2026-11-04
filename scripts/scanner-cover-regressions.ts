@@ -155,6 +155,18 @@ assert.ok(scannerUiSource.includes('await authorPageOnce(authorQuery, startIndex
 assert.ok(scannerUiSource.includes('Cover request budget:'),
   'Failed scan diagnostics must report consumed, rejected and skipped requests.');
 
+// Standard Android sync must not implicitly switch to the Firebase debug
+// provider merely because Android Studio used a debuggable native variant.
+const androidRuntimeSource = readFileSync('src/platform/initializeAndroidRuntime.ts', 'utf8');
+const androidPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> };
+assert.equal(androidPackage.scripts['android:sync'].includes('scanner-debug'), false,
+  'Normal android:sync must ship the standard production bundle.');
+assert.ok(androidRuntimeSource.includes("import.meta.env.MODE === 'scanner-debug'")
+  && androidRuntimeSource.includes('scannerDiagnosticsBuild && nativeDebugBuild'),
+  'Firebase App Check debug provider must require explicit diagnostic mode.');
+assert.ok(scannerCatalogSource.includes('classifyGoogleScannerFailure'),
+  'Scanner must distinguish provider access, quota and rate-limit errors.');
+
 const picassoCover = [
   'JAMES PATTERSON',
   'AND HOWARD ROUGHAN',
