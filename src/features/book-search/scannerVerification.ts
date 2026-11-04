@@ -62,6 +62,33 @@ function surnameLineContradictsGiven(lines: string[], surname: string, given: st
   });
 }
 
+/**
+ * An independent, clearly printed full author credit outranks fuzzy fragments
+ * that happen to resemble a different catalog author. Require three complete
+ * name tokens on one line; don't interpret reviewer blurbs or split OCR names
+ * as conflicting authors. This is a negative-only safety gate.
+ */
+function conflictsWithPrintedAuthor(lines: string[], authors: string[]): boolean {
+  const credited = authors.map((author) => words(author)).filter((tokens) => tokens.length >= 2);
+  if (!credited.length) return false;
+  const hasCatalogCredit = credited.some((author) => lines.some((line) => {
+    const tokens = words(line);
+    return author.every((part) => part.length < 3 || tokens.includes(part));
+  }));
+  if (hasCatalogCredit) return false;
+  return lines.some((line) => {
+    if (isDemotedCoverTitleLine(line)) return false;
+    // A compact three-word name printed in caps is considerably stronger
+    // evidence than a lone matching surname elsewhere in OCR copy.
+    const normalized = line.trim();
+    if (normalized !== normalized.toUpperCase()) return false;
+    const tokens = words(line);
+    if (tokens.length !== 3 || tokens.some((part) => part.length < 3)) return false;
+    if (tokens.some((part) => ['new','york','times','usa','today','the','and','bestselling','author','book'].includes(part))) return false;
+    return !credited.some((author) => author.every((part) => part.length < 3 || tokens.includes(part)));
+  });
+}
+
 /** A short catalog title printed as a genre/subtitle must not override a
  * distinctly different full cover title (e.g. THE PICASSO HEIST / A THRILLER).
  * Do not treat series, marketing, or the credited author's name as the title. */
@@ -99,6 +126,7 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
   const joined = text.join('');
   const titleWords = words(scannerCoverTitle(title));
   if (isAuthorBiographyTitle(title, authors)) return false;
+  if (conflictsWithPrintedAuthor(lines, authors)) return false;
   if (!titleWords.length) return false;
   if (competingCoverTitle(lines, title, authors)) return false;
   // A short/generic word is not enough to identify a work.
@@ -263,6 +291,7 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   ];
   const compactTitle = words(scannerCoverTitle(title)).join('');
   if (isAuthorBiographyTitle(title, authors)) return false;
+  if (conflictsWithPrintedAuthor(lines, authors)) return false;
   // Four-character titles can still be distinctive, but they are too short
   // for fuzzy title recovery. Allow them only when OCR captured the complete
   // title exactly; author evidence below remains independently mandatory.
