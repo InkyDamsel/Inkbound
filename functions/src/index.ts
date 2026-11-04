@@ -74,7 +74,9 @@ async function eraseInkboundUser(uid: string) {
   const auditRefs = new Map<string, DocumentReference>();
   auditSnapshots.forEach((snapshot) => snapshot.docs.forEach((item) => auditRefs.set(item.ref.path, item.ref)));
   await Promise.all(Array.from(auditRefs.values()).map((item) => item.delete()));
-  await storageBucket.deleteFiles({ prefix: `users/${uid}/` }).catch((error: unknown) => console.warn(`Could not remove every Storage object for deleted user ${uid}.`, error));
+  // Do not report successful account deletion if user-owned uploads could not be removed.
+  // Leave the Auth identity intact so the user can retry after a transient Storage failure.
+  await storageBucket.deleteFiles({ prefix: `users/${uid}/` });
   await adminAuth.deleteUser(uid).catch((error: unknown) => { const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''; if (code !== 'auth/user-not-found') throw error; });
 }
 
