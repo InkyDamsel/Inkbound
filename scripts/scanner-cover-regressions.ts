@@ -155,12 +155,20 @@ assert.ok(scannerUiSource.includes('await authorPageOnce(authorQuery, startIndex
 assert.ok(scannerUiSource.includes('Cover request budget:'),
   'Failed scan diagnostics must report consumed, rejected and skipped requests.');
 
-// Standard Android sync must not implicitly switch to the Firebase debug
-// provider merely because Android Studio used a debuggable native variant.
+// Regular Android testing must preserve Scanner details without using the
+// native debug-token provider. Only the actual store-release sync strips the UI.
 const androidRuntimeSource = readFileSync('src/platform/initializeAndroidRuntime.ts', 'utf8');
 const androidPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> };
-assert.equal(androidPackage.scripts['android:sync'].includes('scanner-debug'), false,
-  'Normal android:sync must ship the standard production bundle.');
+assert.ok(androidPackage.scripts['android:sync'].includes('--scanner-inspection')
+  && !androidPackage.scripts['android:sync'].includes('--scanner-debug'),
+  'Regular android:sync must include scanner inspection without opting into the debug-token build.');
+assert.ok(androidPackage.scripts['build:scanner-inspection'].includes('--mode scanner-inspection'),
+  'Scanner inspection must have an explicit production Vite build mode.');
+assert.ok(androidPackage.scripts['android:release:sync'].includes('build:android')
+  && !androidPackage.scripts['android:release:sync'].includes('scanner-inspection'),
+  'The Google Play store release must remain a clean production build.');
+assert.ok(scannerUiSource.includes("import.meta.env.MODE === 'scanner-inspection'"),
+  'Scanner details must be available in regular Android inspection builds.');
 assert.ok(androidRuntimeSource.includes("import.meta.env.MODE === 'scanner-debug'")
   && androidRuntimeSource.includes('scannerDiagnosticsBuild && nativeDebugBuild'),
   'Firebase App Check debug provider must require explicit diagnostic mode.');
