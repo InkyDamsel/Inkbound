@@ -189,6 +189,35 @@ export function stripCoverEndorsementLines(lines: string[]): string[] {
       }
     }
   }
+  // Native OCR sometimes loses the quote, reviewer punctuation AND part of
+  // "bestselling author". Once a complete 3-word author line is independently
+  // printed, a nearby TWO-word uppercase name followed by damaged publishing
+  // credentials is more likely an endorsement credit than a second author.
+  // Require the credential context; never remove an isolated two-word name.
+  const damagedCredential = (line: string): boolean => {
+    const normalized = wordsOf(line).join('');
+    return /(?:b.?st.?s.?ll|bosts|btsil|athor|autho|suthor|newyork|nwyork|divin)/i.test(normalized);
+  };
+  const reliableFullCredit = lines.some((line) => {
+    const tokens = wordsOf(line);
+    return tokens.length >= 3 && tokens.length <= 4
+      && line === line.toUpperCase()
+      && tokens.every((token) => token.length >= 3)
+      && !/(?:best.?sell|author|novel|romance)/i.test(line);
+  });
+  if (reliableFullCredit) {
+    for (let index = 0; index < lines.length; index += 1) {
+      if (dropped.has(index) || !reviewerName(lines[index])) continue;
+      const context = lines.slice(index + 1, index + 4);
+      if (!context.some(damagedCredential)) continue;
+      dropped.add(index);
+      for (let offset = 1; offset <= 3 && index + offset < lines.length; offset += 1) {
+        const candidate = lines[index + offset];
+        if (damagedCredential(candidate) || continuation(candidate)) dropped.add(index + offset);
+        else break;
+      }
+    }
+  }
   return lines.filter((_, index) => !dropped.has(index));
 }
 
