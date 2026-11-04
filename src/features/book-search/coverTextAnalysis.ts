@@ -981,9 +981,25 @@ export function coverTitleEvidenceHints(
     })
     .sort((left, right) => right.score - left.score);
 
+  // Prefer title evidence repeated as a standalone printed line over a
+  // competing multiword credit. A damaged endorsement byline may survive
+  // OCR filtering, but it must not displace the photographed main title.
+  // This changes retrieval order only; title AND author verification remains
+  // mandatory before accepting any catalog result.
   const firsts = ranked.map((entry) => entry.ordered[0]);
   const seconds = ranked.flatMap((entry) => entry.ordered.slice(1, 2));
-  return [...new Set([...firsts, ...seconds])].slice(0, Math.max(1, maxHints));
+  const repeatedSingleTitles = ranked
+    .filter((entry) => {
+      const candidate = entry.ordered[0];
+      const tokens = wordsOf(candidate);
+      if (tokens.length !== 1 || tokens[0].length < 4) return false;
+      return cleanLines.filter((line) =>
+        isAllCapsLine(line) && !isDemotedCoverTitleLine(line)
+        && sameOcrWord(wordsOf(line).join(''), tokens[0])).length >= 2;
+    })
+    .map((entry) => entry.ordered[0]);
+  return [...new Set([...repeatedSingleTitles, ...firsts, ...seconds])]
+    .slice(0, Math.max(1, maxHints));
 }
 
 /** Queries that survive a damaged surname or given name: provider relevance
