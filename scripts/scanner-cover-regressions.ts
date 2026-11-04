@@ -138,6 +138,22 @@ assert.equal(isUsableScannerCoverQuery('BLACKTHORN J.T. GEISSINGER'), true,
 assert.equal(isUsableScannerCoverQuery('A J LAKE'), false,
   'Single-letter OCR fragments should be paired with a real title before querying.');
 
+// The scanned Devoured cover had correct title + author, but broad Open
+// Library title search returned only other authors. Fielded retrieval must
+// run before the noisy general lanes, and result acceptance stays gated.
+const openLibrarySource = readFileSync('src/features/book-search/data/openLibraryApi.ts', 'utf8');
+const fieldedOpenLibrarySource = openLibrarySource.split('export async function searchOpenLibraryTitleAuthor(')[1]
+  ?.split('export async function searchOpenLibraryAuthorBibliography(')[0] ?? '';
+assert.ok(fieldedOpenLibrarySource.includes('title: cleanTitle')
+  && fieldedOpenLibrarySource.includes('author: cleanAuthor'),
+  'Open Library must use independent title and author search fields.');
+assert.ok(scannerCatalogSource.includes('export async function searchScannerCoverTitleAuthorCatalog(')
+  && scannerCatalogSource.includes('searchOpenLibraryTitleAuthor(title, author, signal)'),
+  'Scanner must filter fielded results to the photographed primary title.');
+assert.ok(scannerUiSource.includes('fielded-open-library:')
+  && scannerUiSource.includes('searchOpenLibraryTitleAuthorOnce('),
+  'Scanner must try fielded title+author retrieval before exhausting broad searches.');
+
 // Walmart Devoured: the actual full author is printed cleanly; the
 // quoted Rebecca Ross endorsement must not outrank that author or consume
 // multiple high-priority provider calls.
