@@ -196,7 +196,7 @@ export function stripCoverEndorsementLines(lines: string[]): string[] {
   // Require the credential context; never remove an isolated two-word name.
   const damagedCredential = (line: string): boolean => {
     const normalized = wordsOf(line).join('');
-    return /(?:b.?st.?s.?ll|bosts|btsil|athor|autho|suthor|newyork|nwyork|divin)/i.test(normalized);
+    return /(?:b.?st.?s.?ll|bsteing|bosts|btsil|athor|atho|autho|suthor|newyork|nwyork|divin)/i.test(normalized);
   };
   const reliableFullCredit = lines.some((line) => {
     const tokens = wordsOf(line);
