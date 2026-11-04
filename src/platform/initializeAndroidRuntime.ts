@@ -25,7 +25,6 @@ import {
 } from './runtimePremiumPurchase';
 import { configureRuntimeReauthentication } from './runtimeReauthentication';
 import { isAndroidRuntime } from './runtimePlatform';
-
 import {
   configureRuntimeSubscriptionManagement,
   getStripeSubscriptionPortalUrl,
@@ -127,9 +126,6 @@ const verifyPlayPurchase = async (purchase: PlayPurchaseResult) => {
 export async function initializeAndroidRuntime() {
   if (!isAndroidRuntime()) return;
 
-  // Always use native Play Integrity for Android App Check. The scanner
-  // inspection UI is independent of Firebase attestation; never opt into
-  // Firebase's debug-token provider based on the APK or Vite build mode.
   const nativeAppCheckReady = FirebaseAppCheck.initialize({
     isTokenAutoRefreshEnabled: true,
   });
