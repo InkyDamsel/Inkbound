@@ -41,7 +41,7 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { isNativeDebugBuild, playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
 import { classifyNativeAppCheckFailure, diagnoseNativeAppCheckFailure, getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
 
@@ -1759,12 +1759,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     } catch (error) {
       if (SCANNER_DEBUG_ENABLED) {
         const appCheckError = await diagnoseNativeAppCheckFailure();
+        const nativeDebugApk = await isNativeDebugBuild();
+        const nativeBuildLine = nativeDebugApk
+          ? 'Android APK: debug-signed; Firebase Debug Provider requires a registered device debug token'
+          : 'Android APK: release/non-debuggable; Firebase Play Integrity attestation applies';
         const appCheckLine = !appCheckError
           ? 'App Check: native token probe succeeded'
           : `App Check: native token probe failed (${classifyNativeAppCheckFailure(appCheckError)}); protected catalogs may be unavailable, public catalogs can still respond`;
         setScannerAppCheckStatus(appCheckError ? 'blocked' : 'ready');
-        setScannerAppCheckDiagnostic(appCheckLine);
-        setScannerDetails((previous) => [previous ?? '[Inkbound scanner] Cover lookup did not resolve', appCheckLine].join('\n'));
+        setScannerAppCheckDiagnostic(`${nativeBuildLine}; ${appCheckLine}`);
+        setScannerDetails((previous) => [previous ?? '[Inkbound scanner] Cover lookup did not resolve', nativeBuildLine, appCheckLine].join('\n'));
       }
       setScannerMessage(null);
       setScannerError(error instanceof Error ? error.message : 'Cover recognition failed. Try another photo.');
