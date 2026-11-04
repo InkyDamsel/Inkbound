@@ -22,9 +22,16 @@ const env = {
 // A native debug APK still embeds a Vite production bundle by default.
 // The explicit scanner test path uses its own Vite mode; standard builds remain clean.
 const scannerDebug = process.argv.includes('--scanner-debug');
+const scannerInspection = process.argv.includes('--scanner-inspection');
+if (scannerDebug && scannerInspection) {
+  console.error('Choose only one Android scanner build mode.');
+  process.exit(1);
+}
 const buildArgs = scannerDebug
   ? ['run', 'build:scanner-debug']
-  : ['run', 'build'];
+  : scannerInspection
+    ? ['run', 'build:scanner-inspection']
+    : ['run', 'build'];
 const result = spawnSync('npm', buildArgs, {
   stdio: 'inherit',
   shell: process.platform === 'win32',
@@ -35,7 +42,7 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 
 // Refuse to sync a scanner-debug APK if Vite stripped its diagnostics.
 // Native Android Debug variant alone does not imply a Vite debug web bundle.
-if (scannerDebug) {
+if (scannerDebug || scannerInspection) {
   const assetsDir = path.join(cwd, 'dist', 'assets');
   const jsFiles = fs.existsSync(assetsDir)
     ? fs.readdirSync(assetsDir).filter((name) => name.endsWith('.js'))
@@ -49,10 +56,10 @@ if (scannerDebug) {
       && content.includes('Copy diagnostic report');
   });
   if (!hasScannerDiagnostics) {
-    console.error('Scanner DEBUG build blocked: diagnostic UI/provider traces are absent from dist. Do not sync this APK.');
+    console.error('Scanner diagnostic bundle blocked: diagnostic UI/provider traces are absent from dist. Do not sync this APK.');
     process.exit(1);
   }
-  console.log('Scanner DEBUG bundle verified: original Scanner details contains App Check probe, copy report and provider traces.');
+  console.log('Scanner diagnostic bundle verified: original Scanner details contains App Check probe, copy report and provider traces.');
 }
 
 if (browserGoogleBooksKey) {
@@ -71,4 +78,6 @@ if (browserGoogleBooksKey) {
 
 console.log(scannerDebug
   ? 'Inkbound Android scanner-debug bundle built without the web-only Google Books API key (testing only).'
-  : 'Inkbound Android web bundle built without the web-only Google Books API key.');
+  : scannerInspection
+    ? 'Inkbound regular Android scanner-inspection bundle built: Scanner details enabled, standard App Check retained.'
+    : 'Inkbound Android web bundle built without the web-only Google Books API key.');
