@@ -916,7 +916,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           && !isDemotedCoverTitleLine(line)
           && !/(?:BESTSELL|AUTHOR|NEW YORK|USA TODAY|ROMANCE|NOVEL|REVIEW)/i.test(line);
       }).slice(0, 2);
-      const authorRecoveryQueries = [...new Set([
+      const hasCompletePrintedAuthor = primaryPrintedAuthorHints.some((line) =>
+        line.trim().split(/\s+/).length >= 3);
+      const authorRecoveryQueries = hasCompletePrintedAuthor
+        ? [primaryPrintedAuthorHints.find((line) => line.trim().split(/\s+/).length >= 3)!]
+        : [...new Set([
         ...primaryPrintedAuthorHints,
         ...rankAuthorHints(cleanLines, [
           ...cleanLines.filter((line) => {
@@ -1699,6 +1703,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             `Ranked title evidence: ${rankedTitleEvidence.join(' || ') || 'none'}`,
             `Cover request budget: ${coverLookupsUsed}/${MAX_COVER_LOOKUPS} (general ${generalLookupsUsed}/${MAX_GENERAL_LOOKUPS}); OCR queries rejected: ${rejectedOcrQueries}; skipped after limit: ${exhaustedOcrQueries}`,
             `Printed author candidates: ${primaryPrintedAuthorHints.join(' || ') || 'none'}`,
+            `Author retrieval priority: ${hasCompletePrintedAuthor ? 'complete printed name only' : 'fragmented-name fallback'}`,
             `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
             ...rankedDiagnostics,
             `OCR: ${lines.join(' || ')}`,
