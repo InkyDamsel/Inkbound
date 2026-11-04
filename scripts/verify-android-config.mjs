@@ -150,30 +150,25 @@ for (const requiredSnippet of [
 ]) {
   if (!androidRuntimeSource.includes(requiredSnippet)) fail(`Android runtime adapter is missing required Build 26 native integration: ${requiredSnippet}`);
 }
-// The standard Android app must not use Firebase's debug-token provider
-// simply because Android Studio installed a debuggable APK. Only the explicit
-// scanner-diagnostics Vite mode AND a native debug APK may opt in.
+// App Check is chosen by native APK signing. Android Studio normally installs
+// a debug-signed APK even when the compiled web bundle is production/inspection.
+// Debug APKs use Firebase's registered debug provider; release APKs use
+// Play Integrity. Do not tie native attestation to scanner UI Vite modes.
 if (!androidRuntimeSource.includes('const nativeDebugBuild = await isNativeDebugBuild()')) {
-  fail('Android App Check must still detect native debug builds.');
+  fail('Android App Check must detect the native APK signing variant.');
 }
-if (!androidRuntimeSource.includes("const scannerDiagnosticsBuild = import.meta.env.MODE === 'scanner-debug';")) {
-  fail('Firebase App Check debug provider must require explicit scanner-diagnostics mode.');
+if (!androidRuntimeSource.includes('...(nativeDebugBuild ? { debugToken: true } : {})')) {
+  fail('Android Studio debug APKs must use the Firebase debug provider; release APKs must use Play Integrity.');
 }
-if (!androidRuntimeSource.includes('const enableNativeAppCheckDebug = scannerDiagnosticsBuild && nativeDebugBuild;')) {
-  fail('Firebase App Check debug provider must require BOTH diagnostic mode and a native debug APK.');
-}
-if (!androidRuntimeSource.includes('...(enableNativeAppCheckDebug ? { debugToken: true } : {})')) {
-  fail('Firebase App Check debug token must be guarded by the combined diagnostic and native-build gate.');
-}
-if (androidRuntimeSource.includes('...(nativeDebugBuild ? { debugToken: true } : {})')
+if (androidRuntimeSource.includes('scannerDiagnosticsBuild && nativeDebugBuild')
   || /^\s*debugToken:\s*true\s*[,}]/m.test(androidRuntimeSource)) {
-  fail('Normal Android bundles must never enable Firebase debug-token mode unconditionally.');
+  fail('App Check must follow native signing, not scanner diagnostics mode or unconditional debug tokens.');
 }
 const packageScripts = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')).scripts ?? {};
 if (packageScripts['android:sync']?.includes('--scanner-debug')
   || !packageScripts['android:sync']?.includes('--scanner-inspection')
   || !packageScripts['build:scanner-inspection']?.includes('vite build --mode scanner-inspection')) {
-  fail('android:sync must include scanner inspection in the regular Android app, without opting into native Firebase debug tokens.');
+  fail('android:sync must retain the regular Android app with scanner inspection UI.');
 }
 if (packageScripts['android:release:sync']?.includes('scanner-inspection')
   || !packageScripts['android:release:sync']?.includes('build:android')) {
