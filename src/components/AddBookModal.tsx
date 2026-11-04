@@ -1761,8 +1761,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         const appCheckError = await diagnoseNativeAppCheckFailure();
         const nativeDebugApk = await isNativeDebugBuild();
         const nativeBuildLine = nativeDebugApk
-          ? 'Android APK: debug-signed; Firebase Debug Provider requires a registered device debug token'
-          : 'Android APK: release/non-debuggable; Firebase Play Integrity attestation applies';
+          ? 'Android APK: debuggable; Play Integrity enabled (Firebase debug tokens disabled)'
+          : 'Android APK: release/non-debuggable; Play Integrity enabled (Firebase debug tokens disabled)';
         const appCheckLine = !appCheckError
           ? 'App Check: native token probe succeeded'
           : `App Check: native token probe failed (${classifyNativeAppCheckFailure(appCheckError)}); protected catalogs may be unavailable, public catalogs can still respond`;
