@@ -41,9 +41,8 @@ import {
   withCustomReadingStatus,
 } from '../features/reading/customReadingStatuses';
 import type { Format, OwnershipStatus, Priority, ReadingMaterialType, ReadingStatus, UserBookRecord } from '../types';
-import { isNativeDebugBuild, playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
+import { playScannerSuccessFeedbackOnNativeAndroid, recognizeBookCover, scanBarcodeWithNativeRuntime, shouldUseNativeBarcodeScanner } from '../platform/runtimeBarcodeScanner';
 import { flushLargeBrowserStorage } from '../platform/largeBrowserStorage';
-import { classifyNativeAppCheckFailure, diagnoseNativeAppCheckFailure, getNativeAppCheckToken } from '../platform/runtimeNativeAppCheck';
 
 // Vite production builds run inside Android debug APKs too. Scanner diagnostics
 // are opt-in for test bundles, and the release verifier rejects their strings.
@@ -246,31 +245,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [scannerDetails, setScannerDetails] = useState<string | null>(null);
-  const [scannerAppCheckStatus, setScannerAppCheckStatus] = useState<'unchecked' | 'checking' | 'ready' | 'blocked'>('unchecked');
-  const [scannerAppCheckDiagnostic, setScannerAppCheckDiagnostic] = useState('');
   const [scannerDiagnosticCopied, setScannerDiagnosticCopied] = useState(false);
   const scannerDiagnosticReport = [
-    'Inkbound scanner test diagnostics',
-    'Build: scanner inspection (normal Android app) / development',
-    `App Check status: ${scannerAppCheckStatus}`,
-    `App Check diagnostic: ${scannerAppCheckDiagnostic}`,
+    'Inkbound scanner inspection',
     scannerDetails ?? 'Scanner trace: no failed scan has been recorded in this session.',
   ].join('\n\n');
-  const checkScannerAppCheck = async () => {
-    if (!SCANNER_DEBUG_ENABLED || scannerAppCheckStatus === 'checking') return;
-    setScannerAppCheckStatus('checking');
-    setScannerAppCheckDiagnostic('Checking native App Check provider...');
-    try {
-      await getNativeAppCheckToken(true);
-      setScannerAppCheckStatus('ready');
-      setScannerAppCheckDiagnostic('Native App Check token request succeeded. This does not guarantee every catalog provider will respond.');
-    } catch (error) {
-      // Safe category only: no raw native error, API key or token in reports.
-      const failure = `Native App Check probe failed: ${classifyNativeAppCheckFailure(error)}. Protected catalog services may be unavailable; public catalogs can still respond.`;
-      setScannerAppCheckStatus('blocked');
-      setScannerAppCheckDiagnostic(failure);
-    }
-  };
   const copyScannerDiagnostics = async () => {
     try {
       await navigator.clipboard.writeText(scannerDiagnosticReport);
@@ -511,19 +490,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         setUnresolvedIsbn(isbn);
         setScannerRecoveryTitle('');
         setScannerRecoveryAuthor('');
-        const appCheckError = await diagnoseNativeAppCheckFailure();
-        if (appCheckError) {
-          if (SCANNER_DEBUG_ENABLED) {
-            console.warn('Scanner catalog lookup could not obtain a native App Check token.', appCheckError);
-            setScannerDetails(`[Inkbound scanner] ISBN lookup blocked by Firebase App Check\nISBN: ${isbn}\nApp Check: ${appCheckError instanceof Error ? appCheckError.message : String(appCheckError)}`);
-          }
-          // Customer-facing copy: no build/debug-token instructions in production.
-          setScannerError(SCANNER_DEBUG_ENABLED
-            ? `ISBN ${isbn} is valid, but Inkbound could not verify this test build with Firebase App Check, so protected catalog providers may be unavailable. In development, check the App Check diagnostic panel and Firebase configuration before retrying. Your scanned ISBN is retained.`
-            : `ISBN ${isbn} is valid, but Inkbound could not reach its book catalogs right now. Please try again in a moment, or use Scan Cover Instead. Your scanned ISBN is retained.`);
-          return;
+        if (SCANNER_DEBUG_ENABLED) {
+          setScannerDetails(`[Inkbound scanner] ISBN lookup returned no verified edition\nISBN: ${isbn}\nThe ISBN is retained so cover/title recovery cannot overwrite the physical edition identity.`);
         }
-        if (SCANNER_DEBUG_ENABLED) setScannerDetails(`[Inkbound scanner] ISBN lookup returned no verified edition\nISBN: ${isbn}\nApp Check diagnostic: no native App Check error detected\nThe ISBN is retained so cover/title recovery cannot overwrite the physical edition identity.`);
         setScannerError(`ISBN ${isbn} is valid, but no catalog returned a verified edition. Try Scan Cover Instead to identify the book, or enter its title below. Your scanned ISBN is retained.`);
         return;
       }
@@ -1757,19 +1726,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerError(null);
       // Keep the original scanned ISBN until the reader selects an edition.
     } catch (error) {
-      if (SCANNER_DEBUG_ENABLED) {
-        const appCheckError = await diagnoseNativeAppCheckFailure();
-        const nativeDebugApk = await isNativeDebugBuild();
-        const nativeBuildLine = nativeDebugApk
-          ? 'Android APK: debuggable; Play Integrity enabled (Firebase debug tokens disabled)'
-          : 'Android APK: release/non-debuggable; Play Integrity enabled (Firebase debug tokens disabled)';
-        const appCheckLine = !appCheckError
-          ? 'App Check: native token probe succeeded'
-          : `App Check: native token probe failed (${classifyNativeAppCheckFailure(appCheckError)}); protected catalogs may be unavailable, public catalogs can still respond`;
-        setScannerAppCheckStatus(appCheckError ? 'blocked' : 'ready');
-        setScannerAppCheckDiagnostic(`${nativeBuildLine}; ${appCheckLine}`);
-        setScannerDetails((previous) => [previous ?? '[Inkbound scanner] Cover lookup did not resolve', nativeBuildLine, appCheckLine].join('\n'));
-      }
       setScannerMessage(null);
       setScannerError(error instanceof Error ? error.message : 'Cover recognition failed. Try another photo.');
     } finally {
@@ -2343,7 +2299,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   </div>)}
                 </div>
               </div>}
-              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{SCANNER_DEBUG_ENABLED && <details className="mt-3 rounded-lg border border-rose-300/20 bg-black/20 p-3"><summary className="cursor-pointer font-semibold text-[#f4d9e2]">Scanner details</summary><p className="mt-2 text-xs" role="status">App Check: {scannerAppCheckStatus} — {scannerAppCheckDiagnostic}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={scannerAppCheckStatus === 'checking'} onClick={() => void checkScannerAppCheck()} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">{scannerAppCheckStatus === 'checking' ? 'Checking…' : 'Check App Check'}</button><button type="button" onClick={() => void copyScannerDiagnostics()} className="quiet-shelf-secondary-action min-h-11">{scannerDiagnosticCopied ? 'Report copied' : 'Copy diagnostic report'}</button></div><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[#e6d6e2]">{scannerDetails ?? 'No scan trace captured yet.'}</pre></details>}{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
+              {scannerError && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><p>{scannerError}</p>{SCANNER_DEBUG_ENABLED && <details className="mt-3 rounded-lg border border-rose-300/20 bg-black/20 p-3"><summary className="cursor-pointer font-semibold text-[#f4d9e2]">Scanner details</summary><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => void copyScannerDiagnostics()} className="quiet-shelf-secondary-action min-h-11">{scannerDiagnosticCopied ? 'Report copied' : 'Copy diagnostic report'}</button></div><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[#e6d6e2]">{scannerDetails ?? 'No scan trace captured yet.'}</pre></details>}{unresolvedIsbn && <form className="mt-3 space-y-3" onSubmit={(event) => { event.preventDefault(); void recoverScannedBookByTitle(); }}>
                 <p className="text-xs text-[#e6d6e2]">Enter a title and optionally an author. Inkbound will look up book details and available editions automatically, keeping scanned ISBN {unresolvedIsbn} separate.</p>
                 <input aria-label="Book title for scanner recovery" value={scannerRecoveryTitle} onChange={(event) => setScannerRecoveryTitle(event.target.value)} placeholder="Book title" enterKeyHint="next" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
                 <input aria-label="Author for scanner recovery" value={scannerRecoveryAuthor} onChange={(event) => setScannerRecoveryAuthor(event.target.value)} placeholder="Author (optional)" enterKeyHint="search" className="w-full rounded-lg border border-[#7a526f] bg-[#1d1422] px-3 py-2 text-sm text-white" />
