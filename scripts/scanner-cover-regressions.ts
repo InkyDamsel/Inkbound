@@ -90,6 +90,15 @@ assert.ok(!partialDevouredFiltered.includes('RERECCA ROS5')
   && !partialDevouredFiltered.includes('REBECCA RGSS'),
   'Damaged reviewer bylines followed by publishing credentials must not become catalog authors.');
 
+// Field regression: repeated main-title OCR must outrank a competing
+// endorsement credit, without weakening the separate author verification.
+const repeatedDevouredEvidence = coverTitleEvidenceHints(
+  ['JORDAN STEPHANIE GRAY', 'REBECCA ROSS', 'DEVOURED', 'DEVOURED'],
+  ['JORDAN STEPHANIE GRAY'],
+);
+assert.equal(repeatedDevouredEvidence[0], 'devoured',
+  'Repeated standalone main title must be searched before reviewer identity.');
+
 const neverLie=['#1 NEW YORK TIMES BESTSELLING AUTHOR OF','THE HOUSEMAID AND THE TEACHER','NEVER','LIE','FREIDA','McFADDEN'];
 const stripped=stripCoverPromoLines(neverLie);
 assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),false);
