@@ -808,18 +808,49 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           return pending;
         };
       };
+      // One shared request budget for this photographed cover. Old independent
+      // recovery lanes could issue 60+ different federated searches, triggering
+      // Google cooldown long before a good title+author query was reached.
+      // Local exhausted lookups return no candidates; they never relax proof.
+      const MAX_COVER_LOOKUPS = 18;
+      let coverLookupsUsed = 0;
+      let rejectedOcrQueries = 0;
+      let exhaustedOcrQueries = 0;
+      const canSearchCoverQuery = (query: string): boolean => {
+        const normalized = normalizeCatalogText(query);
+        const tokens = normalized.split(/\\s+/).filter(Boolean);
+        if (!normalized || tokens.length > 8 || tokens.length === 0) return false;
+        // Do not spend catalog requests on isolated OCR glyphs or obvious
+        // duplicate fragments. Keep legitimate short glue words in book titles.
+        const glue = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'i', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'to', 'us']);
+        if (tokens.some((token) => token.length <= 2 && !glue.has(token))) return false;
+        const significant = tokens.filter((token) => token.length >= 3 && !glue.has(token));
+        if (significant.length === 0) return false;
+        if (new Set(significant).size < significant.length) return false;
+        return true;
+      };
+      const budgetedCoverLookup = <T,>(run: (query: string) => Promise<T>, empty: T) =>
+        async (query: string): Promise<T> => {
+          if (!canSearchCoverQuery(query)) { rejectedOcrQueries += 1; return empty; }
+          if (coverLookupsUsed >= MAX_COVER_LOOKUPS) { exhaustedOcrQueries += 1; return empty; }
+          coverLookupsUsed += 1;
+          return run(query);
+        };
       const providerTraces: string[] = [];
       // Use compile-time Vite conditions directly so production can remove
       // the provider trace formatter rather than retain its inert text.
-      const searchCoverCatalogOnce = memoizeCatalog((query) => searchScannerCoverCatalog(query, undefined,
+      const searchCoverCatalogOnce = memoizeCatalog(budgetedCoverLookup((query) => searchScannerCoverCatalog(query, undefined,
         import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' ? (trace) => {
           providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
-        } : undefined));
-      const searchAuthorCatalogOnce = memoizeCatalog((query) => searchScannerAuthorCatalog(query));
-      const searchExactTitleOnce = memoizeCatalog((title) => searchScannerCoverTitleCatalog(title, undefined,
+        } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverCatalog>>));
+      const searchAuthorCatalogOnce = memoizeCatalog(budgetedCoverLookup(
+        (query) => searchScannerAuthorCatalog(query),
+        { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerAuthorCatalog>>,
+      ));
+      const searchExactTitleOnce = memoizeCatalog(budgetedCoverLookup((title) => searchScannerCoverTitleCatalog(title, undefined,
         import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' ? (trace) => {
           providerTraces.push(`Exact-title providers: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} exact-title=${trace.afterHardening}`);
-        } : undefined));
+        } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverTitleCatalog>>));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       const compactCover = recognized.replace(/\s+/g, '');
@@ -1547,6 +1578,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           const diagnostic = [
             '[Inkbound scanner] Cover identification failed',
             `Ranked title evidence: ${rankedTitleEvidence.join(' || ') || 'none'}`,
+            `Cover request budget: ${coverLookupsUsed}/${MAX_COVER_LOOKUPS}; OCR queries rejected: ${rejectedOcrQueries}; skipped after limit: ${exhaustedOcrQueries}`,
             `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
             ...rankedDiagnostics,
             `OCR: ${lines.join(' || ')}`,
