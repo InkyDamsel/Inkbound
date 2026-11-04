@@ -93,6 +93,49 @@ export function stripCoverPromoLines(lines: string[]): string[] {
   return kept;
 }
 
+/** Remove recognized jacket-review blocks from RETRIEVAL evidence only.
+ * OCR passes often repeat a quoted endorsement with damaged punctuation.
+ * Do not globally discard title-looking text or alter the raw OCR: only
+ * quarantine a bounded run that contains quote/praise and its attribution.
+ * Standalone all-caps primary title / full author lines remain untouched. */
+export function stripCoverEndorsementLines(lines: string[]): string[] {
+  const dropped = new Set<number>();
+  const isPrimaryIdentity = (line: string): boolean => {
+    const text = line.trim();
+    const tokens = wordsOf(text);
+    return text.length >= 4 && text === text.toUpperCase()
+      && !/^[-–—]/.test(text)
+      && !/(?:bestsell|author of|new york times|usa today)/i.test(text)
+      && tokens.length >= 1 && tokens.length <= 4
+      && tokens.every((token) => token.length >= 3);
+  };
+  const isReviewLine = (line: string): boolean =>
+    /[“”"]|\\.{2,}|\\[[^\\]]+\\]|(?:^|\\s)(?:exhilarating|sizzles|riveting|unputdownable)(?:[.!\\s]|$)/i.test(line);
+  const isAttribution = (line: string): boolean =>
+    /^\\s*[-–—]\\s*[A-Za-z][A-Za-z.' -]{3,}\\s*[,.;]?\\s*$/.test(line);
+  const isReviewCredential = (line: string): boolean =>
+    /(?:bestsell|best.sell|new york times|author of|usa today|wall street journal)/i.test(line);
+  // Work with OCR line blocks, not a flattened joined string.
+  // Each quote run ends at its credit or before a clearly printed main title.
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!isReviewLine(lines[i]) || isPrimaryIdentity(lines[i])) continue;
+    let sawQuote = false;
+    for (let j = i; j < Math.min(lines.length, i + 7); j += 1) {
+      if (j > i && isPrimaryIdentity(lines[j])) break;
+      const line = lines[j];
+      if (isReviewLine(line)) sawQuote = true;
+      if (!sawQuote) break;
+      dropped.add(j);
+      if (isAttribution(line)) {
+        if (j + 1 < lines.length && isReviewCredential(lines[j + 1])) dropped.add(j + 1);
+        break;
+      }
+      if (j > i && isReviewCredential(line)) break;
+    }
+  }
+  return lines.filter((_, index) => !dropped.has(index));
+}
+
 const COVER_PROMO_LINE = /(?:new york times|usa today|wall street journal|bestsell|best-sell|award[- ]winning|award winner|international bestseller|acclaimed author|critically acclaimed)/i;
 const COVER_SERIES_LINE = /\b(?:series|saga|trilogy|duology|chronicles|cycle|books?)\s*(?:#|no\.?\s*)?\d*\s*$/i;
 const COVER_GENRE_LINE = /^\s*(?:an?\s+)?(?:dark\s+)?(?:mafia|paranormal|contemporary|historical|fantasy|romantic|gothic|sports|holiday|monster|vampire|werewolf|billionaire|small[- ]town|romantic suspense)\s+(?:romance|novel|thriller|fantasy|mystery)\s*$/i;
