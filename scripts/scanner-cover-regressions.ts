@@ -138,6 +138,18 @@ assert.equal(isUsableScannerCoverQuery('BLACKTHORN J.T. GEISSINGER'), true,
 assert.equal(isUsableScannerCoverQuery('A J LAKE'), false,
   'Single-letter OCR fragments should be paired with a real title before querying.');
 
+// Walmart Devoured: the actual full author is printed cleanly; the
+// quoted Rebecca Ross endorsement must not outrank that author or consume
+// multiple high-priority provider calls.
+assert.ok(scannerUiSource.includes('const primaryPrintedAuthorHints = cleanLines.filter('),
+  'Scanner must prioritize an independently printed full author credit.');
+assert.ok(scannerUiSource.includes("!/^[-–—]/.test(line)"),
+  'Review-attribution bylines must not become first-priority author candidates.');
+assert.ok(scannerUiSource.includes('titleAuthorPartQueries(rankedTitleEvidence.slice(0, 1), authorRecoveryQueries.slice(0, 1), 3)'),
+  'Initial federated retrieval must not fan out across multiple endorsements and OCR title variants.');
+assert.ok(scannerUiSource.includes('Printed author candidates:'),
+  'Failed scan report should show which full author line got priority.');
+
 // A single photographed cover must not fire 60+ federated calls, including
 // its direct Google and paginated author lanes. The budget is shared and
 // rejects repeated damaged OCR tokens before issuing a network request.
