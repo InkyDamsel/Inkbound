@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { searchOpenLibrary } from '../src/features/book-search/data/openLibraryApi';
+import { classifyNativeAppCheckFailure } from '../src/platform/runtimeNativeAppCheck';
 
 // Capture actual Open Library query parameters without a network request.
 const originalFetch = globalThis.fetch;
@@ -33,4 +34,10 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
+// Report only safe failure categories, not raw tokens, URLs or credentials.
+assert.equal(classifyNativeAppCheckFailure(new Error('App Check adapter not initialized')), 'not initialized');
+assert.equal(classifyNativeAppCheckFailure({ code: 'permission-denied' }), 'attestation / permission denied');
+assert.equal(classifyNativeAppCheckFailure({ code: 'resource-exhausted' }), 'rate limit / quota');
+assert.equal(classifyNativeAppCheckFailure({ code: 'unavailable' }), 'network / service unavailable');
+assert.equal(classifyNativeAppCheckFailure(new Error('token=secret-private-value')), 'unknown native failure');
 console.log('Inkbound scanner provider regressions passed.');
