@@ -20,7 +20,7 @@ import {
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { coverAuthorQueries, coverTitleEvidenceHints, damagedTitleFragments, rankAuthorHints, splitTitleRunQueries, isDemotedCoverTitleLine, shortTitleQueries, stripCoverPromoLines, titleAuthorPartQueries, titleSurnameRecoveryQueries } from '../features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, coverTitleEvidenceHints, damagedTitleFragments, rankAuthorHints, splitTitleRunQueries, isDemotedCoverTitleLine, isUsableScannerCoverQuery, shortTitleQueries, stripCoverPromoLines, titleAuthorPartQueries, titleSurnameRecoveryQueries } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, sameCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -816,22 +816,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       let coverLookupsUsed = 0;
       let rejectedOcrQueries = 0;
       let exhaustedOcrQueries = 0;
-      const canSearchCoverQuery = (query: string): boolean => {
-        const normalized = normalizeCatalogText(query);
-        const tokens = normalized.split(/\s+/).filter(Boolean);
-        if (!normalized || tokens.length > 8 || tokens.length === 0) return false;
-        // Do not spend catalog requests on isolated OCR glyphs or obvious
-        // duplicate fragments. Keep legitimate short glue words in book titles.
-        const glue = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'i', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'to', 'us']);
-        if (tokens.some((token) => token.length <= 2 && !glue.has(token))) return false;
-        const significant = tokens.filter((token) => token.length >= 3 && !glue.has(token));
-        if (significant.length === 0) return false;
-        if (new Set(significant).size < significant.length) return false;
-        return true;
-      };
       const budgetedCoverLookup = <T,>(run: (query: string) => Promise<T>, empty: T) =>
         async (query: string): Promise<T> => {
-          if (!canSearchCoverQuery(query)) { rejectedOcrQueries += 1; return empty; }
+          if (!isUsableScannerCoverQuery(query)) { rejectedOcrQueries += 1; return empty; }
           if (coverLookupsUsed >= MAX_COVER_LOOKUPS) { exhaustedOcrQueries += 1; return empty; }
           coverLookupsUsed += 1;
           return run(query);
@@ -841,7 +828,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchGoogleBooks>>,
       ));
       const authorPageOnce = async (author: string, startIndex: number) => {
-        if (!canSearchCoverQuery(author) || coverLookupsUsed >= MAX_COVER_LOOKUPS) {
+        if (!isUsableScannerCoverQuery(author) || coverLookupsUsed >= MAX_COVER_LOOKUPS) {
           exhaustedOcrQueries += 1;
           return { groups: [] as BookSearchWorkGroup[], hasMore: false, nextStartIndex: startIndex };
         }
