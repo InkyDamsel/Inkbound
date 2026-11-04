@@ -18,6 +18,12 @@ assert.deepEqual(damagedTitleFragments('DAWN OF THE CURSED QUEEN'),[],
 assert.equal(coverApproximatelyMatchesWork(['AVA REID','TMINTERVEI'], 'Winterveil', ['Ava Reid']), true);
 assert.equal(coverApproximatelyMatchesWork(['AVA REED','TMINTERVEI'], 'Winterveil', ['Ava Reid']), false);
 assert.equal(coverMatchesWork(['BLACK','THORN','J.T.','GEISSINGER'], 'Blackthorn', ['J.T. Geissinger']), true);
+assert.equal(coverMatchesWork(['BLACK', 'UNRELATED TAGLINE', 'THORN', 'J.T.', 'GEISSINGER'],
+  'Blackthorn', ['J.T. Geissinger']), false,
+  'A split single-word title requires adjacent OCR fragments, not words across unrelated lines.');
+assert.equal(coverMatchesWork(['BLACK', 'THORN', 'J.T.', 'GEISSINGER'],
+  'Blackthorn', ['Someone Else']), false,
+  'Recovering a split title must not weaken independent author verification.');
 
 const devouredQuotedCover = [
   'JORDAN STEPHANIE GRAY', 'DEVOURED', '"Luminous and',
