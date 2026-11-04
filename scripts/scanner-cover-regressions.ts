@@ -127,14 +127,14 @@ for (const rejected of [
 }
 for (const retained of [
   'REIGN', 'REIGN BETHAN CROME', 'DEVOURED JORDAN STEPHANIE GRAY',
-  'NEVER LIE FREIDA MCFADDEN', 'IT STEPHEN KING', 'THE CIRCLE OF STONE A J LAKE',
+  'NEVER LIE FREIDA MCFADDEN', 'IT STEPHEN KING', 'THE CIRCLE OF STONE',
 ]) {
-  // Literal single-letter author initials remain a separate recovery case;
-  // this filter conservatively rejects them rather than spending a query.
-  if (retained === 'THE CIRCLE OF STONE A J LAKE') continue;
   assert.equal(isUsableScannerCoverQuery(retained), true,
     `Legitimate scanner retrieval query was dropped: ${retained}`);
 }
+
+assert.equal(isUsableScannerCoverQuery('A J LAKE'), false,
+  'Single-letter OCR fragments should be paired with a real title before querying.');
 
 // A single photographed cover must not fire 60+ federated calls, including
 // its direct Google and paginated author lanes. The budget is shared and
