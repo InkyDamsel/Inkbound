@@ -88,6 +88,16 @@ const searchCache = new Map<string, { expiresAt: number; response: BookSearchRes
 const googleAuthorPageCache = new Map<string, { expiresAt: number; payload: GoogleVolumesResponse }>();
 const googleAuthorPageInFlight = new Map<string, Promise<GoogleVolumesResponse>>();
 let googleBackoffUntil = 0;
+let googleScannerFailure: 'rate-limit' | 'quota' | 'access-denied' | 'unavailable' | 'unknown' | null = null;
+const classifyGoogleScannerFailure = (error: unknown): typeof googleScannerFailure => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (/dailyLimitExceeded|quotaExceeded|daily quota/i.test(message)) return 'quota';
+  if (/\\b429\\b|rateLimitExceeded|resource-exhausted/i.test(message)) return 'rate-limit';
+  if (/\\b40[13]\\b|permission-denied|attestation/i.test(message)) return 'access-denied';
+  if (/\\b503\\b|unavailable|timeout/i.test(message)) return 'unavailable';
+  return 'unknown';
+};
+
 let hardcoverBackoffUntil = 0;
 let prhBackoffUntil = 0;
 
@@ -291,7 +301,19 @@ async function requestDirectGoogleBooks(
     params.delete('key');
     response = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, { signal });
   }
-  if (!response.ok) throw new Error(`Google Books search failed (${response.status}).`);
+  if (!response.ok) {
+    // Whitelist only Google's documented failure reason, never response bodies
+    // or request URLs (which could contain credentials), in scanner traces.
+    let reason = '';
+    try {
+      const failure = await response.json() as { error?: { errors?: Array<{ reason?: string }> } };
+      const code = failure.error?.errors?.[0]?.reason ?? '';
+      if (/^(?:dailyLimitExceeded|quotaExceeded|rateLimitExceeded|userRateLimitExceeded)$/.test(code)) {
+        reason = `; ${code}`;
+      }
+    } catch { /* HTTP status is enough if the provider returned no JSON. */ }
+    throw new Error(`Google Books search failed (${response.status}${reason}).`);
+  }
   return response.json() as Promise<GoogleVolumesResponse>;
 }
 
@@ -466,8 +488,11 @@ export async function searchGoogleBooksAuthorPage(
 async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
   try {
-    return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
+    const response = await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
+    googleScannerFailure = null;
+    return response;
   } catch (error) {
+    googleScannerFailure = classifyGoogleScannerFailure(error);
     if (shouldBackOffCatalog(error)) {
       googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
       console.warn('Google Books is cooling down after a provider rate limit/outage; alternate catalogs remain available.', error);
@@ -707,9 +732,11 @@ export async function searchScannerCoverTitleCatalog(
       const payload = await requestDirectGoogleBooks(`intitle:"${escaped}"`, signal);
       const groups = groupGoogleEditions((payload.items ?? []).map(mapGoogleVolume)
         .filter((item): item is BookSearchEdition => Boolean(item)));
+      googleScannerFailure = null;
       return { groups, totalItems: groups.length };
     } catch (error) {
       if (signal?.aborted) throw error;
+      googleScannerFailure = classifyGoogleScannerFailure(error);
       if (shouldBackOffCatalog(error)) {
         googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
       }
@@ -745,7 +772,7 @@ export async function searchScannerCoverTitleCatalog(
   });
   if (onTrace) {
     const sources = [
-      { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil },
+      { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil, detail: googleScannerFailure },
       { name: 'Open Library', response: openLibrary, cooling: false },
       { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil },
       { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil },
@@ -753,10 +780,11 @@ export async function searchScannerCoverTitleCatalog(
     ];
     onTrace({
       query: trimmed,
-      providers: sources.map(({ name, response, cooling }) => ({
+      providers: sources.map(({ name, response, cooling, detail }) => ({
         name,
         count: response.groups.length,
-        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : 'empty' as const,
+        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : detail ? 'error' as const : 'empty' as const,
+        ...(detail ? { detail } : {}),
       })),
       beforeHardening: sources.reduce((sum, source) => sum + source.response.groups.length, 0),
       afterHardening: groups.length,
@@ -879,16 +907,17 @@ export async function searchScannerCoverCatalog(
   const groups = hardenCatalogGroups(originalGroups);
   if (onTrace) {
     const providerEntries = [
-      { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil },
+      { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil, detail: googleScannerFailure },
       { name: 'Open Library', response: openLibrary, cooling: false },
       { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil },
       { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil },
       { name: 'Trusted', response: trusted, cooling: false },
     ];
     onTrace({ query: trimmed,
-      providers: providerEntries.map(({ name, response, cooling }) => ({
+      providers: providerEntries.map(({ name, response, cooling, detail }) => ({
         name, count: response.groups.length,
-        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : 'empty' as const,
+        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : detail ? 'error' as const : 'empty' as const,
+        ...(detail ? { detail } : {}),
       })),
       beforeHardening: originalGroups.length, afterHardening: groups.length,
     });
