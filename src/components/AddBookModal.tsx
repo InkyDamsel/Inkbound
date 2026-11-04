@@ -21,7 +21,7 @@ import {
   type AuthorCatalogDiagnostics,
 } from '../features/book-search/data/googleBooksApi';
 import { createBookFromSearchEdition } from '../features/book-search/mapping/bookSearchMapper';
-import { coverAuthorQueries, coverTitleEvidenceHints, damagedTitleFragments, rankAuthorHints, splitTitleRunQueries, isDemotedCoverTitleLine, isUsableScannerCoverQuery, shortTitleQueries, stripCoverPromoLines, titleAuthorPartQueries, titleSurnameRecoveryQueries } from '../features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, coverTitleEvidenceHints, damagedTitleFragments, rankAuthorHints, splitTitleRunQueries, isDemotedCoverTitleLine, isUsableScannerCoverQuery, shortTitleQueries, stripCoverEndorsementLines, stripCoverPromoLines, titleAuthorPartQueries, titleSurnameRecoveryQueries } from '../features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, isValidCatalogIsbn, sameCatalogIsbn, selectCatalogIsbnFromBarcodes, selectPreferredPrintedIsbn } from '../features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork, isScannerBatchIdentityConsistent, scannerCoverTitle, scannerEditionKey } from '../features/book-search/scannerVerification';
 import { auth } from '../lib/firebase';
@@ -671,7 +671,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const rawLines = await recognizeBookCover(image);
       // Promo copy can name OTHER books by the same author; exclude it from work identity.
       // Printed ISBN extraction still uses the untouched OCR below.
-      const lines = stripCoverPromoLines(rawLines);
+      const lines = stripCoverPromoLines(stripCoverEndorsementLines(rawLines));
       // A photographed copyright page can identify the exact edition without a barcode.
       // OCR may split ISBN-13 and ISBN-10 across lines or include both on one line.
       // Only accept checksum-valid values explicitly adjacent to an ISBN label.
