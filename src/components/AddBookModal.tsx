@@ -812,17 +812,29 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // recovery lanes could issue 60+ different federated searches, triggering
       // Google cooldown long before a good title+author query was reached.
       // Local exhausted lookups return no candidates; they never relax proof.
-      const MAX_COVER_LOOKUPS = 18;
+      const MAX_COVER_LOOKUPS = 22;
+      const MAX_GENERAL_LOOKUPS = 14;
       let coverLookupsUsed = 0;
+      let generalLookupsUsed = 0;
       let rejectedOcrQueries = 0;
       let exhaustedOcrQueries = 0;
-      const budgetedCoverLookup = <T,>(run: (query: string) => Promise<T>, empty: T) =>
-        async (query: string): Promise<T> => {
-          if (!isUsableScannerCoverQuery(query)) { rejectedOcrQueries += 1; return empty; }
-          if (coverLookupsUsed >= MAX_COVER_LOOKUPS) { exhaustedOcrQueries += 1; return empty; }
-          coverLookupsUsed += 1;
-          return run(query);
-        };
+      // Reserve eight of the 22 calls for exact-title and author bibliography
+      // recovery. Earlier noisy general searches must not starve those lanes.
+      const budgetedCoverLookup = <T,>(
+        run: (query: string) => Promise<T>,
+        empty: T,
+        priority = false,
+      ) => async (query: string): Promise<T> => {
+        if (!isUsableScannerCoverQuery(query)) { rejectedOcrQueries += 1; return empty; }
+        if (coverLookupsUsed >= MAX_COVER_LOOKUPS
+            || (!priority && generalLookupsUsed >= MAX_GENERAL_LOOKUPS)) {
+          exhaustedOcrQueries += 1;
+          return empty;
+        }
+        coverLookupsUsed += 1;
+        if (!priority) generalLookupsUsed += 1;
+        return run(query);
+      };
       const directCatalogOnce = memoizeCatalog(budgetedCoverLookup(
         (query) => searchGoogleBooks(query),
         { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchGoogleBooks>>,
@@ -845,11 +857,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const searchAuthorCatalogOnce = memoizeCatalog(budgetedCoverLookup(
         (query) => searchScannerAuthorCatalog(query),
         { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerAuthorCatalog>>,
+        true,
       ));
       const searchExactTitleOnce = memoizeCatalog(budgetedCoverLookup((title) => searchScannerCoverTitleCatalog(title, undefined,
         import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' ? (trace) => {
           providerTraces.push(`Exact-title providers: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status}${provider.detail ? `/${provider.detail}` : ''})`).join(' | ')}; raw=${trace.beforeHardening} exact-title=${trace.afterHardening}`);
-        } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverTitleCatalog>>));
+        } : undefined), { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchScannerCoverTitleCatalog>>, true));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       const compactCover = recognized.replace(/\s+/g, '');
@@ -1577,7 +1590,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           const diagnostic = [
             '[Inkbound scanner] Cover identification failed',
             `Ranked title evidence: ${rankedTitleEvidence.join(' || ') || 'none'}`,
-            `Cover request budget: ${coverLookupsUsed}/${MAX_COVER_LOOKUPS}; OCR queries rejected: ${rejectedOcrQueries}; skipped after limit: ${exhaustedOcrQueries}`,
+            `Cover request budget: ${coverLookupsUsed}/${MAX_COVER_LOOKUPS} (general ${generalLookupsUsed}/${MAX_GENERAL_LOOKUPS}); OCR queries rejected: ${rejectedOcrQueries}; skipped after limit: ${exhaustedOcrQueries}`,
             `Author hints: ${authorRecoveryQueries.join(' || ') || 'none'}`,
             ...rankedDiagnostics,
             `OCR: ${lines.join(' || ')}`,
