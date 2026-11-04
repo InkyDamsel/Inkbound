@@ -333,16 +333,27 @@ async function requestGoogleAuthorPage(
   const existing = googleAuthorPageInFlight.get(key);
   if (existing) return existing;
 
-  const request = (functions && auth?.currentUser
-    ? requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
-    : requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE))
-    .then((payload) => {
-      googleAuthorPageCache.set(key, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, payload });
-      return payload;
-    })
-    .finally(() => {
-      googleAuthorPageInFlight.delete(key);
-    });
+  // Match the general Search catalog transport: a failed protected request
+  // should not strand author-page retrieval when the PUBLIC Google Books API
+  // is available. Firebase App Check remains enforced for protected calls.
+  const request = (async () => {
+    let payload: GoogleVolumesResponse;
+    if (functions && auth?.currentUser) {
+      try {
+        payload = await requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        console.warn('Protected author-page catalog lookup unavailable; retrying public Google Books.', error);
+        payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+      }
+    } else {
+      payload = await requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE);
+    }
+    googleAuthorPageCache.set(key, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, payload });
+    return payload;
+  })().finally(() => {
+    googleAuthorPageInFlight.delete(key);
+  });
 
   googleAuthorPageInFlight.set(key, request);
   return request;
