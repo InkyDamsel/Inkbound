@@ -958,6 +958,29 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       const strongIdentityQueries = [...new Set(strongTitleHints.flatMap((title) =>
         strongAuthorHints.map((author) => `${title} ${author}`)))].slice(0, 6);
 
+      // Search already retrieves full author bibliographies, including the
+      // editions missing from a scanner's title-only first page. Reuse that
+      // exact Search author-page path FIRST when the photograph shows a
+      // credible printed author. Each catalog work still has to satisfy both
+      // independent photographic title and author verification below.
+      // Do not alter Search UI, ranking, metadata or its pagination.
+      if (!best && primaryPrintedAuthorHints.length) {
+        const printedAuthor = primaryPrintedAuthorHints[0];
+        try {
+          const response = await authorPageOnce(printedAuthor, 0);
+          recordScannerResponse(`search-author-page:${printedAuthor}`, response.groups);
+          const recovered = response.groups.find((work) =>
+            coverMatchesWork(cleanLines, work.title, work.authors)
+            || coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+          if (recovered) {
+            best = { work: recovered, score: 2.8 };
+            found = response.groups;
+          }
+        } catch (error) {
+          scannerDiagnostics.push(`search-author-page:${printedAuthor} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
       // A verified, title-shaped OCR line can be more reliable than a large
       // multi-provider relevance query, particularly when Google is cooling
       // down from repeated searches. Try this public exact-title lookup first;
