@@ -170,9 +170,14 @@ if (androidRuntimeSource.includes('...(nativeDebugBuild ? { debugToken: true } :
   fail('Normal Android bundles must never enable Firebase debug-token mode unconditionally.');
 }
 const packageScripts = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')).scripts ?? {};
-if (packageScripts['android:sync']?.includes('scanner-debug')
-  || !packageScripts['android:sync']?.includes('build:android')) {
-  fail('android:sync must build the regular Android app, never force scanner-debug mode.');
+if (packageScripts['android:sync']?.includes('--scanner-debug')
+  || !packageScripts['android:sync']?.includes('--scanner-inspection')
+  || !packageScripts['build:scanner-inspection']?.includes('vite build --mode scanner-inspection')) {
+  fail('android:sync must include scanner inspection in the regular Android app, without opting into native Firebase debug tokens.');
+}
+if (packageScripts['android:release:sync']?.includes('scanner-inspection')
+  || !packageScripts['android:release:sync']?.includes('build:android')) {
+  fail('Android store release sync must continue producing the clean production bundle.');
 }
 
 for (const forbiddenSnippet of [
