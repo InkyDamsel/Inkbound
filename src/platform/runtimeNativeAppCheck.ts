@@ -56,7 +56,9 @@ export function classifyNativeAppCheckFailure(error: unknown): string {
  * is available without branching on platform identity.
  */
 export async function diagnoseNativeAppCheckFailure(): Promise<unknown | null> {
-  if (!activeNativeAppCheckAdapter) return null;
+  if (!activeNativeAppCheckAdapter) {
+    return new Error('Android Play Integrity App Check adapter not initialized yet.');
+  }
   try {
     // A forced refresh on every unrelated scanner miss can itself fail or
     // hit attestation limits even when a valid cached token exists. Probe the
