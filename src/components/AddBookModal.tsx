@@ -816,7 +816,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
         } : undefined));
       const searchAuthorCatalogOnce = memoizeCatalog((query) => searchScannerAuthorCatalog(query));
-      const searchExactTitleOnce = memoizeCatalog((title) => searchScannerCoverTitleCatalog(title));
+      const searchExactTitleOnce = memoizeCatalog((title) => searchScannerCoverTitleCatalog(title, undefined,
+        import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug' ? (trace) => {
+          providerTraces.push(`Exact-title providers: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} exact-title=${trace.afterHardening}`);
+        } : undefined));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       const compactCover = recognized.replace(/\s+/g, '');
