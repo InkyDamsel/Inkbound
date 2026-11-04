@@ -271,9 +271,8 @@ assert.ok(scannerUiSource.includes('await authorPageOnce(authorQuery, startIndex
 assert.ok(scannerUiSource.includes('Cover request budget:'),
   'Failed scan diagnostics must report consumed, rejected and skipped requests.');
 
-// Regular Android testing preserves Scanner details in the same app. Native
-// App Check follows APK signing: Android Studio debug -> Firebase debug token,
-// signed store release -> Play Integrity, regardless of Vite UI mode.
+// Regular Android testing preserves Scanner details in the same app.
+// All Android APK variants use Play Integrity; never use Firebase debug tokens.
 const androidRuntimeSource = readFileSync('src/platform/initializeAndroidRuntime.ts', 'utf8');
 const androidPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> };
 assert.ok(androidPackage.scripts['android:sync'].includes('--scanner-inspection')
@@ -286,9 +285,10 @@ assert.ok(androidPackage.scripts['android:release:sync'].includes('build:android
   'The Google Play store release must remain a clean production build.');
 assert.ok(scannerUiSource.includes("import.meta.env.MODE === 'scanner-inspection'"),
   'Scanner details must be available in regular Android inspection builds.');
-assert.ok(androidRuntimeSource.includes('...(nativeDebugBuild ? { debugToken: true } : {})')
-  && !androidRuntimeSource.includes('scannerDiagnosticsBuild && nativeDebugBuild'),
-  'Firebase App Check must select debug attestation by native APK type, not scanner UI mode.');
+assert.ok(androidRuntimeSource.includes('FirebaseAppCheck.initialize({')
+  && !androidRuntimeSource.includes('debugToken:')
+  && !androidRuntimeSource.includes('isNativeDebugBuild'),
+  'Firebase App Check must use Play Integrity in every Android variant without debug tokens.');
 assert.ok(scannerCatalogSource.includes('classifyGoogleScannerFailure'),
   'Scanner must distinguish provider access, quota and rate-limit errors.');
 // The broken Android path used an unkeyed public Google request, then a
