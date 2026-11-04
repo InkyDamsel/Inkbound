@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { coverAuthorQueries, coverTitleEvidenceHints, rankAuthorHints, titleAuthorPartQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, isUsableScannerCoverQuery, prioritizeCoverTitleLines, shortTitleQueries, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../src/features/book-search/coverTextAnalysis';
+import { coverAuthorQueries, coverTitleEvidenceHints, rankAuthorHints, titleAuthorPartQueries, damagedTitleFragments, splitTitleRunQueries, isDemotedCoverTitleLine, isUsableScannerCoverQuery, prioritizeCoverTitleLines, shortTitleQueries, stripCoverEndorsementLines, stripCoverPromoLines, titleSurnameRecoveryQueries } from '../src/features/book-search/coverTextAnalysis';
 import { collectPrintedIsbnEvidence, selectPreferredPrintedIsbn } from '../src/features/book-search/isbnResolution';
 import { coverApproximatelyMatchesWork, coverMatchesWork } from '../src/features/book-search/scannerVerification';
 
@@ -19,6 +19,21 @@ assert.equal(coverApproximatelyMatchesWork(['AVA REID','TMINTERVEI'], 'Wintervei
 assert.equal(coverApproximatelyMatchesWork(['AVA REED','TMINTERVEI'], 'Winterveil', ['Ava Reid']), false);
 assert.equal(coverMatchesWork(['BLACK','THORN','J.T.','GEISSINGER'], 'Blackthorn', ['J.T. Geissinger']), true);
 
+const devouredQuotedCover = [
+  'JORDAN STEPHANIE GRAY', 'DEVOURED', '"Luminous and',
+  'exhilarating...', '[Bitten is] a romance', 'that sizzles."',
+  '-REBECCA ROSS,', 'New York Times bestselling author', 'of Divine Rivals',
+  'DEVOURED',
+];
+const devouredFiltered = stripCoverEndorsementLines(devouredQuotedCover);
+assert.ok(devouredFiltered.includes('JORDAN STEPHANIE GRAY') && devouredFiltered.includes('DEVOURED'),
+  'Quarantining review copy must preserve independent title and author OCR lines.');
+assert.ok(!devouredFiltered.some((line) => /luminous|exhilarating|sizzles|rebecca|divine rivals|bitten is/i.test(line)),
+  'Review quote, credited reviewer, and sibling titles cannot feed scanner retrieval.');
+assert.equal(coverMatchesWork(devouredFiltered, 'Devoured', ['Jordan Stephanie Gray']), true,
+  'After removing endorsements, the correct photographed work must still verify.');
+assert.equal(coverMatchesWork(devouredFiltered, 'Divine Rivals', ['Rebecca Ross']), false,
+  'An endorsement cannot verify the review author\'s separate book.');
 const neverLie=['#1 NEW YORK TIMES BESTSELLING AUTHOR OF','THE HOUSEMAID AND THE TEACHER','NEVER','LIE','FREIDA','McFADDEN'];
 const stripped=stripCoverPromoLines(neverLie);
 assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),false);
@@ -84,6 +99,8 @@ assert.ok(coverAuthorQueries(['HER MAGIC IS A DEATH SENTENCE','RE1GN','BE THA N'
 // The diagnostic surface must appear only alongside a failed scan, not
 // above the camera. Android sync uses this same compiled component.
 const scannerUiSource = readFileSync('src/components/AddBookModal.tsx', 'utf8');
+assert.ok(scannerUiSource.includes('stripCoverPromoLines(stripCoverEndorsementLines(rawLines))'),
+  'Cover scanner must strip endorsement OCR before building title and author queries.');
 assert.equal((scannerUiSource.match(/aria-label="Scanner test diagnostics"/g) ?? []).length, 0,
   'Do not reintroduce a second diagnostics panel above the camera.');
 assert.equal((scannerUiSource.match(/>Scanner details<\/summary>/g) ?? []).length, 1,
