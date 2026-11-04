@@ -110,9 +110,9 @@ export function stripCoverEndorsementLines(lines: string[]): string[] {
       && tokens.every((token) => token.length >= 3);
   };
   const isReviewLine = (line: string): boolean =>
-    /[“”"]|\\.{2,}|\\[[^\\]]+\\]|(?:^|\\s)(?:exhilarating|sizzles|riveting|unputdownable)(?:[.!\\s]|$)/i.test(line);
+    /[“”"]|\.{2,}|\[[^\]]+\]|(?:^|\s)(?:exhilarating|sizzles|riveting|unputdownable)(?:[.!\s]|$)/i.test(line);
   const isAttribution = (line: string): boolean =>
-    /^\\s*[-–—]\\s*[A-Za-z][A-Za-z.' -]{3,}\\s*[,.;]?\\s*$/.test(line);
+    /^\s*[-–—]\s*[A-Za-z][A-Za-z.' -]{3,}\s*[,.;]?\s*$/.test(line);
   const isReviewCredential = (line: string): boolean =>
     /(?:bestsell|best.sell|new york times|author of|usa today|wall street journal)/i.test(line);
   // Work with OCR line blocks, not a flattened joined string.
@@ -121,7 +121,14 @@ export function stripCoverEndorsementLines(lines: string[]): string[] {
     if (!isReviewLine(lines[i]) || isPrimaryIdentity(lines[i])) continue;
     let sawQuote = false;
     for (let j = i; j < Math.min(lines.length, i + 7); j += 1) {
-      if (j > i && isPrimaryIdentity(lines[j])) break;
+      if (j > i && isPrimaryIdentity(lines[j])) {
+        // Damaged reviewer credits can lose the leading dash. Do not mistake
+        // a compact two-word credit directly before "bestselling author" for
+        // the photographed author's separate full name.
+        const next = lines[j + 1] ?? '';
+        const tokens = wordsOf(lines[j]);
+        if (!(tokens.length === 2 && isReviewCredential(next))) break;
+      }
       const line = lines[j];
       if (isReviewLine(line)) sawQuote = true;
       if (!sawQuote) break;
