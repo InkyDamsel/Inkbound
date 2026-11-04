@@ -291,6 +291,19 @@ assert.ok(androidRuntimeSource.includes('...(nativeDebugBuild ? { debugToken: tr
   'Firebase App Check must select debug attestation by native APK type, not scanner UI mode.');
 assert.ok(scannerCatalogSource.includes('classifyGoogleScannerFailure'),
   'Scanner must distinguish provider access, quota and rate-limit errors.');
+// The broken Android path used an unkeyed public Google request, then a
+// module-global 429 cooldown suppressed EVEN protected Firebase searches.
+// Scanner and Search must share protected-first title retrieval, and public
+// cooldown may not suppress a signed-in protected catalog request.
+assert.ok(scannerCatalogSource.includes('const response = await requestGoogleBooks(`intitle:"${escaped}"`, signal)'),
+  'Scanner exact-title lookup must use the same protected-first transport as Search.');
+assert.ok(scannerCatalogSource.includes('Date.now() < googleBackoffUntil && !(functions && auth?.currentUser)'),
+  'Public Google throttling must never suppress a signed-in protected catalog lookup.');
+assert.ok(scannerCatalogSource.includes("throw new Error('Public Google Books fallback cooling down (429)"),
+  'A rate-limited public Google endpoint must not be retried on every scanner query.');
+assert.ok(scannerUiSource.includes('await searchPriorityCatalogOnce(printedTitle)'),
+  'Scanner must call the canonical Search title retrieval before scanner-only fallbacks.');
+
 
 // Search's author pagination must recover from an unavailable protected
 // Firebase endpoint exactly as its general Google Books catalog path does.
