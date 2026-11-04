@@ -152,11 +152,11 @@ export function stripCoverEndorsementLines(lines: string[]): string[] {
   // two-word credited name followed shortly by publishing credentials instead.
   // Never discard a three-word standalone author's name on this evidence.
   const credential = (line: string): boolean =>
-    /(?:best.?sell|bostsell|btsiling|bestsel|new\\s*york|nw\\s*york|now\\s*york|author\\s*of)/i.test(line);
+    /(?:best.?sell|bostsell|btsiling|bestsel|new\s*york|nw\s*york|now\s*york|author\s*of)/i.test(line);
   const continuation = (line: string): boolean =>
-    /^\\s*of\\s*\\p{L}/iu.test(line) || /^\\s*of\\p{L}{3,}/iu.test(line);
+    /^\s*of\s*\p{L}/iu.test(line) || /^\s*of\p{L}{3,}/iu.test(line);
   const reviewerName = (line: string): boolean => {
-    const text = line.trim().replace(/^[-–—]\\s*/, '').replace(/[,.;]+$/, '');
+    const text = line.trim().replace(/^[-–—]\s*/, '').replace(/[,.;]+$/, '');
     const parts = wordsOf(text);
     return parts.length === 2 && parts.every((part) => part.length >= 3 && part.length <= 15)
       && text === text.toUpperCase()
