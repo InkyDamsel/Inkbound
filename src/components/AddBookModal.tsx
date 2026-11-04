@@ -840,6 +840,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         (query) => searchGoogleBooks(query),
         { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchGoogleBooks>>,
       ));
+      // Prioritized standard Search entrypoint: preserve a portion of the
+      // shared lookup budget for the author's general catalog response.
+      const searchPriorityCatalogOnce = memoizeCatalog(budgetedCoverLookup(
+        (query) => searchGoogleBooks(query),
+        { groups: [], totalItems: 0 } as Awaited<ReturnType<typeof searchGoogleBooks>>,
+        true,
+      ));
       const authorPageOnce = async (author: string, startIndex: number) => {
         if (!isUsableScannerCoverQuery(author) || coverLookupsUsed >= MAX_COVER_LOOKUPS) {
           exhaustedOcrQueries += 1;
@@ -966,15 +973,35 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // Do not alter Search UI, ranking, metadata or its pagination.
       if (!best && primaryPrintedAuthorHints.length) {
         const printedAuthor = primaryPrintedAuthorHints[0];
+        // Normal Search first runs searchGoogleBooks(author), then merges the
+        // exact-author page. The old scanner only requested the author page,
+        // omitting the general catalog response that can contain the book.
+        // Both calls use our shared catalog service/auth/App Check setup.
+        const authorCandidates: BookSearchWorkGroup[] = [];
         try {
+          const general = await searchPriorityCatalogOnce(printedAuthor);
+          recordScannerResponse(`search-author-general:${printedAuthor}`, general.groups);
+          authorCandidates.push(...general.groups);
+        } catch (error) {
+          scannerDiagnostics.push(`search-author-general:${printedAuthor} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+        }
+        const firstMatch = authorCandidates.find((work) =>
+          coverMatchesWork(cleanLines, work.title, work.authors)
+          || coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+        if (firstMatch) {
+          best = { work: firstMatch, score: 2.8 };
+          found = authorCandidates;
+        }
+        if (!best) try {
           const response = await authorPageOnce(printedAuthor, 0);
           recordScannerResponse(`search-author-page:${printedAuthor}`, response.groups);
-          const recovered = response.groups.find((work) =>
+          authorCandidates.push(...response.groups);
+          const recovered = authorCandidates.find((work) =>
             coverMatchesWork(cleanLines, work.title, work.authors)
             || coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
           if (recovered) {
             best = { work: recovered, score: 2.8 };
-            found = response.groups;
+            found = authorCandidates;
           }
         } catch (error) {
           scannerDiagnostics.push(`search-author-page:${printedAuthor} => ERROR ${error instanceof Error ? error.message : String(error)}`);
