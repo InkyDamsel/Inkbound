@@ -36,4 +36,17 @@ assert.equal(coverMatchesWork(devouredCover, 'Devoured', ['Jordan Stephanie Gray
   'The actual printed author must continue to verify.');
 assert.equal(coverApproximatelyMatchesWork(devouredCover, 'Devoured', ['Jordan Stephanie Gray']), true,
   'The actual printed author must survive approximate verification.');
+// External audit: letters from unrelated OCR lines must never manufacture
+// another book's given name. A common short surname alone proves nothing.
+const accidentalAuthor = ['DEVOURED', 'SNOW', 'THEM', 'ILY'];
+assert.equal(coverMatchesWork(accidentalAuthor, 'Devoured', ['Emily Snow']), false,
+  'Strict matching must not join THEM + ILY into EMILY across OCR lines.');
+assert.equal(coverApproximatelyMatchesWork(accidentalAuthor, 'Devoured', ['Emily Snow']), false,
+  'Approximate matching must not join unrelated lines into an author.');
+assert.equal(coverMatchesWork(['DEVOURED', 'SNOW'], 'Devoured', ['Emily Snow']), false,
+  'Short surnames without given-name evidence must not verify a book.');
+assert.equal(coverMatchesWork(['DEVOURED', 'EMILY SNOW'], 'Devoured', ['Emily Snow']), true,
+  'A legitimately printed full author must still verify.');
+assert.equal(coverApproximatelyMatchesWork(['REIGN', 'BETH AN', 'CRO OME'], 'Reign', ['Bethan Croome']), true,
+  'Fragmented author evidence from one OCR line must still be accepted.');
 console.log('Inkbound scanner verification regressions passed.');
