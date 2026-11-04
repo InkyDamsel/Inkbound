@@ -4,7 +4,7 @@ import { auth, functions } from '../../../lib/firebase';
 import { readRuntimeJson } from '../../../platform/runtimeStorage';
 import { searchInkboundTrustedCatalog } from '../../catalog/metadataContributions';
 import { searchHardcover, searchHardcoverAuthorBibliography } from './hardcoverApi';
-import { searchOpenLibrary, searchOpenLibraryAuthorBibliography } from './openLibraryApi';
+import { searchOpenLibrary, searchOpenLibraryAuthorBibliography, searchOpenLibraryTitleAuthor } from './openLibraryApi';
 import { searchPenguinRandomHouse } from './penguinRandomHouseApi';
 import { BookSearchEdition, BookSearchResponse, BookSearchWorkGroup } from '../model/bookSearch';
 import { combineIsbnProviderGroups, compactCatalogIsbn, equivalentCatalogIsbns } from '../isbnResolution';
@@ -790,6 +790,26 @@ export async function searchScannerCoverTitleCatalog(
       afterHardening: groups.length,
     });
   }
+  return { groups, totalItems: groups.length };
+}
+
+// Scanner-only independent fielded retrieval before broad OCR fallback.
+// Open Library may have hundreds of unrelated works for a one-word title;
+// constrain by the author visible on the photographed cover first.
+export async function searchScannerCoverTitleAuthorCatalog(
+  title: string,
+  author: string,
+  signal?: AbortSignal,
+): Promise<BookSearchResponse> {
+  if (!title.trim() || !author.trim()) return { groups: [], totalItems: 0 };
+  if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+  await waitUntilAdministrationInactive(signal);
+  const response = await searchOpenLibraryTitleAuthor(title, author, signal);
+  const normalizedTitle = normalizeText(title);
+  const groups = hardenCatalogGroups(response.groups).filter((work) => {
+    const bookTitle = normalizeText(work.title);
+    return bookTitle === normalizedTitle || bookTitle.startsWith(`${normalizedTitle} `);
+  });
   return { groups, totalItems: groups.length };
 }
 
