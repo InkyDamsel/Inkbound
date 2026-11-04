@@ -45,6 +45,27 @@ assert.ok(damagedReviewerFiltered.includes('JORDAN STEPHANIE GRAY')
 assert.ok(!damagedReviewerFiltered.some((line) => /EEECCA|sizzles|divine rivals/i.test(line)),
   'An OCR-damaged review byline cannot become a competing author identity.');
 
+// Nov 3, 21:47 field test: OCR entirely missed the jacket QUOTE on one
+// pass but still read reviewer credits. This must not poison identities.
+const devouredNoQuote = [
+  'JORDAN STEPHANIE GRAY',
+  'REBECCA ROSS,', '1 New York TimHS', 'bestselling author', 'of Divine Rvas',
+  'DEVOVE)', 'DEVOURED', 'bestseling author', '{Bten romance',
+  'RESECCA ROSS,', '1Nw York Tim', 'bostselling suthor', 'of Divin Rivas',
+  'DEYOUED', 'btsiling suthor',
+];
+const devouredWithoutReviewers = stripCoverPromoLines(stripCoverEndorsementLines(devouredNoQuote));
+assert.ok(devouredWithoutReviewers.includes('JORDAN STEPHANIE GRAY')
+  && devouredWithoutReviewers.includes('DEVOURED'),
+  'Actual printed author and title must survive endorsement quarantine even without quotation marks.');
+assert.ok(!devouredWithoutReviewers.some((line) => /REBECCA|RESECCA|YORK|DIVIN|suthor|bestsel/i.test(line)),
+  'Review attributions and their credentials must not become catalog identities when quote OCR is missing.');
+assert.equal(coverMatchesWork(devouredWithoutReviewers, 'Devoured', ['Jordan Stephanie Gray']), true);
+assert.equal(coverMatchesWork(devouredWithoutReviewers, 'Devoured', ['Emily Snow']), false);
+assert.deepEqual(stripCoverEndorsementLines(['JORDAN STEPHANIE GRAY', 'DEVOURED']),
+  ['JORDAN STEPHANIE GRAY', 'DEVOURED'],
+  'Clean titles and author names must remain untouched.');
+
 const neverLie=['#1 NEW YORK TIMES BESTSELLING AUTHOR OF','THE HOUSEMAID AND THE TEACHER','NEVER','LIE','FREIDA','McFADDEN'];
 const stripped=stripCoverPromoLines(neverLie);
 assert.equal(coverMatchesWork(stripped,'The Housemaid',['Freida McFadden']),false);
