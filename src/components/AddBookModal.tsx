@@ -2069,16 +2069,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </div>
             )}
             {authorPage && !isSearching && results.length > 0 && (
-              <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-xl border border-[#c5a059]/35 bg-[#17101b] px-2 py-3">
+              <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl border border-[#c5a059]/35 bg-[#17101b] p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
                 <button
                   type="button"
                   onClick={() => setAuthorCatalogPage((current) => Math.max(1, current - 1))}
                   disabled={safeAuthorCatalogPage <= 1 || isLoadingAuthorMore}
-                  className="inline-flex min-h-12 min-w-[112px] shrink-0 items-center justify-center gap-2 rounded-xl border border-[#c5a059]/60 bg-[#322335] px-4 py-3 text-sm font-semibold text-[#f4efe6] shadow-sm disabled:opacity-40" style={{ display: "inline-flex", visibility: "visible" }}
+                  className="inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-xl border border-[#c5a059]/60 bg-[#322335] px-3 py-3 text-sm font-semibold text-[#f4efe6] shadow-sm disabled:opacity-40 sm:w-auto sm:min-w-[112px]"
                 >
                   <ArrowLeft className="h-4 w-4" /> Previous
                 </button>
-                <span className="min-w-[110px] text-center text-sm font-semibold text-[#ad9fac]">
+                <span className="col-span-2 row-start-1 text-center text-sm font-semibold text-[#ad9fac] sm:col-span-1 sm:col-start-2 sm:row-start-1">
                   Page {safeAuthorCatalogPage} of {authorCatalogTotalPages}
                 </span>
                 <button
