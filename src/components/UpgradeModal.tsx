@@ -121,7 +121,7 @@ export const UpgradeModal: React.FC = () => {
         </div>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:space-y-8 sm:px-8 sm:py-8">
-          {!entitlementLoading && trialAvailable && (
+          {user && !entitlementLoading && trialAvailable && (
             <div className="rounded-2xl border-2 border-[var(--ink-gold)]/50 bg-[var(--ink-gold)]/5 p-5 sm:p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="max-w-xl">
@@ -134,7 +134,7 @@ export const UpgradeModal: React.FC = () => {
             </div>
           )}
 
-          {!entitlementLoading && !trialAvailable && <p className="text-center text-xs text-[var(--ink-muted)]">This account has already used its one-time Premium trial.</p>}
+          {!user ? <p className="text-center text-sm text-[var(--ink-muted)]">Sign in to check your account’s Premium trial eligibility.</p> : !entitlementLoading && !trialAvailable ? <p className="text-center text-xs text-[var(--ink-muted)]">This account has already used its one-time Premium trial.</p> : null}
 
           {!showPurchaseOptions ? (
             <div className="rounded-2xl border border-[var(--ink-border-subtle)] bg-[var(--ink-surface-soft)] p-5 text-sm leading-6 text-[var(--ink-muted)]">
