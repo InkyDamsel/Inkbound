@@ -27,7 +27,7 @@
     "android:bootstrap": "node scripts/bootstrap-android.mjs && npm run android:branding:sync",
     "android:branding:sync": "node scripts/sync-android-branding.mjs",
     "android:version:sync": "node scripts/sync-android-version.mjs",
-    "android:sync": "npm run android:scanner-debug:sync && npm run verify:android-config && npm run verify:android-gradle && npm run verify:android-branding",
+    "android:sync": "npm run android:release:sync",
     "android:open": "npx cap open android",
     "android:fingerprint": "node scripts/android-signing-report.mjs",
     "android:bump": "node scripts/bump-android-version.mjs",
