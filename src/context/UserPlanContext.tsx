@@ -151,12 +151,15 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const refreshFromServer = async () => {
       if (!functions || !activeUid) return;
+      const requestedUid = activeUid;
       try {
         const getMyEntitlement = httpsCallable<undefined, EntitlementRecord>(functions, 'getMyEntitlement');
         const response = await getMyEntitlement();
+        if (activeUid !== requestedUid || auth?.currentUser?.uid !== requestedUid) return;
         applyEntitlement(response.data);
       } catch (error) {
         console.error('Inkbound could not refresh the authoritative account entitlement.', error);
+        if (activeUid === requestedUid) setEntitlementLoading(false);
       }
     };
 
@@ -197,7 +200,9 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
         unsubscribeEntitlement = onSnapshot(
           doc(readDb, 'entitlements', user.uid),
           (snapshot) => {
-            applyEntitlement(snapshot.exists() ? snapshot.data() as EntitlementRecord : undefined);
+            // An absent or not-yet-created entitlement document is not proof
+            // that a newly registered account has exhausted its trial.
+            if (snapshot.exists()) applyEntitlement(snapshot.data() as EntitlementRecord);
           },
           (error) => {
             console.warn('Inkbound entitlement live listener is unavailable; using secure server refresh instead.', error);
