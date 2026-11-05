@@ -46,7 +46,7 @@ import { diagnoseNativeAppCheckFailure, getNativeAppCheckToken } from '../platfo
 
 // Vite production builds run inside Android debug APKs too. Scanner diagnostics
 // are opt-in for test bundles, and the release verifier rejects their strings.
-const SCANNER_DEBUG_ENABLED = import.meta.env.DEV || import.meta.env.MODE === 'scanner-debug';
+const SCANNER_DEBUG_ENABLED = import.meta.env.MODE === 'scanner-debug';
 
 interface AddBookModalProps {
   currentBookCount: number;
