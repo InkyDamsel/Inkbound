@@ -6,7 +6,6 @@ import {
   linkWithCredential,
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  sendEmailVerification,
   signOut,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
@@ -123,20 +122,18 @@ function friendlyAuthMessage(error: unknown, fallback: string): string {
 async function requestBrandedVerificationEmail(): Promise<void> {
   const current = auth?.currentUser;
   if (!current) throw new Error('Sign in before requesting an email verification link.');
+  if (!functions) throw new Error('Inkbound branded email delivery is unavailable right now.');
   await current.getIdToken(true);
-  if (functions) {
-    try {
-      const callable = httpsCallable<undefined, { success: boolean; alreadyVerified: boolean }>(functions, 'sendVerificationEmail');
-      await callable();
-      return;
-    } catch (error) {
-      const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
-      // Firebase's built-in verification delivery is a safe fallback when the
-      // callable transport rejects authentication. Do not mask provider errors.
-      if (code !== 'functions/unauthenticated') throw error;
+  try {
+    const callable = httpsCallable<undefined, { success: boolean; alreadyVerified: boolean }>(functions, 'sendVerificationEmail');
+    await callable();
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+    if (code === 'functions/unauthenticated') {
+      throw new Error('Inkbound could not authenticate the branded email request. Your account is unchanged. Please retry after signing in again; if this continues, the deployed function and App Check attestation must be checked.');
     }
+    throw error;
   }
-  await sendEmailVerification(current);
 }
 async function requestBrandedPasswordResetEmail(email: string): Promise<void> { if (!functions) throw new Error('Email messages are not available right now.'); const callable = httpsCallable<{ email: string }, { success: boolean }>(functions, 'sendPasswordResetEmail'); await callable({ email: email.trim() }); }
 
