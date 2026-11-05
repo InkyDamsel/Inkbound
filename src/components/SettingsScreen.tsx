@@ -117,7 +117,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
       onResetData(); removeRuntimeValuesByPrefix('inkbound_'); await restartRuntimeApp();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Inkbound could not delete this account.';
-      setDeleteAccountError(message.replace(/^Firebase:\s*/i, '')); setIsDeletingAccount(false);
+      const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+      const authFailure = code === 'functions/unauthenticated' || code === 'auth/user-token-expired' || code === 'auth/user-disabled' || /^unauthenticated$/i.test(message.trim());
+      setDeleteAccountError(authFailure
+        ? 'Firebase could not authenticate this deletion request. Your account has not been deleted. Sign out, sign back in, and try again. If this continues, contact support so the secure authentication and App Check configuration can be checked.'
+        : message.replace(/^Firebase:\s*/i, ''));
+      setIsDeletingAccount(false);
     }
   };
 
