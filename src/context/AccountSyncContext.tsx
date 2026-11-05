@@ -9,6 +9,7 @@ import {
   signOut,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
+import { getToken as getAppCheckToken } from 'firebase/app-check';
 import {
   IMPORT_ENRICHMENT_ACTIVE_RETRY_KEY,
   IMPORT_ENRICHMENT_PAUSED_KEY,
@@ -33,7 +34,7 @@ import {
   syncBaselineStateKey,
   syncPendingStateKey,
 } from '../features/sync/storageKeys';
-import { auth, functions, isFirebaseConfigured } from '../lib/firebase';
+import { appCheck, auth, functions, isFirebaseConfigured } from '../lib/firebase';
 import { prepareRuntimeAuthPersistence, runtimeSupportsAppleSignIn, signInRuntimeWithApple, signInRuntimeWithGoogle } from '../platform/runtimeAuthentication';
 import { readRuntimeValue, removeRuntimeValue, writeRuntimeValue } from '../platform/runtimeStorage';
 
@@ -123,16 +124,24 @@ async function requestBrandedVerificationEmail(): Promise<void> {
   const current = auth?.currentUser;
   if (!current) throw new Error('Sign in before requesting an email verification link.');
   if (!functions) throw new Error('Inkbound branded email delivery is unavailable right now.');
+
+  const callable = httpsCallable<undefined, { success: boolean; alreadyVerified: boolean }>(
+    functions, 'sendVerificationEmail',
+  );
   await current.getIdToken(true);
   try {
-    const callable = httpsCallable<undefined, { success: boolean; alreadyVerified: boolean }>(functions, 'sendVerificationEmail');
     await callable();
   } catch (error) {
     const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
-    if (code === 'functions/unauthenticated') {
-      throw new Error('Inkbound could not authenticate the branded email request. Your account is unchanged. Please retry after signing in again; if this continues, the deployed function and App Check attestation must be checked.');
-    }
-    throw error;
+    if (code !== 'functions/unauthenticated') throw error;
+
+    // Native App Check and Firebase Auth can independently cache tokens. An
+    // unauthenticated callable response can mean either one was rejected.
+    // Refresh both once, then retry only this idempotent verification request.
+    if (!appCheck || auth?.currentUser?.uid !== current.uid) throw error;
+    await Promise.all([current.getIdToken(true), getAppCheckToken(appCheck, true)]);
+    if (auth?.currentUser?.uid !== current.uid) throw error;
+    await callable();
   }
 }
 async function requestBrandedPasswordResetEmail(email: string): Promise<void> { if (!functions) throw new Error('Email messages are not available right now.'); const callable = httpsCallable<{ email: string }, { success: boolean }>(functions, 'sendPasswordResetEmail'); await callable({ email: email.trim() }); }
