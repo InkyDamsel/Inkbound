@@ -809,10 +809,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         };
       };
       const providerTraces: string[] = [];
-      const searchCoverCatalogOnce = memoizeCatalog((query) => searchScannerCoverCatalog(query, undefined,
-        import.meta.env.MODE === 'scanner-debug' ? (trace) => {
-          providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
-        } : undefined));
+      const searchCoverCatalogOnce = memoizeCatalog((query) => {
+        if (import.meta.env.MODE === 'scanner-debug') {
+          return searchScannerCoverCatalog(query, undefined, (trace) => {
+            providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
+          });
+        }
+        return searchScannerCoverCatalog(query);
+      });
       const searchAuthorCatalogOnce = memoizeCatalog((query) => searchScannerAuthorCatalog(query));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
