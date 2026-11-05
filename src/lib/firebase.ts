@@ -109,7 +109,10 @@ export function initializeNativeFirebaseAppCheck(): AppCheck | null {
 
   appCheck = initializeAppCheck(app, {
     provider: new CustomProvider({
-      // Firebase JS refreshes the CustomProvider, but its callback receives no\n      // forceRefresh argument. Always request a fresh native attestation here;\n      // Firebase JS itself caches the resulting token between refreshes.\n      getToken: async () => getNativeAppCheckToken(true),
+      // Firebase JS refreshes the CustomProvider, but its callback receives no
+      // forceRefresh argument. Always request a fresh native attestation here;
+      // Firebase JS itself caches the resulting token between refreshes.
+      getToken: async () => getNativeAppCheckToken(true),
     }),
     isTokenAutoRefreshEnabled: true,
   });
