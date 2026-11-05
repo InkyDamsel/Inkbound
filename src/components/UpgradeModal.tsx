@@ -123,13 +123,13 @@ export const UpgradeModal: React.FC = () => {
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:space-y-8 sm:px-8 sm:py-8">
           {user && !entitlementLoading && trialEligibilityKnown && trialAvailable && (
             <div className="rounded-2xl border-2 border-[var(--ink-gold)]/50 bg-[var(--ink-gold)]/5 p-5 sm:p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 flex-col gap-5">
                 <div className="max-w-xl">
                   <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-gold-bright)]">Try Premium first</span>
                   <h3 className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">7 days of Inkbound Premium, free</h3>
                   <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">No card. No payment information. No automatic subscription. When the trial ends, your account simply returns to Free unless you choose a plan.</p>
                 </div>
-                <button type="button" disabled={billingPlan !== null} onClick={() => void beginTrial()} className="quiet-shelf-primary-action inline-flex min-h-12 w-full shrink-0 items-center justify-center whitespace-nowrap px-5 text-center disabled:opacity-50 sm:w-auto sm:min-w-[190px]">{billingPlan === 'trial' ? 'Starting trial…' : 'Start 7-day free trial'}</button>
+                <button type="button" disabled={billingPlan !== null} onClick={() => void beginTrial()} className="quiet-shelf-primary-action relative inline-flex min-h-12 w-full max-w-full items-center justify-center self-stretch whitespace-normal px-5 py-3 text-center leading-snug disabled:opacity-50">{billingPlan === 'trial' ? 'Starting trial…' : 'Start 7-day free trial'}</button>
               </div>
             </div>
           )}
