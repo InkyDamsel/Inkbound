@@ -30,6 +30,7 @@ interface UserPlanContextType {
   freeBookLimit: number;
   entitlementLoading: boolean;
   trialAvailable: boolean;
+  trialEligibilityKnown: boolean;
   trialPremiumUntil: string | null;
 
   canAddBook: (currentBookCount: number) => boolean;
@@ -105,6 +106,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [accessSource, setAccessSource] = useState<AccessSource>('free');
   const [entitlementLoading, setEntitlementLoading] = useState(Boolean(auth));
   const [trialAvailable, setTrialAvailable] = useState(false);
+  const [trialEligibilityKnown, setTrialEligibilityKnown] = useState(false);
   const [trialPremiumUntil, setTrialPremiumUntil] = useState<string | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<string | undefined>(undefined);
@@ -114,6 +116,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       setUserPlanState('free');
       setAccessSource('free');
       setTrialAvailable(false);
+      setTrialEligibilityKnown(false);
       setTrialPremiumUntil(null);
       setEntitlementLoading(false);
       return;
@@ -136,6 +139,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       setUserPlanState(access.userPlan);
       setAccessSource(access.accessSource);
       setTrialAvailable(Boolean(entitlement) && (entitlement?.trialAvailable ?? !entitlement?.trialStartedAt));
+      setTrialEligibilityKnown(Boolean(entitlement));
       setTrialPremiumUntil(toIso(entitlement?.trialPremiumUntil));
       setEntitlementLoading(false);
 
@@ -176,6 +180,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       setUserPlanState('free');
       setAccessSource('free');
       setTrialAvailable(false);
+      setTrialEligibilityKnown(false);
       setTrialPremiumUntil(null);
       setIsUpgradeModalOpen(false);
       setUpgradeReason(undefined);
@@ -236,6 +241,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       freeBookLimit: PRODUCT_POLICY.library.freeItemLimit,
       entitlementLoading,
       trialAvailable,
+      trialEligibilityKnown,
       trialPremiumUntil,
       canAddBook: (currentBookCount) => currentBookCount < PRODUCT_POLICY.library.freeItemLimit,
       remainingBookSlots: (currentBookCount) => Number.isFinite(PRODUCT_POLICY.library.freeItemLimit)
@@ -250,7 +256,7 @@ export const UserPlanProvider: React.FC<{ children: ReactNode }> = ({ children }
       openUpgradeModal,
       closeUpgradeModal,
     };
-  }, [accessSource, entitlementLoading, isUpgradeModalOpen, trialAvailable, trialPremiumUntil, upgradeReason, userPlan]);
+  }, [accessSource, entitlementLoading, isUpgradeModalOpen, trialAvailable, trialEligibilityKnown, trialPremiumUntil, upgradeReason, userPlan]);
 
   return <UserPlanContext.Provider value={value}>{children}</UserPlanContext.Provider>;
 };
