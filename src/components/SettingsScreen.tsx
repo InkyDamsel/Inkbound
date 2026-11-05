@@ -30,7 +30,7 @@ import {
 } from '../features/series/seriesOverrides';
 import { ACCOUNT_DATA_STORAGE_KEYS, localClearIntentKey } from '../features/sync/storageKeys';
 import { usePersistentState } from '../hooks/usePersistentState';
-import { functions } from '../lib/firebase';
+import { auth, functions } from '../lib/firebase';
 import { ResponsiveGrid } from '../layout/responsive';
 import { restartRuntimeApp } from '../platform/runtimeAppControl';
 import { exportRuntimeTextFile } from '../platform/runtimeExport';
@@ -109,19 +109,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ books, sessions,
 
   const confirmDeleteAccount = async () => {
     if (deleteConfirmation.trim().toUpperCase() !== DELETE_ACCOUNT_PHRASE || !deleteAcknowledged || (hasPaidSubscription && !deleteSubscriptionAcknowledged) || (deleteReauthenticationRequirement === 'password' && !deletePassword) || isDeletingAccount || !user || !functions) return;
-    setIsDeletingAccount(true); setDeleteAccountError('');
+    setIsDeletingAccount(true);
+    setDeleteAccountError('');
+    let deletionStage: 'reauthentication' | 'callable' = 'reauthentication';
     try {
-      await reauthenticateRuntimeUser(user, { password: deletePassword });
+      if (!auth?.currentUser || auth.currentUser.uid !== user.uid) {
+        throw new Error('Your account session is no longer active. Sign in again before deleting this account.');
+      }
+      await reauthenticateRuntimeUser(auth.currentUser, { password: deletePassword });
+      // Ensure the callable uses the newly issued credentials rather than a cached token.
+      await auth.currentUser.getIdToken(true);
+      deletionStage = 'callable';
       const deleteAccount = httpsCallable(functions, 'deleteMyAccount');
       await deleteAccount({ confirmation: DELETE_ACCOUNT_PHRASE });
-      onResetData(); removeRuntimeValuesByPrefix('inkbound_'); await restartRuntimeApp();
+      onResetData();
+      removeRuntimeValuesByPrefix('inkbound_');
+      await restartRuntimeApp();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Inkbound could not delete this account.';
       const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
       const authFailure = code === 'functions/unauthenticated' || code === 'auth/user-token-expired' || code === 'auth/user-disabled' || /^unauthenticated$/i.test(message.trim());
       setDeleteAccountError(authFailure
-        ? 'Firebase could not authenticate this deletion request. Your account has not been deleted. Sign out, sign back in, and try again. If this continues, contact support so the secure authentication and App Check configuration can be checked.'
-        : message.replace(/^Firebase:\s*/i, ''));
+        ? deletionStage === 'callable'
+          ? 'The secure deletion service rejected this authenticated request. Your account was not confirmed deleted. Please contact support to check the deployed deleteMyAccount function and Firebase App Check configuration. Error: ' + (code || 'unauthenticated')
+          : 'Firebase could not verify your sign-in. Sign in again and retry. Error: ' + (code || 'unauthenticated')
+        : message.replace(/^Firebase:\\s*/i, ''));
       setIsDeletingAccount(false);
     }
   };
