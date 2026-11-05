@@ -810,7 +810,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       };
       const providerTraces: string[] = [];
       const searchCoverCatalogOnce = memoizeCatalog((query) => searchScannerCoverCatalog(query, undefined,
-        SCANNER_DEBUG_ENABLED ? (trace) => {
+        import.meta.env.MODE === 'scanner-debug' ? (trace) => {
           providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
         } : undefined));
       const searchAuthorCatalogOnce = memoizeCatalog((query) => searchScannerAuthorCatalog(query));
