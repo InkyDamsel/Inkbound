@@ -59,7 +59,7 @@ if (fs.existsSync(project)) {
   if (!source.includes('com.inkydameinteractive.inkbound')) fail('Xcode project does not use the Inkbound bundle identifier.');
   if (!source.includes('CODE_SIGN_ENTITLEMENTS')) fail('Xcode target is missing an entitlements file.');
   const buildNumbers = [...source.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((match) => Number(match[1]));
-  if (buildNumbers.length !== 4 || buildNumbers.some((value) => value !== 26)) fail('iOS app and widget Debug/Release configurations must all use build 26 for this App Store submission.');
+  if (buildNumbers.length !== 4 || buildNumbers.some((value) => !Number.isSafeInteger(value) || value < 1 || value !== buildNumbers[0])) fail('iOS app and widget Debug/Release configurations must all use the same positive build number.');
   const marketingVersions = [...source.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((match) => match[1].trim());
   if (marketingVersions.length === 0 || marketingVersions.some((value) => value !== '1.0')) fail('All iOS app/widget configurations must remain on marketing version 1.0.');
 }
