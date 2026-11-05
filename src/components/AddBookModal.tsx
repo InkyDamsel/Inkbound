@@ -2069,16 +2069,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </div>
             )}
             {authorPage && !isSearching && results.length > 0 && (
-              <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl border border-[#c5a059]/35 bg-[#17101b] p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+              <div className="mt-5 grid grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 rounded-xl border border-[#c5a059]/35 bg-[#17101b] p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
                 <button
                   type="button"
                   onClick={() => setAuthorCatalogPage((current) => Math.max(1, current - 1))}
                   disabled={safeAuthorCatalogPage <= 1 || isLoadingAuthorMore}
-                  className="inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-xl border border-[#c5a059]/60 bg-[#322335] px-3 py-3 text-sm font-semibold text-[#f4efe6] shadow-sm disabled:opacity-40 sm:w-auto sm:min-w-[112px]"
+                  aria-label="Previous page"
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#c5a059]/60 bg-[#322335] text-[#f4efe6] shadow-sm disabled:opacity-40 sm:h-12 sm:w-auto sm:min-w-[112px] sm:gap-2 sm:px-4"
                 >
-                  <ArrowLeft className="h-4 w-4" /> Previous
+                  <ArrowLeft className="h-5 w-5" /><span className="hidden sm:inline">Previous</span>
                 </button>
-                <span className="col-span-2 row-start-1 text-center text-sm font-semibold text-[#ad9fac] sm:col-span-1 sm:col-start-2 sm:row-start-1">
+                <span className="min-w-0 text-center text-sm font-semibold text-[#ad9fac]">
                   Page {safeAuthorCatalogPage} of {authorCatalogTotalPages}
                 </span>
                 <button
@@ -2096,10 +2097,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     }, 0);
                   }}
                   disabled={isLoadingAuthorMore || (safeAuthorCatalogPage >= authorCatalogTotalPages && !authorHasMore)}
-                  className="inline-flex min-h-12 min-w-[112px] shrink-0 items-center justify-center gap-2 rounded-xl border border-[#c5a059]/60 bg-[#322335] px-4 py-3 text-sm font-semibold text-[#f4efe6] shadow-sm disabled:opacity-40" style={{ display: "inline-flex", visibility: "visible" }}
+                  aria-label="Next page"
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#c5a059]/60 bg-[#322335] text-[#f4efe6] shadow-sm disabled:opacity-40 sm:w-auto sm:min-w-[112px] sm:gap-2 sm:px-4"
                 >
                   {isLoadingAuthorMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {isLoadingAuthorMore ? 'Loading…' : 'Next'}
+                  <span className="hidden sm:inline">{isLoadingAuthorMore ? 'Loading…' : 'Next'}</span>
+                  {!isLoadingAuthorMore && <ArrowRight className="h-5 w-5 sm:hidden" />}
                 </button>
               </div>
             )}
