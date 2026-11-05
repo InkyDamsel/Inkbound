@@ -150,7 +150,9 @@ export const syncUserDirectory = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, 
   return { synced: true };
 });
 
-export const getMyEntitlement = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+// Firebase Auth remains mandatory. Android native App Check attestation can be unavailable
+// while the account session is valid; do not block entitlement reads on attestation.
+export const getMyEntitlement = onCall({ enforceAppCheck: false }, async (request) => {
   const auth = requireAuthenticated(request);
   const data = request.data as Record<string, unknown> | undefined;
 
@@ -172,7 +174,9 @@ export const getMyEntitlement = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, a
   };
 });
 
-export const deleteMyAccount = onCall({ enforceAppCheck: ENFORCE_APP_CHECK }, async (request) => {
+// Require Firebase Auth, exact confirmation, and a recent sign-in below. Native
+// App Check must not prevent a legitimate reader from deleting their account.
+export const deleteMyAccount = onCall({ enforceAppCheck: false }, async (request) => {
   const auth = requireAuthenticated(request); const data = request.data as Record<string, unknown> | undefined; const confirmation = requireString(data?.confirmation, 'confirmation', 64).toUpperCase();
   if (confirmation !== 'DELETE MY ACCOUNT') throw new HttpsError('failed-precondition', 'Account deletion requires the exact confirmation phrase.');
   const authTime = Number(auth.token.auth_time ?? 0) * 1000;
