@@ -2069,7 +2069,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </div>
             )}
             {authorPage && !isSearching && results.length > 0 && (
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <div className="sticky bottom-0 z-20 flex flex-wrap items-center justify-center gap-3 rounded-xl border border-[#c5a059]/25 bg-[#17101b] px-2 py-3 shadow-[0_-8px_20px_#17101b]">
                 <button
                   type="button"
                   onClick={() => setAuthorCatalogPage((current) => Math.max(1, current - 1))}
