@@ -1529,13 +1529,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           // kept in full at the TOP of the report; the rest is trimmed as before.
           const rankedDiagnostics = scannerDiagnostics.filter((entry) => entry.startsWith('ranked-'));
           const otherDiagnostics = scannerDiagnostics.filter((entry) => !entry.startsWith('ranked-'));
-          const trimmedOtherDiagnostics = otherDiagnostics.length <= 30
-            ? otherDiagnostics
-            : [
-                ...otherDiagnostics.slice(0, 12),
-                `... ${otherDiagnostics.length - 24} retrieval responses omitted ...`,
-                ...otherDiagnostics.slice(-12),
-              ];
           // Lead with what decided the scan (ranked hints + their catalog
           // responses) so it is visible without scrolling the details box.
           const diagnostic = [
@@ -1548,7 +1541,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             `Candidates: ${candidates.slice(0, 20).join(' || ')}`,
             `Title-surname anchors: ${titleSurnameAnchors.join(' || ') || 'none'}`,
             ...providerTraces,
-            ...trimmedOtherDiagnostics,
+            ...otherDiagnostics,
           ].join('\n');
           console.error(diagnostic);
           setScannerDetails(diagnostic);
@@ -2149,6 +2142,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </form>
 
 
+              {SCANNER_DEBUG_ENABLED && <details open className="mt-3 rounded-xl border border-amber-400/40 bg-black/40 p-3 text-xs text-[#f4efe6]">
+                <summary className="cursor-pointer font-semibold text-amber-200">Scanner diagnostics — test build</summary>
+                <p className="mt-2">App Check: {scannerAppCheckStatus} — {scannerAppCheckDiagnostic || 'Not checked yet'}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={scannerAppCheckStatus === 'checking'} onClick={() => void checkScannerAppCheck()} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">{scannerAppCheckStatus === 'checking' ? 'Checking…' : 'Check App Check'}</button>
+                  <button type="button" onClick={() => void copyScannerDiagnostics()} className="quiet-shelf-secondary-action min-h-11">{scannerDiagnosticCopied ? 'Report copied' : 'Copy diagnostic report'}</button>
+                </div>
+                <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed">{scannerDetails ?? 'No failed scan trace yet. Run a cover or ISBN scan to capture diagnostics.'}</pre>
+              </details>}
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
               {photoIsbnChoices.length > 0 && <div className="mt-3 grid gap-2" aria-label="ISBNs found in photo">
                 {photoIsbnChoices.map((isbn) => <button key={isbn} type="button" disabled={scannerBusy} onClick={() => { setPhotoIsbnChoices([]); void lookupScannedIsbn(isbn); }} className="quiet-shelf-secondary-action justify-center">Use ISBN {isbn}</button>)}
