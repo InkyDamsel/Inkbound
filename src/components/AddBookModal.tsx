@@ -2069,12 +2069,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               </div>
             )}
             {authorPage && !isSearching && results.length > 0 && (
-              <div className="sticky bottom-0 z-20 flex flex-wrap items-center justify-center gap-3 rounded-xl border border-[#c5a059]/25 bg-[#17101b] px-2 py-3 shadow-[0_-8px_20px_#17101b]">
+              <div className="sticky bottom-0 z-30 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-xl border border-[#c5a059]/35 bg-[#17101b] px-2 py-3 shadow-[0_-8px_20px_#17101b]">
                 <button
                   type="button"
                   onClick={() => setAuthorCatalogPage((current) => Math.max(1, current - 1))}
                   disabled={safeAuthorCatalogPage <= 1 || isLoadingAuthorMore}
-                  className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40"
+                  className="inline-flex min-h-12 min-w-[112px] shrink-0 items-center justify-center gap-2 rounded-xl border border-[#c5a059]/60 bg-[#322335] px-4 py-3 text-sm font-semibold text-[#f4efe6] shadow-sm disabled:opacity-40" style={{ display: "inline-flex", visibility: "visible" }}
                 >
                   <ArrowLeft className="h-4 w-4" /> Previous
                 </button>
@@ -2096,7 +2096,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                     }, 0);
                   }}
                   disabled={isLoadingAuthorMore || (safeAuthorCatalogPage >= authorCatalogTotalPages && !authorHasMore)}
-                  className="quiet-shelf-secondary-action min-h-11 px-4 disabled:opacity-40"
+                  className="inline-flex min-h-12 min-w-[112px] shrink-0 items-center justify-center gap-2 rounded-xl border border-[#c5a059]/60 bg-[#322335] px-4 py-3 text-sm font-semibold text-[#f4efe6] shadow-sm disabled:opacity-40" style={{ display: "inline-flex", visibility: "visible" }}
                 >
                   {isLoadingAuthorMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   {isLoadingAuthorMore ? 'Loading…' : 'Next'}
