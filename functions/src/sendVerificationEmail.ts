@@ -12,7 +12,10 @@ const APP_RETURN_URL = 'https://inkbound.inkydameinteractive.com/app';
 
 export const sendVerificationEmail = onCall(
   {
-    enforceAppCheck: ENFORCE_APP_CHECK,
+    // Verification must remain available to newly registered readers whose
+    // native App Check attestation is not yet ready. Firebase Auth is still
+    // mandatory and the recipient is taken from the authenticated user record.
+    enforceAppCheck: false,
     secrets: [resendApiKey],
   },
   async (request) => {
