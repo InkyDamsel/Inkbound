@@ -124,6 +124,38 @@ async function requestBrandedPasswordResetEmail(email: string): Promise<void> { 
 
 export const AccountSyncProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null); const [isAuthReady, setIsAuthReady] = useState(() => !auth || Boolean(auth.currentUser)); const [status, setStatus] = useState<SyncStatus>('idle'); const [message, setMessage] = useState(''); const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => readRuntimeValue(LAST_SYNC_STORAGE_KEY));
+  useEffect(() => {
+    if (!auth) return;
+    let checking = false;
+    const verifyRemoteAccount = async () => {
+      const current = auth.currentUser;
+      if (!current || checking) return;
+      checking = true;
+      try {
+        await current.reload();
+      } catch (error) {
+        const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+        // Only an explicit deleted-account response permits local account cleanup.
+        // Network, App Check, and temporary token failures must never erase device data.
+        if (code === 'auth/user-not-found' && auth.currentUser?.uid === current.uid) {
+          await signOut(auth);
+          await clearPhotoMemoriesFromDevice();
+          clearSignedInDataFromDevice(current.uid);
+          setLastSyncedAt(null);
+          setStatus('idle');
+          setMessage('This Inkbound account was deleted. Its signed-in data has been cleared from this device.');
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void verifyRemoteAccount();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    void verifyRemoteAccount();
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
   useEffect(() => { if (!auth) return undefined; const unsubscribe = onAuthStateChanged(auth, (nextUser) => { setUser(nextUser); setIsAuthReady(true); }, (error) => { console.error('Inkbound Firebase auth state restoration failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not sign you back in. Please try again.')); setIsAuthReady(true); }); void prepareRuntimeAuthPersistence(auth).catch((error) => { console.error('Inkbound Firebase auth persistence setup failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Inkbound could not keep you signed in on this device.')); }); return unsubscribe; }, []);
   const signInWithGoogle = async () => { if (!auth) { setStatus('error'); setMessage('Sign-in is not available right now.'); return; } try { setStatus('working'); setMessage('Opening Google sign-in...'); await prepareRuntimeAuthPersistence(auth); await signInRuntimeWithGoogle(auth); setStatus('success'); setMessage('Google account connected. Inkbound will remember this account on this device until you sign out.'); } catch (error) { console.error('Inkbound Google sign-in failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Google sign-in could not be completed. Please try again.')); } };
   const signInWithApple = async () => { if (!auth) { setStatus('error'); setMessage('Sign-in is not available right now.'); return; } try { setStatus('working'); setMessage('Opening Sign in with Apple...'); await prepareRuntimeAuthPersistence(auth); await signInRuntimeWithApple(auth); setStatus('success'); setMessage('Apple account connected. Inkbound will remember this account on this device until you sign out.'); } catch (error) { console.error('Inkbound Apple sign-in failed.', error); setStatus('error'); setMessage(friendlyAuthMessage(error, 'Sign in with Apple could not be completed. Please try again.')); } };
