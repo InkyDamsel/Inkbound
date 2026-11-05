@@ -129,7 +129,7 @@ export const UpgradeModal: React.FC = () => {
                   <h3 className="mt-1 font-serif text-2xl font-bold text-[var(--ink-ivory)]">7 days of Inkbound Premium, free</h3>
                   <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">No card. No payment information. No automatic subscription. When the trial ends, your account simply returns to Free unless you choose a plan.</p>
                 </div>
-                <button type="button" disabled={billingPlan !== null} onClick={() => void beginTrial()} className="quiet-shelf-primary-action relative inline-flex min-h-12 w-full max-w-full items-center justify-center self-stretch whitespace-normal px-5 py-3 text-center leading-snug disabled:opacity-50">{billingPlan === 'trial' ? 'Starting trial…' : 'Start 7-day free trial'}</button>
+                <button type="button" disabled={billingPlan !== null} onClick={() => void beginTrial()} className="quiet-shelf-primary-action min-h-12 px-5 py-3 text-center disabled:opacity-50" style={{ display: 'flex', width: '100%', minWidth: '100%', maxWidth: '100%', boxSizing: 'border-box', flexShrink: 0, whiteSpace: 'nowrap', justifyContent: 'center', alignItems: 'center' }}>{billingPlan === 'trial' ? 'Starting trial…' : 'Start 7-day free trial'}</button>
               </div>
             </div>
           )}
