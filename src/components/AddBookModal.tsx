@@ -806,32 +806,40 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // result; it only removes repeated provider traffic that feeds HTTP 429
       // back-off (which silently empties Google results for five minutes).
       // A rejected request is evicted so a later lane may still retry it.
-      const memoizeCatalog = <T,>(run: (query: string) => Promise<T>) => {
-        const memo = new Map<string, Promise<T>>();
-        return (query: string): Promise<T> => {
-          const key = normalizeCatalogText(query);
-          const existing = memo.get(key);
-          if (existing) return existing;
-          const pending = run(query);
-          memo.set(key, pending);
-          pending.catch(() => { memo.delete(key); });
-          return pending;
-        };
-      };
+      // A cover scan must not issue an unbounded series of federated searches.
+      // Share one query budget and cache across every recovery lane; repeated
+      // queries do not consume additional requests. No changes to acceptance.
+      const SCANNER_QUERY_BUDGET = 12;
+      let scannerQueriesUsed = 0;
+      const scannerQueryCache = new Map<string, Promise<{ groups: BookSearchWorkGroup[]; totalItems: number }>>();
       const providerTraces: string[] = [];
-      const searchCoverCatalogOnce = memoizeCatalog((query) => {
-        if (import.meta.env.MODE === 'scanner-debug') {
+      const memoizeCatalog = (
+        lane: string,
+        run: (query: string) => Promise<{ groups: BookSearchWorkGroup[]; totalItems: number }>,
+      ) => (query: string) => {
+        const key = normalizeCatalogText(query);
+        const existing = scannerQueryCache.get(key);
+        if (existing) return existing;
+        if (scannerQueriesUsed >= SCANNER_QUERY_BUDGET) {
+          return Promise.resolve({ groups: [], totalItems: 0 });
+        }
+        scannerQueriesUsed += 1;
+        const pending = run(query);
+        scannerQueryCache.set(key, pending);
+        pending.catch(() => { scannerQueryCache.delete(key); });
+        return pending;
+      };
+      const searchCoverCatalogOnce = memoizeCatalog('cover', (query) => {
+        if (SCANNER_DEBUG_ENABLED) {
           return searchScannerCoverCatalog(query, undefined, (trace) => {
             providerTraces.push(`Provider trace: ${trace.query} => ${trace.providers.map((provider) => `${provider.name}:${provider.count}(${provider.status})`).join(' | ')}; raw=${trace.beforeHardening} verified=${trace.afterHardening}`);
           });
         }
         return searchScannerCoverCatalog(query);
       });
-      const searchAuthorCatalogOnce = memoizeCatalog((query) => searchScannerAuthorCatalog(query));
-      // All scanner retrieval lanes share the same per-scan request cache.
-      // Avoid repeated title and Google queries that can trigger provider rate limits.
-      const searchCoverTitleCatalogOnce = memoizeCatalog((query) => searchScannerCoverTitleCatalog(query));
-      const searchGoogleBooksOnce = memoizeCatalog((query) => searchGoogleBooks(query));
+      const searchAuthorCatalogOnce = memoizeCatalog('author', (query) => searchScannerAuthorCatalog(query));
+      const searchCoverTitleCatalogOnce = memoizeCatalog('title', (query) => searchScannerCoverTitleCatalog(query));
+      const searchGoogleBooksOnce = memoizeCatalog('google', (query) => searchGoogleBooks(query));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       const compactCover = recognized.replace(/\s+/g, '');
