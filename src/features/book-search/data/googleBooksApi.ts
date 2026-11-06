@@ -333,8 +333,11 @@ async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<
       payload = await requestProtectedGoogleBooks(query, signal);
     } catch (protectedError) {
       if (signal?.aborted) throw protectedError;
-      console.warn('Protected Google Books lookup unavailable; retrying public Google Books.', protectedError);
-      payload = await requestDirectGoogleBooks(query, signal);
+      // A failed protected lookup must not silently consume the shared
+      // unauthenticated Google quota and trip the global cooldown.
+      // Let the caller fall back to other catalog providers instead.
+      console.warn('Protected Google Books lookup unavailable; using alternate catalogs.', protectedError);
+      throw protectedError;
     }
   } else {
     payload = await requestDirectGoogleBooks(query, signal);
@@ -484,7 +487,7 @@ async function searchOpenLibraryWithAuthorFallback(query: string, signal?: Abort
     if (normal.groups.length > 0 || /^isbn:/i.test(buildGoogleBooksQuery(query))) return normal;
 
     if (/^[\p{L}.\-' ]{3,80}$/u.test(query.trim())) {
-      return await searchOpenLibrary(`inauthor:${query.trim()}`, signal);
+      return await searchOpenLibrary(`author:${query.trim()}`, signal);
     }
     return normal;
   } catch (error) {
