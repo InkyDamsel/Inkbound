@@ -103,6 +103,13 @@ export function isDemotedCoverTitleLine(value: string): boolean {
   const line = value.trim();
   const tokens = wordsOf(line);
   if (!tokens.length) return true;
+  // Bestseller-count badges can be badly damaged by decorative OCR:
+  // "OVER ONE MILLION COPIES SOLD" -> "OVERONE M ONCoPIES SOLD".
+  // A sales-count claim is promotional copy, never title evidence. Require
+  // both a copies fragment and SOLD to avoid demoting ordinary titles.
+  const compact = tokens.join('');
+  if (/cop(?:ies|ys)/.test(compact) && /sold/.test(compact)
+    && /(?:over|million)/.test(compact)) return true;
   if (COVER_PROMO_LINE.test(line)) return true;
   if (COVER_SERIES_LINE.test(line)) return true;
   if (COVER_GENRE_LINE.test(line)) return true;
