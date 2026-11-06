@@ -261,7 +261,13 @@ async function requestProtectedGoogleBooks(
   startIndex = 0,
   maxResults = GOOGLE_BOOKS_PAGE_SIZE,
 ): Promise<GoogleVolumesResponse> {
-  if (!functions || !auth?.currentUser) {
+  if (!functions || !auth) {
+    throw new Error('Protected Google Books search requires initialized Firebase services.');
+  }
+  // Firebase Auth restores its persisted user asynchronously on Android.
+  // Do not mistake that transient null for a signed-out session.
+  await auth.authStateReady();
+  if (!auth.currentUser) {
     throw new Error('Protected Google Books search requires a signed-in Inkbound account.');
   }
   const callable = httpsCallable<
@@ -314,7 +320,7 @@ async function requestGoogleAuthorPage(
   const existing = googleAuthorPageInFlight.get(key);
   if (existing) return existing;
 
-  const request = (functions && auth?.currentUser
+  const request = (functions && auth
     ? requestProtectedGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE)
     : requestDirectGoogleBooks(authorQuery, signal, startIndex, GOOGLE_BOOKS_PAGE_SIZE))
     .then((payload) => {
@@ -331,7 +337,7 @@ async function requestGoogleAuthorPage(
 
 async function requestGoogleBooks(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
   let payload: GoogleVolumesResponse;
-  if (functions && auth?.currentUser) {
+  if (functions && auth) {
     try {
       payload = await requestProtectedGoogleBooks(query, signal);
     } catch (protectedError) {
