@@ -264,12 +264,8 @@ async function requestProtectedGoogleBooks(
   if (!functions || !auth) {
     throw new Error('Protected Google Books search requires initialized Firebase services.');
   }
-  // Firebase Auth restores its persisted user asynchronously on Android.
-  // Do not mistake that transient null for a signed-out session.
-  await auth.authStateReady();
-  if (!auth.currentUser) {
-    throw new Error('Protected Google Books search requires a signed-in Inkbound account.');
-  }
+  // Guest libraries are fully functional and local-only. Firebase App Check
+  // protects the callable independently of an optional signed-in account.
   const callable = httpsCallable<
     { query: string; provider: 'google-books'; startIndex?: number; maxResults?: number },
     GoogleVolumesResponse
