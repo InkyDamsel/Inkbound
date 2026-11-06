@@ -8,6 +8,22 @@ assert.equal(coverMatchesWork(['IT','A NOVEL','STEPHEN','KING'], 'It', ['Stephen
 assert.equal(coverMatchesWork(['SHIT HAPPENS','STEPHEN','KING'], 'It', ['Stephen King']), false);
 assert.ok(shortTitleQueries(['IT','STEPHEN','KING']).includes('IT STEPHEN KING'));
 
+// Field capture: full author + THRESHING / DRY on adjacent title lines.
+// The actual title is Threshing Day; DRY is one OCR substitution from DAY.
+const threshingCover = [
+  'THIRTEEN UNFORGETTABLE STORIES ONE LEGENDARY DAY',
+  'THE BOND THAT CHANGES EVERYTHING',
+  'THRESHING', 'DRY', 'REBECCA YARROS',
+];
+assert.equal(coverApproximatelyMatchesWork(threshingCover, 'Threshing Day', ['Rebecca Yarros']), true,
+  'Recover an adjacent two-line title with one damaged short word and verified author.');
+assert.equal(coverApproximatelyMatchesWork(threshingCover, 'Threshing Day', ['Rebecca Smith']), false,
+  'Damaged title recovery must still require the correct author.');
+assert.equal(coverApproximatelyMatchesWork([
+  'THRESHING', 'SOME OTHER TITLE', 'DRY', 'REBECCA YARROS',
+], 'Threshing Day', ['Rebecca Yarros']), false,
+  'Do not assemble damaged two-word titles from separated OCR lines.');
+
 const winterveilFragments=damagedTitleFragments('TMINTERVEI');
 assert.ok(winterveilFragments.some((fragment) => fragment.includes('interve')),
   'Damaged long title OCR must expose a stable interior retrieval fragment.');
