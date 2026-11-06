@@ -185,13 +185,12 @@ if (!exportSource.includes('nativeSafeExportAdapter')) fail('native exports must
 const googleBooksSource = fs.readFileSync(googleBooksPath, 'utf8');
 if (!googleBooksSource.includes("provider: 'google-books'")) fail('Android Google Books traffic must stay behind the protected Firebase catalog gateway.');
 if (!googleBooksSource.includes("httpsCallable<") || !googleBooksSource.includes("'searchHardcoverBooks'")) fail('Google Books must retain the App Check-protected Firebase catalog transport used by Android.');
-// Auth persistence restores asynchronously on Android. The protected transport
-// must remain preferred whenever Firebase Auth exists, even before currentUser
-// has been restored. Do not regress to direct Google during that interval.
+// Guest mode is local-first. Catalog lookups must use the App-Check-protected
+// Firebase transport even when no user is signed in.
 if (!googleBooksSource.includes('functions && auth') ||
-    !googleBooksSource.includes('await auth.authStateReady()') ||
-    !googleBooksSource.includes('if (!auth.currentUser)')) {
-  fail('catalog enrichment must await Firebase Auth restoration and prefer protected transport before any web-only direct fallback.');
+    !googleBooksSource.includes('requestProtectedGoogleBooks(query, signal)') ||
+    googleBooksSource.includes('Protected Google Books search requires a signed-in Inkbound account.')) {
+  fail('catalog enrichment must support guest mode through the protected Firebase transport.');
 }
 
 const androidDir = path.join(cwd, 'android');
