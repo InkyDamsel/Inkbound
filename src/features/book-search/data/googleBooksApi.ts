@@ -475,18 +475,26 @@ export async function searchGoogleBooksAuthorPage(
   };
 }
 
-async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<BookSearchResponse> {
-  if (Date.now() < googleBackoffUntil) return { groups: [], totalItems: 0 };
+type GoogleScannerResponse = BookSearchResponse & { scannerProviderError?: string; scannerCooling?: boolean };
+async function searchGoogleBaseline(query: string, signal?: AbortSignal): Promise<GoogleScannerResponse> {
+  if (Date.now() < googleBackoffUntil) {
+    return { groups: [], totalItems: 0, scannerCooling: true, scannerProviderError: 'rate-limit/outage breaker active' };
+  }
   try {
     return await requestGoogleBooks(buildGoogleBooksQuery(query), signal);
   } catch (error) {
-    if (shouldBackOffCatalog(error)) {
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      ? String(error.code) : 'unknown';
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    const safeDetail = `${code}: ${message}`.replace(/(?:key|token|secret)=[^&\\s]+/gi, '$1=[redacted]').slice(0, 180);
+    const cooling = shouldBackOffCatalog(error);
+    if (cooling) {
       googleBackoffUntil = Math.max(googleBackoffUntil, Date.now() + CATALOG_BACKOFF_MS);
-      console.warn('Google Books is cooling down after a provider rate limit/outage; alternate catalogs remain available.', error);
+      console.warn('Google Books provider rate limit/outage.', error);
     } else {
-      console.warn('Google Books search unavailable; using alternate catalogs.', error);
+      console.warn('Google Books lookup failed (not a confirmed provider rate limit).', error);
     }
-    return { groups: [], totalItems: 0 };
+    return { groups: [], totalItems: 0, scannerCooling: cooling, scannerProviderError: safeDetail };
   }
 }
 
@@ -840,7 +848,7 @@ export async function searchScannerCoverCatalog(
   const groups = hardenCatalogGroups(originalGroups);
   if (onTrace) {
     const providerEntries = [
-      { name: 'Google', response: google, cooling: Date.now() < googleBackoffUntil },
+      { name: 'Google', response: google, cooling: Boolean(google.scannerCooling) },
       { name: 'Open Library', response: openLibrary, cooling: false },
       { name: 'Hardcover', response: hardcover, cooling: Date.now() < hardcoverBackoffUntil },
       { name: 'PRH', response: prh, cooling: Date.now() < prhBackoffUntil },
@@ -849,7 +857,8 @@ export async function searchScannerCoverCatalog(
     onTrace({ query: trimmed,
       providers: providerEntries.map(({ name, response, cooling }) => ({
         name, count: response.groups.length,
-        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : 'empty' as const,
+        status: cooling ? 'cooldown' as const : response.groups.length ? 'ok' as const : 'scannerProviderError' in response && response.scannerProviderError ? 'error' as const : 'empty' as const,
+        ...('scannerProviderError' in response && response.scannerProviderError ? { detail: String(response.scannerProviderError) } : {}),
       })),
       beforeHardening: originalGroups.length, afterHardening: groups.length,
     });
