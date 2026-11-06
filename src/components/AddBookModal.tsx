@@ -817,7 +817,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         lane: string,
         run: (query: string) => Promise<{ groups: BookSearchWorkGroup[]; totalItems: number }>,
       ) => (query: string) => {
-        const key = normalizeCatalogText(query);
+        const key = `${lane}:${normalizeCatalogText(query)}`;
         const existing = scannerQueryCache.get(key);
         if (existing) return existing;
         if (scannerQueriesUsed >= SCANNER_QUERY_BUDGET) {
