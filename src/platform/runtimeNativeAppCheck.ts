@@ -38,7 +38,9 @@ export async function getNativeAppCheckToken(forceRefresh = false): Promise<Nati
  * is available without branching on platform identity.
  */
 export async function diagnoseNativeAppCheckFailure(): Promise<unknown | null> {
-  if (!activeNativeAppCheckAdapter) return null;
+  if (!activeNativeAppCheckAdapter) {
+    return new Error('Native App Check adapter is not initialized.');
+  }
   try {
     await getNativeAppCheckToken(true);
     return null;
