@@ -908,7 +908,11 @@ export function coverTitleEvidenceHints(
     .filter((tokens) => tokens.length === 1 && tokens[0].length >= 4
       && !creditedWords.has(tokens[0]))
     .map((tokens) => tokens[0]);
-  const candidates = [...standalone, ...firsts, ...seconds];
+  // Ranked clusters already choose the longest observed spelling. Keep that
+  // ordering ahead of standalone OCR observations, otherwise a frequently
+  // truncated spelling (DEVOURE) displaces the complete DEVOURED variant.
+  // Standalone observations remain as fallback for title/author role errors.
+  const candidates = [...firsts, ...standalone, ...seconds];
   return [...new Set(candidates.filter((candidate) =>
     !creditedWords.has(candidate) || standalone.includes(candidate)))].slice(0, Math.max(1, maxHints));
 }
