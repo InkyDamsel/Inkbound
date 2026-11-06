@@ -927,6 +927,28 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         ...rankedTitleEvidence,
         ...literalTitleHints,
       ])].slice(0, 8);
+      // Search already supports author bibliography. Reuse it early, before
+      // spending the cover-query budget on OCR permutations. The author is a
+      // retrieval hint only: title AND author must verify against the photo.
+      if (!best) {
+        for (const authorHint of authorRecoveryQueries.slice(0, 2)) {
+          if (authorHint.split(/\\s+/).filter(Boolean).length < 2) continue;
+          try {
+            const response = await searchGoogleBooksAuthorPage(authorHint, 0);
+            recordScannerResponse(`early-author-bibliography:${authorHint}`, response.groups);
+            const matched = response.groups.find((work) =>
+              coverMatchesWork(cleanLines, work.title, work.authors)
+              || coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
+            if (matched) {
+              best = { work: matched, score: 2.8 };
+              found = response.groups;
+              break;
+            }
+          } catch (error) {
+            scannerDiagnostics.push(`early-author-bibliography:${authorHint} => ERROR ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
       for (const titleHint of exactTitleHints) {
         if (best) break;
         try {
