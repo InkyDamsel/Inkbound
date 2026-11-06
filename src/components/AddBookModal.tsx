@@ -2195,9 +2195,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               {SCANNER_DEBUG_ENABLED && <details open className="mt-3 rounded-xl border border-amber-400/40 bg-black/40 p-3 text-xs text-[#f4efe6]">
                 <summary className="cursor-pointer font-semibold text-amber-200">Scanner diagnostics — test build</summary>
                 <p className="mt-2">App Check: {scannerAppCheckStatus} — {scannerAppCheckDiagnostic || 'Not checked yet'}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" disabled={scannerAppCheckStatus === 'checking'} onClick={() => void checkScannerAppCheck()} className="quiet-shelf-secondary-action min-h-11 disabled:opacity-50">{scannerAppCheckStatus === 'checking' ? 'Checking…' : 'Check App Check'}</button>
-                  <button type="button" onClick={() => void copyScannerDiagnostics()} className="quiet-shelf-secondary-action min-h-11">{scannerDiagnosticCopied ? 'Report copied' : 'Copy diagnostic report'}</button>
+                <div className="mt-3 grid grid-cols-1 gap-2" aria-label="Scanner diagnostic actions">
+                  <button type="button" disabled={scannerAppCheckStatus === 'checking'} onClick={() => void checkScannerAppCheck()} style={{ display: 'flex', visibility: 'visible', minHeight: 48, width: '100%', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', border: '1px solid #e5c158', borderRadius: 12, backgroundColor: '#c5a059', color: '#160e17', fontWeight: 700, opacity: scannerAppCheckStatus === 'checking' ? 0.6 : 1 }}>{scannerAppCheckStatus === 'checking' ? 'Checking App Check…' : 'Check App Check'}</button>
+                  <button type="button" onClick={() => void copyScannerDiagnostics()} style={{ display: 'flex', visibility: 'visible', minHeight: 48, width: '100%', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', border: '1px solid #94738b', borderRadius: 12, backgroundColor: '#50354f', color: '#fff1f7', fontWeight: 700 }}>{scannerDiagnosticCopied ? 'Report copied' : 'Copy diagnostic report'}</button>
                 </div>
                 <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed">{scannerDetails ?? 'No failed scan trace yet. Run a cover or ISBN scan to capture diagnostics.'}</pre>
               </details>}
