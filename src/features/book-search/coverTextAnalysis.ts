@@ -41,6 +41,24 @@ export function coverPromoContextIndexes(lines: string[]): Set<number> {
       }
     }
   }
+  // Endorsement credits often span several OCR lines and the word "author"
+  // can be misread. A quoted blurb followed by an em-dash attribution is
+  // promotional context, not the photographed work's title or author.
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!/^[\\u2014\\u2013-]\\s*[A-Za-z]{3,}\\s+[A-Za-z]{3,}/.test(line)) continue;
+    demoted.add(index);
+    for (let previous = index - 1, steps = 0; previous >= 0 && steps < 7; previous -= 1, steps += 1) {
+      const text = lines[previous].trim();
+      if (!text || (text === text.toUpperCase() && !/[\\u201c\\u201d"']/u.test(text) && wordsOf(text).length <= 2)) break;
+      demoted.add(previous);
+      if (/[\\u201c"]/u.test(text)) break;
+    }
+    for (let next = index + 1; next < lines.length && next <= index + 3; next += 1) {
+      if (!/(?:best\\s*sell|bestsol|bestsoll|suthor|author|new\\s+york|of\\s+\\w+)/i.test(lines[next])) break;
+      demoted.add(next);
+    }
+  }
   return demoted;
 }
 
@@ -73,7 +91,7 @@ export function stripCoverPromoLines(lines: string[]): string[] {
   return kept;
 }
 
-const COVER_PROMO_LINE = /(?:new york times|usa today|wall street journal|bestsell|best-sell|award[- ]winning|award winner|international bestseller|acclaimed author|critically acclaimed)/i;
+const COVER_PROMO_LINE = /(?:new york times|new york ti(?:me|es)|usa today|wall street journal|bestsell|best-sell|bestsol|bestsoll|suthor|award[- ]winning|award winner|international bestseller|acclaimed author|critically acclaimed)/i;
 const COVER_SERIES_LINE = /\b(?:series|saga|trilogy|duology|chronicles|cycle|books?)\s*(?:#|no\.?\s*)?\d*\s*$/i;
 const COVER_GENRE_LINE = /^\s*(?:an?\s+)?(?:dark\s+)?(?:mafia|paranormal|contemporary|historical|fantasy|romantic|gothic|sports|holiday|monster|vampire|werewolf|billionaire|small[- ]town|romantic suspense)\s+(?:romance|novel|thriller|fantasy|mystery)\s*$/i;
 const COVER_TAGLINE_START = /^(?:her|his|their|she|he|they|when|once|if|every|nothing|no one|one)\b/i;
@@ -782,6 +800,16 @@ export function coverTitleEvidenceHints(
     .filter((hint) => !wordsOf(hint).some((word) => standaloneOnly.has(word)));
   const authorWords = new Set(trustedAuthorHints.flatMap((hint) => wordsOf(hint)));
   const authorCompacts = new Set(trustedAuthorHints.map((hint) => wordsOf(hint).join('')));
+  // Compare name-shaped OCR lines token by token. A missing initial letter in
+  // "EBECCA ROSS" must not let the endorsement become the leading title.
+  const matchesAuthorName = (tokens: string[]): boolean =>
+    tokens.length >= 2 && trustedAuthorHints.some((hint) => {
+      const reference = wordsOf(hint);
+      if (reference.length !== tokens.length) return false;
+      return tokens.every((token, index) => token === reference[index]
+        || (token.length >= 3 && reference[index].length >= 3
+          && lightEditDistance(token, reference[index]) <= 2));
+    });
   type Cluster = { variants: Map<string, number>; count: number; base: number };
   const clusters: Cluster[] = [];
 
@@ -799,7 +827,7 @@ export function coverTitleEvidenceHints(
     if (COVER_COPY_COMPACT_END.test(compact)) continue;
     if (tokens.some((token) => isCoverCopyWord(token) && !['the', 'a', 'an', 'of', 'and', 'in', 'to', 'on', 'at', 'for', 'with', 'from', 'is', 'that', 'by'].includes(token))
       && tokens.length > 1) continue;
-    if (authorCompacts.has(compact)) continue;
+    if (authorCompacts.has(compact) || matchesAuthorName(tokens)) continue;
     if (tokens.every((token) => authorWords.has(token) || token.length <= 2)) continue;
     // A fragmented author surname ("CRO ME") must not become title evidence.
     if ([...authorWords].some((word) => word.length >= 4 && sameOcrWord(word, compact))) continue;
