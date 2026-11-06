@@ -70,7 +70,7 @@ dependencies {
 apply from: 'capacitor.build.gradle'
 
 def servicesJSON = file('google-services.json')
-def hasFirebaseAndroidConfig = servicesJSON.exists() && servicesJSON.text?.trim()
+def hasFirebaseAndroidConfig = [servicesJSON, file('src/debug/google-services.json'), file('src/release/google-services.json')].any { it.isFile() && it.text?.trim() }
 
 if (hasFirebaseAndroidConfig) {
     apply plugin: 'com.google.gms.google-services'
