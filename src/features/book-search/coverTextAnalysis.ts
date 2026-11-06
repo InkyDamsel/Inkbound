@@ -905,7 +905,12 @@ export function coverTitleEvidenceHints(
     .map(wordsOf)
     .filter((tokens) => tokens.length >= 2 && tokens.length <= 4
       && tokens.at(-1)!.length >= 4
-      && cleanLines.some((line) => wordsOf(line).join('') === tokens.join('')))
+      && (cleanLines.some((line) => wordsOf(line).join('') === tokens.join(''))
+        // Native OCR may split BOTH name words across separate lines.
+        // Require each full word to appear in independent OCR evidence;
+        // speculative author pairings alone must not suppress title words.
+        || tokens.filter((word) => word.length >= 4).every((word) =>
+          cleanLines.some((line) => wordsOf(line).join('') === word))))
     .flatMap((tokens) => tokens.filter((word) => word.length >= 4)));
   const standalone = cleanLines
     .filter((line) => !isDemotedCoverTitleLine(line) && isAllCapsLine(line))
