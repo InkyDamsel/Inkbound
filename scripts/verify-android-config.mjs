@@ -185,7 +185,14 @@ if (!exportSource.includes('nativeSafeExportAdapter')) fail('native exports must
 const googleBooksSource = fs.readFileSync(googleBooksPath, 'utf8');
 if (!googleBooksSource.includes("provider: 'google-books'")) fail('Android Google Books traffic must stay behind the protected Firebase catalog gateway.');
 if (!googleBooksSource.includes("httpsCallable<") || !googleBooksSource.includes("'searchHardcoverBooks'")) fail('Google Books must retain the App Check-protected Firebase catalog transport used by Android.');
-if (!googleBooksSource.includes('functions && auth?.currentUser')) fail('signed-in catalog enrichment must prefer the protected Firebase transport before any web-only direct fallback.');
+// Auth persistence restores asynchronously on Android. The protected transport
+// must remain preferred whenever Firebase Auth exists, even before currentUser
+// has been restored. Do not regress to direct Google during that interval.
+if (!googleBooksSource.includes('functions && auth') ||
+    !googleBooksSource.includes('await auth.authStateReady()') ||
+    !googleBooksSource.includes('if (!auth.currentUser)')) {
+  fail('catalog enrichment must await Firebase Auth restoration and prefer protected transport before any web-only direct fallback.');
+}
 
 const androidDir = path.join(cwd, 'android');
 if (fs.existsSync(androidDir)) {
