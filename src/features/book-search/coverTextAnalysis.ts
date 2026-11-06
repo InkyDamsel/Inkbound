@@ -893,7 +893,24 @@ export function coverTitleEvidenceHints(
 
   const firsts = ranked.map((entry) => entry.ordered[0]);
   const seconds = ranked.flatMap((entry) => entry.ordered.slice(1, 2));
-  return [...new Set([...firsts, ...seconds])].slice(0, Math.max(1, maxHints));
+  // When OCR reads a credited author on one line and the photographed title
+  // on another, do not let speculative author/title pairings erase the title.
+  // Conversely, an intact two-word credited name should not be ranked as
+  // two separate one-word titles (STEPHEN / KING / CARRIE).
+  const completeAuthorPairs = new Set(trustedAuthorHints
+    .map(wordsOf)
+    .filter((tokens) => tokens.length === 2 && tokens.every((word) => word.length >= 4))
+    .map((tokens) => tokens.join(' ')));
+  const creditedWords = new Set([...completeAuthorPairs].flatMap((pair) => pair.split(' ')));
+  const standalone = cleanLines
+    .filter((line) => !isDemotedCoverTitleLine(line) && isAllCapsLine(line))
+    .map(wordsOf)
+    .filter((tokens) => tokens.length === 1 && tokens[0].length >= 4
+      && !creditedWords.has(tokens[0]))
+    .map((tokens) => tokens[0]);
+  const candidates = [...standalone, ...firsts, ...seconds];
+  return [...new Set(candidates.filter((candidate) =>
+    !creditedWords.has(candidate) || standalone.includes(candidate)))].slice(0, Math.max(1, maxHints));
 }
 
 /** Queries that survive a damaged surname or given name: provider relevance
