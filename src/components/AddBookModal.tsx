@@ -1613,11 +1613,21 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       if (SCANNER_DEBUG_ENABLED) {
         const appCheckError = await diagnoseNativeAppCheckFailure();
         const reason = appCheckError instanceof Error ? appCheckError.message : String(appCheckError ?? '');
+        // Report only a known error category. Never display raw native
+        // exceptions: they may include project IDs, URLs or token material.
         const appCheckLine = !appCheckError
           ? 'App Check: native token probe returned no error'
-          : /403|attestation/i.test(reason)
-            ? 'App Check: HTTP 403 / attestation rejected; protected providers may be unavailable'
-            : 'App Check: native token probe failed (details withheld to protect credentials)';
+          : /not initialized|adapter is ready|not registered/i.test(reason)
+            ? 'App Check: native adapter not initialized'
+            : /403|attestation|integrity verdict|permission.denied/i.test(reason)
+              ? 'App Check: attestation rejected (403 / Play Integrity)'
+              : /401|unauthenticated/i.test(reason)
+                ? 'App Check: authentication rejected (401)'
+                : /network|timeout|unavailable|connection/i.test(reason)
+                  ? 'App Check: network or service unavailable'
+                  : /invalid or expired token|expired/i.test(reason)
+                    ? 'App Check: invalid or expired native token'
+                    : 'App Check: native token probe failed (unclassified; inspect Android Logcat)';
         setScannerDetails((previous) => [previous ?? '[Inkbound scanner] Cover lookup did not resolve', appCheckLine].join('\n'));
       }
       setScannerMessage(null);
