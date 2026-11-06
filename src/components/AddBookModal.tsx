@@ -818,6 +818,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         return searchScannerCoverCatalog(query);
       });
       const searchAuthorCatalogOnce = memoizeCatalog((query) => searchScannerAuthorCatalog(query));
+      // All scanner retrieval lanes share the same per-scan request cache.
+      // Avoid repeated title and Google queries that can trigger provider rate limits.
+      const searchCoverTitleCatalogOnce = memoizeCatalog((query) => searchScannerCoverTitleCatalog(query));
+      const searchGoogleBooksOnce = memoizeCatalog((query) => searchGoogleBooks(query));
       const recognized = normalizeCatalogText(lines.join(' '));
       const coverWords = new Set(recognized.split(' ').filter(Boolean));
       const compactCover = recognized.replace(/\s+/g, '');
@@ -885,7 +889,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       for (const titleHint of rankedTitleEvidence.slice(0, 2)) {
         if (best) break;
         try {
-          const response = await searchScannerCoverTitleCatalog(titleHint);
+          const response = await searchCoverTitleCatalogOnce(titleHint);
           recordScannerResponse(`early-exact-title:${titleHint}`, response.groups);
           const recovered = response.groups.find((work) =>
             coverMatchesWork(cleanLines, work.title, work.authors)
@@ -942,7 +946,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           })))].slice(0, 6);
         for (const query of fieldedIdentityQueries) {
           try {
-            const response = await searchGoogleBooks(query);
+            const response = await searchGoogleBooksOnce(query);
             recordScannerResponse(`ranked-fielded:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)
@@ -1415,7 +1419,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
         for (const titleHint of exactTitleHints) {
           try {
-            const response = await searchScannerCoverTitleCatalog(titleHint);
+            const response = await searchCoverTitleCatalogOnce(titleHint);
             recordScannerResponse(`exact-title:${titleHint}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors)
@@ -1482,7 +1486,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           fieldedAuthors.map((author) => `intitle:${title} inauthor:${author.replace(/\s+/g, ' ')}`)))].slice(0, 8);
         for (const query of fieldedQueries) {
           try {
-            const response = await searchGoogleBooks(query);
+            const response = await searchGoogleBooksOnce(query);
             recordScannerResponse(`fielded-title-author:${query}`, response.groups);
             const recovered = response.groups.find((work) =>
               coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
