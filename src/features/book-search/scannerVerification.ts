@@ -347,8 +347,8 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // THRESHING / DAY. Accept one damaged short word only when both title
   // words occupy adjacent standalone, non-promotional lines and the full
   // author identity has already been independently verified above.
-  const adjacentTwoLineTitle = significantTitleWords.length === 2
-    && catalogTitleWords.length === 2
+  const adjacentTwoLineTitle = catalogTitleWords.length === 2
+    && significantTitleWords.length >= 1
     && catalogTitleWords[0].length >= 6
     && lines.some((line, index) => {
       if (index + 1 >= lines.length
