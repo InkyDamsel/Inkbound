@@ -825,7 +825,10 @@ export function coverTitleEvidenceHints(
       // Prefer the LONGER spelling on ties: OCR drops glyphs far more often
       // than it invents them (DEVOURED beats DEVOUR).
       const longest = [...variants].sort((left, right) => right.length - left.length)[0];
-      const top = cluster.variants.get(variants[0])! > (cluster.variants.get(longest) ?? 0) ? variants[0] : longest;
+      // Keep the complete spelling in the candidate pool even when a
+      // truncated OCR variant occurs more often. Retrieval only: the
+      // independent title/author verifier still decides acceptance.
+      const top = longest;
       return {
         score: cluster.count * 2 + cluster.base,
         ordered: [top, ...variants.filter((variant) => variant !== top)],
