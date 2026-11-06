@@ -24,6 +24,21 @@ assert.equal(coverApproximatelyMatchesWork([
 ], 'Threshing Day', ['Rebecca Yarros']), false,
   'Do not assemble damaged two-word titles from separated OCR lines.');
 
+// Repeated truncated OCR must not hide a less frequent complete title.
+const devouredHints = coverTitleEvidenceHints(
+  ['DEVOURE', 'DEVOURE', 'DEVOURED', 'DEVOUSED', 'JORDAN STEPHANIE GRAY'],
+  ['JORDAN STEPHANIE GRAY'],
+);
+assert.ok(devouredHints.includes('devoured'),
+  'Keep the complete DEV OURED spelling in title retrieval candidates.');
+assert.ok(devouredHints.indexOf('devoured') < devouredHints.indexOf('devoure'),
+  'Prefer complete title OCR over the repeated truncated variant.');
+const googleSource = readFileSync('src/features/book-search/data/googleBooksApi.ts', 'utf8');
+assert.ok(!googleSource.includes('Protected Google Books lookup unavailable; retrying public Google Books.'),
+  'Never fall back to shared unauthenticated Google quota after protected lookup failure.');
+assert.ok(googleSource.includes('searchOpenLibrary(`author:${query.trim()}`'),
+  'Open Library author fallback must use its own query dialect.');
+
 const winterveilFragments=damagedTitleFragments('TMINTERVEI');
 assert.ok(winterveilFragments.some((fragment) => fragment.includes('interve')),
   'Damaged long title OCR must expose a stable interior retrieval fragment.');
