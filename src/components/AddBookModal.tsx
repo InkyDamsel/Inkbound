@@ -264,16 +264,26 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       setScannerAppCheckStatus('ready');
       setScannerAppCheckDiagnostic('Native App Check token request succeeded. This does not guarantee every catalog provider will respond.');
     } catch (error) {
+      // Only report recognized error categories. Never copy arbitrary native
+      // messages: Firebase errors may contain debug secrets or request URLs.
+      const nativeError = error as { code?: unknown; message?: unknown };
+      const rawCode = typeof nativeError?.code === 'string' ? nativeError.code : '';
+      const code = /^[a-zA-Z][a-zA-Z0-9_./-]{0,63}$/.test(rawCode) ? rawCode : 'unavailable';
       const message = error instanceof Error ? error.message : String(error);
-        // Keep diagnostics safe for screenshots, chat and clipboard. Do not
-        // display debug tokens, credentials, or request URLs with API keys.
-        const failure = /403|attestation/i.test(message)
-          ? 'HTTP 403: Firebase rejected the native App Check attestation. Protected catalog services may be unavailable.'
-          : /not initialized/i.test(message)
-            ? 'Native App Check adapter has not initialized.'
-            : 'Native App Check token request failed. See native logs for implementation-specific details.';
+      const firstLine = message.split(/\r?\n/, 1)[0] ?? '';
+      const reason = /403|attestation failed/i.test(firstLine)
+        ? 'HTTP 403: Firebase rejected the debug attestation exchange. Check native Firebase app identity and the registered device debug secret.'
+        : /401|unauthenticated/i.test(firstLine)
+          ? 'HTTP 401: Firebase rejected App Check authentication.'
+          : /not initialized|not configured/i.test(firstLine)
+            ? 'Native App Check adapter is not initialized.'
+            : /network|timeout|unavailable/i.test(firstLine)
+              ? 'Native App Check request could not reach the service.'
+              : /invalid or expired/i.test(firstLine)
+                ? 'Native App Check returned an invalid or expired token.'
+                : 'Native App Check token request failed; see Android Logcat for the underlying error.';
       setScannerAppCheckStatus('blocked');
-      setScannerAppCheckDiagnostic(failure);
+      setScannerAppCheckDiagnostic(`${reason} [Native error code: ${code}]`);
     }
   };
   const copyScannerDiagnostics = async () => {
