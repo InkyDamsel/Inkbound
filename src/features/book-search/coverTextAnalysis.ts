@@ -897,11 +897,16 @@ export function coverTitleEvidenceHints(
   // on another, do not let speculative author/title pairings erase the title.
   // Conversely, an intact two-word credited name should not be ranked as
   // two separate one-word titles (STEPHEN / KING / CARRIE).
-  const completeAuthorPairs = new Set(trustedAuthorHints
+  // Credited names may have initials (S. J. TILLY), not just two
+  // full-length words. Exclude their surnames from title hints only when
+  // the complete credited name is independently printed on an OCR line.
+  // A speculative author hint alone must never hide a standalone title.
+  const creditedWords = new Set(trustedAuthorHints
     .map(wordsOf)
-    .filter((tokens) => tokens.length === 2 && tokens.every((word) => word.length >= 4))
-    .map((tokens) => tokens.join(' ')));
-  const creditedWords = new Set([...completeAuthorPairs].flatMap((pair) => pair.split(' ')));
+    .filter((tokens) => tokens.length >= 2 && tokens.length <= 4
+      && tokens.at(-1)!.length >= 4
+      && cleanLines.some((line) => wordsOf(line).join('') === tokens.join('')))
+    .flatMap((tokens) => tokens.filter((word) => word.length >= 4)));
   const standalone = cleanLines
     .filter((line) => !isDemotedCoverTitleLine(line) && isAllCapsLine(line))
     .map(wordsOf)
