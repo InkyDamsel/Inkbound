@@ -898,7 +898,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
             && !authorRecoveryQueries.some((author) => normalizeCatalogText(author) === normalized);
         })
         .map((line) => normalizeCatalogText(line)))];
-      const exactTitleHints = [...new Set([...literalTitleHints, ...rankedTitleEvidence])].slice(0, 8);
+      const titleLineFrequency = new Map<string, number>();
+      for (const line of cleanLines) {
+        const key = normalizeCatalogText(line);
+        titleLineFrequency.set(key, (titleLineFrequency.get(key) ?? 0) + 1);
+      }
+      const exactTitleHints = [...new Set([
+        ...literalTitleHints.filter((hint) => (titleLineFrequency.get(hint) ?? 0) >= 2)
+          .sort((a, b) => (titleLineFrequency.get(b) ?? 0) - (titleLineFrequency.get(a) ?? 0)),
+        ...rankedTitleEvidence,
+        ...literalTitleHints,
+      ])].slice(0, 8);
       for (const titleHint of exactTitleHints) {
         if (best) break;
         try {
