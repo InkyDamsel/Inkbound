@@ -482,7 +482,27 @@ export function coverAuthorQueries(cleanLines: string[], maxQueries = 12): strin
   const evidenceBacked = ranked
     .filter((candidate) => candidate.support > 0 && candidate.complete > 0)
     .map(({ query }) => query);
+  // Preserve directly adjacent, intact two-word name structures before
+  // noisy cross-pass pairings consume the author-query budget. OCR often
+  // places the author's given name and surname on separate lines, while
+  // decorative cover text generates many more speculative combinations.
+  // This only retrieves candidates; coverMatchesWork still verifies identity.
+  const directNamePairs: string[] = [];
+  for (let index = 0; index + 1 < cleanLines.length; index += 1) {
+    const first = wordsOf(cleanLines[index]);
+    const second = wordsOf(cleanLines[index + 1]);
+    if (first.length !== 1 || second.length !== 1) continue;
+    if (first[0].length < 4 || second[0].length < 4) continue;
+    if (first[0].length > 12 || second[0].length > 12) continue;
+    if (isDemotedCoverTitleLine(cleanLines[index])
+      || isDemotedCoverTitleLine(cleanLines[index + 1])) continue;
+    // Require corroboration from another OCR observation to distinguish a
+    // printed author name from two accidental neighboring title fragments.
+    if (supportForWord(first[0]) + supportForWord(second[0]) < 3) continue;
+    directNamePairs.push(`${first[0]} ${second[0]}`);
+  }
   const ordered = [
+    ...directNamePairs,
     ...evidenceBacked,
     ...ranked.map(({ query }) => query),
   ];
