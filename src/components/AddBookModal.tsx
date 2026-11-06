@@ -886,7 +886,20 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // multi-provider relevance query, particularly when Google is cooling
       // down from repeated searches. Try this public exact-title lookup first;
       // acceptance STILL requires independent photographed title + author.
-      for (const titleHint of rankedTitleEvidence.slice(0, 2)) {
+      // Exact title-shaped OCR lines may appear only in a later camera pass.
+      // Preserve them ahead of damaged ranked fragments, without changing
+      // the strict title-and-author acceptance gate below.
+      const literalTitleHints = [...new Set(cleanLines
+        .filter((line) => {
+          const normalized = normalizeCatalogText(line);
+          const tokens = normalized.split(/\s+/).filter(Boolean);
+          return tokens.length === 1 && normalized.length >= 6
+            && !isNoise(line) && !isDemotedCoverTitleLine(line)
+            && !authorRecoveryQueries.some((author) => normalizeCatalogText(author) === normalized);
+        })
+        .map((line) => normalizeCatalogText(line)))];
+      const exactTitleHints = [...new Set([...literalTitleHints, ...rankedTitleEvidence])].slice(0, 8);
+      for (const titleHint of exactTitleHints) {
         if (best) break;
         try {
           const response = await searchCoverTitleCatalogOnce(titleHint);
