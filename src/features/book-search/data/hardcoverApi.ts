@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../../../lib/firebase';
+import { functions } from '../../../lib/firebase';
 import type { BookSearchResponse } from '../model/bookSearch';
 
 interface HardcoverSearchPayload {
@@ -16,10 +16,6 @@ export async function searchHardcover(query: string): Promise<BookSearchResponse
   if (!trimmed || !functions) return { groups: [], totalItems: 0 };
 
   try {
-    if (auth) {
-      await auth.authStateReady();
-      if (!auth.currentUser) return { groups: [], totalItems: 0 };
-    }
     const callable = httpsCallable<HardcoverSearchRequest, HardcoverSearchPayload>(functions, 'searchHardcoverBooks');
     const response = await callable({ query: trimmed });
     const groups = Array.isArray(response.data.groups) ? response.data.groups : [];
