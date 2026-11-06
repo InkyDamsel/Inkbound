@@ -1195,9 +1195,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           const compact = normalizeCatalogText(line).replace(/\s+/g, '');
           return compact.length >= 5 && compact.length <= 14 && !isNoise(line);
         });
+        // Prefer surnames corroborated by a printed author line. OCR often
+        // promotes title fragments and marketing copy into author hints.
         const surnameHints = [...new Set(authorRecoveryQueries
-          .map((line) => line.split(/\s+/).filter(Boolean).at(-1) ?? '')
-          .filter((surname) => surname.length >= 4))].slice(0, 2);
+          .filter((line) => !isNoise(line) && !isDemotedCoverTitleLine(line))
+          .map((line) => normalizeCatalogText(line).split(/\s+/).filter(Boolean).at(-1) ?? '')
+          .filter((surname) => surname.length >= 4 && !independentTitleKeys.has(surname)))].slice(0, 4);
 
         if (titleLikeEvidence.length && surnameHints.length) {
           for (const surnameHint of surnameHints) {
@@ -1212,6 +1215,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
                   const normalizedAuthor = normalizeCatalogText(author);
                   return exactAuthorEvidence.some((evidence) => {
                     if (normalizedAuthor === evidence) return true;
+                    // Some catalog records credit only the surname. Keep
+                    // these as retrieval candidates, never verified matches.
+                    // The photographed-cover title AND author gate below
+                    // remains mandatory before a work can be accepted.
+                    if (normalizedAuthor === surnameHint
+                      && evidence.split(/\s+/).some((token) => token === surnameHint)) return true;
                     const authorWords = normalizedAuthor.split(/\s+/).filter(Boolean);
                     const evidenceWords = evidence.split(/\s+/).filter(Boolean);
                     if (authorWords.length !== evidenceWords.length) return false;
