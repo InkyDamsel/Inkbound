@@ -121,8 +121,8 @@ const addBookSource = fs.readFileSync(path.join(root, 'src', 'components', 'AddB
 checks.push({
   ok: addBookSource.includes('SCANNER_DEBUG_ENABLED && authorCatalogDiagnostics && (')
     && addBookSource.includes('{SCANNER_DEBUG_ENABLED && <details')
-    && addBookSource.includes('>Scanner details</summary>')
-    && !addBookSource.includes('aria-label="Scanner test diagnostics"')
+    && addBookSource.includes('>Scanner diagnostics — test build</summary>')
+    && !addBookSource.includes('>Scanner details</summary>')
     && addBookSource.includes("import.meta.env.MODE === 'scanner-debug'"),
   message: 'scanner and catalog diagnostic panels must be dev-only',
 });
@@ -134,6 +134,7 @@ const productionForbiddenStrings = [
   '[Inkbound scanner] ISBN lookup',
   '[Inkbound scanner] Cover identification failed',
   'Scanner details',
+  'Scanner diagnostics — test build',
   'Copy diagnostic report',
   'Check App Check',
   'No scan trace captured yet.',
