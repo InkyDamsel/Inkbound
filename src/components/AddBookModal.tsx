@@ -241,6 +241,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
   const [scannerRecoveryTitle, setScannerRecoveryTitle] = useState('');
   const [scannerRecoveryAuthor, setScannerRecoveryAuthor] = useState('');
   const [scannerEditionOptions, setScannerEditionOptions] = useState<BookSearchWorkGroup[]>([]);
+  const [scannerAuthorSuggestions, setScannerAuthorSuggestions] = useState<BookSearchWorkGroup[]>([]);
   const [scannerBusy, setScannerBusy] = useState(false);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -665,6 +666,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
     setScannerRecoveryTitle('');
     setScannerRecoveryAuthor('');
     setScannerEditionOptions([]);
+    setScannerAuthorSuggestions([]);
     try {
       const bitmap = await createImageBitmap(file);
       const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
@@ -1200,6 +1202,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         }
       }
 
+      const authorOnlySuggestions: BookSearchWorkGroup[] = [];
       if (!best) {
         // If OCR damaged the title but preserved a credible author line, use
         // that author's catalog as a bounded recovery source. A result is only
@@ -1227,6 +1230,21 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
           } catch (error) {
             scannerDiagnostics.push(`author-recovery:${authorQuery} => ERROR ${error instanceof Error ? error.message : String(error)}`);
             continue;
+          }
+          // When the title is completely unreadable, retain catalog works by
+          // the independently printed author as MANUAL choices only. Never
+          // turn an author-only result into an automatically verified scan.
+          if (!rankedTitleEvidence.length && authorQuery === authorRecoveryQueries[0]) {
+            const printedAuthor = normalizeCatalogText(authorQuery).replace(/[^a-z0-9]/g, '');
+            for (const work of authorGroups) {
+              const exactAuthor = work.authors.some((name) =>
+                normalizeCatalogText(name).replace(/[^a-z0-9]/g, '') === printedAuthor);
+              const key = `${normalizeCatalogText(work.title)}:${printedAuthor}`;
+              if (exactAuthor && work.editions.length && !authorOnlySuggestions.some((item) =>
+                `${normalizeCatalogText(item.title)}:${printedAuthor}` === key)) {
+                authorOnlySuggestions.push(work);
+              }
+            }
           }
           let recovered = authorGroups.find((work) =>
             coverApproximatelyMatchesWork(cleanLines, work.title, work.authors));
@@ -1603,6 +1621,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
 
       if (!best) {
         setScannerEditionOptions([]);
+        setScannerAuthorSuggestions(authorOnlySuggestions.slice(0, 24));
         const titleSurnameAnchors = titleSurnameRecoveryQueries(cleanLines, authorRecoveryQueries);
         // Preserve both ends of the bounded retrieval trace. Early entries
         // explain the initial OCR queries; late entries contain the recovery
@@ -1636,6 +1655,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
         }
         throw new Error('Cover text was detected, but no verified title-and-author catalog match was found.');
       }
+      setScannerAuthorSuggestions([]);
       // Cover OCR identifies a work, not the scanned edition. Offer the
       // matching catalog editions in Scanner, never silently substitute ISBNs.
       const titleKey = normalizeCatalogText(best.work.title);
@@ -2252,6 +2272,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
               {scannerMessage && <p className="mt-3 text-sm text-[#d7c7d7]">{scannerMessage}</p>}
               {photoIsbnChoices.length > 0 && <div className="mt-3 grid gap-2" aria-label="ISBNs found in photo">
                 {photoIsbnChoices.map((isbn) => <button key={isbn} type="button" disabled={scannerBusy} onClick={() => { setPhotoIsbnChoices([]); void lookupScannedIsbn(isbn); }} className="quiet-shelf-secondary-action justify-center">Use ISBN {isbn}</button>)}
+              </div>}
+              {scannerAuthorSuggestions.length > 0 && <div className="mt-3 rounded-xl border border-[#c5a059]/40 bg-[#1d1422] p-3" aria-label="Unverified author catalog suggestions">
+                <p className="font-serif text-lg text-[#f4efe6]">Books by the detected author</p>
+                <p className="mt-1 text-xs text-[#b9a9ba]">The cover title could not be read. These are NOT verified matches. Compare the printed title and author yourself before choosing an edition. Nothing is added automatically.</p>
+                <div className="mt-3 grid gap-2">
+                  {scannerAuthorSuggestions.map((work) => <div key={work.key} className="rounded-lg border border-[#c5a059]/20 bg-[#120c15] p-3">
+                    <p className="text-sm font-semibold text-[#f4efe6]">{work.title}</p>
+                    <p className="text-xs text-[#b9a9ba]">{work.authors.join(', ')}</p>
+                    <button type="button" className="quiet-shelf-secondary-action mt-2 w-full min-h-11" onClick={() => { setScannerEditionOptions([work]); setScannerAuthorSuggestions([]); setScannerError(null); setScannerMessage('Unverified author-catalog suggestion selected. Confirm the printed title, author and physical edition before adding to the stack.'); }}>Review editions for this title</button>
+                  </div>)}
+                </div>
               </div>}
               {scannerEditionOptions.length > 0 && <div className="mt-3 rounded-xl border border-[#c5a059]/40 bg-[#1d1422] p-3">
                 <p className="font-serif text-lg text-[#f4efe6]">Possible editions</p>
