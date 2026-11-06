@@ -395,7 +395,16 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
       if (titleLineDemoted(line, index)) return false;
       const compactLine = rawCompactLines[index];
       if (catalogAuthorLines.has(compactLine)) return false;
-      const distinctive = rawLineWords[index].filter((word) =>
+      const lineWords = rawLineWords[index];
+      // A series descriptor ("A Maple Hills Novel") can contain three long
+      // words without being a competing title. OCR often damages the actual
+      // one-word title while reading this smaller subtitle cleanly. Do not
+      // let an explicitly labeled book/series descriptor veto a catalog
+      // title that otherwise passes independent author + fuzzy-title proof.
+      const descriptorWords = new Set(['novel', 'series', 'book', 'volume']);
+      if (lineWords.length >= 2 && descriptorWords.has(lineWords.at(-1) ?? '')
+        && (lineWords[0] === 'a' || lineWords[0] === 'an' || lineWords[0] === 'the')) return false;
+      const distinctive = lineWords.filter((word) =>
         word.length >= 4 && !weakTitleWords.has(word));
       return distinctive.length >= 3;
     });
