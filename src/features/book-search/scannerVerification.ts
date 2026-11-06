@@ -16,6 +16,26 @@ export function scannerCoverTitle(title: string): string {
   return normalized;
 }
 
+/** A decorative doubled letter may be read once (CROOME -> CROME).
+ * Never use this as standalone identity evidence: title and given name must
+ * independently match, and only one adjacent duplicate may be omitted. */
+const missingDoubledLetter = (printed: string, catalog: string): boolean => {
+  if (catalog.length < 5 || printed.length !== catalog.length - 1) return false;
+  for (let i = 1; i < catalog.length; i += 1) {
+    if (catalog[i] === catalog[i - 1] && catalog.slice(0, i) + catalog.slice(i + 1) === printed) return true;
+  }
+  return false;
+};
+
+const surnameWithDecorativeOcr = (lines: string[], surname: string, given: string[]): boolean => {
+  if (!given.length) return false;
+  const text = words(lines.join(' '));
+  const joined = text.join('');
+  if (!given.some((name) => name.length >= 4 && (text.includes(name) || joined.includes(name)))) return false;
+  const candidates = [...text, ...lines.map((line) => words(line).join(''))];
+  return candidates.some((candidate) => missingDoubledLetter(candidate, surname));
+};
+
 /** Short titles carry too little evidence for loose token matching. Require the
  * complete title as a whole printed line plus the complete author identity. */
 function shortTitleMatchesWork(lines: string[], titleWords: string[], authors: string[]): boolean {
@@ -159,7 +179,8 @@ export function coverMatchesWork(lines: string[], title: string, authors: string
     // verification must do the same or a correct catalog work is rejected.
     // We still require the complete surname plus the meaningful given name,
     // so compact matching cannot turn a title-only hit into a verified book.
-    const surnameVerified = tokens.has(surname) || joined.includes(surname);
+    const surnameVerified = tokens.has(surname) || joined.includes(surname)
+      || surnameWithDecorativeOcr(lines, surname, authorWords.slice(0, -1));
     if (!surnameVerified) return false;
 
     const given = authorWords.slice(0, -1).filter((word) => word.length >= 3);
