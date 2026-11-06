@@ -108,7 +108,10 @@ const waitUntilAdministrationInactive = async (signal?: AbortSignal): Promise<vo
 
 const shouldBackOffCatalog = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
-  return /\b(?:429|503)\b|resource-exhausted|unavailable/i.test(message);
+  // A generic Firebase `unavailable` can mean network or callable failure,
+  // not an upstream Books API rate limit. Only explicit quota/outage evidence
+  // may open the shared Google circuit breaker.
+  return /\b(?:429|503)\b|resource-exhausted/i.test(message);
 };
 
 export const buildGoogleBooksQuery = (value: string): string => {
