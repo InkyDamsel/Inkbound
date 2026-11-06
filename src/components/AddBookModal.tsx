@@ -958,7 +958,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // so DEVOURO/DEVOURED collapse) paired with the printed author, then with
       // just ONE name word. A damaged surname or given name no longer sinks the
       // whole query. Retrieval only; the photographed-cover verifier decides.
-      if (!best) for (const query of titleAuthorPartQueries(rankedTitleEvidence, authorRecoveryQueries, 8)) {
+      const rankedIdentityQueries = titleAuthorPartQueries(rankedTitleEvidence, authorRecoveryQueries, 8);
+      // When OCR gives a clear first name but an uncertain decorative surname,
+      // try title + given name before spending the remaining budget on damaged
+      // surname permutations. This is retrieval only; verification is unchanged.
+      const givenNameQueries = rankedTitleEvidence.slice(0, 1).flatMap((title) =>
+        authorRecoveryQueries.slice(0, 2).map((author) => normalizeCatalogText(author).split(/\\s+/)[0])
+          .filter((given) => given.length >= 4 && given !== normalizeCatalogText(title))
+          .map((given) => `${title} ${given}`));
+      if (!best) for (const query of [...new Set([...givenNameQueries, ...rankedIdentityQueries])].slice(0, 8)) {
         try {
           const response = await searchCoverCatalogOnce(query);
           recordScannerResponse(`ranked-identity:${query}`, response.groups);
