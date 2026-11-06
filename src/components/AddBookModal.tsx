@@ -963,7 +963,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // try title + given name before spending the remaining budget on damaged
       // surname permutations. This is retrieval only; verification is unchanged.
       const givenNameQueries = rankedTitleEvidence.slice(0, 1).flatMap((title) =>
-        authorRecoveryQueries.slice(0, 2).map((author) => normalizeCatalogText(author).split(/\\s+/)[0])
+        authorRecoveryQueries.slice(0, 2).map((author) => normalizeCatalogText(author).split(/\s+/)[0])
           .filter((given) => given.length >= 4 && given !== normalizeCatalogText(title))
           .map((given) => `${title} ${given}`));
       if (!best) for (const query of [...new Set([...givenNameQueries, ...rankedIdentityQueries])].slice(0, 8)) {
@@ -987,7 +987,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, onAddBook, 
       // title/author is found by intitle + inauthor:<given or surname> even when
       // the other half of the printed name is damaged ("crome" vs "Croome").
       if (!best) {
-        const fieldedIdentityQueries = [...new Set(rankedTitleEvidence.slice(0, 2).flatMap((title) =>
+        const fieldedIdentityQueries = [...new Set([...new Set([...rankedTitleEvidence.filter((title) => !title.includes(' ')).slice(0, 2), ...rankedTitleEvidence.slice(0, 2)])].slice(0, 3).flatMap((title) =>
           authorRecoveryQueries.slice(0, 2).flatMap((author) => {
             const nameWords = normalizeCatalogText(author).split(/\s+/).filter((word) => word.length >= 4);
             return [...new Set([nameWords[0], nameWords.at(-1)].filter((word): word is string => Boolean(word)))]
