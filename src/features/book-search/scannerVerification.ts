@@ -343,6 +343,26 @@ export function coverApproximatelyMatchesWork(lines: string[], title: string, au
   // distinctive words, approximate proof must come from one photographed OCR
   // line. Longer titles may use the bounded cross-line reconstruction because
   // they carry enough independent title evidence.
+  // Native OCR may read a two-line title as THRESHING / DRY instead of
+  // THRESHING / DAY. Accept one damaged short word only when both title
+  // words occupy adjacent standalone, non-promotional lines and the full
+  // author identity has already been independently verified above.
+  const adjacentTwoLineTitle = significantTitleWords.length === 2
+    && catalogTitleWords.length === 2
+    && catalogTitleWords[0].length >= 6
+    && lines.some((line, index) => {
+      if (index + 1 >= lines.length
+        || titleLineDemoted(line, index)
+        || titleLineDemoted(lines[index + 1], index + 1)) return false;
+      const first = words(line);
+      const second = words(lines[index + 1]);
+      return first.length === 1 && second.length === 1
+        && first[0] === catalogTitleWords[0]
+        && second[0].length === catalogTitleWords[1].length
+        && editDistance(second[0], catalogTitleWords[1]) <= 1;
+    });
+  if (adjacentTwoLineTitle) return true;
+
   const exactShortTitleLine = compactTitle.length >= 4 && compactTitle.length <= 9
     && rawCompactLines.some((line) => line === compactTitle);
   const catalogAuthorLines = new Set(authors
