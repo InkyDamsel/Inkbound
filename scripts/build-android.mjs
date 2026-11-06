@@ -55,6 +55,18 @@ if (scannerDebug) {
   console.log('Scanner DEBUG bundle verified: scanner diagnostics panel contains App Check probe, copy report and provider traces.');
 }
 
+// Release bundles must pass the same compiled-artifact scanner firewall as iOS.
+// Keep the explicit scanner-debug path available for internal testing only.
+if (!scannerDebug) {
+  for (const verifier of ['scripts/verify-release-artifacts.mjs', 'scripts/verify-ios-clean.mjs']) {
+    const checked = spawnSync(process.execPath, [verifier], { cwd, stdio: 'inherit', env });
+    if (checked.status !== 0) {
+      console.error(`Inkbound Android release blocked: ${verifier} failed.`);
+      process.exit(checked.status ?? 1);
+    }
+  }
+}
+
 if (browserGoogleBooksKey) {
   const assetsDir = path.join(cwd, 'dist', 'assets');
   const bundledFiles = fs.existsSync(assetsDir)
