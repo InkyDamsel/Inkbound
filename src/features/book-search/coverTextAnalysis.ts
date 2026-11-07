@@ -931,23 +931,35 @@ export function coverTitleEvidenceHints(
  * search copes far better with a title plus ONE correctly read name word than
  * with a title plus a misspelled full name. Retrieval only. */
 export function titleAuthorPartQueries(titles: string[], authorHints: string[], maxQueries = 6): string[] {
+  const budget = Math.max(1, maxQueries);
+  const selectedTitles = [...new Set(titles)].slice(0, 3);
+  const fullAuthors = [...new Set(authorHints.map((hint) => wordsOf(hint).join(' ')))]
+    .map(wordsOf).filter((words) => words.length >= 2).slice(0, 2);
   const out: string[] = [];
-  // First try full identities for several independently observed title lines.
-  // Otherwise one or two damaged OCR variants consume the entire query cap,
-  // even when a correctly recognized title appears later in the same scan.
-  const fullAuthors = authorHints.slice(0, 2).map(wordsOf).filter((words) => words.length >= 2);
-  for (const title of titles.slice(0, 3)) {
-    for (const words of fullAuthors) out.push(`${title} ${words.join(' ')}`);
+  const add = (query: string) => {
+    if (out.length < budget && !out.includes(query)) out.push(query);
+  };
+  if (!selectedTitles.length || !fullAuthors.length) return [];
+
+  // Guarantee a full-identity attempt for every observed title before spending
+  // the request budget on alternate authors. Leave room for damaged-surname
+  // recovery; previously 3 titles x 2 authors exhausted the default six calls.
+  for (const title of selectedTitles) add(`${title} ${fullAuthors[0].join(' ')}`);
+  const reserve = budget >= 4 ? Math.min(2, budget - out.length) : 0;
+  for (const title of selectedTitles) {
+    if (out.length >= budget - reserve) break;
+    if (fullAuthors[1]) add(`${title} ${fullAuthors[1].join(' ')}`);
   }
-  // Only then broaden to single-name-word retrieval; acceptance still requires
-  // the independently verified photographed title AND author.
-  for (const title of titles.slice(0, 3)) {
+
+  // A partially damaged author name can still retrieve the correct work.
+  // This only broadens retrieval; the cover identity verifier stays unchanged.
+  for (const title of selectedTitles) {
     for (const words of fullAuthors) {
       const surname = words.at(-1)!;
       const given = words[0];
-      if (surname.length >= 4) out.push(`${title} ${surname}`);
-      if (given.length >= 4) out.push(`${title} ${given}`);
+      if (surname.length >= 4) add(`${title} ${surname}`);
+      if (given.length >= 4) add(`${title} ${given}`);
     }
   }
-  return [...new Set(out)].slice(0, maxQueries);
+  return out;
 }
