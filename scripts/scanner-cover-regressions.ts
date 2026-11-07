@@ -325,6 +325,19 @@ for(const lines of pages){
 assert.deepEqual(collectPrintedIsbnEvidence(['51999','PRINTED IN CHINA']),[]);
 assert.deepEqual(collectPrintedIsbnEvidence(['9 781250 346758']),[]);
 
+// Systemic retrieval-budget regression: three OCR title variants and two
+// plausible author hints must not starve surname/given-name fallback.
+const boundedRecovery = titleAuthorPartQueries(
+  ['damaged one', 'damaged two', 'correct title'],
+  ['correct given surname', 'noisy given surname'],
+  6,
+);
+assert.equal(boundedRecovery.length, 6);
+assert.ok(boundedRecovery.includes('correct title correct given surname'),
+  'All three title observations must receive a full-identity lookup.');
+assert.ok(boundedRecovery.some((query) => query === 'damaged one surname' || query === 'damaged one correct'),
+  'A six-request scanner budget must reserve room for partial-name recovery.');
+
 // Live on-device OCR (Oct 30 2026). The scanner's request budget is tiny, so the
 // REAL printed author and title must be ranked first or they are never queried.
 const liveClean = (raw: string[]) => raw
