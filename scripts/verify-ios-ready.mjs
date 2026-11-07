@@ -61,7 +61,7 @@ if (fs.existsSync(project)) {
   const buildNumbers = [...source.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((match) => Number(match[1]));
   if (buildNumbers.length !== 4 || buildNumbers.some((value) => !Number.isSafeInteger(value) || value < 1 || value !== buildNumbers[0])) fail('iOS app and widget Debug/Release configurations must all use the same positive build number.');
   const marketingVersions = [...source.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((match) => match[1].trim());
-  if (marketingVersions.length === 0 || marketingVersions.some((value) => value !== '1.0')) fail('All iOS app/widget configurations must remain on marketing version 1.0.');
+  if (marketingVersions.length === 0 || !/^[0-9]+[.][0-9]+[.][0-9]+$/.test(marketingVersions[0]) || marketingVersions.some((value) => value !== marketingVersions[0])) fail('All iOS app/widget configurations must use the same valid marketing version (major.minor.patch).');
 }
 
 if (fs.existsSync(infoPlist)) {
