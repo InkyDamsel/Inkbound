@@ -57,7 +57,7 @@ if (exists('ios/App/App.xcodeproj/project.pbxproj')) {
   }
   const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((match) => match[1].trim());
   // Allow patch releases while requiring every app/widget configuration to agree.
-  if (marketingVersions.length === 0 || !/^\\d+\\.\\d+\\.\\d+$/.test(marketingVersions[0]) || marketingVersions.some((value) => value !== marketingVersions[0])) {
+  if (marketingVersions.length === 0 || !/^[0-9]+[.][0-9]+[.][0-9]+$/.test(marketingVersions[0]) || marketingVersions.some((value) => value !== marketingVersions[0])) {
     fail('All iOS app/widget configurations must use the same valid marketing version (major.minor.patch).');
   }
   for (const required of [
