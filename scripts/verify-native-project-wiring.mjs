@@ -56,8 +56,9 @@ if (exists('ios/App/App.xcodeproj/project.pbxproj')) {
     fail('All iOS app/widget configurations must use the same positive build number.');
   }
   const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map((match) => match[1].trim());
-  if (marketingVersions.length === 0 || marketingVersions.some((value) => value !== '1.0')) {
-    fail('All iOS app/widget configurations must remain on marketing version 1.0.');
+  // Allow patch releases while requiring every app/widget configuration to agree.
+  if (marketingVersions.length === 0 || !/^\\d+\\.\\d+\\.\\d+$/.test(marketingVersions[0]) || marketingVersions.some((value) => value !== marketingVersions[0])) {
+    fail('All iOS app/widget configurations must use the same valid marketing version (major.minor.patch).');
   }
   for (const required of [
     'InkboundBridgeViewController.swift',
