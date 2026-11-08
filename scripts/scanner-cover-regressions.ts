@@ -8,6 +8,12 @@ assert.equal(coverMatchesWork(['IT','A NOVEL','STEPHEN','KING'], 'It', ['Stephen
 assert.equal(coverMatchesWork(['SHIT HAPPENS','STEPHEN','KING'], 'It', ['Stephen King']), false);
 assert.ok(shortTitleQueries(['IT','STEPHEN','KING']).includes('IT STEPHEN KING'));
 
+assert.equal(coverApproximatelyMatchesWork(['MOON', 'THE KNAVE AND THE MOON', 'R ACH EL', 'GI LL I G'], 'Moon', ['Milton Lewis Moon']), false,
+  'Do not confuse a title word with a catalog author surname.');
+assert.equal(coverMatchesWork(['MOON', 'THE KNAVE AND THE MOON', 'R ACH EL', 'GI LL I G'], 'Moon', ['Milton Lewis Moon']), false,
+  'Exact verifier also rejects title/author identity collisions.');
+assert.equal(coverApproximatelyMatchesWork(['CARRIE', 'STEPHEN KING'], 'Carrie', ['Stephen King']), true,
+  'Single-word titles with independent full author evidence still pass.');
 // Real physical-cover OCR: catalog retrieval already found this work, but
 // decorative letters split the author and damaged both title words.
 const knaveMoonCover = [
