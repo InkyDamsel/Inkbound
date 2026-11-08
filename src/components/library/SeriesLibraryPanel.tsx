@@ -29,6 +29,7 @@ import {
 import { readingStatusLabelForBook } from '../../features/reading/customReadingStatuses';
 import { BookCover } from '../BookCover';
 import { SeriesDetectivePreview } from './SeriesDetectivePreview';
+import { SeriesDetectiveBookLookup } from './SeriesDetectiveBookLookup';
 
 interface SeriesLibraryPanelProps {
   books: UserBookRecord[];
@@ -347,6 +348,7 @@ export const SeriesLibraryPanel: React.FC<SeriesLibraryPanelProps> = ({ books, o
           <h2 className="mt-4 font-serif text-2xl text-[var(--ink-ivory)]">No series found yet</h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--ink-muted)]">Series metadata groups reading material automatically, or create one yourself when metadata is missing or wrong.</p>
           <button type="button" onClick={openCreate} className="quiet-shelf-primary-action mx-auto mt-5"><Plus className="h-4 w-4" />Create your first series</button>
+          <div className="mx-auto mt-6 max-w-xl space-y-3 text-left"><h3 className="font-semibold text-[var(--ink-ivory)]">Series Detective — investigate a book</h3><p className="text-xs text-[var(--ink-muted)]">Series metadata missing? Start with a book already in your library.</p>{books.map((book) => <SeriesDetectiveBookLookup key={book.id} book={book} libraryBooks={books} />)}</div>
         </section>
       ) : filtered.length === 0 ? (
         <section className="inkbound-panel rounded-3xl p-8 text-center text-sm text-[var(--ink-muted)]">No series match that search.</section>
